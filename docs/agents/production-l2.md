@@ -16,7 +16,7 @@ Prefer options that maximize:
 
 ## Priority Order
 
-When tradeoffs are required, prioritize:
+When tradeoffs are required, prioritize: [review]
 
 1. Correctness
 2. Safety
@@ -26,7 +26,7 @@ When tradeoffs are required, prioritize:
 
 ## Non-Goals
 
-Unless explicitly requested and isolated, do not introduce:
+Unless explicitly requested and isolated, do not introduce: [review]
 
 - Benchmark shortcuts that weaken correctness guarantees
 - Silent data rewrites that hide integrity issues
@@ -40,13 +40,13 @@ Unless explicitly requested and isolated, do not introduce:
 
 Temporary or debug-only code, configuration, and instrumentation may be used
 during testing and diagnosis, but must be removed or cleaned up before
-finalizing work.
+finalizing work. [review]
 
 If a temporary workaround is unavoidable, it must be isolated, explicitly
-documented, and unavailable as the default path.
+documented, and unavailable as the default path. [review]
 
 ## Benchmark and Demo Behavior
 
 If a change improves benchmarks but weakens production guarantees, do not make
 it the default. Keep strict behavior as the default and isolate non-production
-behavior behind clearly named controls.
+behavior behind clearly named controls. [review]

@@ -11,9 +11,14 @@ users and L1 interact with the rollup.
 
 - **`deposit`**: validates deposits moving funds from L1 into the L2 ledger.
 - **`withdrawal`**: validates withdrawal orders moving funds from L2 back to L1.
-- **`tx-order`**: validates transaction-order events used to sequence L2
-  transactions into blocks.
-- **`witness`**: the witness staking script used to witness user events on-chain.
+- **`tx-order-v1`**: validates transaction-order events used to sequence L2
+  transactions into blocks, including their exact canonical source commitments.
+- **`witness`**: the per-event certificate script binding registration and
+  unregistration to event mint/burn or proving prior non-registration. It uses
+  Aiken's `publish` handler, not a rewarding withdrawal handler.
+- **`cek-program-material-v1`**: keeps permissionlessly published program
+  material unspendable; consumers authenticate its typed roots when resolving
+  transaction-order execution.
 
 ## Related
 

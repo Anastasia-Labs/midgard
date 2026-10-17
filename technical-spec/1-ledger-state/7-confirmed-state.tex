@@ -22,14 +22,15 @@ These groups are used to populate the fields of two record types in Midgard's co
     \T{Settlement} &\coloneq \left\{
     \begin{array}{ll}
         \T{deposits\_root} : & \T{MPTR} \\
-        \T{withdraws\_root} : & \T{MPTR} \\
+        \T{withdrawals\_root} : & \T{MPTR} \\
+        \T{forced\_transactions\_root} : & \T{MPTR} \\
         \T{transactions\_root} : & \T{MPTR} \\
         \T{resolution\_claim}: & \T{Option}(\T{ResolutionClaim})
     \end{array} \right\} \\
     \T{ResolutionClaim} &\coloneq \left\{
     \begin{array}{ll}
-        \T{time}: & \T{PosixTime} \\
-        \T{operator}: & \T{VerificationKey}
+        \T{resolution\_time}: & \T{PosixTime} \\
+        \T{operator}: & \T{VerificationKeyHash}
     \end{array}
     \right\}
 \end{align*}
@@ -39,8 +40,8 @@ At genesis, \code{ConfirmedState} is set as follows:
 \begin{equation*}
     \T{genesisConfirmedState} \coloneq \left\{
         \begin{array}{ll}
-            \T{header\_hash} \coloneq & 0 \\
-            \T{prev\_header\_hash} \coloneq & 0 \\
+            \T{header\_hash} \coloneq & \T{0x00}^{28} \\
+            \T{prev\_header\_hash} \coloneq & \T{0x00}^{28} \\
             \T{utxo\_root} \coloneq & \T{MPTR}_\T{empty} \\
             \T{start\_time} \coloneq & \T{system\_start} \\
             \T{end\_time} \coloneq & \T{system\_start} \\

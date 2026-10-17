@@ -1,0 +1,380 @@
+// Capability probes shared by preflight and doctor.
+//
+// Every probe answers one question about the environment and returns
+//   { name, status, detail, fix, env? }
+// where status is
+//   "available" — the capability is there;
+//   "missing"   — it was looked for and is not there (fix says how to get it);
+//   "unknown"   — it could not be looked for (a probe module is absent, a
+//                 tool could not run). Unknown is never treated as available.
+// `env`, when present, is what a check that needs the capability must run
+// with (the per-worktree test database prefix).
+
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { connect } from "node:net";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { aikenBinary } from "../lib/aiken.mjs";
+import { checkBuild } from "../contrib/build.mjs";
+
+// The local test server. The live end-to-end stack runs its own Postgres on
+// 55433; nothing here may ever point a test suite at it.
+export const TEST_POSTGRES_PORT = 5433;
+export const FORBIDDEN_POSTGRES_PORTS = [55433];
+export const START_TEST_POSTGRES = "bash scripts/start-test-postgres.sh";
+const CORE_DIST_CHECK = "demo/scripts/assert-midgard-core-dist-current.mjs";
+const BLUEPRINT_STAMP_MODULE = "demo/scripts/lib/blueprint-stamp.mjs";
+const WORKTREE_IDENTITY_MODULE = "scripts/lib/worktree-identity.mjs";
+// The modules a capability's probe loads or runs by path rather than by
+// import, so a static import walk of the runner cannot see them (see
+// scripts/ci/preflight-runner-closure.mjs).
+export const PROBE_MODULES = {
+  "core-dist": [CORE_DIST_CHECK],
+  blueprint: [BLUEPRINT_STAMP_MODULE],
+  "db-prefix": [WORKTREE_IDENTITY_MODULE],
+};
+
+const result = (name, status, detail, fix, extra = {}) => ({
+  name,
+  status,
+  detail,
+  fix,
+  ...extra,
+});
+
+const importOptional = async (root, path) => {
+  const absolute = resolve(root, path);
+  if (!existsSync(absolute)) {
+    return undefined;
+  }
+  return import(pathToFileURL(absolute).href);
+};
+
+export const probePostgres = ({
+  host = "127.0.0.1",
+  port = TEST_POSTGRES_PORT,
+  timeoutMs = 1000,
+  env = process.env,
+} = {}) => {
+  if (FORBIDDEN_POSTGRES_PORTS.includes(Number(port))) {
+    throw new Error(
+      `refusing to probe Postgres on ${String(port)}: that is the live stack, not the test server`,
+    );
+  }
+  // The suites read POSTGRES_PORT; an ambient value pointing elsewhere would
+  // send them past the server this probe looked at.
+  const ambient = env.POSTGRES_PORT;
+  if (ambient !== undefined && ambient !== "" && Number(ambient) !== port) {
+    return Promise.resolve(
+      result(
+        "postgres",
+        "missing",
+        `POSTGRES_PORT=${ambient} in the environment points the test suites away from the test server on ${String(port)}`,
+        "unset POSTGRES_PORT (the suites default to the test server on 5433)",
+      ),
+    );
+  }
+  return new Promise((done) => {
+    const socket = connect({ host, port });
+    const finish = (status, detail) => {
+      socket.destroy();
+      done(
+        result(
+          "postgres",
+          status,
+          detail,
+          status === "available" ? undefined : START_TEST_POSTGRES,
+        ),
+      );
+    };
+    socket.setTimeout(timeoutMs, () =>
+      finish(
+        "missing",
+        `no answer from ${host}:${String(port)} within ${String(timeoutMs)} ms`,
+      ),
+    );
+    socket.once("connect", () =>
+      finish("available", `test Postgres answers on ${host}:${String(port)}`),
+    );
+    socket.once("error", (error) =>
+      finish(
+        "missing",
+        `test Postgres on ${host}:${String(port)} is not reachable (${error.code ?? error.message})`,
+      ),
+    );
+  });
+};
+
+// Whether the aiken pinned by demo/flake.lock can be built and run.
+export const probeAiken = () => {
+  let binary;
+  try {
+    binary = aikenBinary();
+  } catch (error) {
+    return result(
+      "aiken",
+      "missing",
+      error.message,
+      "install nix (https://nixos.org/download)",
+    );
+  }
+  const run = spawnSync(binary, ["--version"], { encoding: "utf8" });
+  return run.error === undefined && run.status === 0
+    ? result("aiken", "available", run.stdout.trim())
+    : result(
+        "aiken",
+        "missing",
+        `${binary} did not run (${run.error?.message ?? `exit ${String(run.status)}`})`,
+      );
+};
+
+export const probeBlueprintStamp = async ({ root }) => {
+  const module = await importOptional(root, BLUEPRINT_STAMP_MODULE).catch(
+    (error) => ({ loadError: error }),
+  );
+  if (
+    module === undefined ||
+    typeof module.checkBlueprintStamp !== "function"
+  ) {
+    return result(
+      "blueprint",
+      "unknown",
+      module?.loadError === undefined
+        ? `could not check: ${BLUEPRINT_STAMP_MODULE} absent`
+        : `could not check: ${BLUEPRINT_STAMP_MODULE} failed to load (${module.loadError.message})`,
+      undefined,
+    );
+  }
+  let verdict;
+  try {
+    verdict = await module.checkBlueprintStamp({ root });
+  } catch (error) {
+    return result(
+      "blueprint",
+      "unknown",
+      `could not check: ${error.message}`,
+      undefined,
+    );
+  }
+  const status =
+    verdict?.status === "fresh"
+      ? "available"
+      : verdict?.status === "stale" || verdict?.status === "missing"
+        ? "missing"
+        : "unknown";
+  return result(
+    "blueprint",
+    status,
+    `blueprint stamp ${String(verdict?.status)}${verdict?.detail ? `: ${verdict.detail}` : ""}`,
+    status === "available" ? undefined : verdict?.fix,
+  );
+};
+
+export const probeCoreDist = ({ root }) => {
+  if (!existsSync(resolve(root, "demo/midgard-core/dist"))) {
+    return result(
+      "core-dist",
+      "missing",
+      "demo/midgard-core/dist is absent",
+      "pnpm --dir demo --filter @al-ft/midgard-core run build",
+    );
+  }
+  const run = spawnSync(process.execPath, [CORE_DIST_CHECK], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`.trim();
+  if (run.error !== undefined || run.status === null) {
+    return result(
+      "core-dist",
+      "unknown",
+      `could not check: ${run.error?.message ?? "the freshness check did not finish"}`,
+      undefined,
+    );
+  }
+  return run.status === 0
+    ? result("core-dist", "available", output.split("\n")[0])
+    : result(
+        "core-dist",
+        "missing",
+        output.split("\n")[0] ||
+          `the freshness check exited ${String(run.status)}`,
+        "pnpm --dir demo --filter @al-ft/midgard-core run build",
+      );
+};
+
+// Use the same closure and compiled-content identity as guarded consumers.
+export const probePackageDist = ({ root, directory, name }) => {
+  const probeName = `dist:${name}`;
+  const build = `pnpm --dir demo --filter ${name} run build`;
+  try {
+    const checked = checkBuild(root, name);
+    return checked.status === "fresh"
+      ? result(
+          probeName,
+          "available",
+          `${directory}/dist matches its complete input and output digests`,
+        )
+      : result(
+          probeName,
+          "missing",
+          checked.reason,
+          checked.fix ? `${checked.fix}, then ${build}` : build,
+        );
+  } catch (error) {
+    return result(
+      probeName,
+      "unknown",
+      `could not check: ${error.message}`,
+      build,
+    );
+  }
+};
+
+export const probeNodeModules = ({
+  root,
+  directory = "demo",
+  name = "node-modules",
+}) =>
+  existsSync(resolve(root, directory, "node_modules/.modules.yaml"))
+    ? result(name, "available", `${directory}/node_modules is installed`)
+    : result(
+        name,
+        "missing",
+        `${directory}/node_modules is not installed`,
+        `pnpm --dir ${directory} install --frozen-lockfile`,
+      );
+
+export const probeNix = ({ root, run = spawnSync }) => {
+  const probe = run("nix", ["--version"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 5_000,
+  });
+  if (probe.error || probe.status !== 0) {
+    return result(
+      "nix",
+      probe.error?.code === "ENOENT" ? "missing" : "unknown",
+      `could not run nix --version: ${probe.error?.message ?? (probe.stderr?.trim() || `exit ${probe.status}`)}`,
+      "Install Nix with flakes enabled, then run make spec",
+    );
+  }
+  return result("nix", "available", probe.stdout.trim());
+};
+
+// Suites derive their database names from MIDGARD_TEST_DATABASE_PREFIX; two
+// worktrees on the default prefix drop each other's shards.
+export const probeDbPrefix = async ({ root, env = process.env }) => {
+  const explicit = env.MIDGARD_TEST_DATABASE_PREFIX;
+  if (explicit !== undefined && explicit !== "") {
+    return result(
+      "db-prefix",
+      "available",
+      `MIDGARD_TEST_DATABASE_PREFIX=${explicit}`,
+    );
+  }
+  let identity;
+  try {
+    const module = await importOptional(root, WORKTREE_IDENTITY_MODULE);
+    identity = module?.worktreeIdentity?.(root);
+  } catch (error) {
+    return result(
+      "db-prefix",
+      "unknown",
+      `could not check: ${WORKTREE_IDENTITY_MODULE} failed (${error.message})`,
+      "export MIDGARD_TEST_DATABASE_PREFIX=<unique>_",
+    );
+  }
+  if (identity === undefined) {
+    return result(
+      "db-prefix",
+      "unknown",
+      `could not check: MIDGARD_TEST_DATABASE_PREFIX is unset and ${WORKTREE_IDENTITY_MODULE} is absent, so this checkout's databases cannot be told apart from another worktree's`,
+      "export MIDGARD_TEST_DATABASE_PREFIX=<unique name for this worktree>",
+    );
+  }
+  if (identity.isMainCheckout) {
+    return result(
+      "db-prefix",
+      "available",
+      "main checkout: the suites' default prefix",
+    );
+  }
+  const prefix = `midgard_test_${identity.hash}`;
+  return result(
+    "db-prefix",
+    "available",
+    `worktree ${identity.slug}: MIDGARD_TEST_DATABASE_PREFIX=${prefix}`,
+    undefined,
+    { env: { MIDGARD_TEST_DATABASE_PREFIX: prefix } },
+  );
+};
+
+export const probeMergeTree = ({ root }) => {
+  const run = spawnSync("git", ["merge-tree", "-h"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const usage = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  return usage.includes("--write-tree")
+    ? result(
+        "git-merge-tree",
+        "available",
+        "git merge-tree supports --write-tree",
+      )
+    : result(
+        "git-merge-tree",
+        "missing",
+        "git merge-tree --write-tree needs git 2.38 or later",
+        "upgrade git",
+      );
+};
+
+// The probe set preflight uses: each probe runs once, on first need, except
+// that a check which rebuilds something (demo-build) invalidates the probes
+// that looked at the old build.
+export const createProbeSet = ({ root, env = process.env, overrides = {} }) => {
+  const probes = {
+    aiken: () => probeAiken(),
+    postgres: () => probePostgres({ env }),
+    blueprint: () => probeBlueprintStamp({ root }),
+    "core-dist": () => probeCoreDist({ root }),
+    "node-modules": () => probeNodeModules({ root }),
+    "docs-site-node-modules": () =>
+      probeNodeModules({
+        root,
+        directory: "docs-site",
+        name: "docs-site-node-modules",
+      }),
+    nix: () => probeNix({ root }),
+    "db-prefix": () => probeDbPrefix({ root, env }),
+    "git-merge-tree": () => probeMergeTree({ root }),
+    ...overrides,
+  };
+  const cache = new Map();
+  return {
+    names: Object.keys(probes),
+    get(name) {
+      if (probes[name] === undefined) {
+        return Promise.resolve(
+          result(name, "unknown", `no probe named '${name}'`, undefined),
+        );
+      }
+      if (!cache.has(name)) {
+        cache.set(
+          name,
+          Promise.resolve().then(() => probes[name]()),
+        );
+      }
+      return cache.get(name);
+    },
+    invalidate(names = []) {
+      for (const name of names) {
+        cache.delete(name);
+      }
+    },
+  };
+};

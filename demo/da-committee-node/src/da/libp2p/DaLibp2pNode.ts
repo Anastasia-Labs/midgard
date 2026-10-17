@@ -1,5 +1,11 @@
-import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
+import {
+  type DaStreamChunk,
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "@al-ft/midgard-core/da-stream-codec";
+import type { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { bootstrap } from "@libp2p/bootstrap";
@@ -11,16 +17,14 @@ import { createLibp2p, type Libp2pOptions } from "libp2p";
 
 import type { Libp2pDaTransportConfig } from "../../config.js";
 import { createDaConnectionGater } from "./DaConnectionGater.js";
-import { DaGossip, type DaPubsubService } from "./DaGossip.js";
+import {
+  DaGossip,
+  type DaGossipMessageHandler,
+  type DaPubsubService,
+} from "./DaGossip.js";
 import { DaPeerRegistry, type DaPeerRegistryEntry } from "./DaPeerRegistry.js";
 import { createDaProtocolAllowlist } from "./DaProtocols.js";
-import {
-  type DaStreamChunk,
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "./DaStreamCodec.js";
 import { createDaTopicAllowlist } from "./DaTopics.js";
-import { loadDaLibp2pIdentity } from "./identity.js";
 
 export type DaLibp2pStream = AsyncIterable<DaStreamChunk> & {
   send(data: Uint8Array): boolean;
@@ -77,6 +81,11 @@ export type DaLibp2pNodeOptions = {
   readonly registry?: DaPeerRegistry;
   readonly privateKeySource?: string;
   readonly requestHandlers?: ReadonlyMap<string, DaLibp2pStreamHandler>;
+  readonly gossipHandlers?: ReadonlyMap<
+    DaGossipTopic | string,
+    DaGossipMessageHandler
+  >;
+  readonly onGossipMessageError?: (error: unknown) => void;
   readonly libp2pFactory?: DaLibp2pFactory;
 };
 
@@ -87,8 +96,10 @@ export class DaLibp2pNode {
   readonly topics;
 
   private readonly requestHandlers = new Map<string, DaLibp2pStreamHandler>();
+  private readonly gossipHandlers = new Map<string, DaGossipMessageHandler>();
   private readonly libp2pFactory: DaLibp2pFactory;
   private readonly privateKeySource?: string;
+  private readonly onGossipMessageError?: (error: unknown) => void;
   private node?: DaLibp2pRuntimeNode;
   private gossip?: DaGossip;
   private started = false;
@@ -103,8 +114,12 @@ export class DaLibp2pNode {
     this.topics = createDaTopicAllowlist(options.config.deploymentFingerprint);
     this.libp2pFactory = options.libp2pFactory ?? defaultDaLibp2pFactory;
     this.privateKeySource = options.privateKeySource;
+    this.onGossipMessageError = options.onGossipMessageError;
     for (const [protocolId, handler] of options.requestHandlers ?? []) {
       this.setRequestHandler(protocolId, handler);
+    }
+    for (const [topic, handler] of options.gossipHandlers ?? []) {
+      this.setGossipHandler(topic, handler);
     }
   }
 
@@ -115,6 +130,23 @@ export class DaLibp2pNode {
   setRequestHandler(protocolId: string, handler: DaLibp2pStreamHandler): void {
     this.protocols.requireProtocolId(protocolId);
     this.requestHandlers.set(protocolId, handler);
+  }
+
+  setGossipHandler(
+    topic: DaGossipTopic | string,
+    handler: DaGossipMessageHandler,
+  ): void {
+    if (this.started) {
+      throw new Error("cannot change DA gossip handlers after startup");
+    }
+    const topicId = this.topics.hasTopicName(topic)
+      ? this.topics.topicIdByName.get(topic)
+      : topic;
+    if (topicId === undefined) {
+      throw new Error(`unsupported DA libp2p gossip topic ${topic}`);
+    }
+    this.topics.requireTopicId(topicId);
+    this.gossipHandlers.set(topicId, handler);
   }
 
   async start(): Promise<void> {
@@ -136,36 +168,51 @@ export class DaLibp2pNode {
       }),
     );
     this.node = node;
-    for (const [protocolId, handler] of this.requestHandlers) {
-      const protocolName = this.protocols.requireProtocolId(protocolId);
-      await node.handle(
-        protocolId,
-        async (stream, connection) => {
-          const typedConnection = connection as DaLibp2pConnection;
-          await handler({
-            protocolId,
-            protocolName,
-            stream: stream as DaLibp2pStream,
-            connection: typedConnection,
-            remotePeerId: typedConnection.remotePeer?.toString(),
-          });
-        },
-        {
-          maxInboundStreams: this.config.limits.maxStreamsPerPeer,
-          maxOutboundStreams: this.config.limits.maxStreamsPerPeer,
-          runOnLimitedConnection: false,
-        },
-      );
-    }
-    await node.start();
-    const pubsub = node.services?.pubsub;
-    if (pubsub !== undefined) {
-      this.gossip = new DaGossip({
-        pubsub,
-        topics: this.topics,
-        config: this.config,
-      });
-      await this.gossip.subscribeAllowedTopics();
+    // `stop()` acts only on a started node, so a start that fails from here
+    // on releases what it opened itself: once `node.start()` has bound the
+    // listen address, every retry would otherwise hit EADDRINUSE on this
+    // process's own socket.
+    try {
+      for (const [protocolId, handler] of this.requestHandlers) {
+        const protocolName = this.protocols.requireProtocolId(protocolId);
+        await node.handle(
+          protocolId,
+          async (stream, connection) => {
+            const typedConnection = connection as DaLibp2pConnection;
+            await handler({
+              protocolId,
+              protocolName,
+              stream: stream as DaLibp2pStream,
+              connection: typedConnection,
+              remotePeerId: typedConnection.remotePeer?.toString(),
+            });
+          },
+          {
+            maxInboundStreams: this.config.limits.maxStreamsPerPeer,
+            maxOutboundStreams: this.config.limits.maxStreamsPerPeer,
+            runOnLimitedConnection: false,
+          },
+        );
+      }
+      await node.start();
+      const pubsub = node.services?.pubsub;
+      if (pubsub !== undefined) {
+        this.gossip = new DaGossip({
+          pubsub,
+          topics: this.topics,
+          config: this.config,
+          messageHandlers: this.gossipHandlers,
+          onMessageError: this.onGossipMessageError,
+        });
+        await this.gossip.subscribeAllowedTopics();
+      }
+    } catch (error) {
+      this.gossip = undefined;
+      this.node = undefined;
+      await Promise.resolve()
+        .then(() => node.stop())
+        .catch(() => undefined);
+      throw error;
     }
     this.started = true;
   }
@@ -271,6 +318,9 @@ export const createDaLibp2pOptions = ({
       globalSignaturePolicy: StrictSign,
       emitSelf: false,
       allowPublishToZeroTopicPeers: false,
+      allowedTopics: new Set(
+        createDaTopicAllowlist(config.deploymentFingerprint).topicIds,
+      ),
       maxOutboundBufferSize: config.gossip.maxGossipMessageBytes,
     }),
   },

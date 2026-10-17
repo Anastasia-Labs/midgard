@@ -1,0 +1,452 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type L1SlotConfig,
+  parseL1SlotConfig,
+} from "@al-ft/midgard-core/l1-slot-config";
+import { Constr, type Data, type Network } from "@lucid-evolution/lucid";
+
+import {
+  applyBlueprintParams,
+  type FaultProofBlueprint,
+  makeSpendingValidator,
+} from "./blueprint.js";
+import {
+  sharedRedeemerItemReferenceScripts,
+  type SharedRedeemerItemStages,
+} from "./families/shared-redeemer-item.js";
+
+export const CEK_CONTEXT_STAGE_TITLES = {
+  settle: deployedTitle("validationTraceDisputeCekContextSettle"),
+  control: deployedTitle("validationTraceDisputeCekContextControl"),
+  reference: deployedTitle("validationTraceDisputeCekContextReference"),
+  spend: deployedTitle("validationTraceDisputeCekContextSpend"),
+  output: deployedTitle("validationTraceDisputeCekContextOutput"),
+  signer: deployedTitle("validationTraceDisputeCekContextSigner"),
+  observerAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextObserverAuthenticate",
+  ),
+  observerFold: deployedTitle("validationTraceDisputeCekContextObserverFold"),
+  mintInit: deployedTitle("validationTraceDisputeCekContextMintInit"),
+  mintItem: deployedTitle("validationTraceDisputeCekContextMintItem"),
+  assemble: deployedTitle("validationTraceDisputeCekContextAssemble"),
+  txInfo: deployedTitle("validationTraceDisputeCekContextTxInfo"),
+  seed: deployedTitle("validationTraceDisputeCekContextSeed"),
+  finalizeAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeAuthenticate",
+  ),
+  finalizeSpend: deployedTitle("validationTraceDisputeCekContextFinalizeSpend"),
+  finalizeMint: deployedTitle("validationTraceDisputeCekContextFinalizeMint"),
+  finalizeWithdraw: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeWithdraw",
+  ),
+  finalizeObserve: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeObserve",
+  ),
+  finalizeMidgard: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeMidgard",
+  ),
+  redeemerBegin: deployedTitle("validationTraceDisputeCekContextRedeemerBegin"),
+  redeemerSelectAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+  ),
+  redeemerSelectInitialize: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectInitialize",
+  ),
+  redeemerSelectHash: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectHash",
+  ),
+  redeemerSelectFinish: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectFinish",
+  ),
+  itemBind: deployedTitle("validationTraceDisputeCekContextItemBind"),
+  itemReturn: deployedTitle("validationTraceDisputeCekContextItemReturn"),
+  itemSelectionHash: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionHash",
+  ),
+  itemDataHash: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionHash",
+  ),
+  itemFinalize: deployedTitle("validationTraceDisputeCekContextItemFinalize"),
+  itemSelectionContinue: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionContinue",
+  ),
+  itemSelectionFinish: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionFinish",
+  ),
+  itemDataContinue: deployedTitle(
+    "validationTraceDisputeCekContextItemDataContinue",
+  ),
+  itemDataFinishDescriptor: deployedTitle(
+    "validationTraceDisputeCekContextItemDataFinishDescriptor",
+  ),
+  itemDataFinishValue: deployedTitle(
+    "validationTraceDisputeCekContextItemDataFinishValue",
+  ),
+} as const;
+
+/**
+ * The `script_context_v1.L1SlotConfigV1` deployment parameter of the txInfo
+ * stage: the deployment's L1 slot mapping, `Constr 0 [zeroTime, zeroSlot,
+ * slotLength]`. On-chain code trusts it, so its domain is checked here.
+ */
+export const l1SlotConfigParameterData = (config: L1SlotConfig): Data => {
+  const parsed = parseL1SlotConfig(config);
+  return new Constr(0, [
+    BigInt(parsed.zeroTime),
+    BigInt(parsed.zeroSlot),
+    BigInt(parsed.slotLength),
+  ]);
+};
+
+/** Build the fixed return before the shared item executors and their entry. */
+export const buildCekContextTail = (
+  blueprint: FaultProofBlueprint,
+  network: Network,
+  awardHash: string,
+  ctPolicy: string,
+  fieldPreimagePolicy: string,
+  l1SlotConfig: L1SlotConfig,
+) => {
+  const build = (key: keyof typeof CEK_CONTEXT_STAGE_TITLES, params: Data[]) =>
+    makeSpendingValidator(
+      network,
+      applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES[key], params),
+    );
+  const settle = build("settle", [awardHash, ctPolicy]);
+  const terminal = (key: keyof typeof CEK_CONTEXT_STAGE_TITLES) =>
+    build(key, [settle.spendingScriptHash, ctPolicy]);
+  const reference = terminal("reference");
+  const spend = terminal("spend");
+  const output = terminal("output");
+  const signer = terminal("signer");
+  const observerFold = terminal("observerFold");
+  const observerAuthenticate = build("observerAuthenticate", [
+    observerFold.spendingScriptHash,
+    ctPolicy,
+    fieldPreimagePolicy,
+  ]);
+  const mintInit = terminal("mintInit");
+  const mintItem = terminal("mintItem");
+  const assemble = terminal("assemble");
+  // The txInfo stage maps the body's slot interval to the POSIX validity
+  // range a script sees, so it alone carries the deployment's slot mapping.
+  const txInfo = build("txInfo", [
+    settle.spendingScriptHash,
+    ctPolicy,
+    l1SlotConfigParameterData(l1SlotConfig),
+  ]);
+  const seed = terminal("seed");
+  const finalizeSpend = terminal("finalizeSpend");
+  const finalizeMint = terminal("finalizeMint");
+  const finalizeWithdraw = terminal("finalizeWithdraw");
+  const finalizeObserve = terminal("finalizeObserve");
+  const finalizeMidgard = terminal("finalizeMidgard");
+  const finalizeAuthenticate = build("finalizeAuthenticate", [
+    [
+      finalizeSpend,
+      finalizeMint,
+      finalizeWithdraw,
+      finalizeObserve,
+      finalizeMidgard,
+    ].map((x) => x.spendingScriptHash),
+    ctPolicy,
+  ]);
+  const redeemerBegin = terminal("redeemerBegin");
+  const redeemerSelectFinish = terminal("redeemerSelectFinish");
+  const redeemerSelectHash = build("redeemerSelectHash", [
+    redeemerSelectFinish.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const redeemerSelectInitialize = build("redeemerSelectInitialize", [
+    redeemerSelectHash.spendingScriptHash,
+    ctPolicy,
+  ]);
+  // A native execution leaf at the frontier is skipped straight to settle.
+  const redeemerSelectAuthenticate = build("redeemerSelectAuthenticate", [
+    redeemerSelectInitialize.spendingScriptHash,
+    settle.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const itemSelectionContinue = terminal("itemSelectionContinue");
+  const itemSelectionFinish = terminal("itemSelectionFinish");
+  const itemDataContinue = terminal("itemDataContinue");
+  const itemDataFinishDescriptor = terminal("itemDataFinishDescriptor");
+  const itemDataFinishValue = terminal("itemDataFinishValue");
+  const itemSelectionHash = build("itemSelectionHash", [
+    itemSelectionContinue.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const itemDataHash = build("itemDataHash", [
+    itemDataContinue.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const itemFinalize = build("itemFinalize", [
+    itemDataFinishValue.spendingScriptHash,
+    ctPolicy,
+  ]);
+  const itemReturn = build("itemReturn", [
+    [
+      itemSelectionHash,
+      itemSelectionFinish,
+      itemDataHash,
+      itemDataFinishDescriptor,
+      itemFinalize,
+    ].map((x) => x.spendingScriptHash),
+    ctPolicy,
+  ]);
+  return {
+    settle,
+    reference,
+    spend,
+    output,
+    signer,
+    observerFold,
+    observerAuthenticate,
+    mintInit,
+    mintItem,
+    assemble,
+    txInfo,
+    seed,
+    finalizeSpend,
+    finalizeMint,
+    finalizeWithdraw,
+    finalizeObserve,
+    finalizeMidgard,
+    finalizeAuthenticate,
+    redeemerBegin,
+    redeemerSelectFinish,
+    redeemerSelectHash,
+    redeemerSelectInitialize,
+    redeemerSelectAuthenticate,
+    itemSelectionContinue,
+    itemSelectionFinish,
+    itemDataContinue,
+    itemDataFinishDescriptor,
+    itemDataFinishValue,
+    itemSelectionHash,
+    itemDataHash,
+    itemFinalize,
+    itemReturn,
+  };
+};
+export type CekContextTail = ReturnType<typeof buildCekContextTail>;
+
+/** Complete the forward-only graph after the shared item chain pins this tail. */
+export const completeCekContextStages = (
+  blueprint: FaultProofBlueprint,
+  network: Network,
+  tail: CekContextTail,
+  itemEntryHash: string,
+  ctPolicy: string,
+) => {
+  const itemBind = makeSpendingValidator(
+    network,
+    applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES.itemBind, [
+      itemEntryHash,
+      ctPolicy,
+    ]),
+  );
+  const entries = [
+    tail.redeemerBegin,
+    itemBind,
+    tail.reference,
+    tail.spend,
+    tail.output,
+    tail.signer,
+    tail.observerAuthenticate,
+    tail.mintInit,
+    tail.mintItem,
+    tail.redeemerSelectAuthenticate,
+    tail.finalizeAuthenticate,
+    tail.assemble,
+    tail.txInfo,
+    tail.seed,
+  ];
+  const control = makeSpendingValidator(
+    network,
+    applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES.control, [
+      entries.map((stage) => stage.spendingScriptHash),
+      ctPolicy,
+    ]),
+  );
+  return { ...tail, itemBind, control };
+};
+export type CekContextStages = ReturnType<typeof completeCekContextStages>;
+
+export const CEK_CONTEXT_STAGE_REFERENCES = {
+  settle: {
+    deployment: "validationTraceDisputeCekContextSettle",
+    role: "V1 validation-trace CEK context settle",
+  },
+  control: {
+    deployment: "validationTraceDisputeCekContextControl",
+    role: "V1 validation-trace CEK context control",
+  },
+  reference: {
+    deployment: "validationTraceDisputeCekContextReference",
+    role: "V1 validation-trace CEK context reference",
+  },
+  spend: {
+    deployment: "validationTraceDisputeCekContextSpend",
+    role: "V1 validation-trace CEK context spend",
+  },
+  output: {
+    deployment: "validationTraceDisputeCekContextOutput",
+    role: "V1 validation-trace CEK context output",
+  },
+  signer: {
+    deployment: "validationTraceDisputeCekContextSigner",
+    role: "V1 validation-trace CEK context signer",
+  },
+  observerAuthenticate: {
+    deployment: "validationTraceDisputeCekContextObserverAuthenticate",
+    role: "V1 validation-trace CEK context observer authenticate",
+  },
+  observerFold: {
+    deployment: "validationTraceDisputeCekContextObserverFold",
+    role: "V1 validation-trace CEK context observer fold",
+  },
+  mintInit: {
+    deployment: "validationTraceDisputeCekContextMintInit",
+    role: "V1 validation-trace CEK context mint init",
+  },
+  mintItem: {
+    deployment: "validationTraceDisputeCekContextMintItem",
+    role: "V1 validation-trace CEK context mint item",
+  },
+  assemble: {
+    deployment: "validationTraceDisputeCekContextAssemble",
+    role: "V1 validation-trace CEK context assemble",
+  },
+  txInfo: {
+    deployment: "validationTraceDisputeCekContextTxInfo",
+    role: "V1 validation-trace CEK context tx info",
+  },
+  seed: {
+    deployment: "validationTraceDisputeCekContextSeed",
+    role: "V1 validation-trace CEK context seed",
+  },
+  finalizeAuthenticate: {
+    deployment: "validationTraceDisputeCekContextFinalizeAuthenticate",
+    role: "V1 validation-trace CEK context finalize authenticate",
+  },
+  finalizeSpend: {
+    deployment: "validationTraceDisputeCekContextFinalizeSpend",
+    role: "V1 validation-trace CEK context finalize spend",
+  },
+  finalizeMint: {
+    deployment: "validationTraceDisputeCekContextFinalizeMint",
+    role: "V1 validation-trace CEK context finalize mint",
+  },
+  finalizeWithdraw: {
+    deployment: "validationTraceDisputeCekContextFinalizeWithdraw",
+    role: "V1 validation-trace CEK context finalize withdraw",
+  },
+  finalizeObserve: {
+    deployment: "validationTraceDisputeCekContextFinalizeObserve",
+    role: "V1 validation-trace CEK context finalize observe",
+  },
+  finalizeMidgard: {
+    deployment: "validationTraceDisputeCekContextFinalizeMidgard",
+    role: "V1 validation-trace CEK context finalize midgard",
+  },
+  redeemerBegin: {
+    deployment: "validationTraceDisputeCekContextRedeemerBegin",
+    role: "V1 validation-trace CEK context redeemer begin",
+  },
+  redeemerSelectAuthenticate: {
+    deployment: "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+    role: "V1 validation-trace CEK context redeemer select authenticate",
+  },
+  redeemerSelectInitialize: {
+    deployment: "validationTraceDisputeCekContextRedeemerSelectInitialize",
+    role: "V1 validation-trace CEK context redeemer select initialize",
+  },
+  redeemerSelectHash: {
+    deployment: "validationTraceDisputeCekContextRedeemerSelectHash",
+    role: "V1 validation-trace CEK context redeemer select hash",
+  },
+  redeemerSelectFinish: {
+    deployment: "validationTraceDisputeCekContextRedeemerSelectFinish",
+    role: "V1 validation-trace CEK context redeemer select finish",
+  },
+  itemBind: {
+    deployment: "validationTraceDisputeCekContextItemBind",
+    role: "V1 validation-trace CEK context item bind",
+  },
+  itemReturn: {
+    deployment: "validationTraceDisputeCekContextItemReturn",
+    role: "V1 validation-trace CEK context item return",
+  },
+  itemSelectionHash: {
+    deployment: "validationTraceDisputeCekContextItemSelectionHash",
+    role: "V1 validation-trace CEK context item selection hash",
+  },
+  itemDataHash: {
+    deployment: "validationTraceDisputeCekContextItemDataHash",
+    role: "V1 validation-trace CEK context item data hash",
+  },
+  itemFinalize: {
+    deployment: "validationTraceDisputeCekContextItemFinalize",
+    role: "V1 validation-trace CEK context item finalize",
+  },
+  itemSelectionContinue: {
+    deployment: "validationTraceDisputeCekContextItemSelectionContinue",
+    role: "V1 validation-trace CEK context item selection continue",
+  },
+  itemSelectionFinish: {
+    deployment: "validationTraceDisputeCekContextItemSelectionFinish",
+    role: "V1 validation-trace CEK context item selection finish",
+  },
+  itemDataContinue: {
+    deployment: "validationTraceDisputeCekContextItemDataContinue",
+    role: "V1 validation-trace CEK context item data continue",
+  },
+  itemDataFinishDescriptor: {
+    deployment: "validationTraceDisputeCekContextItemDataFinishDescriptor",
+    role: "V1 validation-trace CEK context item data finish descriptor",
+  },
+  itemDataFinishValue: {
+    deployment: "validationTraceDisputeCekContextItemDataFinishValue",
+    role: "V1 validation-trace CEK context item data finish value",
+  },
+} as const;
+
+export const CEK_CONTEXT_ITEM_REFERENCES = {
+  entry: {
+    deployment: "validationTraceDisputeCekContextItemEntry",
+    role: "V1 validation-trace CEK context item entry",
+  },
+  settlement: {
+    deployment: "validationTraceDisputeCekContextItemSettlement",
+    role: "V1 validation-trace CEK context item settlement",
+  },
+} as const;
+
+/** Unique context publications; shared item executors retain their canonical roles. */
+export const cekContextReferenceScripts = (
+  stages: CekContextStages,
+  item: SharedRedeemerItemStages,
+) => [
+  ...Object.entries(CEK_CONTEXT_STAGE_REFERENCES).map(([key, spec]) => ({
+    deploymentEntry: spec.deployment,
+    role: spec.role,
+    validator: stages[key as keyof CekContextStages],
+  })),
+  ...Object.entries(CEK_CONTEXT_ITEM_REFERENCES).map(([key, spec]) => ({
+    deploymentEntry: spec.deployment,
+    role: spec.role,
+    validator: item[key as keyof typeof CEK_CONTEXT_ITEM_REFERENCES],
+  })),
+];
+
+export const cekContextItemReferenceScripts = (
+  item: SharedRedeemerItemStages,
+) => [
+  ...Object.entries(CEK_CONTEXT_ITEM_REFERENCES).map(([key, spec]) => ({
+    deploymentEntry: spec.deployment,
+    role: spec.role,
+    validator: item[key as keyof typeof CEK_CONTEXT_ITEM_REFERENCES],
+  })),
+  ...sharedRedeemerItemReferenceScripts(item),
+];

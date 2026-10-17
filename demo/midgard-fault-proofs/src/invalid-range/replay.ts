@@ -1,0 +1,49 @@
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
+
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { forcedTxFromCoreCompact } from "../step-support.js";
+import { forcedTransactionSubject } from "../workflow/detection-subject.js";
+import {
+  invalidRangeEvidenceCloses,
+  prepareInvalidRangeEvidence,
+} from "./family.js";
+
+export const detectInvalidRangeForcedReplay = (block: CanonicalBlockEvidence) =>
+  Object.freeze(
+    block.reconstruction.forcedTransactions.flatMap((transaction, index) => {
+      const verdict = transaction.value.verdict;
+      if (verdict === "ForcedTxValid") return [];
+      const reason = verdict.ForcedTxInvalid.reason;
+      if (
+        reason !== "ValidityIntervalMalformed" &&
+        reason !== "ValidityIntervalExcludesBlockSlot"
+      )
+        return [];
+      const compact = decodeMidgardForcedTxCompact(
+        Buffer.from(transaction.value.submitted_source.compact_cbor, "hex"),
+      );
+      const evidence = prepareInvalidRangeEvidence({
+        subject: SDK.forcedVerdictSubject({
+          transactionId: transaction.value.tx_id,
+          sourceKey: transaction.key,
+          rejectionReason: reason,
+        }),
+        blockSlot: block.header.blockSlot,
+        txBody: forcedTxFromCoreCompact(compact).body,
+      });
+      return invalidRangeEvidenceCloses(evidence)
+        ? [
+            Object.freeze({
+              ...forcedTransactionSubject(transaction.key),
+              detectionId: `invalid-range:forced:${index.toString()}:${transaction.value.tx_id}:${reason}`,
+              headerHash: block.headerHash,
+              violationId: "invalid-range" as const,
+              position: BigInt(index),
+              forcedIndex: index,
+              evidence,
+            }),
+          ]
+        : [];
+    }),
+  );

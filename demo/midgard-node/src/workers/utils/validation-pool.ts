@@ -1,6 +1,9 @@
 import type {
+  LocalScriptEvalResult,
+  MidgardCekVerdictRequest,
+  PhaseAConfig,
   RejectCode,
-  WirePhaseACandidate,
+  WirePhaseACandidateV1,
 } from "@al-ft/midgard-validation";
 
 export type ValidationWorkerInit = {
@@ -9,6 +12,7 @@ export type ValidationWorkerInit = {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
     readonly strictnessProfile: string;
+    readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;
   };
   /** Worker-local runtime choice; never enters serializable PhaseAConfig. */
   readonly signatureVerifier?: "node" | "cml";
@@ -22,19 +26,21 @@ export type PhaseAJobRequest = {
     readonly txIdOffset: number;
     readonly cborOffset: number;
     readonly cborLength: number;
+    readonly programMaterialOffset: number;
+    readonly programMaterialLength: number;
     readonly arrivalSeq: bigint;
     readonly createdAtMs: number;
   }>;
 };
 
-export type UplcJobRequest = {
-  readonly kind: "uplc";
+/** One Phase B script run in verdict mode. */
+export type CekVerdictJobRequest = {
+  readonly kind: "cek_verdict";
   readonly jobId: number;
-  readonly scriptBytes: ArrayBuffer;
-  readonly contextCbor: ArrayBuffer;
+  readonly request: MidgardCekVerdictRequest;
 };
 
-export type ValidationJobRequest = PhaseAJobRequest | UplcJobRequest;
+export type ValidationJobRequest = PhaseAJobRequest | CekVerdictJobRequest;
 
 export type ValidationCacheStats = {
   readonly size: number;
@@ -51,7 +57,7 @@ export type PhaseAJobResponse = {
   readonly publicKeyCache: ValidationCacheStats;
   readonly addressCache: ValidationCacheStats;
   readonly results: ReadonlyArray<
-    | { readonly ok: true; readonly candidate: WirePhaseACandidate }
+    | { readonly ok: true; readonly candidate: WirePhaseACandidateV1 }
     | {
         readonly ok: false;
         readonly txId: Uint8Array;
@@ -61,28 +67,27 @@ export type PhaseAJobResponse = {
   >;
 };
 
-export type UplcJobResponse = {
-  readonly kind: "uplc";
-  readonly jobId: number;
-  readonly result:
-    | { readonly ok: true; readonly cpu: bigint; readonly memory: bigint }
-    | { readonly ok: false; readonly detail: string };
-};
-
 export type WorkerFailure = {
   readonly kind: "job_failed";
   readonly jobId: number;
   readonly error: string;
 };
 
+export type CekVerdictJobResponse = {
+  readonly kind: "cek_verdict";
+  readonly jobId: number;
+  readonly result: LocalScriptEvalResult;
+};
+
 export type ValidationWorkerResponse =
   | PhaseAJobResponse
-  | UplcJobResponse
+  | CekVerdictJobResponse
   | WorkerFailure;
 
 export type PhaseAWorkerInput = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -99,7 +104,11 @@ export const packPhaseAJob = (
     }
   }
   const totalBytes = txs.reduce(
-    (total, tx) => total + tx.txId.byteLength + tx.txCbor.byteLength,
+    (total, tx) =>
+      total +
+      tx.txId.byteLength +
+      tx.txCbor.byteLength +
+      (tx.programMaterialSidecarCbor?.byteLength ?? 0),
     0,
   );
   const arena = new ArrayBuffer(totalBytes);
@@ -112,19 +121,22 @@ export const packPhaseAJob = (
     const cborOffset = offset;
     bytes.set(tx.txCbor, offset);
     offset += tx.txCbor.byteLength;
+    const programMaterialOffset = offset;
+    const programMaterialLength =
+      tx.programMaterialSidecarCbor?.byteLength ?? 0;
+    if (programMaterialLength > 0) {
+      bytes.set(tx.programMaterialSidecarCbor!, offset);
+      offset += programMaterialLength;
+    }
     return {
       txIdOffset,
       cborOffset,
       cborLength: tx.txCbor.byteLength,
+      programMaterialOffset,
+      programMaterialLength,
       arrivalSeq: tx.arrivalSeq,
       createdAtMs: tx.createdAt.getTime(),
     };
   });
   return { kind: "phase_a", jobId, arena, txs: descriptors };
-};
-
-export const copyToTransferable = (bytes: Uint8Array): ArrayBuffer => {
-  const copy = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(copy).set(bytes);
-  return copy;
 };

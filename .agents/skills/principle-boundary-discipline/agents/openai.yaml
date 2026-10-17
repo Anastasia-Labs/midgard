@@ -1,0 +1,6 @@
+interface:
+  display_name: "Principle Boundary Discipline"
+  short_description: "Apply when wiring validation, error handling, or framework adapt"
+  default_prompt: "Use $principle-boundary-discipline for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

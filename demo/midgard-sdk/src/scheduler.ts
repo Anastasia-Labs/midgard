@@ -1,3 +1,4 @@
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Address,
   Data,
@@ -8,12 +9,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { GenericErrorFields, LucidError, POSIXTimeSchema } from "@/common.js";
+import { GenericErrorFields, LucidError, POSIXTimeSchema } from "./common.js";
 import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
-} from "@/internals.js";
+  type UnexpectedAuthenticUTxOCountFields,
+  unexpectedAuthenticUTxOCountFields,
+} from "./internals.js";
 
 export const SCHEDULER_ASSET_NAME = fromText("MIDGARD_SCHEDULER");
 
@@ -27,7 +30,7 @@ export const SchedulerDatumSchema = Data.Enum([
   }),
 ]);
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
-export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
+export const SchedulerDatum = asDataType<SchedulerDatum>(SchedulerDatumSchema);
 
 export const SchedulerMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
@@ -37,11 +40,11 @@ export const SchedulerMintRedeemerSchema = Data.Enum([
 export type SchedulerMintRedeemer = Data.Static<
   typeof SchedulerMintRedeemerSchema
 >;
-export const SchedulerMintRedeemer =
-  SchedulerMintRedeemerSchema as unknown as SchedulerMintRedeemer;
+export const SchedulerMintRedeemer = asDataType<SchedulerMintRedeemer>(
+  SchedulerMintRedeemerSchema,
+);
 
 export const NeglectedUserEventSchema = Data.Enum([
-  Data.Literal("NoNeglectedUserEvent"),
   Data.Object({
     NeglectedDeposit: Data.Object({
       deposit_ref_input_index: Data.Integer(),
@@ -126,8 +129,9 @@ export const AdvancingApproachSchema = Data.Enum([
 ]);
 
 export type AdvancingApproach = Data.Static<typeof AdvancingApproachSchema>;
-export const AdvancingApproach =
-  AdvancingApproachSchema as unknown as AdvancingApproach;
+export const AdvancingApproach = asDataType<AdvancingApproach>(
+  AdvancingApproachSchema,
+);
 
 export const SchedulerSpendRedeemerSchema = Data.Object({
   scheduler_input_index: Data.Integer(),
@@ -138,8 +142,9 @@ export const SchedulerSpendRedeemerSchema = Data.Object({
 export type SchedulerSpendRedeemer = Data.Static<
   typeof SchedulerSpendRedeemerSchema
 >;
-export const SchedulerSpendRedeemer =
-  SchedulerSpendRedeemerSchema as unknown as SchedulerSpendRedeemer;
+export const SchedulerSpendRedeemer = asDataType<SchedulerSpendRedeemer>(
+  SchedulerSpendRedeemerSchema,
+);
 
 export const INITIAL_SCHEDULER_DATUM = "NoActiveOperators" as SchedulerDatum;
 
@@ -156,9 +161,9 @@ export type SchedulerConfig = {
   schedulerPolicyId: PolicyId;
 };
 
-export class SchedulerError extends EffectData.TaggedError(
-  "SchedulerError",
-)<GenericErrorFields> {}
+export class SchedulerError extends EffectData.TaggedError("SchedulerError")<
+  GenericErrorFields & UnexpectedAuthenticUTxOCountFields
+> {}
 
 export const fetchSchedulerUTxOProgram = (
   lucid: LucidEvolution,
@@ -171,11 +176,10 @@ export const fetchSchedulerUTxOProgram = (
       policyId: config.schedulerPolicyId,
       utxoLabel: "scheduler",
       conversionFunction: utxosToSchedulerUTxOs,
-      onUnexpectedAuthenticUTxOCount: () =>
+      onUnexpectedAuthenticUTxOCount: (count) =>
         new SchedulerError({
           message: "Failed to fetch the scheduler UTxO",
-          cause:
-            "Exactly one scheduler UTxO was expected, but none or more were found",
+          ...unexpectedAuthenticUTxOCountFields("scheduler", count),
         }),
     },
   );

@@ -2,94 +2,52 @@
 \graphicspath{{\subfix{../images/}}}
 \begin{document}
 
-\section{Fraud Proofs in UPLC Evaluation}
+\section{Script execution and the proof boundary}
 \label{s:phase-two-fraud-proofs}
 
-This section details the fraud proofs involved in UPLC evaluation, focusing on single-step verification of state transitions.
+Midgard's transaction codec and off-chain evaluator can represent native,
+Plutus V3, and MidgardV1 scripts. Canonical V1 enables that surface through a
+committed deterministic validation trace whose one-step transitions are
+independently verified by L1. The trace covers inline and reference source
+resolution, redeemer-purpose binding, script-integrity binding, native-script
+evaluation, CEK execution, protected-output receive purposes, observers,
+minting policies, execution budgets, and the resulting ledger delta.
 
-\subsection{Types of Fraud Proofs}
-
-The system supports these categories of fraud proofs:
-
-\begin{description}
-    \item[Decoding Fraud] Proofs of invalid script byte decoding:
-        \begin{itemize}
-            \item Invalid byte format
-            \item Size limit violations
-            \item Reference resolution failures
-        \end{itemize}
-    
-    \item[Execution Fraud] Proofs of invalid UPLC execution:
-        \begin{itemize}
-            \item Resource limit violations
-            \item Invalid state transitions
-            \item Incorrect execution results
-        \end{itemize}
-    
-\end{description}
-
-\subsection{Single-Step Verification}
-
-The fraud proof system verifies individual state transitions:
-
-\begin{equation*}
-\begin{split}
-    \forall s_1, s_2 \in \text{CEKState}: & \text{ claimed\_transition}(s_1 \rightarrow s_2) \text{ valid } \iff \\
-    & \text{compute\_next\_state}(s_1) = s_2
-\end{split}
-\end{equation*}
-
-To prove a violation:
-\begin{itemize}
-    \item The operator provides the claimed before state ($s_1$) and after state ($s_2$)
-    \item The challenger computes the actual next state from $s_1$
-    \item If the computed state differs from $s_2$, the transition is invalid
-    \item No additional trace information is required
-\end{itemize}
-
-\subsection{Proof Data Structure}
-
-The fraud proof structure is minimal:
-
-\begin{equation*}
-    \text{FraudProof} \coloneq \left\{
-    \begin{array}{ll}
-        \text{step\_number} : & \mathbb{N} \\
-        \text{before\_state} : & \text{CEKState} \\
-        \text{claimed\_after\_state} : & \text{CEKState} \\
-        \text{actual\_after\_state} : & \text{CEKState}
-    \end{array} \right\}
-\end{equation*}
-
-\subsection{Verification Process}
-
-The verification process is straightforward:
+Every enabled script purpose requires all of the following together:
 
 \begin{enumerate}
-    \item Verify the before state matches the operator's claim
-    \item Compute one step from the before state
-    \item Compare computed result with operator's claimed after state
-    \item If they differ, the fraud proof is valid
+    \item a committed execution trace or other L1-verifiable evidence format;
+    \item sound challenge and negative tests for every enabled script purpose;
+    \item worst-case transaction-size and execution-unit evidence;
+    \item the exact canonical V1 protocol/profile identity, deployment manifest,
+          validator hashes, and version gate.
 \end{enumerate}
 
-\subsection{Security Considerations}
+The canonical V1 dispute is a stateful computation thread. Opening authenticates
+the validation descriptor and transaction source against the challenged
+\code{HeaderV1}; the thread datum then binds the challenged header hash,
+operator verification key, current bisection interval, both trace roots, the
+agreed lower state, and the response deadline. Operator midpoint moves require
+the committed operator's signature and challenger moves require the fraud
+prover's signature. Each move reproduces the same computation-thread NFT and
+the uniquely derived next datum.
 
-The single-step verification approach provides several benefits:
+At an interval of one transition, L1 authenticates both claimed post-state
+memberships and executes the validation-machine instruction from the agreed
+pre-state. Only a challenger win may finalize the computation thread into a
+fraud-proof token. Failure by the operator to make its required move before
+the deadline also selects the challenger. Dispute version 1 fixes a
+(300{,}000)-millisecond response window and 32 bisection rounds. The exact
+canonical V1 block maturity is seven days ((604{,}800{,}000) milliseconds), while
+the response schedule's derived minimum with a two-times reserve is
+(39{,}600{,}000) milliseconds. Opening rejects a challenge begun too late to
+finish before maturity. The deployment manifest must bind the exact dispute
+validator, response schedule, and seven-day maturity; any mismatch is
+unsupported.
 
-\begin{itemize}
-    \item Minimal proof size
-    \item Constant-time verification
-    \item No complex challenge periods needed
-    \item Deterministic outcomes
-\end{itemize}
-
-Security guarantees include:
-
-\begin{itemize}
-    \item No false positives (valid transitions cannot be proven invalid)
-    \item No trace reconstruction required
-    \item Immediate verification of claims
-    \item Protection against computational waste attacks
-\end{itemize}
+Unknown or missing source fragments, languages, term tags, builtin tags,
+purposes, versions, integrity hashes, cost-model digests, or machine
+instructions fail closed. Canonical V1 must remain release-gated until all of the
+conditions above have validator-hash-bound evidence.
 
 \end{document}

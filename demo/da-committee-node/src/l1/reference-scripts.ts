@@ -10,6 +10,13 @@ import type {
   MidgardNodeDeployment,
 } from "./deployment.js";
 
+/**
+ * The reference scripts the attestation round reads: the DA attestation mint
+ * (init, apply burn) and spend (add-signatures, apply), and the state-queue
+ * mint and spend that apply runs. Apply reads the pooled DA bond as a plain
+ * reference input and never runs the pool's scripts, and nothing in the round
+ * mints under the availability policy, so neither is here.
+ */
 export type DaAttestationReferenceScripts = {
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
@@ -40,7 +47,9 @@ export const fetchDaAttestationReferenceScripts = async (
     },
   ] as const;
   const utxos = await lucid.utxosByOutRef(
-    targets.map((target) => target.contract.refScriptOutRef),
+    targets.map((target) =>
+      requireDeploymentOutRef(target.name, target.contract),
+    ),
   );
   const byOutRef = new Map(utxos.map((utxo) => [outRefKey(utxo), utxo]));
   const resolved = targets.map((target) =>
@@ -59,7 +68,7 @@ const requireReferenceScript = (
   contract: MidgardDeploymentContract,
   byOutRef: ReadonlyMap<string, UTxO>,
 ): UTxO => {
-  const refLabel = deploymentOutRefKey(contract.refScriptOutRef);
+  const refLabel = deploymentOutRefKey(requireDeploymentOutRef(name, contract));
   const utxo = byOutRef.get(refLabel);
   if (utxo === undefined) {
     throw new Error(`missing ${name} reference script UTxO at ${refLabel}`);
@@ -76,6 +85,16 @@ const requireReferenceScript = (
     );
   }
   return utxo;
+};
+
+const requireDeploymentOutRef = (
+  name: string,
+  contract: MidgardDeploymentContract,
+): MidgardDeploymentOutRef => {
+  if (contract.refScriptOutRef === null) {
+    throw new Error(`${name} reference script outRef is required`);
+  }
+  return contract.refScriptOutRef;
 };
 
 export const deploymentOutRefKey = (outRef: MidgardDeploymentOutRef): string =>

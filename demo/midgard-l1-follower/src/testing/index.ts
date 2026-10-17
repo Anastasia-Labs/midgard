@@ -1,0 +1,67 @@
+/**
+ * Test tooling of the L1 follower (plan §15 F8, §16.1): the fork
+ * simulator, its scenario runner and corpus, and the fresh-replay
+ * comparison. Never imported by production code.
+ */
+export { insertSeedRowsIn } from "../store/seed.js";
+export {
+  forkCorpus,
+  forkEpisodeArbitrary,
+  type ForkPruneOption,
+  forkScenarioArbitrary,
+  type NamedScenario,
+} from "./arbitrary.js";
+export {
+  encodeBlock,
+  type EncodedBlock,
+  encodeSimTx,
+  encodeTxBody,
+  encodeUtxoAnswer,
+  encodeWitnessSet,
+  type SimBlock,
+  type SimOutput,
+  type SimRedeemer,
+  type SimTx,
+  simTxHash,
+} from "./block-cbor.js";
+export * as cbor from "./cbor-writer.js";
+export {
+  EpisodeBuilder,
+  FORK_SHAPES,
+  type ForkCheck,
+  type ForkCheckpoint,
+  type ForkEpisode,
+  type ForkScenario,
+  type ForkShape,
+  type ForkStep,
+  type ScenarioTraffic,
+} from "./episodes.js";
+export {
+  diffDumps,
+  dumpStore,
+  FACT_QUERIES,
+  type StoreDump,
+} from "./replay.js";
+export { diffPruned, dumpRetained, retainedQueries } from "./retention.js";
+export { Rng } from "./rng.js";
+export {
+  buildForkSteps,
+  checkpointFailure,
+  type EventSource,
+  type ForkRunOptions,
+  type ForkRunOutcome,
+  type ForkRunStats,
+  runForkScenario,
+  SIM_ORIGIN,
+  simStoreOptions,
+} from "./run-scenario.js";
+export {
+  CONWAY_BLOCK_TYPE,
+  outRefHex,
+  SimChain,
+  type SimOrigin,
+  type SimUniverse,
+  simUniverse,
+  type SimUtxo,
+} from "./sim-chain.js";
+export { type ForkWalletSeed, type SeedStats } from "./wallet-seed-run.js";

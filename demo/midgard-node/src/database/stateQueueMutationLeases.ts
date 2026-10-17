@@ -4,48 +4,39 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
-import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
+import { Database } from "../services/database.js";
+import * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
 import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+  Columns,
+  DEFAULT_RENEW_INTERVAL_MS,
+  DEFAULT_TTL_MS,
+  type Entry,
+  SCOPE,
+  Status,
+  tableName,
+} from "./stateQueueMutationLeases.columns.js";
+import { INSPECTABLE_LEASE_ROWS } from "./stateQueueMutationLeases.prune.js";
+import {
+  settleLeaseDurably,
+  settleUnsettledOwnLeases,
+} from "./stateQueueMutationLeases.settle.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
-export const tableName = "state_queue_mutation_leases";
-
-const SCOPE = "state_queue";
-const DEFAULT_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_RENEW_INTERVAL_MS = 60 * 1000;
-
-export const Status = {
-  Active: "active",
-  Released: "released",
-  Failed: "failed",
-} as const;
-
-export type Status = (typeof Status)[keyof typeof Status];
-
-export enum Columns {
-  TOKEN = "token",
-  SCOPE = "scope",
-  HOLDER = "holder",
-  STATUS = "status",
-  ACQUIRED_AT = "acquired_at",
-  EXPIRES_AT = "expires_at",
-  RELEASED_AT = "released_at",
-  LAST_ERROR = "last_error",
-}
-
-export type Entry = {
-  [Columns.TOKEN]: string;
-  [Columns.SCOPE]: string;
-  [Columns.HOLDER]: string;
-  [Columns.STATUS]: Status;
-  [Columns.ACQUIRED_AT]: Date;
-  [Columns.EXPIRES_AT]: Date;
-  [Columns.RELEASED_AT]: Date | null;
-  [Columns.LAST_ERROR]: string | null;
-};
+export {
+  Columns,
+  type Entry,
+  Status,
+  tableName,
+} from "./stateQueueMutationLeases.columns.js";
+export {
+  INSPECTABLE_LEASE_ROWS,
+  pruneSettledLeases,
+} from "./stateQueueMutationLeases.prune.js";
+export {
+  markFailed,
+  release,
+  unsettledOwnLeaseTokens,
+} from "./stateQueueMutationLeases.settle.js";
 
 export type LeaseAcquireResult =
   | {
@@ -86,6 +77,43 @@ export type LeaseInspection = {
   readonly recentLeases: readonly Entry[];
   readonly pendingFinalizations: readonly PendingFinalizationLeaseInspection[];
 };
+
+const encodeLeaseJson = (lease: Entry | undefined, now: Date = new Date()) =>
+  lease === undefined
+    ? null
+    : (() => {
+        const expiresAt = lease[Columns.EXPIRES_AT];
+        const remainingMs = expiresAt.getTime() - now.getTime();
+        return {
+          token: lease[Columns.TOKEN],
+          holder: lease[Columns.HOLDER],
+          status: lease[Columns.STATUS],
+          acquiredAt: lease[Columns.ACQUIRED_AT].toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          releasedAt: lease[Columns.RELEASED_AT]?.toISOString() ?? null,
+          lastError: lease[Columns.LAST_ERROR] ?? null,
+          remainingMs,
+          expired: remainingMs < 0,
+          blockedUntil: expiresAt.toISOString(),
+        };
+      })();
+
+/** JSON-safe rendering of a lease inspection, for operator surfaces. */
+export const encodeInspectionJson = (inspection: LeaseInspection) => ({
+  status: inspection.activeLease === undefined ? "idle" : "busy",
+  dbNow: inspection.dbNow.toISOString(),
+  activeLease: encodeLeaseJson(inspection.activeLease, inspection.dbNow),
+  pendingFinalizations: inspection.pendingFinalizations.map((entry) => ({
+    headerHash: entry.headerHash,
+    submittedTxHash: entry.submittedTxHash,
+    status: entry.status,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  })),
+  recentLeases: inspection.recentLeases.map((lease) =>
+    encodeLeaseJson(lease, inspection.dbNow),
+  ),
+});
 
 const normalizeTtlMs = (ttlMs: number | undefined): number =>
   Math.max(1, Math.floor(ttlMs ?? DEFAULT_TTL_MS));
@@ -170,7 +198,10 @@ export const inspect = ({
     yield* expireTimedOutLeases;
     const [{ now: dbNow }] = yield* sql<{ now: Date }>`SELECT NOW() AS now`;
     const activeLease = yield* retrieveActive();
-    const limit = Math.max(1, Math.min(100, Math.floor(recentLimit)));
+    const limit = Math.max(
+      1,
+      Math.min(INSPECTABLE_LEASE_ROWS, Math.floor(recentLimit)),
+    );
     const recentLeases = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
       ORDER BY ${sql(Columns.ACQUIRED_AT)} DESC
@@ -204,17 +235,19 @@ export const tryAcquire = ({
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const token = `${holder}:${randomUUID()}`;
+    // A lease this process could not release blocks this acquisition until
+    // its expiry unless released first.
+    yield* settleUnsettledOwnLeases;
     yield* expireTimedOutLeases;
-    const expiresAt = new Date(Date.now() + Math.max(1, ttlMs));
-    const rows = yield* sql<{ [Columns.TOKEN]: string }>`INSERT INTO ${sql(
-      tableName,
-    )} ${sql.insert({
-      [Columns.TOKEN]: token,
-      [Columns.SCOPE]: SCOPE,
-      [Columns.HOLDER]: holder,
-      [Columns.STATUS]: Status.Active,
-      [Columns.EXPIRES_AT]: expiresAt,
-    })} ON CONFLICT DO NOTHING RETURNING ${sql(Columns.TOKEN)}`;
+    const normalizedTtlMs = normalizeTtlMs(ttlMs);
+    // Acquisition, renewal and expiry share the database clock.
+    const rows = yield* sql<Entry>`INSERT INTO ${sql(tableName)} (
+      ${sql(Columns.TOKEN)}, ${sql(Columns.SCOPE)}, ${sql(Columns.HOLDER)},
+      ${sql(Columns.STATUS)}, ${sql(Columns.EXPIRES_AT)}
+    ) VALUES (
+      ${token}, ${SCOPE}, ${holder}, ${Status.Active},
+      NOW() + (${normalizedTtlMs} * INTERVAL '1 millisecond')
+    ) ON CONFLICT DO NOTHING RETURNING *`;
     if (rows.length !== 1) {
       const activeLease = yield* retrieveActive();
       return {
@@ -223,7 +256,7 @@ export const tryAcquire = ({
       };
     }
     yield* Effect.logInfo(
-      `Acquired state-queue mutation lease token=${token},holder=${holder},expires_at=${expiresAt.toISOString()}`,
+      `Acquired state-queue mutation lease token=${token},holder=${holder},expires_at=${rows[0]![Columns.EXPIRES_AT].toISOString()}`,
     );
     return {
       _tag: "Acquired" as const,
@@ -343,41 +376,25 @@ const keepLeaseAlive = ({
     ),
   );
 
-export const release = (
-  token: string,
-): Effect.Effect<void, DatabaseError, Database> =>
+/** Marks failed every active lease taken under one of `holders`, whoever took
+ * it. Only a caller that proved no live process holds such a lease may run
+ * it: see releaseStateQueueLeasesOfPreviousNodeProcess. */
+export const retireActiveLeasesOfHolders = (
+  holders: readonly string[],
+  reason: string,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
+    if (holders.length === 0) return [];
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`UPDATE ${sql(tableName)}
-      SET ${sql(Columns.STATUS)} = ${Status.Released},
-          ${sql(Columns.RELEASED_AT)} = NOW()
-      WHERE ${sql(Columns.TOKEN)} = ${token}
-        AND ${sql(Columns.STATUS)} = ${Status.Active}`;
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to release state-queue mutation lease",
-    ),
-  );
-
-export const markFailed = (
-  token: string,
-  error: string,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`UPDATE ${sql(tableName)}
+    return yield* sql<Entry>`UPDATE ${sql(tableName)}
       SET ${sql(Columns.STATUS)} = ${Status.Failed},
           ${sql(Columns.RELEASED_AT)} = NOW(),
-          ${sql(Columns.LAST_ERROR)} = ${error.slice(0, 4000)}
-      WHERE ${sql(Columns.TOKEN)} = ${token}
-        AND ${sql(Columns.STATUS)} = ${Status.Active}`;
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark state-queue mutation lease failed",
-    ),
-  );
+          ${sql(Columns.LAST_ERROR)} = ${reason.slice(0, 4000)}
+      WHERE ${sql(Columns.SCOPE)} = ${SCOPE}
+        AND ${sql(Columns.STATUS)} = ${Status.Active}
+        AND ${sql(Columns.HOLDER)} IN ${sql.in(holders)}
+      RETURNING *`;
+  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to retire leases"));
 
 export const tryWithLease = <A, E, R>(
   holder: string,
@@ -400,6 +417,7 @@ export const tryWithLease = <A, E, R>(
 
     const token = acquisition.token;
     let completed: "running" | "succeeded" | "failed" = "running";
+    let failure = "";
     const keepAliveFiber = yield* Effect.fork(
       keepLeaseAlive({ token, holder, ttlMs, renewIntervalMs }),
     );
@@ -407,9 +425,7 @@ export const tryWithLease = <A, E, R>(
       const result = yield* Effect.either(program(token));
       if (result._tag === "Left") {
         completed = "failed";
-        yield* markFailed(token, formatUnknownError(result.left)).pipe(
-          Effect.catchAll(() => Effect.void),
-        );
+        failure = formatUnknownError(result.left);
         return yield* Effect.fail(result.left);
       }
 
@@ -419,24 +435,28 @@ export const tryWithLease = <A, E, R>(
         value: result.right,
       };
     }).pipe(
-      Effect.ensuring(
-        Effect.gen(function* () {
-          if (completed === "succeeded") {
-            yield* release(token).pipe(Effect.catchAll(() => Effect.void));
-          } else {
-            const reason =
-              completed === "failed"
-                ? "lease program failed before normal release"
-                : "lease program interrupted before normal release";
-            yield* markFailed(token, reason).pipe(
-              Effect.catchAll(() => Effect.void),
-            );
-          }
-        }),
-      ),
+      // Renewal stops before the release is recorded, so a lease whose
+      // release is still being retried is not extended meanwhile.
       Effect.ensuring(
         Fiber.interrupt(keepAliveFiber).pipe(
           Effect.catchAll(() => Effect.void),
+        ),
+      ),
+      Effect.ensuring(
+        Effect.suspend(() =>
+          settleLeaseDurably(
+            token,
+            holder,
+            completed === "succeeded"
+              ? { kind: "released" }
+              : {
+                  kind: "failed",
+                  error:
+                    completed === "failed"
+                      ? failure
+                      : "lease program interrupted before normal release",
+                },
+          ),
         ),
       ),
     );

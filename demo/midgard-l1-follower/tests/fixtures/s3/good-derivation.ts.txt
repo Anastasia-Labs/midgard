@@ -1,0 +1,12 @@
+import type { DerivationHook } from "@al-ft/midgard-l1-follower";
+
+// A pure derivation: reads facts at the block's slot, no clock, no network.
+export const marks: DerivationHook = {
+  name: "marks",
+  writes: ["marks"],
+  apply: async ({ tx, block }) => {
+    const at: Date | null = null; // a type mention is not a clock read
+    void at;
+    await tx.query("INSERT INTO marks (slot) VALUES (?)", [block.point.slot]);
+  },
+};

@@ -57,7 +57,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item The witness staking script, instantiated with \code{l2\_id} must be registered in the transaction.
           Let the hash of this script be \code{registered\_witness}.
         \item \code{registered\_witness} must be stored in the produced deposit utxo datum under \code{witness}.
-        \item The redeemer used for registering the witness script must be equal to the \code{deposit} policy ID.
+        \item The redeemer used for registering the witness script must be \code{MintOrBurn} carrying the \code{deposit} policy ID.
         \item Let \code{deposit\_addr} be the address of the deposit contract from Midgard's hub oracle.
         \item Deposit utxo must be produced at \code{deposit\_addr}.
         \item Total number of deposited tokens (including ADA) must not exceed \code{max\_tokens\_allowed\_in\_deposits}, a protocol parameter.

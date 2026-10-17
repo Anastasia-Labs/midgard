@@ -1,0 +1,456 @@
+import "node:child_process";
+import "node:fs/promises";
+import "node:net";
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-core/da-libp2p-identity";
+import "@al-ft/midgard-core/da-payload-envelope";
+import "@al-ft/midgard-core/da-transport";
+import "da-committee-node/store/postgres";
+import "tsup";
+import "vitest";
+import "../../da-committee-node/tests/helpers.js";
+import "../../da-committee-node/tests/helpers/postgres-database.js";
+import "../src/da/libp2p-producer.js";
+import "../src/database/index.js";
+import "../src/sha256.js";
+import "./da-multi-process-10k-integration.stop-child-bounded.js";
+import "./test-env.js";
+
+import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import {
+  computeDaSha256Hash,
+  DA_TRANSPORT_LIMITS,
+} from "@al-ft/midgard-core/da-transport";
+import type {
+  Libp2pDaPeerConfig,
+  Libp2pDaTransportConfig,
+} from "da-committee-node/config";
+import { PostgresCommitteeStore } from "da-committee-node/store/postgres";
+import { build as bundleWithTsup } from "tsup";
+import { describe, expect, it } from "vitest";
+
+import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
+import {
+  createDaLibp2pProducerTransport,
+  DaPayloadPublicationError,
+  type DaProducerCommitteePeer,
+  type DaProducerPublicationManifest,
+  probeDaEnvelopeCapabilities,
+  publishDaPayloadInsert,
+} from "../src/da/libp2p-producer.js";
+import { DaPayloadsDB } from "../src/database/index.js";
+import { sha256Hex } from "../src/sha256.js";
+import {
+  CHILD_COUNT,
+  DEPLOYMENT,
+  insertFromFixture,
+  packageRoot,
+  reserveLoopbackPort,
+  stopChildBounded,
+  THRESHOLD,
+  TRANSACTION_COUNT,
+  waitForPeerMetrics,
+  waitForReady,
+} from "./da-multi-process-10k-integration.stop-child-bounded.js";
+import { TEST_DATABASE_PREFIX } from "./test-env.js";
+
+describe("real separate-process canonical V1 DA publication", () => {
+  it("publishes the maximum-valid 10k envelope and rejects one mutation", async () => {
+    const fixture = await makePayloadFixture(TRANSACTION_COUNT);
+    // Submit acknowledgement is retention-only.  The fixture itself remains
+    // a known-good exact-10k body, but neither producer nor committee submit
+    // handlers may semantically traverse it on the ACK path.
+    expect(fixture.payload.block_body.transactions).toHaveLength(
+      TRANSACTION_COUNT,
+    );
+    expect(
+      new Set(fixture.payload.block_body.transactions.map(([txId]) => txId))
+        .size,
+    ).toBe(TRANSACTION_COUNT);
+    expect(fixture.payload.block_body.counts).toMatchObject({
+      l2TransactionCount: BigInt(TRANSACTION_COUNT),
+      totalEventCount: BigInt(TRANSACTION_COUNT),
+      transitionStepCount: BigInt(TRANSACTION_COUNT),
+      validationTraceCount: BigInt(TRANSACTION_COUNT),
+    });
+
+    const envelope = await wrapDaPayload(fixture.innerPayloadCbor, {
+      mode: "zstd",
+      zstdLevel: 3,
+    });
+    expect(fixture.innerPayloadCbor.length).toBeGreaterThan(0);
+    expect(envelope.length).toBeGreaterThan(0);
+    expect(fixture.innerPayloadCbor.length).toBeLessThanOrEqual(
+      DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    );
+    expect(envelope.length).toBeLessThanOrEqual(
+      DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    );
+
+    // Keep the bundled executable below the package root so Node's ESM
+    // package lookup can resolve the workspace dependencies. Every file is
+    // removed in the finally block; no fixture or measurement artifact is
+    // retained.
+    const temp = await mkdtemp(join(packageRoot, ".rf078-10k-"));
+    const children: ChildProcess[] = [];
+    // One committee store database per child, dropped once every child has
+    // stopped and released its store.
+    const databases = postgresTestDatabases(TEST_DATABASE_PREFIX);
+    const databaseUrls: string[] = [];
+    let transport:
+      | Awaited<ReturnType<typeof createDaLibp2pProducerTransport>>
+      | undefined;
+    let stopPromise: Promise<void> | undefined;
+    const stopAll = (): Promise<void> => {
+      if (stopPromise !== undefined) return stopPromise;
+      stopPromise = (async () => {
+        await transport?.close?.().catch(() => undefined);
+        await Promise.all(children.map(stopChildBounded));
+      })();
+      return stopPromise;
+    };
+    try {
+      const helperSource = join(
+        packageRoot,
+        "tests/helpers/da-committee-peer-process.ts",
+      );
+      const bundleDir = join(temp, "bundle");
+      // The child is a plain Node process, so it would resolve every
+      // workspace package through the `import` condition, i.e. a gitignored
+      // dist. Bundle all workspace packages into the helper from source
+      // through the `midgard-source` exports condition (as tsc and vitest
+      // do) so the child never runs against a stale or missing dist; only
+      // third-party dependencies stay external.
+      await bundleWithTsup({
+        entry: [helperSource],
+        format: ["esm"],
+        platform: "node",
+        target: "node22",
+        outDir: bundleDir,
+        config: false,
+        splitting: false,
+        silent: true,
+        // `pg` is a dependency of da-committee-node only, so the child, which
+        // runs from below this package, could not resolve it; bundle it too.
+        noExternal: [/^@al-ft\//, /^da-committee-node(\/|$)/, /^pg(\/|$)/],
+        external: ["pg-native"],
+        // Bundled workspace source reaches some CJS-only dependencies through
+        // `require`; give the ESM bundle a real one instead of esbuild's throwing
+        // "Dynamic require" shim.
+        banner: {
+          js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+        },
+        esbuildOptions(options) {
+          options.conditions = [
+            "midgard-source",
+            ...(options.conditions ?? []),
+          ];
+        },
+      });
+      const helper = join(bundleDir, "da-committee-peer-process.js");
+      const producerSeed = `seed:${"00".repeat(31)}19`;
+      const committeeSeeds = [
+        `seed:${"00".repeat(31)}11`,
+        `seed:${"00".repeat(31)}12`,
+        `seed:${"00".repeat(31)}13`,
+      ] as const;
+      const producerIdentity = await loadDaLibp2pIdentity(producerSeed);
+      const committeeIdentities = await Promise.all(
+        committeeSeeds.map(loadDaLibp2pIdentity),
+      );
+      const ports = await Promise.all(
+        committeeSeeds.map(() => reserveLoopbackPort()),
+      );
+      const committeePeers: readonly (DaProducerCommitteePeer &
+        Libp2pDaPeerConfig)[] = committeeIdentities.map((identity, index) => ({
+        signerIndex: index,
+        daVkey: (index + 11).toString(16).padStart(2, "0").repeat(32),
+        peerId: identity.peerId,
+        multiaddrs: [
+          `/ip4/127.0.0.1/tcp/${ports[index]!.toString()}/p2p/${identity.peerId}`,
+        ],
+        roles: ["committee", "retrieval"],
+      }));
+      const producerPeer: Libp2pDaPeerConfig = {
+        signerIndex: 99,
+        daVkey: "99".repeat(32),
+        peerId: producerIdentity.peerId,
+        multiaddrs: [`/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`],
+        roles: ["producer"],
+      };
+
+      for (let index = 0; index < CHILD_COUNT; index += 1) {
+        const transportConfig: Libp2pDaTransportConfig = {
+          kind: "libp2p",
+          deploymentFingerprint: DEPLOYMENT,
+          noHttpDaTransport: true,
+          threshold: THRESHOLD,
+          listenMultiaddrs: [`/ip4/127.0.0.1/tcp/${ports[index]!.toString()}`],
+          announceMultiaddrs: committeePeers[index]!.multiaddrs,
+          bootstrapMultiaddrs: [
+            committeePeers[(index + 1) % committeePeers.length]!.multiaddrs[0]!,
+          ],
+          gossip: {
+            strictSign: true,
+            emitSelf: false,
+            allowedTopicsOnly: true,
+            maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
+          },
+          limits: {
+            maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+            maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+            maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+            maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+            requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+          },
+          retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
+          peers: [...committeePeers, producerPeer],
+        };
+        const configPath = join(temp, `peer-${index.toString()}.json`);
+        const databaseUrl = (await databases.create()).url;
+        databaseUrls.push(databaseUrl);
+        await writeFile(
+          configPath,
+          `${JSON.stringify({
+            peerIndex: index,
+            privateKeySource: committeeSeeds[index],
+            databaseUrl,
+            metricsPath: join(temp, `metrics-${index.toString()}.ndjson`),
+            transport: transportConfig,
+          })}\n`,
+        );
+        const child = spawn(process.execPath, [helper, configPath], {
+          cwd: packageRoot,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        children.push(child);
+        await waitForReady(child);
+      }
+
+      const manifest: DaProducerPublicationManifest = {
+        deploymentFingerprint: DEPLOYMENT,
+        contractDeploymentManifestId: DEPLOYMENT,
+        localPrivateKeySource: producerSeed,
+        threshold: THRESHOLD,
+        requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+        maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
+        listenMultiaddrs: [],
+        announceMultiaddrs: [
+          `/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`,
+        ],
+        bootstrapMultiaddrs: [],
+        committeePeers,
+      };
+      transport = await createDaLibp2pProducerTransport(manifest, {
+        mode: "dial-only",
+      });
+      const capabilities = await probeDaEnvelopeCapabilities({
+        manifest,
+        mode: "zstd",
+        transport,
+      });
+      expect(capabilities).toHaveLength(CHILD_COUNT);
+      expect(capabilities.every((result) => result.capable)).toBe(true);
+
+      const insert = insertFromFixture(fixture, envelope);
+      const validStartedAt = performance.now();
+      const validProducerRssBeforeBytes = process.memoryUsage().rss;
+      let validThresholdDurationMs: number | undefined;
+      let validAllPeerDurationMs: number | undefined;
+      let validSettledPeers = 0;
+      let validAcceptedPeers = 0;
+      let validPublication: Awaited<ReturnType<typeof publishDaPayloadInsert>>;
+      try {
+        validPublication = await publishDaPayloadInsert({
+          insert,
+          manifest,
+          transport,
+          onPeerResult: async ({ result }) => {
+            validSettledPeers += 1;
+            if (result.status === "accepted") {
+              validAcceptedPeers += 1;
+              if (
+                validAcceptedPeers === manifest.threshold &&
+                validThresholdDurationMs === undefined
+              ) {
+                validThresholdDurationMs = performance.now() - validStartedAt;
+              }
+            }
+            if (
+              validSettledPeers === manifest.committeePeers.length &&
+              validAllPeerDurationMs === undefined
+            ) {
+              validAllPeerDurationMs = performance.now() - validStartedAt;
+            }
+          },
+        });
+      } catch (error) {
+        const metricsByPeer = await waitForPeerMetrics(temp, 1, 60_000);
+        process.stdout.write(
+          `${JSON.stringify({
+            schemaVersion: "midgard-rf-078-canonical-v1-10k-runtime-v1",
+            outcome: "valid-publication-failed",
+            transactionCount: TRANSACTION_COUNT,
+            innerBytes: fixture.innerPayloadCbor.length,
+            envelopeBytes: envelope.length,
+            elapsedMs: performance.now() - validStartedAt,
+            error: error instanceof Error ? error.message : String(error),
+            committeeProcesses: metricsByPeer,
+          })}\n`,
+        );
+        throw error;
+      }
+      const validPeerResults = await validPublication.allPeerResults!;
+      expect(validPublication.acceptedPeers).toBeGreaterThanOrEqual(THRESHOLD);
+      expect(validPeerResults).toHaveLength(CHILD_COUNT);
+      expect(
+        validPeerResults.every((result) => result.status === "accepted"),
+      ).toBe(true);
+      expect(validThresholdDurationMs).toBeGreaterThan(0);
+      expect(validThresholdDurationMs).toBeLessThanOrEqual(
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      );
+      expect(validAllPeerDurationMs).toBeGreaterThan(0);
+      expect(validAllPeerDurationMs).toBeLessThanOrEqual(
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      );
+
+      const mutatedEnvelope = Buffer.from(envelope);
+      mutatedEnvelope[0] ^= 1;
+      const hostileStartedAt = performance.now();
+      let hostileSettledPeers = 0;
+      let hostileAllPeerDurationMs: number | undefined;
+      let hostileError: unknown;
+      try {
+        await publishDaPayloadInsert({
+          insert: {
+            ...insert,
+            [DaPayloadsDB.Columns.PAYLOAD_CBOR]: mutatedEnvelope,
+            [DaPayloadsDB.Columns.PAYLOAD_SHA256]:
+              computeDaSha256Hash(mutatedEnvelope),
+          },
+          manifest,
+          transport,
+          onPeerResult: async () => {
+            hostileSettledPeers += 1;
+            if (
+              hostileSettledPeers === manifest.committeePeers.length &&
+              hostileAllPeerDurationMs === undefined
+            ) {
+              hostileAllPeerDurationMs = performance.now() - hostileStartedAt;
+            }
+          },
+        });
+      } catch (error) {
+        hostileError = error;
+      }
+      expect(hostileError).toBeInstanceOf(DaPayloadPublicationError);
+      const hostileReport = (hostileError as DaPayloadPublicationError).report;
+      const hostilePeerResults = await hostileReport.allPeerResults!;
+      expect(hostileReport.acceptedPeers).toBe(0);
+      expect(hostilePeerResults).toHaveLength(CHILD_COUNT);
+      expect(
+        hostilePeerResults.every((result) => result.status === "rejected"),
+      ).toBe(true);
+      expect(
+        hostilePeerResults.every(
+          (result) =>
+            typeof result.error === "string" && result.error.length > 0,
+        ),
+      ).toBe(true);
+      expect(hostileAllPeerDurationMs).toBeGreaterThan(0);
+      expect(hostileAllPeerDurationMs).toBeLessThanOrEqual(
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      );
+      expect(children.every((child) => child.exitCode === null)).toBe(true);
+
+      // Responses can arrive before the handlers' finally blocks finish
+      // appending metrics. Wait for both completed requests on every peer.
+      const metricsByPeer = await waitForPeerMetrics(temp, 2, 60_000);
+      expect(metricsByPeer).toHaveLength(CHILD_COUNT);
+      expect(
+        new Set(metricsByPeer.map((metrics) => metrics[0]!.pid)).size,
+      ).toBe(CHILD_COUNT);
+      const allMetrics = metricsByPeer.flat();
+      expect(allMetrics).toHaveLength(CHILD_COUNT * 2);
+      for (const metric of allMetrics) {
+        expect(metric.durationMs).toBeGreaterThan(0);
+        expect(metric.rssBeforeBytes).toBeGreaterThan(0);
+        expect(metric.rssAfterBytes).toBeGreaterThan(0);
+        expect(metric.peakRssBytes).toBeGreaterThan(0);
+        expect(metric.peakRssBytes).toBeGreaterThanOrEqual(
+          metric.rssBeforeBytes,
+        );
+        expect(metric.peakRssBytes).toBeGreaterThanOrEqual(
+          metric.rssAfterBytes,
+        );
+        expect(metric.admissionPeakActive).toBe(1);
+      }
+      expect(allMetrics.every((metric) => metric.outcome === "completed")).toBe(
+        true,
+      );
+
+      // The handler returns a structured rejection for the hostile envelope,
+      // so every request completes normally before the children are stopped.
+      await stopAll();
+
+      await Promise.all(
+        databaseUrls.map(async (databaseUrl) => {
+          const store = await PostgresCommitteeStore.open(databaseUrl);
+          try {
+            await expect(
+              store.getDaPayload(fixture.headerHash),
+            ).resolves.toMatchObject({
+              payloadSchemaVersion: 1,
+              payloadCborHex: envelope.toString("hex"),
+              payloadSha256: computeDaSha256Hash(envelope).toString("hex"),
+              validationStatus: "fetched",
+            });
+          } finally {
+            await store.close();
+          }
+        }),
+      );
+
+      const evidence = {
+        schemaVersion: "midgard-rf-078-canonical-v1-10k-runtime-v1",
+        transactionCount: TRANSACTION_COUNT,
+        innerBytes: fixture.innerPayloadCbor.length,
+        envelopeBytes: envelope.length,
+        innerSha256: sha256Hex(fixture.innerPayloadCbor),
+        envelopeSha256: sha256Hex(envelope),
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        valid: {
+          acceptedPeers: validPublication.acceptedPeers,
+          thresholdDurationMs: validThresholdDurationMs,
+          allPeerDurationMs: validAllPeerDurationMs,
+          producerRssBeforeBytes: validProducerRssBeforeBytes,
+          producerRssAfterBytes: process.memoryUsage().rss,
+          producerPeakRssBytes: process.resourceUsage().maxRSS * 1024,
+        },
+        hostile: {
+          acceptedPeers: hostileReport.acceptedPeers,
+          allPeerDurationMs: hostileAllPeerDurationMs,
+        },
+        committeeProcesses: metricsByPeer,
+      };
+      process.stdout.write(`${JSON.stringify(evidence)}\n`);
+    } finally {
+      await stopAll();
+      await rm(temp, { recursive: true, force: true });
+      await databases.dropAll();
+    }
+  }, 420_000);
+});

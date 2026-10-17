@@ -1,0 +1,98 @@
+{
+  "name": "@al-ft/midgard-test-support",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test-only helpers shared across the Midgard workspace.",
+  "type": "module",
+  "exports": {
+    "./recovery-scenarios": {
+      "midgard-source": "./src/recovery-scenarios.ts",
+      "types": "./src/recovery-scenarios.ts"
+    },
+    "./chain-fixture": {
+      "midgard-source": "./src/chain-fixture.ts",
+      "types": "./src/chain-fixture.ts"
+    },
+    "./witness-fixture": {
+      "midgard-source": "./src/witness-fixture.ts",
+      "types": "./src/witness-fixture.ts"
+    },
+    "./run-shared-fixtures": {
+      "types": "./run-shared-fixtures.d.ts",
+      "default": "./run-shared-fixtures.js"
+    },
+    "./database-identity": {
+      "types": "./database-identity.d.ts",
+      "default": "./database-identity.js"
+    },
+    "./vitest": {
+      "types": "./vitest.d.ts",
+      "default": "./vitest.js"
+    },
+    "./hex": {
+      "midgard-source": "./src/hex.ts",
+      "types": "./src/hex.ts"
+    },
+    "./plutus-data-fuzz": {
+      "midgard-source": "./src/plutus-data-fuzz.ts",
+      "types": "./src/plutus-data-fuzz.ts"
+    },
+    "./l1-recordings": {
+      "midgard-source": "./src/l1-recordings.ts",
+      "types": "./src/l1-recordings.ts"
+    },
+    "./temp-files": {
+      "midgard-source": "./src/temp-files.ts",
+      "types": "./src/temp-files.ts"
+    },
+    "./evaluator-reuse": {
+      "midgard-source": "./src/evaluator-reuse.ts",
+      "types": "./src/evaluator-reuse.ts"
+    },
+    "./method-layer": {
+      "midgard-source": "./src/method-layer.ts",
+      "types": "./src/method-layer.ts"
+    },
+    "./duration-shards": {
+      "types": "./duration-shards.d.ts",
+      "default": "./duration-shards.js"
+    },
+    "./duration-shards-contract": {
+      "midgard-source": "./src/duration-shards-contract.ts",
+      "types": "./src/duration-shards-contract.ts"
+    }
+  },
+  "files": [
+    "fixtures",
+    "src",
+    "vitest.js",
+    "vitest.d.ts",
+    "workspace-bundle.js",
+    "workspace-bundle-analysis.js",
+    "workspace-bundle-files.js",
+    "workspace-bundle-guard.js",
+    "blueprint-stamp-setup.js",
+    "build-lock.js",
+    "run-shared-fixtures.js",
+    "run-shared-fixtures.d.ts",
+    "run-shared-fixtures-setup.js",
+    "interactive-emulator.js",
+    "curated-emulator.js",
+    "database-identity.js",
+    "database-identity.d.ts",
+    "duration-shards.js",
+    "duration-shards.d.ts",
+    "duration-plan.js"
+  ],
+  "scripts": {
+    "capture:l1-recordings": "node scripts/capture-l1-recordings.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "esbuild": "0.25.0",
+    "typescript": "^5.7.3",
+    "vitest": "^5.0.3"
+  }
+}

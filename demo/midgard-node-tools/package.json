@@ -1,0 +1,197 @@
+{
+  "name": "midgard-node-tools",
+  "version": "1.0.0",
+  "description": "End-to-end, stress, and acceptance tooling that drives a Midgard node from the outside; never part of the operator binary",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "midgard-node-tools": "./dist/index.js"
+  },
+  "exports": {
+    "./commands/e2e-stress-l2-throughput": {
+      "midgard-source": "./src/commands/e2e-stress-l2-throughput/index.ts"
+    },
+    "./commands/stress-wallets": {
+      "midgard-source": "./src/commands/stress-wallets/index.ts"
+    },
+    "./*": {
+      "midgard-source": "./src/*.ts"
+    },
+    "./funding-measurements": {
+      "midgard-source": "./src/funding-measurements.ts",
+      "import": "./dist/funding-measurements.js"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist node_modules",
+    "build": "node ../../scripts/contrib.mjs build --package midgard-node-tools",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "e2e-stack": "pnpm run build && node dist/index.js e2e-stack",
+    "quick-test": "pnpm run build && node dist/index.js --help",
+    "create-l2-wallet": "pnpm run build && node dist/index.js create-l2-wallet",
+    "stress-wallets:prepare": "pnpm run build && node dist/index.js stress-wallets:prepare",
+    "stress-wallets:fanout": "pnpm run build && node dist/index.js stress-wallets:fanout",
+    "stress-corpus-generate": "pnpm run build && node dist/index.js stress-corpus-generate",
+    "stress-corpus-verify": "pnpm run build && node dist/index.js stress-corpus-verify",
+    "e2e-stress-l2-throughput": "pnpm run build && node dist/index.js e2e-stress-l2-throughput",
+    "accept:phase4:journal-kill-recovery": "node dist/index.js e2e-journal-kill-recovery-acceptance --node-root ../midgard-node",
+    "verify:phase4:journal-kill-recovery-summary": "node scripts/verify-phase4-journal-kill-recovery-summary.mjs",
+    "test:phase4:journal-kill-recovery-summary-verifier": "node --test tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
+    "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs devnet/phase4-process/tests/l1-follower-inputs.test.mjs devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs devnet/phase4-process/tests/recovery-window.test.mjs devnet/phase4-process/tests/lifecycle-scripts.test.mjs",
+    "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --disableConsoleIntercept",
+    "test": "node ../scripts/package-test.mjs",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
+  },
+  "keywords": [
+    "cardano",
+    "layer2",
+    "midgard",
+    "anastasia-labs"
+  ],
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
+    "@al-ft/l1-node-transport": "workspace:*",
+    "@al-ft/lucid-midgard": "workspace:*",
+    "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-fault-proofs": "workspace:*",
+    "@al-ft/midgard-l1-follower": "workspace:*",
+    "@al-ft/midgard-sdk": "workspace:*",
+    "@al-ft/midgard-validation": "workspace:*",
+    "@chainsafe/libp2p-noise": "17.0.0",
+    "@chainsafe/libp2p-yamux": "8.0.1",
+    "@effect/experimental": "^0.46.0",
+    "@effect/opentelemetry": "^0.44.6",
+    "@effect/platform": "^0.80.0",
+    "@effect/platform-node": "^0.80.0",
+    "@effect/sql": "^0.34.1",
+    "@effect/sql-pg": "^0.35.1",
+    "@harmoniclabs/bytestring": "1.0.0",
+    "@harmoniclabs/cbor": "2.0.2",
+    "@harmoniclabs/pair": "1.0.0",
+    "@harmoniclabs/plutus-data": "2.0.1",
+    "@harmoniclabs/plutus-machine": "3.0.3",
+    "@harmoniclabs/uplc": "2.0.7",
+    "@libp2p/bootstrap": "12.0.25",
+    "@libp2p/crypto": "5.1.20",
+    "@libp2p/gossipsub": "16.0.3",
+    "@libp2p/identify": "4.1.8",
+    "@libp2p/interface": "3.2.4",
+    "@libp2p/peer-id": "6.0.11",
+    "@libp2p/tcp": "11.0.22",
+    "@lucid-evolution/lucid": "0.8.0",
+    "@lucid-evolution/scalus-uplc": "0.2.2",
+    "@lucid-evolution/uplc": "0.3.0",
+    "@multiformats/multiaddr": "13.0.3",
+    "@noble/hashes": "^2.0.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-prometheus": "^0.57.2",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.2",
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
+    "@opentelemetry/sdk-trace-node": "^1.30.1",
+    "@opentelemetry/sdk-trace-web": "^1.30.1",
+    "bip39": "^3.1.0",
+    "blake2b": "2.1.4",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "effect": "^3.14.22",
+    "json-bigint": "npm:@cardanosolutions/json-bigint@1.1.0",
+    "level": "^10.0.0",
+    "libp2p": "3.3.4",
+    "libsodium-wrappers-sumo": "0.7.15",
+    "midgard-node": "workspace:*",
+    "midgard-watcher": "workspace:^",
+    "postgres": "3.4.9",
+    "undici": "^7.25.0"
+  },
+  "devDependencies": {
+    "@al-ft/midgard-test-support": "workspace:*",
+    "@types/json-bigint": "1.0.4",
+    "@types/node": "^22.17.0",
+    "da-committee-node": "workspace:*",
+    "prettier": "^3.5.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "packageManager": "pnpm@11.18.0+sha512.33d83c77da82f49fba836925c6f1b841181ec3132b670639bd012f7075f5c7cf634c5f870147c19aae7478fac01df09d8892e880454896edd23ee9b33757563c",
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run",
+        "--disableConsoleIntercept"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "build",
+          "package": "@al-ft/lucid-midgard"
+        },
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-sdk"
+        },
+        {
+          "kind": "build",
+          "package": "midgard-node-tools"
+        },
+        {
+          "kind": "blueprint"
+        },
+        {
+          "kind": "postgres"
+        },
+        {
+          "kind": "native",
+          "package": "midgard-node"
+        }
+      ],
+      "environment": {
+        "NODE_ENV": "emulator"
+      },
+      "before": [
+        {
+          "command": [
+            "pnpm",
+            "run",
+            "test:phase4:journal-kill-recovery-summary-verifier"
+          ]
+        },
+        {
+          "command": [
+            "pnpm",
+            "run",
+            "test:phase4:devnet-assets"
+          ]
+        }
+      ]
+    }
+  }
+}

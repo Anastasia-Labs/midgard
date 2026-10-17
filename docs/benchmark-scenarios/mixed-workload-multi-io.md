@@ -1,8 +1,7 @@
 # Mixed Workload Multi-IO Scenario
 
 **Status:** Blocked
-**Last reviewed:** 2026-07-22
-**Reschedule date:** 2026-07-16
+**Last reviewed:** 2026-09-07 (scenario runner still blocks on the corpus template)
 **Blocking dependency:** Phase 1 mixed `mixed-multi-io` corpus template.
 
 The Phase 5 scenario entrypoint exists as

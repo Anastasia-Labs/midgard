@@ -1,12 +1,8 @@
-pub const native_tx_version: Int = 1
+pub const native_tx_version_v1: Int = 1
 
 pub type MidgardTxValidity {
   TxIsValid
-  NonExistentInputUtxo
-  InvalidSignature
-  FailedScript
-  FeeTooLow
-  UnbalancedTx
+  TxIsInvalid
 }
 
 pub type MidgardTxInput {
@@ -177,10 +173,28 @@ pub type NativeTxWitnessSetCompact {
   redeemer_tx_wits_hash: ByteArray,
 }
 
-pub type VerifiedMidgardNativeTxCompact {
+pub type NativeTxFieldPreimageLengthsV1 {
+  spend_inputs: Int,
+  reference_inputs: Int,
+  outputs: Int,
+  required_observers: Int,
+  required_signers: Int,
+  mint: Int,
+  address_witnesses: Int,
+  script_witnesses: Int,
+  redeemers: Int,
+}
+
+pub type NativeTxProofSourceCborV1 {
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+}
+
+pub type VerifiedTxSourceView {
   tx_id: ByteArray,
   version: Int,
-  tx_compact: NativeTxCompact,
+  tx_compact: TxCompactView,
 }
 
 pub type VerifiedMidgardTransaction {
@@ -188,4 +202,24 @@ pub type VerifiedMidgardTransaction {
   transaction: MidgardTransaction,
   compact: NativeTxCompact,
   compact_cbor: ByteArray,
+}
+
+/// Immutable forced-submission material has no validity claim.
+pub type SubmittedForcedTransaction {
+  version: Int,
+  body: MidgardTransactionBody,
+  witness_set: MidgardTransactionWitnessSet,
+}
+
+pub type ForcedTxCompact {
+  body: NativeTxBodyCompact,
+  witness_set_hash: ByteArray,
+}
+
+/// Normal sources expose their authenticated scalar; forced sources expose None.
+/// This view has no encoder and is not a committed transaction representation.
+pub type TxCompactView {
+  body: NativeTxBodyCompact,
+  witness_set_hash: ByteArray,
+  validity_code: Option<Int>,
 }

@@ -1,0 +1,332 @@
+import {
+  decodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialSidecar,
+} from "@al-ft/midgard-core/cek-proof";
+import {
+  computeScriptIntegrityHashForLanguages,
+  verifyMidgardNativeScript,
+} from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { Effect } from "effect";
+
+import { findRedeemerByPointer } from "./midgard-redeemers.js";
+import {
+  discoverLocalScriptExecutions,
+  PURPOSE_KIND,
+} from "./phase-b.discover-local-script-executions.js";
+import { ScriptEvaluationIndeterminateError } from "./phase-b.evaluate-cek-script.js";
+import {
+  type CandidateNode,
+  collectScriptSources,
+  type LocalScriptValidationResult,
+  requiredScriptLanguages,
+  type ResolvedReferenceInputs,
+} from "./phase-b.resolve-reference-inputs.js";
+import {
+  runScriptExecution,
+  scriptExecutionContextCbor,
+} from "./phase-b.script-run.js";
+import { PhaseBConfig, RejectCodes } from "./types.js";
+
+export const runLocalScriptEvaluation = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+  resolvedReferenceInputs: ResolvedReferenceInputs,
+  witnessKeyHashes: ReadonlySet<string>,
+  config: PhaseBConfig,
+): Effect.Effect<LocalScriptValidationResult, Error> =>
+  Effect.gen(function* () {
+    const candidate = node.candidate;
+    const { ledgerTx } = candidate;
+    const sources = collectScriptSources(
+      node,
+      stateValue,
+      resolvedReferenceInputs,
+    );
+    const inlineSources = sources.filter(
+      (source) => source.origin === "inline",
+    );
+    const discovered = discoverLocalScriptExecutions(
+      node,
+      stateValue,
+      sources,
+      resolvedReferenceInputs.inputs,
+      witnessKeyHashes,
+      config.l1SlotConfig,
+    );
+    if (discovered.kind === "rejected") {
+      return discovered;
+    }
+    // Phase A refuses a candidate without a sidecar. One that reaches here
+    // without it runs on empty material, so every script goes through the
+    // structural executor.
+    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
+    if (candidate.submission.programMaterialSidecarCbor !== null) {
+      try {
+        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
+          candidate.submission.programMaterialSidecarCbor,
+        );
+      } catch (cause) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.CekProgramMaterial,
+          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
+          consensusPhase: "scriptSources",
+        };
+      }
+    }
+
+    const usedInlineSourceIds = new Set(
+      discovered.executions
+        .filter((execution) => execution.resolved.source.origin === "inline")
+        .map((execution) => execution.resolved.source.sourceId),
+    );
+    for (const [position, source] of inlineSources.entries()) {
+      if (!usedInlineSourceIds.has(source.sourceId)) {
+        const kind =
+          source.nativeScript === undefined ? "non-native" : "native";
+        return {
+          kind: "rejected",
+          code: RejectCodes.InvalidFieldType,
+          detail: `extraneous ${kind} script witness ${source.sourceId}`,
+          consensusPhase: "scriptSources",
+          subject: {
+            arm: "UnusedScriptWitness",
+            index: BigInt(ledgerTx.scriptWitnesses[position]!.index),
+          },
+        };
+      }
+    }
+
+    // Execution ordinals are positions in the discovered execution list
+    // (spend, mint, observe, receive), native and non-native alike.
+    const executionIndexOf = new Map(
+      discovered.executions.map((execution, index) => [
+        execution,
+        BigInt(index),
+      ]),
+    );
+    // A rejected execution is cited by its purpose key: the purpose kind and
+    // the redeemer pointer index of that purpose.
+    const purposeKeyOf = (
+      execution: (typeof discovered.executions)[number],
+    ): { readonly purposeKind: bigint; readonly purposeIndex: bigint } => ({
+      purposeKind: PURPOSE_KIND[execution.purpose.kind],
+      purposeIndex: execution.pointer.index,
+    });
+    for (const execution of discovered.executions) {
+      if (execution.resolved.version !== "NativeCardano") {
+        continue;
+      }
+      const nativeScript = execution.resolved.source.nativeScript!;
+      if (
+        !verifyMidgardNativeScript(nativeScript, {
+          validityIntervalStart: ledgerTx.validityIntervalStart,
+          validityIntervalEnd: ledgerTx.validityIntervalEnd,
+          witnessSigners: witnessKeyHashes,
+        })
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.NativeScriptInvalid,
+          detail: `native script verification failed for ${execution.purpose.kind} ${execution.purpose.scriptHash}`,
+          consensusPhase: "nativeScripts",
+          subject: {
+            arm: "ExecutionNativeScriptFalse",
+            ...purposeKeyOf(execution),
+          },
+        };
+      }
+    }
+
+    const nonNativeExecutions = discovered.executions.filter(
+      (execution) => execution.resolved.version !== "NativeCardano",
+    );
+
+    const languages = requiredScriptLanguages(discovered.executions);
+    const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
+      candidate.derived.redeemerWitnessHash,
+      languages,
+    );
+    if (!ledgerTx.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
+      const expectedHex = expectedScriptIntegrityHash.toString("hex");
+      const actualHex = ledgerTx.scriptIntegrityHash.toString("hex");
+      return {
+        kind: "rejected",
+        code: RejectCodes.InvalidFieldType,
+        detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
+        consensusPhase: "scriptIntegrity",
+        subject: { arm: "ScriptIntegrityHashMismatch" },
+      };
+    }
+
+    for (const execution of nonNativeExecutions) {
+      const redeemer = findRedeemerByPointer(
+        discovered.contextView.redeemers.map((entry) => entry.redeemer),
+        execution.pointer,
+      )!;
+
+      if (
+        execution.resolved.version === "PlutusV3" &&
+        execution.purpose.kind === "receive"
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: "ReceivingScript requires MidgardV1 context",
+          consensusPhase: "cek",
+          subject: {
+            arm: "ReceivePurposePlutusV3Forbidden",
+            ...purposeKeyOf(execution),
+          },
+        };
+      }
+
+      const contextCbor = scriptExecutionContextCbor(
+        discovered.contextView,
+        execution,
+        redeemer,
+      );
+      const executionBudget =
+        config.enforceScriptBudget === false
+          ? undefined
+          : {
+              cpu: redeemer.exUnits.steps,
+              memory: redeemer.exUnits.memory,
+            };
+      const executionIndex = executionIndexOf.get(execution)!;
+      const {
+        result,
+        graph,
+        execution: cek,
+      } = yield* runScriptExecution(
+        {
+          scriptBytes: execution.resolved.source.scriptBytes,
+          contextCbor,
+          executionBudget,
+          executionIndex,
+          maxSteps:
+            config.maxScriptExecutionSteps ??
+            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+        },
+        candidate.submission.programMaterialSidecarCbor,
+        proofProgramMaterial,
+        config,
+      );
+      config.onScriptEvaluated?.(candidate.ledgerTx.txId, {
+        scriptBytes: Buffer.from(execution.resolved.source.scriptBytes),
+        contextCbor: Buffer.from(contextCbor),
+        executionIndex,
+        executionBudget,
+        result,
+        graph,
+        execution: cek,
+      });
+      if (result.kind === "indeterminate") {
+        return yield* Effect.fail(
+          new ScriptEvaluationIndeterminateError(
+            candidate.ledgerTx.txId,
+            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+            { cause: result.cause },
+          ),
+        );
+      }
+      if (result.kind === "script_invalid") {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+          consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            ...purposeKeyOf(execution),
+          },
+        };
+      }
+      if (
+        config.enforceScriptBudget !== false &&
+        (result.budget.cpu > redeemer.exUnits.steps ||
+          result.budget.memory > redeemer.exUnits.memory)
+      ) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.PlutusScriptInvalid,
+          detail: `${execution.purpose.kind} ${execution.purpose.scriptHash}: budget exceeded (spent mem=${result.budget.memory} cpu=${result.budget.cpu}, declared mem=${redeemer.exUnits.memory} cpu=${redeemer.exUnits.steps})`,
+          consensusPhase: "cek",
+          subject: {
+            arm: "PlutusExecutionFailed",
+            ...purposeKeyOf(execution),
+          },
+        };
+      }
+    }
+
+    return { kind: "accepted" };
+  });
+
+type ConflictNode = {
+  readonly spentOutRefs: ReadonlySet<string>;
+  readonly referenceOutRefs: ReadonlySet<string>;
+};
+
+/**
+ * Builds transitive conflict components in near-linear time. Ref/ref overlap is
+ * intentionally not a conflict; spend/spend and spend/ref overlap are.
+ */
+export const buildConflictComponents = <T extends ConflictNode>(
+  readyNodes: readonly T[],
+): T[][] => {
+  const parent = readyNodes.map((_, index) => index);
+  const rank = readyNodes.map(() => 0);
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) {
+      root = parent[root];
+    }
+    while (parent[index] !== index) {
+      const next = parent[index];
+      parent[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (left: number, right: number): void => {
+    let leftRoot = find(left);
+    let rightRoot = find(right);
+    if (leftRoot === rightRoot) return;
+    if (rank[leftRoot] < rank[rightRoot]) {
+      [leftRoot, rightRoot] = [rightRoot, leftRoot];
+    }
+    parent[rightRoot] = leftRoot;
+    if (rank[leftRoot] === rank[rightRoot]) rank[leftRoot] += 1;
+  };
+
+  const spenderByOutRef = new Map<string, number>();
+  const referencersByOutRef = new Map<string, number[]>();
+  readyNodes.forEach((node, nodeIndex) => {
+    for (const outRef of node.spentOutRefs) {
+      const spender = spenderByOutRef.get(outRef);
+      if (spender !== undefined) union(nodeIndex, spender);
+      for (const referencer of referencersByOutRef.get(outRef) ?? []) {
+        union(nodeIndex, referencer);
+      }
+      spenderByOutRef.set(outRef, nodeIndex);
+    }
+    for (const outRef of node.referenceOutRefs) {
+      const spender = spenderByOutRef.get(outRef);
+      if (spender !== undefined) union(nodeIndex, spender);
+      const referencers = referencersByOutRef.get(outRef) ?? [];
+      referencers.push(nodeIndex);
+      referencersByOutRef.set(outRef, referencers);
+    }
+  });
+
+  const componentByRoot = new Map<number, T[]>();
+  readyNodes.forEach((node, index) => {
+    const root = find(index);
+    const component = componentByRoot.get(root) ?? [];
+    component.push(node);
+    componentByRoot.set(root, component);
+  });
+  return Array.from(componentByRoot.values());
+};

@@ -15,31 +15,28 @@ protocol because it must be reproducible both off-chain (to detect fraud) and on
   decoded and executed to reconstruct the exact evaluation, producing a trace that a
   proof can index into.
 
-## Fraud proofs in UPLC evaluation
+## Script execution and the proof boundary
 
-- **Types of Fraud Proofs**: the categories that reduce to a UPLC-evaluation
-  disagreement.
-- **Single-Step Verification** and **Proof Data Structure**: a proof isolates a
-  single execution step so the on-chain validator only has to check that one step,
-  not re-run the whole evaluation.
-- **Verification Process**: how the on-chain check consumes the proof data structure
-  to reach a verdict.
-- **Security Considerations**: the assumptions that make single-step verification
-sound.
+The chapter's current proof-boundary section describes the V1 validation-trace
+dispute: opening authenticates the descriptor and source against the challenged
+header; signed operator and challenger moves narrow an interval; one-step
+resolution checks the instruction from the agreed pre-state. Timeout and
+challenge-opening deadlines are part of that state machine.
 
-<Callout type="warn" title="Design coverage is incomplete">
-This chapter describes the target proof architecture. The current on-chain
-catalogue covers only part of the required violation surface, and several
-compiled families do not bind to the current native-v1 counted-root block format.
-See the [fault-proof audit](/docs/fault-proofs/overview) before relying on a
-single-step proof claim.
-</Callout>
+Its coverage includes source resolution, purpose/redeemer binding, integrity,
+native scripts, CEK execution, protected receive, observers, minting, budgets,
+and the resulting ledger delta. Source machinery and a specified dispute do not
+establish release acceptance. Current evidence must bind exact validators,
+deployment/profile identity, negative tests, and worst-case size/execution
+measurements. See [Project Status](/docs/getting-started/status) and the
+[catalogue status](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/catalogue-status.md).
 
 ## In the codebase
 
 The off-chain counterpart is the [validation engine](/docs/validation/overview): its Phase B
-stage (`local-script-eval`, `script-context`) performs local UPLC evaluation, and
+stage constructs script contexts and uses the structural CEK executor for
+canonical V1 program material, and
 [`midgard-validation`](/docs/validation/overview) exposes the public validation
 surface. On L1, the reconstructed step is adjudicated by the
 [computation-thread fraud-proof machines](/docs/onchain/fraud-proof-machines), using
-[Merkle proofs](/docs/onchain/merkle-plutarch) to reference committed state.
+[Aiken membership proofs](/docs/onchain/phas-membership) to reference committed state.

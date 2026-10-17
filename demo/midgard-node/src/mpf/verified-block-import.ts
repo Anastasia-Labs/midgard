@@ -1,0 +1,214 @@
+import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
+import {
+  type BlockReplayContext,
+  replayBlockEvents,
+} from "@al-ft/midgard-fault-proofs/block-replay";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data, Effect } from "effect";
+
+import * as Ledger from "../database/utils/ledger.js";
+import {
+  computeDaPayloadRoots,
+  headerCounts,
+  headerRoots,
+  rootMismatches,
+} from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
+
+/** The shared block replay's context over the node's ledger rows. */
+export type ImportedBlockReplayContext = Omit<
+  BlockReplayContext,
+  "parentEntries" | "ledgerRoot"
+> & {
+  readonly parentEntries: readonly Ledger.MinimalEntry[];
+};
+
+const ledgerRows = (
+  entries: readonly { readonly outRef: Buffer; readonly output: Buffer }[],
+): Ledger.MinimalEntry[] =>
+  entries.map(({ outRef, output }) => ({
+    [Ledger.Columns.OUTREF]: outRef,
+    [Ledger.Columns.OUTPUT]: output,
+  }));
+
+/**
+ * - `missing`: material the block needs is not available yet;
+ * - `invalid`: the block (its header, DA payload or replay) is at fault;
+ * - `incomplete`: the import failed for a reason it cannot pin on the block
+ *   (a local computation or an unclassified replay failure); retried.
+ */
+export type ForeignBlockVerificationReason =
+  | "missing"
+  | "invalid"
+  | "incomplete";
+
+export class ForeignBlockVerificationError extends Data.TaggedError(
+  "ForeignBlockVerificationError",
+)<{
+  readonly foreignHeaderHash: string;
+  readonly reason: ForeignBlockVerificationReason;
+  readonly detail: string;
+}> {}
+
+/** A caller callback's failure, passed through the import unchanged. */
+class CallbackFailure {
+  constructor(readonly cause: unknown) {}
+}
+
+const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
+  Effect.mapError(effect, (cause) => new CallbackFailure(cause));
+
+/** Full import authentication. A caller must supply the exact canonical parent
+ * and deployment observation; matching ledger roots or DA signatures do not
+ * substitute for replay. No successful result is cached across observations.
+ *
+ * Failures: the caller's callbacks' pass through unchanged (their verdicts
+ * are the caller's); a defect (the payload checks throw) is `invalid`, a
+ * missing CEK root `missing`; any other failure is `incomplete`. */
+export const verifyAndImportBlock = (
+  input: ImportedBlockReplayContext & {
+    readonly headerHash: string;
+    readonly parentHeaderHash: string;
+    readonly parentUtxosRoot: string;
+    readonly payload?: SDK.DaPayload;
+  },
+) =>
+  Effect.gen(function* () {
+    const fail = (reason: ForeignBlockVerificationReason, detail: string) =>
+      Effect.fail(
+        new ForeignBlockVerificationError({
+          foreignHeaderHash: input.headerHash,
+          reason,
+          detail,
+        }),
+      );
+    if (
+      input.header.prevHeaderHash !== input.parentHeaderHash ||
+      input.header.prevUtxosRoot !== input.parentUtxosRoot
+    ) {
+      return yield* fail(
+        "invalid",
+        "foreign header does not extend the verified parent",
+      );
+    }
+    if (
+      input.header.protocolVersion !== 1n ||
+      input.header.expectedNetworkId !== input.expectedNetworkId ||
+      input.header.minFeeA !== input.minFeeA ||
+      input.header.minFeeB !== input.minFeeB ||
+      input.header.blockSlot !== input.blockSlot
+    )
+      return yield* fail(
+        "invalid",
+        "foreign header validation context differs from deployment",
+      );
+    if (input.payload === undefined)
+      return yield* fail("missing", "foreign DA payload is unavailable");
+    const payload = input.payload;
+    // A header that does not hash is the observation's fault.
+    const hashOf = (header: SDK.Header) =>
+      SDK.hashBlockHeader(header).pipe(Effect.orDie);
+    if (
+      (yield* hashOf(input.header)) !== input.headerHash ||
+      payload.block_body.header_hash !== input.headerHash ||
+      (yield* hashOf(payload.block_body.header)) !== input.headerHash ||
+      payload.version !== SDK.DA_PAYLOAD_VERSION
+    )
+      return yield* fail(
+        "invalid",
+        "foreign DA/header identity differs from the canonical observation",
+      );
+    const baseRoot = yield* computeLedgerMpfRootFromLedgerEntries(
+      input.parentEntries,
+    );
+    if (baseRoot !== input.parentUtxosRoot)
+      return yield* fail(
+        "invalid",
+        "foreign replay parent snapshot root mismatch",
+      );
+    // Roots the payload's own entries cannot form are its fault.
+    const roots = yield* computeDaPayloadRoots(payload).pipe(Effect.orDie);
+    const mismatches = [...rootMismatches(headerRoots(input.header), roots)];
+    const body = payload.block_body;
+    const memberCounts: SDK.DaPayloadCounts = {
+      depositCount: BigInt(body.deposits.length),
+      withdrawalCount: BigInt(body.withdrawals.length),
+      forcedTransactionCount: BigInt(body.forced_transactions.length),
+      l2TransactionCount: BigInt(body.transactions.length),
+      totalEventCount: BigInt(
+        body.deposits.length +
+          body.withdrawals.length +
+          body.forced_transactions.length +
+          body.transactions.length,
+      ),
+      transitionStepCount: BigInt(body.transition_trace.length),
+      validationTraceCount: BigInt(body.validation_traces.length),
+    };
+    for (const key of Object.keys(
+      memberCounts,
+    ) as (keyof SDK.DaPayloadCounts)[]) {
+      if (
+        memberCounts[key] !== headerCounts(input.header)[key] ||
+        body.counts[key] !== memberCounts[key]
+      )
+        mismatches.push(key);
+    }
+    if (body.event_to_step.length !== body.transition_trace.length)
+      mismatches.push("event_to_step_count");
+    if (body.transition_trace.length !== Number(memberCounts.totalEventCount))
+      mismatches.push("transition_step_count");
+    if (mismatches.length > 0)
+      return yield* fail(
+        "invalid",
+        `foreign DA commitment mismatch: ${mismatches.join(",")}`,
+      );
+    const entries = ledgerRows(
+      yield* replayBlockEvents({
+        ...input,
+        parentEntries: input.parentEntries.map((entry) => ({
+          outRef: entry[Ledger.Columns.OUTREF],
+          output: entry[Ledger.Columns.OUTPUT],
+        })),
+        ledgerRoot: (ledger) =>
+          computeLedgerMpfRootFromLedgerEntries(ledgerRows(ledger)),
+        payload,
+        replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
+        verifyForcedSource: (source) =>
+          passThrough(input.verifyForcedSource(source)),
+      }),
+    );
+    const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
+    if (replayRoot !== input.header.utxosRoot)
+      return yield* fail("invalid", "foreign replay UTxO root mismatch");
+    // Replay compares every transition, mapping and validation descriptor by its
+    // canonical bytes, independently of the payload's internally consistent roots.
+    return { headerHash: input.headerHash, root: replayRoot, entries };
+  }).pipe(
+    Effect.catchAllDefect((cause) =>
+      Effect.fail(
+        new ForeignBlockVerificationError({
+          foreignHeaderHash: input.headerHash,
+          reason:
+            cause instanceof MidgardCekProgramMaterialMissingRootError
+              ? "missing"
+              : "invalid",
+          detail: String(cause),
+        }),
+      ),
+    ),
+    Effect.catchAll((cause: unknown) =>
+      cause instanceof CallbackFailure ||
+      cause instanceof ForeignBlockVerificationError
+        ? Effect.fail(cause instanceof CallbackFailure ? cause.cause : cause)
+        : Effect.fail(
+            new ForeignBlockVerificationError({
+              foreignHeaderHash: input.headerHash,
+              reason:
+                cause instanceof MidgardCekProgramMaterialMissingRootError
+                  ? "missing"
+                  : "incomplete",
+              detail: String(cause),
+            }),
+          ),
+    ),
+  );

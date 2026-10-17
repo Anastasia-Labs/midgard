@@ -5,95 +5,14 @@
 \section{State Representation}
 \label{s:phase-two-state-representation}
 
-This section describes how the state is represented during phase two validation, including the data structures and encoding methods used for UPLC evaluation.
+Canonical V1 represents executable scripts by a versioned CEK program envelope containing the UPLC version, term root, reachable node count, and material byte length. Typed content hashes authenticate the separately retained material graph. Variables use De Bruijn indices and lambda nodes contain a body root, without source variable names. The term alternatives include variable, delay, lambda, application, constant, context constant, force, error, builtin, constructor, and case; child sequences, values, environments, and continuations have their own authenticated representations.
 
-\subsection{Term Representation}
+The current CEK state contains a mode, execution index, focus root, environment root, continuation root, auxiliary integer, and consumed CPU and memory. Modes distinguish computation, return, environment lookup, builtin execution, success/error halt, case selection/application, and bounded semantic-builtin work. The versioned canonical encoding and domain-separated hash are defined by \code{cek-proof.ts} in the core package and the corresponding onchain CEK proof library. A three-field term/environment/continuation sketch is insufficient to identify a current machine state.
 
-The UPLC Term representation uses progressive hashing to maintain compact state while preserving verifiability:
+CEK execution is one phase of the transaction validation machine, alongside source resolution, signatures, script integrity, value conservation, and ledger-delta validation. The enclosing state binds the event, transaction, validation context, source kind, prior ledger root, phase, program counter, work root, execution budget, verdict, rejection code, and the operator's immutable claimed ledger delta. A rejecting transition preserves that claim; it does not replace it with an empty delta commitment.
 
-\begin{align*}
-    \text{Term} \coloneq&\;
-        \text{Variable} (\text{Name}) \\\mid&\;
-        \text{Lambda} (\text{Name}, \text{Hash}) \\\mid&\;
-        \text{Apply} (\text{Hash}, \text{Hash}) \\\mid&\;
-        \text{Constant} (\text{Hash}) \\\mid&\;
-        \text{Force} (\text{Hash}) \\\mid&\;
-        \text{Delay} (\text{Hash}) \\\mid&\;
-        \text{Builtin} (\text{BuiltinFunction})
-\end{align*}
+The header commits a validation-trace descriptor for each applicable event. A descriptor contains schema and machine versions, a trace root and step count, initial and terminal state hashes, verdict, and rejection-code hash. The DA payload retains descriptors and authenticated step witnesses so a challenger can reconstruct openings. The native transaction witness set contains address witnesses, scripts, and redeemers; it has no \code{execution\_traces} field. The earlier proposal to carry a separate bytes-to-term trace in that witness set is not the current wire format.
 
-Each \text{Hash} in the Term representation refers to another Term that has been previously processed and hashed. This creates a directed acyclic graph (DAG) of Term components where larger structures are decomposed into their constituent parts.
-
-For example, a lambda expression like \(\lambda x.\lambda y.[y x]\) would be represented as:
-\begin{itemize}
-    \item A Lambda node containing \((x, h_1)\)
-    \item Where \(h_1\) is the hash of a Lambda node containing \((y, h_2)\)
-    \item Where \(h_2\) is the hash of an Apply node containing \((h_3, h_4)\)
-    \item Where \(h_3\) is the hash of a Variable node containing \(y\)
-    \item Where \(h_4\) is the hash of a Variable node containing \(x\)
-\end{itemize}
-
-\subsection{Decoding Steps}
-
-The conversion from flat-encoded script bytes to the final Term follows a sequence of BytesToTermSteps:
-
-\begin{equation*}
-    \text{BytesToTermStep} \coloneq \left\{
-    \begin{array}{ll}
-        \text{remaining\_bytes} : & \text{ScriptBytes} \\
-        \text{partial\_term} : & \text{Term}
-    \end{array} \right\}
-\end{equation*}
-
-Each step represents an atomic transformation in the decoding process, with the \text{decoding\_step\_proof} enabling independent verification of that specific step.
-
-\subsection{Execution Steps}
-
-The execution state during UPLC evaluation is represented by the CEK machine state:
-
-\begin{equation*}
-    \text{CEKState} \coloneq \left\{
-    \begin{array}{ll}
-        \text{term\_hash} : & \text{Hash} \\
-        \text{env} : & \text{Environment} \\
-        \text{continuation} : & \text{Continuation}
-    \end{array} \right\}
-\end{equation*}
-
-Each execution step produces a new CEK state and tracks execution units consumed:
-
-\begin{equation*}
-    \text{ExecutionStep} \coloneq \left\{
-    \begin{array}{ll}
-        \text{before\_state} : & \text{CEKState} \\
-        \text{after\_state} : & \text{CEKState} \\
-        \text{execution\_units} : & \text{ExecutionUnits}
-    \end{array} \right\}
-\end{equation*}
-
-\subsection{Execution Trace}
-
-The complete execution trace combines the bytes-to-term conversion and CEK machine evaluation. In the following, we use the notation $\mathcal{RH}$ to indicate a root hash of a Merkle-Patricia tree. 
-
-\begin{equation*}
-    \text{ExecutionTrace} \coloneq \left\{
-    \begin{array}{ll}
-        \text{bytes\_to\_term\_steps} : & \mathcal{RH}(\text{[BytesToTermStep]}) \\
-        \text{initial\_state} : & \text{CEKState} \\
-        \text{steps} : & \mathcal{RH}(\text{[ExecutionStep]})
-    \end{array} \right\}
-\end{equation*}
-
-The execution trace is stored in transaction witness sets:
-
-\begin{equation*}
-    \text{MidgardTxWits} \coloneq \left\{
-    \begin{array}{ll}
-        ... \\
-        \text{execution\_traces} : & \quad?\;\mathcal{RH}(\text{Map(RdmrPtr, ExecutionTrace)})
-    \end{array} \right\}
-\end{equation*}
-
-This representation allows any step of the trace to be independently verified without requiring access to the complete execution history, enabling efficient fraud proof construction and validation.
+A one-step dispute authenticates the agreed pre-state and competing post-states and verifies the corresponding bounded machine transition. Exact encodings and bounds are maintained in the canonical transaction specification and consensus profile; a hash commitment alone does not prove that its opening fits an L1 transaction.
 
 \end{document}

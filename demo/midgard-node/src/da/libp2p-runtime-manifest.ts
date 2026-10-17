@@ -1,19 +1,20 @@
-import { writeFile } from "node:fs/promises";
-
+import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
-  DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  type DaLibp2pRuntimeManifest,
   normalizeDaDeploymentFingerprintHex,
+  parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
 
-import { readFinalizedDeploymentIdentity } from "@/commands/contract-deployment-info.js";
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
+import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [
   "host",
-  "producer-container-watcher-host",
+  "producer-container-committee-host",
   "compose",
   "public",
 ] as const;
@@ -21,44 +22,54 @@ export const DA_LIBP2P_RUNTIME_PROFILES = [
 export type DaLibp2pRuntimeProfile =
   (typeof DA_LIBP2P_RUNTIME_PROFILES)[number];
 
-export type DaLibp2pRuntimeManifestTarget = "producer" | "watcher";
+export type DaLibp2pRuntimeManifestTarget = "producer" | "committee";
 
 export type DaLibp2pRuntimeCommitteeMemberInput = {
   readonly signerIndex: number;
   readonly daVkey: string;
   readonly libp2pPrivateKeySource: string;
   readonly roles: readonly string[];
+  /**
+   * This member's own libp2p endpoint, for committees whose members do not
+   * share the profile's single committee address. On the single-machine
+   * profiles only the port may differ; compose and public members may also
+   * name their own host.
+   */
+  readonly endpoint?: { readonly host?: string; readonly port: number };
 };
 
 export type DaLibp2pRuntimeManifestOptions = {
   readonly target: DaLibp2pRuntimeManifestTarget;
   readonly profile: DaLibp2pRuntimeProfile;
   readonly contractDeploymentInfoPath: string;
-  readonly network?: string;
+  readonly network: string;
   readonly producerPrivateKeySource: string;
+  /** Dedicated non-signer identity for the public retained-DA process. */
+  readonly publicRetainedDaPrivateKeySource?: string;
   readonly committeeMembers: readonly DaLibp2pRuntimeCommitteeMemberInput[];
   readonly threshold: number;
   readonly localSignerIndex?: number;
   readonly producerPort?: number;
-  readonly watcherPort?: number;
+  readonly committeePort?: number;
   readonly producerServiceName?: string;
-  readonly watcherServiceName?: string;
+  readonly committeeServiceName?: string;
   readonly producerPublicHost?: string;
-  readonly watcherPublicHost?: string;
+  readonly committeePublicHost?: string;
+  readonly publicRetainedDaPort?: number;
+  readonly publicRetainedDaPublicHost?: string;
 };
 
-export type DaLibp2pRuntimeManifest = Record<string, unknown>;
-
 const DEFAULT_PRODUCER_PORT = 39002;
-const DEFAULT_WATCHER_PORT = 39001;
+const DEFAULT_COMMITTEE_PORT = 39001;
+const DEFAULT_PUBLIC_RETAINED_DA_PORT = 39003;
 const DEFAULT_PRODUCER_SERVICE = "midgard-node";
-const DEFAULT_WATCHER_SERVICE = "da-committee-node";
+const DEFAULT_COMMITTEE_SERVICE = "da-committee-node";
 
 export const generateDaLibp2pRuntimeManifest = async (
   options: DaLibp2pRuntimeManifestOptions,
 ): Promise<DaLibp2pRuntimeManifest> => {
   validateProfile(options.profile);
-  const deploymentIdentity = await readFinalizedDeploymentIdentity(
+  const deploymentIdentity = readFinalizedDeploymentIdentity(
     options.contractDeploymentInfoPath,
   );
   const deploymentFingerprint = normalizeDaDeploymentFingerprintHex(
@@ -66,6 +77,14 @@ export const generateDaLibp2pRuntimeManifest = async (
   );
   const producerIdentity = await loadDaLibp2pIdentity(
     options.producerPrivateKeySource,
+  );
+  if (options.publicRetainedDaPrivateKeySource === undefined) {
+    throw new Error(
+      "public retained DA runtime manifest requires publicRetainedDaPrivateKeySource",
+    );
+  }
+  const publicRetainedDaIdentity = await loadDaLibp2pIdentity(
+    options.publicRetainedDaPrivateKeySource,
   );
   const members = await Promise.all(
     options.committeeMembers.map(async (member) => {
@@ -80,19 +99,34 @@ export const generateDaLibp2pRuntimeManifest = async (
   );
   validateCommittee(members, options.threshold);
   const localMember =
-    options.target === "watcher"
+    options.target === "committee"
       ? memberForSignerIndex(members, options.localSignerIndex)
       : undefined;
   const ports = {
     producer: options.producerPort ?? DEFAULT_PRODUCER_PORT,
-    watcher: options.watcherPort ?? DEFAULT_WATCHER_PORT,
+    committee: options.committeePort ?? DEFAULT_COMMITTEE_PORT,
+    publicRetainedDa:
+      options.publicRetainedDaPort ?? DEFAULT_PUBLIC_RETAINED_DA_PORT,
   };
   validatePort(ports.producer, "producer port");
-  validatePort(ports.watcher, "watcher port");
+  validatePort(ports.committee, "committee node port");
+  validatePort(ports.publicRetainedDa, "public retained DA port");
   const hosts = hostsForProfile(options);
   if (options.profile === "public") {
     rejectLocalRuntimeHost(hosts.producer, "producer public host");
-    rejectLocalRuntimeHost(hosts.watcher, "watcher public host");
+    rejectLocalRuntimeHost(hosts.committee, "committee node public host");
+    rejectLocalRuntimeHost(
+      options.publicRetainedDaPublicHost ?? options.committeePublicHost!,
+      "public retained DA host",
+    );
+  }
+  if (
+    publicRetainedDaIdentity.peerId === producerIdentity.peerId ||
+    members.some((member) => member.peerId === publicRetainedDaIdentity.peerId)
+  ) {
+    throw new Error(
+      "public retained DA identity must not be a producer or committee identity",
+    );
   }
 
   const producerAddr = multiaddrForHost(
@@ -100,29 +134,64 @@ export const generateDaLibp2pRuntimeManifest = async (
     ports.producer,
     producerIdentity.peerId,
   );
-  const memberMultiaddrs = members.map((member) =>
-    isProducerMember(member, producerIdentity.peerId)
-      ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, member.peerId),
+  const endpointOf = (
+    member: DaLibp2pRuntimeCommitteeMemberInput,
+  ): { readonly host: string; readonly port: number } => ({
+    host: member.endpoint?.host ?? hosts.committee,
+    port: member.endpoint?.port ?? ports.committee,
+  });
+  const memberMultiaddrs = members.map((member) => {
+    if (isProducerMember(member, producerIdentity.peerId)) return producerAddr;
+    const endpoint = endpointOf(member);
+    return multiaddrForHost(endpoint.host, endpoint.port, member.peerId);
+  });
+  const localEndpoint =
+    localMember === undefined ? undefined : endpointOf(localMember);
+  const localListen = listenAddr(
+    listenHostForProfile(options.profile),
+    localEndpoint?.port ?? ports.producer,
   );
-  const localListen =
-    options.target === "producer"
-      ? listenAddr(listenHostForProfile(options.profile), ports.producer)
-      : listenAddr(listenHostForProfile(options.profile), ports.watcher);
   const localAnnounce =
-    options.target === "producer"
+    localEndpoint === undefined
       ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, localMember!.peerId);
+      : multiaddrForHost(
+          localEndpoint.host,
+          localEndpoint.port,
+          localMember!.peerId,
+        );
   const bootstrapMultiaddrs =
     options.target === "producer"
       ? memberMultiaddrs.filter(
           (_addr, index) => members[index]!.peerId !== producerIdentity.peerId,
         )
       : [producerAddr];
+  const publicRetainedDaHost =
+    options.profile === "public"
+      ? (options.publicRetainedDaPublicHost ?? options.committeePublicHost!)
+      : hosts.committee;
+  const publicRetainedDaAddr = multiaddrForHost(
+    publicRetainedDaHost,
+    ports.publicRetainedDa,
+    publicRetainedDaIdentity.peerId,
+  );
+  validateEndpoints({
+    profile: options.profile,
+    members: members
+      .filter((member) => !isProducerMember(member, producerIdentity.peerId))
+      .map((member) => ({ member, endpoint: endpointOf(member) })),
+    reserved: [
+      { label: "producer", host: hosts.producer, port: ports.producer },
+      {
+        label: "public retained DA",
+        host: publicRetainedDaHost,
+        port: ports.publicRetainedDa,
+      },
+    ],
+  });
 
-  return {
-    schemaVersion: DA_LIBP2P_RUNTIME_MANIFEST_SCHEMA_VERSION,
-    ...(options.network === undefined ? {} : { network: options.network }),
+  return parseDaLibp2pRuntimeManifest({
+    schemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+    network: options.network,
     deployment: {
       fingerprint: deploymentFingerprint,
       contract_deployment_manifest_id: deploymentFingerprint,
@@ -148,17 +217,44 @@ export const generateDaLibp2pRuntimeManifest = async (
         strict_sign: true,
         emit_self: false,
         allowed_topics_only: true,
-        max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+        max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
       },
       limits: {
-        max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        max_inline_response_bytes:
-          DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+        request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
       },
-      retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
+    },
+    public_retained_da: {
+      profile: "public-retained-da-v1",
+      access_policy: "any_noise_authenticated_peer",
+      peer_id: publicRetainedDaIdentity.peerId,
+      listen_multiaddrs: [
+        listenAddr(
+          listenHostForProfile(options.profile),
+          ports.publicRetainedDa,
+        ),
+      ],
+      announce_multiaddrs: [publicRetainedDaAddr],
+      protocols: [
+        "capabilities",
+        "payload-by-header",
+        "payload-chunk",
+        "metadata-by-header",
+        "proof-bundle-by-header",
+        "trace-step-by-index",
+        "event-to-step-by-event",
+      ],
+      limits: {
+        max_streams_per_peer: 4,
+        max_inflight_requests: 32,
+        max_inflight_requests_per_peer: 2,
+        max_inflight_proof_requests: 1,
+        request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      },
     },
     da_committee: {
       threshold: options.threshold,
@@ -170,7 +266,7 @@ export const generateDaLibp2pRuntimeManifest = async (
         roles: [...member.roles].sort(),
       })),
     },
-  };
+  });
 };
 
 const isProducerMember = (
@@ -182,9 +278,7 @@ const isProducerMember = (
 export const writeDaLibp2pRuntimeManifest = async (
   path: string,
   manifest: DaLibp2pRuntimeManifest,
-): Promise<void> => {
-  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-};
+): Promise<void> => writeJsonFileAtomic(path, manifest);
 
 function validateProfile(
   profile: string,
@@ -199,33 +293,33 @@ const hostsForProfile = (
     DaLibp2pRuntimeManifestOptions,
     | "profile"
     | "producerServiceName"
-    | "watcherServiceName"
+    | "committeeServiceName"
     | "producerPublicHost"
-    | "watcherPublicHost"
+    | "committeePublicHost"
   >,
-): { readonly producer: string; readonly watcher: string } => {
+): { readonly producer: string; readonly committee: string } => {
   switch (options.profile) {
     case "host":
-      return { producer: "127.0.0.1", watcher: "127.0.0.1" };
-    case "producer-container-watcher-host":
-      return { producer: "127.0.0.1", watcher: "host.docker.internal" };
+      return { producer: "127.0.0.1", committee: "127.0.0.1" };
+    case "producer-container-committee-host":
+      return { producer: "127.0.0.1", committee: "host.docker.internal" };
     case "compose":
       return {
         producer: options.producerServiceName ?? DEFAULT_PRODUCER_SERVICE,
-        watcher: options.watcherServiceName ?? DEFAULT_WATCHER_SERVICE,
+        committee: options.committeeServiceName ?? DEFAULT_COMMITTEE_SERVICE,
       };
     case "public":
       if (
         options.producerPublicHost === undefined ||
-        options.watcherPublicHost === undefined
+        options.committeePublicHost === undefined
       ) {
         throw new Error(
-          "public DA libp2p profile requires producer and watcher public hosts",
+          "public DA libp2p profile requires producer and committee node public hosts",
         );
       }
       return {
         producer: options.producerPublicHost,
-        watcher: options.watcherPublicHost,
+        committee: options.committeePublicHost,
       };
   }
 };
@@ -298,9 +392,64 @@ const memberForSignerIndex = (
       ? members[0]
       : members.find((member) => member.signerIndex === signerIndex);
   if (selected === undefined) {
-    throw new Error("watcher runtime manifest local signer index is unknown");
+    throw new Error("committee runtime manifest local signer index is unknown");
   }
   return selected;
+};
+
+const SINGLE_MACHINE_PROFILES: readonly DaLibp2pRuntimeProfile[] = [
+  "host",
+  "producer-container-committee-host",
+];
+
+// Every committee member other than the producer listens on its own endpoint,
+// so two members, or a member and the producer or public retained-DA
+// listener, must never resolve to the same host and port.
+const validateEndpoints = ({
+  profile,
+  members,
+  reserved,
+}: {
+  readonly profile: DaLibp2pRuntimeProfile;
+  readonly members: readonly {
+    readonly member: DaLibp2pRuntimeCommitteeMemberInput;
+    readonly endpoint: { readonly host: string; readonly port: number };
+  }[];
+  readonly reserved: readonly {
+    readonly label: string;
+    readonly host: string;
+    readonly port: number;
+  }[];
+}): void => {
+  const owners = new Map<string, string>();
+  const claim = (label: string, host: string, port: number): void => {
+    const key = `${host}:${port.toString()}`;
+    const owner = owners.get(key);
+    if (owner !== undefined) {
+      throw new Error(
+        `${label} and ${owner} must not share the libp2p endpoint ${key}`,
+      );
+    }
+    owners.set(key, label);
+  };
+  for (const { label, host, port } of reserved) claim(label, host, port);
+  for (const { member, endpoint } of members) {
+    const label = `committee member ${member.signerIndex.toString()}`;
+    if (member.endpoint !== undefined) {
+      validatePort(member.endpoint.port, `${label} port`);
+      if (member.endpoint.host !== undefined) {
+        if (SINGLE_MACHINE_PROFILES.includes(profile)) {
+          throw new Error(
+            `${label} host is fixed by the ${profile} profile; set only its port`,
+          );
+        }
+        if (profile === "public") {
+          rejectLocalRuntimeHost(member.endpoint.host, `${label} public host`);
+        }
+      }
+    }
+    claim(label, endpoint.host, endpoint.port);
+  }
 };
 
 const validatePort = (port: number, label: string): void => {

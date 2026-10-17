@@ -4,5 +4,35 @@ packages:
   - midgard-fault-proofs
   - midgard-validation
   - midgard-node
+  - midgard-node-tools
   - midgard-sdk
+  - midgard-watcher
   - da-committee-node
+  - midgard-test-support
+  - l1-node-transport
+  - midgard-l1-follower
+patchedDependencies:
+  blake2b@2.1.4: patches/blake2b@2.1.4.patch
+  postgres@3.4.9: patches/postgres@3.4.9.patch
+  "@lucid-evolution/utils@0.2.0": patches/@lucid-evolution__utils@0.2.0.patch
+overrides:
+  "@aiken-lang/merkle-patricia-forestry": file:vendor/mpf-1.3.1-midgard.1.tgz
+  "@lucid-evolution/utils@0.2.0>@harmoniclabs/uplc": 2.0.7
+  "@lucid-evolution/utils@0.2.0>@harmoniclabs/plutus-data": 2.0.1
+  libsodium-wrappers-sumo@0.7.15>libsodium-sumo: 0.7.15
+
+# These exact locked dependencies already ran install scripts under pnpm 9.
+allowBuilds:
+  "@parcel/watcher@2.5.6": true
+  cbor-extract@2.2.2: true
+  classic-level@1.4.1: true
+  classic-level@3.0.0: true
+  esbuild@0.25.0: true
+  msgpackr-extract@3.0.3: true
+  protobufjs@7.4.0: true
+
+# Preserve deploy from linked workspace packages without changing the lock graph.
+forceLegacyDeploy: true
+
+# Guarded recipes own installation; running a command must not reinstall dependencies.
+verifyDepsBeforeRun: false

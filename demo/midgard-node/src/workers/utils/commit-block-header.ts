@@ -1,24 +1,20 @@
 import type { MessagePort } from "node:worker_threads";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToUtxo,
+  type SlotConfig,
+  UTxO,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
-import type {
-  SpeculativeCandidateSummary,
-  SpeculativeInvalidationReason,
-  UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
-
-export type SpeculativeCommitBaseInput = {
-  readonly headerHash: string;
-  readonly utxosRoot: string;
-  readonly blockEndTimeMs: number;
-  readonly submittedTxHash: string;
-};
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
+import type { UnwrittenHold } from "../../services/intent-journal.holds.js";
 
 export type WorkerInput = {
+  readonly history?: import("../../services/follower-write-gate.js").FollowerWritePermit;
   readonly nativeMpf?: {
     readonly port: MessagePort;
     readonly durableRoot: string;
@@ -35,20 +31,16 @@ export type WorkerInput = {
      * worker thread has stopped, including timeout and interruption paths.
      */
     ledgerStoreLeaseOwner: string;
+    /**
+     * Immutable, node-selected time mapping used by canonical V1 forced
+     * validation. Plain data keeps candidate construction provider-free.
+     */
+    forcedValidationSlotConfig?: SlotConfig;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;
     baseSnapshotId?: string;
     stateQueueHasUnmergedTail?: boolean;
-    speculativeBuild?: {
-      readonly base: SpeculativeCommitBaseInput;
-      readonly watermarks: UserEventBarrierWatermarks;
-      /** Payload already committed by the submitted base block. */
-      readonly excludedMempoolTxIds: readonly string[];
-      readonly excludedDepositEventIds: readonly string[];
-      readonly excludedForcedTransactionEventIds: readonly string[];
-      readonly excludedWithdrawalEventIds: readonly string[];
-    };
   };
 };
 
@@ -71,10 +63,27 @@ export type SuccessfulSubmissionOutput = {
   nativeMpfPromotion?: NativeMpfPromotion;
 };
 
+export type CommitCandidateRoots = {
+  readonly utxos: string;
+  /** Raw transaction MPF root retained by the local finalization path. */
+  readonly rawTransactions: string;
+  readonly transactions: string;
+  readonly transitionTrace: string;
+  readonly eventToStep: string;
+};
+
 export type SkippedSubmissionOutput = {
   type: "SkippedSubmissionOutput";
   mempoolTxsCount: number;
   sizeOfProcessedTxs: number;
+  /** The block built and then deferred because no confirmed base was
+   * available: its end time and the roots already computed while building it
+   * (user-event roots are resolved only at submission). Absent when
+   * submission failed. */
+  candidate?: {
+    readonly endTimeMs: number;
+    readonly roots: CommitCandidateRoots;
+  };
 };
 
 export type NothingToCommitOutput = {
@@ -91,10 +100,23 @@ export type RegisteredDueWorkOutput = {
   dueWork: SlotAwareDueWork;
 };
 
-export type AwaitingForeignDaOutput = {
-  readonly type: "AwaitingForeignDaOutput";
-  readonly foreignHeaderHash: string;
-  readonly reason: string;
+/** The commit waits for its base: a foreign tail landed-block processing
+ * has not applied to the working ledger yet. */
+export type AwaitingCommitBaseOutput = {
+  readonly type: "AwaitingCommitBaseOutput";
+  readonly baseHeaderHash: string;
+  readonly detail: string;
+};
+
+/** The commit waits for the next scheduler window: an abandoned journal
+ * whose commit was signed holds this block's header hash (identical content on
+ * the same base, built in the same window). Its signed bytes can still land
+ * and be revived from it, so it is kept; the next window's block end time
+ * gives the replacement another header. */
+export type AwaitingNextCommitWindowOutput = {
+  readonly type: "AwaitingNextCommitWindowOutput";
+  readonly heldHeaderHash: string;
+  readonly detail: string;
 };
 
 export type SubmittedAwaitingLocalFinalizationOutput = {
@@ -120,39 +142,7 @@ export type SubmittedAwaitingConfirmationOutput = {
   submittedHeaderHash: string;
   submittedUtxosRoot: string;
   nativeMpfPromotion?: NativeMpfPromotion;
-  speculativeExecution?: {
-    readonly candidateId: string;
-    readonly baseHydrationPassesBeforeReady: number;
-    readonly mpfProcessingPassesBeforeReady: number;
-    readonly baseHydrationPassesAfterReady: number;
-    readonly mpfProcessingPassesAfterReady: number;
-  };
 };
-
-export type SpeculativeCandidateReadyOutput = {
-  readonly type: "SpeculativeCandidateReadyOutput";
-  readonly candidate: SpeculativeCandidateSummary;
-};
-
-export type SpeculativeCandidateInvalidatedOutput = {
-  readonly type: "SpeculativeCandidateInvalidatedOutput";
-  readonly candidateId: string;
-  readonly reason: SpeculativeInvalidationReason;
-};
-
-export type SpeculativeCommitWorkerInstruction =
-  | {
-      readonly type: "SubmitSpeculativeCandidate";
-      readonly confirmedBlock: SerializedStateQueueUTxO;
-      readonly stateQueueLeaseToken: string;
-      readonly baseSnapshotId: string;
-      readonly stateQueueHasUnmergedTail: boolean;
-      readonly localFinalizationBlock?: SerializedStateQueueUTxO;
-    }
-  | {
-      readonly type: "InvalidateSpeculativeCandidate";
-      readonly reason: SpeculativeInvalidationReason;
-    };
 
 export type SuccessfulLocalFinalizationRecoveryOutput = {
   type: "SuccessfulLocalFinalizationRecoveryOutput";
@@ -168,12 +158,43 @@ export type WorkerOutput =
   | NothingToCommitOutput
   | FailureOutput
   | RegisteredDueWorkOutput
-  | AwaitingForeignDaOutput
+  | AwaitingCommitBaseOutput
+  | AwaitingNextCommitWindowOutput
   | SubmittedAwaitingLocalFinalizationOutput
   | SubmittedAwaitingConfirmationOutput
-  | SpeculativeCandidateReadyOutput
-  | SpeculativeCandidateInvalidatedOutput
   | SuccessfulLocalFinalizationRecoveryOutput;
+
+/**
+ * Posted by the commit worker ahead of its output, as soon as a commit-stage
+ * rejection's mempool_ledger revert has committed: the parent reloads its
+ * ledger cache without waiting for the block submission to finish.
+ */
+export type MempoolLedgerRevertedNotice = {
+  readonly type: "MempoolLedgerRevertedNotice";
+};
+
+/**
+ * Posted by the commit worker ahead of its output: a commit stage held the
+ * build (`held`), or its rejections reached the build's limit and it left the
+ * rest pending (`breaker`). The parent names it on `/readyz`.
+ */
+export type CommitBuildAlarmNotice = {
+  readonly type: "CommitBuildAlarmNotice";
+  readonly alarm: "held" | "breaker";
+  readonly stage: string;
+};
+
+/**
+ * Posted by the commit worker ahead of its output when its intent journal
+ * refused a submission and the refusal hold's write to the node database
+ * has not landed (I1-H1). The worker's journal ends with the thread, so the
+ * parent's journal takes the holds over: `/readyz` names them, and its
+ * refresh at every tip writes them until they land.
+ */
+export type IntentRefusalHoldsNotice = {
+  readonly type: "IntentRefusalHoldsNotice";
+  readonly holds: readonly UnwrittenHold[];
+};
 
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
 // transferability.
@@ -193,7 +214,7 @@ export const serializeStateQueueUTxO = (
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to serialize state queue UTxO: ${e}`,
+          message: `Failed to serialize state queue UTxO: ${String(e)}`,
           cause: e,
         }),
     });
@@ -201,7 +222,7 @@ export const serializeStateQueueUTxO = (
       try: () => SDK.encodeLinkedListNodeView(stateQueueUTxO.datum),
       catch: (e) =>
         new SDK.CborSerializationError({
-          message: `Failed to serialize state queue datum: ${e}`,
+          message: `Failed to serialize state queue datum: ${String(e)}`,
           cause: e,
         }),
     });
@@ -226,7 +247,7 @@ export const deserializeStateQueueUTxO = (
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to convert state queue UTxO to CML: ${e}`,
+          message: `Failed to convert state queue UTxO to CML: ${String(e)}`,
           cause: e,
         }),
     });
@@ -234,7 +255,7 @@ export const deserializeStateQueueUTxO = (
       Effect.mapError(
         (e) =>
           new SDK.CborDeserializationError({
-            message: `Failed to deserialize datum: ${e}`,
+            message: `Failed to deserialize datum: ${e.message}`,
             cause: e,
           }),
       ),

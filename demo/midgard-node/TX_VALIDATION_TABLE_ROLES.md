@@ -18,6 +18,7 @@ Covered tables:
 - `processed_mempool`
 - `mempool_tx_deltas`
 - `tx_rejections`
+- `tx_rejection_causes`
 - `pending_block_finalizations`
 - `pending_block_finalization_deposits`
 - `pending_block_finalization_txs`
@@ -64,6 +65,7 @@ The migration runner creates `schema_migrations` and
 | `processed_mempool`                   | Durable holding area for tx payloads already incorporated into the mempool MPT while waiting for a later submit/finalization path.       |
 | `mempool_tx_deltas`                   | Per-tx spent/produced delta cache used to build MPT roots from accepted mempool txs.                                                     |
 | `tx_rejections`                       | Durable rejection evidence for validation, malformed preprocessing, and tx-status responses.                                             |
+| `tx_rejection_causes`                 | The rejected transactions a dependent or batch rejection follows from, so a revived journal can delete the rejections it caused.         |
 | `pending_block_finalizations`         | Single-active journal for submitted or potentially submitted block finalization and recovery.                                            |
 | `pending_block_finalization_deposits` | Ordered deposit-event membership for a pending block journal.                                                                            |
 | `pending_block_finalization_txs`      | Ordered tx-id membership for a pending block journal.                                                                                    |
@@ -107,8 +109,7 @@ Defined in
 
 The database adapter rejects inserting a tx id under a different header if the
 tx id is already present
-([blocks.ts](src/database/blocks.ts)). Inserts de-duplicate input tx ids
-and use `ON CONFLICT (tx_id) DO NOTHING` only after checking that an existing
+([blocks.ts](src/database/blocks.ts)). Inserts use `ON CONFLICT (tx_id) DO NOTHING` only after checking that an existing
 row is linked to the same header
 ([blocks.ts](src/database/blocks.ts)).
 
@@ -328,20 +329,27 @@ trailing bytes, undefined values, indefinite encoding, and duplicate map keys
 
 ### Writers
 
-`MempoolDB.insert` and `MempoolDB.insertMultiple` write deltas in the same SQL
-transaction that inserts the tx into `mempool`, updates `mempool_ledger`, marks
-consumed deposits, and writes address history
-([mempool.ts](src/database/mempool.ts),
+In a running node these rows come only from durable admission. For each
+validated batch the tx queue processor calls `TxAdmissionsDB.markAccepted`, which, in one
+transaction under the active validation lease, inserts mempool membership from
+the durable admission payloads, applies the net ledger effects and
+consumed-deposit state, and marks the admissions accepted. Only after that
+commit does it enqueue deltas and address history through
+`MempoolDB.enqueueAcceptedWriteBehind`. Auxiliary projections are bounded
+write-behind work, with inline overflow handling and graceful-shutdown
+draining; a crash may lose the unflushed window
+([tx-queue-processor.ts](src/fibers/tx-queue-processor.ts),
+[txAdmissions.ts](src/database/txAdmissions.ts),
 [mempool.ts](src/database/mempool.ts)).
 
 ### Readers
 
 `processMpfs` reads deltas for the mempool tx ids it is about to include in an
 MPF build
-([mpf.ts](src/workers/utils/mpf.ts)). If a delta is missing or invalid,
+([process.ts](src/mpf/process.ts)). If a delta is missing or invalid,
 the commit path has to fall back to resolving the tx effect, or reject the tx
 depending on the decoding outcome
-([mpf.ts](src/workers/utils/mpf.ts)).
+([commit-rejection.ts](src/mpf/commit-rejection.ts)).
 
 ### Lifecycle
 
@@ -414,13 +422,12 @@ Writers include:
   `tx_admissions` in one transaction
   ([txAdmissions.ts](src/database/txAdmissions.ts));
 - commitment preprocessing for malformed mempool txs
-  ([mpf.ts](src/workers/utils/mpf.ts));
-- local submit tooling that records immediate local rejection evidence
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
+  ([commit-rejection.ts](src/mpf/commit-rejection.ts)).
 
 ### Readers
 
-`/tx-status` reads `tx_rejections` first to report rejection metadata
+`/tx-status` reads rejection metadata, but `resolveTxStatus` prioritizes
+immutable, processed-mempool, and accepted-mempool placement before rejection
 ([listen-router.ts](src/commands/listen-router.ts)).
 
 The retention sweeper prunes old rejection rows
@@ -440,6 +447,33 @@ The retention sweeper prunes old rejection rows
 - Usually paired with `tx_admissions.status='rejected'`.
 - Must not contradict terminal accepted state in `immutable` or live accepted
   state in `mempool`.
+- A dependent or batch rejection names the rejections it follows from in
+  `tx_rejection_causes`, below.
+
+### Traced causes: `tx_rejection_causes`
+
+[0019_tx_rejection_causes.sql](src/database/migrations/sql/0019_tx_rejection_causes.sql)
+adds one row per cause of a rejection:
+
+- `tx_id BYTEA NOT NULL`, referencing `tx_rejections (tx_id)` with
+  `ON DELETE CASCADE`;
+- `cause_tx_id BYTEA NOT NULL`: the producer of a rejected output the
+  transaction spends, or a rejected member of the batch it was accepted in;
+- primary key `(tx_id, cause_tx_id)` and index
+  `idx_tx_rejection_causes_cause` on `cause_tx_id`.
+
+The working-ledger recompute's reject closure writes the causes in the same
+transaction as the rejections (`TxRejectionsDB.insertCauses`,
+[working-ledger-recompute.reject-closure.ts](src/services/working-ledger-recompute.reject-closure.ts)).
+A rejection with no row here is not traced to another transaction.
+
+When a landed own block's abandoned journal is revived, its members'
+rejections are deleted, and so is every rejection whose recorded causes are
+all deleted ones, transitively (`TxRejectionsDB.deleteWithTracedRejections`,
+called from `reviveJournals` in
+[own-journals.ts](src/landed-blocks/own-journals.ts)). A rejection that also
+has a cause still rejected stays. A cause row lives as long as its rejection:
+it is deleted with it, by the revival or by retention pruning.
 
 ### Invariants And Gaps
 
@@ -565,9 +599,10 @@ Typical successful tx-backed path:
 2. Submit succeeds or is recovered from L1.
 3. `markSubmitted` stores `submitted_tx_hash`.
 4. Local finalization inserts `immutable`/`blocks`, clears relevant mempool
-   state, marks deposits projected by header, and calls
+   state, preserves the deposit journal membership, and calls
    `markLocalFinalizationComplete`.
-5. Confirmation observes the header on the L1 state queue.
+5. Confirmation observes the header on the L1 state queue and assigns deposit
+   header identities, making those projected rows spendable.
 6. The journal moves to `observed_waiting_stability` or `finalized`, depending
    on whether local finalization still requires recovery.
 7. A stale or non-canonical submission can be marked `abandoned`.
@@ -592,10 +627,14 @@ Expected invariants:
 
 Known gaps:
 
-- The journal now carries base/expected roots, the full header, source payload
-  hashes, UTxOs, and transition records, but it is not a complete executable
-  mutation plan for every SQL and MPF side effect.
-- It does not by itself prove MPT/SQL root consistency.
+- The journal carries base/expected roots, the full header, source payload
+  hashes, UTxOs, transition records, and an explicit replay discriminator.
+  Architecture G additionally binds the owner binary, event log and digest,
+  ordered event roots, and base/candidate roots. Recovery consumes these fields;
+  it does not reconstruct the block from the current mempool.
+- SQL persistence and native MPF promotion remain separate durability boundaries.
+  Their consistency depends on the recovery and promotion checks, not merely on
+  the existence of the SQL row.
 
 ## `pending_block_finalization_deposits`
 
@@ -795,7 +834,9 @@ Columns:
 
 - `tx_id BYTEA PRIMARY KEY REFERENCES tx_admissions(tx_id) ON DELETE CASCADE`
 - `tx_canonical_cbor BYTEA NOT NULL`
-- `tx_canonical_cbor_sha256 BYTEA NOT NULL`
+- `tx_full_hash_v1 BYTEA NOT NULL`
+- `cek_program_material_sidecar_cbor BYTEA NOT NULL`
+- `cek_program_material_sidecar_sha256 BYTEA NOT NULL`
 
 Statuses:
 
@@ -888,9 +929,6 @@ Expected invariants:
 
 Known gaps:
 
-- Some local submission paths can still bypass durable admission and write
-  directly to mempool/rejection tables
-  ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts)).
 - Admission history should not be generically pruned while it remains canonical
   status evidence.
 
@@ -948,9 +986,10 @@ Local block finalization is wrapped in a local mutation job
 ([commit-submission.ts](src/workers/utils/commit-submission.ts)).
 
 Confirmed merge finalization starts, completes, or fails a merge finalization
-job around the local `confirmed_ledger` and `blocks` updates
-([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts),
-[merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
+job around the local `confirmed_ledger` and `blocks` updates, both right after
+the merge's L1 confirmation and when a later merge attempt finalizes a merge L1
+confirmed that this database has not
+([merge-to-confirmed-state.ts](src/transactions/state-queue/merge-to-confirmed-state.ts)).
 
 ### Readers
 
@@ -986,8 +1025,16 @@ Expected invariants:
 Known gaps:
 
 - `plan_hash` exists in the schema but is not populated by the adapter.
-- There is no automated replay/adoption executor for unfinished jobs.
-- Unfinished mutation jobs block listener startup until recovery is performed.
+- Two kinds of job are retried automatically. `confirmed_merge_finalization`
+  jobs are retried by the merge fiber: every merge attempt first finalizes each
+  merge L1 confirmed that this database has not, and fails until that
+  succeeds; the merge builder does the same up to the confirmed state its merge
+  spends. A failed `local_block_finalization` job whose journal still awaits
+  local finalization is retried by the commit worker while its block is live.
+  Every other unfinished job needs recovery.
+- Unfinished mutation jobs block listener startup until recovery is performed,
+  except confirmed-merge jobs and failed local-finalization jobs whose journal
+  still awaits local finalization, which startup leaves to the runtime.
 
 ## `schema_migrations`
 
@@ -1181,9 +1228,11 @@ The pending block recovery model spans:
 - persistent MPT state
 - L1 state queue headers
 
-`pending_block_finalizations` records lifecycle status, but it is not a complete
-mutation plan. Stronger fingerprints and replay/adoption metadata remain needed
-for complete crash-boundary evidence.
+`pending_block_finalizations` records lifecycle status and exact replay inputs.
+The native replay variant binds the event log, event roots, owner identity, and
+base/candidate roots; the delta variant carries its ledger delta. Recovery uses
+these persisted inputs and checks the durable marker. A populated journal alone
+is not evidence that every crash boundary has been exercised.
 
 ### MPT relationship
 

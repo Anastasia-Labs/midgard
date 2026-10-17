@@ -6,7 +6,7 @@ description: "Attaching scripts, choosing script purposes, how redeemer indexes 
 Scripts are the highest-risk part of building a Midgard transaction. A redeemer points
 at its script by **position**, and those positions are derived from validator ordering,
 not from the order you called the builder. Get the derivation wrong and the transaction
-fails on-chain rather than locally.
+fails validation; optional local preflight can detect it before submission.
 
 `lucid-midgard` derives every index for you. This page explains the rules it applies, so
 you can reason about a transaction that does not validate.
@@ -15,12 +15,12 @@ you can reason about a transaction that does not validate.
 
 Phase B discovers script executions for four purposes:
 
-| Purpose | Triggered by |
-| --- | --- |
-| `spend` | A script payment credential on a spent output. |
-| `mint` | A policy id in the native mint map. |
+| Purpose   | Triggered by                                      |
+| --------- | ------------------------------------------------- |
+| `spend`   | A script payment credential on a spent output.    |
+| `mint`    | A policy id in the native mint map.               |
 | `observe` | A required observer hash in the transaction body. |
-| `receive` | A protected script output. |
+| `receive` | A protected script output.                        |
 
 `receive` is Midgard-specific. It requires a MidgardV1 script context, and a PlutusV3
 `receive` is rejected locally before submission because Cardano's context cannot express
@@ -41,17 +41,17 @@ Each redeemer index is the position of its target in a **sorted** list:
   receiving-hash list.
 
 <Callout type="warn" title="Outputs are the exception">
-Outputs are never sorted for context construction. They stay in authored order. Every
-other derived index uses validator ordering, which is why balancing can reorder inputs
-without invalidating your redeemers, but reordering outputs changes the transaction.
+  Outputs are never sorted for context construction. They stay in authored
+  order. Every other derived index uses validator ordering, which is why
+  balancing can reorder inputs without invalidating your redeemers, but
+  reordering outputs changes the transaction.
 </Callout>
 
 ## Datums
 
-Inline datum outputs and datum witnesses for script spends are both supported. Datum
-witnesses must decode as CML Plutus data. Witness de-duplication is keyed on the datum
-hash, and duplicates are rejected rather than merged. Current validation rejects
-MidgardV1 datum-hash spends.
+Midgard supports inline PlutusData datums only. Datum hashes are rejected.
+Although `attach.Datum` exists on the fluent surface, completion rejects datum
+witnesses because the native wire format has no datum witness bucket.
 
 ## Script integrity hash
 
@@ -79,26 +79,22 @@ may need Phase B state to resolve. Phase B rebuilds the views, recomputes the ha
 rejects on mismatch. A missing language view and an extraneous one are both mismatches.
 
 <Callout type="error" title="Cost models are protocol constants">
-The `PlutusV3` and `MidgardV1` cost-model views are frozen Midgard constants. A
-dependency bump must not change these arrays. Changing them is a protocol migration.
+  The `PlutusV3` and `MidgardV1` cost-model views are frozen Midgard constants.
+  A dependency bump must not change these arrays. Changing them is a protocol
+  migration.
 </Callout>
 
 ## Reference scripts
 
-Resolving a reference script depends on the reference input existing in Phase B state,
-which the builder cannot guarantee. So the builder **refuses to finalize** a script
-transaction when it cannot know a required reference-script language locally, unless you
-supply explicit trusted metadata.
+Reference inputs must preserve their canonical output bytes. Trusted metadata
+binds a declared script language and hash to a reference out-ref; declarations
+are checked against available script bytes and cannot supply executable code.
 
-Trusted metadata is keyed by the reference out-ref and declares the exact script
-language branch and the hash in that branch. If the local output CBOR contains a script
-reference, the builder verifies your declaration against the decoded bytes and rejects a
-mismatch. A CML PlutusV3 reference script is treated as PlutusV3 by default; using the
-same bytes in the MidgardV1 hash domain requires explicit trusted `MidgardV1` metadata.
-
-Metadata supplied without local script bytes is accepted as caller-trusted input, and
-remains subject to the node recomputing it in Phase B. Trust here buys you local
-completion, not validity.
+Non-native reference execution requires the canonical script envelope and exact
+CEK program material. Supply required sidecar material through
+`complete({ programMaterial })`; completion verifies its match and fails closed
+when material is missing or inconsistent. Metadata alone is insufficient.
+Node Phase B still resolves the reference input against its own ledger state.
 
 ## Related
 

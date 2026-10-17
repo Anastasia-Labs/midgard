@@ -1,0 +1,378 @@
+/** Strict evidence preparation for the standalone withdrawal-mistag family. */
+import { isDeepStrictEqual } from "node:util";
+
+import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
+import { computeHash32 } from "@al-ft/midgard-core";
+import {
+  decodeMidgardAddressBytes,
+  decodeMidgardTxOutput,
+  encodeMidgardSpendInputItem,
+} from "@al-ft/midgard-core/codec";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
+import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+const domain = Buffer.from("MidgardWithdrawalV1", "utf8");
+
+const sameOutRef = (
+  left: SDK.OutputReference,
+  right: SDK.OutputReference,
+): boolean =>
+  left.transactionId === right.transactionId &&
+  left.outputIndex === right.outputIndex;
+
+const proofSteps = (proof: SDK.Proof) =>
+  proof.map((step) => {
+    if ("Branch" in step) {
+      return {
+        type: "branch" as const,
+        skip: Number(step.Branch.skip),
+        neighbors: step.Branch.neighbors,
+      };
+    }
+    if ("Fork" in step) {
+      return {
+        type: "fork" as const,
+        skip: Number(step.Fork.skip),
+        neighbor: {
+          nibble: Number(step.Fork.neighbor.nibble),
+          prefix: step.Fork.neighbor.prefix,
+          root: step.Fork.neighbor.root,
+        },
+      };
+    }
+    return {
+      type: "leaf" as const,
+      skip: Number(step.Leaf.skip),
+      neighbor: { key: step.Leaf.key, value: step.Leaf.value },
+    };
+  });
+
+const verifyMpf = ({
+  root,
+  key,
+  value,
+  proof,
+  membership,
+  label,
+}: {
+  readonly root: string;
+  readonly key: Buffer;
+  readonly value?: Buffer;
+  readonly proof: SDK.Proof;
+  readonly membership: boolean;
+  readonly label: string;
+}): void => {
+  const actual = MpfProof.fromJSON(key, value, proofSteps(proof)).verify(
+    membership,
+  );
+  const actualHex =
+    actual === null
+      ? SDK.EMPTY_MERKLE_TREE_ROOT
+      : Buffer.from(actual).toString("hex");
+  if (actualHex !== root) {
+    throw new Error(`${label} does not open its authenticated MPF root`);
+  }
+};
+
+const verifyCountedMembership = async <K, V>({
+  witness,
+  expectedDomain,
+  keyCbor,
+  valueCbor,
+  label,
+}: {
+  readonly witness: SDK.RootMembershipProof<K, V>;
+  readonly expectedDomain: SDK.RootDomain;
+  readonly keyCbor: string;
+  readonly valueCbor: string;
+  readonly label: string;
+}): Promise<void> => {
+  if (JSON.stringify(witness.domain) !== JSON.stringify(expectedDomain)) {
+    throw new Error(`${label} carries the wrong counted-root domain`);
+  }
+  if (witness.count <= 0n) throw new Error(`${label} count must be positive`);
+  const counted = await Effect.runPromise(
+    SDK.commitCountedRootProgram({
+      domain: witness.domain,
+      phasRoot: witness.phas_root,
+      count: witness.count,
+    }),
+  );
+  if (counted !== witness.root) {
+    throw new Error(`${label} counted root does not bind its PHAS root/count`);
+  }
+  verifyMpf({
+    root: witness.phas_root,
+    key: Buffer.from(keyCbor, "hex"),
+    value: Buffer.from(valueCbor, "hex"),
+    proof: witness.proof,
+    membership: true,
+    label,
+  });
+};
+
+/**
+ * Checks the owner signature over the committed body bytes. Decoding a body
+ * drops repeated datum map keys, so the bytes are never re-encoded.
+ */
+const signatureIsValid = (
+  info: SDK.WithdrawalInfo,
+  bodyCbor: string,
+): boolean => {
+  try {
+    const [publicKeyHex, signatureHex] = info.signature;
+    if (publicKeyHex.length !== 64 || signatureHex.length !== 128) return false;
+    const publicKey = CML.PublicKey.from_bytes(
+      Buffer.from(publicKeyHex, "hex"),
+    );
+    if (publicKey.hash().to_hex() !== info.body.l2_owner) return false;
+    const message = computeHash32(
+      Buffer.concat([domain, Buffer.from(bodyCbor, "hex")]),
+    );
+    return publicKey.verify(
+      message,
+      CML.Ed25519Signature.from_raw_bytes(Buffer.from(signatureHex, "hex")),
+    );
+  } catch {
+    return false;
+  }
+};
+
+const hash32Hex = (cbor: string): string =>
+  computeHash32(Buffer.from(cbor, "hex")).toString("hex");
+
+const decodedInfo = (infoCbor: string): SDK.WithdrawalInfo | undefined => {
+  try {
+    return Data.from(infoCbor, SDK.WithdrawalInfo);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Admits the committed leaf value bytes: they must be serialiseData-form and
+ * the carried typed value must be their decoded view. Neither is re-encoded,
+ * since a user datum need not survive a typed encoder; the counted-root
+ * membership below authenticates the bytes themselves.
+ */
+const committedInfoCbor = (
+  committedWithdrawal: SDK.WithdrawalSourceMembershipProof,
+  infoCbor: string,
+): string => {
+  if (
+    !/^(?:[0-9a-f]{2})+$/u.test(infoCbor) ||
+    aikenSerialisedPlutusDataCborPreservingMapOrder(infoCbor) !== infoCbor ||
+    !isDeepStrictEqual(decodedInfo(infoCbor), committedWithdrawal.value)
+  ) {
+    throw new Error(
+      "withdrawal source bytes do not encode the committed withdrawal",
+    );
+  }
+  return infoCbor;
+};
+
+export type PrepareWithdrawalMistagArgs = {
+  readonly challengedHeaderHash: string;
+  readonly committedWithdrawal: SDK.WithdrawalSourceMembershipProof;
+  /**
+   * The committed leaf value bytes. Decoding loses repeated datum map keys, so
+   * hashes, the signature message and the payout size all read these bytes.
+   */
+  readonly committedWithdrawalInfoCbor: string;
+  readonly eventToStep: SDK.EventToStepMembershipProof;
+  readonly transitionStep: SDK.IndexedTraceProof;
+  readonly ledgerEvidence:
+    | {
+        readonly PresentLedgerOutput: {
+          readonly output_cbor: string;
+          readonly membership_proof: SDK.Proof;
+        };
+      }
+    | {
+        readonly AbsentLedgerOutput: {
+          readonly non_membership_proof: SDK.Proof;
+        };
+      };
+};
+
+/**
+ * Authenticates every retained opening, recomputes the exact predicate, and
+ * refuses honestly tagged evidence before any L1 transaction is submitted.
+ */
+export const prepareWithdrawalMistag = async ({
+  challengedHeaderHash,
+  committedWithdrawal,
+  committedWithdrawalInfoCbor,
+  eventToStep,
+  transitionStep,
+  ledgerEvidence,
+}: PrepareWithdrawalMistagArgs): Promise<SDK.WithdrawalMistagPreparedEvidence> => {
+  if (!/^[0-9a-f]{56}$/u.test(challengedHeaderHash)) {
+    throw new Error(
+      "withdrawal-mistag challenged header hash must be 28-byte hex",
+    );
+  }
+  const infoCbor = committedInfoCbor(
+    committedWithdrawal,
+    committedWithdrawalInfoCbor,
+  );
+  const bodyCbor = plutusConstrFieldCbor(infoCbor, [0]);
+  await verifyCountedMembership({
+    witness: committedWithdrawal,
+    expectedDomain: "WithdrawalsRootDomain",
+    keyCbor: SDK.committedWithdrawalKeyBytes(committedWithdrawal.key),
+    valueCbor: infoCbor,
+    label: "withdrawal source",
+  });
+  await verifyCountedMembership({
+    witness: eventToStep,
+    expectedDomain: "EventToStepRootDomain",
+    keyCbor: Data.to(eventToStep.key, SDK.EventKey),
+    valueCbor: Data.to(eventToStep.value, SDK.EventToStepValue),
+    label: "event-to-step",
+  });
+  await verifyCountedMembership({
+    witness: transitionStep,
+    expectedDomain: "TransitionTraceRootDomain",
+    keyCbor: Data.to(transitionStep.key),
+    valueCbor: Data.to(transitionStep.value, SDK.TransitionStep),
+    label: "transition trace",
+  });
+
+  if (!("WithdrawalEventKey" in eventToStep.key)) {
+    throw new Error("event-to-step key is not a withdrawal event");
+  }
+  if (
+    !sameOutRef(
+      eventToStep.key.WithdrawalEventKey.withdrawal_id,
+      committedWithdrawal.key,
+    ) ||
+    eventToStep.value.phase !== "Withdrawal" ||
+    transitionStep.value.phase !== "Withdrawal" ||
+    transitionStep.key !== eventToStep.value.step_index ||
+    transitionStep.value.step_index !== eventToStep.value.step_index ||
+    !("WithdrawalEventKey" in transitionStep.value.event_key) ||
+    !sameOutRef(
+      transitionStep.value.event_key.WithdrawalEventKey.withdrawal_id,
+      committedWithdrawal.key,
+    )
+  ) {
+    throw new Error("withdrawal-mistag transition coordinate is inconsistent");
+  }
+
+  const info = committedWithdrawal.value;
+  let outputPresent = false;
+  let coreValid = false;
+  let ownerSignatureValid = false;
+  let outputLovelace = 0n;
+  let outputAssetCount = 0n;
+  let outputAssetFrontierCommitment = "";
+  let cardanoValueSize = 0n;
+  let authenticatedLedgerEvidence: SDK.WithdrawalMistagLedgerEvidence;
+  const outrefKey = encodeMidgardSpendInputItem({
+    txId: Buffer.from(info.body.l2_outref.transactionId, "hex"),
+    outputIndex: Number(info.body.l2_outref.outputIndex),
+  });
+
+  if ("PresentLedgerOutput" in ledgerEvidence) {
+    const outputCbor = Buffer.from(
+      ledgerEvidence.PresentLedgerOutput.output_cbor,
+      "hex",
+    );
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
+      outputIndex: Number(info.body.l2_outref.outputIndex),
+      outputCbor,
+    });
+    // The descriptor bytes are the trie value, never the full output bytes.
+    verifyMpf({
+      root: transitionStep.value.pre_utxos_root,
+      key: outrefKey,
+      value: material.descriptorCbor,
+      proof: ledgerEvidence.PresentLedgerOutput.membership_proof,
+      membership: true,
+      label: "withdrawal ledger output",
+    });
+    const output = decodeMidgardTxOutput(outputCbor);
+    const address = decodeMidgardAddressBytes(output.address);
+    const assetCount = SDK.withdrawalLedgerAssetCount(output.value);
+    outputLovelace = output.value.lovelace;
+    outputAssetCount = BigInt(material.descriptor.assetCount);
+    outputAssetFrontierCommitment =
+      material.descriptor.assetFrontierCommitment.toString("hex");
+    ownerSignatureValid =
+      address.paymentCredential.kind === "PubKey" &&
+      address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
+      assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
+      signatureIsValid(info, bodyCbor);
+    outputPresent = true;
+    cardanoValueSize = BigInt(material.descriptor.cardanoValueSize);
+    coreValid =
+      address.paymentCredential.kind === "PubKey" &&
+      address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
+      SDK.withdrawalValueMatchesLedgerOutput(
+        info.body.l2_value,
+        output.value,
+      ) &&
+      assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
+      signatureIsValid(info, bodyCbor);
+    authenticatedLedgerEvidence = {
+      PresentLedgerOutput: {
+        descriptor_cbor: material.descriptorCbor.toString("hex"),
+        membership_proof: ledgerEvidence.PresentLedgerOutput.membership_proof,
+      },
+    };
+  } else {
+    verifyMpf({
+      root: transitionStep.value.pre_utxos_root,
+      key: outrefKey,
+      proof: ledgerEvidence.AbsentLedgerOutput.non_membership_proof,
+      membership: false,
+      label: "withdrawal ledger non-membership",
+    });
+    authenticatedLedgerEvidence = ledgerEvidence;
+  }
+
+  const payable = SDK.withdrawalMistagPayable({
+    bodyCbor,
+    lovelace: SDK.withdrawalMistagLovelace(info.body),
+    cardanoValueSize,
+  });
+  const actualValid = outputPresent && coreValid && payable;
+  const claimedValid = SDK.withdrawalClaimsValid(info);
+  const exactOutputBytes = SDK.withdrawalMistagExactPayoutOutputBytes({
+    bodyCbor,
+    cardanoValueSize,
+  });
+  return {
+    version: 1,
+    challengedHeaderHash,
+    committedWithdrawal,
+    committedWithdrawalInfoCbor: infoCbor,
+    eventToStep,
+    transitionStep,
+    ledgerEvidence: authenticatedLedgerEvidence,
+    withdrawalInfoHash: hash32Hex(infoCbor),
+    withdrawalBodyHash: hash32Hex(bodyCbor),
+    cardanoValueSize,
+    outputPresent,
+    coreValid,
+    ownerSignatureValid,
+    outputLovelace,
+    outputAssetCount,
+    outputAssetFrontierCommitment,
+    payable,
+    actualValid,
+    exactOutputBytes,
+    requiredLovelace: SDK.withdrawalMistagMinimumLovelace({
+      bodyCbor,
+      cardanoValueSize,
+    }),
+    direction: SDK.withdrawalMistagDirection({ claimedValid, actualValid }),
+  };
+};

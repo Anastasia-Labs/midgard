@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAuthoritativeLocalFinalizationPreflight } from "@/fibers/block-commitment.js";
+import { resolveAuthoritativeLocalFinalizationPreflight } from "../src/fibers/block-commitment.js";
 import {
   type ActivePendingFinalizationIdentity,
   confirmationPendingSnapshotChanged,
   staleRecoveryMustPreserveNewActiveJournal,
-} from "@/fibers/block-confirmation.js";
-import type { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../src/fibers/block-confirmation.js";
+import type { SerializedStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 
 const identity = (headerHash: string): ActivePendingFinalizationIdentity => ({
   headerHash,
@@ -104,5 +104,36 @@ describe("confirmation/local-finalization race guards", () => {
         current: null,
       }),
     ).toBe(false);
+  });
+});
+
+it("fences confirmation captured before durable signed intent installation", () => {
+  const captured = {
+    ...identity("aa".repeat(28)),
+    submittedTxHash: null,
+    status: "pending_submission" as const,
+  };
+  expect(
+    confirmationPendingSnapshotChanged({
+      captured,
+      current: { ...captured, intendedTxHash: "bb".repeat(32) },
+    }),
+  ).toBe(true);
+});
+it("recovers a canonically observed journal without inventing an acknowledgement", () => {
+  expect(
+    resolveAuthoritativeLocalFinalizationPreflight({
+      localFinalizationPending: false,
+      availableLocalFinalizationBlock: "",
+      activeJournalHeaderHash: "aa".repeat(28),
+      activeJournalSubmittedTxHash: null,
+      activeJournalStatus: "observed_waiting_stability",
+      tailHeaderHash: "aa".repeat(28),
+      tailBlock,
+    }),
+  ).toEqual({
+    localFinalizationPending: true,
+    availableLocalFinalizationBlock: tailBlock,
+    recoveredRacedJournal: true,
   });
 });

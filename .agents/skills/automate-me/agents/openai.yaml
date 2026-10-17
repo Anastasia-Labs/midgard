@@ -1,0 +1,6 @@
+interface:
+  display_name: "Automate Me"
+  short_description: "Create or revise a personal mode skill from the user\u2019s stated pr"
+  default_prompt: "Use $automate-me for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

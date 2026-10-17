@@ -1,0 +1,575 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+import { NATIVE_RECIPES } from "./native-recipes.mjs";
+
+export const sha256 = (value) =>
+  createHash("sha256").update(value).digest("hex");
+
+// One freshness verdict hashes the shared closure once per dependency it
+// visits. A scope memoizes package lists, file digests and identities for
+// one synchronous verdict only: nothing can build or edit while it is open,
+// so no entry outlives the state it describes.
+let identityScope;
+export const withIdentityScope = (action) => {
+  if (identityScope) return action();
+  identityScope = new Map();
+  try {
+    return action();
+  } finally {
+    identityScope = undefined;
+  }
+};
+export const scoped = (key, compute) => {
+  if (!identityScope) return compute();
+  if (!identityScope.has(key)) identityScope.set(key, compute());
+  return identityScope.get(key);
+};
+export const json = (path) => JSON.parse(readFileSync(path, "utf8"));
+export const atomicJson = (path, value) => {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  renameSync(temporary, path);
+};
+
+// Verify every existing ancestor as well as the lexical path. A path through
+// a symlink must never escape the declared checkout, including new outputs.
+export const inside = (root, path) => {
+  const base = realpathSync(root);
+  const target = resolve(base, path);
+  const contained = (value) =>
+    value === base || value.startsWith(`${base}${sep}`);
+  if (!contained(target) || target === base)
+    throw new Error(`expected a file inside ${base}: ${path}`);
+  let ancestor = target;
+  while (!existsSync(ancestor)) ancestor = dirname(ancestor);
+  if (!contained(realpathSync(ancestor)))
+    throw new Error(`symlink escapes checkout: ${path}`);
+  return target;
+};
+
+const managed = new Set(["node_modules", ".git", ".claude"]);
+const sourceDirectories = new Set([
+  "src",
+  "lib",
+  "validators",
+  "env",
+  "scripts",
+  "tests",
+  "fixtures",
+  "testSupport",
+  "patches",
+  "vendor",
+]);
+const packageOutputs = new Set([
+  "dist",
+  "coverage",
+  "logs",
+  ".tmp",
+  ".next",
+  ".turbo",
+  ".architecture-f-wasm",
+  "deploymentInfo",
+]);
+// Output ownership comes from the containing project, never a basename in a
+// source tree: src/build and lib/target are legitimate inputs.
+const excludedInput = (directory, name, source) => {
+  if (managed.has(name)) return true;
+  if (source) return false;
+  return (
+    (packageOutputs.has(name) &&
+      existsSync(resolve(directory, "package.json"))) ||
+    (name === "target" && existsSync(resolve(directory, "Cargo.toml"))) ||
+    (name === "build" && existsSync(resolve(directory, "aiken.toml")))
+  );
+};
+const sourceAncestor = (path) => {
+  let directory = resolve(path);
+  while (directory !== dirname(directory)) {
+    if (sourceDirectories.has(directory.split(sep).at(-1))) return true;
+    if (
+      ["package.json", "Cargo.toml", "aiken.toml"].some((file) =>
+        existsSync(resolve(directory, file)),
+      )
+    )
+      return false;
+    directory = dirname(directory);
+  }
+  return false;
+};
+export const sourceInput = (root, path) => {
+  let directory = root;
+  let source = false;
+  for (const name of path.split("/")) {
+    if (excludedInput(directory, name, source)) return false;
+    source ||= sourceDirectories.has(name);
+    directory = resolve(directory, name);
+  }
+  return true;
+};
+// Untracked paths Git ignores, absolute; a wholly ignored directory is one
+// entry. Outside a checkout nothing is ignored, so every file still counts.
+const gitIgnored = (root) =>
+  scoped(`ignored\0${root}`, () =>
+    existsSync(resolve(root, ".git"))
+      ? new Set(
+          execFileSync(
+            "git",
+            [
+              "ls-files",
+              "-z",
+              "--others",
+              "--ignored",
+              "--exclude-standard",
+              "--directory",
+            ],
+            { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+          )
+            .split("\0")
+            .filter(Boolean)
+            .map((path) => resolve(root, path)),
+        )
+      : new Set(),
+  );
+export const filesUnder = (root, { outputs = false, ignored } = {}) => {
+  const files = [];
+  if (!existsSync(root)) return files;
+  const visit = (directory, source) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    )) {
+      if (!outputs && excludedInput(directory, entry.name, source)) continue;
+      const path = resolve(directory, entry.name);
+      // Ignored files in a source tree may still be imported, so only
+      // ignored paths outside one (test leftovers, local state) are skipped.
+      if (!source && ignored?.has(path)) continue;
+      // Linked source inputs cannot be silently omitted from an identity.
+      if (entry.isSymbolicLink())
+        throw new Error(`symlink in input/output tree: ${path}`);
+      if (entry.isDirectory())
+        visit(path, source || sourceDirectories.has(entry.name));
+      else if (entry.isFile()) files.push(path);
+    }
+  };
+  visit(root, sourceAncestor(root));
+  return files;
+};
+
+export const hashFiles = (root, paths) => {
+  const entries = [...new Set(paths)].sort().map((path) =>
+    scoped(`file\0${root}\0${path}`, () => {
+      const absolute = inside(root, path);
+      if (!lstatSync(absolute).isFile())
+        throw new Error(`input is not a regular file: ${path}`);
+      return [
+        relative(root, absolute).split(sep).join("/"),
+        sha256(readFileSync(absolute)),
+      ];
+    }),
+  );
+  return {
+    sha256: sha256(JSON.stringify(entries)),
+    files: Object.fromEntries(entries),
+  };
+};
+
+export const workspacePackages = (root) =>
+  scoped(`packages\0${root}`, () =>
+    readdirSync(resolve(root, "demo"), { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          existsSync(resolve(root, "demo", entry.name, "package.json")),
+      )
+      .map((entry) => ({
+        directory: `demo/${entry.name}`,
+        ...json(resolve(root, "demo", entry.name, "package.json")),
+      })),
+  );
+
+// A package is named by its declared name or its directory under demo/. A
+// directory may also carry a scope the workspace uses (`@al-ft/midgard-node`
+// for the unscoped `midgard-node`), since half the packages are scoped and
+// the other half are not.
+export const packageByName = (root, name) => {
+  const packages = workspacePackages(root);
+  const scopes = new Set(
+    packages.flatMap(({ name: declared }) =>
+      declared?.startsWith("@") ? [declared.split("/")[0]] : [],
+    ),
+  );
+  const [scope, rest] = name.split("/");
+  const directory = rest !== undefined && scopes.has(scope) ? rest : name;
+  const pkg = packages.find(
+    (entry) => entry.name === name || entry.directory === `demo/${directory}`,
+  );
+  if (!pkg)
+    throw new Error(
+      `unknown workspace package ${name}; use contrib locate to find its declared name`,
+    );
+  return pkg;
+};
+
+export const packageClosure = (root, name) => {
+  const packages = workspacePackages(root);
+  const found = new Map();
+  const visit = (pkg) => {
+    if (found.has(pkg.name)) return;
+    found.set(pkg.name, pkg);
+    for (const dependency of Object.keys({
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+    })) {
+      const next = packages.find((entry) => entry.name === dependency);
+      if (next) visit(next);
+    }
+  };
+  visit(packageByName(root, name));
+  return [...found.values()];
+};
+
+// The workspace packages a build keeps out of its bundle: named in a tsup
+// config's `external` list or by a `--external` flag. Blind spot: a name
+// computed rather than spelled.
+const externalWorkspacePackages = (root, pkg, packages) => {
+  const lists = [
+    ...[
+      ...buildConfigText(root, pkg).matchAll(/\bexternal\s*:\s*\[([^\]]*)\]/gu),
+    ].map(([, list]) => list),
+    ...(packageBuildTask(pkg)?.steps ?? []).flatMap(({ command }) =>
+      command.flatMap((arg, index) =>
+        arg === "--external"
+          ? [command[index + 1] ?? ""]
+          : arg.startsWith("--external=")
+            ? [arg.slice("--external=".length)]
+            : [],
+      ),
+    ),
+  ].join("\n");
+  return packages
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        name !== pkg.name &&
+        new RegExp(
+          `(?<![\\w@/-])${name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?![\\w-])`,
+          "u",
+        ).test(lists),
+    );
+};
+
+// Runtime imports consume emitted workspace artifacts. Unlike the source
+// closure, their dependency graph must be acyclic and built in dependency order.
+const orderedBuildClosure = (root, name, includeBuildPrerequisites) => {
+  const packages = workspacePackages(root);
+  const visited = new Set();
+  const visiting = new Set();
+  const ordered = [];
+  const visit = (pkg) => {
+    if (visited.has(pkg.name)) return;
+    if (visiting.has(pkg.name))
+      throw new Error(`runtime build dependency cycle at ${pkg.name}`);
+    for (const external of externalWorkspacePackages(root, pkg, packages))
+      if (!pkg.dependencies?.[external])
+        throw new Error(
+          `${pkg.name}: its build keeps ${external} external, so its dist imports ${external}'s dist at runtime, but ${external} is not in its dependencies; move it there so that dist is built first`,
+        );
+    visiting.add(pkg.name);
+    for (const dependency of [
+      ...new Set([
+        ...Object.keys(pkg.dependencies ?? {}).sort(),
+        ...(includeBuildPrerequisites
+          ? (packageBuildTask(pkg)?.prerequisites ?? []).map(
+              (entry) => entry.package,
+            )
+          : []),
+      ]),
+    ]) {
+      const next = packages.find((entry) => entry.name === dependency);
+      if (next) {
+        if (
+          (packageBuildTask(pkg)?.prerequisites ?? []).some(
+            (entry) => entry.package === dependency,
+          ) &&
+          !packageBuildTask(next)
+        )
+          throw new Error(
+            `${pkg.name}: build prerequisite ${dependency} has no build task`,
+          );
+        visit(next);
+      } else if (
+        (packageBuildTask(pkg)?.prerequisites ?? []).some(
+          (entry) => entry.package === dependency,
+        )
+      )
+        throw new Error(
+          `${pkg.name}: unknown build prerequisite ${dependency}`,
+        );
+    }
+    visiting.delete(pkg.name);
+    visited.add(pkg.name);
+    if (includeBuildPrerequisites || packageBuildTask(pkg)) ordered.push(pkg);
+  };
+  visit(packageByName(root, name));
+  return ordered;
+};
+
+export const runtimeBuildClosure = (root, name) =>
+  orderedBuildClosure(root, name, false);
+export const buildClosure = (root, name) =>
+  orderedBuildClosure(root, name, true);
+
+export const MODULE_SPECIFIER =
+  /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'`]([^"'`\s]+)["'`]/gu;
+export const SCRIPT_SOURCE = /\.[cm]?[jt]sx?$/u;
+export const BUILD_CONFIGS = [
+  "tsup.config.ts",
+  "tsup.config.mts",
+  "tsup.config.cts",
+  "tsup.config.js",
+  "tsup.config.mjs",
+  "tsup.config.cjs",
+  "tsup.config.json",
+];
+const packageText = (root, pkg, path) => {
+  const absolute = resolve(root, pkg.directory, path);
+  return existsSync(absolute) ? readFileSync(absolute, "utf8") : "";
+};
+const buildConfigText = (root, pkg) =>
+  BUILD_CONFIGS.map((path) => packageText(root, pkg, path)).join("\n");
+
+// tsup externalizes `dependencies` only, so a runtime dependency's dist stays
+// a separate module whose bytes the stamp already binds. Any other workspace
+// package a build source names (a devDependency, or one reached through the
+// `midgard-source` condition) can be inlined from its dist, which no source
+// digest covers. Those dists join the compiled dependencies.
+export const inlinedWorkspacePackages = (root, name) =>
+  scoped(`inlined\0${root}\0${name}`, () => {
+    const packages = workspacePackages(root);
+    const self = packageByName(root, name);
+    const throughSource = buildConfigText(root, self).includes(
+      "midgard-source",
+    );
+    const named = new Set();
+    const scanned = new Set();
+    const scan = (pkg) => {
+      if (scanned.has(pkg.name)) return;
+      scanned.add(pkg.name);
+      for (const file of filesUnder(resolve(root, pkg.directory, "src"))) {
+        if (!SCRIPT_SOURCE.test(file)) continue;
+        for (const [, specifier] of readFileSync(file, "utf8").matchAll(
+          MODULE_SPECIFIER,
+        )) {
+          const target = packages.find(
+            (entry) =>
+              specifier === entry.name ||
+              specifier.startsWith(`${entry.name}/`),
+          );
+          if (!target || target.name === self.name) continue;
+          named.add(target.name);
+          if (throughSource) scan(target);
+        }
+      }
+    };
+    scan(self);
+    const runtime = new Set(
+      runtimeBuildClosure(root, name).map((pkg) => pkg.name),
+    );
+    return [...named].filter((entry) => !runtime.has(entry)).sort();
+  });
+
+export const compiledDependencies = (root, name) => {
+  const self = packageByName(root, name);
+  const inlined = inlinedWorkspacePackages(root, name)
+    .map((entry) => packageByName(root, entry))
+    .filter(packageBuildTask);
+  return [
+    ...buildClosure(root, name).filter(
+      (pkg) => pkg.name !== self.name && packageBuildTask(pkg),
+    ),
+    ...inlined,
+  ]
+    .filter(
+      (pkg, index, entries) =>
+        entries.findIndex((entry) => entry.name === pkg.name) === index,
+    )
+    .map((pkg) => ({
+      name: pkg.name,
+      outputs: outputIdentity(root, `${pkg.directory}/dist`),
+    }));
+};
+
+// Repository inputs every package build binds, besides its package closure.
+export const SHARED_INPUT_DIRECTORIES = [
+  "demo/patches",
+  "demo/vendor",
+  "demo/scripts",
+  "config/deployments",
+  "onchain/aiken/lib",
+  "onchain/aiken/validators",
+  "onchain/aiken/env",
+  "onchain/aiken/scripts",
+  "scripts/contrib",
+  "scripts/preflight",
+  "scripts/lib",
+  "scripts/bin",
+  ".github/workflows",
+];
+export const SHARED_INPUT_FILES = [
+  "demo/package.json",
+  "demo/pnpm-lock.yaml",
+  // What is installed, not only what the lockfile asks for: a build run
+  // before `pnpm install` caught up compiled against the old packages.
+  "demo/node_modules/.pnpm/lock.yaml",
+  "demo/pnpm-workspace.yaml",
+  "demo/tsconfig.json",
+  "scripts/contrib.mjs",
+  "scripts/pnpm.mjs",
+  "scripts/bin/pnpm",
+  ".agents/skills/regenerating-goldens-and-ledgers/scripts/channels.json",
+  "onchain/aiken/aiken.toml",
+  "onchain/aiken/aiken.lock",
+  "onchain/aiken/plutus.json",
+  "onchain/aiken/plutus.json.deployment.json",
+];
+
+// Conservative closure includes native sources, SQL, generators and fixtures,
+// not merely src/. Test edits can cause an unnecessary rebuild, never a false
+// fresh result. Missing optional inputs are represented in the digest.
+export const inputIdentity = (root, name) =>
+  scoped(`input\0${root}\0${name}`, () => uncachedInputIdentity(root, name));
+const uncachedInputIdentity = (root, name) => {
+  if (name === "@repository") {
+    // Builds create ignored LaTeX/site outputs outside dist/. They are not
+    // repository source changes. Include tracked inputs and new unignored
+    // sources, with the same explicit exclusions as the source walker.
+    const repositorySources = execFileSync(
+      "git",
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+    )
+      .split("\0")
+      .filter(
+        (path) =>
+          path &&
+          sourceInput(root, path) &&
+          !/onchain\/aiken\/plutus\.json(?:\.|$)/u.test(path),
+      )
+      .filter((path) => {
+        const absolute = inside(root, path);
+        if (!existsSync(absolute)) return false;
+        const stats = lstatSync(absolute);
+        if (stats.isSymbolicLink())
+          throw new Error(`symlink in repository input: ${path}`);
+        return stats.isFile(); // declared Git submodule directories are not files
+      });
+    const identity = hashFiles(root, repositorySources);
+    return {
+      ...identity,
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      sha256: sha256(
+        JSON.stringify([
+          identity.sha256,
+          process.version,
+          process.platform,
+          process.arch,
+        ]),
+      ),
+    };
+  }
+  // No checkout carries ignored leftovers, so they must not move the
+  // identity a scratch or fresh checkout is compared against.
+  const ignored = gitIgnored(root);
+  const directories = [
+    ...packageClosure(root, name).map((pkg) => pkg.directory),
+    ...SHARED_INPUT_DIRECTORIES,
+  ];
+  const paths = directories.flatMap((path) =>
+    filesUnder(resolve(root, path), { ignored }),
+  );
+  const shared = SHARED_INPUT_FILES;
+  const missing = shared.filter((path) => !existsSync(resolve(root, path)));
+  paths.push(
+    ...shared
+      .filter((path) => !missing.includes(path))
+      .map((path) => resolve(root, path)),
+  );
+  const identity = hashFiles(root, paths);
+  return {
+    ...identity,
+    sha256: sha256(
+      JSON.stringify([
+        identity.sha256,
+        missing,
+        process.version,
+        process.platform,
+        process.arch,
+      ]),
+    ),
+    missing,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+  };
+};
+
+// The repository-relative inputs that differ between two identities, sorted.
+export const changedInputs = (before, after) =>
+  [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])]
+    .filter((path) => before.files[path] !== after.files[path])
+    .sort();
+const CHANGED_INPUTS_NAMED = 5;
+export const nameChangedInputs = (changed) =>
+  [
+    ...changed.slice(0, CHANGED_INPUTS_NAMED),
+    ...(changed.length > CHANGED_INPUTS_NAMED
+      ? [`${String(changed.length - CHANGED_INPUTS_NAMED)} more`]
+      : []),
+  ].join(", ");
+
+export const outputIdentity = (root, directory) =>
+  scoped(`output\0${root}\0${directory}`, () =>
+    uncachedOutputIdentity(root, directory),
+  );
+const uncachedOutputIdentity = (root, directory) => {
+  // A native owner may share dist with its package's JavaScript build, but
+  // has its own binary receipt. Other packages' directories named native
+  // remain compiled outputs.
+  // A root without a workspace (an operation's run directory) has none.
+  const packages = existsSync(resolve(root, "demo"))
+    ? workspacePackages(root)
+    : [];
+  const nativeOutputs = Object.entries(NATIVE_RECIPES).flatMap(
+    ([name, recipe]) =>
+      packages
+        .filter((entry) => entry.name === name)
+        .map((entry) => resolve(root, entry.directory, recipe.output)),
+  );
+  return hashFiles(
+    root,
+    filesUnder(resolve(root, directory), { outputs: true }).filter(
+      (path) =>
+        !nativeOutputs.some((output) => path === output) &&
+        !path.endsWith(".contrib-build-v1.json") &&
+        !path.endsWith(".contrib-native-v1.json"),
+    ),
+  );
+};

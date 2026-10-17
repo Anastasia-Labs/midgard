@@ -7,13 +7,15 @@ import {
 } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import {
+  daAvailabilityAttestationMessage,
+  type DaAvailabilityCommitment,
+} from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { DaParamsConfig } from "./config.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "./utils/hex.js";
-
-export const DA_ATTESTATION_MESSAGE_PREFIX = "MidgardDAAttestationV1";
 
 export type DaSigner = {
   readonly publicKeyHex: string;
@@ -106,20 +108,14 @@ export const validateDaCommittee = ({
   };
 };
 
-export const daAttestationMessage = (headerHash: string): Buffer =>
-  Buffer.concat([
-    Buffer.from(DA_ATTESTATION_MESSAGE_PREFIX, "utf8"),
-    hexToBytes(headerHash, "header hash", 28),
-  ]);
-
 export const signDaAttestation = ({
   signer,
   signerIndex,
-  headerHash,
+  availabilityCommitment,
 }: {
   readonly signer: DaSigner;
   readonly signerIndex: number;
-  readonly headerHash: string;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
 }): string => {
   if (
     !Number.isSafeInteger(signerIndex) ||
@@ -128,7 +124,9 @@ export const signDaAttestation = ({
   ) {
     throw new Error("signer index must fit in one byte");
   }
-  const signature = signer.sign(daAttestationMessage(headerHash));
+  const signature = signer.sign(
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
+  );
   if (signature.length !== 64) {
     throw new Error("Ed25519 signature was not 64 bytes");
   }
@@ -137,11 +135,11 @@ export const signDaAttestation = ({
 
 export const verifyDaSignatureWitness = ({
   publicKeyHex,
-  headerHash,
+  availabilityCommitment,
   witnessHex,
 }: {
   readonly publicKeyHex: string;
-  readonly headerHash: string;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
   readonly witnessHex: string;
 }): boolean => {
   const witness = hexToBytes(witnessHex, "signature witness", 65);
@@ -155,34 +153,9 @@ export const verifyDaSignatureWitness = ({
   });
   return verify(
     null,
-    daAttestationMessage(headerHash),
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
     publicKey,
     witness.subarray(1),
-  );
-};
-
-export const verifyEd25519Signature = ({
-  publicKeyHex,
-  message,
-  signatureHex,
-}: {
-  readonly publicKeyHex: string;
-  readonly message: Buffer;
-  readonly signatureHex: string;
-}): boolean => {
-  const publicKey = createPublicKey({
-    key: Buffer.concat([
-      ED25519_SPKI_PUBLIC_PREFIX,
-      hexToBytes(publicKeyHex, "public key", 32),
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  return verify(
-    null,
-    message,
-    publicKey,
-    hexToBytes(signatureHex, "Ed25519 signature", 64),
   );
 };
 

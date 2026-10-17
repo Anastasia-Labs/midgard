@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const BENCHMARK_VERSION = "1.0.0";
 const DEFAULT_MAX_SIZE = 1;
@@ -166,7 +167,7 @@ const getGitCommit = () => {
 };
 
 const getAikenVersion = () => {
-  const result = run("aiken", ["--version"], projectDir);
+  const result = run(aikenBinary(), ["--version"], projectDir);
   if (result.status !== 0) {
     return "unknown";
   }
@@ -304,7 +305,7 @@ const printSummary = (report) => {
 const main = () => {
   const options = parseArgs(process.argv.slice(2));
   const aikenArgs = buildAikenBenchArgs(options);
-  const benchResult = run("aiken", aikenArgs, projectDir);
+  const benchResult = run(aikenBinary(), aikenArgs, projectDir);
 
   if (benchResult.status !== 0) {
     process.stdout.write(benchResult.stdout);

@@ -29,23 +29,3 @@ export const hexToBytes = (
   fieldName: string,
   byteLength?: number,
 ): Buffer => Buffer.from(normalizeHex(value, { fieldName, byteLength }), "hex");
-
-export const timingSafeHexEqual = (left: string, right: string): boolean => {
-  const leftBytes = Buffer.from(left, "hex");
-  const rightBytes = Buffer.from(right, "hex");
-  return (
-    leftBytes.length === rightBytes.length &&
-    cryptoTimingSafeEqual(leftBytes, rightBytes)
-  );
-};
-
-const cryptoTimingSafeEqual = (left: Buffer, right: Buffer): boolean => {
-  if (left.length !== right.length) {
-    return false;
-  }
-  let diff = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    diff |= left[index]! ^ right[index]!;
-  }
-  return diff === 0;
-};

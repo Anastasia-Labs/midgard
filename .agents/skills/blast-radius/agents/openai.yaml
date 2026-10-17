@@ -1,0 +1,6 @@
+interface:
+  display_name: "Blast Radius"
+  short_description: "Find what a change could break somewhere else before it ships, b"
+  default_prompt: "Use $blast-radius for the requested Midgard task."
+policy:
+  allow_implicit_invocation: false

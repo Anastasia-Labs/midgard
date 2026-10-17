@@ -2,10 +2,16 @@ import type {
   DaAttestationExchange,
   DaAttestationPeer,
 } from "../da/libp2p/attestations.js";
+import { isVerifiedPayload } from "../da/libp2p/attestations.store-backed-da-attestation-protocol.js";
 import type { DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
-import type { WatcherStore } from "../store.js";
-import { validateDaSignatureRecord } from "./signatures.js";
+import type { CommitteeStore } from "../store.js";
+import {
+  buildDaSignatureConflictEvidence,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
+  validateDaSignatureRecord,
+} from "./signatures.js";
 import { attestationPeersExcludingLocal } from "./targets.js";
 
 export type PeerSignaturePollerDeps = {
@@ -14,9 +20,15 @@ export type PeerSignaturePollerDeps = {
   readonly localPeerId?: string;
   readonly attestationExchange?: DaAttestationExchange;
   readonly signerValidation: DaCommitteeValidation;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<
-    WatcherStore,
-    "getDaPayload" | "saveDaSignature" | "savePeerHealth" | "listPeerHealth"
+    CommitteeStore,
+    | "getDaPayload"
+    | "saveDaSignature"
+    | "listDaSignatures"
+    | "saveDaConflictEvidence"
+    | "savePeerHealth"
+    | "listPeerHealth"
   >;
   readonly requestTimeoutMs?: number;
 };
@@ -56,34 +68,83 @@ export class PeerSignaturePoller {
           deploymentFingerprint: this.deps.deploymentFingerprint,
           headerHash,
         });
+      // Until this member holds the verified payload there is no commitment
+      // to judge peer signatures against; a record without verified bytes is
+      // a local gap, not the peer's fault, and the next poll retries.
       const verifiedPayload = await this.deps.store.getDaPayload(headerHash);
-      if (verifiedPayload === undefined) {
+      if (!isVerifiedPayload(verifiedPayload)) {
         return;
       }
+      const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
+        authority: this.deps.availabilityCommitmentAuthority,
+        headerHash,
+        payloadCborHex: verifiedPayload.payloadCborHex,
+      });
       for (const signature of signatures) {
         if (typeof signature !== "object" || signature === null) {
           continue;
         }
         const candidate = signature as Partial<DaSignatureRecord>;
-        const validationError = validateDaSignatureRecord({
+        const cryptographicValidationError = validateDaSignatureRecord({
           body: candidate,
           headerHash,
           deploymentFingerprint: this.deps.deploymentFingerprint,
           signerValidation: this.deps.signerValidation,
-          verifiedPayload,
         });
-        if (validationError !== undefined) {
+        if (cryptographicValidationError !== undefined) {
           continue;
         }
         const now = new Date().toISOString();
-        await this.deps.store.saveDaSignature({
+        const canonicalCandidate: DaSignatureRecord = {
           ...(candidate as DaSignatureRecord),
           broadcastStatus: "posted",
           source: "peer",
           sourcePeer: peer.peerId,
           receivedAt: now,
           verifiedAt: now,
+        };
+        const priorSameHeaderSigner = (
+          await this.deps.store.listDaSignatures(headerHash)
+        ).find(
+          (entry) =>
+            entry.signerIndex === canonicalCandidate.signerIndex &&
+            entry.availabilityCommitmentDigest !==
+              canonicalCandidate.availabilityCommitmentDigest,
+        );
+        await this.deps.store.saveDaSignature(canonicalCandidate);
+        if (priorSameHeaderSigner !== undefined) {
+          const conflict = buildDaSignatureConflictEvidence({
+            first: priorSameHeaderSigner,
+            second: canonicalCandidate,
+            daVkey:
+              this.deps.signerValidation.committeeKeys[
+                canonicalCandidate.signerIndex
+              ]!,
+            reporterPeerId: this.deps.localPeerId ?? "local-da-committee",
+            receivedAt: now,
+          });
+          if (
+            conflict !== undefined &&
+            (await this.deps.store.saveDaConflictEvidence(conflict.record))
+          ) {
+            await this.deps.attestationExchange.publishConflictEvidence(
+              conflict.gossipCbor,
+            );
+          }
+        }
+        const authorityValidationError = validateDaSignatureRecord({
+          body: canonicalCandidate,
+          headerHash,
+          deploymentFingerprint: this.deps.deploymentFingerprint,
+          signerValidation: this.deps.signerValidation,
+          verifiedPayload,
+          expectedAvailabilityCommitmentCbor: expectedCommitment.commitmentCbor,
+          expectedAvailabilityCommitmentDigest:
+            expectedCommitment.commitmentDigest,
         });
+        if (authorityValidationError !== undefined) {
+          continue;
+        }
       }
       await recordPeerSuccess(this.deps.store, peer);
     } catch (error) {
@@ -97,7 +158,7 @@ export class PeerSignaturePoller {
 }
 
 export const recordPeerSuccess = async (
-  store: Pick<WatcherStore, "savePeerHealth">,
+  store: Pick<CommitteeStore, "savePeerHealth">,
   peer: DaAttestationPeer,
 ): Promise<void> => {
   await store.savePeerHealth({
@@ -110,7 +171,7 @@ export const recordPeerSuccess = async (
 };
 
 export const recordPeerFailure = async (
-  store: Pick<WatcherStore, "listPeerHealth" | "savePeerHealth">,
+  store: Pick<CommitteeStore, "listPeerHealth" | "savePeerHealth">,
   peer: DaAttestationPeer,
   lastError: string,
 ): Promise<void> => {

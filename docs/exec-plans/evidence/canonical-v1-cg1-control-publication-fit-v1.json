@@ -1,0 +1,541 @@
+{
+  "schemaVersion": "midgard-canonical-v1-cg1-control-publication-fit-v1",
+  "goalIds": ["CG1"],
+  "acceptance": "Every parameterized hub/control validator fits a real 16,384-byte publication transaction; evidence is bound to final validator hashes.",
+  "waivers": [],
+  "createsC70Snapshots": false,
+  "liveOrReadinessClaims": 0,
+  "hashBasis": {
+    "blueprintPath": "onchain/aiken/plutus.json",
+    "blueprintTrackedInGit": false,
+    "blueprintSha256": "c55917de0f9b479046f601431ea3e088879b2ebfed3150dbe87dd98933b80f00",
+    "blueprintMd5": "66426a3af44236a2ad3ded1b03f8fdcf",
+    "validatorCount": 444,
+    "freezeStatus": "PRE_FREEZE",
+    "note": "onchain/aiken/plutus.json is gitignored and not committed to git; every applied hash, script byte length and transaction measurement in this artifact is bound to this specific working-tree blueprint. Reproducibility (not git tracking) is what makes the pin honest: an independent scratch rebuild with the pinned Aiken fork reproduced it byte-identically (see reproduction below).",
+    "invalidationTrigger": "Issue #510's blueprint freeze-event regeneration changes onchain/aiken/plutus.json's bytes and therefore re-pins every applied hash, script byte length and transaction measurement this artifact carries. That regeneration is the #617 ABI wave's single sanctioned rebuild and it has now happened: this artifact was re-measured against it, so every roster hash below is bound to the regenerated blueprint rather than to the pre-freeze one. CG1's acceptance clause \"evidence is bound to final validator hashes\" is fully discharged only once the wave's blueprint is signed off as final; until then these hashes are bound to the regenerated but not yet signed-off blueprint.",
+    "crossCheckedAgainst": "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts, which also hashes onchain/aiken/plutus.json directly (via MIDGARD_REAL_BLUEPRINT_PATH override or its default) rather than a cached copy; a silent blueprint drift would desynchronize that suite's pinned applied hashes from this artifact's the same way it would desynchronize this artifact from the working tree.",
+    "reproduction": {
+      "command": "rsync -a --exclude=.git --exclude=plutus.json --exclude=build onchain/aiken/ <scratch>/cg1-repro/ && cd <scratch>/cg1-repro && ~/.aiken-fork/bin/aiken build --env testnet -o <scratch>/cg1-repro-out/plutus.json",
+      "aikenBinaryPath": "~/.aiken-fork/bin/aiken",
+      "aikenBinaryMd5": "50890fe36b3d8ebea58e3f370e9ca479",
+      "aikenVersion": "aiken v1.1.23+2a78108",
+      "result": "Byte-identical reproduction: md5 66426a3af44236a2ad3ded1b03f8fdcf, sha256 c55917de0f9b479046f601431ea3e088879b2ebfed3150dbe87dd98933b80f00 (matches the working tree onchain/aiken/plutus.json exactly; re-run 2026-08-23 for the #617 regeneration)."
+    }
+  },
+  "rosterSource": {
+    "function": "nodeRuntimeReferenceScriptTargets",
+    "path": "demo/midgard-node/src/transactions/reference-scripts.ts",
+    "sha256AtMeasurement": "2b3773e1639c94c759af7063bba8ede9ef43c26db4a5d9ea53cd09ce7c72ba9c",
+    "authTokenMap": {
+      "exportName": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES",
+      "path": "demo/midgard-sdk/src/reference-scripts.ts",
+      "sha256AtMeasurement": "8a3a399f5b4539c2138a88a7c877a936c36501feb13881d4b81a1f6ae419e37a"
+    },
+    "contractsBuilder": {
+      "helper": "loadRealMidgardContractsForTest",
+      "helperPath": "demo/midgard-node/tests/helpers/real-midgard-contracts.ts",
+      "wraps": "withRealStateQueueAndOperatorContracts",
+      "wrapsPath": "demo/midgard-node/src/services/midgard-contracts.ts",
+      "note": "Produces a genuinely real MidgardValidators bundle (every hub/control field built from the current blueprint via loadRealBlueprint(), not the AlwaysSucceeds test stand-in) from a one-shot outref UTxO plus a reference-script auth policy."
+    }
+  },
+  "referenceScriptAuthPolicy": {
+    "policyId": "61fe99d6bc736007a58457927151c9b2e21df96ba1d8dfb670f7aa70",
+    "mintingScriptCBOR": "8205193840",
+    "expiresAtSlot": 14400,
+    "expiresAtUnixTime": 1787528387554,
+    "timelockDurationMs": 14400000
+  },
+  "measurement": {
+    "date": "2026-08-23",
+    "nodeVersion": "v24.13.1",
+    "vitestVersion": "3.0.7",
+    "network": "Preprod",
+    "emulatorProtocolParameters": {
+      "maxTxSize": 16384
+    },
+    "nonceUtxo": {
+      "txHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "outputIndex": 0
+    },
+    "method": "For every roster target: select funding UTxOs (selectReferenceScriptFundingUtxos), build a single-target reference-script publication transaction via completeReferenceScriptPublicationTxProgram (the same builder demo/midgard-node's production reference-script publication path calls), sign it with the wallet, measure the complete signed CBOR (byte length, fee) against PROTOCOL_PARAMETERS_DEFAULT.maxTxSize (16,384), then submit and await confirmation on a Lucid Emulator constructed with maxTxSize explicitly pinned to that real 16,384-byte L1 limit (not the emulator's relaxed default), and confirm exactly one live reference-script UTxO exists at the expected output index. Targets are processed sequentially so each publication's funding selection sees the prior one's confirmed wallet UTxOs.",
+    "driver": "demo/midgard-node/tests/scratch-cg1-publication-fit.test.ts, a committed driver. The original 2026-08-18 run used a throwaway scratch file of the same name that was deleted afterwards, so this artifact's own reproductionCommand named a path that did not exist. The driver was re-derived from this artifact's roster, hashBasis and method fields and committed, so CG1 is re-measurable after any blueprint regeneration. It pins nothing: the roster comes from nodeRuntimeReferenceScriptTargets, the contracts from loadRealMidgardContractsForTest against the working-tree blueprint, and every hash, byte count and fee is measured. MIDGARD_CG1_EMIT=<path> writes the measured roster in this artifact's own shape.",
+    "reproductionCommand": "pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts",
+    "commit": "a8a2c6c5 + the #617 blueprint regeneration re-pins (the working tree that became this commit)"
+  },
+  "roster": [
+    {
+      "name": "reference-script-auth minting",
+      "scriptType": "Native",
+      "appliedScriptHash": "61fe99d6bc736007a58457927151c9b2e21df96ba1d8dfb670f7aa70",
+      "serializedScriptBytes": 5,
+      "completeSignedTransactionBytes": 502,
+      "l1ByteMarginBytes": 15882,
+      "feeLovelace": 177645,
+      "fits": true,
+      "txHash": "00bd02402c85191364521e6cfd41a5b86a816f933056f50c1391ea93a2294152",
+      "outputIndex": 1
+    },
+    {
+      "name": "hub-oracle minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "473ff8338691f9fca626ea67f49355ad7c3aa0c89fcd39632e01673f",
+      "serializedScriptBytes": 488,
+      "completeSignedTransactionBytes": 967,
+      "l1ByteMarginBytes": 15417,
+      "feeLovelace": 198105,
+      "fits": true,
+      "txHash": "5c6a0fb79256209c59871d17eeadc70ac42a8fea31efa5e7632acaf8012046da",
+      "outputIndex": 1
+    },
+    {
+      "name": "da-params-governor spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "57e929dbcbb8e1fe26739b96cd78f67ce40385bf31f2857e30b18709",
+      "serializedScriptBytes": 2256,
+      "completeSignedTransactionBytes": 2751,
+      "l1ByteMarginBytes": 13633,
+      "feeLovelace": 276601,
+      "fits": true,
+      "txHash": "104f371739655b3f82f3b5fa9d0f6f4d76007955963efddd48d83919b6d54fcb",
+      "outputIndex": 1
+    },
+    {
+      "name": "da-params-governor minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "57e929dbcbb8e1fe26739b96cd78f67ce40385bf31f2857e30b18709",
+      "serializedScriptBytes": 2256,
+      "completeSignedTransactionBytes": 2749,
+      "l1ByteMarginBytes": 13635,
+      "feeLovelace": 276513,
+      "fits": true,
+      "txHash": "62f3780d5ce6ef729861de44c6abeeb7e68a51e280bb206ea1471e6d71bda8d8",
+      "outputIndex": 1
+    },
+    {
+      "name": "da-attestation spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "4a9a7184fbb5072b015d660a363bce18127c3b5383de9e63cf07d205",
+      "serializedScriptBytes": 6203,
+      "completeSignedTransactionBytes": 6692,
+      "l1ByteMarginBytes": 9692,
+      "feeLovelace": 450005,
+      "fits": true,
+      "txHash": "5df8b77a4e7ca901a67362dd28e2676d0bee1b2f6a2d7fe949d3b95359d05154",
+      "outputIndex": 1
+    },
+    {
+      "name": "da-attestation minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "4a9a7184fbb5072b015d660a363bce18127c3b5383de9e63cf07d205",
+      "serializedScriptBytes": 6203,
+      "completeSignedTransactionBytes": 6690,
+      "l1ByteMarginBytes": 9694,
+      "feeLovelace": 449917,
+      "fits": true,
+      "txHash": "e3af1658de7937907325d941edd7ae9ae69200a56be643d2db76193165daadfc",
+      "outputIndex": 1
+    },
+    {
+      "name": "scheduler spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "3870dbeb5d09f4ec767eb6232b2978c8ea5cf05a796b2b5ca2b75ff1",
+      "serializedScriptBytes": 8954,
+      "completeSignedTransactionBytes": 9435,
+      "l1ByteMarginBytes": 6949,
+      "feeLovelace": 570697,
+      "fits": true,
+      "txHash": "122d301f331f95e618b810e4d6900e8247ac2e5186929e1815addd612ffba764",
+      "outputIndex": 1
+    },
+    {
+      "name": "scheduler minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "2046f816d42c53d4f6806bb38952ddec5e66d3099f6f9d33045ead4a",
+      "serializedScriptBytes": 545,
+      "completeSignedTransactionBytes": 1024,
+      "l1ByteMarginBytes": 15360,
+      "feeLovelace": 200613,
+      "fits": true,
+      "txHash": "ceb15d71f3a526e0abfd6b8c7752198dbdf17eba11c5cdb64d80d833001ab017",
+      "outputIndex": 1
+    },
+    {
+      "name": "state-queue spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "2d9c5ad21a81c069d83478c207731838e2386d2596b4aaf2b2f85912",
+      "serializedScriptBytes": 797,
+      "completeSignedTransactionBytes": 1280,
+      "l1ByteMarginBytes": 15104,
+      "feeLovelace": 211877,
+      "fits": true,
+      "txHash": "04368a7cf1bfc05e10b2859b161ca4cb06e5f7e2545cd6bfbbf9bac058b66f16",
+      "outputIndex": 1
+    },
+    {
+      "name": "state-queue minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "eaa7b70ae9ecca41c9951547289c2eccf27888ca04dbb4acebe62871",
+      "serializedScriptBytes": 12124,
+      "completeSignedTransactionBytes": 12605,
+      "l1ByteMarginBytes": 3779,
+      "feeLovelace": 710177,
+      "fits": true,
+      "txHash": "552b7f131eccfe9d32baedcbda409ef1bb3e1a70bfb6998be59c1f676e512af5",
+      "outputIndex": 1
+    },
+    {
+      "name": "registered-operators spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "d5740988934a2c573722044b194d08c19e33f71adcca2314c931415f",
+      "serializedScriptBytes": 233,
+      "completeSignedTransactionBytes": 735,
+      "l1ByteMarginBytes": 15649,
+      "feeLovelace": 187897,
+      "fits": true,
+      "txHash": "ba2a0f4b0677533adf76205c4b6bf8cbc1d9d050741b9ed384a438d99ddc852a",
+      "outputIndex": 1
+    },
+    {
+      "name": "registered-operators minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "63fd221f67eab8b1d9e4aa8576d1c91c400e9f06067b2edee016c266",
+      "serializedScriptBytes": 6900,
+      "completeSignedTransactionBytes": 7399,
+      "l1ByteMarginBytes": 8985,
+      "feeLovelace": 481113,
+      "fits": true,
+      "txHash": "928578146c90db7981948565b671d81ff2761c2474cc28b41eef63a666913145",
+      "outputIndex": 1
+    },
+    {
+      "name": "active-operators spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "6823edf1d48077281381a559479ad9b8a4c9ae6c008e4e96d912ccda",
+      "serializedScriptBytes": 5240,
+      "completeSignedTransactionBytes": 5733,
+      "l1ByteMarginBytes": 10651,
+      "feeLovelace": 407809,
+      "fits": true,
+      "txHash": "4144f8f57e505ca6919dadfece4d8920487ed7c8bb74a91bcfb5458598f2263f",
+      "outputIndex": 1
+    },
+    {
+      "name": "active-operators minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "11960221a6a8f465b29f759cb4ec41014b56e927eef4ad1cf7d03cf4",
+      "serializedScriptBytes": 9474,
+      "completeSignedTransactionBytes": 9965,
+      "l1ByteMarginBytes": 6419,
+      "feeLovelace": 594017,
+      "fits": true,
+      "txHash": "2d499c4c9e398e65743b8c7ea99df9be0ee5b14cfa271b082757a616b9009dec",
+      "outputIndex": 1
+    },
+    {
+      "name": "retired-operators spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "60bfac2dda233c6ce28882f60108d37c01173664d569589efd8e8e93",
+      "serializedScriptBytes": 233,
+      "completeSignedTransactionBytes": 727,
+      "l1ByteMarginBytes": 15657,
+      "feeLovelace": 187545,
+      "fits": true,
+      "txHash": "752c57d4ae1674cdb462b436a8b709767cd3b722629cdc590155929ad4630c1c",
+      "outputIndex": 1
+    },
+    {
+      "name": "retired-operators minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "b69251e2fa8800d08fbdaf4db60065aebbebe60cfe4cc9186745d1a5",
+      "serializedScriptBytes": 7739,
+      "completeSignedTransactionBytes": 8232,
+      "l1ByteMarginBytes": 8152,
+      "feeLovelace": 517765,
+      "fits": true,
+      "txHash": "9189d03d2672e38b4f7cdff38d6c93ebc67f0970f5e40bd4c892a3136eb00f85",
+      "outputIndex": 1
+    },
+    {
+      "name": "fraud-proof-catalogue minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "3e7eb83d177e122f4750183a0ae485c314a30f5850e88d6df9b12465",
+      "serializedScriptBytes": 363,
+      "completeSignedTransactionBytes": 862,
+      "l1ByteMarginBytes": 15522,
+      "feeLovelace": 193485,
+      "fits": true,
+      "txHash": "f1a5f1a38b914ed670ad941204d0796542f8ffaab0d802865ae5a962ea78e20f",
+      "outputIndex": 1
+    },
+    {
+      "name": "deposit minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "f128302aebd294bb3a574e932a57ccf18ad6682c55456ac85113c7f8",
+      "serializedScriptBytes": 4440,
+      "completeSignedTransactionBytes": 4915,
+      "l1ByteMarginBytes": 11469,
+      "feeLovelace": 371817,
+      "fits": true,
+      "txHash": "04496f31ce287fa50fcea8dc8c5570995f3522ec3fb84e9d8d26e1c28f995ef1",
+      "outputIndex": 1
+    },
+    {
+      "name": "deposit spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "855b0734f0fda19ba7a187513857c971154415188b181bf1d8afd586",
+      "serializedScriptBytes": 4158,
+      "completeSignedTransactionBytes": 4635,
+      "l1ByteMarginBytes": 11749,
+      "feeLovelace": 359497,
+      "fits": true,
+      "txHash": "efe3b99dac874159ddb1fdb2108dbed03a591d1326ed8ed3c5171b082a2744ca",
+      "outputIndex": 1
+    },
+    {
+      "name": "withdrawal minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "d8c7dbba1900a9f9cee76d7587bd1a122d1d76dd37cd63414fe52cc1",
+      "serializedScriptBytes": 4714,
+      "completeSignedTransactionBytes": 5195,
+      "l1ByteMarginBytes": 11189,
+      "feeLovelace": 384137,
+      "fits": true,
+      "txHash": "5ea538b3919f91c89328b245854dba2e492ada0f675363fd549b1ceab43b7830",
+      "outputIndex": 1
+    },
+    {
+      "name": "withdrawal spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "c2040dc67590a0d3b8a94e9aefa83d7f408d218a7ef06784b0074acd",
+      "serializedScriptBytes": 6146,
+      "completeSignedTransactionBytes": 6629,
+      "l1ByteMarginBytes": 9755,
+      "feeLovelace": 447233,
+      "fits": true,
+      "txHash": "247d1402991d0bd0dcb290f03bc49f9fd106c33ce8a3a41e757b18e6d66af04e",
+      "outputIndex": 1
+    },
+    {
+      "name": "settlement minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "4bdef40f2e40ee32e7e29b0c4f63a4a87425fedf8e55179f0947c8a2",
+      "serializedScriptBytes": 3148,
+      "completeSignedTransactionBytes": 3629,
+      "l1ByteMarginBytes": 12755,
+      "feeLovelace": 315233,
+      "fits": true,
+      "txHash": "cc207a4fdc9b0d175ed36e5aa95cc6ad5cc7cec058c22e61aa5bfbe75c9f30f5",
+      "outputIndex": 1
+    },
+    {
+      "name": "membership proof withdrawal",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
+      "serializedScriptBytes": 2553,
+      "completeSignedTransactionBytes": 3055,
+      "l1ByteMarginBytes": 13329,
+      "feeLovelace": 289977,
+      "fits": true,
+      "txHash": "db631f0e36265935fb2eff04eb2a18867325d03460457f2b24df6814a34e00bb",
+      "outputIndex": 1
+    },
+    {
+      "name": "reserve spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "f6fc182809787831b46312a61ea4933a006c8abf9eaf1270a93f56b9",
+      "serializedScriptBytes": 2315,
+      "completeSignedTransactionBytes": 2792,
+      "l1ByteMarginBytes": 13592,
+      "feeLovelace": 278405,
+      "fits": true,
+      "txHash": "1c2efe8016d75188a4678d9cc0aa2a3d7ae54b793d70b37f648bdb256a832009",
+      "outputIndex": 1
+    },
+    {
+      "name": "reserve observer",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
+      "serializedScriptBytes": 17,
+      "completeSignedTransactionBytes": 499,
+      "l1ByteMarginBytes": 15885,
+      "feeLovelace": 177513,
+      "fits": true,
+      "txHash": "1d09f2e245fa55f1240dfc98e508758c5cd4a85e8b9bd6ed675b001a46503be6",
+      "outputIndex": 1
+    },
+    {
+      "name": "payout spending",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "47bcd4e7649d158265fb9211994706ffb6fc2c8cf761cc2c2e51b320",
+      "serializedScriptBytes": 5078,
+      "completeSignedTransactionBytes": 5553,
+      "l1ByteMarginBytes": 10831,
+      "feeLovelace": 399889,
+      "fits": true,
+      "txHash": "2d8297c7b4f561b178f16dcafa098b675ab09353d7bfc6cc84d8b2462098056d",
+      "outputIndex": 1
+    },
+    {
+      "name": "payout minting",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "b892de91b19e8d2e0fdbd7615e749077d759b745fe620d5109e138c1",
+      "serializedScriptBytes": 3521,
+      "completeSignedTransactionBytes": 3994,
+      "l1ByteMarginBytes": 12390,
+      "feeLovelace": 331293,
+      "fits": true,
+      "txHash": "de2009e16680dafb10ff1c8916e1e66c279b45dbad3512ce13463315ddb0d523",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 immutable CEK program-material publication",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "288fea77a0f674c6080aadd8ed3ca42cd5a920bf1f00c0d3e63306e4",
+      "serializedScriptBytes": 94,
+      "completeSignedTransactionBytes": 600,
+      "l1ByteMarginBytes": 15784,
+      "feeLovelace": 181957,
+      "fits": true,
+      "txHash": "3717c1dadb92f7e337ef08d1742e282e01a5a0eb3b9b11ae76482a402c7982bf",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace dispute",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "50ecec0cf7f50a20b92a78e9e15d196fee799cabac8d311f4350e65c",
+      "serializedScriptBytes": 12814,
+      "completeSignedTransactionBytes": 13317,
+      "l1ByteMarginBytes": 3067,
+      "feeLovelace": 741505,
+      "fits": true,
+      "txHash": "4aee8df48969bb60bc76fad47de8a384bc61652bf2a54ee163eec197e1af6b9a",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace source",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "03e8dd17b9824f828e61d816dd2e9fd67f514a8de5b12db58163c8be",
+      "serializedScriptBytes": 11917,
+      "completeSignedTransactionBytes": 12416,
+      "l1ByteMarginBytes": 3968,
+      "feeLovelace": 701861,
+      "fits": true,
+      "txHash": "30029dbc5dedb23af36d9ce41f0996d72e615e830e3c99f2a10ac0240dd63f01",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace game",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "c45080bf0c70918990ad6634e27d7ec4a65994ea495e68ed77987f20",
+      "serializedScriptBytes": 4308,
+      "completeSignedTransactionBytes": 4803,
+      "l1ByteMarginBytes": 11581,
+      "feeLovelace": 366889,
+      "fits": true,
+      "txHash": "2f82d8a7492ff615fffd82775d493b763b35903a4899dca9a98e00bcf4d1b155",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace boundary",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "ab32e18b8a38af5001ddee241013df3492e4233409c3d321ec636352",
+      "serializedScriptBytes": 5314,
+      "completeSignedTransactionBytes": 5819,
+      "l1ByteMarginBytes": 10565,
+      "feeLovelace": 411593,
+      "fits": true,
+      "txHash": "3eaa2d804fd25dbc045da6a083f9b1fd11c170b5f0a3503f9dee175e49ab266a",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace timeout",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "f0279bf42eb8af6ca32cc3869361dc6c8feb9290e8fe2460aedded2f",
+      "serializedScriptBytes": 2100,
+      "completeSignedTransactionBytes": 2603,
+      "l1ByteMarginBytes": 13781,
+      "feeLovelace": 270089,
+      "fits": true,
+      "txHash": "c51c4eec27e61e1d77b7edd9bae0cdc5a03205dd0306d9a971e7800ca545f4dc",
+      "outputIndex": 1
+    },
+    {
+      "name": "V1 validation-trace award",
+      "scriptType": "PlutusV3",
+      "appliedScriptHash": "4bed20debac05abb53c80a8af8982e5f9326224ec8d27221522418e3",
+      "serializedScriptBytes": 1567,
+      "completeSignedTransactionBytes": 2064,
+      "l1ByteMarginBytes": 14320,
+      "feeLovelace": 246373,
+      "fits": true,
+      "txHash": "055c44491a4620c83205976076738346a3db2088ea0dc78b6c5d1804cc1dad7a",
+      "outputIndex": 1
+    }
+  ],
+  "rosterCount": 34,
+  "rosterAllFit": true,
+  "exclusions": [
+    {
+      "name": "V1 validation-trace CEK direct resolver",
+      "tokenName": "V1ValidationTraceCekResolver0",
+      "deploymentEntry": "validationTraceDisputeCekDirectResolver",
+      "appliedScriptHash": "a4bfbd01e9a07dc2165a2cc8c4e00a4775b82fa754e3136c878d2666",
+      "appliedScriptBytes": 162145,
+      "measuredCompleteSignedTransactionBytes": 162660,
+      "measuredL1ByteMarginBytes": -146276,
+      "reason": "Deliberately outside the required referenceScripts publication set: the applied cek_v1 direct-resolver body (162,145 bytes) alone exceeds the 16,384-byte L1 publication envelope, so no single-target publication transaction can fit it. It never appears as a name in nodeRuntimeReferenceScriptTargets's output; it is tracked as an open item by the separate P1 oversized-validator gate, not by CG1.",
+      "recordedIn": [
+        {
+          "path": "docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
+          "quote": "a4bfbd01e9a07dc2165a2cc8c4e00a4775b82fa754e3136c878d2666`, **162,145 bytes**"
+        }
+      ]
+    }
+  ],
+  "oversizeCanary": {
+    "description": "Proves the gate enforces the real 16,384-byte target-ledger complete-signed-transaction bound rather than raw source/CBOR script size: the self-test pins one roster entry's completeSignedTransactionBytes and l1ByteMarginBytes above/below the envelope while leaving its serializedScriptBytes genuinely small, and requires the gate to reject on the byte-fit check rather than accept because the source script itself looked small.",
+    "selfTestPath": "demo/scripts/verify-canonical-v1-cg1-control-publication-fit-self-test.mjs"
+  },
+  "zeroDebt": {
+    "rosterEntriesNotFitting": 0,
+    "missingRosterEntries": 0,
+    "extraRosterEntries": 0,
+    "unjustifiedExclusions": 0,
+    "staleBlueprintPins": 0
+  },
+  "gateStatus": "PASS",
+  "openItems": [
+    {
+      "id": "cg1-exclusion-bound-to-the-pre-620-cek-body",
+      "surface": "exclusions[0] (V1 validation-trace CEK direct resolver) and docs/exec-plans/evidence/necessity/cek-program-material-v1.md",
+      "measured": "The exclusion's justification -- an applied cek_v1 direct-resolver body of 162,145 bytes that no 16,384-byte publication transaction can carry -- is bound to the pre-wave blueprint. #620 retired the direct wire and fraud_proofs/validation_trace/cek_v1.main.spend collapsed from 161,957 unapplied bytes (hash 0405be42...) to 5,307 unapplied bytes (hash bc0d94d5...) before this regeneration ran, so an applied body of that size now fits the L1 envelope with room to spare. The pinned appliedScriptHash a4bfbd01... and the 162,145/162,660/-146,276 byte triple are therefore stale.",
+      "whyNotRepairedHere": "Correcting it is not a mechanical re-pin. This gate requires the single exclusion to measure above 16,384 bytes 'otherwise it belongs in the roster, not the exclusions', so the correct value decides whether the role joins nodeRuntimeReferenceScriptTargets -- a runtime roster and deployment-manifest change -- and the same numbers are pinned in an owner-signed necessity document. Both belong to the #617 sign-off, not to the mechanical regeneration pass.",
+      "owner": "#617 sign-off (CG1 / P1 oversized-validator gate / cek-program-material necessity doc)",
+      "remeasured": {
+        "issue": "#623 (owner ruling 2026-08-22: re-measure once, against the post-#617-wave regenerated blueprint)",
+        "atCommit": "9c971ae74b0878fcc3633f187fa07c6f6c7f2b59",
+        "date": "2026-08-23",
+        "blueprintMd5": "66426a3af44236a2ad3ded1b03f8fdcf",
+        "validatorCount": 444,
+        "method": "The exclusion target was published through exactly this artifact's own method: the real contracts bundle from loadRealMidgardContractsForTest at this artifact's fixed all-zero one-shot outref, the applied CEK direct resolver taken as buildFaultProofContracts(...).validationTraceDispute.prepareResolvers[11] at the deployment's own hubOracle / fraudProofCatalogue policy ids, published through completeReferenceScriptPublicationTxProgram, signed, measured as complete signed CBOR, then submitted and confirmed on a Lucid Emulator whose maxTxSize is pinned to the real 16,384-byte L1 limit. The driver was a transient lane-N file, deliberately not committed: committing it would add a second publication-fit driver alongside tests/scratch-cg1-publication-fit.test.ts for a role that is not in the roster, and whether the role joins the roster is the open question below, not this measurement's to decide.",
+        "unappliedScript": {
+          "title": "fraud_proofs/validation_trace/cek_v1.main.spend",
+          "bytes": 5307,
+          "hash": "bc0d94d556a172f3090a25b5d3f5707c27e10d5d1ea8cabf998f77ab"
+        },
+        "appliedScriptHash": "0388dc27438025a6f20e9b6077c1d37b08e482cc5b53c1b7a7de9d28",
+        "serializedScriptBytes": 5471,
+        "completeSignedTransactionBytes": 5984,
+        "l1ByteMarginBytes": 10400,
+        "feeLovelace": 418853,
+        "fits": true,
+        "submitted": "Accepted and confirmed by the emulator at maxTxSize 16,384; exactly one live reference-script UTxO at output index 1.",
+        "versusPinnedExclusion": "The pinned exclusion records appliedScriptHash a4bfbd01..., 162,145 applied bytes, 162,660 signed bytes and an L1 margin of -146,276. Re-measured against the regenerated blueprint the same role is 5,471 applied bytes, 5,984 signed bytes and an L1 margin of +10,400 -- it fits the publication envelope with 10,400 bytes to spare, and does so by real submission rather than by arithmetic.",
+        "decisionNotTakenHere": "exclusions[0] is left exactly as pinned. Replacing the triple with the measured one would make the exclusion self-contradictory, and the consequence of the role fitting is that it belongs in nodeRuntimeReferenceScriptTargets -- a runtime roster and deployment-manifest decision. Measurement delivered; the exclusion decision remains open.",
+        "rosterReproduction": "The 34 roster rows above were re-measured in the same pass (pnpm --dir demo/midgard-node exec vitest run tests/scratch-cg1-publication-fit.test.ts, MIDGARD_CG1_EMIT set) and reproduced byte-for-byte: every appliedScriptHash, serializedScriptBytes, completeSignedTransactionBytes, l1ByteMarginBytes and feeLovelace is identical to the pinned row. The only per-run difference is txHash, which the gate does not read and which the emulator derives from run-specific wallet seeds; the roster's fit claims are therefore reproducible and its transaction hashes are not."
+      }
+    }
+  ]
+}

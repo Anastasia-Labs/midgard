@@ -1,0 +1,93 @@
+name: Repo Tools CI
+
+# The repository's own tooling: the plain-node test suites under scripts/,
+# onchain/aiken/scripts/ and demo/scripts/lib/, the e2e acceptance runbook
+# validator, the workflow linter, and the agent-documentation checks. None of them were run by any workflow
+# before, so a red test there stayed red unseen. They are cheap, so this runs
+# on every pull request and every push to main rather than behind a path filter
+# that would need to track every file those tools read.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  repo-tools:
+    name: Repository tool tests and workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Only the demo workspace root: it carries `yaml`, which the workflow
+      # linter and its tests load.
+      - uses: ./.github/actions/demo-setup
+        with:
+          aiken: "true"
+          install-filter: midgard-demo
+      # `node --test` given a glob that matches nothing runs zero tests and
+      # exits 0, so a moved or renamed directory would turn this job into a
+      # silent pass. Every glob has to match at least one file.
+      - name: Every test glob matches a file
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          status=0
+          for glob in "scripts/**/*.test.mjs" "onchain/aiken/scripts/*.test.mjs" "demo/scripts/lib/*.test.mjs"; do
+            # shellcheck disable=SC2206
+            matches=($glob)
+            printf '%-40s %d file(s)\n' "$glob" "${#matches[@]}"
+            if [ "${#matches[@]}" -eq 0 ]; then status=1; fi
+          done
+          exit "$status"
+      # Every step below names a preflight check (scripts/preflight/registry.mjs)
+      # instead of restating its command, so CI runs exactly what the local
+      # gate runs and the two cannot drift. A check that cannot run here (a
+      # missing capability) exits 3 and fails its step.
+      - name: Run the repository tool tests
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run repo-tooling-tests --run aiken-script-tests --run demo-script-tests
+      - name: Validate the e2e acceptance runbook
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run e2e-runbook
+      - name: Lint the workflows
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run workflow-lint
+      - name: Check the generated required-checks list
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run required-checks-doc
+      - name: Check registries name only existing files
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run registry-paths
+      - name: Check deterministic contributor build guards
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run contributor-build-guards
+      - name: Exercise contributor guard causal controls
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run contributor-causal-controls
+      - name: Check agent documentation links
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run agent-doc-links
+      - name: Check agent rule enforcement tags
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run agent-enforcement-tags
+      - name: Check shared agent configuration
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run agent-config
+      - name: Record actual repository validator checkout and Node profile
+        run: node scripts/preflight/ci-evidence.mjs --identity > "$RUNNER_TEMP/identity.json"
+      - name: Retain repository validator identity
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: repo-validator-identity
+          path: ${{ runner.temp }}/identity.json
+          if-no-files-found: error

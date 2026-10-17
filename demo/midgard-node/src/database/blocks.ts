@@ -1,13 +1,13 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "blocks";
 
@@ -57,27 +57,6 @@ const assertNoConflictingHeaderHashes = (
     }
   });
 
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.HEIGHT)} SERIAL PRIMARY KEY,
-      ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL,
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE,
-      ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
-    );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.HEADER_HASH,
-        )} ON ${sql(tableName)} (${sql(Columns.HEADER_HASH)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.TX_ID,
-        )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
-      }),
-    );
-  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to create the table"));
-
 export const insert = (
   headerHash: Buffer,
   txHashes: Buffer[],
@@ -109,7 +88,7 @@ export const retrieveTxHashesByHeaderHash = (
 ): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve txHashes for block ${headerHash}`,
+      `${tableName} db: attempt retrieve txHashes for block ${headerHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
 
@@ -120,7 +99,7 @@ export const retrieveTxHashesByHeaderHash = (
     )} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
 
     yield* Effect.logDebug(
-      `${tableName} db: retrieved ${result.length} txHashes for block ${headerHash}`,
+      `${tableName} db: retrieved ${result.length} txHashes for block ${headerHash.toString("hex")}`,
     );
     return result.map((row) => row[Columns.TX_ID]);
   }).pipe(
@@ -139,7 +118,7 @@ export const retrieveHeaderHashByTxHash = (
 ): Effect.Effect<Buffer, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve headerHash for txHash ${txHash}`,
+      `${tableName} db: attempt retrieve headerHash for txHash ${txHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
 
@@ -148,13 +127,13 @@ export const retrieveHeaderHashByTxHash = (
     )} FROM ${sql(tableName)} WHERE ${sql(Columns.TX_ID)} = ${txHash} LIMIT 1`;
 
     if (rows.length <= 0) {
-      const msg = `No headerHash found for ${txHash} txHash`;
+      const msg = `No headerHash found for ${txHash.toString("hex")} txHash`;
       yield* Effect.logDebug(msg);
       yield* Effect.fail(new SqlError.SqlError({ cause: msg }));
     }
     const result = rows[0][Columns.HEADER_HASH];
     yield* Effect.logDebug(
-      `${tableName} db: retrieved headerHash for tx ${txHash}: ${result}`,
+      `${tableName} db: retrieved headerHash for tx ${txHash.toString("hex")}: ${result.toString("hex")}`,
     );
     return result;
   }).pipe(
@@ -173,7 +152,7 @@ export const clearBlock = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt clear block ${headerHash}`,
+      `${tableName} db: attempt clear block ${headerHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM ${sql(

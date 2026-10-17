@@ -1,0 +1,14 @@
+import "@aiken-lang/merkle-patricia-forestry";
+import "@lucid-evolution/lucid";
+import "@noble/hashes/blake2.js";
+import "@noble/hashes/utils.js";
+import "vitest";
+import "../src/consensus-profile.js";
+import "../src/da-transport.js";
+import "../src/deployment-manifest-identity.js";
+import "../src/deployment-profile.js";
+import "./deployment-manifest-identity.finalized-manifest.js";
+import "./deployment-manifest-identity.finalized-deployment-manifest.js";
+import "./deployment-manifest-identity.deployment-manifest-v1-shared-identity.js";
+import "./deployment-manifest-identity.curated-catalogue.js";
+import "./deployment-manifest-identity.event-history-applied-bounds-in-deployment-identity.js";

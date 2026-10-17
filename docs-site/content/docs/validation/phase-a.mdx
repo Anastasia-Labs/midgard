@@ -11,10 +11,11 @@ any UTxO state; that is Phase B's job.
 
 ## Entry point
 
-```ts
+```text
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
+  localContext?: PhaseALocalContext,
 ): Effect.Effect<PhaseAResult>
 ```
 
@@ -32,12 +33,13 @@ type PhaseAConfig = {
   readonly minFeeB: bigint;
   readonly concurrency: number;
   readonly strictnessProfile: string;
+  readonly consensusProfile?: MidgardConsensusProfile;
 };
 ```
 
 ## Per-transaction checks
 
-`validateNativeOne` runs the checks in order and returns the first rejection it
+`validatePhaseASingle` runs the checks in order and returns the first rejection it
 encounters. The order matters, later checks assume earlier ones passed.
 
 ### 1. Decode
@@ -47,20 +49,28 @@ The queued CBOR is decoded with
 reject code: a ledger-stage failure becomes `E_INVALID_OUTPUT` or
 `E_INVALID_FIELD_TYPE`, and any other failure becomes `E_CBOR_DESERIALIZATION`.
 
-### 2. Transaction body invariants
+### 2. Consensus and transaction body invariants
 
-| Check | Reject code | Condition |
-| --- | --- | --- |
-| Tx id match | `E_TX_HASH_MISMATCH` | Decoded `ledgerTx.txId` must equal the queued `txId`. |
-| Validity flag | `E_IS_VALID_FALSE_FORBIDDEN` | `ledgerTx.validity` must be `TxIsValid`. |
-| Auxiliary data | `E_AUX_DATA_FORBIDDEN` | `auxiliaryDataHash` must equal the canonical empty hash (`EMPTY_NULL_ROOT`). |
-| Network id | `E_NETWORK_ID_MISMATCH` | If present, `networkId` must equal `config.expectedNetworkId`. |
-| Minimum fee | `E_MIN_FEE` | `fee` must be `>= minFeeA * txCbor.length + minFeeB`. |
+After binding the decoded id to the queue id, Phase A requires the exact
+compiled V1 consensus profile and a canonical `programMaterialSidecarCbor`
+(including the canonical empty sidecar for transactions with no programs). It
+checks consensus size/count/encoding bounds and verifies attached program
+material. Missing or invalid material yields `E_CEK_PROGRAM_MATERIAL`. With
+reference inputs, exact combined material verification waits for Phase B
+resolution. Configurable strictness does not bypass these checks.
+
+| Check          | Reject code                  | Condition                                                                    |
+| -------------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| Tx id match    | `E_TX_HASH_MISMATCH`         | Decoded `ledgerTx.txId` must equal the queued `txId`.                        |
+| Validity flag  | `E_IS_VALID_FALSE_FORBIDDEN` | `ledgerTx.validity` must be `TxIsValid`.                                     |
+| Auxiliary data | `E_AUX_DATA_FORBIDDEN`       | `auxiliaryDataHash` must equal the canonical empty hash (`EMPTY_NULL_ROOT`). |
+| Network id     | `E_NETWORK_ID_MISMATCH`      | If present, `networkId` must equal `config.expectedNetworkId`.               |
+| Minimum fee    | `E_MIN_FEE`                  | `fee` must be `>= minFeeA * txCbor.length + minFeeB`.                        |
 
 <Callout type="info">
-The minimum-fee formula is linear in the *serialized transaction size*, the
-byte length of the queued CBOR, matching Cardano's `minFeeA`/`minFeeB` fee
-model.
+  The minimum-fee formula is linear in the *serialized transaction size*, the
+  byte length of the queued CBOR, matching Cardano's `minFeeA`/`minFeeB` fee
+  model.
 </Callout>
 
 ### 3. Input sets: `validateInputSets`
@@ -68,13 +78,14 @@ model.
 - Rejects `E_EMPTY_INPUTS` when there are no spend inputs.
 - Rejects `E_DUPLICATE_INPUT_IN_TX` on a duplicated spend input, a duplicated
   reference input, or an out-ref that appears in **both** the spend and
-  reference sets. Out-refs are compared by their canonical CBOR-hex encoding
-  via `midgardOutRefToCborHex`.
+  reference sets. Identity comparisons use the transaction id and output
+  index; rejection details render canonical bytes through `midgardOutRefToCborHex`.
 
 ### 4. Validity interval: `validateValidityInterval`
 
 Rejects `E_INVALID_VALIDITY_INTERVAL_FORMAT` when a bound is negative, or when
-`validityIntervalStart > validityIntervalEnd`.
+both bounds are present and `validityIntervalStart >= validityIntervalEnd`. The
+upper bound is exclusive, so such an interval contains no slot.
 
 ### 5. Required signers: `validateRequiredSigners`
 
@@ -97,7 +108,8 @@ evaluated in [Phase B](/docs/validation/phase-b).
 
 ### 8. Required observers: `validateRequiredObservers`
 
-Rejects `E_INVALID_FIELD_TYPE` on a duplicated required-observer hash.
+Rejects `E_INVALID_FIELD_TYPE` unless required-observer hashes are strictly
+ordered and unique.
 
 ### 9. Script-evaluation preconditions: `validateScriptEvaluationPreconditions`
 
@@ -108,6 +120,14 @@ When `requiresPlutusEvaluation` is set:
 - If required observers are present, `networkId` must be set
   (`E_INVALID_FIELD_TYPE`).
 
+### 10. Per-transaction execution cap: `validateDeclaredExUnits`
+
+A normal transaction's declared redeemer ex-units, summed over all its
+redeemers, must not exceed the consensus profile's per-transaction execution
+capability (Cardano's `maxTxExUnits`: 16,500,000 memory and 10,000,000,000
+steps) in either component (`E_TX_EX_UNITS`). Forced transactions carry no
+redeemers in this release.
+
 ## Output: `PhaseAValidatedTx`
 
 On success, `buildPhaseAValidatedTx` (from `validation-candidate.ts`)
@@ -115,10 +135,10 @@ materializes the candidate consumed by Phase B. `ledgerTx` is authoritative for
 transaction semantics; the `graph` and `derived` projections must be produced
 from `ledgerTx`, not authored independently by callers.
 
-```ts
+```text
 type PhaseAValidatedTx = {
   readonly ledgerTx: MidgardLedgerTx;            // authoritative semantics
-  readonly submission: { txCbor; arrivalSeq; createdAt };
+  readonly submission: { txCbor; programMaterialSidecarCbor; arrivalSeq; createdAt };
   readonly graph: {                              // consumed by Phase B
     readonly spentOutRefHexes: readonly string[];
     readonly referenceOutRefHexes: readonly string[];
@@ -128,7 +148,8 @@ type PhaseAValidatedTx = {
     readonly outputSum: MidgardValue;
     readonly mintDelta: MidgardValueDelta;
     readonly witnessKeyHashHexes: readonly string[];
-    // ...script-hash projections, redeemerWitnessHash, requiresScriptEvaluation
+    // ...expectedNetworkId, script-hash projections, redeemerWitnessHash,
+    // requiresLocalScriptDiscovery
   };
 };
 ```
@@ -137,8 +158,8 @@ If materialization throws, the transaction is rejected with `E_INVALID_OUTPUT`
 ("failed to materialize Phase B candidate").
 
 <Callout type="info">
-Because Phase A is per-transaction and side-effect free, its checks are safe to
-run at `"unbounded"` concurrency. The dependency and double-spend reasoning that
-requires ordering is deferred to
-[Phase B](/docs/validation/phase-b).
+  Phase A permits `"unbounded"` concurrency for non-positive configuration
+  values. Choose bounded concurrency for operational resource limits. The
+  dependency and double-spend reasoning that requires ordering is deferred to
+  [Phase B](/docs/validation/phase-b).
 </Callout>

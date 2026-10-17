@@ -1,32 +1,21 @@
-import { readFile, writeFile } from "node:fs/promises";
-
-import {
-  type MidgardNodeDeployment,
-  parseMidgardNodeDeploymentInfo,
-} from "../../src/l1/deployment.js";
-
-const FIXTURE_URL = new URL(
-  "../fixtures/da-contract-deployment-info.json",
-  import.meta.url,
-);
-
-export const readDaDeploymentFixture = async (): Promise<
-  Record<string, unknown>
-> => JSON.parse(await readFile(FIXTURE_URL, "utf8")) as Record<string, unknown>;
-
-export const loadDaDeploymentFixture = async (
-  network: string,
-): Promise<MidgardNodeDeployment> => {
-  const deployment = parseMidgardNodeDeploymentInfo(
-    await readDaDeploymentFixture(),
-    network,
-  );
-  if (deployment === undefined) {
-    throw new Error("DA contract deployment fixture did not parse");
-  }
-  return deployment;
-};
-
-export const writeDaDeploymentFixture = async (path: string): Promise<void> => {
-  await writeFile(path, JSON.stringify(await readDaDeploymentFixture()));
-};
+import "@aiken-lang/merkle-patricia-forestry";
+import "@al-ft/midgard-core/codec/native-script";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-core/da-transport";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-core/deployment-profile";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "@noble/hashes/blake2.js";
+import "@noble/hashes/utils.js";
+import "midgard-node/tests/helpers/derived-da-deployment-info";
+import "../../src/l1/deployment.js";
+import "./deployment-fixture.build-canonical-fraud-proof-catalogue-fixture.js";
+import "./deployment-fixture.build-da-deployment-fixture.js";
+import "./deployment-fixture.read-da-deployment-fixture.js";
+export { buildCanonicalFraudProofCatalogueFixture } from "./deployment-fixture.build-canonical-fraud-proof-catalogue-fixture.js";
+export { buildDaDeploymentFixture } from "./deployment-fixture.build-da-deployment-fixture.js";
+export {
+  loadDaDeploymentFixture,
+  readDaDeploymentFixture,
+} from "./deployment-fixture.read-da-deployment-fixture.js";

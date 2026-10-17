@@ -1,15 +1,26 @@
 import { asArray, asBigInt, asBytes } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
-import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
+import {
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "./native-constants.js";
 
+/**
+ * The wire-normative Midgard native-V1 transaction validity language.
+ *
+ * The twin is `MidgardTxValidity` in
+ * `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak`: a two-arm sum
+ * whose constructor order is the wire scalar, so the codes are `0`/`1` and the
+ * Plutus-data forms are `d87980`/`d87a80`. The reason a transaction is invalid
+ * is *not* carried here — it belongs to `RejectionReasonV1`
+ * (`onchain/aiken/lib/midgard/rejection-reason-v1.ak`, mirrored by
+ * `demo/midgard-sdk/src/rejection-reason.ts`), which the operator verdict
+ * carries instead.
+ */
 export const MidgardTxValidityCodes = {
   TxIsValid: 0n,
-  NonExistentInputUtxo: 1n,
-  InvalidSignature: 2n,
-  FailedScript: 3n,
-  FeeTooLow: 4n,
-  UnbalancedTx: 5n,
+  TxIsInvalid: 1n,
 } as const;
 
 export type MidgardTxValidity = keyof typeof MidgardTxValidityCodes;
@@ -74,17 +85,32 @@ export const asUnsigned = (value: unknown, fieldName: string): bigint => {
   return intValue;
 };
 
-export const asSigned = (value: unknown, fieldName: string): bigint => {
+/**
+ * A body validity bound, `docs/spec/midgard-tx.md` §2.1: `-1` for an absent
+ * bound or a nonnegative slot. Anything below `-1` is not a decodable body, so
+ * every body decoder and encoder runs its two bounds through this, the twin of
+ * the Aiken `expect_validity_bound`.
+ */
+export const asValidityBound = (value: unknown, fieldName: string): bigint => {
+  let bound: bigint;
   if (typeof value === "bigint") {
-    return value;
+    bound = value;
+  } else if (typeof value === "number" && Number.isInteger(value)) {
+    bound = BigInt(value);
+  } else {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be an integer`,
+    );
   }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
+  if (bound < MIDGARD_POSIX_TIME_NONE) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be -1 or a nonnegative slot`,
+      bound.toString(),
+    );
   }
-  throw new MidgardTxCodecError(
-    MidgardTxCodecErrorCodes.InvalidFieldType,
-    `${fieldName} must be an integer`,
-  );
+  return bound;
 };
 
 export const decodeVersion = (value: unknown, fieldName: string): bigint => {
@@ -92,8 +118,8 @@ export const decodeVersion = (value: unknown, fieldName: string): bigint => {
   if (version !== MIDGARD_NATIVE_TX_VERSION) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
-      "Unsupported Midgard native tx version",
-      `supported=${MIDGARD_NATIVE_TX_VERSION} actual=${version}`,
+      `${fieldName} must equal ${MIDGARD_NATIVE_TX_VERSION.toString()}`,
+      `actual=${version.toString()}`,
     );
   }
   return version;

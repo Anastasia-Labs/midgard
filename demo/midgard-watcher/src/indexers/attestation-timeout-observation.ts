@@ -1,0 +1,98 @@
+import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk";
+
+import {
+  parseWatcherStateQueueSnapshot,
+  type WatcherStateQueueSnapshot,
+} from "./state-queue-snapshot.js";
+
+export type WatcherAttestationTimeoutObservation = Readonly<
+  | {
+      status: "queue_empty";
+      snapshotDigest: string;
+    }
+  | {
+      status: "attested";
+      snapshotDigest: string;
+      headerHash: string;
+      headerEndTimeMs: string;
+      headerBlockTimeMs: string;
+      daAttestationApplied: true;
+    }
+  | {
+      status: "waiting" | "near_timeout" | "timed_out";
+      snapshotDigest: string;
+      headerHash: string;
+      headerEndTimeMs: string;
+      headerBlockTimeMs: string;
+      deadlineMs: string;
+      remainingMs: string;
+      daAttestationApplied: false;
+    }
+>;
+
+/**
+ * Derives a read-only liveness alert from the authenticated state-queue
+ * indexer's digest-bound snapshot. This module intentionally exposes no
+ * transaction builder, signer, wallet, provider submitter, or mutation hook.
+ */
+export const deriveWatcherAttestationTimeoutObservation = ({
+  snapshot: rawSnapshot,
+  nowMs,
+  alertLeadMs,
+}: {
+  readonly snapshot: unknown;
+  readonly nowMs: bigint;
+  readonly alertLeadMs: bigint;
+}): WatcherAttestationTimeoutObservation | null => {
+  if (
+    nowMs < 0n ||
+    alertLeadMs <= 0n ||
+    alertLeadMs >= DA_ATTESTATION_TIMEOUT_MS
+  ) {
+    return null;
+  }
+  const snapshot: WatcherStateQueueSnapshot | null =
+    parseWatcherStateQueueSnapshot(rawSnapshot);
+  if (snapshot === null) return null;
+  // Earlier applied headers do not hide a later expired unattested suffix.
+  const head =
+    snapshot.queue
+      .filter((header) => header.daAttestationPolicyId === null)
+      .reduce<
+        WatcherStateQueueSnapshot["queue"][number] | undefined
+      >((earliest, header) => (earliest === undefined || BigInt(header.blockTime) < BigInt(earliest.blockTime) ? header : earliest), undefined) ??
+    snapshot.queue[0];
+  if (head === undefined) {
+    return {
+      status: "queue_empty",
+      snapshotDigest: snapshot.snapshotDigest,
+    };
+  }
+  if (head.daAttestationPolicyId !== null) {
+    return {
+      status: "attested",
+      snapshotDigest: snapshot.snapshotDigest,
+      headerHash: head.headerHash,
+      headerEndTimeMs: head.endTime,
+      headerBlockTimeMs: head.blockTime,
+      daAttestationApplied: true,
+    };
+  }
+  const deadlineMs = BigInt(head.blockTime) + DA_ATTESTATION_TIMEOUT_MS;
+  const remainingMs = deadlineMs - nowMs;
+  return {
+    status:
+      remainingMs <= 0n
+        ? "timed_out"
+        : remainingMs <= alertLeadMs
+          ? "near_timeout"
+          : "waiting",
+    snapshotDigest: snapshot.snapshotDigest,
+    headerHash: head.headerHash,
+    headerEndTimeMs: head.endTime,
+    headerBlockTimeMs: head.blockTime,
+    deadlineMs: deadlineMs.toString(),
+    remainingMs: remainingMs.toString(),
+    daAttestationApplied: false,
+  };
+};

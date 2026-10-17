@@ -1,238 +1,47 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import "node:fs";
+import "node:path";
+import "node:url";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-validation";
+import "effect";
+import "vitest";
+import "../../midgard-validation/tests/validation-fixtures.js";
+import "../src/services/validation-pool.js";
+import "../src/workers/utils/validation-pool.js";
+import "./validation-worker-pool.build-adversarial-corpus.js";
 
+import { existsSync } from "node:fs";
+
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deserializePhaseACandidate,
-  encodeScriptContextCbor,
-  evaluateScriptWithHarmonic,
-  MidgardRedeemerTag,
-  type PhaseAResult,
-  type PhaseAValidatedTx,
-  type PhaseBResultWithPatch,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { Constr } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  FixedValidationWorkerPool,
-  ValidationWorkerError,
-} from "@/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "@/workers/utils/validation-pool.js";
-
-import {
-  hashScriptWitness,
   makeNativeTx,
   makeOutput,
-  makeProtectedScriptOutput,
   makeQueued,
-  makeRedeemersCbor,
   outRefFromByte,
-  outRefFromTxId,
-  plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-
-const workerEntry = pathToFileURL(resolve("dist/validation.js"));
-const init = {
-  config: {
-    expectedNetworkId: 0n,
-    minFeeA: 0n,
-    minFeeB: 0n,
-    strictnessProfile: "phase2_worker_test",
-  },
-} as const;
-const nodeVerifierInit = {
-  ...init,
-  signatureVerifier: "node",
-} as const;
-
-const alwaysSucceedsBlueprint = JSON.parse(
-  readFileSync(resolve("blueprints/always-succeeds/plutus.json"), "utf8"),
-) as {
-  readonly validators: readonly {
-    readonly title: string;
-    readonly compiledCode: string;
-  }[];
-};
-const alwaysSucceedsScriptBytes = Buffer.from(
-  alwaysSucceedsBlueprint.validators.find(
-    (validator) => validator.title === "midgard.deposit_spend.else",
-  )?.compiledCode ?? "",
-  "hex",
-);
-
-const invalidTxs = (length: number) =>
-  Array.from({ length }, (_, index) => ({
-    txId: Buffer.alloc(32, index & 0xff),
-    txCbor: Buffer.from("80", "hex"),
-    arrivalSeq: BigInt(index),
-    createdAt: new Date(index),
-  }));
-
-const runWorkerPhaseA = async (
-  pool: FixedValidationWorkerPool,
-  queued: readonly ReturnType<typeof makeQueued>[],
-): Promise<PhaseAResult> => {
-  const responses = await Promise.all(
-    Array.from({ length: Math.ceil(queued.length / 4) }, (_, chunk) =>
-      pool.submit(
-        packPhaseAJob(
-          pool.allocateJobId(),
-          queued.slice(chunk * 4, chunk * 4 + 4),
-        ),
-      ),
-    ),
-  );
-  const accepted: PhaseAValidatedTx[] = [];
-  const rejected: PhaseAResult["rejected"][number][] = [];
-  for (const response of responses) {
-    if (response.kind !== "phase_a") {
-      throw new Error(`expected phase_a response, got ${response.kind}`);
-    }
-    for (const result of response.results) {
-      if (result.ok) {
-        accepted.push(deserializePhaseACandidate(result.candidate));
-      } else {
-        rejected.push({
-          txId: Buffer.from(result.txId),
-          code: result.code,
-          detail: result.detail,
-        });
-      }
-    }
-  }
-  return { accepted, rejected };
-};
-
-const buildAdversarialCorpus = () => {
-  if (alwaysSucceedsScriptBytes.length === 0) {
-    throw new Error("missing always-succeeds Plutus spend fixture");
-  }
-  const shared = outRefFromByte(0x31);
-  const parentInput = outRefFromByte(0x32);
-  const invalidSignatureInput = outRefFromByte(0x33);
-  const scriptInput = outRefFromByte(0x34);
-  const budgetInput = outRefFromByte(0x35);
-  const cycleLeftInput = outRefFromByte(0x36);
-  const cycleRightInput = outRefFromByte(0x37);
-  const script = plutusV3ScriptWitness(alwaysSucceedsScriptBytes);
-  const scriptHash = hashScriptWitness(script);
-  const parent = makeNativeTx({ spendInputs: [parentInput] });
-  const fixtures = [
-    makeNativeTx({ spendInputs: [shared] }),
-    makeNativeTx({ spendInputs: [shared], validityIntervalEnd: 10n }),
-    parent,
-    makeNativeTx({ spendInputs: [outRefFromTxId(parent.txId)] }),
-    makeNativeTx({
-      spendInputs: [invalidSignatureInput],
-      invalidVkeyWitness: true,
-    }),
-    makeNativeTx({
-      spendInputs: [scriptInput],
-      scriptWitnesses: [script],
-      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-        { tag: MidgardRedeemerTag.Spend, index: 0n },
-      ]),
-      scriptLanguages: ["PlutusV3"],
-    }),
-    makeNativeTx({
-      spendInputs: [budgetInput],
-      scriptWitnesses: [script],
-      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-        {
-          tag: MidgardRedeemerTag.Spend,
-          index: 0n,
-          exUnits: [0n, 0n],
-        },
-      ]),
-      scriptLanguages: ["PlutusV3"],
-    }),
-    makeNativeTx({ spendInputs: [cycleLeftInput] }),
-    makeNativeTx({ spendInputs: [cycleRightInput] }),
-  ];
-  return {
-    queued: fixtures.map((fixture, index) =>
-      makeQueued(fixture.txId, fixture.txCbor, BigInt(index)),
-    ),
-    preState: new Map<string, Buffer>([
-      [shared.toString("hex"), makeOutput(10n)],
-      [parentInput.toString("hex"), makeOutput(10n)],
-      [invalidSignatureInput.toString("hex"), makeOutput(10n)],
-      [scriptInput.toString("hex"), makeProtectedScriptOutput(scriptHash, 10n)],
-      [budgetInput.toString("hex"), makeProtectedScriptOutput(scriptHash, 10n)],
-      [cycleLeftInput.toString("hex"), makeOutput(10n)],
-      [cycleRightInput.toString("hex"), makeOutput(10n)],
-    ]),
-    cycleTxIds: [
-      fixtures[7]!.txId.toString("hex"),
-      fixtures[8]!.txId.toString("hex"),
-    ] as const,
-  };
-};
-
-const injectDefensiveCycle = (
-  candidates: readonly PhaseAValidatedTx[],
-  cycleTxIds: readonly [string, string],
-): readonly PhaseAValidatedTx[] => {
-  const byId = new Map(
-    candidates.map((candidate) => [
-      candidate.ledgerTx.txId.toString("hex"),
-      candidate,
-    ]),
-  );
-  const left = byId.get(cycleTxIds[0]);
-  const right = byId.get(cycleTxIds[1]);
-  if (left === undefined || right === undefined) {
-    throw new Error("cycle fixtures did not survive Phase A");
-  }
-  const leftConsumes = right.graph.produced[0]!.outref.toString("hex");
-  const rightConsumes = left.graph.produced[0]!.outref.toString("hex");
-  return candidates.map((candidate) => {
-    const txIdHex = candidate.ledgerTx.txId.toString("hex");
-    if (txIdHex === cycleTxIds[0]) {
-      return {
-        ...candidate,
-        graph: {
-          ...candidate.graph,
-          spentOutRefHexes: [leftConsumes],
-          referenceOutRefHexes: [],
-        },
-      };
-    }
-    if (txIdHex === cycleTxIds[1]) {
-      return {
-        ...candidate,
-        graph: {
-          ...candidate.graph,
-          spentOutRefHexes: [rightConsumes],
-          referenceOutRefHexes: [],
-        },
-      };
-    }
-    return candidate;
-  });
-};
-
-const normalizeVerdict = (
-  phaseA: PhaseAResult,
-  phaseB: PhaseBResultWithPatch,
-) => ({
-  acceptedTxIds: phaseB.accepted.map((candidate) =>
-    candidate.ledgerTx.txId.toString("hex"),
-  ),
-  rejected: [...phaseA.rejected, ...phaseB.rejected].map((rejection) => ({
-    txId: rejection.txId.toString("hex"),
-    code: rejection.code,
-    detail: rejection.detail,
-  })),
-  statePatch: phaseB.statePatch,
-});
+import {
+  FixedValidationWorkerPool,
+  ValidationWorkerError,
+} from "../src/services/validation-pool.js";
+import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
+import {
+  buildAdversarialCorpus,
+  init,
+  injectDefensiveCycle,
+  invalidTxs,
+  nodeVerifierInit,
+  normalizeVerdict,
+  runWorkerPhaseA,
+  workerEntry,
+} from "./validation-worker-pool.build-adversarial-corpus.js";
 
 describe("long-lived validation worker pool", () => {
   it("runs real bundled workers and keeps response order", async () => {
@@ -261,36 +70,6 @@ describe("long-lived validation worker pool", () => {
         expect(sample.externalBytes).toBeGreaterThanOrEqual(0);
         expect(sample.comparableFootprintBytes).toBe(
           sample.usedHeapBytes + sample.externalBytes,
-        );
-      }
-    } finally {
-      await pool.close();
-    }
-  });
-
-  it("returns the same UPLC verdict and detail as the inline evaluator", async () => {
-    const pool = new FixedValidationWorkerPool(1, 4, 30_000, workerEntry, init);
-    try {
-      await pool.start();
-      const scriptBytes = Buffer.from("010203", "hex");
-      const context = new Constr(0, []);
-      const inline = evaluateScriptWithHarmonic(scriptBytes, context);
-      const response = await pool.submit({
-        kind: "uplc",
-        jobId: pool.allocateJobId(),
-        scriptBytes: copyToTransferable(scriptBytes),
-        contextCbor: copyToTransferable(encodeScriptContextCbor(context)),
-      });
-      expect(response.kind).toBe("uplc");
-      if (response.kind === "uplc") {
-        expect(response.result).toStrictEqual(
-          inline.kind === "accepted"
-            ? {
-                ok: true,
-                cpu: inline.budget.cpu,
-                memory: inline.budget.memory,
-              }
-            : { ok: false, detail: inline.detail },
         );
       }
     } finally {
@@ -417,6 +196,7 @@ describe("long-lived validation worker pool", () => {
           injectDefensiveCycle(inlinePhaseA.accepted, corpus.cycleTxIds),
           corpus.preState,
           {
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             nowCardanoSlotNo: 0n,
             bucketConcurrency: 1,
             enforceScriptBudget: true,
@@ -440,42 +220,10 @@ describe("long-lived validation worker pool", () => {
             injectDefensiveCycle(workerPhaseA.accepted, corpus.cycleTxIds),
             corpus.preState,
             {
+              l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
               nowCardanoSlotNo: 0n,
               bucketConcurrency: poolSize,
               enforceScriptBudget: true,
-              evaluateScript: (scriptBytes, contextCbor) =>
-                Effect.tryPromise(() =>
-                  pool.submit({
-                    kind: "uplc",
-                    jobId: pool.allocateJobId(),
-                    scriptBytes: copyToTransferable(scriptBytes),
-                    contextCbor: copyToTransferable(contextCbor),
-                  }),
-                ).pipe(
-                  Effect.flatMap((response) => {
-                    if (response.kind !== "uplc") {
-                      return Effect.fail(
-                        new Error(
-                          `expected uplc response, got ${response.kind}`,
-                        ),
-                      );
-                    }
-                    return Effect.succeed(
-                      response.result.ok
-                        ? {
-                            kind: "accepted" as const,
-                            budget: {
-                              cpu: response.result.cpu,
-                              memory: response.result.memory,
-                            },
-                          }
-                        : {
-                            kind: "script_invalid" as const,
-                            detail: response.result.detail,
-                          },
-                    );
-                  }),
-                ),
             },
           ),
         );

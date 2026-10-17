@@ -19,7 +19,18 @@ type EventCommitmentCounts = Pick<
   | "transitionStepCount"
 >;
 
+export type ValidationCommitments = Pick<
+  SDK.MakeHeaderTransitionCommitmentsInput,
+  "validationTracesRoot" | "validationTraceCount"
+>;
+
 export const makeEventCommitments = (
   roots: EventCommitmentRoots,
   counts: EventCommitmentCounts,
-) => SDK.makeHeaderTransitionCommitmentsProgram({ ...roots, ...counts });
+  validation: ValidationCommitments,
+) =>
+  SDK.makeHeaderTransitionCommitmentsProgram({
+    ...roots,
+    ...counts,
+    ...validation,
+  });

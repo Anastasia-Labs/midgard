@@ -1,80 +1,32 @@
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  Columns as TxColumns,
-  EntryWithTimeStamp,
-} from "@/database/utils/tx.js";
-import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
+import { Columns as TxColumns } from "../src/database/utils/tx.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
+import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
+import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
-  type CommitSchedulerStateQueueEvidence,
+  DEFAULT_BLOCK_EX_UNITS_BUDGET,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
   planSchedulerAwareCommitSelection,
+  schedulerAwareCommitWindowBudgets,
   selectCommitRoots,
   selectCommitTxCandidates,
   updateCommitBuildEwma,
-} from "@/workers/utils/commit-block-planner.js";
-import { establishEffectiveEndTimeFromDecodedMempool } from "@/workers/utils/mpf.js";
-
-const mkTxEntry = (
-  seed: number,
-  timestamp = new Date("2026-01-01T00:00:00.000Z"),
-): EntryWithTimeStamp => ({
-  [TxColumns.TX_ID]: Buffer.from(seed.toString(16).padStart(64, "0"), "hex"),
-  [TxColumns.TX]: Buffer.from(`tx-${seed}`),
-  [TxColumns.TIMESTAMPTZ]: timestamp,
-});
-
-const fitInsideSchedulerWindow = ({
-  resolvedEndTimeMs,
-  maximumEndTimeMs,
-}: {
-  readonly resolvedEndTimeMs: number;
-  readonly maximumEndTimeMs: number;
-}) =>
-  ({
-    status: "fits",
-    alignedCandidateEndTime: resolvedEndTimeMs,
-    minimumMonotonicEndTime: resolvedEndTimeMs - 2_000,
-    minimumCurrentTimeEndTime: resolvedEndTimeMs - 1_000,
-    resolvedEndTime: resolvedEndTimeMs,
-    maximumEndTimeMs,
-  }) as const;
-
-const fitExceedingSchedulerWindow = ({
-  resolvedEndTimeMs,
-  maximumEndTimeMs,
-}: {
-  readonly resolvedEndTimeMs: number;
-  readonly maximumEndTimeMs: number;
-}) =>
-  ({
-    status: "exceeds_cap",
-    alignedCandidateEndTime: resolvedEndTimeMs - 2_000,
-    minimumMonotonicEndTime: resolvedEndTimeMs - 1_000,
-    minimumCurrentTimeEndTime: resolvedEndTimeMs,
-    resolvedEndTime: resolvedEndTimeMs,
-    maximumEndTimeMs,
-    reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()}`,
-  }) as const;
-
-const submitSlotSnapshot = {
-  source: "test",
-  currentSlot: 10,
-  observedAtMs: 50_000,
-  slotLengthMs: 1_000,
-} as const;
-
-const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
-  tailCommitBaseOutRef: "stateq#1",
-  tailBlockEndTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
-  stateQueueHasUnmergedTail: false,
-};
+} from "../src/workers/utils/commit-block-planner.js";
+import { registerCatchUpEventWindowCases } from "./commit-block-planner.catch-up-cases.js";
+import {
+  fitExceedingSchedulerWindow,
+  fitInsideSchedulerWindow,
+  mkTxEntry,
+  stateQueueEvidence,
+  submitSlotSnapshot,
+} from "./commit-block-planner.fixture.js";
 
 describe("commit block planner", () => {
   it("clamps and updates measured commit-build EWMA deterministically", () => {
@@ -206,7 +158,7 @@ describe("commit block planner", () => {
         maxCanonicalTxBytes: 1_000,
         maxLedgerOpCount: 1_000,
         maxTransitionStepCount: 1_000,
-        maxDaPayloadBytes: 1_000,
+        maxDaPayloadBytes: 10_000,
         maxCommitTxBytes: 1_000,
         maxEstimatedCommitBuildMs: 1_000,
         estimatedLedgerOpsPerTx: 1,
@@ -214,6 +166,7 @@ describe("commit block planner", () => {
         estimatedDaOverheadBytesPerTx: 1,
         estimatedCommitTxOverheadBytes: 1,
         estimatedCommitBuildMsPerTx: 1,
+        blockExUnitsBudget: DEFAULT_BLOCK_EX_UNITS_BUDGET,
       },
     });
 
@@ -221,6 +174,37 @@ describe("commit block planner", () => {
     expect(planned.plan.selectedTxCount).toBe(2);
     expect(planned.prunedTxCount).toBe(1);
     expect(planned.candidateSelection.candidateTxHashes).toHaveLength(2);
+  });
+
+  it("fails closed with an empty selection when the first candidate exceeds a bound", () => {
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1), mkTxEntry(2)],
+      processedMempoolTxs: [],
+    });
+
+    const planned = planCommitBatchBudgets({
+      candidateSelection: selection,
+      limits: {
+        maxL2TxCount: 10,
+        maxCanonicalTxBytes: 1,
+        maxLedgerOpCount: 10,
+        maxTransitionStepCount: 10,
+        maxDaPayloadBytes: 10,
+        maxCommitTxBytes: 10_000,
+        maxEstimatedCommitBuildMs: 10_000,
+        estimatedLedgerOpsPerTx: 1,
+        estimatedTransitionStepsPerTx: 1,
+        estimatedDaOverheadBytesPerTx: 0,
+        estimatedCommitTxOverheadBytes: 0,
+        estimatedCommitBuildMsPerTx: 1,
+        blockExUnitsBudget: DEFAULT_BLOCK_EX_UNITS_BUDGET,
+      },
+    });
+
+    expect(planned.plan.stopReason).toBe("tx_bytes_budget");
+    expect(planned.plan.selectedTxCount).toBe(0);
+    expect(planned.candidateSelection.candidateTxs).toEqual([]);
+    expect(planned.prunedTxCount).toBe(2);
   });
 
   it("uses the maximum candidate tx timestamp as the shared tx-backed candidate end-time source", () => {
@@ -320,6 +304,38 @@ describe("commit block planner", () => {
     ]);
   });
 
+  it("accepts a validTo one millisecond beyond the inclusive scheduler cap", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const atCap = mkTxEntry(1, new Date(cap));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [atCap],
+      processedMempoolTxs: [],
+    });
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date(cap),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+        resolvedEndTimeMs: cap + 1,
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("using_current_scheduler_window");
+    expect(plan.reason).toContain(
+      `resolved_inclusive_end_time_ms=${cap.toString()}`,
+    );
+  });
+
   it("does not cap to the current scheduler window when the remaining budget is too low", () => {
     const cap = Date.parse("2026-01-01T00:05:00.000Z");
     const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
@@ -347,6 +363,43 @@ describe("commit block planner", () => {
     expect(plan.candidateSelection).toBe(selection);
     expect(plan.userEventOnlyEndTime.getTime()).toBe(
       Date.parse("2026-01-01T00:06:00.000Z"),
+    );
+  });
+
+  it("caps a source-owned commit to the current shift only while the shift leaves the landing margin", () => {
+    const cap = Date.parse("2026-01-01T00:10:00.000Z");
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [mkTxEntry(1, new Date(cap - 300_000))],
+      processedMempoolTxs: [],
+    });
+    const planAt = (nowMs: number) =>
+      planSchedulerAwareCommitSelection({
+        candidateSelection: selection,
+        userEventOnlyEndTime: new Date(cap),
+        currentSchedulerWindow: {
+          schedulerOutRef: "aa#0",
+          operatorKeyHash: "operator",
+          startTimeMs: cap - 600_000,
+          endTimeMs: cap,
+        },
+        currentBlockStartTimeMs: cap - 600_000,
+        nowMs,
+        ...schedulerAwareCommitWindowBudgets(true),
+        currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+          resolvedEndTimeMs: cap + 1,
+          maximumEndTimeMs: cap,
+        }),
+      });
+
+    // The header end, which is the commit's TTL, is the shift end, so the
+    // commit keeps at least the margin to land.
+    const lastCappedNowMs = cap - HISTORY_COMMIT_LANDING_MARGIN_MS;
+    expect(planAt(lastCappedNowMs)).toMatchObject({
+      status: "using_current_scheduler_window",
+      blockEndTimeCapMs: cap,
+    });
+    expect(planAt(lastCappedNowMs + 1).status).toBe(
+      "current_scheduler_budget_too_low",
     );
   });
 
@@ -383,7 +436,7 @@ describe("commit block planner", () => {
     expect(plan.candidateSelection).toBe(selection);
     expect(plan.userEventOnlyEndTime).toBe(userEventOnlyEndTime);
     expect(plan.reason).toContain(
-      `resolved_end_time_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
+      `resolved_valid_to_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
     );
     expect(plan.reason).toContain(`current_scheduler_end_ms=${cap.toString()}`);
     expect(plan.reason).toContain("minimum_future_buffer_ms=480000");
@@ -680,3 +733,5 @@ describe("commit block planner", () => {
     );
   });
 });
+
+registerCatchUpEventWindowCases();

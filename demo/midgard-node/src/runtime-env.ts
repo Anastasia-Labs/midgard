@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 import dotenv from "dotenv";
 
 export const MIDGARD_DOTENV_MODE_ENV = "MIDGARD_DOTENV_MODE";
@@ -19,12 +20,13 @@ export const loadRuntimeDotenv = ({
   readonly cwd?: string;
 } = {}): void => {
   const mode = env[MIDGARD_DOTENV_MODE_ENV] ?? MIDGARD_DOTENV_ENABLED;
-  if (mode === MIDGARD_DOTENV_DISABLED) return;
-  if (mode !== MIDGARD_DOTENV_ENABLED) {
+  if (mode !== MIDGARD_DOTENV_ENABLED && mode !== MIDGARD_DOTENV_DISABLED) {
     throw new Error(
       `${MIDGARD_DOTENV_MODE_ENV} must be ${MIDGARD_DOTENV_ENABLED} or ${MIDGARD_DOTENV_DISABLED}`,
     );
   }
+  loadRuntimeConfig({ env, cwd });
+  if (mode === MIDGARD_DOTENV_DISABLED) return;
   dotenv.config({
     path: resolve(cwd, ".env"),
     processEnv: env as Record<string, string>,

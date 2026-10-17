@@ -1,0 +1,245 @@
+import {
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  midgardFieldCommitment,
+  midgardFieldStride,
+} from "@al-ft/midgard-core";
+import {
+  aikenBytes,
+  formatAikenSource,
+  hex,
+} from "@al-ft/midgard-core/scripts/golden-channel.mjs";
+import { Data } from "@lucid-evolution/lucid";
+
+import {
+  isCommittedFieldShapeViolation,
+  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+  MIDGARD_ENVELOPE_VERDICT_NAMES,
+  MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
+  MIDGARD_FIELD_SHAPE_VERDICT_NAMES,
+  MIDGARD_FIXED_STRIDE_FIELD_INDICES,
+  midgardCommittedFieldShapeVerdict,
+  midgardEnvelopeVerdict,
+} from "../dist/index.js";
+import {
+  buildPreimage,
+  generatedAikenPath,
+  generatedJsonPath,
+  renderConstruction,
+  repositoryRoot,
+  verdictVectors,
+  wireVectors,
+  writeOrCheck,
+} from "./generate-committed-field-shape-v1-goldens.verdict-vectors.mjs";
+
+// ---------------------------------------------------------------------------
+// The golden
+// ---------------------------------------------------------------------------
+
+const buildGolden = () => {
+  const vectors = verdictVectors.map((vector) => {
+    const preimage = buildPreimage(vector.construction);
+    const verdict = midgardCommittedFieldShapeVerdict(
+      vector.fieldIndex,
+      preimage,
+    );
+    const envelopeVerdict = midgardEnvelopeVerdict(preimage);
+    // The partition against §12.7, checked where it is made. A vector convicted
+    // by both fault kinds would let one committed field finalize twice, and a
+    // channel that merely recorded the pair would regenerate cleanly around it.
+    const convicts = isCommittedFieldShapeViolation({
+      fieldIndex: vector.fieldIndex,
+      verdict,
+    });
+    if (convicts && envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL) {
+      throw new Error(
+        `vector ${vector.label} is convicted by both §12.7 and §12.8`,
+      );
+    }
+    if (
+      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL &&
+      verdict !== 1
+    ) {
+      throw new Error(
+        `vector ${vector.label} leaves §5.1 and is not deferred to §12.7`,
+      );
+    }
+    return {
+      label: vector.label,
+      note: vector.note,
+      fieldIndex: vector.fieldIndex,
+      fieldStride: midgardFieldStride(vector.fieldIndex),
+      construction: vector.construction,
+      byteCount: preimage.length,
+      preimageCommitment: hex(midgardFieldCommitment(preimage)),
+      envelopeVerdict,
+      envelopeVerdictName: MIDGARD_ENVELOPE_VERDICT_NAMES[envelopeVerdict],
+      verdict,
+      verdictName: MIDGARD_FIELD_SHAPE_VERDICT_NAMES[verdict],
+      convicts,
+    };
+  });
+  const reached = new Set(vectors.map((vector) => vector.verdict));
+  if (reached.size !== MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT) {
+    throw new Error(
+      `verdict vectors reach ${String(reached.size)} of ` +
+        `${String(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT)} codes`,
+    );
+  }
+  // Every fixed-stride slot has to appear, or a stride table that dropped a row
+  // would still regenerate cleanly.
+  const slots = new Set(vectors.map((vector) => vector.fieldIndex));
+  for (const fieldIndex of MIDGARD_FIXED_STRIDE_FIELD_INDICES) {
+    if (!slots.has(fieldIndex)) {
+      throw new Error(`no vector at fixed-stride slot ${String(fieldIndex)}`);
+    }
+  }
+  return {
+    schema: "midgard-committed-field-shape-golden",
+    version: 1,
+    specDocument: "docs/spec/midgard-tx.md",
+    generator:
+      "demo/midgard-sdk/scripts/generate-committed-field-shape-v1-goldens.mjs",
+    verdictCodeCount: MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
+    verdictNames: [...MIDGARD_FIELD_SHAPE_VERDICT_NAMES],
+    fixedStrideFieldIndices: [...MIDGARD_FIXED_STRIDE_FIELD_INDICES],
+    fieldByteBound: MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+    vectors,
+    wireVectors: wireVectors.map((vector) => ({
+      label: vector.label,
+      aikenType: vector.aikenType,
+      value: JSON.parse(
+        JSON.stringify(vector.value, (_key, entry) =>
+          typeof entry === "bigint" ? `${entry}n` : entry,
+        ),
+      ),
+      cborHex: Data.to(vector.value, vector.schema),
+    })),
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Aiken rendering
+// ---------------------------------------------------------------------------
+
+const docComment = (text, width = 74) => {
+  const lines = [];
+  let current = "";
+  for (const word of text.split(/\s+/u)) {
+    const candidate = current === "" ? word : `${current} ${word}`;
+    if (candidate.length + "/// ".length > width && current !== "") {
+      lines.push(`/// ${current}`);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current !== "") {
+    lines.push(`/// ${current}`);
+  }
+  return lines;
+};
+
+const section = (title) => [
+  "// ---------------------------------------------------------------------------",
+  `// ${title}`,
+  "// ---------------------------------------------------------------------------",
+  "",
+];
+
+const renderAiken = (golden) =>
+  [
+    "//// Generated by",
+    `//// ${golden.generator}.`,
+    "//// Do not edit; regenerate from the TypeScript twins.",
+    "////",
+    "//// The §12.8 cross-language goldens. Two sets, and they answer different",
+    "//// questions.",
+    "////",
+    "//// **The verdict set** is the one that matters, and every vector in it is a",
+    "//// `(slot, bytes)` pair rather than a byte string. §12.8's verdict is a total",
+    "//// decision procedure of two arguments implemented twice — here and in",
+    "//// `demo/midgard-sdk/src/fraud-proof/committed-field-shape.ts` — and a twin",
+    "//// that transposed the slot or read §5.3's stride table one row differently",
+    "//// would agree with its partner on most inputs and disagree on exactly the",
+    "//// ones the fault kind exists for. Each test rebuilds the bytes from the same",
+    "//// construction the TypeScript side used, proves they are the same bytes by",
+    "//// §4's own `blake2b_256`, and then asserts both verdicts: this section's, and",
+    "//// §12.7's, because the partition between the two fault kinds is a property",
+    "//// of the pair and not of either alone.",
+    "////",
+    "//// **The wire set** round-trips the one Data-encoded surface the family adds:",
+    "//// each test decodes the TypeScript producer's bytes into the Aiken type and",
+    "//// then re-serialises what came back. `CommittedFieldClaimV1` is §12.7's type",
+    "//// reused unchanged and is pinned by §12.7's own channel.",
+    "",
+    "use aiken/cbor",
+    "use aiken/primitive/bytearray",
+    "use midgard/fraud_proofs/canonical_decodability/rule.{envelope_verdict_v1}",
+    "use midgard/fraud_proofs/committed_field_shape/rule.{",
+    "  committed_field_shape_verdict_v1, sized_field_envelope_v1,",
+    "} as committed_field_shape_rule",
+    "use midgard/fraud_proofs/committed_field_shape/step_02.{State}",
+    "use midgard/native_tx_field_access_v1.{",
+    "  encode_field_preimage, field_commitment,",
+    "}",
+    "",
+    ...section("Verdict vectors"),
+    ...golden.vectors.flatMap((vector) => [
+      ...docComment(
+        `\`${vector.label}\` — ${vector.note}. Slot ${String(vector.fieldIndex)} (stride ${String(vector.fieldStride)}), ${String(vector.byteCount)} bytes, §12.8 verdict ${String(vector.verdict)} (\`${vector.verdictName}\`), §12.7 verdict ${String(vector.envelopeVerdict)} (\`${vector.envelopeVerdictName}\`).`,
+      ),
+      `test committed_field_shape_golden_${vector.label}() {`,
+      `  let preimage = ${renderConstruction(vector.construction)}`,
+      "  and {",
+      `    bytearray.length(preimage) == ${String(vector.byteCount)},`,
+      `    field_commitment(preimage) == ${aikenBytes(vector.preimageCommitment)},`,
+      `    committed_field_shape_verdict_v1(${String(vector.fieldIndex)}, preimage) == ${String(vector.verdict)},`,
+      `    envelope_verdict_v1(preimage) == ${String(vector.envelopeVerdict)},`,
+      "  }",
+      "}",
+      "",
+    ]),
+    ...section("Wire vectors"),
+    ...golden.wireVectors.flatMap((vector, index) => {
+      const source = wireVectors[index];
+      return [
+        `const ${vector.label}_cbor: ByteArray =`,
+        `  ${aikenBytes(vector.cborHex)}`,
+        "",
+        `fn ${vector.label}_value() -> ${vector.aikenType} {`,
+        ...source.aiken.split("\n").map((line) => `  ${line}`),
+        "}",
+        "",
+        `/// ${vector.aikenType} / \`${vector.label}\`: decode the TypeScript`,
+        "/// producer's bytes, then re-serialise what came back.",
+        `test committed_field_shape_golden_${vector.label}_round_trips() {`,
+        `  expect Some(decoded_data) = cbor.deserialise(${vector.label}_cbor)`,
+        `  expect decoded: ${vector.aikenType} = decoded_data`,
+        `  let rebuilt: Data = ${vector.label}_value()`,
+        "  and {",
+        `    decoded == ${vector.label}_value(),`,
+        `    cbor.serialise(rebuilt) == ${vector.label}_cbor,`,
+        "  }",
+        "}",
+        "",
+      ];
+    }),
+  ].join("\n");
+
+// ---------------------------------------------------------------------------
+// Emission
+// ---------------------------------------------------------------------------
+
+const golden = buildGolden();
+
+writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
+
+writeOrCheck(
+  generatedAikenPath,
+  formatAikenSource({
+    source: renderAiken(golden),
+    fileName: "rule-golden.test.ak",
+    repositoryRoot,
+    tmpPrefix: "midgard-601-aiken-format-",
+  }),
+);

@@ -1,35 +1,48 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
-use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{
   Address, Credential, Inline, Pointer, Script, StakeCredential, VerificationKey,
 }
 use cardano/assets.{AssetName, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, ValidityRange,
+  InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use env
+use midgard/canonical_cbor_scan_v1 as key_cbor
+use midgard/cbor_deserialise
 use midgard/common/types.{Proof}
 use midgard/common/utils
+use midgard/event_history/horizon
+use midgard/event_history/order_facts
+use midgard/event_history/proof_evidence
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/native_tx/compact as native_compact
+use midgard/fraud_proofs/field_opening_v1.{
+  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, anchored_field_walk,
+  anchored_native_tx, anchored_native_tx_version, fold_opened_field,
+  outputs_field_index, spend_inputs_field_index, unanchored_validity_code_of,
+}
 use midgard/fraud_proofs/native_tx/components as native_components
-use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/transition_trace/timed_history
 use midgard/hub_oracle as hub
+use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
+use midgard/mpf_prefix_fixture as prefix_fixture
+use midgard/mpf_proof_v1 as canonical_mpf
+use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
-use midgard/user_events/tx_order
-use midgard/user_events/withdrawal
+use midgard/user_events/tx_order_v1 as tx_order
+use midgard/validation_claim_v1
+use midgard/validation_trace_v1
 
 pub type TransitionFaultProof {
   challenged_header_hash: ledger_state.HeaderHash,
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   fault: TransitionFault,
 }
 
@@ -57,29 +70,37 @@ pub type TransitionFault {
   }
   OutOfWindowSourceEvent { witness: OutOfWindowSourceEventWitness }
   CountFault { witness: CountFaultWitness }
+  AcceptedTransactionTransitionMismatch {
+    witness: AcceptedTransactionTransitionMismatchWitness,
+  }
 }
 
-pub type SourceMembershipProof {
-  WithdrawalSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.WithdrawalId,
-      ledger_state.WithdrawalInfo,
-    >,
+/// Tag-3 source membership opens only the key and its value digest. The
+/// source domain, count and counted root are derived from the challenged header.
+pub type SourceKeyOpening {
+  WithdrawalKeyOpening {
+    withdrawal_id: ledger_state.WithdrawalId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  ForcedTransactionSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTx,
-    >,
+  ForcedKeyOpening {
+    tx_order_id: ledger_state.TxOrderId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  L2TransactionSourceMembership {
-    membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+  L2KeyOpening {
+    tx_id: ByteArray,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
-  DepositSourceMembership {
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.DepositId,
-      ledger_state.DepositInfo,
-    >,
+  DepositKeyOpening {
+    deposit_id: ledger_state.DepositId,
+    value_hash: ByteArray,
+    phas_root: ByteArray,
+    proof: Proof,
   }
 }
 
@@ -114,21 +135,44 @@ pub type SourceMembershipMismatchWitness {
     source_non_membership: SourceNonMembershipProof,
   }
   SourceEventMissingTrace {
-    source_membership: SourceMembershipProof,
+    source_membership: SourceKeyOpening,
     event_to_step_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.EventKey,
     >,
   }
   SourcePhaseMismatch {
     trace_proof: transition_trace.IndexedTraceProof,
-    source_membership: SourceMembershipProof,
+    source_membership: SourceKeyOpening,
+  }
+  SourceEventMissingValidationRun {
+    source: SourceKeyOpening,
+    run_phas_root: ByteArray,
+    run_absence_proof: Proof,
+  }
+  ForeignValidationRun {
+    event_key: ByteArray,
+    value_hash: ByteArray,
+    run_phas_root: ByteArray,
+    run_proof: Proof,
+    source_phas_root: ByteArray,
+    source_absence_proof: Proof,
+  }
+  MalformedValidationRun {
+    event_key: ledger_state.EventKey,
+    value: ByteArray,
+    run_phas_root: ByteArray,
+    run_proof: Proof,
   }
 }
 
+/// `delete_proof` authenticates `(key, value)` against the pre-root and derives
+/// the post-root in one fold. `opening` opens a lone neighbour group of a
+/// terminal `Branch` step (`mpf_proof_v1.terminal_branch_keeps_two_children`)
+/// and is empty when the proof needs none.
 pub type LedgerDeleteWitness {
   key: ByteArray,
   value: ByteArray,
-  membership_proof: Proof,
+  opening: ByteArray,
   delete_proof: Proof,
 }
 
@@ -171,18 +215,7 @@ pub type InvalidOneStepTransitionWitness {
     >,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTx,
-    >,
-  }
-  ValidForcedTransactionUnsupported {
-    trace_proof: transition_trace.IndexedTraceProof,
-    event_to_step: transition_trace.RootMembershipProof<
-      ledger_state.EventKey,
-      ledger_state.EventToStepValue,
-    >,
-    source_membership: transition_trace.RootMembershipProof<
-      ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTx,
+      ledger_state.ForcedInclusionTxV1,
     >,
   }
   ValidDepositTransition {
@@ -193,10 +226,8 @@ pub type InvalidOneStepTransitionWitness {
     >,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.DepositId,
-      ledger_state.DepositInfo,
+      ByteArray,
     >,
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     projected_utxo: LedgerInsertWitness,
   }
   L2TransactionTransition {
@@ -216,17 +247,18 @@ pub type InvalidOneStepTransitionWitness {
   }
 }
 
+pub type AcceptedTransactionTransitionMismatchWitness {
+  claim: validation_claim_v1.ValidationClaimWitnessV1,
+  terminal_acceptance_witness_cbor: ByteArray,
+}
+
 pub type OmittedDueL1EventWitness {
   OmittedDueDeposit {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.DepositId,
     >,
   }
   OmittedDueWithdrawal {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.WithdrawalId,
     >,
@@ -234,7 +266,7 @@ pub type OmittedDueL1EventWitness {
   OmittedDueForcedTransaction {
     event_ref_input_index: Int,
     event_asset_name: AssetName,
-    validity_override: ledger_state.MidgardTxValidity,
+    validity_override: rejection_reason_v1.OperatorVerdictV1,
     source_non_membership: transition_trace.RootNonMembershipProof<
       ledger_state.TxOrderId,
     >,
@@ -243,17 +275,12 @@ pub type OmittedDueL1EventWitness {
 
 pub type OutOfWindowSourceEventWitness {
   OutOfWindowDeposit {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.DepositId,
-      ledger_state.DepositInfo,
+      ByteArray,
     >,
   }
   OutOfWindowWithdrawal {
-    event_ref_input_index: Int,
-    event_asset_name: AssetName,
-    validity_override: ledger_state.WithdrawalValidity,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.WithdrawalId,
       ledger_state.WithdrawalInfo,
@@ -262,10 +289,10 @@ pub type OutOfWindowSourceEventWitness {
   OutOfWindowForcedTransaction {
     event_ref_input_index: Int,
     event_asset_name: AssetName,
-    validity_override: ledger_state.MidgardTxValidity,
+    validity_override: rejection_reason_v1.OperatorVerdictV1,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTx,
+      ledger_state.ForcedInclusionTxV1,
     >,
   }
 }
@@ -278,20 +305,16 @@ pub type CountFaultWitness {
   TransitionTraceRootCountMismatch { proof: transition_trace.RootCountProof }
 }
 
-type TimedDepositEvent {
-  event: ledger_state.DepositEvent,
-  inclusion_time: Int,
-}
-
-type AuthenticatedDepositReference {
-  event: ledger_state.DepositEvent,
-  inclusion_time: Int,
-  value: Value,
+/// Transaction-local history evidence, separate from the immutable semantic proof.
+pub type L1EventEvidence {
+  transaction: Transaction,
+  history_data: proof_evidence.Parameters,
+  reference: timed_history.Reference,
 }
 
 const transition_trace_fraud_category_id = #"00000004"
 
-fn header_counts_are_non_negative(header: ledger_state.Header) -> Bool {
+fn header_counts_are_non_negative(header: ledger_state.HeaderV1) -> Bool {
   and {
     header.withdrawal_count >= 0,
     header.forced_transaction_count >= 0,
@@ -302,12 +325,12 @@ fn header_counts_are_non_negative(header: ledger_state.Header) -> Bool {
   }
 }
 
-fn source_count_sum(header: ledger_state.Header) -> Int {
+fn source_count_sum(header: ledger_state.HeaderV1) -> Int {
   header.withdrawal_count + header.forced_transaction_count + header.l2_transaction_count + header.deposit_count
 }
 
 pub fn phase_for_step_index(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   step_index: Int,
 ) -> ledger_state.TransitionPhase {
   expect header_counts_are_non_negative(header)
@@ -343,22 +366,21 @@ pub fn event_key_phase(
 }
 
 fn event_key_from_source_membership(
-  source_membership: SourceMembershipProof,
+  source_membership: SourceKeyOpening,
 ) -> ledger_state.EventKey {
   when source_membership is {
-    WithdrawalSourceMembership { membership } ->
-      ledger_state.WithdrawalEventKey { withdrawal_id: membership.key }
-    ForcedTransactionSourceMembership { membership } ->
-      ledger_state.ForcedTransactionEventKey { tx_order_id: membership.key }
-    L2TransactionSourceMembership { membership } ->
-      ledger_state.L2TransactionEventKey { tx_id: membership.key }
-    DepositSourceMembership { membership } ->
-      ledger_state.DepositEventKey { deposit_id: membership.key }
+    WithdrawalKeyOpening { withdrawal_id, .. } ->
+      ledger_state.WithdrawalEventKey { withdrawal_id }
+    ForcedKeyOpening { tx_order_id, .. } ->
+      ledger_state.ForcedTransactionEventKey { tx_order_id }
+    L2KeyOpening { tx_id, .. } -> ledger_state.L2TransactionEventKey { tx_id }
+    DepositKeyOpening { deposit_id, .. } ->
+      ledger_state.DepositEventKey { deposit_id }
   }
 }
 
 fn source_membership_phase(
-  source_membership: SourceMembershipProof,
+  source_membership: SourceKeyOpening,
 ) -> ledger_state.TransitionPhase {
   event_key_from_source_membership(source_membership) |> event_key_phase
 }
@@ -379,7 +401,7 @@ fn source_non_membership_event_key(
 }
 
 fn verify_event_to_step_membership(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   membership: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
     ledger_state.EventToStepValue,
@@ -396,7 +418,7 @@ fn verify_event_to_step_membership(
 }
 
 fn verify_event_to_step_non_membership(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   non_membership: transition_trace.RootNonMembershipProof<ledger_state.EventKey>,
 ) -> Bool {
   transition_trace.verify_root_non_membership_with_key_bytes(
@@ -408,52 +430,72 @@ fn verify_event_to_step_non_membership(
   )
 }
 
+fn verify_key_opening(
+  domain: transition_trace.RootDomain,
+  root: ByteArray,
+  count: Int,
+  phas_root: ByteArray,
+  key: ByteArray,
+  value_hash: ByteArray,
+  proof: Proof,
+) -> Bool {
+  and {
+    count > 0,
+    root == transition_trace.commit_counted_root(domain, phas_root, count),
+    canonical_mpf.has_value_hash(phas_root, key, value_hash, proof),
+  }
+}
+
 fn verify_source_membership(
-  header: ledger_state.Header,
-  source_membership: SourceMembershipProof,
+  header: ledger_state.HeaderV1,
+  source_membership: SourceKeyOpening,
 ) -> Bool {
   when source_membership is {
-    WithdrawalSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    WithdrawalKeyOpening { withdrawal_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.WithdrawalsRootDomain,
         header.withdrawals_root,
         header.withdrawal_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(withdrawal_id),
+        value_hash,
+        proof,
       )
-    ForcedTransactionSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
-        transition_trace.ForcedTransactionsRootDomain,
+    ForcedKeyOpening { tx_order_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
+        transition_trace.ForcedTransactionsV1RootDomain,
         header.forced_transactions_root,
         header.forced_transaction_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(tx_order_id),
+        value_hash,
+        proof,
       )
-    L2TransactionSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
-        transition_trace.TransactionsRootDomain,
+    L2KeyOpening { tx_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
+        transition_trace.TransactionsV1RootDomain,
         header.transactions_root,
         header.l2_transaction_count,
-        membership.key,
-        membership.value,
+        phas_root,
+        tx_id,
+        value_hash,
+        proof,
       )
-    DepositSourceMembership { membership } ->
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
+    DepositKeyOpening { deposit_id, value_hash, phas_root, proof } ->
+      verify_key_opening(
         transition_trace.DepositsRootDomain,
         header.deposits_root,
         header.deposit_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
+        phas_root,
+        cbor.serialise(deposit_id),
+        value_hash,
+        proof,
       )
   }
 }
 
 fn verify_source_non_membership(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   source_non_membership: SourceNonMembershipProof,
 ) -> Bool {
   when source_non_membership is {
@@ -468,7 +510,7 @@ fn verify_source_non_membership(
     ForcedTransactionSourceNonMembership { non_membership } ->
       transition_trace.verify_root_non_membership_with_key_bytes(
         non_membership,
-        transition_trace.ForcedTransactionsRootDomain,
+        transition_trace.ForcedTransactionsV1RootDomain,
         header.forced_transactions_root,
         header.forced_transaction_count,
         cbor.serialise(non_membership.key),
@@ -476,7 +518,7 @@ fn verify_source_non_membership(
     L2TransactionSourceNonMembership { non_membership } ->
       transition_trace.verify_root_non_membership_with_key_bytes(
         non_membership,
-        transition_trace.TransactionsRootDomain,
+        transition_trace.TransactionsV1RootDomain,
         header.transactions_root,
         header.l2_transaction_count,
         non_membership.key,
@@ -493,7 +535,7 @@ fn verify_source_non_membership(
 }
 
 fn verify_trace_binding_to_event_to_step(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -514,7 +556,7 @@ fn verify_trace_binding_to_event_to_step(
 }
 
 fn validate_trace_boundary(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   side: TraceBoundarySide,
   trace_proof: transition_trace.IndexedTraceProof,
 ) -> Bool {
@@ -539,7 +581,7 @@ fn validate_trace_boundary(
 }
 
 fn validate_trace_link(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   adjacent: transition_trace.AdjacentTraceProof,
 ) -> Bool {
   and {
@@ -553,7 +595,7 @@ fn validate_trace_link(
 }
 
 fn trace_has_bad_phase(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
 ) -> Bool {
   or {
@@ -566,7 +608,7 @@ fn trace_has_bad_phase(
 }
 
 fn validate_event_to_step_mismatch(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.EventToStepProof,
 ) -> Bool {
@@ -596,8 +638,153 @@ fn validate_event_to_step_mismatch(
   }
 }
 
+fn verify_source_absence(
+  domain: transition_trace.RootDomain,
+  root: ByteArray,
+  count: Int,
+  phas_root: ByteArray,
+  key: ByteArray,
+  proof: Proof,
+) -> Bool {
+  expect root == transition_trace.commit_counted_root(domain, phas_root, count)
+  // The count is a committed label, not an authenticated leaf count. An empty
+  // trie with a positive run label is precisely an all-runs-missing fault.
+  expect canonical_mpf.does_not_have(phas_root, key, proof)
+  True
+}
+
+fn verify_run_absence(
+  header: ledger_state.HeaderV1,
+  phas_root: ByteArray,
+  event_key: ledger_state.EventKey,
+  proof: Proof,
+) -> Bool {
+  verify_source_absence(
+    transition_trace.ValidationTracesRootDomain,
+    header.validation_traces_root,
+    header.validation_trace_count,
+    phas_root,
+    cbor.serialise(event_key),
+    proof,
+  )
+}
+
+/// A run's key is raw committed bytes. Invalid and non-canonical keys are
+/// foreign too; decoding them must never prevent adjudication of the leaf.
+fn validation_key_bytes(
+  bytes: ByteArray,
+  offset: Int,
+) -> Option<key_cbor.CborBytesV1> {
+  if builtin.slice_bytearray(offset, 1, bytes) == #"5f" {
+    validation_key_chunks(bytes, offset + 1, 0, #"")
+  } else {
+    when key_cbor.bytes_at_v1(bytes, offset) is {
+      Some(item) ->
+        if builtin.length_of_bytearray(item.value) <= 64 {
+          Some(item)
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+fn validation_key_chunks(
+  bytes: ByteArray,
+  offset: Int,
+  seen: Int,
+  value: ByteArray,
+) -> Option<key_cbor.CborBytesV1> {
+  if builtin.slice_bytearray(offset, 1, bytes) == #"ff" {
+    if seen >= 2 {
+      Some(key_cbor.CborBytesV1 { next_offset: offset + 1, value })
+    } else {
+      None
+    }
+  } else {
+    when key_cbor.bytes_at_v1(bytes, offset) is {
+      None -> None
+      Some(item) -> {
+        let length = builtin.length_of_bytearray(item.value)
+        let next_value = builtin.append_bytearray(value, item.value)
+        if length == 64 {
+          validation_key_chunks(bytes, item.next_offset, seen + 1, next_value)
+        } else if and {
+          seen >= 1,
+          length > 0,
+          length < 64,
+          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
+        } {
+          Some(
+            key_cbor.CborBytesV1 {
+              next_offset: item.next_offset + 1,
+              value: next_value,
+            },
+          )
+        } else {
+          None
+        }
+      }
+    }
+  }
+}
+
+/// Only the two transaction EventKey shapes name a validation source. Read
+/// their canonical wire grammar directly rather than recursively decoding any
+/// Data an adversary puts in a trie key. All other bytes stay foreign, including
+/// bignums and generic constructors which the general decoder cannot safely
+/// materialise. Byte-string chunking and integer widths keep the same domain as
+/// the previous canonicality screen followed by the typed-field checks.
+pub fn validation_run_source_key(bytes: ByteArray) -> Pair<Int, ByteArray> {
+  let length = builtin.length_of_bytearray(bytes)
+  if builtin.slice_bytearray(0, 3, bytes) == #"d87b9f" {
+    when validation_key_bytes(bytes, 3) is {
+      Some(item) ->
+        if and {
+          item.next_offset + 1 == length,
+          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
+        } {
+          Pair(2, item.value)
+        } else {
+          Pair(0, #"")
+        }
+      None -> Pair(0, #"")
+    }
+  } else if builtin.slice_bytearray(0, 6, bytes) == #"d87a9fd8799f" {
+    when validation_key_bytes(bytes, 6) is {
+      None -> Pair(0, #"")
+      Some(item) -> {
+        let major = if item.next_offset < length {
+          builtin.index_bytearray(bytes, item.next_offset) / 32
+        } else {
+          2
+        }
+        if major == 0 || major == 1 {
+          when key_cbor.head_at_v1(bytes, item.next_offset, major) is {
+            Some(index) ->
+              if and {
+                index.next_offset + 2 == length,
+                builtin.slice_bytearray(index.next_offset, 2, bytes) == #"ffff",
+              } {
+                Pair(1, builtin.slice_bytearray(3, length - 4, bytes))
+              } else {
+                Pair(0, #"")
+              }
+            None -> Pair(0, #"")
+          }
+        } else {
+          Pair(0, #"")
+        }
+      }
+    }
+  } else {
+    Pair(0, #"")
+  }
+}
+
 fn validate_source_membership_mismatch(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   witness: SourceMembershipMismatchWitness,
 ) -> Bool {
   when witness is {
@@ -638,10 +825,88 @@ fn validate_source_membership_mismatch(
         trace_proof.value.phase != source_membership_phase(source_membership),
       }
     }
+    SourceEventMissingValidationRun { source, run_phas_root, run_absence_proof } ->
+      and {
+        when source is {
+          ForcedKeyOpening { .. } -> True
+          L2KeyOpening { .. } -> True
+          _ -> False
+        },
+        verify_source_membership(header, source),
+        verify_run_absence(
+          header,
+          run_phas_root,
+          event_key_from_source_membership(source),
+          run_absence_proof,
+        ),
+      }
+    ForeignValidationRun {
+      event_key,
+      value_hash,
+      run_phas_root,
+      run_proof,
+      source_phas_root,
+      source_absence_proof,
+    } -> and {
+        verify_key_opening(
+          transition_trace.ValidationTracesRootDomain,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          run_phas_root,
+          event_key,
+          value_hash,
+          run_proof,
+        ),
+        when validation_run_source_key(event_key) is {
+          Pair(source_kind, source_key) ->
+            if source_kind == 0 {
+              True
+            } else {
+              verify_source_absence(
+                if source_kind == 1 {
+                  transition_trace.ForcedTransactionsV1RootDomain
+                } else {
+                  transition_trace.TransactionsV1RootDomain
+                },
+                if source_kind == 1 {
+                  header.forced_transactions_root
+                } else {
+                  header.transactions_root
+                },
+                if source_kind == 1 {
+                  header.forced_transaction_count
+                } else {
+                  header.l2_transaction_count
+                },
+                source_phas_root,
+                source_key,
+                source_absence_proof,
+              )
+            }
+        },
+      }
+    MalformedValidationRun { event_key, value, run_phas_root, run_proof } -> {
+      expect
+        verify_key_opening(
+          transition_trace.ValidationTracesRootDomain,
+          header.validation_traces_root,
+          header.validation_trace_count,
+          run_phas_root,
+          cbor.serialise(event_key),
+          builtin.blake2b_256(value),
+          run_proof,
+        )
+      expect !validation_trace_v1.descriptor_bytes_are_well_formed(value)
+      True
+    }
   }
 }
 
-fn ledger_trie(root: ByteArray) {
+/// The ledger MPF at `root`. `pub` because it is *the* protocol reading of a
+/// ledger root: the value-not-preserved family authenticates spent-input
+/// descriptors against `header.prev_utxos_root` through this same trie
+/// constructor rather than growing a second one.
+pub fn ledger_trie(root: ByteArray) {
   if root == env.empty_merkle_tree_root {
     mpf.empty
   } else {
@@ -649,7 +914,16 @@ fn ledger_trie(root: ByteArray) {
   }
 }
 
-fn ledger_outref_key(outref: OutputReference) -> ByteArray {
+/// The ledger MPF trie key for an out-ref: spec §5.3's field-0/1 item,
+/// `82 ‖ 58 20 tx_id ‖ 19 index_be16`, a fixed 38 bytes.
+///
+/// This is deliberately the *same* encoder the field-0/1 preimage items use, so
+/// a trie key and a spend-input item are the identical bytes and there is only
+/// one out-ref spelling in the protocol. `pub` so the cross-language golden
+/// channel can pin it directly against the TypeScript producers
+/// (`outRefToCbor`, `midgardOutRefToCbor`) rather than pinning
+/// `encode_midgard_tx_input` and arguing the rest by inspection.
+pub fn ledger_outref_key(outref: OutputReference) -> ByteArray {
   native_components.encode_midgard_tx_input(
     native_types.MidgardTxInput {
       tx_id: outref.transaction_id,
@@ -658,7 +932,13 @@ fn ledger_outref_key(outref: OutputReference) -> ByteArray {
   )
 }
 
-fn verify_ledger_membership(
+/// Membership of `(key, value)` in the ledger MPF at `root`. `pub` for the
+/// same reason as [`ledger_trie`](#ledger_trie): the value-not-preserved
+/// family fetches spent-input descriptors through it rather than through a
+/// second binding path. A delete witness does not call it: its paired fold
+/// already requires the including root to equal `root`
+/// (`apply_delete_witness`).
+pub fn verify_ledger_membership(
   root: ByteArray,
   key: ByteArray,
   value: ByteArray,
@@ -672,25 +952,27 @@ fn verify_ledger_non_membership(
   key: ByteArray,
   proof: Proof,
 ) -> Bool {
-  expect _inserted = mpf.insert(ledger_trie(root), key, env.empty, proof)
+  expect canonical_mpf.does_not_have(mpf.root(ledger_trie(root)), key, proof)
   True
 }
 
-fn apply_delete_witness(
+/// The paired fold in `delete_root` proves `(key, value)` is in `root` (its
+/// including root must equal `root`) and derives the successor, so no
+/// separate membership proof is taken.
+pub fn apply_delete_witness(
   root: ByteArray,
   witness: LedgerDeleteWitness,
 ) -> ByteArray {
-  expect
-    verify_ledger_membership(
-      root,
-      witness.key,
-      witness.value,
-      witness.membership_proof,
-    )
-  delete_root(root, witness.key, witness.value, witness.delete_proof)
+  delete_root(
+    root,
+    witness.key,
+    witness.value,
+    witness.delete_proof,
+    witness.opening,
+  )
 }
 
-fn apply_insert_witness(
+pub fn apply_insert_witness(
   root: ByteArray,
   witness: LedgerInsertWitness,
 ) -> ByteArray {
@@ -704,7 +986,7 @@ fn apply_insert_witness(
 }
 
 fn validate_withdrawal_one_step_binding(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -717,9 +999,13 @@ fn validate_withdrawal_one_step_binding(
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      WithdrawalSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.WithdrawalsRootDomain,
+      header.withdrawals_root,
+      header.withdrawal_count,
+      cbor.serialise(source_membership.key),
+      cbor.serialise(source_membership.value),
     ),
     trace_proof.value.event_key == ledger_state.WithdrawalEventKey {
       withdrawal_id: source_membership.key,
@@ -729,7 +1015,7 @@ fn validate_withdrawal_one_step_binding(
 }
 
 fn validate_forced_transaction_one_step_binding(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -737,14 +1023,18 @@ fn validate_forced_transaction_one_step_binding(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.TxOrderId,
-    ledger_state.ForcedInclusionTx,
+    ledger_state.ForcedInclusionTxV1,
   >,
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      ForcedTransactionSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      header.forced_transaction_count,
+      cbor.serialise(source_membership.key),
+      cbor.serialise(source_membership.value),
     ),
     trace_proof.value.event_key == ledger_state.ForcedTransactionEventKey {
       tx_order_id: source_membership.key,
@@ -753,8 +1043,8 @@ fn validate_forced_transaction_one_step_binding(
   }
 }
 
-fn validate_deposit_one_step_binding(
-  header: ledger_state.Header,
+pub fn validate_deposit_one_step_binding(
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -762,14 +1052,18 @@ fn validate_deposit_one_step_binding(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.DepositId,
-    ledger_state.DepositInfo,
+    ByteArray,
   >,
 ) -> Bool {
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
-    verify_source_membership(
-      header,
-      DepositSourceMembership { membership: source_membership },
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.DepositsRootDomain,
+      header.deposits_root,
+      header.deposit_count,
+      cbor.serialise(source_membership.key),
+      source_membership.value,
     ),
     trace_proof.value.event_key == ledger_state.DepositEventKey {
       deposit_id: source_membership.key,
@@ -796,14 +1090,11 @@ fn cardano_stake_credential_to_midgard(
   }
 }
 
-fn deposit_address_to_midgard(
+pub fn deposit_address_to_midgard(
   address: Address,
   network_id: Int,
 ) -> native_types.MidgardAddress {
-  expect or {
-      network_id == 0,
-      network_id == 1,
-    }
+  // Event-history admission bounds `network_id` to Midgard's L2 ids.
   native_types.MidgardAddress {
     protected: False,
     network_id,
@@ -841,24 +1132,6 @@ fn cardano_asset_pairs_to_midgard(
   }
 }
 
-fn projected_deposit_value(
-  value: Value,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-) -> native_types.MidgardValue {
-  expect assets.quantity_of(value, deposit_policy_id, event_asset_name) == 1
-  let projected_value =
-    value |> assets.add(deposit_policy_id, event_asset_name, -1)
-  let lovelace = assets.lovelace_of(projected_value)
-  expect lovelace >= 0
-  native_types.MidgardValue {
-    lovelace,
-    assets: projected_value
-      |> assets.flatten
-      |> cardano_asset_pairs_to_midgard,
-  }
-}
-
 fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
   when datum is {
     Some(datum) -> Some(cbor.serialise(datum))
@@ -866,36 +1139,37 @@ fn deposit_datum_cbor(datum: Option<Data>) -> Option<ByteArray> {
   }
 }
 
-fn projected_deposit_output_cbor(
+/// Project the original admitted assets retained by the history commitment.
+/// Neither structural ADA nor the history NFT is present in this Value.
+pub fn projected_original_deposit_output(
   deposit_info: ledger_state.DepositInfo,
-  deposit_value: Value,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-) -> ByteArray {
-  native_components.encode_midgard_tx_output(
-    native_types.MidgardTxOutput {
-      address: deposit_address_to_midgard(
-        deposit_info.l2_address,
-        deposit_info.l2_network_id,
-      ),
-      value: projected_deposit_value(
-        deposit_value,
-        deposit_policy_id,
-        event_asset_name,
-      ),
-      datum_cbor: deposit_datum_cbor(deposit_info.l2_datum),
-      script_ref: None,
+  original_assets: Value,
+) -> native_types.MidgardTxOutput {
+  let lovelace = assets.lovelace_of(original_assets)
+  expect lovelace >= 0
+  native_types.MidgardTxOutput {
+    address: deposit_address_to_midgard(
+      deposit_info.l2_address,
+      deposit_info.l2_network_id,
+    ),
+    value: native_types.MidgardValue {
+      lovelace,
+      assets: original_assets
+        |> assets.flatten
+        |> cardano_asset_pairs_to_midgard,
     },
-  )
+    datum_cbor: deposit_datum_cbor(deposit_info.l2_datum),
+    script_ref: None,
+  }
 }
 
 fn verify_l2_source_membership(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
 ) -> Bool {
   transition_trace.verify_root_membership_with_bytes(
     membership,
-    transition_trace.TransactionsRootDomain,
+    transition_trace.TransactionsV1RootDomain,
     header.transactions_root,
     header.l2_transaction_count,
     membership.key,
@@ -903,8 +1177,8 @@ fn verify_l2_source_membership(
   )
 }
 
-fn validate_l2_one_step_binding(
-  header: ledger_state.Header,
+pub fn validate_l2_one_step_binding(
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -912,8 +1186,7 @@ fn validate_l2_one_step_binding(
   >,
   source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
 ) -> Bool {
-  expect ledger_state.L2TransactionEventKey { tx_id } =
-    trace_proof.value.event_key
+  expect ledger_state.L2TransactionEventKey { tx_id } = trace_proof.value.event_key
   and {
     verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
     verify_l2_source_membership(header, source_membership),
@@ -945,6 +1218,21 @@ fn apply_l2_spends(
   }
 }
 
+/// Replays the inserts one L2 transaction makes into `utxos_root`.
+///
+/// The inserted value is the output's `LedgerOutputCommitmentV1` descriptor,
+/// never the full output bytes. Spec section 5.3 fixes the descriptor as the
+/// MPT value ("recomputed with that descriptor as the MPT value, not with the
+/// full output bytes") and every other producer of the ledger trie -- the node,
+/// the validation machine, the watcher's block replay and DA reconstruction --
+/// commits the descriptor. Replaying the full output bytes here would recompute
+/// a root that an honest descriptor-built block can never equal, and the fault
+/// condition is a root mismatch, so the arm would mint against honest blocks
+/// and could never prove a real one.
+///
+/// The descriptor is derived from the output rather than taken from the
+/// witness. A challenger who could name the inserted value could name the post
+/// root, which is the whole fault.
 fn apply_l2_outputs(
   root: ByteArray,
   tx_id: ByteArray,
@@ -959,11 +1247,13 @@ fn apply_l2_outputs(
     }
     [output, ..rest] -> {
       expect [witness, ..remaining_witnesses] = witnesses
-      let expected_key =
-        native_components.encode_midgard_tx_input(
-          native_types.MidgardTxInput { tx_id, output_index },
-        )
-      let expected_value = native_components.encode_midgard_tx_output(output)
+      let expected_key = native_components.encode_midgard_tx_input(
+        native_types.MidgardTxInput { tx_id, output_index },
+      )
+      expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
+        output_index,
+        native_components.encode_midgard_tx_output(output),
+      )
       expect witness.key == expected_key
       expect witness.value == expected_value
       apply_l2_outputs(
@@ -978,7 +1268,7 @@ fn apply_l2_outputs(
 }
 
 fn validate_valid_withdrawal_transition(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -993,8 +1283,10 @@ fn validate_valid_withdrawal_transition(
   expect source_membership.value.validity == ledger_state.WithdrawalIsValid
   let expected_key = ledger_outref_key(source_membership.value.body.l2_outref)
   expect spent_utxo.key == expected_key
-  let expected_post_root =
-    apply_delete_witness(trace_proof.value.pre_utxos_root, spent_utxo)
+  let expected_post_root = apply_delete_witness(
+    trace_proof.value.pre_utxos_root,
+    spent_utxo,
+  )
   and {
     validate_withdrawal_one_step_binding(
       header,
@@ -1007,7 +1299,7 @@ fn validate_valid_withdrawal_transition(
 }
 
 fn validate_invalid_withdrawal_no_op_transition(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -1031,7 +1323,7 @@ fn validate_invalid_withdrawal_no_op_transition(
 }
 
 fn validate_invalid_forced_transaction_no_op_transition(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -1039,10 +1331,10 @@ fn validate_invalid_forced_transaction_no_op_transition(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.TxOrderId,
-    ledger_state.ForcedInclusionTx,
+    ledger_state.ForcedInclusionTxV1,
   >,
 ) -> Bool {
-  expect source_membership.value.operator_validity != ledger_state.TxIsValid
+  expect rejection_reason_v1.ForcedTxInvalid { .. } = source_membership.value.verdict
   and {
     validate_forced_transaction_one_step_binding(
       header,
@@ -1054,10 +1346,10 @@ fn validate_invalid_forced_transaction_no_op_transition(
   }
 }
 
-fn validate_valid_deposit_transition(
-  header: ledger_state.Header,
+pub fn validate_valid_deposit_transition(
+  header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
+  evidence: L1EventEvidence,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -1065,39 +1357,47 @@ fn validate_valid_deposit_transition(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.DepositId,
-    ledger_state.DepositInfo,
+    ByteArray,
   >,
-  event_ref_input_index: Int,
-  event_asset_name: AssetName,
   projected_utxo: LedgerInsertWitness,
 ) -> Bool {
-  let AuthenticatedDepositReference { event, value, .. } =
-    get_authenticated_deposit_reference(
-      reference_inputs,
-      hub_datum.deposit,
-      event_asset_name,
-      event_ref_input_index,
-    )
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    evidence.transaction.validity_range,
+  )
+  // Coverage only. The merge deadline is enforced at the terminal by
+  // `state_queue.require_completed_fraud_witness` (state-queue.ak:621-653),
+  // which deposit-v1.ak:97 calls against the node's block_time.
+  expect horizon.captured_after_coverage(header.end_time, lower, upper)
+  let (_, payload, original_assets) = order_facts.capture_open(
+    evidence.transaction,
+    hub_datum.deposit,
+    hub_datum.deposit_addr,
+    evidence.history_data.retention_address,
+    order_facts.Deposit,
+    source_membership.key,
+    evidence.history_data.inline_limit,
+    evidence.history_data.max_payload_bytes,
+    evidence.history_data.max_payload_nodes,
+    evidence.reference.order_index,
+    evidence.reference.external_data_index,
+  )
+  expect order_facts.DepositPayload { event } = payload
   let expected_key = ledger_outref_key(source_membership.key)
-  let expected_value =
-    projected_deposit_output_cbor(
-      source_membership.value,
-      value,
-      hub_datum.deposit,
-      event_asset_name,
-    )
-  let checked_projected_utxo =
-    LedgerInsertWitness {
-      key: expected_key,
-      value: expected_value,
-      non_membership_proof: projected_utxo.non_membership_proof,
-      insert_proof: projected_utxo.insert_proof,
-    }
-  let expected_post_root =
-    apply_insert_witness(
-      trace_proof.value.pre_utxos_root,
-      checked_projected_utxo,
-    )
+  expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
+    source_membership.key.output_index,
+    projected_original_deposit_output(event.info, original_assets)
+      |> native_components.encode_midgard_tx_output,
+  )
+  let checked_projected_utxo = LedgerInsertWitness {
+    key: expected_key,
+    value: expected_value,
+    non_membership_proof: projected_utxo.non_membership_proof,
+    insert_proof: projected_utxo.insert_proof,
+  }
+  let expected_post_root = apply_insert_witness(
+    trace_proof.value.pre_utxos_root,
+    checked_projected_utxo,
+  )
   and {
     validate_deposit_one_step_binding(
       header,
@@ -1106,15 +1406,87 @@ fn validate_valid_deposit_transition(
       source_membership,
     ),
     event.id == source_membership.key,
-    event.info == source_membership.value,
+    cbor.serialise(event.info) == source_membership.value,
     projected_utxo.key == expected_key,
     projected_utxo.value == expected_value,
     expected_post_root != trace_proof.value.post_utxos_root,
   }
 }
 
-fn validate_l2_transaction_transition(
-  header: ledger_state.Header,
+/// Authenticate one **body** field of the disputed transaction through the §8.8
+/// door and walk it into a decoded item list, in order, exactly once.
+///
+/// This replaces the retired pair of `decode_<field>_preimage_cbor` followed by
+/// a `field_commitment_from_items` re-hash of the reproduced item list. Where
+/// that idiom re-encoded every item to re-derive a commitment it then compared
+/// against a free-standing hash, the door hashes the preimage **once** (§7.1
+/// authenticate-once) against the commitment it extracts positionally from the
+/// tx-id-verified compact structures (§4), and the items fall out of a single
+/// §10 walk over the bytes that hash already authenticated.
+///
+/// Not an equivalent rewrite, and the difference is the point of §4. The old
+/// check was against the canonical *re-encoding* of whatever the prover's bytes
+/// decoded to; this one is against the prover's bytes themselves. So the door is
+/// narrower where the retired decoder was lax — a non-minimal item wrapper the
+/// old path silently canonicalised is refused by `item_header_at`, and the §5.4
+/// aggregate length cap now applies — and wider in the one case where the block
+/// committed a non-canonically spelled preimage, which the re-hash could never
+/// match and exact bytes do. That widening cannot frame an honest operator: the
+/// commitment still pins the bytes, and an honest operator commits canonical
+/// ones. It is the direction §4 chose deliberately — the commitment is over raw
+/// bytes, so raw bytes are what a dispute must be held to.
+///
+/// It goes through `midgard/fraud_proofs/field_opening_v1` rather than reaching
+/// `authenticated_field_view` directly, and the reason is the part that is easy
+/// to skip: that module owns the §2.5 body/witness pairing. Building the
+/// door's arguments here instead would mean spelling the unread witness set
+/// out locally — a second copy of the one value #575 deliberately made
+/// unreachable from a redeemer. Both fields this family opens are body fields,
+/// so the guard has nothing to refuse today; routing through the bridge is
+/// what keeps that true of a later edit to this file rather than a property of
+/// the two call sites below. (Until #606 the bridge also carried the
+/// fields-6–8 tier-3 refusal, `carriage_reaches_the_anchor`; the repair's
+/// welded-hash equality lives behind the door itself, so every entry point
+/// inherits it.)
+///
+/// The anchor arrives **already paid for**, as an `AnchoredNativeTxV1` the
+/// caller built once from `BodyAnchor { tx_id }` over the MPF-committed
+/// `source_membership.key` — never a redeemer value. Taking the handle rather
+/// than the id and the bytes is what makes this family's two openings cost one
+/// transaction-id derivation instead of two: the bridge still re-runs the §2.5
+/// pairing and the tier check for each field, and only the anchor is shared.
+/// `field_index` remains a literal at each call site (§4 removed field-index
+/// domain separation, so the index is the only thing distinguishing field 0's
+/// commitment from field 1's).
+///
+/// The carriage is likewise a literal: this family carries its preimages inline
+/// in the fault witness (§8.1 tier 1), so tiers 2 and 3 are unreachable from
+/// here and the two arguments only those tiers consult — the reference-input
+/// list and the §8.6 certificate policy id — are provably never read. They are
+/// passed empty rather than plumbed through, which is also why this rebind adds
+/// no validator parameter and leaves the family's applied hashes to #579.
+pub fn door_body_field_items(
+  anchored: AnchoredNativeTxV1,
+  field_index: Int,
+  preimage: ByteArray,
+  decode_item: fn(ByteArray) -> a,
+) -> List<a> {
+  let reversed_items = fold_opened_field(
+    anchored_field_walk(
+      anchored,
+      field_index,
+      native_tx_field_access_v1.Inline { preimage },
+      [],
+      #"",
+    ),
+    [],
+    fn(acc, _index, item) { [decode_item(item), ..acc] },
+  )
+  list.reverse(reversed_items)
+}
+
+pub fn validate_l2_transaction_transition(
+  header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
   event_to_step: transition_trace.RootMembershipProof<
     ledger_state.EventKey,
@@ -1126,26 +1498,64 @@ fn validate_l2_transaction_transition(
   spent_utxos: List<LedgerDeleteWitness>,
   produced_utxos: List<LedgerInsertWitness>,
 ) -> Bool {
-  let compact = native_compact.decode_native_tx_compact(source_membership.value)
-  expect compact.validity_code == 0
-  expect blake2b_256(spend_inputs_preimage) == compact.body.spend_inputs_hash
-  expect blake2b_256(outputs_preimage) == compact.body.outputs_hash
-  let spend_inputs =
-    native_preimages.decode_midgard_tx_inputs_preimage_cbor(
-      spend_inputs_preimage,
-    )
-  let outputs =
-    native_preimages.decode_midgard_tx_outputs_preimage_cbor(outputs_preimage)
-  let after_spends =
-    apply_l2_spends(trace_proof.value.pre_utxos_root, spend_inputs, spent_utxos)
-  let expected_post_root =
-    apply_l2_outputs(
-      after_spends,
-      source_membership.key,
-      0,
-      outputs,
-      produced_utxos,
-    )
+  // 1. The committed source leaf must be well-formed CBOR.
+  let source_data <- cbor_deserialise.expect_deserialise(
+    source_membership.value,
+  )
+  // 2. Those bytes must decode as an `L2TransactionSourceV1`.
+  expect source: ledger_state.L2TransactionSourceV1 = source_data
+  // §4/§8.8: the transaction id is the anchor and the compact bytes re-derive
+  // to it. This replaces the retired `verify_native_tx_proof_source_v1` over the
+  // proof-source triple; the witness-set-compact and field-preimage-lengths
+  // members that triple carried are not consulted for a body-field dispute.
+  //
+  // Derived **once** for the whole step. This rule reads three things off the
+  // one transaction — its scalar `validity_code`, field 0 and field 2 — and
+  // re-deriving the id for each cost ~211k memory units apiece; the anchored
+  // handle pays it once without giving up the §2.5 pairing or the tier check,
+  // both of which the bridge re-runs per field opened.
+  let anchored = anchored_native_tx(
+    BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
+    BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
+  )
+  // 3. The transaction's §2.5 `validity_code` must be `TxIsValid` (0), because
+  //    this rule is about a transaction the block declared valid. The accessor is
+  //    named `unanchored_` because the *handle* cannot vouch for that value —
+  //    §3's id preimage is the body alone — and at this call site it does not
+  //    have to. `source.source.compact_cbor` is not the prover's own bytes: it
+  //    comes out of the `transactions_root` leaf, and the exact leaf bytes are
+  //    re-checked below (`cbor.serialise(source) == source_membership.value`,
+  //    over the membership `validate_l2_one_step_binding` verifies), so the code
+  //    read here is the one the block committed.
+  expect unanchored_validity_code_of(anchored) == 0
+  // §8.8 door: field 0 (spend inputs) and field 2 (outputs) are authenticated
+  // once against their flat commitments and walked into item lists. The field
+  // indices are literals here, not witness values, so no prover can steer a
+  // field-0 read onto field 1's identically-shaped commitment (§4).
+  let spend_inputs = door_body_field_items(
+    anchored,
+    spend_inputs_field_index,
+    spend_inputs_preimage,
+    native_components.decode_midgard_tx_input_cbor,
+  )
+  let outputs = door_body_field_items(
+    anchored,
+    outputs_field_index,
+    outputs_preimage,
+    native_components.decode_midgard_tx_output_cbor,
+  )
+  let after_spends = apply_l2_spends(
+    trace_proof.value.pre_utxos_root,
+    spend_inputs,
+    spent_utxos,
+  )
+  let expected_post_root = apply_l2_outputs(
+    after_spends,
+    source_membership.key,
+    0,
+    outputs,
+    produced_utxos,
+  )
   and {
     validate_l2_one_step_binding(
       header,
@@ -1153,15 +1563,19 @@ fn validate_l2_transaction_transition(
       event_to_step,
       source_membership,
     ),
+    cbor.serialise(source) == source_membership.value,
+    source.tx_id == source_membership.key,
+    anchored_native_tx_version(anchored) == 1,
     expected_post_root != trace_proof.value.post_utxos_root,
   }
 }
 
 fn validate_invalid_one_step_transition(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
   witness: InvalidOneStepTransitionWitness,
+  l1_event_evidence: Option<L1EventEvidence>,
 ) -> Bool {
   when witness is {
     ValidWithdrawalTransition {
@@ -1199,26 +1613,24 @@ fn validate_invalid_one_step_transition(
         event_to_step,
         source_membership,
       )
-    ValidForcedTransactionUnsupported { .. } -> False
     ValidDepositTransition {
       trace_proof,
       event_to_step,
       source_membership,
-      event_ref_input_index,
-      event_asset_name,
       projected_utxo,
-    } ->
+    } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
       validate_valid_deposit_transition(
         header,
         hub_datum,
-        reference_inputs,
+        evidence,
         trace_proof,
         event_to_step,
         source_membership,
-        event_ref_input_index,
-        event_asset_name,
         projected_utxo,
       )
+    }
     L2TransactionTransition {
       trace_proof,
       event_to_step,
@@ -1241,88 +1653,37 @@ fn validate_invalid_one_step_transition(
   }
 }
 
-fn timed_l1_event_is_due(
-  header: ledger_state.Header,
-  inclusion_time: Int,
+pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
+  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  expect [version_data,
+        tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
+  expect builtin.un_i_data(version_data) == 1
+  expect builtin.un_b_data(tag_data) == #""
+  let root = builtin.un_b_data(root_data)
+  expect bytearray.length(root) == 32
+  root
+}
+
+pub fn validate_accepted_transaction_transition_mismatch(
+  header: ledger_state.HeaderV1,
+  witness: AcceptedTransactionTransitionMismatchWitness,
 ) -> Bool {
+  let claim = witness.claim
+  let descriptor = claim.descriptor_membership.value
+  let terminal = claim.terminal_state
+  let post_root = terminal_acceptance_post_root(
+    witness.terminal_acceptance_witness_cbor,
+  )
   and {
-    header.start_time < inclusion_time,
-    inclusion_time <= header.end_time,
+    validation_claim_v1.committed_claim_is_valid(header, claim),
+    descriptor.verdict == validation_trace_v1.Accepted,
+    terminal.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      terminal.program_counter,
+      witness.terminal_acceptance_witness_cbor,
+    ),
+    post_root != claim.transition_step_membership.value.post_utxos_root,
   }
-}
-
-fn forced_tx_is_due(
-  header: ledger_state.Header,
-  validity_range: ValidityRange,
-) -> Bool {
-  when vrn.normalize_time_range(validity_range) is {
-    vrn.ClosedRange { lower, upper } -> and {
-        lower <= header.end_time,
-        header.start_time <= upper,
-      }
-    vrn.FromNegInf { upper } -> header.start_time <= upper
-    vrn.ToPosInf { lower } -> lower <= header.end_time
-    vrn.Always -> True
-    vrn.InvalidRange -> False
-  }
-}
-
-fn get_authenticated_deposit_reference(
-  reference_inputs: List<Input>,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> AuthenticatedDepositReference {
-  expect Some(Input {
-    output: Output { datum: InlineDatum(datum_data), value, .. },
-    ..
-  }) = list.at(reference_inputs, event_ref_input_index)
-  expect assets.quantity_of(value, deposit_policy_id, event_asset_name) == 1
-  expect [event_data,
-    inclusion_time_data, ..] = builtin.unconstr_fields(datum_data)
-  let Pair(deposit_id_data, deposit_info_data) =
-    ledger_state.unsafe_event_to_key_value_pair(event_data)
-  expect deposit_id: ledger_state.DepositId = deposit_id_data
-  expect deposit_info: ledger_state.DepositInfo = deposit_info_data
-
-  AuthenticatedDepositReference {
-    event: ledger_state.DepositEvent { id: deposit_id, info: deposit_info },
-    inclusion_time: builtin.un_i_data(inclusion_time_data),
-    value,
-  }
-}
-
-fn get_deposit_event_with_nft(
-  reference_inputs: List<Input>,
-  deposit_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> TimedDepositEvent {
-  let AuthenticatedDepositReference { event, inclusion_time, .. } =
-    get_authenticated_deposit_reference(
-      reference_inputs,
-      deposit_policy_id,
-      event_asset_name,
-      event_ref_input_index,
-    )
-  TimedDepositEvent { event, inclusion_time }
-}
-
-fn get_withdrawal_datum_with_nft(
-  reference_inputs: List<Input>,
-  withdrawal_policy_id: ByteArray,
-  event_asset_name: AssetName,
-  event_ref_input_index: Int,
-) -> withdrawal.Datum {
-  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } =
-    utils.get_authentic_input_with_nft_at(
-      reference_inputs,
-      withdrawal_policy_id,
-      event_asset_name,
-      event_ref_input_index,
-    )
-  expect datum: withdrawal.Datum = datum_data
-  datum
 }
 
 fn get_tx_order_datum_with_nft(
@@ -1331,199 +1692,92 @@ fn get_tx_order_datum_with_nft(
   event_asset_name: AssetName,
   event_ref_input_index: Int,
 ) -> tx_order.Datum {
-  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } =
-    utils.get_authentic_input_with_nft_at(
-      reference_inputs,
-      tx_order_policy_id,
-      event_asset_name,
-      event_ref_input_index,
-    )
+  expect Input { output: Output { datum: InlineDatum(datum_data), .. }, .. } = utils.get_authentic_input_with_nft_at(
+    reference_inputs,
+    tx_order_policy_id,
+    event_asset_name,
+    event_ref_input_index,
+  )
   expect datum: tx_order.Datum = datum_data
   datum
 }
 
-fn validate_omitted_due_l1_event(
-  header: ledger_state.Header,
+fn validate_l1_event_fault(
+  header: ledger_state.HeaderV1,
+  fault: TransitionFault,
   hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
-  witness: OmittedDueL1EventWitness,
+  evidence: L1EventEvidence,
 ) -> Bool {
-  when witness is {
-    OmittedDueDeposit {
-      event_ref_input_index,
-      event_asset_name,
-      source_non_membership,
-    } -> {
-      let TimedDepositEvent { event, inclusion_time } =
-        get_deposit_event_with_nft(
-          reference_inputs,
-          hub_datum.deposit,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      and {
-        timed_l1_event_is_due(header, inclusion_time),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.DepositsRootDomain,
-          header.deposits_root,
-          header.deposit_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
-    }
-    OmittedDueWithdrawal {
-      event_ref_input_index,
-      event_asset_name,
-      source_non_membership,
-    } -> {
-      let withdrawal_datum =
-        get_withdrawal_datum_with_nft(
-          reference_inputs,
-          hub_datum.withdrawal,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } =
-        withdrawal_datum
-      and {
-        timed_l1_event_is_due(header, inclusion_time),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.WithdrawalsRootDomain,
-          header.withdrawals_root,
-          header.withdrawal_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
-    }
-    OmittedDueForcedTransaction {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override: _validity_override,
-      source_non_membership,
-    } -> {
-      let tx_order_datum =
-        get_tx_order_datum_with_nft(
-          reference_inputs,
-          hub_datum.tx_order,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      let user_events.OptimisticDatum { event, .. } = tx_order_datum
-      and {
-        forced_tx_is_due(header, event.tx.body.validity_interval),
-        source_non_membership.key == event.id,
-        transition_trace.verify_root_non_membership_with_key_bytes(
-          source_non_membership,
-          transition_trace.ForcedTransactionsRootDomain,
-          header.forced_transactions_root,
-          header.forced_transaction_count,
-          cbor.serialise(source_non_membership.key),
-        ),
-      }
+  let parameters = fn(policy) {
+    timed_history.Parameters {
+      policy,
+      list_address: address.from_script(policy),
+      data: evidence.history_data,
     }
   }
-}
-
-fn validate_out_of_window_source_event(
-  header: ledger_state.Header,
-  hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
-  witness: OutOfWindowSourceEventWitness,
-) -> Bool {
-  when witness is {
-    OutOfWindowDeposit {
-      event_ref_input_index,
-      event_asset_name,
-      source_membership,
-    } -> {
-      let TimedDepositEvent { event, inclusion_time } =
-        get_deposit_event_with_nft(
-          reference_inputs,
-          hub_datum.deposit,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      and {
-        !timed_l1_event_is_due(header, inclusion_time),
-        source_membership.key == event.id,
-        source_membership.value == event.info,
-        verify_source_membership(
-          header,
-          DepositSourceMembership { membership: source_membership },
-        ),
+  when fault is {
+    OmittedDueL1Event { witness } ->
+      when witness is {
+        OmittedDueDeposit { source_non_membership } ->
+          timed_history.omitted(
+            evidence.transaction,
+            parameters(hub_datum.deposit),
+            evidence.reference,
+            order_facts.Deposit,
+            header,
+            source_non_membership,
+          )
+        OmittedDueWithdrawal { source_non_membership } ->
+          timed_history.omitted(
+            evidence.transaction,
+            parameters(hub_datum.withdrawal),
+            evidence.reference,
+            order_facts.Withdrawal,
+            header,
+            source_non_membership,
+          )
+        OmittedDueForcedTransaction { .. } ->
+          validate_forced_l1_event_fault(
+            header,
+            fault,
+            hub_datum,
+            evidence.transaction.reference_inputs,
+            evidence.reference.order_index,
+          )
       }
-    }
-    OutOfWindowWithdrawal {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override,
-      source_membership,
-    } -> {
-      let withdrawal_datum =
-        get_withdrawal_datum_with_nft(
-          reference_inputs,
-          hub_datum.withdrawal,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      let user_events.OptimisticDatum { event, inclusion_time, .. } =
-        withdrawal_datum
-      let expected_info =
-        ledger_state.WithdrawalInfo {
-          ..event.info,
-          validity: validity_override,
-        }
-      and {
-        !timed_l1_event_is_due(header, inclusion_time),
-        source_membership.key == event.id,
-        source_membership.value == expected_info,
-        verify_source_membership(
-          header,
-          WithdrawalSourceMembership { membership: source_membership },
-        ),
+    OutOfWindowSourceEvent { witness } ->
+      when witness is {
+        OutOfWindowDeposit { source_membership } ->
+          timed_history.out_of_window_deposit(
+            evidence.transaction,
+            parameters(hub_datum.deposit),
+            evidence.reference,
+            header,
+            source_membership,
+          )
+        OutOfWindowWithdrawal { source_membership } ->
+          timed_history.out_of_window_withdrawal(
+            evidence.transaction,
+            parameters(hub_datum.withdrawal),
+            evidence.reference,
+            header,
+            source_membership,
+          )
+        OutOfWindowForcedTransaction { .. } ->
+          validate_forced_l1_event_fault(
+            header,
+            fault,
+            hub_datum,
+            evidence.transaction.reference_inputs,
+            evidence.reference.order_index,
+          )
       }
-    }
-    OutOfWindowForcedTransaction {
-      event_ref_input_index,
-      event_asset_name,
-      validity_override,
-      source_membership,
-    } -> {
-      let tx_order_datum =
-        get_tx_order_datum_with_nft(
-          reference_inputs,
-          hub_datum.tx_order,
-          event_asset_name,
-          event_ref_input_index,
-        )
-      let user_events.OptimisticDatum { event, .. } = tx_order_datum
-      let expected_source_value =
-        ledger_state.ForcedInclusionTx {
-          tx_compact: ledger_state.MidgardTxCompactWithoutValidity {
-            body: event.tx.body,
-            wits: event.tx.wits,
-          },
-          operator_validity: validity_override,
-        }
-      and {
-        !forced_tx_is_due(header, event.tx.body.validity_interval),
-        source_membership.key == event.id,
-        source_membership.value == expected_source_value,
-        verify_source_membership(
-          header,
-          ForcedTransactionSourceMembership { membership: source_membership },
-        ),
-      }
-    }
+    _ -> False
   }
 }
 
 fn validate_duplicate_trace_event(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   left: transition_trace.IndexedTraceProof,
   right: transition_trace.IndexedTraceProof,
 ) -> Bool {
@@ -1544,7 +1798,7 @@ fn validate_duplicate_trace_event(
 }
 
 fn validate_count_fault(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   witness: CountFaultWitness,
 ) -> Bool {
   when witness is {
@@ -1563,19 +1817,19 @@ fn validate_count_fault(
             ),
             proof.count != header.withdrawal_count,
           }
-        transition_trace.ForcedTransactionsRootDomain -> and {
+        transition_trace.ForcedTransactionsV1RootDomain -> and {
             transition_trace.verify_root_count_proof(
               proof,
-              transition_trace.ForcedTransactionsRootDomain,
+              transition_trace.ForcedTransactionsV1RootDomain,
               header.forced_transactions_root,
               proof.count,
             ),
             proof.count != header.forced_transaction_count,
           }
-        transition_trace.TransactionsRootDomain -> and {
+        transition_trace.TransactionsV1RootDomain -> and {
             transition_trace.verify_root_count_proof(
               proof,
-              transition_trace.TransactionsRootDomain,
+              transition_trace.TransactionsV1RootDomain,
               header.transactions_root,
               proof.count,
             ),
@@ -1614,10 +1868,11 @@ fn validate_count_fault(
 }
 
 fn validate_transition_fault(
-  header: ledger_state.Header,
+  header: ledger_state.HeaderV1,
   fault: TransitionFault,
   hub_datum: hub.Datum,
   reference_inputs: List<Input>,
+  l1_event_evidence: Option<L1EventEvidence>,
 ) -> Bool {
   when fault is {
     TraceBoundaryFault { side, trace_proof } ->
@@ -1633,34 +1888,43 @@ fn validate_transition_fault(
         hub_datum,
         reference_inputs,
         witness,
+        l1_event_evidence,
       )
-    OmittedDueL1Event { witness } ->
-      validate_omitted_due_l1_event(
-        header,
-        hub_datum,
-        reference_inputs,
-        witness,
-      )
+    OmittedDueL1Event { .. } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
+      validate_l1_event_fault(header, fault, hub_datum, evidence)
+    }
     DuplicateTraceEvent { left_trace, right_trace } ->
       validate_duplicate_trace_event(header, left_trace, right_trace)
-    OutOfWindowSourceEvent { witness } ->
-      validate_out_of_window_source_event(
-        header,
-        hub_datum,
-        reference_inputs,
-        witness,
-      )
+    OutOfWindowSourceEvent { .. } -> {
+      expect Some(evidence) = l1_event_evidence
+      expect evidence.transaction.reference_inputs == reference_inputs
+      validate_l1_event_fault(header, fault, hub_datum, evidence)
+    }
     CountFault { witness } -> validate_count_fault(header, witness)
+    AcceptedTransactionTransitionMismatch { witness } ->
+      validate_accepted_transaction_transition_mismatch(header, witness)
   }
 }
 
-pub fn validate_transition_fault_proof(
+pub fn validate_transition_fault_proof_envelope(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,
-  hub_datum: hub.Datum,
-  reference_inputs: List<Input>,
 ) -> Bool {
-  let TransitionFaultProof { challenged_header_hash, header, fault } = proof
+  let TransitionFaultProof { challenged_header_hash, header, .. } = proof
+  validate_transition_header_envelope(
+    challenged_header_hash,
+    header,
+    computation_thread_token_asset_name,
+  )
+}
+
+pub fn validate_transition_header_envelope(
+  challenged_header_hash: ByteArray,
+  header: ledger_state.HeaderV1,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
   let header_data: Data = header
   and {
     utils.verify_hash_28(header_data, challenged_header_hash),
@@ -1673,7 +1937,247 @@ pub fn validate_transition_fault_proof(
       computation_thread_token_asset_name,
       fraud_proof_catalogue.id_byte_count,
     ) == challenged_header_hash,
-    validate_transition_fault(header, fault, hub_datum, reference_inputs),
+  }
+}
+
+pub fn validate_control_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      TraceBoundaryFault { side, trace_proof } ->
+        validate_trace_boundary(proof.header, side, trace_proof)
+      TraceLinkFault { adjacent } -> validate_trace_link(proof.header, adjacent)
+      EventToStepMismatch { trace_proof, event_to_step } ->
+        validate_event_to_step_mismatch(
+          proof.header,
+          trace_proof,
+          event_to_step,
+        )
+      CountFault { witness } -> validate_count_fault(proof.header, witness)
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_source_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      SourceMembershipMismatch { witness } ->
+        validate_source_membership_mismatch(proof.header, witness)
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_withdrawal_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      InvalidOneStepTransition { witness } ->
+        when witness is {
+          ValidWithdrawalTransition {
+            trace_proof,
+            event_to_step,
+            source_membership,
+            spent_utxo,
+          } ->
+            validate_valid_withdrawal_transition(
+              proof.header,
+              trace_proof,
+              event_to_step,
+              source_membership,
+              spent_utxo,
+            )
+          InvalidWithdrawalNoOpTransition {
+            trace_proof,
+            event_to_step,
+            source_membership,
+          } ->
+            validate_invalid_withdrawal_no_op_transition(
+              proof.header,
+              trace_proof,
+              event_to_step,
+              source_membership,
+            )
+          _ -> False
+        }
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_forced_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      InvalidOneStepTransition { witness } ->
+        when witness is {
+          InvalidForcedTransactionNoOpTransition {
+            trace_proof,
+            event_to_step,
+            source_membership,
+          } ->
+            validate_invalid_forced_transaction_no_op_transition(
+              proof.header,
+              trace_proof,
+              event_to_step,
+              source_membership,
+            )
+          _ -> False
+        }
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_accepted_transaction_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      AcceptedTransactionTransitionMismatch { witness } ->
+        validate_accepted_transaction_transition_mismatch(proof.header, witness)
+      InvalidOneStepTransition{witness: L2TransactionTransition {
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage,
+        outputs_preimage,
+        spent_utxos,
+        produced_utxos,
+      }} ->
+        validate_l2_transaction_transition(
+          proof.header,
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage,
+          outputs_preimage,
+          spent_utxos,
+          produced_utxos,
+        )
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_deposit_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+  hub_datum: hub.Datum,
+  evidence: L1EventEvidence,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      InvalidOneStepTransition { witness } ->
+        when witness is {
+          ValidDepositTransition {
+            trace_proof,
+            event_to_step,
+            source_membership,
+            projected_utxo,
+          } ->
+            validate_valid_deposit_transition(
+              proof.header,
+              hub_datum,
+              evidence,
+              trace_proof,
+              event_to_step,
+              source_membership,
+              projected_utxo,
+            )
+          _ -> False
+        }
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_l1_event_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+  hub_datum: hub.Datum,
+  evidence: L1EventEvidence,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    validate_l1_event_fault(proof.header, proof.fault, hub_datum, evidence),
+  }
+}
+
+pub fn validate_duplicate_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    when proof.fault is {
+      DuplicateTraceEvent { left_trace, right_trace } ->
+        validate_duplicate_trace_event(proof.header, left_trace, right_trace)
+      _ -> False
+    },
+  }
+}
+
+pub fn validate_transition_fault_proof(
+  proof: TransitionFaultProof,
+  computation_thread_token_asset_name: AssetName,
+  hub_datum: hub.Datum,
+  reference_inputs: List<Input>,
+  l1_event_evidence: Option<L1EventEvidence>,
+) -> Bool {
+  and {
+    validate_transition_fault_proof_envelope(
+      proof,
+      computation_thread_token_asset_name,
+    ),
+    validate_transition_fault(
+      proof.header,
+      proof.fault,
+      hub_datum,
+      reference_inputs,
+      l1_event_evidence,
+    ),
   }
 }
 
@@ -1683,26 +2187,197 @@ pub fn insert_root(
   value: ByteArray,
   proof: Proof,
 ) -> ByteArray {
-  let trie =
-    if root == env.empty_merkle_tree_root {
-      mpf.empty
-    } else {
-      mpf.from_root(root)
-    }
-  mpf.root(mpf.insert(trie, key, value, proof))
+  let trie = if root == env.empty_merkle_tree_root {
+    mpf.empty
+  } else {
+    mpf.from_root(root)
+  }
+  expect Some(next_root) = canonical_mpf.insert_root_paired_fold(
+    mpf.root(trie),
+    key,
+    value,
+    proof,
+  )
+  next_root
 }
 
+/// Deleting the last entry leaves the library's empty trie, whose root is
+/// `null_hash`; a Midgard ledger commits an empty ledger as
+/// `env.empty_merkle_tree_root`, so the successor is read back into that
+/// encoding through `canonical_mpf.committed_root`, the output twin of the
+/// translation on the way in.
 pub fn delete_root(
   root: ByteArray,
   key: ByteArray,
   value: ByteArray,
   proof: Proof,
+  opening: ByteArray,
 ) -> ByteArray {
-  let trie =
-    if root == env.empty_merkle_tree_root {
-      mpf.empty
-    } else {
-      mpf.from_root(root)
-    }
-  mpf.root(mpf.delete(trie, key, value, proof))
+  let trie = if root == env.empty_merkle_tree_root {
+    mpf.empty
+  } else {
+    mpf.from_root(root)
+  }
+  expect Some(next_root) = canonical_mpf.delete_root_paired_fold(
+    mpf.root(trie),
+    key,
+    value,
+    proof,
+    opening,
+  )
+  canonical_mpf.committed_root(next_root)
+}
+
+test canonical_fork_exclusion() {
+  let v = prefix_fixture.fork()
+  verify_ledger_non_membership(v.after, v.key, v.proof)
+}
+
+test canonical_fork_insertion() {
+  let v = prefix_fixture.fork()
+  insert_root(v.after, v.key, v.value, v.proof) == v.before
+}
+
+test canonical_fork_deletion() {
+  let v = prefix_fixture.fork()
+  delete_root(v.before, v.key, v.value, v.proof, #"") == v.after
+}
+
+test canonical_fork_membership() {
+  let v = prefix_fixture.fork()
+  verify_ledger_membership(v.before, v.key, v.value, v.proof) && !verify_ledger_membership(
+    v.after,
+    v.key,
+    v.value,
+    v.proof,
+  )
+}
+
+test canonical_leaf_exclusion() {
+  let v = prefix_fixture.leaf()
+  verify_ledger_non_membership(v.after, v.key, v.proof)
+}
+
+test canonical_leaf_insertion() {
+  let v = prefix_fixture.leaf()
+  insert_root(v.after, v.key, v.value, v.proof) == v.before
+}
+
+test canonical_leaf_deletion() {
+  let v = prefix_fixture.leaf()
+  delete_root(v.before, v.key, v.value, v.proof, #"") == v.after
+}
+
+test canonical_leaf_membership() {
+  let v = prefix_fixture.leaf()
+  verify_ledger_membership(v.before, v.key, v.value, v.proof) && !verify_ledger_membership(
+    v.after,
+    v.key,
+    v.value,
+    v.proof,
+  )
+}
+
+test canonical_fork_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  verify_ledger_non_membership(
+    prefix_fixture.dropped_fork_prefix_root,
+    v.key,
+    v.proof,
+  )
+}
+
+test canonical_insertion_rejects_dropped_prefix_root() fail {
+  let v = prefix_fixture.fork()
+  insert_root(prefix_fixture.dropped_fork_prefix_root, v.key, v.value, v.proof) == v.before
+}
+
+/// Forced-event timing remains on its existing submission domain. This entry
+/// keeps the production history final from retaining legacy deposit/withdrawal
+/// decoders merely to reach the unchanged forced-event branches.
+pub fn validate_forced_l1_event_fault(
+  header: ledger_state.HeaderV1,
+  fault: TransitionFault,
+  hub_datum: hub.Datum,
+  reference_inputs: List<Input>,
+  current_event_reference_index: Int,
+) -> Bool {
+  when fault is {
+    OmittedDueL1Event { witness } ->
+      when witness is {
+        OmittedDueForcedTransaction {
+          event_ref_input_index: _,
+          event_asset_name,
+          validity_override: _validity_override,
+          source_non_membership,
+        } -> {
+          let tx_order_datum = get_tx_order_datum_with_nft(
+            reference_inputs,
+            hub_datum.tx_order,
+            event_asset_name,
+            current_event_reference_index,
+          )
+          let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
+          // A forced order is due in the block whose event window holds its
+          // inclusion time, and in no other. Its validity interval plays no
+          // part: the validation machine checks it against `block_slot` and
+          // records an exact rejection verdict when the slot falls outside, so
+          // every order is included exactly once and its settlement refund
+          // stays reachable. The out-of-window arm below tests the complement.
+          and {
+            header.start_time < inclusion_time,
+            inclusion_time <= header.end_time,
+            source_non_membership.key == event.id,
+            transition_trace.verify_root_non_membership_with_key_bytes(
+              source_non_membership,
+              transition_trace.ForcedTransactionsV1RootDomain,
+              header.forced_transactions_root,
+              header.forced_transaction_count,
+              cbor.serialise(source_non_membership.key),
+            ),
+          }
+        }
+        _ -> False
+      }
+    OutOfWindowSourceEvent { witness } ->
+      when witness is {
+        OutOfWindowForcedTransaction {
+          event_ref_input_index: _,
+          event_asset_name,
+          validity_override,
+          source_membership,
+        } -> {
+          let tx_order_datum = get_tx_order_datum_with_nft(
+            reference_inputs,
+            hub_datum.tx_order,
+            event_asset_name,
+            current_event_reference_index,
+          )
+          let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
+          let expected_source_value = ledger_state.ForcedInclusionTxV1 {
+            tx_id: event.tx.tx_id,
+            submitted_source: event.tx.submitted_source,
+            verdict: validity_override,
+          }
+          and {
+            or {
+              inclusion_time <= header.start_time,
+              header.end_time < inclusion_time,
+            },
+            source_membership.key == event.id,
+            source_membership.value == expected_source_value,
+            transition_trace.verify_root_membership_with_bytes(
+              source_membership,
+              transition_trace.ForcedTransactionsV1RootDomain,
+              header.forced_transactions_root,
+              header.forced_transaction_count,
+              cbor.serialise(source_membership.key),
+              cbor.serialise(source_membership.value),
+            ),
+          }
+        }
+        _ -> False
+      }
+    _ -> False
+  }
 }

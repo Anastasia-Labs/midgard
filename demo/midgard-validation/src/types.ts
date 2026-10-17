@@ -1,12 +1,21 @@
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { Effect } from "effect";
 
+import type {
+  MidgardCekExecutionGraph,
+  MidgardCekExecutionMode,
+  MidgardCekStructuralExecution,
+} from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
-import type { LocalScriptEvalResult } from "./local-script-eval.js";
+import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
+import type { RejectSubject } from "./reject-subject.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -29,6 +38,7 @@ export const RejectCodes = {
   InvalidValidityIntervalFormat: "E_INVALID_VALIDITY_INTERVAL_FORMAT",
   ValidityIntervalMismatch: "E_VALIDITY_INTERVAL_MISMATCH",
   MinFee: "E_MIN_FEE",
+  MinAda: "E_MIN_ADA",
   ValueNotPreserved: "E_VALUE_NOT_PRESERVED",
   MissingRequiredWitness: "E_MISSING_REQUIRED_WITNESS",
   InvalidSignature: "E_INVALID_SIGNATURE",
@@ -40,6 +50,31 @@ export const RejectCodes = {
   CertificatesForbidden: "E_CERTIFICATES_FORBIDDEN",
   NonZeroWithdrawal: "E_NONZERO_WITHDRAWAL",
   NetworkIdMismatch: "E_NETWORK_ID_MISMATCH",
+  TxVersion: "E_TX_VERSION",
+  TxSize: "E_TX_SIZE",
+  ValueSize: "E_VALUE_SIZE",
+  InputCount: "E_INPUT_COUNT",
+  ReferenceInputCount: "E_REFERENCE_INPUT_COUNT",
+  OutputCount: "E_OUTPUT_COUNT",
+  AddressWitnessCount: "E_ADDRESS_WITNESS_COUNT",
+  RequiredSignerCount: "E_REQUIRED_SIGNER_COUNT",
+  ScriptExecutionCount: "E_SCRIPT_EXECUTION_COUNT",
+  ObserverCount: "E_OBSERVER_COUNT",
+  FieldPreimageSize: "E_FIELD_PREIMAGE_SIZE",
+  LedgerOutputSize: "E_LEDGER_OUTPUT_SIZE",
+  DatumSize: "E_DATUM_SIZE",
+  ScriptProgramSize: "E_SCRIPT_PROGRAM_SIZE",
+  ScriptProgramEncoding: "E_SCRIPT_PROGRAM_ENCODING",
+  ScriptProgramAggregateSize: "E_SCRIPT_PROGRAM_AGGREGATE_SIZE",
+  NativeScriptDepth: "E_NATIVE_SCRIPT_DEPTH",
+  NativeScriptNodeCount: "E_NATIVE_SCRIPT_NODE_COUNT",
+  RedeemerSize: "E_REDEEMER_SIZE",
+  AssetCount: "E_ASSET_COUNT",
+  MintForbidden: "E_MINT_FORBIDDEN",
+  ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
+  ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
+  CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
+  TxExUnits: "E_TX_EX_UNITS",
 } as const;
 
 export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
@@ -49,8 +84,10 @@ export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
  * signature work has happened.
  */
 export type QueuedTx = {
+  readonly sourceKind?: "normal" | "forced";
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -85,7 +122,9 @@ export type PhaseAValidatedTx = {
 
   /** Non-ledger submission metadata retained for ordering and persistence. */
   readonly submission: {
+    readonly sourceKind: "normal" | "forced";
     readonly txCbor: Buffer;
+    readonly programMaterialSidecarCbor: Buffer | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -99,6 +138,8 @@ export type PhaseAValidatedTx = {
 
   /** Non-authoritative projections derived from `ledgerTx` for validation. */
   readonly derived: {
+    /** Deployment network admitted with this Phase-A candidate. */
+    readonly expectedNetworkId: bigint;
     readonly outputSum: MidgardValue;
     readonly mintDelta: MidgardValueDelta;
     readonly witnessKeyHashHexes: readonly string[];
@@ -118,6 +159,19 @@ export type RejectedTx = {
   readonly txId: Buffer;
   readonly code: RejectCode;
   readonly detail: string | null;
+  /**
+   * Exact consensus-machine instruction that produced this rejection.
+   *
+   * V1 trace construction fails closed when it is absent. The code alone is
+   * not sufficient because, for example, a missing witness can be discovered
+   * during signer, input-resolution, or script-source validation.
+   */
+  readonly consensusPhase?: MidgardValidationPhaseName;
+  /**
+   * The arm and subject coordinates of the failed rule, where the rule names
+   * one. A forced verdict cites them; see {@link RejectSubject}.
+   */
+  readonly subject?: RejectSubject;
 };
 
 /**
@@ -145,6 +199,7 @@ export type PhaseAConfig = {
   readonly minFeeB: bigint;
   readonly concurrency: number;
   readonly strictnessProfile: string;
+  readonly consensusProfile?: MidgardConsensusProfile;
 };
 
 /**
@@ -161,16 +216,81 @@ export type PhaseALocalContext = {
   ) => boolean;
 };
 
+/** Process-local evidence from the single script evaluation used for its verdict. */
+export type LocalScriptEvaluation = {
+  readonly scriptBytes: Buffer;
+  readonly contextCbor: Buffer;
+  readonly executionIndex: bigint;
+  readonly executionBudget:
+    | { readonly cpu: bigint; readonly memory: bigint }
+    | undefined;
+  readonly result: LocalScriptEvalResult;
+  readonly graph: MidgardCekExecutionGraph | null;
+  readonly execution: MidgardCekStructuralExecution | null;
+};
+
+/** The verdict and spent budget of one script evaluation. */
+export type LocalScriptEvalResult =
+  | {
+      readonly kind: "accepted";
+      readonly budget: {
+        readonly cpu: bigint;
+        readonly memory: bigint;
+      };
+    }
+  | { readonly kind: "script_invalid"; readonly detail: string }
+  /**
+   * The evaluator itself failed: a throw, one of its own bounds, or a
+   * self-check. Not a verdict: Phase B fails with
+   * `ScriptEvaluationIndeterminateError` carrying `cause`.
+   */
+  | {
+      readonly kind: "indeterminate";
+      readonly detail: string;
+      readonly cause?: unknown;
+    };
+
 /**
  * Configuration knobs for phase-B validation.
  */
 export type PhaseBConfig = {
   readonly nowCardanoSlotNo: bigint;
+  /**
+   * The deployment manifest's slot mapping. Plutus contexts carry the body's
+   * slot interval in POSIX milliseconds through it, as the deployed
+   * transaction-info validator does.
+   */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
-  readonly evaluateScript?: (
-    scriptBytes: Uint8Array,
+  readonly maxScriptExecutionSteps?: number;
+  /**
+   * `verdict` (the default) runs CEK scripts without per-step verification or
+   * retention, so each `onScriptEvaluated` report has `execution: null`. A
+   * caller that builds a validation trace from the reported executions must
+   * pass `proof`.
+   */
+  readonly cekExecutionMode?: MidgardCekExecutionMode;
+  readonly onScriptEvaluated?: (
+    txId: Buffer,
+    evaluation: LocalScriptEvaluation,
+  ) => void;
+  readonly evaluateProofScript?: (
+    programEnvelopeCbor: Uint8Array,
     contextCbor: Uint8Array,
+    executionBudget?: {
+      readonly cpu: bigint;
+      readonly memory: bigint;
+    },
+    executionIndex?: bigint,
+  ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  /**
+   * Computes a verdict-mode script run elsewhere, such as on a worker thread.
+   * It must return exactly what `evaluateMidgardCekVerdict` returns for the
+   * request. Used only in verdict mode without `evaluateProofScript`.
+   */
+  readonly evaluateCekVerdict?: (
+    request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 
@@ -181,5 +301,6 @@ export type PhaseBConfig = {
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly createdAtMillis: number;
 };

@@ -1,0 +1,580 @@
+// Preflight mechanics: what changed, which checks that selects, and running
+// them with capability-aware skipping. The CLI (scripts/preflight.mjs) is a thin
+// shell over this module; tests drive it directly with temporary repositories,
+// injected probes and a fake command runner.
+
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
+
+import { runDirectory } from "../contrib/build.mjs";
+import { inputIdentity } from "../contrib/files.mjs";
+import { runProcess } from "../contrib/process.mjs";
+import { writeReceipt } from "../contrib/receipts.mjs";
+import { withResource } from "../contrib/resources.mjs";
+import { formatCommand, selectChecks } from "./registry.mjs";
+import { ciOwnsRuntime, RUNTIME_CHECKS } from "./runtime-owner.mjs";
+import {
+  SDK_SUITES,
+  sdkContext as currentSdkContext,
+  sdkFullSuite,
+  sdkLaneStep,
+  sdkSuiteStep,
+  sdkReportCounts,
+  sdkSelectedFiles,
+} from "./sdk-suite-evidence.mjs";
+
+export const DEFAULT_BASE =
+  "origin/colll78/canonical-v1-watcher-l1-source-checkpoint";
+
+export const EXIT = { passed: 0, failed: 1, usage: 2, skipped: 3 };
+
+export class UsageError extends Error {}
+
+const git = (root, args, { allow = [0] } = {}) => {
+  const run = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (run.error !== undefined || !allow.includes(run.status)) {
+    // A git failure is never "no changes": it aborts the run.
+    throw new Error(
+      `git ${args.join(" ")} failed: ${run.error?.message ?? run.stderr.trim()}`,
+    );
+  }
+  return run;
+};
+
+const verifyCommit = (root, ref) =>
+  git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+    allow: [0, 1, 128],
+  }).status === 0;
+
+// Judge integration into the target, not a feature branch's published copy.
+// An old target ancestor is historical evidence, not today's acceptance base.
+export const resolveBase = (root, explicit) => {
+  if (explicit !== undefined) {
+    if (!verifyCommit(root, explicit)) {
+      throw new UsageError(`--base ${explicit} does not name a commit`);
+    }
+    if (
+      verifyCommit(root, DEFAULT_BASE) &&
+      git(root, ["rev-parse", `${explicit}^{commit}`]).stdout.trim() !==
+        git(root, ["rev-parse", `${DEFAULT_BASE}^{commit}`]).stdout.trim() &&
+      git(root, ["merge-base", "--is-ancestor", explicit, DEFAULT_BASE], {
+        allow: [0, 1],
+      }).status === 0
+    ) {
+      throw new UsageError(
+        `--base ${explicit} is a stale target ancestor; fetch origin and use --base ${DEFAULT_BASE}`,
+      );
+    }
+    return explicit;
+  }
+  if (!verifyCommit(root, DEFAULT_BASE)) {
+    throw new UsageError(
+      `no base to diff against (${DEFAULT_BASE} is absent); fetch origin or pass --base <target-ref>`,
+    );
+  }
+  return DEFAULT_BASE;
+};
+
+const nulList = (output) => output.split("\0").filter(Boolean);
+
+// `strict` judges only what is committed (what a push sends); otherwise staged,
+// unstaged and untracked files count too. Renames count as delete plus add so
+// both paths select their checks.
+export const changedFiles = (root, mergeBase, { strict }) => {
+  const committed = strict
+    ? git(root, [
+        "diff",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        mergeBase,
+        "HEAD",
+      ])
+    : git(root, ["diff", "--name-only", "-z", "--no-renames", mergeBase]);
+  const untracked = strict
+    ? []
+    : nulList(
+        git(root, ["ls-files", "--others", "--exclude-standard", "-z"]).stdout,
+      );
+  return [...new Set([...nulList(committed.stdout), ...untracked])].sort();
+};
+
+export const collectChanges = (root, { base, strict }) => {
+  const mergeBase = git(root, ["merge-base", "HEAD", base]).stdout.trim();
+  // A separately landed/cherry-picked foundation need not share ancestry.
+  // Compare the actual clean merge result to the target. On conflicts retain
+  // conservative historical selection; never pretend a conflict is no work.
+  const merge = git(
+    root,
+    ["merge-tree", "--write-tree", "--no-messages", "HEAD", base],
+    { allow: [0, 1, 129] },
+  );
+  const tree =
+    merge.status === 0 ? merge.stdout.trim().split("\n")[0] : undefined;
+  const changed = tree
+    ? [
+        ...new Set([
+          ...nulList(
+            git(root, ["diff", "--name-only", "-z", "--no-renames", base, tree])
+              .stdout,
+          ),
+          ...(strict ? [] : changedFiles(root, "HEAD", { strict: false })),
+        ]),
+      ].sort()
+    : changedFiles(root, mergeBase, { strict });
+  const dirty =
+    strict &&
+    git(root, [
+      "status",
+      "--porcelain",
+      "--untracked-files=no",
+    ]).stdout.trim() !== "";
+  return { mergeBase, integrationTree: tree, changed, dirty };
+};
+
+// Selection plus each selected check's concrete steps and the advisories the
+// change earns. A check whose plan is null has nothing to run for this change
+// (only deleted files matched, say) and drops out.
+export const planPreflight = (registry, changed, options = {}) => {
+  const selection = selectChecks(registry, changed, options);
+  const advisories = [];
+  const advise = (advisory) => {
+    if (!advisories.some((existing) => existing.id === advisory.id)) {
+      advisories.push(advisory);
+    }
+  };
+  const planned = [];
+  const hosted = [];
+  const hostedRuntime = ciOwnsRuntime(registry, changed, options.runtimeOwner);
+  for (const { check, matched } of selection.selected) {
+    const steps = check.plan({ matched, full: selection.full, advise });
+    if (steps !== null) {
+      if (
+        hostedRuntime &&
+        RUNTIME_CHECKS.includes(check.id) &&
+        (check.id !== "demo-boundary" ||
+          registry.runtimeWorkflow.boundaryLane) &&
+        (check.id !== "tx-preparation:sdk" || registry.runtimeWorkflow.sdkLane)
+      ) {
+        const { workflow, gate } = registry.runtimeWorkflow;
+        hosted.push({ id: check.id, workflow, gate });
+      } else {
+        planned.push({ check, matched, steps });
+      }
+    }
+  }
+  // "You changed an input and did not regenerate the output": a golden channel
+  // whose inputs moved while none of its artifacts did.
+  if (!selection.full) {
+    const changedSet = new Set(changed);
+    for (const { check, matched } of planned) {
+      const artifacts = check.artifacts ?? [];
+      const inputs = matched.filter((path) => !artifacts.includes(path));
+      if (
+        artifacts.length === 0 ||
+        inputs.length === 0 ||
+        artifacts.some((path) => changedSet.has(path))
+      ) {
+        continue;
+      }
+      const shown =
+        inputs.slice(0, 3).join(", ") +
+        (inputs.length > 3 ? `, and ${String(inputs.length - 3)} more` : "");
+      advise({
+        id: `regenerate:${check.id}`,
+        message: `you changed ${shown}, which ${check.id} reads, and none of the files it produces (${artifacts.join(", ")}) changed`,
+        steps: [
+          `Run the check: ${check.display}`,
+          ...(check.fix === undefined
+            ? []
+            : [`If it reports drift you intended, regenerate: ${check.fix}`]),
+          `Review the regenerated diff, then stage by explicit path: git add ${artifacts.join(" ")}`,
+        ],
+      });
+    }
+  }
+  return { ...selection, planned, hosted, advisories };
+};
+
+// `--run <id>`: the named checks at full scope, in registry order, with no
+// diff, selection or hosted hand-off. This is how a CI step runs a check, so
+// the workflow names the check and never restates its command. A failure
+// always fails: warn-only describes local selection of a check no workflow
+// runs, and a workflow that names a check runs it to block.
+export const planNamedChecks = (registry, ids) => {
+  if (ids.length === 0) throw new UsageError("--run needs a check id");
+  const repeated = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (repeated !== undefined)
+    throw new UsageError(`--run names ${repeated} more than once`);
+  for (const id of ids) {
+    const check = registry.checks.find((candidate) => candidate.id === id);
+    if (check === undefined)
+      throw new UsageError(
+        `--run ${id}: no such check; node scripts/preflight.mjs --full --list names them`,
+      );
+    if (check.internal !== undefined)
+      throw new UsageError(
+        `--run ${id}: this check compares against a base branch; run preflight without --run`,
+      );
+  }
+  const planned = registry.checks
+    .filter((check) => ids.includes(check.id))
+    .map((check) => {
+      const steps = check.plan({ matched: [], full: true, advise: () => {} });
+      if (steps === null || steps.length === 0)
+        throw new UsageError(`--run ${check.id}: nothing to run at full scope`);
+      return { check: { ...check, warnOnly: false }, matched: [], steps };
+    });
+  return {
+    full: true,
+    fullReasons: ids.map((id) => `--run ${id}`),
+    selected: planned.map(({ check }) => ({ check, matched: [] })),
+    uncovered: [],
+    planned,
+    hosted: [],
+    advisories: [],
+  };
+};
+
+// Runs one step, teeing its output to `log` and keeping it for the verdict.
+export const spawnStep = async (root, step, env, log, signal) =>
+  withResource(
+    `workspace:${resolve(root)}`,
+    async (ownedEnv) => {
+      const directory = runDirectory();
+      const before = inputIdentity(root, "@repository");
+      const sdk = sdkSuiteStep(step) && sdkFullSuite(root, step.sdkSuite);
+      const reportPath = sdk ? resolve(directory, "sdk-suite.json") : undefined;
+      let sdkBefore;
+      if (sdk) {
+        try {
+          sdkBefore = currentSdkContext(root, env);
+        } catch {
+          /* Unproven context cannot be reused. The suite still executes. */
+        }
+      }
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      process.on("SIGINT", abort);
+      process.on("SIGTERM", abort);
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      try {
+        const run = await runProcess({
+          argv: sdk
+            ? [
+                ...step.argv,
+                "--",
+                "--reporter=default",
+                "--reporter=json",
+                `--outputFile=${reportPath}`,
+              ]
+            : step.argv,
+          cwd: resolve(root, step.cwd ?? "."),
+          env: ownedEnv,
+          signal: controller.signal,
+          logPath: resolve(directory, "preflight.log"),
+          maxBytes: 128 * 1024 * 1024,
+          // Aggregate acceptance commands include sequential emulator suites;
+          // hosted fault-proof shards alone can exceed the focused 30m limit.
+          timeoutMs: 7_200_000,
+          echo: true,
+        });
+        const receipt = writeReceipt({
+          root,
+          pkg: { name: "@repository" },
+          directory,
+          kind: "preflight-step",
+          before,
+          after: inputIdentity(root, "@repository"),
+          steps: [run],
+          reportPath,
+          selectedFiles: sdk
+            ? sdkSelectedFiles(root, step.sdkSuite)
+            : undefined,
+        });
+        log(`execution receipt: ${receipt.path}\n`);
+        let sdkEvidence;
+        if (sdk && receipt.status === "passed" && sdkBefore) {
+          try {
+            sdkReportCounts(
+              root,
+              step.sdkSuite,
+              JSON.parse(readFileSync(reportPath, "utf8")),
+            );
+            if (sdkBefore === currentSdkContext(root, env))
+              sdkEvidence = {
+                name: step.sdkSuite,
+                identity: sdkBefore,
+                receipt: receipt.path,
+              };
+          } catch {
+            /* Missing or incomplete coverage is never admitted. */
+          }
+        }
+        return {
+          status:
+            receipt.exitCode === 0 ? 0 : run.exitCode === 0 ? 1 : run.exitCode,
+          output: readFileSync(run.logPath, "utf8"),
+          durationMs: run.durationMs,
+          receipt: receipt.path,
+          ...(sdkEvidence ? { sdkSuite: sdkEvidence } : {}),
+          ...(run.reason ? { error: new Error(run.reason) } : {}),
+          // A command that exited 0 can still fail its receipt; say why
+          // rather than report an exit code it never had.
+          ...(run.exitCode === 0 && receipt.exitCode !== 0
+            ? {
+                failure:
+                  receipt.reason ??
+                  `its execution receipt is ${receipt.status} (${receipt.path})`,
+              }
+            : {}),
+        };
+      } finally {
+        process.off("SIGINT", abort);
+        process.off("SIGTERM", abort);
+        signal?.removeEventListener("abort", abort);
+      }
+    },
+    { env, signal },
+  );
+
+// Output that means a suite ran nothing, whatever its exit code says. Vitest
+// prints this when its global setup fails (Postgres unreachable) or a filter
+// matches no file; either way nothing was tested.
+export const EMPTY_RUN_MARKERS = [
+  {
+    // Vitest's own line, at the start of a line (colour codes allowed), so a
+    // test runner that merely names the phrase does not trip it.
+    // eslint-disable-next-line no-control-regex
+    pattern:
+      /(?:^|\n)(?:\u001b\[[0-9;]*m)*No test files found, exiting with code/u,
+    reason:
+      "Vitest reported 'No test files found': its global setup failed (for the node suites, usually Postgres on 5433 is unreachable) or a filter matched nothing; nothing was tested",
+  },
+];
+
+const mergeTree = (root, base) => {
+  const run = spawnSync(
+    "git",
+    [
+      "merge-tree",
+      "--write-tree",
+      "--name-only",
+      "--no-messages",
+      "HEAD",
+      base,
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  const behind = spawnSync("git", ["rev-list", "--count", `HEAD..${base}`], {
+    cwd: root,
+    encoding: "utf8",
+  }).stdout?.trim();
+  const lag = behind ? ` (${behind} commit(s) behind ${base})` : "";
+  if (run.status === 0) {
+    return { status: "passed", reason: `merges cleanly into ${base}${lag}` };
+  }
+  if (run.status === 1) {
+    const files = run.stdout.split("\n").slice(1).filter(Boolean);
+    return {
+      status: "failed",
+      reason: `merging ${base} would conflict in: ${files.join(", ")}${lag}`,
+    };
+  }
+  return {
+    status: "skipped",
+    reason: `could not check: git merge-tree exited ${String(run.status)} (${(run.stderr ?? "").trim()})`,
+  };
+};
+
+export const runPreflight = async ({
+  root,
+  plan,
+  probes,
+  base,
+  runStep = spawnStep,
+  log = (text) => process.stderr.write(text),
+  env = process.env,
+  signal,
+  exists = (path) => existsSync(resolve(root, path)),
+  ciEvidence = new Map(),
+  sdkContext = currentSdkContext,
+}) => {
+  const results = [];
+  const completedSdk = new Map();
+  for (const { check, steps } of plan.planned) {
+    if (signal?.aborted) break;
+    const started = performance.now();
+    const receipts = [];
+    const command =
+      check.internal === "merge-tree"
+        ? check.display.replace("<base>", base)
+        : steps.map(formatCommand).join(" && ");
+    const record = (status, reason) => {
+      results.push({
+        id: check.id,
+        status,
+        reason,
+        command,
+        durationMs: performance.now() - started,
+        ...(receipts.length ? { receipts } : {}),
+        ...(status === "failed" && check.fix !== undefined
+          ? { fix: check.fix }
+          : {}),
+      });
+    };
+
+    const absent = (check.requiresFiles ?? []).filter((path) => !exists(path));
+    if (absent.length > 0) {
+      record("skipped", `could not check: ${absent.join(", ")} absent`);
+      continue;
+    }
+
+    const equivalent = ciEvidence.get(check.id);
+    if (equivalent && equivalent.command === command) {
+      record(
+        "passed",
+        `reused verified CI: ${equivalent.run}; coverage: ${equivalent.coverage}`,
+      );
+      results.at(-1).evidence = equivalent;
+      continue;
+    }
+    const capabilityEnv = {};
+    const missing = [];
+    for (const name of check.capabilities) {
+      const probe = await probes.get(name);
+      if (probe.status === "available") {
+        Object.assign(capabilityEnv, probe.env ?? {});
+      } else {
+        missing.push(
+          `${name} ${probe.status}: ${probe.detail}${probe.fix ? ` (fix: ${probe.fix})` : ""}`,
+        );
+      }
+    }
+    if (missing.length > 0) {
+      record("skipped", missing.join("; "));
+      continue;
+    }
+
+    if (
+      check.id === "tx-preparation:sdk" &&
+      sdkLaneStep(steps) &&
+      Object.keys(SDK_SUITES).every((name) => completedSdk.has(name))
+    ) {
+      let identity;
+      try {
+        identity = await withResource(
+          `workspace:${resolve(root)}`,
+          () => sdkContext(root, { ...env, ...capabilityEnv }),
+          { env, signal },
+        );
+      } catch {
+        /* Standalone execution remains required. */
+      }
+      if (
+        identity &&
+        Object.keys(SDK_SUITES).every(
+          (name) => completedSdk.get(name).identity === identity,
+        )
+      ) {
+        record(
+          "passed",
+          "reused same-run completed full Lucid and SDK suites on unchanged inputs/profile",
+        );
+        results.at(-1).evidence = {
+          kind: "same-run-sdk-suites",
+          suites: [...completedSdk.values()],
+        };
+        continue;
+      }
+    }
+
+    let outcome;
+    const sdkPasses = [];
+    if (check.internal === "merge-tree") {
+      outcome = mergeTree(root, base);
+    } else {
+      log(`\n==> ${check.id}: ${command}\n`);
+      outcome = { status: "passed", reason: "" };
+      for (const step of steps) {
+        if (signal?.aborted) {
+          outcome = {
+            status: "failed",
+            reason: "interrupted before execution",
+          };
+          break;
+        }
+        const run = await runStep(
+          root,
+          step,
+          { ...env, ...capabilityEnv, ...step.env },
+          log,
+          signal,
+        );
+        if (run.receipt) receipts.push(run.receipt);
+        const empty = EMPTY_RUN_MARKERS.find(({ pattern }) =>
+          pattern.test(run.output ?? ""),
+        );
+        if (empty !== undefined) {
+          outcome = { status: "failed", reason: empty.reason };
+          break;
+        }
+        // contrib test exits 3 when tests ran, none failed, and some were
+        // skipped by their own conditions; the package script under CI
+        // passes on that, and so does this step.
+        if (
+          run.error === undefined &&
+          run.status === 3 &&
+          step.skippedTestsPass
+        ) {
+          outcome.reason =
+            "some tests were skipped by their own conditions (see the receipts)";
+          continue;
+        }
+        if (run.error !== undefined || run.status !== 0) {
+          outcome = {
+            status: "failed",
+            reason:
+              run.error !== undefined
+                ? `${formatCommand(step)} could not start: ${run.error.message}`
+                : run.failure !== undefined
+                  ? `${formatCommand(step)} exited 0, but ${run.failure}`
+                  : `${formatCommand(step)} exited ${String(run.status)}`,
+          };
+          break;
+        }
+        if (
+          check.id === "demo-test" &&
+          sdkSuiteStep(step) &&
+          run.sdkSuite?.name === step.sdkSuite
+        )
+          sdkPasses.push(run.sdkSuite);
+      }
+    }
+    if (outcome.status === "failed" && check.warnOnly) {
+      record(
+        "warned",
+        `${outcome.reason}${check.warnReason ? ` — ${check.warnReason}` : ""}`,
+      );
+    } else {
+      record(outcome.status, outcome.reason);
+    }
+    if (outcome.status === "passed")
+      for (const proof of sdkPasses) completedSdk.set(proof.name, proof);
+    probes.invalidate(check.invalidates);
+  }
+  const exitCode =
+    signal?.aborted || results.some((r) => r.status === "failed")
+      ? EXIT.failed
+      : results.some((r) => r.status === "skipped")
+        ? EXIT.skipped
+        : EXIT.passed;
+  return { results, exitCode };
+};

@@ -8,35 +8,31 @@ import { inspect } from "node:util";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 
-import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
-import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
-import { NodeConfig } from "@/services/config.js";
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
+import { ToolL1AdapterLive } from "../commands/l1-tool-adapter.js";
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
 import {
+  CommitBuildCalibrationDB,
+  MempoolDB,
+  MempoolTxDeltasDB,
+  ProcessedMempoolDB,
+} from "../database/index.js";
+import * as Tx from "../database/utils/tx.js";
+import { NodeConfig } from "../services/config.js";
+import { type Lucid } from "../services/index.js";
+import { openNodeLedgerAccessFromConfig } from "../services/l1-node-ledger-access.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { batchProgram, breakDownTx } from "../utils.js";
+import {
+  type CommitLucidFactory,
   provideCommitBlockWorkerServices,
-  runCommitBlockHeaderCandidateBuildProgram,
-} from "@/workers/commit-block-header.js";
-import type { WorkerInput } from "@/workers/utils/commit-block-header.js";
-
-type CandidateProbeInput = {
-  readonly schemaVersion: "midgard-architecture-g-commit-candidate-input-v1";
-  readonly levelPath: string;
-  readonly binaryPath: string;
-  readonly binarySha256: string;
-  readonly sidecarPath: string;
-  readonly expectedTransactionCount: number;
-  readonly corpusSha256: string;
-  readonly corpusSliceSha256: string;
-  readonly fundingMapSha256: string;
-  readonly fixtureCreationPath: string;
-  readonly fixtureCreationSha256: string;
-  readonly fixtureInitialUtxoCount: number;
-  readonly baseUtxoPayloadAggregate: {
-    readonly entryCount: number;
-    readonly encodedTupleBytes: number;
-  };
-  readonly workerInput: Omit<WorkerInput, "nativeMpf">;
-};
+  runCommitBlockHeaderWorkerProgram,
+} from "./commit-block-header.js";
+import {
+  assertArchitectureGCandidateSlotRuntimeIdentity,
+  decodeArchitectureGCommitCandidateInput,
+  decodeArchitectureGFixtureCreation,
+  validateArchitectureGCommitCandidateProbeResult,
+} from "./utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_INPUT?.trim() ??
@@ -47,15 +43,13 @@ const probeSha256 = createHash("sha256")
   .update(readFileSync(probePath))
   .digest("hex");
 
-const requireHash = (value: unknown, field: string): string => {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
-    throw new Error(`${field} must be a canonical SHA-256 hex digest`);
-  }
-  return value;
-};
+const probeError =
+  (step: string) =>
+  (cause: unknown): Error =>
+    new Error(`Commit-candidate probe failed to ${step}`, { cause });
 
 const loadInput = async (): Promise<{
-  readonly input: CandidateProbeInput;
+  readonly input: ReturnType<typeof decodeArchitectureGCommitCandidateInput>;
   readonly resolvedInputPath: string;
   readonly inputSha256: string;
 }> => {
@@ -66,27 +60,9 @@ const loadInput = async (): Promise<{
   }
   const resolvedInputPath = resolve(inputPath);
   const inputBytes = await readFile(resolvedInputPath);
-  const parsed = JSON.parse(inputBytes.toString("utf8")) as CandidateProbeInput;
-  if (
-    parsed.schemaVersion !==
-      "midgard-architecture-g-commit-candidate-input-v1" ||
-    !Number.isSafeInteger(parsed.expectedTransactionCount) ||
-    parsed.expectedTransactionCount <= 0 ||
-    !Number.isSafeInteger(parsed.baseUtxoPayloadAggregate?.entryCount) ||
-    parsed.baseUtxoPayloadAggregate.entryCount <= 0 ||
-    !Number.isSafeInteger(parsed.baseUtxoPayloadAggregate?.encodedTupleBytes) ||
-    parsed.baseUtxoPayloadAggregate.encodedTupleBytes <= 0 ||
-    !Number.isSafeInteger(parsed.fixtureInitialUtxoCount) ||
-    parsed.fixtureInitialUtxoCount <= 0 ||
-    parsed.workerInput?.data?.speculativeBuild === undefined
-  ) {
-    throw new Error("Invalid Architecture G commit-candidate probe input");
-  }
-  requireHash(parsed.binarySha256, "binarySha256");
-  requireHash(parsed.corpusSha256, "corpusSha256");
-  requireHash(parsed.corpusSliceSha256, "corpusSliceSha256");
-  requireHash(parsed.fundingMapSha256, "fundingMapSha256");
-  requireHash(parsed.fixtureCreationSha256, "fixtureCreationSha256");
+  const parsed = decodeArchitectureGCommitCandidateInput(
+    JSON.parse(inputBytes.toString("utf8")) as unknown,
+  );
   const fixtureCreationBytes = await readFile(parsed.fixtureCreationPath);
   const actualFixtureCreationSha256 = createHash("sha256")
     .update(fixtureCreationBytes)
@@ -94,34 +70,14 @@ const loadInput = async (): Promise<{
   if (actualFixtureCreationSha256 !== parsed.fixtureCreationSha256) {
     throw new Error("Fixture creation evidence SHA-256 mismatch");
   }
-  const fixtureCreation = JSON.parse(fixtureCreationBytes.toString("utf8")) as {
-    readonly fixtureCreated?: unknown;
-    readonly fixturePath?: unknown;
-    readonly marker?: unknown;
-    readonly initialUtxoCount?: unknown;
-    readonly utxoPayloadAggregate?: {
-      readonly entryCount?: unknown;
-      readonly encodedTupleBytes?: unknown;
-    };
-  };
-  if (
-    fixtureCreation.fixtureCreated !== true ||
-    resolve(String(fixtureCreation.fixturePath ?? "")) !==
-      resolve(parsed.levelPath) ||
-    fixtureCreation.marker !==
-      parsed.workerInput.data.speculativeBuild.base.utxosRoot ||
-    fixtureCreation.initialUtxoCount !== parsed.fixtureInitialUtxoCount ||
-    parsed.fixtureInitialUtxoCount !==
-      parsed.baseUtxoPayloadAggregate.entryCount ||
-    fixtureCreation.utxoPayloadAggregate?.entryCount !==
-      parsed.baseUtxoPayloadAggregate.entryCount ||
-    fixtureCreation.utxoPayloadAggregate?.encodedTupleBytes !==
-      parsed.baseUtxoPayloadAggregate.encodedTupleBytes
-  ) {
-    throw new Error(
-      "Fixture creation evidence does not bind the candidate path, root, cardinality, and payload aggregate",
-    );
-  }
+  decodeArchitectureGFixtureCreation({
+    value: JSON.parse(fixtureCreationBytes.toString("utf8")) as unknown,
+    expectedFixturePath: parsed.levelPath,
+    expectedMarker: parsed.baseUtxosRoot,
+    expectedUtxos: parsed.fixtureInitialUtxoCount,
+    expectedAggregate: parsed.baseUtxoPayloadAggregate,
+    expectedFundingMapSha256: parsed.fundingMapSha256,
+  });
   return {
     input: parsed,
     resolvedInputPath,
@@ -143,28 +99,80 @@ void (async () => {
     const cpuAffinity =
       processStatus.match(/^Cpus_allowed_list:\s*(.+)$/mu)?.[1]?.trim() ??
       "unknown";
-    if (
-      input.workerInput.data.speculativeBuild?.base.utxosRoot !==
-      before.durableRoot
-    ) {
+    if (input.baseUtxosRoot !== before.durableRoot) {
       throw new Error(
-        `Commit-candidate input base root ${String(input.workerInput.data.speculativeBuild?.base.utxosRoot)} does not match owner durable root ${before.durableRoot}`,
+        `Commit-candidate input base root ${input.baseUtxosRoot} does not match owner durable root ${before.durableRoot}`,
       );
     }
     const port = owner.createWorkerPort();
+    // The build runs the production default path, which reads the deposit,
+    // withdrawal, and tx-order barriers (and tx-order CEK program material)
+    // through `api.utxosAt`. Those reads see an empty chain; any other
+    // provider or wallet access is a boundary crossing and fails the run.
+    let providerReads = 0;
     let providerBoundaryAttempts = 0;
-    const rejectProviderBoundary = () =>
-      Effect.sync(() => {
-        providerBoundaryAttempts += 1;
-        throw new Error(
-          "Commit-candidate probe crossed the provider/signing boundary",
-        );
-      });
+    const crossBoundary = (property: PropertyKey): never => {
+      providerBoundaryAttempts += 1;
+      throw new Error(
+        `Commit-candidate probe crossed the provider/signing boundary (${String(property)})`,
+      );
+    };
+    const stubApi = new Proxy(
+      {},
+      {
+        get: (_target, property) =>
+          property === "utxosAt"
+            ? async () => {
+                providerReads += 1;
+                return [];
+              }
+            : crossBoundary(property),
+      },
+    );
+    const stubLucid = new Proxy(
+      {},
+      {
+        get: (_target, property) =>
+          property === "api" ? stubApi : crossBoundary(property),
+      },
+    ) as unknown as Lucid;
+    const stubLucidFactory: CommitLucidFactory = () =>
+      Effect.succeed(stubLucid);
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const nodeConfig = yield* NodeConfig;
+      const ledgerSlotConfig =
+        nodeConfig.NETWORK === "Custom"
+          ? yield* Effect.acquireUseRelease(
+              Effect.tryPromise({
+                // A probe, not a role: the local node's ledger alone.
+                try: () => openNodeLedgerAccessFromConfig(nodeConfig),
+                catch: probeError("open the local node's ledger"),
+              }),
+              (access) =>
+                Effect.tryPromise({
+                  try: access.slotConfig,
+                  catch: probeError("read the ledger slot mapping"),
+                }),
+              (access) => Effect.promise(access.close),
+            )
+          : undefined;
+      yield* Effect.try({
+        try: () =>
+          assertArchitectureGCandidateSlotRuntimeIdentity({
+            input,
+            runtimeNetwork: nodeConfig.NETWORK,
+            ledgerSlotConfig,
+          }),
+        catch: (cause) =>
+          cause instanceof Error
+            ? cause
+            : new Error(
+                "Failed to validate Architecture G slot runtime identity",
+                { cause },
+              ),
+      });
       if (
-        nodeConfig.MPF_ENGINE !== "architecture_g" ||
         nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256 !== input.binarySha256 ||
         nodeConfig.MPF_SCRATCH_BUILD !== "fromlist" ||
         nodeConfig.MPF_PAYLOAD_ROOT_CHECK !== "off" ||
@@ -184,16 +192,32 @@ void (async () => {
           ),
         );
       }
-      yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
-        rootHex: before.durableRoot,
-        aggregate: input.baseUtxoPayloadAggregate,
-      });
+      // The deferral this build ends in moves the selected transactions to
+      // processed_mempool and updates the build calibration. Each gate run
+      // starts from the same seeded state, so both are restored afterwards.
+      const processedBefore = yield* ProcessedMempoolDB.retrieve;
+      if (processedBefore.length !== 0) {
+        return yield* Effect.fail(
+          new Error(
+            "Commit-candidate probe requires an empty processed_mempool",
+          ),
+        );
+      }
+      const seededMempool = yield* Tx.retrieveAllEntries(MempoolDB.tableName);
+      if (seededMempool.length !== input.expectedTransactionCount) {
+        return yield* Effect.fail(
+          new Error(
+            `Commit-candidate probe requires ${input.expectedTransactionCount.toString()} seeded mempool transactions, found ${seededMempool.length.toString()}`,
+          ),
+        );
+      }
+      const calibrationBefore = yield* CommitBuildCalibrationDB.retrieve;
       const journalBefore = yield* sql<{
         readonly count: string;
       }>`SELECT COUNT(*)::text AS count FROM pending_block_finalizations`;
       const scansBefore = yield* Metric.value(confirmedLedgerFullScanCounter);
       const startedAt = performance.now();
-      const candidate = yield* runCommitBlockHeaderCandidateBuildProgram(
+      const output = yield* runCommitBlockHeaderWorkerProgram(
         {
           ...input.workerInput,
           nativeMpf: {
@@ -202,21 +226,102 @@ void (async () => {
             ownerBinarySha256: input.binarySha256,
           },
         },
-        rejectProviderBoundary,
+        undefined,
+        stubLucidFactory,
       );
       const durationMs = performance.now() - startedAt;
       const scansAfter = yield* Metric.value(confirmedLedgerFullScanCounter);
       const journalAfter = yield* sql<{
         readonly count: string;
       }>`SELECT COUNT(*)::text AS count FROM pending_block_finalizations`;
+      if (
+        output.type !== "SkippedSubmissionOutput" ||
+        output.candidate === undefined
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            `Commit-candidate build did not defer a built block: ${JSON.stringify(output)}`,
+          ),
+        );
+      }
+      // The deferred candidate carries no deposit, forced-transaction or
+      // withdrawal roots; they stay empty only while the fixture holds none
+      // of those events, which the stub provider's empty reads cannot add.
+      const userEventRows = yield* sql<{
+        readonly deposits: string;
+        readonly forcedTransactions: string;
+        readonly withdrawals: string;
+      }>`SELECT
+        (SELECT COUNT(*) FROM deposits_utxos)::text AS deposits,
+        (SELECT COUNT(*) FROM forced_transaction_utxos)::text AS "forcedTransactions",
+        (SELECT COUNT(*) FROM withdrawal_utxos)::text AS withdrawals`;
+      yield* ProcessedMempoolDB.clear;
+      yield* batchProgram(
+        1_000,
+        seededMempool.length,
+        "candidate-restore-mempool",
+        (start, end) =>
+          Tx.insertEntries(
+            MempoolDB.tableName,
+            seededMempool.slice(start, end),
+          ),
+        1,
+      );
+      const restoredTxs = yield* Effect.forEach(
+        seededMempool,
+        (entry) => breakDownTx(entry[Tx.Columns.TX]),
+        { concurrency: 8 },
+      );
+      yield* batchProgram(
+        1_000,
+        restoredTxs.length,
+        "candidate-restore-deltas",
+        (start, end) =>
+          MempoolTxDeltasDB.upsertMany(
+            restoredTxs.slice(start, end).map(MempoolDB.toTxDelta),
+          ),
+        1,
+      );
+      yield* CommitBuildCalibrationDB.update(calibrationBefore.msPerTxEwma);
+      const restoredCounts = yield* sql<{
+        readonly mempool: string;
+        readonly deltas: string;
+        readonly processed: string;
+      }>`SELECT
+        (SELECT COUNT(*) FROM mempool)::text AS mempool,
+        (SELECT COUNT(*) FROM mempool_tx_deltas)::text AS deltas,
+        (SELECT COUNT(*) FROM processed_mempool)::text AS processed`;
+      if (
+        Number(restoredCounts[0]?.mempool ?? "-1") !== seededMempool.length ||
+        Number(restoredCounts[0]?.deltas ?? "-1") !== seededMempool.length ||
+        Number(restoredCounts[0]?.processed ?? "-1") !== 0
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            `Commit-candidate probe failed to restore the seeded mempool: ${JSON.stringify(restoredCounts[0])}`,
+          ),
+        );
+      }
       return {
-        candidate,
+        candidate: {
+          endTimeMs: output.candidate.endTimeMs,
+          l2TransactionCount: output.mempoolTxsCount,
+          roots: output.candidate.roots,
+        },
         durationMs,
         confirmedLedgerFullScans: scansAfter.count - scansBefore.count,
+        userEventRows: {
+          deposits: Number(userEventRows[0]?.deposits ?? "-1"),
+          forcedTransactions: Number(
+            userEventRows[0]?.forcedTransactions ?? "-1",
+          ),
+          withdrawals: Number(userEventRows[0]?.withdrawals ?? "-1"),
+        },
         journalRowsBefore: Number(journalBefore[0]?.count ?? "-1"),
         journalRowsAfter: Number(journalAfter[0]?.count ?? "-1"),
         candidateConfig: {
-          mpfEngine: nodeConfig.MPF_ENGINE,
+          // Evidence label: the engine that built the candidate.
+          mpfEngine: "architecture_g",
           scratchBuild: nodeConfig.MPF_SCRATCH_BUILD,
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
           parallelRoots: nodeConfig.MPF_PARALLEL_ROOTS,
@@ -229,22 +334,23 @@ void (async () => {
       };
     });
     const measured = await Effect.runPromise(
-      provideCommitBlockWorkerServices(program),
+      // A probe, not a role: a derived bundle reads its slot mapping
+      // through the tool access.
+      provideCommitBlockWorkerServices(program, ToolL1AdapterLive),
     );
     const after = await owner.diagnostics();
     if (
-      measured.candidate.expectedL2TransactionCount !==
-      input.expectedTransactionCount
+      measured.candidate.l2TransactionCount !== input.expectedTransactionCount
     ) {
       throw new Error(
-        `Commit-candidate selected ${measured.candidate.expectedL2TransactionCount.toString()} transactions, expected ${input.expectedTransactionCount.toString()}`,
+        `Commit-candidate selected ${measured.candidate.l2TransactionCount.toString()} transactions, expected ${input.expectedTransactionCount.toString()}`,
       );
     }
     if (measured.journalRowsAfter !== measured.journalRowsBefore) {
       throw new Error("Commit-candidate build-only probe mutated the journal");
     }
-    process.stdout.write(
-      `${JSON.stringify({
+    const artifact = validateArchitectureGCommitCandidateProbeResult({
+      value: {
         schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
         probePath,
         probeSha256,
@@ -261,16 +367,25 @@ void (async () => {
         cpuAffinity,
         durationMs: measured.durationMs,
         confirmedLedgerFullScans: measured.confirmedLedgerFullScans,
+        userEventRows: measured.userEventRows,
         journalRowsBefore: measured.journalRowsBefore,
         journalRowsAfter: measured.journalRowsAfter,
         candidateConfig: measured.candidateConfig,
+        providerReads,
         providerBoundaryAttempts,
         submissionAttempts: providerBoundaryAttempts,
         candidate: measured.candidate,
         ownerBefore: before,
         ownerAfter: after,
-      })}\n`,
-    );
+      },
+      expectedInput: input,
+      expectedInputPath: resolvedInputPath,
+      expectedInputSha256: inputSha256,
+      expectedProbePath: probePath,
+      expectedProbeSha256: probeSha256,
+      expectedCpuAffinity: cpuAffinity,
+    });
+    process.stdout.write(`${JSON.stringify(artifact)}\n`);
   } finally {
     await owner.close();
   }

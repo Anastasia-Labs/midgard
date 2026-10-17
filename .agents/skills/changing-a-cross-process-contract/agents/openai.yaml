@@ -1,0 +1,4 @@
+interface:
+  display_name: "Changing a Cross-Process Contract"
+  short_description: "Verify shared messages through compiled producers and consumers."
+  default_prompt: "Use the Midgard changing-a-cross-process-contract workflow."

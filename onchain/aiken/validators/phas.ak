@@ -6,7 +6,7 @@ use cardano/transaction.{Transaction}
 validator membership {
   withdraw(redeemer: Data, _own_credential: Credential, _tx: Transaction) {
     expect [root_data,
-      key_data, value_data, proof_data] = builtin.un_list_data(redeemer)
+          key_data, value_data, proof_data] = builtin.un_list_data(redeemer)
     expect root: ByteArray = root_data
     expect key: ByteArray = key_data
     expect value: ByteArray = value_data

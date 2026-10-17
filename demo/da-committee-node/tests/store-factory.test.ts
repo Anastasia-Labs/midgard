@@ -1,24 +1,566 @@
+import {
+  computeDaSha256Hash,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { JsonFileWatcherStore } from "../src/store.js";
-import { openWatcherStore } from "../src/store/factory.js";
-import { tempDir } from "./helpers.js";
+import type {
+  DaPayloadRecord,
+  DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecord,
+} from "../src/domain.js";
+import { decisionEffectId } from "../src/store.js";
+import { openCommitteeStore } from "../src/store/factory.js";
+import { PostgresCommitteeStore } from "../src/store/postgres.js";
+import {
+  closeTestCommitteeStore,
+  openTestCommitteeStore,
+  testStoreDatabase,
+} from "./helpers/committee-store.js";
 
-describe("openWatcherStore", () => {
-  it("opens the JSON file store for WATCHER_DB_PATH config", async () => {
-    const store = await openWatcherStore({
-      kind: "file",
-      path: await tempDir(),
+describe("openCommitteeStore", () => {
+  it("opens the Postgres store for a database config", async () => {
+    const database = await testStoreDatabase();
+    const store = await openCommitteeStore({
+      kind: "database",
+      url: database.url,
     });
-    expect(store).toBeInstanceOf(JsonFileWatcherStore);
+    try {
+      expect(store).toBeInstanceOf(PostgresCommitteeStore);
+    } finally {
+      await store.close?.();
+    }
   });
 
-  it("rejects non-Postgres WATCHER_DATABASE_URL values", async () => {
+  it("rejects non-Postgres DA_COMMITTEE_DATABASE_URL values", async () => {
     await expect(
-      openWatcherStore({
+      openCommitteeStore({
         kind: "database",
         url: "sqlite:///tmp/watcher.db",
       }),
     ).rejects.toThrow(/postgres/);
   });
+
+  it("persists only the exact final DeploymentMarkerV1", async () => {
+    const store = await openTestCommitteeStore();
+    const marker = makeDeploymentMarker("11".repeat(32));
+    await store.initDeployment({
+      marker,
+      manifestSha256: "22".repeat(32),
+      contractDeploymentInfoSha256: "33".repeat(32),
+      manifestRaw: "{}",
+    });
+    await expect(store.getDeployment()).resolves.toMatchObject({ marker });
+    await expect(
+      store.initDeployment({
+        marker: makeDeploymentMarker("44".repeat(32)),
+        manifestSha256: "55".repeat(32),
+        contractDeploymentInfoSha256: "66".repeat(32),
+        manifestRaw: "{}",
+      }),
+    ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
+  });
+
+  it("accepts only exact explicit-V1 DA payload records on writes", async () => {
+    const store = await openTestCommitteeStore();
+    const payload = daPayloadRecord();
+    await expect(store.saveDaPayload(payload)).resolves.toMatchObject({
+      ...payload,
+      payloadFetchStatus: "available",
+    });
+
+    const { payloadSchemaVersion: _, ...missingVersion } = payload;
+    void _;
+    const invalidRecords: readonly unknown[] = [
+      missingVersion,
+      { ...payload, payloadSchemaVersion: 2 },
+      { ...payload, legacyPayloadVersion: 2 },
+      { ...payload, validationStatus: 1 },
+      { ...payload, rootSummary: { invalid: true } },
+    ];
+    for (const record of invalidRecords) {
+      await expect(
+        store.saveDaPayload(record as DaPayloadRecord),
+      ).rejects.toThrow(/DA /);
+    }
+  });
+
+  it("persists the L1 source state across a store restart and refuses a malformed one", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
+    const validState = {
+      schemaVersion: 1 as const,
+      sourceMode: "local_node" as const,
+      network: "Preprod",
+      authoritySha256: "91".repeat(32),
+      status: "healthy" as const,
+      observations: [
+        {
+          headerHash: "84".repeat(28),
+          stateQueueOutRef: `${"85".repeat(32)}#1`,
+          stateQueueStatus: "unattested" as const,
+          slot: 90,
+          blockHash: "86".repeat(32),
+          finalized: true,
+          hasPersistedDecision: true,
+        },
+      ],
+      observedAt: "2026-07-28T00:00:00.000Z",
+    };
+    await store.saveL1SourceState(validState);
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
+    await expect(
+      restarted.saveL1SourceState({
+        ...validState,
+        observations: [
+          {
+            headerHash: "not-a-hash",
+            stateQueueOutRef: "not-an-out-ref",
+            stateQueueStatus: "unattested",
+            finalized: true,
+            hasPersistedDecision: true,
+          },
+        ],
+      }),
+    ).rejects.toThrow(/observation is malformed/u);
+    const hostileStates: readonly unknown[] = [
+      { ...validState, authoritySha256: "not-a-digest" },
+      { ...validState, sourceMode: "external_providers" },
+      { ...validState, status: "quarantined" },
+      { ...validState, quarantineReason: "provider fork" },
+      { ...validState, stateQueueReplayAnchor: { blockNo: "90" } },
+    ];
+    for (const hostile of hostileStates) {
+      await expect(
+        restarted.saveL1SourceState(hostile as never),
+      ).rejects.toThrow(/state is malformed/u);
+    }
+    await expect(restarted.getL1SourceState()).resolves.toEqual(validState);
+  });
+
+  it("accepts only exact explicit-source DA signature records on writes", async () => {
+    const store = await openTestCommitteeStore();
+    // A signature is a decision effect: it needs durable L1 source state.
+    await store.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: "local_node",
+      network: "Preprod",
+      authoritySha256: "91".repeat(32),
+      status: "healthy",
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+    });
+    const signature = daSignatureRecord();
+    await expect(store.saveDaSignature(signature)).resolves.toBeUndefined();
+    await expect(
+      store.getDaSignature({
+        headerHash: signature.headerHash,
+        availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
+        signerIndex: signature.signerIndex,
+      }),
+    ).resolves.toEqual(signature);
+
+    const { source: _, ...missingSource } = signature;
+    void _;
+    const invalidRecords: readonly unknown[] = [
+      missingSource,
+      { ...signature, source: "legacy" },
+      { ...signature, legacySource: "local" },
+      { ...signature, signerIndex: "0" },
+      {
+        ...signature,
+        validation: {
+          ...signature.validation,
+          legacyValidationVersion: 1,
+        },
+      },
+    ];
+    for (const record of invalidRecords) {
+      await expect(
+        store.saveDaSignature(record as DaSignatureRecord),
+      ).rejects.toThrow(/DA /);
+    }
+  });
+
+  it("deduplicates and reloads only exact explicit-V1 conflict evidence records", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
+    const evidence = daConflictEvidenceRecord();
+    await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(true);
+    await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(false);
+    await expect(
+      store.saveDaConflictEvidence({
+        ...evidence,
+        reporterPeerId: "later-reporter",
+        receivedAt: "2026-07-27T00:00:03.000Z",
+      }),
+    ).resolves.toBe(false);
+    await expect(store.listDaConflictEvidence()).resolves.toEqual([evidence]);
+    await closeTestCommitteeStore(store);
+    const reopenedEvidenceStore = await openTestCommitteeStore(database);
+    await expect(
+      reopenedEvidenceStore.listDaConflictEvidence(),
+    ).resolves.toEqual([evidence]);
+
+    const { conflictSchemaVersion: _, ...missingVersion } = evidence;
+    void _;
+    const invalidRecords: readonly unknown[] = [
+      missingVersion,
+      { ...evidence, conflictSchemaVersion: 2 },
+      { ...evidence, legacyConflictVersion: 1 },
+      { ...evidence, evidenceHash: "ff".repeat(32) },
+      { ...evidence, conflictingHeaderHash: "33".repeat(28) },
+      { ...evidence, reporterPeerId: "" },
+    ];
+    for (const record of invalidRecords) {
+      await expect(
+        reopenedEvidenceStore.saveDaConflictEvidence(
+          record as DaStoredConflictEvidenceRecord,
+        ),
+      ).rejects.toThrow(/DA stored conflict evidence record V1/u);
+    }
+  });
+
+  it("atomically persists and completes deterministic decision outbox effects", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
+    const signature = daSignatureRecord();
+    const stateQueueOutRef = signature.validation.stateQueueOutRef;
+    const effectId = decisionEffectId({
+      deploymentFingerprint: signature.deploymentFingerprint,
+      headerHash: signature.headerHash,
+      stateQueueOutRef,
+      effectKind: "signature_publish",
+      signerIndex: signature.signerIndex,
+    });
+    const effect = {
+      schemaVersion: 1 as const,
+      effectId,
+      deploymentFingerprint: signature.deploymentFingerprint,
+      sourceMode: "local_node" as const,
+      network: "Preprod",
+      effectKind: "signature_publish" as const,
+      headerHash: signature.headerHash,
+      stateQueueOutRef,
+      signerIndex: signature.signerIndex,
+      slot: 1,
+      blockHash: "66".repeat(32),
+      finalized: true as const,
+      status: "pending" as const,
+      attemptCount: 1,
+      createdAt: "2026-07-28T00:00:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    };
+    await store.beginDecisionEffect({
+      effect,
+      sourceState: {
+        schemaVersion: 1,
+        sourceMode: "local_node",
+        network: "Preprod",
+        authoritySha256: "91".repeat(32),
+        status: "healthy",
+        observations: [
+          {
+            headerHash: signature.headerHash,
+            stateQueueOutRef,
+            stateQueueStatus: "unattested",
+            slot: 1,
+            blockHash: "66".repeat(32),
+            finalized: true,
+            hasPersistedDecision: true,
+          },
+        ],
+        observedAt: "2026-07-28T00:00:00.000Z",
+      },
+      signature,
+    });
+    await closeTestCommitteeStore(store);
+    const restarted = await openTestCommitteeStore(database);
+    await expect(restarted.getDecisionOutbox(effectId)).resolves.toEqual(
+      effect,
+    );
+    await expect(
+      restarted.getDaSignature({
+        headerHash: signature.headerHash,
+        availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
+        signerIndex: signature.signerIndex,
+      }),
+    ).resolves.toEqual(signature);
+    await expect(
+      restarted.completeDecisionEffect({
+        effectId,
+        expectedAttemptCount: 2,
+        status: "published",
+        updatedAt: "2026-07-28T00:00:01.000Z",
+        signature: { ...signature, broadcastStatus: "posted" },
+      }),
+    ).rejects.toThrow(/does not match the pending attempt/u);
+    await expect(
+      restarted.completeDecisionEffect({
+        effectId,
+        expectedAttemptCount: 1,
+        status: "published",
+        updatedAt: "2026-07-28T00:00:01.000Z",
+        signature: {
+          ...signature,
+          broadcastStatus: "posted",
+          l1ChainPoint: {
+            ...signature.l1ChainPoint,
+            blockHash: "ff".repeat(32),
+          },
+        },
+      }),
+    ).rejects.toThrow(/signature does not match effect identity/u);
+    // The attempt left pending by the closed store belongs to no live process,
+    // so the restarted store reclaims it at once, with no lease to wait out.
+    const retry = {
+      ...effect,
+      attemptCount: 2,
+      updatedAt: "2026-07-28T00:00:00.001Z",
+    };
+    await restarted.beginDecisionEffect({
+      effect: retry,
+      sourceState: (await restarted.getL1SourceState())!,
+      signature,
+    });
+    await expect(
+      restarted.completeDecisionEffect({
+        effectId,
+        expectedAttemptCount: 1,
+        status: "published",
+        updatedAt: "2026-07-28T00:00:01.000Z",
+        signature: { ...signature, broadcastStatus: "posted" },
+      }),
+    ).rejects.toThrow(/does not match the pending attempt/u);
+    await restarted.completeDecisionEffect({
+      effectId,
+      expectedAttemptCount: 2,
+      status: "published",
+      updatedAt: "2026-07-28T00:00:01.000Z",
+      signature: { ...signature, broadcastStatus: "posted" },
+    });
+    await expect(restarted.getDecisionOutbox(effectId)).resolves.toMatchObject({
+      status: "published",
+      attemptCount: 2,
+    });
+    await expect(
+      restarted.beginDecisionEffect({
+        effect: { ...effect, attemptCount: 4 },
+        sourceState: (await restarted.getL1SourceState())!,
+        signature,
+      }),
+    ).rejects.toThrow(/retry does not match durable identity/u);
+  });
+
+  it("serializes concurrent decisions into one source state holding both", async () => {
+    const store = await openTestCommitteeStore();
+    const firstSignature = daSignatureRecord();
+    const secondCommitment = availabilityCommitment("23".repeat(28));
+    const secondSignature: DaSignatureRecordV1 = {
+      ...firstSignature,
+      headerHash: "23".repeat(28),
+      signerIndex: 1,
+      signatureWitness: "01" + "45".repeat(64),
+      availabilityCommitmentCbor: secondCommitment.cbor,
+      availabilityCommitmentDigest: secondCommitment.digest,
+      l1ChainPoint: {
+        ...firstSignature.l1ChainPoint,
+        slot: 2,
+        blockHash: "67".repeat(32),
+      },
+      validation: {
+        ...firstSignature.validation,
+        stateQueueOutRef: `${"78".repeat(32)}#1`,
+        headerHash: "23".repeat(28),
+      },
+    };
+    const effectFor = (signature: DaSignatureRecordV1, observedAt: string) => {
+      const stateQueueOutRef = signature.validation.stateQueueOutRef;
+      return {
+        effect: {
+          schemaVersion: 1 as const,
+          effectId: decisionEffectId({
+            deploymentFingerprint: signature.deploymentFingerprint,
+            headerHash: signature.headerHash,
+            stateQueueOutRef,
+            effectKind: "signature_publish",
+            signerIndex: signature.signerIndex,
+          }),
+          deploymentFingerprint: signature.deploymentFingerprint,
+          sourceMode: "local_node" as const,
+          network: "Preprod",
+          effectKind: "signature_publish" as const,
+          headerHash: signature.headerHash,
+          stateQueueOutRef,
+          signerIndex: signature.signerIndex,
+          slot: signature.l1ChainPoint.slot!,
+          blockHash: signature.l1ChainPoint.blockHash!,
+          finalized: true as const,
+          status: "pending" as const,
+          attemptCount: 1,
+          createdAt: observedAt,
+          updatedAt: observedAt,
+        },
+        sourceState: {
+          schemaVersion: 1 as const,
+          sourceMode: "local_node" as const,
+          network: "Preprod",
+          authoritySha256: "91".repeat(32),
+          status: "healthy" as const,
+          observations: [
+            {
+              headerHash: signature.headerHash,
+              stateQueueOutRef,
+              stateQueueStatus: "unattested" as const,
+              slot: signature.l1ChainPoint.slot,
+              blockHash: signature.l1ChainPoint.blockHash,
+              finalized: true,
+              hasPersistedDecision: true,
+            },
+          ],
+          observedAt,
+        },
+        signature,
+      };
+    };
+    const first = effectFor(firstSignature, "2026-07-28T00:00:00.000Z");
+    const second = effectFor(secondSignature, "2026-07-28T00:00:01.000Z");
+    await Promise.all([
+      store.beginDecisionEffect(first),
+      store.beginDecisionEffect(second),
+    ]);
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [
+        { headerHash: firstSignature.headerHash, hasPersistedDecision: true },
+        { headerHash: secondSignature.headerHash, hasPersistedDecision: true },
+      ],
+    });
+  });
 });
+
+const daPayloadRecord = (): DaPayloadRecord => ({
+  deploymentFingerprint: "11".repeat(32),
+  headerHash: "22".repeat(28),
+  payloadSchemaVersion: 1,
+  payloadCborHex: "aabb",
+  payloadSha256: "33".repeat(32),
+  sourcePeerId: "fixture-peer",
+  fetchedAt: "2026-07-27T00:00:00.000Z",
+  validationStatus: "fetched",
+});
+
+const availabilityCommitment = (headerHash: string, identity = "99") => {
+  const commitment = SDK.buildDaAvailabilityCommitment({
+    deploymentIdentity: identity.repeat(28),
+    headerHash,
+    payload: Buffer.from("public retained DA"),
+    responseGeometry: SDK.availabilityResponseGeometry({
+      chunkByteLength: 4_096,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  });
+  const cbor = SDK.encodeDaAvailabilityCommitment(commitment);
+  return {
+    commitment,
+    cbor,
+    digest: computeDaSha256Hash(Buffer.from(cbor, "hex")).toString("hex"),
+  };
+};
+
+const signatureCommitment = availabilityCommitment("22".repeat(28));
+
+const daSignatureRecord = (): DaSignatureRecordV1 => ({
+  deploymentFingerprint: "11".repeat(32),
+  headerHash: "22".repeat(28),
+  signerIndex: 0,
+  signatureWitness: "00" + "44".repeat(64),
+  availabilityCommitmentCbor: signatureCommitment.cbor,
+  availabilityCommitmentDigest: signatureCommitment.digest,
+  payloadHash: "33".repeat(32),
+  committeeSignersHash: "55".repeat(32),
+  signedAt: "2026-07-27T00:00:01.000Z",
+  broadcastStatus: "local",
+  source: "local",
+  l1ChainPoint: {
+    slot: 1,
+    blockHash: "66".repeat(32),
+    blockHeight: 1,
+    depth: 10,
+    finalized: true,
+    providerSource: "fixture",
+  },
+  validation: {
+    payloadVersion: 1,
+    rootsMatch: true,
+    stateQueueOutRef: `${"77".repeat(32)}#0`,
+    headerHash: "22".repeat(28),
+    rootSummary: {
+      utxosRoot: "01".repeat(32),
+      withdrawalsRoot: "02".repeat(32),
+      forcedTransactionsRoot: "03".repeat(32),
+      transactionsRoot: "04".repeat(32),
+      depositsRoot: "05".repeat(32),
+      transitionTraceRoot: "06".repeat(32),
+      eventToStepRoot: "07".repeat(32),
+      validationTracesRoot: "08".repeat(32),
+    },
+    countSummary: {
+      withdrawalCount: 0n,
+      forcedTransactionCount: 0n,
+      l2TransactionCount: 0n,
+      depositCount: 0n,
+      totalEventCount: 0n,
+      transitionStepCount: 0n,
+      validationTraceCount: 0n,
+    },
+    l1Header: {
+      startTime: "1",
+      endTime: "2",
+      operatorVkey: "88".repeat(28),
+      prevHeaderHash: "99".repeat(28),
+      protocolVersion: "1",
+    },
+  },
+});
+
+const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
+  const lower = availabilityCommitment("11".repeat(28));
+  const upper = availabilityCommitment("11".repeat(28), "55");
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
+    signerIndex: 0,
+    daVkey: Buffer.alloc(32, 0x44),
+    lowerHeaderHash: Buffer.alloc(28, 0x11),
+    lowerCommitmentCbor: Buffer.from(lower.cbor, "hex"),
+    lowerHeaderWitness: Buffer.concat([
+      Buffer.from([0]),
+      Buffer.alloc(64, 0xaa),
+    ]),
+    upperHeaderHash: Buffer.alloc(28, 0x11),
+    upperCommitmentCbor: Buffer.from(upper.cbor, "hex"),
+    upperHeaderWitness: Buffer.concat([
+      Buffer.from([0]),
+      Buffer.alloc(64, 0xbb),
+    ]),
+  });
+  return {
+    conflictSchemaVersion: 1,
+    deploymentFingerprint: "11".repeat(32),
+    headerHash: "11".repeat(28),
+    commitmentDigest: lower.digest,
+    conflictingHeaderHash: "11".repeat(28),
+    conflictingCommitmentDigest: upper.digest,
+    signerIndex: 0,
+    evidenceKind: "equivocation",
+    evidenceHash: computeDaSha256Hash(compactEvidence).toString("hex"),
+    compactEvidenceCborHex: compactEvidence.toString("hex"),
+    reporterPeerId: "fixture-peer",
+    receivedAt: "2026-07-27T00:00:02.000Z",
+  };
+};

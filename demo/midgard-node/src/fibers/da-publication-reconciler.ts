@@ -1,22 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { Effect, Metric, Option, Schedule } from "effect";
 
+import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   loadDaProducerPublicationManifestFromEnv,
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
-} from "@/da/libp2p-producer.js";
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+} from "../da/libp2p-producer.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import type { Database } from "@/services/database.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import type { Database } from "../services/database.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 
 const daPublishReconcilerAttemptsCounter = Metric.counter(
   "da_publish_reconciler_attempts_total",
@@ -38,9 +40,13 @@ export type DaPublicationReconcileSummary = {
 export const reconcileDaPublicationsOnce = ({
   limit = 100,
   leaseOwner = `${hostname()}:${process.pid.toString()}`,
+  deploymentIdentityDigest,
 }: {
   readonly limit?: number;
   readonly leaseOwner?: string;
+  /** Verified manifest ID; absent for a derived contract bundle, which
+   * consults no removal (see `owedPayload` in `l1-queue-terminals`). */
+  readonly deploymentIdentityDigest?: Buffer;
 } = {}): Effect.Effect<
   DaPublicationReconcileSummary,
   DatabaseError,
@@ -65,7 +71,7 @@ export const reconcileDaPublicationsOnce = ({
         backlog: 0,
       };
     }
-    const retentionDays = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+    const retentionDays = DA_TRANSPORT_LIMITS.minimumRetentionDays;
     const hardeningConfig = readDaHardeningConfig();
     const concurrency = Math.max(
       1,
@@ -85,6 +91,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: peerLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
+      deploymentIdentityDigest,
     });
     let attempted = 0;
     let conflicts = 0;
@@ -152,6 +159,7 @@ export const reconcileDaPublicationsOnce = ({
       leaseOwner,
       leaseToken: announcementLeaseToken,
       leaseMs: Math.max(30_000, manifest.requestTimeoutMs * 2),
+      deploymentIdentityDigest,
     });
     yield* Effect.forEach(
       announcementClaims,
@@ -231,8 +239,14 @@ export const reconcileDaPublicationsOnce = ({
     );
     const [peerBacklog, announcementBacklog] = yield* Effect.all(
       [
-        DaPayloadPublicationsDB.backlogCount(retentionDays),
-        DaPayloadAnnouncementsDB.backlogCount(retentionDays),
+        DaPayloadPublicationsDB.backlogCount(
+          retentionDays,
+          deploymentIdentityDigest,
+        ),
+        DaPayloadAnnouncementsDB.backlogCount(
+          retentionDays,
+          deploymentIdentityDigest,
+        ),
       ],
       { concurrency: 2 },
     );
@@ -249,11 +263,14 @@ export const reconcileDaPublicationsOnce = ({
 
 export const daPublicationReconcilerFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Database> =>
+): Effect.Effect<void, never, Database | ContractDeploymentIdentity> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟢 DA publication reconciler fiber started.");
+    const deploymentIdentityDigest = deploymentIdentityDigestOf(
+      yield* ContractDeploymentIdentity,
+    );
     yield* Effect.repeat(
-      reconcileDaPublicationsOnce().pipe(
+      reconcileDaPublicationsOnce({ deploymentIdentityDigest }).pipe(
         Effect.catchAllCause((cause) =>
           Effect.logWarning(
             `DA publication reconciler iteration failed; continuing: ${String(cause)}`,

@@ -1,0 +1,482 @@
+import { createHash } from "node:crypto";
+
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardForcedTxCompact,
+} from "@al-ft/midgard-core";
+import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
+
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
+import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
+import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
+import {
+  CanonicalReplayPrerequisiteError,
+  replayPrerequisiteFailure,
+} from "../workflow/replay-prerequisite.js";
+import {
+  detectTransitionTraceFaults,
+  type TransitionTraceDetection,
+  type TransitionTraceDetectionEvidence,
+} from "./detect.js";
+import {
+  readFreshTransitionTraceL1Events,
+  type TransitionTraceL1Events,
+} from "./l1-events.js";
+import { eventKeyFingerprint } from "./reconstruct.js";
+import { deriveTransitionTraceReplayEvidence } from "./replay.js";
+import type {
+  OmittedDueL1EventEvidence,
+  OutOfWindowSourceEventEvidence,
+} from "./witnesses.js";
+
+// A handle owns deeply frozen admitted raw evidence. Cache only decoding of
+// those immutable bytes; header windows, committed sources and coverage below
+// remain caller-dependent and must be checked on every read.
+const parseEventFacts = (
+  l1: ReturnType<typeof readFreshTransitionTraceL1Events>,
+) => ({
+  hub: Data.from(l1.hub.datum!, SDK.HubOracleDatum),
+  events: l1.events.map((entry) => {
+    if (entry.kind !== "forcedTransaction") {
+      const commitment = Data.from(
+        entry.history.commitmentCbor,
+        SDK.EventHistoryCommitment,
+      );
+      const opening = Data.from(
+        entry.history.openingCbor,
+        SDK.EventHistoryOpening,
+      );
+      if (
+        !SDK.opensEventHistoryCommitmentCbor(
+          commitment,
+          plutusConstrFieldCbor(entry.history.openingCbor, [0]),
+          plutusConstrFieldCbor(entry.history.openingCbor, [1]),
+        )
+      )
+        throw new Error(
+          "Transition history preimage differs from admitted commitment",
+        );
+      if (entry.kind === "deposit" && "DepositPayload" in opening.payload)
+        return {
+          kind: "deposit" as const,
+          entry,
+          datum: {
+            event: opening.payload.DepositPayload.event,
+            inclusion_time: commitment.inclusion_time,
+          },
+        };
+      if (entry.kind === "withdrawal" && "WithdrawalPayload" in opening.payload)
+        return {
+          kind: "withdrawal" as const,
+          entry,
+          datum: {
+            ...opening.payload.WithdrawalPayload,
+            inclusion_time: commitment.inclusion_time,
+          },
+        };
+      throw new Error("Transition history payload has the wrong event kind");
+    }
+    const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
+    const compact = decodeMidgardForcedTxCompact(
+      Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
+    );
+    if (
+      computeMidgardNativeTxId(compact).toString("hex") !== datum.event.tx.tx_id
+    )
+      throw new Error(
+        "Transition forced L1 source has a false compact transaction id",
+      );
+    return { kind: "forcedTransaction" as const, entry, datum };
+  }),
+});
+const parsedEventFacts = new WeakMap<
+  TransitionTraceL1Events,
+  ReturnType<typeof parseEventFacts>
+>();
+const readEventFacts = (
+  handle: TransitionTraceL1Events,
+  l1: ReturnType<typeof readFreshTransitionTraceL1Events>,
+) => {
+  let facts = parsedEventFacts.get(handle);
+  if (facts === undefined) {
+    facts = parseEventFacts(l1);
+    parsedEventFacts.set(handle, facts);
+  }
+  return facts;
+};
+
+const readTransitionTraceEventCoverage = ({
+  evidence,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  l1Events: TransitionTraceL1Events;
+}) => {
+  const l1 = readFreshTransitionTraceL1Events(l1Events);
+  if (l1Events.headerHash !== evidence.headerHash)
+    throw new Error(
+      "Transition event evidence targets another canonical block",
+    );
+  const current = evidence.reconstruction;
+  const omitted: OmittedDueL1EventEvidence[] = [];
+  const outside: OutOfWindowSourceEventEvidence[] = [];
+  const referencesByEvent = new Map<string, (typeof l1.events)[number]>();
+  const relevantEvents: (typeof l1.events)[number][] = [];
+  for (const fact of readEventFacts(l1Events, l1).events) {
+    const entry = fact.entry;
+    const common = { eventRefInputIndex: 0n, eventAssetName: entry.assetName };
+    let eventKey: SDK.EventKey;
+    let due: boolean;
+    let omittedItem: OmittedDueL1EventEvidence;
+    let outsideItem: OutOfWindowSourceEventEvidence;
+    if (fact.kind === "deposit") {
+      const datum = fact.datum;
+      eventKey = { DepositEventKey: { deposit_id: datum.event.id } };
+      due =
+        current.header.startTime < datum.inclusion_time &&
+        datum.inclusion_time <= current.header.endTime;
+      omittedItem = {
+        kind: "deposit",
+        depositId: structuredClone(datum.event.id),
+      };
+      outsideItem = omittedItem;
+    } else if (fact.kind === "withdrawal") {
+      const datum = fact.datum;
+      eventKey = { WithdrawalEventKey: { withdrawal_id: datum.event.id } };
+      due =
+        current.header.startTime < datum.inclusion_time &&
+        datum.inclusion_time <= current.header.endTime;
+      omittedItem = {
+        kind: "withdrawal",
+        withdrawalId: structuredClone(datum.event.id),
+      };
+      outsideItem = omittedItem;
+    } else {
+      // Due by inclusion time alone, as on chain; the validity interval only
+      // decides the machine verdict at the block slot.
+      const { datum } = fact;
+      due =
+        current.header.startTime < datum.inclusion_time &&
+        datum.inclusion_time <= current.header.endTime;
+      eventKey = { ForcedTransactionEventKey: { tx_order_id: datum.event.id } };
+      const source = current.sourceEventsByFingerprint.get(
+        eventKeyFingerprint(eventKey),
+      );
+      const verdict =
+        source?.phase === "ForcedTransaction"
+          ? source.entry.value.verdict
+          : "ForcedTxValid";
+      omittedItem = {
+        ...common,
+        kind: "forcedTransaction",
+        txOrderId: structuredClone(datum.event.id),
+        validityOverride: verdict,
+      };
+      outsideItem = omittedItem;
+    }
+    const fingerprint = eventKeyFingerprint(eventKey);
+    if (referencesByEvent.has(fingerprint))
+      throw new Error("Transition L1 authority has duplicate event identities");
+    referencesByEvent.set(fingerprint, entry);
+    const source = current.sourceEventsByFingerprint.get(fingerprint);
+    if (due || source !== undefined) relevantEvents.push(entry);
+    if (due && source === undefined) omitted.push(omittedItem);
+    if (!due && source !== undefined) outside.push(outsideItem);
+  }
+  // Decision 0007: a committed deposit or withdrawal with no authentic L1
+  // origin is the fabricated-family fraud, so it is carried out of coverage as
+  // a prerequisite the replay caller raises rather than an abort here. A
+  // forced-transaction source has no fabricated family and still aborts.
+  const uncovered: SDK.EventKey[] = [];
+  for (const source of current.sourceEventsByFingerprint.values()) {
+    if (
+      source.phase === "L2Transaction" ||
+      referencesByEvent.has(source.fingerprint)
+    )
+      continue;
+    if (source.phase === "ForcedTransaction")
+      throw new Error(
+        "Transition replay lacks authenticated L1 coverage for a committed source",
+      );
+    uncovered.push(source.eventKey);
+  }
+  return {
+    l1,
+    current,
+    omitted,
+    outside,
+    referencesByEvent,
+    relevantEvents,
+    uncovered,
+  };
+};
+
+// Each key is an opaque handle owning immutable, already admitted raw evidence.
+// The cheap projection key below binds every mutable decision input; keep only
+// the latest projection so caller changes cannot grow an unbounded cache.
+const eventEvidenceDigests = new WeakMap<
+  TransitionTraceL1Events,
+  Readonly<{ projection: string; digest: string }>
+>();
+
+/** Stable identity for every due or committed event, after full raw admission. */
+export const computeTransitionTraceL1EventEvidenceDigest = ({
+  evidence,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  l1Events: TransitionTraceL1Events;
+}): string => {
+  const { l1, current, relevantEvents } = readTransitionTraceEventCoverage({
+    evidence,
+    l1Events,
+  });
+  const parameters = readEventFacts(l1Events, l1).hub;
+  const hubScope = l1.snapshot.scopes.find(
+    (scope) => scope.role === "hub_oracle",
+  )!;
+  const hubOutRef = `${l1.hub.txHash}#${l1.hub.outputIndex.toString()}`;
+  const hubUnit =
+    paymentCredentialOf(hubScope.address).hash + SDK.HUB_ORACLE_ASSET_NAME;
+  if (!l1.snapshot.historyUnits.includes(hubUnit))
+    throw new Error("Transition event evidence omits governed hub history");
+  const relevantUnits = new Set([hubUnit]);
+  const relevantOutRefs = new Set([hubOutRef]);
+  for (const event of relevantEvents) {
+    const policy =
+      event.kind === "deposit"
+        ? parameters.deposit
+        : event.kind === "withdrawal"
+          ? parameters.withdrawal
+          : parameters.tx_order;
+    relevantUnits.add(policy + event.assetName);
+    relevantOutRefs.add(
+      `${event.utxo.txHash}#${event.utxo.outputIndex.toString()}`,
+    );
+    if (
+      event.kind !== "forcedTransaction" &&
+      event.retainedDataUtxo !== undefined
+    )
+      relevantOutRefs.add(
+        `${event.retainedDataUtxo.txHash}#${event.retainedDataUtxo.outputIndex}`,
+      );
+  }
+  const history = l1.snapshot.history.filter((entry) =>
+    relevantUnits.has(entry.unit),
+  );
+  if (history.length !== relevantUnits.size)
+    throw new Error("Transition event evidence omits relevant unit history");
+  const transactionHashes = new Set(
+    history.flatMap((entry) => entry.transactionHashes),
+  );
+  const headerCbor = SDK.encodeHeaderCbor(current.header).toString("hex");
+  const relevantEventOutRefs = [...relevantOutRefs].sort();
+  const projection = JSON.stringify([
+    evidence.headerHash,
+    headerCbor,
+    evidence.payloadEnvelopeSha256,
+    evidence.payloadSha256,
+    relevantEventOutRefs,
+    [...relevantUnits].sort(),
+  ]);
+  const cached = eventEvidenceDigests.get(l1Events);
+  if (cached?.projection === projection) return cached.digest;
+  // The original complete snapshot remains the admission authority. This is
+  // only a transcript projection, never a replacement address/history claim.
+  const rawEvidenceDigest = computeFraudProofRawL1SnapshotEvidenceDigest({
+    ...l1.snapshot,
+    scopes: l1.snapshot.scopes.map((scope) => ({
+      ...scope,
+      utxos: scope.utxos.filter((entry) => relevantOutRefs.has(entry.outRef)),
+    })),
+    historyUnits: [...relevantUnits],
+    history,
+    transactions: l1.snapshot.transactions.filter((entry) =>
+      transactionHashes.has(entry.txHash),
+    ),
+  });
+  const digest = createHash("sha256")
+    .update(
+      canonicalJson(
+        {
+          schemaVersion: "midgard-transition-trace-event-evidence-v1",
+          headerHash: evidence.headerHash,
+          headerCbor,
+          payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
+          payloadSha256: evidence.payloadSha256,
+          hubAddress: hubScope.address,
+          relevantEventOutRefs,
+          rawEvidenceDigest,
+        },
+        "transition trace event evidence",
+      ),
+    )
+    .digest("hex");
+  eventEvidenceDigests.set(l1Events, { projection, digest });
+  return digest;
+};
+
+/** The findings the block and its raw L1 events prove on their own, with no
+ * predecessor ledger: the list the replay below keeps
+ * when any of it is buildable. Empty when the block needs full replay. */
+export const detectStructuralTransitionTraceFaults = async ({
+  evidence,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  l1Events: TransitionTraceL1Events;
+}) => {
+  const coverage = readTransitionTraceEventCoverage({ evidence, l1Events });
+  const timed = {
+    omittedDueL1Events: coverage.omitted,
+    outOfWindowSourceEvents: coverage.outside,
+  };
+  const found = await detectTransitionTraceFaults(coverage.current, timed);
+  if (!found.some((item) => item.buildable))
+    return { coverage, timed, detections: [] };
+  if (found.some((item) => !item.buildable))
+    throw new Error(
+      "Transition replay contains an unbuildable authenticated finding",
+    );
+  return { coverage, timed, detections: found };
+};
+
+/** This entry point requires the classifier-admitted predecessor and the
+ * freshly admitted raw L1 handle. A journal copy, supplied proof, or supplied
+ * replay verdict cannot recreate that authority. */
+export const replayTransitionTraceFromRetainedHistory = async ({
+  evidence,
+  predecessor,
+  l1Events,
+}: {
+  evidence: CanonicalBlockEvidence;
+  predecessor: CheckedLedger | undefined;
+  l1Events: TransitionTraceL1Events;
+}) => {
+  if (l1Events.headerHash !== evidence.headerHash)
+    throw new Error(
+      "Transition replay authority targets another canonical block",
+    );
+  const structural = await detectStructuralTransitionTraceFaults({
+    evidence,
+    l1Events,
+  });
+  const { l1, current, referencesByEvent, uncovered } = structural.coverage;
+  const result = (
+    completeEvidence: TransitionTraceDetectionEvidence,
+    detections: readonly TransitionTraceDetection[],
+  ) => ({
+    completeEvidence,
+    detections,
+    referencesByEvent,
+    l1Snapshot: l1.snapshot,
+  });
+  if (structural.detections.length > 0)
+    return result(structural.timed, structural.detections);
+  // Decision 0007: the fabricated family owns a committed deposit or
+  // withdrawal whose L1 origin is absent. Its finding at that leaf discharges
+  // this prerequisite; a merely consumed origin yields no finding and the
+  // block fails closed.
+  if (uncovered.length > 0)
+    throw new CanonicalReplayPrerequisiteError(
+      uncovered.map(
+        (eventKey) =>
+          replayPrerequisiteFailure(
+            evidence.headerHash,
+            eventKey,
+            "present_source_origin",
+          ).failures[0]!,
+      ),
+    );
+  const completeEvidence: TransitionTraceDetectionEvidence = {
+    ...(await deriveTransitionTraceReplayEvidence({
+      current,
+      predecessor: requireReplayPredecessorLedger({
+        block: evidence,
+        predecessor,
+        label: "Transition replay",
+      }),
+      deposits: l1.events.flatMap((entry) =>
+        entry.kind === "deposit"
+          ? [
+              {
+                history: entry.history,
+              },
+            ]
+          : [],
+      ),
+      network: l1.network,
+      depositPolicyId: l1.depositPolicyId,
+    })),
+    ...structural.timed,
+  };
+  const detections = await detectTransitionTraceFaults(
+    current,
+    completeEvidence,
+  );
+  if (detections.some((item) => !item.buildable))
+    throw new Error(
+      "Transition replay contains an unbuildable authenticated finding",
+    );
+  return result(completeEvidence, detections);
+};
+
+export const transitionTraceDetectionId = (index: number, kind: string) =>
+  `transition-trace:${index}:${kind}`;
+
+/** Only proofs that authenticate the exact event whose ledger effect is
+ * false: a semantic transition proof, or an out-of-window source event whose
+ * membership proof opens the committed leaf. */
+export const provenTransitionEventKeyCbor = (
+  detection: TransitionTraceDetection,
+): string | undefined => {
+  if (!detection.buildable) return undefined;
+  const fault = detection.fault;
+  if ("OutOfWindowSourceEvent" in fault) {
+    const witness = fault.OutOfWindowSourceEvent.witness;
+    const eventKey: SDK.EventKey =
+      "OutOfWindowDeposit" in witness
+        ? {
+            DepositEventKey: {
+              deposit_id: witness.OutOfWindowDeposit.source_membership.key,
+            },
+          }
+        : "OutOfWindowWithdrawal" in witness
+          ? {
+              WithdrawalEventKey: {
+                withdrawal_id:
+                  witness.OutOfWindowWithdrawal.source_membership.key,
+              },
+            }
+          : {
+              ForcedTransactionEventKey: {
+                tx_order_id:
+                  witness.OutOfWindowForcedTransaction.source_membership.key,
+              },
+            };
+    return Data.to(eventKey, SDK.EventKey);
+  }
+  if ("AcceptedTransactionTransitionMismatch" in fault)
+    return Data.to(
+      fault.AcceptedTransactionTransitionMismatch.witness.claim
+        .transition_step_membership.value.event_key,
+      SDK.EventKey,
+    );
+  if (!("InvalidOneStepTransition" in fault)) return undefined;
+  const witness = fault.InvalidOneStepTransition.witness;
+  const step =
+    "L2TransactionTransition" in witness
+      ? witness.L2TransactionTransition.trace_proof
+      : "ValidDepositTransition" in witness
+        ? witness.ValidDepositTransition.trace_proof
+        : "ValidWithdrawalTransition" in witness
+          ? witness.ValidWithdrawalTransition.trace_proof
+          : "InvalidWithdrawalNoOpTransition" in witness
+            ? witness.InvalidWithdrawalNoOpTransition.trace_proof
+            : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
+  return Data.to(step.value.event_key, SDK.EventKey);
+};

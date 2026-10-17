@@ -1,0 +1,11 @@
+import "node:fs";
+import "node:url";
+import "vitest";
+import "../src/codec/native.js";
+import "../src/codec/native-tx-field-access.js";
+import "../src/codec/native-tx-field-items.js";
+import "../src/codec/versioned-script.js";
+import "./fixtures/native-tx-field-items-v1.vectors.mjs";
+import "./native-tx-field-items-goldens.5-3-per-field-item-encodings-recompute-from-the-twin.js";
+import "./native-tx-field-items-goldens.5-3-fixed-width-item-assertions.js";
+import "./native-tx-field-items-goldens.8-4-tier-3-straddle-at-the-stride-fields-0-1-share.js";

@@ -296,12 +296,14 @@ export const buildBalancedCompletion = ({
   resolved,
   initialFee,
   maxFeeIterations,
+  nativeTxVersion,
   deriveScriptMaterialization,
 }: {
   readonly state: BuilderState;
   readonly resolved: BalancedCompletionInputs;
   readonly initialFee: bigint;
   readonly maxFeeIterations: number;
+  readonly nativeTxVersion: bigint;
   readonly deriveScriptMaterialization: (
     state: BuilderState,
   ) => ScriptMaterialization;
@@ -356,6 +358,7 @@ export const buildBalancedCompletion = ({
         candidateState,
         fee,
         deriveScriptMaterialization(candidateState),
+        nativeTxVersion,
       ),
     );
     const expectedWitnessKeyHashes =

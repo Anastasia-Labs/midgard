@@ -1,12 +1,23 @@
+import { decodeMidgardCekProgramMaterialDaEntry } from "@al-ft/midgard-core/cek-proof";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { type Database } from "@/services/database.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
+import { pinRetainedStateScriptRefs } from "../../database/cekProgramMaterial.pin-retained-state.js";
+import {
+  DaPayloadsDB,
+  PendingBlockFinalizationsDB,
+} from "../../database/index.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "../../database/utils/common.js";
+import { type Database } from "../../services/database.js";
+import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { buildDaPayloadInsert } from "./da-payload.js";
 
 export type DaPayloadBackfillSkipped = {
   readonly headerHash: string;
@@ -35,31 +46,77 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
+  /**
+   * Stores the payload and pins the scripts the block's post-state ledger
+   * references. The payload carries no UTxO set, so the outputs come from
+   * the node's own ledger.
+   */
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
+    ledgerOutputs: readonly Buffer[],
   ) => Effect.Effect<void, DatabaseError, R>;
-  readonly materializeUtxos?: (
+  readonly materializeLedgerOutputs: (
     record: PendingBlockFinalizationsDB.Record,
-  ) => Effect.Effect<
-    readonly { readonly outref: Buffer; readonly output: Buffer }[],
-    DatabaseError,
-    R
-  >;
+  ) => Effect.Effect<readonly Buffer[], DatabaseError, R>;
 };
 
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-  upsertAvailable: DaPayloadsDB.upsertAvailable,
-  materializeUtxos: (record) =>
-    materializeConfirmedLedgerSnapshot(record).pipe(
-      Effect.map((snapshot) =>
-        snapshot.entries.map((entry) => ({
-          outref: entry.outref,
-          output: entry.output,
-        })),
+  upsertAvailable: (input, ledgerOutputs) =>
+    Effect.gen(function* () {
+      const body = yield* Effect.tryPromise({
+        try: async () =>
+          SDK.decodeDaPayload(
+            (
+              await unwrapDaPayload(input.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+              })
+            ).innerBytes,
+          ).block_body,
+        catch: (cause) =>
+          new DatabaseError({
+            table: "da_payloads",
+            message: "Failed to decode backfilled state for script retention",
+            cause,
+          }),
+      });
+      const material = yield* Effect.try({
+        try: () =>
+          body.cek_program_material.map((entry) =>
+            decodeMidgardCekProgramMaterialDaEntry(
+              Buffer.from(entry[0], "hex"),
+              Buffer.from(entry[1], "hex"),
+            ),
+          ),
+        catch: (cause) =>
+          new DatabaseError({
+            table: "da_payloads",
+            message: "Malformed backfilled script material",
+            cause,
+          }),
+      });
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* DaPayloadsDB.upsertAvailable(input);
+          yield* pinRetainedStateScriptRefs({
+            headerHash: input.header_hash,
+            outputs: ledgerOutputs,
+            material,
+          });
+        }),
+      );
+    }).pipe(
+      sqlErrorToDatabaseError(
+        "da_payloads",
+        "Failed to persist retained backfill state",
       ),
+    ),
+  materializeLedgerOutputs: (record) =>
+    materializeConfirmedLedgerSnapshot(record).pipe(
+      Effect.map((snapshot) => snapshot.entries.map((entry) => entry.output)),
     ),
 };
 
@@ -81,9 +138,6 @@ const journalHasIncompletePayloads = (
   record: PendingBlockFinalizationsDB.Record,
 ): boolean =>
   record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].length <= 0 ||
-  (record.utxoMembers.length === 0 &&
-    record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] !==
-      EMPTY_MERKLE_TREE_ROOT) ||
   [
     record.txMembers,
     record.depositMembers,
@@ -91,6 +145,7 @@ const journalHasIncompletePayloads = (
     record.withdrawalMembers,
     record.transitionTraceMembers,
     record.eventToStepMembers,
+    record.validationTraceMembers,
   ].some(hasIncompletePayload) ||
   BigInt(record.withdrawalMembers.length) !==
     record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT] ||
@@ -107,7 +162,11 @@ const journalHasIncompletePayloads = (
       PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT
     ] ||
   BigInt(record.eventToStepMembers.length) !==
-    record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT];
+    record[
+      PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT
+    ] ||
+  BigInt(record.validationTraceMembers.length) !==
+    record[PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT];
 
 export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
   headerHash,
@@ -134,7 +193,7 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
           skipped.push({
             headerHash: headerHash.toString("hex"),
             reason:
-              status === PendingBlockFinalizationsDB.Status.Finalized
+              status === PendingBlockFinalizationsDB.Status.LocallyApplied
                 ? "finalized journal already has a DA payload or is not missing DA payload backfill"
                 : `journal excluded by status: ${status}; revive and complete local finalization before DA payload backfill`,
           });
@@ -155,15 +214,9 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const utxos =
-            record.ledgerDelta === undefined
-              ? undefined
-              : yield* deps.materializeUtxos!(record);
-          const insert = yield* buildDaPayloadInsert({
-            record,
-            utxos,
-          });
-          yield* deps.upsertAvailable(insert);
+          const ledgerOutputs = yield* deps.materializeLedgerOutputs(record);
+          const insert = yield* buildDaPayloadInsert({ record });
+          yield* deps.upsertAvailable(insert, ledgerOutputs);
         }),
       );
       if (result._tag === "Left") {

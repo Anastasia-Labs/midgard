@@ -1,23 +1,40 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type LucidEvolution,
   type Network,
   type Script,
   type TxSignBuilder,
+  type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
-import { LucidError, UnspecifiedNetworkError } from "@/errors.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
+import { LucidError, UnspecifiedNetworkError } from "./errors.js";
+import {
+  getUnappliedScript,
+  parseFaultProofBlueprint,
+} from "./fraud-proof/contracts/blueprint.js";
+import {
+  completeTxWithLocalUPLCEvalProgram,
+  EMPTY_WALLET_INPUTS_CAUSE,
+  emptyWalletInputsRefusal,
+} from "./tx-completion.js";
 
-export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
-  "phas.membership.withdraw";
+export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE = deployedTitle(
+  "phasMembershipWithdraw",
+);
 
 export type PhasMembershipBlueprint = {
   readonly validators: readonly {
     readonly title: string;
     readonly compiledCode: string;
+    /**
+     * The blueprint's declared parameter list, carried so the loader can
+     * refuse to deploy `compiledCode` bare the moment the validator grows a
+     * parameter (#610). Absent means the validator declares none.
+     */
+    readonly parameters?: readonly unknown[];
   }[];
 };
 
@@ -56,6 +73,7 @@ export const parsePhasMembershipBlueprint = (
       const candidate = validator as {
         readonly title?: unknown;
         readonly compiledCode?: unknown;
+        readonly parameters?: unknown;
       };
       if (typeof candidate.title !== "string") {
         throw new Error(`validators[${index}].title must be a string`);
@@ -68,9 +86,20 @@ export const parsePhasMembershipBlueprint = (
           `validators[${index}].compiledCode must be a non-empty string`,
         );
       }
+      if (
+        candidate.parameters !== undefined &&
+        !Array.isArray(candidate.parameters)
+      ) {
+        throw new Error(
+          `validators[${index}].parameters must be an array when present`,
+        );
+      }
       return {
         title: candidate.title,
         compiledCode: candidate.compiledCode,
+        ...(candidate.parameters === undefined
+          ? {}
+          : { parameters: candidate.parameters as readonly unknown[] }),
       };
     }),
   };
@@ -78,20 +107,13 @@ export const parsePhasMembershipBlueprint = (
 
 export const phasMembershipWithdrawalScriptFromBlueprint = (
   blueprint: PhasMembershipBlueprint,
-): Script => {
-  const matches = blueprint.validators.filter(
-    ({ title }) => title === PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
-  );
-  if (matches.length !== 1) {
-    throw new Error(
-      `Expected exactly one ${PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE} validator in blueprint, found ${matches.length}`,
-    );
-  }
-  return {
-    type: "PlutusV3",
-    script: matches[0]!.compiledCode,
-  };
-};
+): Script => ({
+  type: "PlutusV3",
+  script: getUnappliedScript(
+    parseFaultProofBlueprint(blueprint),
+    PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE,
+  ),
+});
 
 export const phasMembershipRewardAddress = (
   network: Network,
@@ -108,7 +130,15 @@ export const phasMembershipIdentity = (
 
 export const buildPhasMembershipRewardRegistrationTxProgram = (
   lucid: LucidEvolution,
-  config: { readonly script: Script },
+  config: {
+    readonly script: Script;
+    /**
+     * The submitting wallet's coins, as the caller's view holds them. When
+     * given, coin selection and collateral use exactly these and the provider
+     * is never read.
+     */
+    readonly walletInputs?: readonly UTxO[];
+  },
 ): Effect.Effect<
   BuiltPhasMembershipRewardRegistrationTx,
   PhasMembershipRewardRegistrationBuildError
@@ -125,6 +155,18 @@ export const buildPhasMembershipRewardRegistrationTxProgram = (
       );
     }
 
+    const emptyInputs = emptyWalletInputsRefusal(
+      config.walletInputs,
+      "the PHAS membership reward-account registration",
+    );
+    if (emptyInputs !== null) {
+      return yield* Effect.fail(
+        new LucidError({
+          message: emptyInputs,
+          cause: EMPTY_WALLET_INPUTS_CAUSE,
+        }),
+      );
+    }
     const identity = phasMembershipIdentity(network, config.script);
     const txBuilder = yield* Effect.try({
       try: () => lucid.newTx().register.Stake(identity.rewardAddress),
@@ -143,6 +185,7 @@ export const buildPhasMembershipRewardRegistrationTxProgram = (
             "Failed to complete PHAS membership reward-account registration transaction",
           cause,
         }),
+      config.walletInputs,
     );
     return {
       tx,

@@ -1,122 +1,59 @@
+import "node:fs/promises";
+import "node:path";
+import "@al-ft/midgard-core/consensus-profile";
+import "@al-ft/midgard-sdk";
+import "@lucid-evolution/lucid";
+import "effect";
+import "vitest";
+import "../src/phas-membership.js";
+import "../src/transactions/initialization.js";
+import "../src/transactions/reference-scripts.js";
+import "../src/transactions/register-active-operator.js";
+import "../src/transactions/script-reward-registration.js";
+import "../src/transactions/utils.js";
+import "./helpers/mainnet-protocol-parameters.js";
+import "./helpers/real-midgard-contracts.js";
+import "./initialization-emulator.init-emulator-lucid.js";
+
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
-  Emulator,
-  generateEmulatorAccount,
-  Lucid,
   paymentCredentialOf,
-  PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
+import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.js";
 import {
-  buildAtomicProtocolInitTxProgram,
-  ensureAtomicProtocolInitReferenceScriptsProgram,
   fetchHubOracleWitness,
   fetchProtocolDeploymentStatus,
   isSchedulerInitialized,
-} from "@/transactions/initialization.js";
-import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../src/transactions/initialization.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-
-import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-
-const loadContracts = (
-  oneShotOutRef: {
-    txHash: string;
-    outputIndex: number;
-  },
-  referenceScriptAuth?: SDK.MintingValidator,
-) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
-
-const EMULATOR_PROTOCOL_PARAMETERS = {
-  ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-  maxCollateralInputs: 3,
-} as const;
-
-const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
-const TEST_DA_PARAMS: SDK.DaParamsDatum = {
-  committee: "00".repeat(32),
-  committee_signers_hash: "11".repeat(32),
-  da_threshold: 1n,
-  owners: ["22".repeat(28)],
-  update_threshold: 1n,
-};
-
-const buildAtomicInitializationTx = async (
-  lucid: Awaited<ReturnType<typeof Lucid>>,
-  referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
-  contracts: SDK.MidgardValidators,
-  nonceUtxo: UTxO,
-  operatorSeedPhrase: string,
-) => {
-  const referenceScripts = await Effect.runPromise(
-    ensureAtomicProtocolInitReferenceScriptsProgram(
-      referenceScriptsLucid,
-      contracts,
-    ),
-  );
-  return Effect.runPromise(
-    buildAtomicProtocolInitTxProgram(
-      lucid,
-      contracts,
-      {
-        HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
-        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
-        L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
-        NETWORK: "Preprod",
-      },
-      EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
-      undefined,
-      referenceScripts,
-    ),
-  );
-};
-
-/**
- * Builds a Lucid emulator instance for initialization tests.
- */
-const initEmulatorLucid = async () => {
-  const operator = generateEmulatorAccount({
-    lovelace: 30_000_000_000n,
-  });
-  const referenceScripts = generateEmulatorAccount({
-    lovelace: 20_000_000_000n,
-  });
-  const emulator = new Emulator(
-    [operator, referenceScripts],
-    EMULATOR_PROTOCOL_PARAMETERS,
-  );
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
-  lucid.selectWallet.fromSeed(operator.seedPhrase);
-  referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
-  const nonceUtxo = (await lucid.wallet().getUtxos())[0];
-  if (!nonceUtxo) {
-    throw new Error("Expected at least one wallet UTxO in emulator");
-  }
-  const referenceScriptAuth = createReferenceScriptAuthPolicy(
-    referenceScriptsLucid,
-    emulator.now(),
-  );
-  return {
-    emulator,
-    lucid,
-    referenceScriptsLucid,
-    nonceUtxo,
-    operatorSeedPhrase: operator.seedPhrase,
-    referenceScriptAuth,
-  };
-};
+} from "../src/transactions/register-active-operator.js";
+import { handleSignSubmit } from "../src/transactions/utils.js";
+import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
+import {
+  buildAtomicInitializationTx,
+  EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+  EMULATOR_PROTOCOL_PARAMETERS,
+  EMULATOR_REQUIRED_BOND_LOVELACE,
+  initEmulatorLucid,
+  loadContracts,
+  signAtomicInitialization,
+  TEST_DA_PARAMS,
+} from "./initialization-emulator.init-emulator-lucid.js";
 
 describe("initialization emulator", () => {
   it("builds the hub-oracle mint fragment in isolation", async () => {
@@ -197,6 +134,8 @@ describe("initialization emulator", () => {
           },
         ),
       },
+      withdraw: vi.fn(() => txBuilder),
+      register: { Stake: vi.fn(() => txBuilder) },
       readFrom: vi.fn(() => txBuilder),
       attach: {
         MintingPolicy: vi.fn(() => txBuilder),
@@ -208,6 +147,8 @@ describe("initialization emulator", () => {
     });
     const fakeLucid = {
       config: () => lucid.config(),
+      unixTimeToSlot: lucid.unixTimeToSlot,
+      slotToUnixTime: lucid.slotToUnixTime,
       newTx: () => txBuilder,
       wallet,
     } as unknown as typeof lucid;
@@ -220,6 +161,7 @@ describe("initialization emulator", () => {
       const initTx = await Effect.runPromise(
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
@@ -231,10 +173,27 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      expect(outputAssets).toHaveLength(8);
-      expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
-        true,
-      );
+      // The queue root and correction lock reserve ADA for their larger datums.
+      for (const [index, assets] of outputAssets.slice(0, 9).entries()) {
+        if (![3, 8].includes(index))
+          expect(assets).not.toHaveProperty("lovelace");
+      }
+      expect(outputAssets[3]?.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
+      expect(outputAssets[8]?.lovelace).toBeGreaterThan(0n);
+      for (const { assets } of mintCalls)
+        expect(assets).not.toHaveProperty("lovelace");
+      // Nine protocol outputs, two history roots, then the DA pool with one
+      // bond above its floor to back the first attestation.
+      expect(outputAssets).toHaveLength(12);
+      expect(
+        outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),
+      ).toBe(true);
+      expect(outputAssets[11]).toEqual({
+        lovelace:
+          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace +
+          SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace,
+        [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+      });
       const hubOracleUnit = toUnit(
         contracts.hubOracle.policyId,
         SDK.HUB_ORACLE_ASSET_NAME,
@@ -255,6 +214,29 @@ describe("initialization emulator", () => {
         Data.to("Init", SDK.SchedulerMintRedeemer),
       );
       expect(wallet).not.toHaveBeenCalled();
+
+      // An explicit pool amount is admitted down to the floor, never below.
+      const { daBondPoolFloorLovelace } =
+        SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
+      const withPoolLovelace = (daBondPoolLovelace: bigint) => {
+        outputAssets.length = 0;
+        return Effect.runPromise(
+          SDK.incompleteInitializationTxProgram(fakeLucid, {
+            midgardValidators: contracts,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+            daParams: TEST_DA_PARAMS,
+            oneShotNonceUTxO: nonceUtxo,
+            validityRange: { validFrom, validTo },
+            daBondPoolLovelace,
+          }),
+        );
+      };
+      await withPoolLovelace(daBondPoolFloorLovelace);
+      expect(outputAssets.at(-1)?.lovelace).toBe(daBondPoolFloorLovelace);
+      await expect(
+        withPoolLovelace(daBondPoolFloorLovelace - 1n),
+      ).rejects.toThrow(/below the pool floor/u);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -265,27 +247,30 @@ describe("initialization emulator", () => {
       lucid,
       referenceScriptsLucid,
       nonceUtxo,
-      operatorSeedPhrase,
-      referenceScriptAuth,
-    } = await initEmulatorLucid();
-    const contracts = await loadContracts(
-      {
-        txHash: nonceUtxo.txHash,
-        outputIndex: nonceUtxo.outputIndex,
-      },
-      referenceScriptAuth,
-    );
-
-    const initTx = await buildAtomicInitializationTx(
-      lucid,
-      referenceScriptsLucid,
       contracts,
-      nonceUtxo,
-      operatorSeedPhrase,
+      signed,
+      acceptedFrames,
+    } = await signAtomicInitialization();
+    expect(await lucid.utxosByOutRef([nonceUtxo])).toHaveLength(1);
+    const body = CML.Transaction.from_cbor_hex(signed.toCBOR()).body();
+    const validFrom = body.validity_interval_start()!;
+    expect(validFrom).toBeLessThanOrEqual(BigInt(lucid.currentSlot() - 60));
+    expect(body.ttl()! - validFrom).toBe(7n * 60n);
+    // The pool mint rides the atomic init through its published reference
+    // script, and the signed init still fits the ledger's transaction bound.
+    const initTxBytes = signed.toCBOR().length / 2;
+    console.info(
+      `atomic protocol init size: ${initTxBytes.toString()} of ${EMULATOR_PROTOCOL_PARAMETERS.maxTxSize.toString()} bytes`,
     );
-    const signed = await (await initTx.complete({ localUPLCEval: true })).sign
-      .withWallet()
-      .complete();
+    expect(initTxBytes).toBeLessThanOrEqual(
+      EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
+    );
+    expect(
+      CML.Transaction.from_cbor_hex(signed.toCBOR())
+        .witness_set()
+        .plutus_v3_scripts()
+        ?.len() ?? 0,
+    ).toBe(0);
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
@@ -322,7 +307,27 @@ describe("initialization emulator", () => {
     expect(hubOracleWitness).not.toBeNull();
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
+    // The init leaves the pool Bonded with one full bond of backing above the
+    // floor, before any attestation exists.
+    const pool = await SDK.fetchDaBondPool(lucid, {
+      policyId: contracts.daBondPool.policyId,
+      address: contracts.daBondPool.spendingScriptAddress,
+    });
+    const { daBondPoolFloorLovelace, daBondLovelace } =
+      SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS;
+    expect(pool.utxo.txHash).toBe(txHash);
+    expect(pool.datum).toBe("Bonded");
+    expect(pool.utxo.assets).toEqual({
+      lovelace: daBondPoolFloorLovelace + daBondLovelace,
+      [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+    });
+    expect(runtimeReferenceScriptNames).toEqual(
+      expect.arrayContaining(["da-bond-pool spending", "da-bond-pool minting"]),
+    );
+    expect(status.daBondPoolInitialized).toBe(true);
     expect(status.complete).toBe(true);
+    expect(status.depositHistoryInitialized).toBe(true);
+    expect(status.withdrawalHistoryInitialized).toBe(true);
     expect({
       rewardAddress: status.phasMembershipRewardAddress,
       scriptHash: status.phasMembershipScriptHash,
@@ -332,12 +337,84 @@ describe("initialization emulator", () => {
         loadPhasMembershipWithdrawalScript(),
       ),
     );
+    for (const [action, validator] of Object.entries(
+      contracts.availabilityChallenge.yields,
+    )) {
+      expect(runtimeReferenceScriptNames).toContain(
+        `availability-challenge ${action} withdrawal`,
+      );
+      const rewardAddress = SDK.scriptRewardAddress(
+        "Preprod",
+        validator.withdrawalScript,
+      );
+      expect((await lucid.rewardAccountAt(rewardAddress)).registered).toBe(
+        true,
+      );
+    }
+    for (const [name, history] of Object.entries(
+      SDK.requireEventHistoryContracts(contracts),
+    )) {
+      for (const { withdrawalScript } of [history.list, history.retirement]) {
+        expect(
+          (
+            await lucid.rewardAccountAt(
+              SDK.scriptRewardAddress("Preprod", withdrawalScript),
+            )
+          ).registered,
+        ).toBe(true);
+      }
+      const originalUtxosAt = lucid.utxosAt.bind(lucid);
+      const hiddenRoot = vi
+        .spyOn(lucid, "utxosAt")
+        .mockImplementation(async (address) =>
+          address === history.list.spendingScriptAddress
+            ? []
+            : originalUtxosAt(address),
+        );
+      try {
+        const incomplete = await Effect.runPromise(
+          fetchProtocolDeploymentStatus(lucid, contracts),
+        );
+        expect(incomplete.complete).toBe(false);
+        expect(incomplete.empty).toBe(false);
+        expect(incomplete.missingComponents).toContain(`${name}-history`);
+      } finally {
+        hiddenRoot.mockRestore();
+      }
+    }
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
     expect(runtimeReferenceScriptNames).toContain("settlement minting");
     expect(runtimeReferenceScriptNames).toContain(
       "membership proof withdrawal",
     );
+    const blueprintSha256 = await Effect.runPromise(loadRealBlueprintSha256());
+    const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+    if (evidenceDirectory !== undefined) {
+      await mkdir(evidenceDirectory, { recursive: true });
+      await writeFile(
+        join(evidenceDirectory, "node-atomic-history-bootstrap.json"),
+        JSON.stringify(
+          {
+            blueprintSha256,
+            protocolParameters: EMULATOR_PROTOCOL_PARAMETERS,
+            recipes: Object.values(
+              SDK.requireEventHistoryContracts(contracts),
+            ).map(({ recipe }) => recipe),
+            initializationTxHash: txHash,
+            records: [...acceptedFrames].map(
+              ([transactionId, transactionCbor]) => ({
+                transactionId,
+                transactionCbor,
+              }),
+            ),
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {
@@ -405,6 +482,8 @@ describe("initialization emulator", () => {
     expect(status.complete).toBe(false);
     expect(status.missingComponents).toContain("scheduler");
     expect(status.missingComponents).toContain("state-queue");
+    expect(status.daBondPoolInitialized).toBe(false);
+    expect(status.missingComponents).toContain("da-bond-pool");
   });
 
   it("initializes state_queue when all real protocol roots are minted atomically", async () => {
@@ -450,7 +529,9 @@ describe("initialization emulator", () => {
         toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)
       ],
     ).toEqual(1n);
-    expect(latest.utxo.assets.lovelace ?? 0n).toBeGreaterThan(0n);
+    // Init funds the root for its linked shape rather than at Lucid's
+    // minimum, so the first commit need not top the root up.
+    expect(latest.utxo.assets.lovelace).toBe(SDK.STATE_QUEUE_NODE_MIN_LOVELACE);
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {
@@ -476,13 +557,13 @@ describe("initialization emulator", () => {
       nonceUtxo,
       operatorSeedPhrase,
     );
-    const firstSigned = await (
-      await firstInit.complete({ localUPLCEval: true })
-    ).sign
-      .withWallet()
-      .complete();
-    const firstTxHash = await firstSigned.submit();
-    await lucid.awaitTx(firstTxHash);
+    await runWithoutFollower(
+      handleSignSubmit(
+        lucid,
+        await firstInit.complete({ localUPLCEval: true }),
+        TEST_INTENT,
+      ),
+    );
     const walletUtxosAfterFirstInit = await lucid.wallet().getUtxos();
     expect(
       walletUtxosAfterFirstInit.some(
@@ -541,20 +622,20 @@ describe("initialization emulator", () => {
     const txHash = await signed.submit();
     await lucid.awaitTx(txHash);
 
-    const registrationResult = await Effect.runPromise(
+    const registrationResult = await runWithoutFollower(
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
     emulator.awaitSlot(180);
-    const onboardingResult = await Effect.runPromise(
+    const onboardingResult = await runWithoutFollower(
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );

@@ -1,4 +1,18 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
+
+const PUBLISHED = {
+  Published: { terminal_commitment: "22".repeat(32) },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
+const ATTESTED = {
+  Attested: { commitment_hash: "33".repeat(32) },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
+const CHALLENGED = {
+  Challenged: {
+    commitment_hash: "33".repeat(32),
+    challenge_asset_name: "44".repeat(32),
+  },
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -7,7 +21,7 @@ import {
   mergeSubmitValidityEvidence,
   planMergeLocalLedgerReadiness,
   planMergePreflight,
-} from "@/transactions/state-queue/merge-readiness.js";
+} from "../src/transactions/state-queue/merge-readiness.js";
 
 const baseInput = {
   force: false,
@@ -88,9 +102,9 @@ describe("merge readiness planner", () => {
   it("classifies oldest-block DA and maturity as hard checks", () => {
     expect(
       classifyOldestQueuedBlockReadiness({
+        provenFraud: null,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "00".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: SDK.NO_DA_ATTESTATION,
         readyAfterUnixTime: 200,
         nowUnixTime: 250,
       }),
@@ -99,9 +113,31 @@ describe("merge readiness planner", () => {
     });
     expect(
       classifyOldestQueuedBlockReadiness({
+        provenFraud: null,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: CHALLENGED,
+        readyAfterUnixTime: 200,
+        nowUnixTime: 250,
+      }),
+    ).toMatchObject({
+      status: "skipped_oldest_block_unattested",
+    });
+    expect(
+      classifyOldestQueuedBlockReadiness({
+        provenFraud: null,
+        headerHash: "11".repeat(28),
+        currentDaAvailability: ATTESTED,
+        readyAfterUnixTime: 300,
+        nowUnixTime: 300,
+      }),
+    ).toMatchObject({
+      status: "ready",
+    });
+    expect(
+      classifyOldestQueuedBlockReadiness({
+        provenFraud: null,
+        headerHash: "11".repeat(28),
+        currentDaAvailability: PUBLISHED,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,
       }),
@@ -110,9 +146,9 @@ describe("merge readiness planner", () => {
     });
     expect(
       classifyOldestQueuedBlockReadiness({
+        provenFraud: null,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         readyAfterUnixTime: 300,
         nowUnixTime: 300,
       }),
@@ -121,12 +157,36 @@ describe("merge readiness planner", () => {
     });
   });
 
+  it("reports completed fraud even when DA and maturity permit merge", () => {
+    const proof = "00000001" + "11".repeat(28);
+    for (const currentDaAvailability of [
+      ATTESTED,
+      PUBLISHED,
+      SDK.NO_DA_ATTESTATION,
+    ]) {
+      expect(
+        classifyOldestQueuedBlockReadiness({
+          headerHash: "11".repeat(28),
+          currentDaAvailability,
+          provenFraud: proof,
+          readyAfterUnixTime: 300,
+          nowUnixTime: 400,
+        }),
+      ).toMatchObject({
+        status: "skipped_oldest_block_proven_fraud",
+        reason: expect.stringContaining(
+          `proof=${proof},state_correction_required=true`,
+        ),
+      });
+    }
+  });
+
   it("derives a stable merge candidate identity from semantic readiness evidence", () => {
     const baseIdentityInput = {
+      provenFraud: null,
       firstBlockOutRef: `${"aa".repeat(32)}#0`,
       headerHash: "11".repeat(28),
-      currentDaAttestation: "22".repeat(28),
-      requiredDaAttestation: "33".repeat(28),
+      currentDaAvailability: PUBLISHED,
       readyAfterUnixTime: 300,
     };
 
@@ -134,8 +194,10 @@ describe("merge readiness planner", () => {
       [
         baseIdentityInput.firstBlockOutRef,
         baseIdentityInput.headerHash,
-        baseIdentityInput.currentDaAttestation,
-        baseIdentityInput.requiredDaAttestation,
+        "unmarked",
+        SDK.daAvailabilityStateQueueStatusIdentity(
+          baseIdentityInput.currentDaAvailability,
+        ),
         baseIdentityInput.readyAfterUnixTime.toString(),
       ].join("|"),
     );
@@ -143,9 +205,14 @@ describe("merge readiness planner", () => {
     const variants = [
       { firstBlockOutRef: `${"bb".repeat(32)}#0` },
       { headerHash: "44".repeat(28) },
-      { currentDaAttestation: "55".repeat(28) },
-      { requiredDaAttestation: "66".repeat(28) },
+      { currentDaAvailability: SDK.NO_DA_ATTESTATION },
+      {
+        currentDaAvailability: {
+          Published: { terminal_commitment: "66".repeat(32) },
+        },
+      },
       { readyAfterUnixTime: 301 },
+      { provenFraud: "00000001" + "11".repeat(28) },
     ];
     for (const variant of variants) {
       expect(
@@ -160,10 +227,10 @@ describe("merge readiness planner", () => {
   it("carries candidate identity and validity evidence with semantic readiness", () => {
     expect(
       classifyOldestQueuedBlockCandidateReadiness({
+        provenFraud: null,
         firstBlockOutRef: `${"aa".repeat(32)}#0`,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         validFromUnixTime: 280,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,
@@ -174,8 +241,8 @@ describe("merge readiness planner", () => {
       candidateIdentity: [
         `${"aa".repeat(32)}#0`,
         "11".repeat(28),
-        "22".repeat(28),
-        "22".repeat(28),
+        "unmarked",
+        SDK.daAvailabilityStateQueueStatusIdentity(PUBLISHED),
         "300",
       ].join("|"),
       validFromUnixTime: 280,
@@ -196,10 +263,10 @@ describe("merge readiness planner", () => {
     });
     expect(
       classifyOldestQueuedBlockCandidateReadiness({
+        provenFraud: null,
         firstBlockOutRef: `${"aa".repeat(32)}#0`,
         headerHash: "11".repeat(28),
-        currentDaAttestation: "22".repeat(28),
-        requiredDaAttestation: "22".repeat(28),
+        currentDaAvailability: PUBLISHED,
         validFromUnixTime: 280,
         readyAfterUnixTime: 300,
         nowUnixTime: 250,
