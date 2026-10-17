@@ -1,6 +1,6 @@
 # Implementation and verification
 
-Baseline: `43dc8e42b7706fc79978cfe1d4b4f5ec22144189`. Final composed source: `bce6e0dfb5931287cf9d022ed928c68c66014a1b`. All five planned changes are implemented and integrated, with independent component reviews and the integration results below. Publication targets `colll78/canonical-v1-watcher-l1-source-checkpoint`; the remote identity is recorded after the coordinated push. Hosted CI and the retained baseline acceptance failures remain separate from implementation completion. The [plan](REPORT.md) retains the investigated evidence and rejected alternatives; [implementation checks](evidence/implementation-checks.json) records exact component identities and local evidence locations.
+Baseline: `43dc8e42b7706fc79978cfe1d4b4f5ec22144189`. Final composed source: `bce6e0dfb5931287cf9d022ed928c68c66014a1b`. All five planned changes are implemented and integrated, with independent component reviews and the integration results below. Publication targets `colll78/canonical-v1-watcher-l1-source-checkpoint`; the remote identity is recorded after the coordinated push. Hosted CI and the retained baseline acceptance failures remain separate from implementation completion. The [plan](REPORT.md) retains the investigated evidence and rejected alternatives.
 
 ## Completed components
 
@@ -15,8 +15,6 @@ blueprint checks preserve all 527 ordered manifest tuples and 522 publication
 members; the 52 catalogue categories also retain their identities and order.
 Both independent consensus reviewers closed the public SDK restoration defect
 after its four-file correction, with no new confirmed or plausible findings.
-The final packet and both original/fix review identities are recorded in the
-machine-readable evidence below.
 
 Package tasks are declared once in each package manifest. Ordinary package
 scripts and contrib share validated argv and artifact prerequisites; the
@@ -36,7 +34,7 @@ census include the shared task helpers. The final installed-package executions a
 
 ## Component verification
 
-Component executions used Node 22.22.2 and the repository-pinned pnpm unless a review report states otherwise. The independent task re-review used ambient Node 24.13.1 for its four focused fixtures. All observations below are dated 2026-10-16; other integration work ran concurrently. Counts describe separate runs, not disjoint coverage. Exact component commands, working directories and log/receipt locations are in [implementation checks](evidence/implementation-checks.json).
+Component executions used Node 22.22.2 and the repository-pinned pnpm unless a review report states otherwise. The independent task re-review used ambient Node 24.13.1 for its four focused fixtures. All observations below are dated 2026-10-16; other integration work ran concurrently. Counts describe separate runs, not disjoint coverage.
 
 | Check                                                                        | Observed result                                                                                                                                                             |
 | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -119,7 +117,7 @@ distinguish a complete passing gate from a repaired subset of an earlier run.
 
 The three repaired tooling failures are distinct from the retained emulator failure. The full preflight output remains exit 1; no whole-run pass is claimed. The final pre-push gate and remote identity are recorded after publication. The six ordinary CI-owned checks remain pending here.
 
-The watcher image wrapper initially reported a changed-input identity because the Nix shell follow-up landed during its build. Reconstructing both input hashes proves that was the only changed input; that file is not copied into the watcher image. Its actual cold build and help invocation both passed. Committee and node input hashes were stable. After the follower CLI correction, comparison against all three tested images shows the other 31 follower output files byte-identical; their entrypoints do not use its standalone CLI. The original wrapper refusal and both assessments are retained in the evidence ledger.
+The watcher image wrapper initially reported a changed-input identity because the Nix shell follow-up landed during its build. Reconstructing both input hashes proves that was the only changed input; that file is not copied into the watcher image. Its actual cold build and help invocation both passed. Committee and node input hashes were stable. After the follower CLI correction, comparison against all three tested images shows the other 31 follower output files byte-identical; their entrypoints do not use its standalone CLI.
 
 No live deployment, durable-state reset, consensus parameter change or merge is
 part of this publication. The separate protocol program retains its ledger and

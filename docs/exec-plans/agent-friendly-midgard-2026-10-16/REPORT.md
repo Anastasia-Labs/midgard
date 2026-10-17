@@ -61,11 +61,7 @@ present on integration. Neither ref's merge/release readiness was assessed.
 - This is a purposive sample, not an exhaustive frequency study. The strongest
   evidence is in the TypeScript runtime, SDK and contributor workflow. It is
   not a new validator/security audit or a comprehensive Haskell/spec review.
-- [Selected steering index](evidence/selected-steering.json) retains source
-  session, timestamp, line and message hash. Private quotations and whole
-  transcripts are omitted from the published artifacts.
-  [Executable probes](probes.mjs) read the frozen Git sources; their
-  [results](evidence/design-probes.json) distinguish observations from proposals.
+- Private quotations and whole transcripts are not published.
 
 The selected intervention counts are: obsolete alternatives 4; incorrect
 protocol boundaries 4; unrealistic/expensive verification 4; brittle tests or
@@ -294,6 +290,5 @@ ran. Existing devnet/Preprod skills remain the live-system owners. Use
 `/maintain-verification-skill` when these entrypoints change.
 
 The initial planning pass made no production changes, commits, deployments or
-resets. [VERIFICATION.md](VERIFICATION.md) records that pass separately from
-subsequent implementation evidence; this plan is not a claim that its remaining
-implementation or acceptance gates have passed.
+resets. This plan is not a claim that its remaining implementation or
+acceptance gates have passed.

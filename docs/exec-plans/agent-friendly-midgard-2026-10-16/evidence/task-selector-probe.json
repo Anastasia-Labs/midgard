@@ -1,6 +1,0 @@
-{
-  "snapshot": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
-  "function": "scripts/contrib/tests.mjs:testRunningOwnDist (exact copied function)",
-  "literalFound": "demo/example/tests/compiled.test.ts",
-  "semanticallyEquivalentSegmentedFound": null
-}
