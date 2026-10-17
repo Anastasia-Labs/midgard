@@ -363,16 +363,7 @@
     },
     "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.setup.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,",
-        "keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"
-      ]
-    },
-    "midgard-fault-proofs/tests/support/emulator/history-pair.index.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
-      ]
+      "sites": ["keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"]
     },
     "midgard-fault-proofs/tests/support/emulator/setup-tx.onboard-emulator-operator.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",

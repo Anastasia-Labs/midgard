@@ -25,6 +25,7 @@ import {
   credentialToAddress,
   Data,
   fromText,
+  type RedeemerContext,
   toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
@@ -37,11 +38,11 @@ import {
 } from "../src/transition-trace/phas.js";
 import {
   awaitProtection,
-  index,
   records,
   type RetirementFault,
   setup,
 } from "./submit-init-emulator-event-history-list.setup.js";
+import { inputAt, referenceAt } from "./support/emulator/history-pair.index.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 export const retireJourney = async (
@@ -261,7 +262,6 @@ export const retireJourney = async (
   expect(collateralInputs.length).toBeGreaterThan(0);
   for (const utxo of collateralInputs)
     expect(Object.keys(utxo.assets)).toEqual(["lovelace"]);
-  const inputs = [predecessor, present.anchor.utxo, feeInput];
   records.push({
     kind: deposit ? "Deposit" : "Withdrawal",
     label: "disposable-retirement-funding",
@@ -269,18 +269,18 @@ export const retireJourney = async (
     collateralInputs,
     unrelatedTokenInputs,
   });
-  const witness: EventHistoryRetirementWitness = {
-    predecessor_input_index: index(inputs, predecessor),
-    order_input_index: index(inputs, present.anchor.utxo),
+  const witnessFor = (ctx: RedeemerContext): EventHistoryRetirementWitness => ({
+    predecessor_input_index: inputAt(ctx, predecessor),
+    order_input_index: inputAt(ctx, present.anchor.utxo),
     predecessor_output_index: 0n,
     funds_output_index: 1n,
     structural_refund_output_index: deposit ? 2n : null,
-    confirmed_reference_index: index(refs, confirmedRef),
-    settlement_reference_index: index(refs, settlementRef),
+    confirmed_reference_index: referenceAt(ctx, confirmedRef),
+    settlement_reference_index: referenceAt(ctx, settlementRef),
     external_reference_index:
       present.retainedDataUtxo === undefined
         ? null
-        : index(refs, present.retainedDataUtxo),
+        : referenceAt(ctx, present.retainedDataUtxo),
     membership,
     purpose: deposit
       ? "AbsorbDeposit"
@@ -291,36 +291,31 @@ export const retireJourney = async (
               validity: "IncorrectWithdrawalSignature",
             },
           },
-  };
+  });
   let tx = h.lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([predecessor], Data.to(index(inputs, predecessor)))
-    .collectFrom(
-      [present.anchor.utxo],
-      Data.to(index(inputs, present.anchor.utxo)),
+    .collectFrom([predecessor], (ctx) => Data.to(inputAt(ctx, predecessor)))
+    .collectFrom([present.anchor.utxo], (ctx) =>
+      Data.to(inputAt(ctx, present.anchor.utxo)),
     )
     .readFrom(refs)
-    .withdraw(
-      h.applied.rewardAddress,
-      0n,
+    .withdraw(h.applied.rewardAddress, 0n, (ctx) =>
       Data.to(
         {
           Apply: {
-            hub_reference_index: index(refs, h.hub),
-            operation: eventHistoryRetirementOperation(witness),
+            hub_reference_index: referenceAt(ctx, h.hub),
+            operation: eventHistoryRetirementOperation(witnessFor(ctx)),
           },
         },
         EventHistoryObserve,
       ),
     )
-    .withdraw(
-      retirementReward,
-      0n,
+    .withdraw(retirementReward, 0n, (ctx) =>
       Data.to(
         new Constr(0, [
-          index(refs, h.hub),
-          Data.from(Data.to(witness, EventHistoryRetirementWitness)),
+          referenceAt(ctx, h.hub),
+          Data.from(Data.to(witnessFor(ctx), EventHistoryRetirementWitness)),
         ]),
       ),
     )
@@ -475,12 +470,11 @@ export const retireJourney = async (
       "reclaim-retired-data",
       await h.lucid
         .newTx()
-        .collectFrom(
-          [present.retainedDataUtxo],
+        .collectFrom([present.retainedDataUtxo], (ctx) =>
           Data.to(
             new Constr(0, [
-              index(reclaimRefs, absence.anchor.utxo),
-              index(reclaimRefs, h.hub),
+              referenceAt(ctx, absence.anchor.utxo),
+              referenceAt(ctx, h.hub),
             ]),
           ),
         )
