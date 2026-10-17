@@ -1,4 +1,3 @@
-use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/ledger_output_proof_v1
 use midgard/redeemer_item_proof_v1
@@ -140,13 +139,15 @@ pub fn verify_script_sources_output_proof_begin_semantics_v1(
   and {
     output_index == raw_frame.item_int_v1(frame, 20),
     output_index < output_count,
-    total_length > 0,
-    bytearray.length(item_commitment) == 32,
     validation_merkle_v1.verify_membership(
       output_count,
       raw_frame.item_frontier_v1(frame, 22),
       output_index,
-      script_proof_v1.output_item_leaf_hash(output_index, item_commitment),
+      script_proof_v1.output_item_leaf_hash(
+        output_index,
+        total_length,
+        item_commitment,
+      ),
       siblings,
     ),
     raw_frame.successor_is_exact_v1(

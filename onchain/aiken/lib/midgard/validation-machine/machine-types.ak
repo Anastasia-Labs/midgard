@@ -208,8 +208,8 @@ pub type ValidationAuxiliaryWitnessV1 {
   /// Selects the redeemer of the purpose just below the control's purpose
   /// bound. The execution leaf at that index names the purpose, its source
   /// and its redeemer item, so the item, the purpose and the frontier index
-  /// are all fixed by the pre-state. `item_frontier_root` opens the item
-  /// commitment far enough to fix `total_length`.
+  /// are all fixed by the pre-state. The redeemer leaf commits the item
+  /// length, so `total_length` is fixed the same way.
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
     item_index: Int,
@@ -222,7 +222,6 @@ pub type ValidationAuxiliaryWitnessV1 {
     execution_language_tag: Int,
     source_leaf: ByteArray,
     execution_siblings: List<ByteArray>,
-    item_frontier_root: ByteArray,
   }
   RedeemerItemStepWitness {
     redeemer_control: Option<CekRedeemerContextControlV1>,

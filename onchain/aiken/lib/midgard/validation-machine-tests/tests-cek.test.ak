@@ -2253,12 +2253,6 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
         execution_language_tag: 3,
         source_leaf: h_a,
         execution_siblings: [],
-        item_frontier_root: validation_merkle_v1.frontier_commitment(
-          1,
-          validation_merkle_v1.build_frontier(
-            [bounded_item_v1.hash_chunk(8, 0, 0, redeemer_item_cbor)],
-          ).peaks,
-        ),
       },
     ),
     inline_field_door(),

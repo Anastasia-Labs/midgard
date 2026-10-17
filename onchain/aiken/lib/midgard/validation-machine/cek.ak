@@ -685,6 +685,7 @@ fn verify_cek_redeemer_selection(
       = auxiliary
     let leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
+      total_length,
       item_commitment,
     )
     let item_control = redeemer_item_proof_v1.initial_control_v1(
@@ -732,6 +733,7 @@ fn verify_cek_redeemer_selection(
       = auxiliary
     let leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_control.item_index,
+      item_control.total_length,
       item_control.item_commitment,
     )
     let current_matches = and {
@@ -1407,12 +1409,12 @@ fn verify_cek_redeemer_data_step(
       execution_language_tag,
       source_leaf,
       execution_siblings,
-      item_frontier_root,
     } -> {
       let item_count = native_control.redeemer_count
       let frontier = control.purpose_bound - 1
       let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash_unchecked(
         item_index,
+        total_length,
         item_commitment,
       )
       let current_matches = and {
@@ -1436,13 +1438,6 @@ fn verify_cek_redeemer_data_step(
           ),
           execution_siblings,
         ),
-        // [item-length]
-        bounded_item_v1.commitment_from_frontier_root(
-          redeemer_item_proof_v1.redeemer_field_index,
-          item_index,
-          total_length,
-          item_frontier_root,
-        ) == item_commitment,
       }
       when
         script_context_v1.script_purpose_summary_v1(

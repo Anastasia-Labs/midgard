@@ -51,7 +51,11 @@ validator main(
         expect length: Int = length_data
         expect commitment: ByteArray = commitment_data
         expect siblings: List<ByteArray> = siblings_data
-        let leaf = script_proof_v1.redeemer_item_leaf_hash(index, commitment)
+        let leaf = script_proof_v1.redeemer_item_leaf_hash(
+          index,
+          length,
+          commitment,
+        )
         expect count == native.redeemer_count && leaf == context.redeemer_leaf
         expect
           validation_merkle_v1.verify_membership(

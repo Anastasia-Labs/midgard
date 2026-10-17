@@ -2656,6 +2656,7 @@ export const prepareValidationTrace = (
                     authenticatedRedeemerFrontier,
                     hashMidgardRedeemerItemLeaf({
                       redeemerIndex: item.itemIndex,
+                      itemLength: item.bytes.length,
                       itemCommitment: item.commitment,
                     }),
                   );
@@ -2899,12 +2900,9 @@ export const prepareValidationTrace = (
                 // and the stage-5 output traversal already establish — while
                 // making the one-step evidence grow with output size and exceed
                 // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
-                // Option A).
-                //
-                // What *has* changed is where the size now comes from. The
-                // carriage keeps this redeemer O(1) in output size only under
-                // tiers 2-3, where the preimage rides reference inputs
-                // (`onchain/aiken/lib/midgard/validation-machine/`).
+                // Option A). The carriage keeps this redeemer O(1) in output
+                // size only under tiers 2-3, where the preimage rides reference
+                // inputs (`onchain/aiken/lib/midgard/validation-machine/`).
                 // The step therefore carries the *plan input* — which field, which
                 // bytes — and the tier is resolved at evidence commitment, where a
                 // transaction exists to index reference inputs into (#600). Above
@@ -2923,6 +2921,7 @@ export const prepareValidationTrace = (
                   authenticatedOutputFrontier,
                   hashMidgardOutputItemLeaf({
                     outputIndex: item.itemIndex,
+                    itemLength: item.bytes.length,
                     itemCommitment: item.commitment,
                   }),
                 );

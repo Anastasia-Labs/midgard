@@ -56,6 +56,7 @@ validator main(
           expect
             script_proof_v1.redeemer_item_leaf_hash(
               control.item_index,
+              control.total_length,
               control.item_commitment,
             ) == context.redeemer_leaf
           context.redeemer_context_control_hash

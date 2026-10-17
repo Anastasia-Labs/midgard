@@ -111,7 +111,7 @@ fn authenticated(
     item_count: 2,
     item_length: 12,
     item_commitment: h32,
-    redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(1, h32),
+    redeemer_leaf: script_proof_v1.redeemer_item_leaf_hash(1, 12, h32),
     purpose_count: purposes.count,
     purpose_peaks: purposes.peaks,
     execution_count: executions.count,
@@ -121,7 +121,7 @@ fn authenticated(
 
 fn one_scan(kind: Int, pointer: Int, selected: Bool) -> rule.ReverseScanV1 {
   let p = purpose(kind, pointer)
-  let target = script_proof_v1.redeemer_item_leaf_hash(1, h32)
+  let target = script_proof_v1.redeemer_item_leaf_hash(1, 12, h32)
   let redeemer = if selected {
     target
   } else {
@@ -187,7 +187,7 @@ test complete_absence_convicts_wrongful_acceptance() {
 
 test used_pointer_contradicts_forced_rejection() {
   let p = purpose(2, 4)
-  let target = script_proof_v1.redeemer_item_leaf_hash(1, h32)
+  let target = script_proof_v1.redeemer_item_leaf_hash(1, 12, h32)
   let e = script_proof_v1.execution_leaf_hash(3, p, source, target)
   let state = rule.scan_selection_v1(
     rule.initial_reverse_scan_v1(authenticated(1, [p], [e])),
@@ -210,7 +210,7 @@ test used_pointer_contradicts_forced_rejection() {
 test premature_absence_refuses() {
   let p0 = purpose(0, 0)
   let p1 = purpose(2, 4)
-  let target = script_proof_v1.redeemer_item_leaf_hash(1, h32)
+  let target = script_proof_v1.redeemer_item_leaf_hash(1, 12, h32)
   let e0 = script_proof_v1.execution_leaf_hash(0, p0, source, #"")
   let e1 = script_proof_v1.execution_leaf_hash(3, p1, source, target)
   let state = rule.initial_reverse_scan_v1(authenticated(0, [p0, p1], [e0, e1]))

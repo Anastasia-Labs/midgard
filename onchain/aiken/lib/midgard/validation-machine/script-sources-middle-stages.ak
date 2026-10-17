@@ -368,6 +368,7 @@ pub fn script_sources_stage_four_with_successor(
             control.output_peaks,
             script_proof_v1.output_item_leaf_hash(
               control.output_count,
+              field_door.machine_field_item_length(item),
               field_door.machine_field_item_commitment(item),
             ),
           ),
@@ -438,13 +439,15 @@ pub fn script_sources_output_proof_begin(
   and {
     control.output_proof == None,
     output_index == control.output_cursor,
-    total_length > 0,
-    bytearray.length(item_commitment) == 32,
     validation_merkle_v1.verify_membership(
       control.output_count,
       control.output_peaks,
       output_index,
-      script_proof_v1.output_item_leaf_hash(output_index, item_commitment),
+      script_proof_v1.output_item_leaf_hash(
+        output_index,
+        total_length,
+        item_commitment,
+      ),
       siblings,
     ),
     script_sources_control_successor_is_exact(

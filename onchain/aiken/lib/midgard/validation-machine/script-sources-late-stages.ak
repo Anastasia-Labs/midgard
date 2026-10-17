@@ -1581,6 +1581,7 @@ pub fn script_sources_stage_ten(
       = auxiliary
     let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
+      total_length,
       item_commitment,
     )
     let item_control = redeemer_item_proof_v1.initial_control_v1(
@@ -1639,6 +1640,7 @@ pub fn script_sources_stage_ten(
             Some(descriptor) -> {
               let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
                 descriptor.item_index,
+                descriptor.total_length,
                 descriptor.item_commitment,
               )
               if redeemer_descriptor_matches_current_purpose(
@@ -2034,6 +2036,7 @@ pub fn script_sources_stage_twelve(
       = auxiliary
     let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
+      total_length,
       item_commitment,
     )
     let item_control = redeemer_item_proof_v1.initial_control_v1(
@@ -2268,6 +2271,7 @@ pub fn verify_descriptor_match(
         discovery.matched_language_tag,
         script_proof_v1.redeemer_item_leaf_hash(
           next.item_index,
+          next.total_length,
           next.item_commitment,
         ),
       )
@@ -2456,7 +2460,11 @@ fn descriptor_begin_successor(
       control.redeemer_count,
       control.redeemer_peaks,
       item_index,
-      script_proof_v1.redeemer_item_leaf_hash(item_index, item_commitment),
+      script_proof_v1.redeemer_item_leaf_hash(
+        item_index,
+        total_length,
+        item_commitment,
+      ),
       siblings,
     ),
     script_discovery_successor_is_exact(

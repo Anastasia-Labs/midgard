@@ -321,7 +321,6 @@ export type ValidationMachineWorkWitness = {
         readonly executionLanguageTag: 3 | 128;
         readonly sourceLeaf: Buffer;
         readonly executionSiblings: readonly Buffer[];
-        readonly itemFrontierRoot: Buffer;
       }
     | {
         readonly kind: "redeemerItemStep";

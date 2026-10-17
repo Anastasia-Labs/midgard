@@ -2,13 +2,11 @@ use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/bounded_item_v1
 use midgard/cek_context_chain as chain
 use midgard/cek_context_redeemer.{RedeemerSelectionPending}
 use midgard/cek_context_step
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/redeemer_item_proof_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekRedeemerContextControlV1,
@@ -20,9 +18,8 @@ use midgard/validation_merkle_v1
 // control's purpose bound. The execution leaf at `purpose_bound - 1` was
 // appended with that purpose's own leaf, source and redeemer item, so it
 // admits exactly one step: a select (tag 17) when it names a redeemer, a
-// skip (tag 40) when it is a native execution. Nothing else in the witness
-// reaches the successor except `total_length`, which the item commitment
-// fixes.
+// skip (tag 40) when it is a native execution. The redeemer leaf commits
+// the item length, so nothing in the witness reaches the successor unbound.
 validator main(
   initialize_script_hash: ScriptHash,
   settle_script_hash: ScriptHash,
@@ -65,7 +62,6 @@ validator main(
                 _, index_data, length_data, commitment_data, purpose_kind_data,
                 purpose_index_data, script_hash_data, subject_data,
                 language_tag_data, source_leaf_data, siblings_data,
-                item_frontier_root_data,
               ]
             = fields
           expect index: Int = index_data
@@ -78,9 +74,9 @@ validator main(
           expect language_tag: Int = language_tag_data
           expect source_leaf: ByteArray = source_leaf_data
           expect siblings: List<ByteArray> = siblings_data
-          expect item_frontier_root: ByteArray = item_frontier_root_data
           let leaf = script_proof_v1.redeemer_item_leaf_hash_unchecked(
             index,
+            length,
             commitment,
           )
           // [execution-leaf]
@@ -102,14 +98,6 @@ validator main(
               ),
               siblings,
             )
-          // [item-length]
-          expect
-            bounded_item_v1.commitment_from_frontier_root(
-              redeemer_item_proof_v1.redeemer_field_index,
-              index,
-              length,
-              item_frontier_root,
-            ) == commitment
           let pending: Data = RedeemerSelectionPending {
             staged: staged_data,
             control,

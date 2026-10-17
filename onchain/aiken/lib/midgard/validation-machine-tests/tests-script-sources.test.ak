@@ -802,6 +802,7 @@ test script_sources_rejects_a_forged_output_item_commitment() {
     0,
     script_proof_v1.output_item_leaf_hash(
       0,
+      bytearray.length(canonical_output_commitment_output_cbor()),
       #"00000000000000000000000000000000000000000000000000000000000000ff",
     ),
     1,
@@ -1942,6 +1943,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     0,
+    bytearray.length(redeemer_cbor),
     redeemer_item_commitment,
   )
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
@@ -2182,6 +2184,7 @@ test script_sources_stage_ten_redeemer_family_guards() {
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     0,
+    bytearray.length(redeemer_cbor),
     redeemer_item_commitment,
   )
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
@@ -2931,6 +2934,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     0,
+    bytearray.length(redeemer_cbor),
     redeemer_item_commitment,
   )
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])

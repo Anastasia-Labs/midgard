@@ -2595,7 +2595,11 @@ test finish_item_envelope_matches_canonical_frontier_fold_and_refuses_pending_su
       redeemer_peaks: validation_merkle_v1.append_leaf(
         0,
         [],
-        script_proof_v1.redeemer_item_leaf_hash(0, current.item_commitment),
+        script_proof_v1.redeemer_item_leaf_hash(
+          0,
+          current.total_length,
+          current.item_commitment,
+        ),
       ),
       pending_source_cbor: #"",
     },

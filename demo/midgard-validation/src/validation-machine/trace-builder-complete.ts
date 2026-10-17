@@ -1639,9 +1639,6 @@ export const completeValidationTrace = (
                   executionLanguageTag: execution.languageTag,
                   sourceLeaf: execution.source.leaf,
                   executionSiblings,
-                  itemFrontierRoot: commitMidgardValidationMerkleFrontier(
-                    item.frontier,
-                  ),
                 },
               );
               const semanticPurpose = descriptorOnly

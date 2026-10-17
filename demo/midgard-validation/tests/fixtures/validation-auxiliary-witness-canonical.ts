@@ -373,7 +373,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
       executionLanguageTag: 3,
       sourceLeaf: hash(0x2c),
       executionSiblings: [],
-      itemFrontierRoot: hash(0x2d),
     }),
   ],
   [

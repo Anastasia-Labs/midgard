@@ -528,6 +528,7 @@ pub fn verify_raw_envelope_v1(
       decode_frontier_peaks(redeemer_peaks_data),
       script_proof_v1.redeemer_item_leaf_hash(
         redeemer_count,
+        current.total_length,
         current.item_commitment,
       ),
     )

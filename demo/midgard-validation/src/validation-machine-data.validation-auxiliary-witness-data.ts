@@ -188,7 +188,6 @@ export const validationAuxiliaryWitnessData = (
         int(auxiliary.executionLanguageTag),
         bytes(auxiliary.sourceLeaf),
         byteList(auxiliary.executionSiblings),
-        bytes(auxiliary.itemFrontierRoot),
       ]);
     case "redeemerItemStep":
       return new Constr(18, [

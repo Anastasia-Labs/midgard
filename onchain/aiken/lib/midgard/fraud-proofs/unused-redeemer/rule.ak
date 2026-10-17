@@ -461,6 +461,7 @@ pub fn authenticate_item_tail_v1(
     }
   let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
     header.item_index,
+    header.total_length,
     header.item_commitment,
   )
   AuthenticatedRedeemerV1 {

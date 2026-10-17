@@ -1169,6 +1169,7 @@ pub fn script_sources_stage_one(
                   control.redeemer_peaks,
                   script_proof_v1.redeemer_item_leaf_hash(
                     control.redeemer_count,
+                    next.total_length,
                     next.item_commitment,
                   ),
                 ),

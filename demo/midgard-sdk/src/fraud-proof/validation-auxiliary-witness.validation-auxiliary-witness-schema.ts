@@ -206,7 +206,6 @@ export const buildValidationAuxiliaryWitnessSchema = <
         execution_language_tag: Data.Integer(),
         source_leaf: Data.Bytes(),
         execution_siblings: ByteArrayListSchema,
-        item_frontier_root: Data.Bytes(),
       }),
     }),
     Data.Object({
