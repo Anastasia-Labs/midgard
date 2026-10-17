@@ -1,7 +1,10 @@
 import {
   commitMidgardCekBlob,
   hashMidgardCekDataNode,
+  hashMidgardCekMachineState,
+  type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
+import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import {
   type Data,
   DataB,
@@ -11,7 +14,7 @@ import {
   DataMap,
 } from "@harmoniclabs/plutus-data";
 import { UPLCConst } from "@harmoniclabs/uplc";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   evaluateMidgardCekDirectBuiltin,
@@ -28,9 +31,24 @@ import {
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
 import {
+  midgardCekCoreStepWitnessData,
+  midgardCekMachineStateData,
+} from "../src/cek-data.js";
+import {
   commitMidgardCekDataTree,
   encodeMidgardCekDataTreeInteger,
 } from "../src/cek-data-tree.js";
+import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
+import {
+  type AikenStepOracle,
+  makeAikenStepOracle,
+} from "./fuzz/cek-step-fuzz.oracle.js";
+import {
+  discard,
+  lam,
+  MIDGARD_CEK_TX_BUDGET,
+  prepareMidgardCekProgram,
+} from "./helpers/cek-uplc-terms.js";
 
 const direct = (constant: UPLCConst): MidgardCekDirectValueWitness => ({
   kind: "constant",
@@ -238,80 +256,28 @@ const TWO_64 = 1n << 64n;
 // What a ComputeConstant step commits for each constant: its memory and its
 // root. Cardano sizes an integer in 64-bit words, so the memory is 2 exactly
 // from |x| = 2^64, and a Data value four words per node plus its integers'
-// words. The on-chain constant and ComputeConstant rows pin the same roots
-// (cek-constant-v1.test.ak, cek-machine-v1.test.ak).
-const BOUNDARY_CONSTANT_ROOTS = [
-  [
-    "integer 2^64-1",
-    UPLCConst.int(TWO_64 - 1n),
-    1n,
-    "ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
-  ],
-  [
-    "integer 2^64",
-    UPLCConst.int(TWO_64),
-    2n,
-    "724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
-  ],
-  [
-    "integer -2^64",
-    UPLCConst.int(-TWO_64),
-    2n,
-    "42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
-  ],
-  [
-    "integer -2^64-1",
-    UPLCConst.int(-TWO_64 - 1n),
-    2n,
-    "9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
-  ],
-  [
-    "data 2^64-1",
-    UPLCConst.data(new DataI(TWO_64 - 1n)),
-    5n,
-    "181f91edb58cd6ea394f22951a30f7d732a367096bb66d6dc4cd97b38f13090b",
-  ],
-  [
-    "data 2^64",
-    UPLCConst.data(new DataI(TWO_64)),
-    6n,
-    "30f014bc9812674691ef17db74211c691c1aaa0038cda14ef8fda815a6b49a84",
-  ],
-  [
-    "data -2^64",
-    UPLCConst.data(new DataI(-TWO_64)),
-    6n,
-    "b78dd41a66dbf0e75f03f04f43e70105e40cefde9e7caecf886f238bdfcf6b95",
-  ],
-  [
-    "data -2^64-1",
-    UPLCConst.data(new DataI(-TWO_64 - 1n)),
-    6n,
-    "8dc056c16783dd26bf027e257f2983d1e6a82831cacdad8950bb1c2d0cea4edd",
-  ],
-  [
-    "data constructor 127",
-    UPLCConst.data(new DataConstr(127n, [])),
-    4n,
-    "6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
-  ],
-  [
-    "data constructor 128",
-    UPLCConst.data(new DataConstr(128n, [])),
-    4n,
-    "58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
-  ],
+// words. The root is checked against the Aiken machine below: its
+// ComputeConstant rule derives the root from the same witness.
+const BOUNDARY_CONSTANTS = [
+  ["integer 2^64-1", UPLCConst.int(TWO_64 - 1n), 1n],
+  ["integer 2^64", UPLCConst.int(TWO_64), 2n],
+  ["integer -2^64", UPLCConst.int(-TWO_64), 2n],
+  ["integer -2^64-1", UPLCConst.int(-TWO_64 - 1n), 2n],
+  ["data 2^64-1", UPLCConst.data(new DataI(TWO_64 - 1n)), 5n],
+  ["data 2^64", UPLCConst.data(new DataI(TWO_64)), 6n],
+  ["data -2^64", UPLCConst.data(new DataI(-TWO_64)), 6n],
+  ["data -2^64-1", UPLCConst.data(new DataI(-TWO_64 - 1n)), 6n],
+  ["data constructor 127", UPLCConst.data(new DataConstr(127n, [])), 4n],
+  ["data constructor 128", UPLCConst.data(new DataConstr(128n, [])), 4n],
   [
     "data constructor 127 over 2^64-1",
     UPLCConst.data(new DataConstr(127n, [new DataI(TWO_64 - 1n)])),
     9n,
-    "b99649435247ce2e70c14c017ebde1026da780fb9364633967ea5ae624341d77",
   ],
   [
     "data constructor 128 over 2^64",
     UPLCConst.data(new DataConstr(128n, [new DataI(TWO_64)])),
     10n,
-    "db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
   ],
 ] as const;
 
@@ -378,17 +344,15 @@ const BOUNDARY_BUDGETS = [
 ] as const;
 
 describe("Constants and builtin charges at the 64-bit and constructor-128 boundaries", () => {
-  it.each(BOUNDARY_CONSTANT_ROOTS)(
-    "commits the %s constant with Cardano's memory and its root",
-    (_label, constant, memory, root) => {
-      const witness = midgardCekConstantWitnessFromUplc(constant);
-      const decoded = decodeMidgardCekConstantWitness(witness);
+  it.each(BOUNDARY_CONSTANTS)(
+    "commits the %s constant with Cardano's memory",
+    (_label, constant, memory) => {
+      const decoded = decodeMidgardCekConstantWitness(
+        midgardCekConstantWitnessFromUplc(constant),
+      );
       expect(midgardCekConstantMemorySize(decoded.type, decoded.payload)).toBe(
         memory,
       );
-      expect(
-        Buffer.from(hashMidgardCekConstantWitness(witness)).toString("hex"),
-      ).toBe(root);
     },
   );
 
@@ -401,6 +365,78 @@ describe("Constants and builtin charges at the 64-bit and constructor-128 bounda
         cpu,
         memory,
       });
+    },
+  );
+});
+
+const stateCbor = (state: MidgardCekMachineState): Uint8Array =>
+  lucidDataToCborIterative(midgardCekMachineStateData(state) as never);
+
+describe("Boundary constant roots against the Aiken machine", () => {
+  let oracle: AikenStepOracle | undefined;
+
+  beforeAll(() => {
+    oracle = makeAikenStepOracle();
+  }, 180_000);
+
+  afterAll(() => oracle?.close());
+
+  it(
+    "commits every boundary constant to the root the Aiken machine derives",
+    { timeout: 600_000 },
+    () => {
+      const runs = BOUNDARY_CONSTANTS.map(([label, constant]) => {
+        const prepared = prepareMidgardCekProgram(
+          lam(discard(constant)),
+          new DataConstr(0n, []),
+        );
+        const execution = executeMidgardCekStructuralProgram({
+          root: prepared.root,
+          material: prepared.material.values(),
+          constantWitnesses: prepared.constantWitnesses,
+          maxSteps: 1_000,
+          executionBudget: MIDGARD_CEK_TX_BUDGET,
+        });
+        expect(execution.terminalState.mode).toBe("haltSuccess");
+        const witness = midgardCekConstantWitnessFromUplc(constant);
+        const root = Buffer.from(hashMidgardCekConstantWitness(witness));
+        const computed = execution.steps.filter(
+          (step) =>
+            step.witness.kind === "computeConstant" &&
+            root.equals(step.post.focusRoot),
+        );
+        expect(computed.map((step) => step.witness)).toEqual([
+          { kind: "computeConstant", value: witness },
+        ]);
+        return { label, steps: execution.steps };
+      });
+      const steps = runs.flatMap(({ label, steps }) =>
+        steps.map((step, index) => ({ label, index, step })),
+      );
+      const verdicts = oracle!.verify(
+        steps.map(({ step }) => ({
+          pre: stateCbor(step.pre),
+          post: stateCbor(step.post),
+          witness: lucidDataToCborIterative(
+            midgardCekCoreStepWitnessData(step.witness) as never,
+          ),
+        })),
+      );
+      expect(
+        verdicts.flatMap((verdict, at) => {
+          const { label, index, step } = steps[at]!;
+          return verdict === "accepted"
+            ? []
+            : [`${label} step ${index.toString()} (${step.witness.kind})`];
+        }),
+      ).toEqual([]);
+      expect(
+        oracle!.hash(steps.map(({ step }) => stateCbor(step.post))),
+      ).toEqual(
+        steps.map(({ step }) =>
+          hashMidgardCekMachineState(step.post).toString("hex"),
+        ),
+      );
     },
   );
 });

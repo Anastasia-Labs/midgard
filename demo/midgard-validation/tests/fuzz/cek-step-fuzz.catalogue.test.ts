@@ -1,4 +1,4 @@
-import { DataI } from "@harmoniclabs/plutus-data";
+import { DataB, DataI } from "@harmoniclabs/plutus-data";
 import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +29,7 @@ import {
 const HEAD_LIST = 33;
 const NULL_LIST = 35;
 const I_DATA = 40;
+const B_DATA = 41;
 
 /** The one step of a program that executes `builtin`. */
 const stepExecuting = (
@@ -92,13 +93,9 @@ describe("catalogued classes of fixed-set steps over a list of lists", () => {
       );
     });
 
-    it(`${row.label}: a failure or a refusal is interimDataDecoding`, () => {
-      expect(cataloguedClassOf(step(), row.builtin, "failed")).toBe(
-        "interimDataDecoding",
-      );
-      expect(cataloguedClassOf(step(), row.builtin, "refused")).toBe(
-        "interimDataDecoding",
-      );
+    it(`${row.label}: a failure or a refusal is in no class`, () => {
+      expect(cataloguedClassOf(step(), row.builtin, "failed")).toBeNull();
+      expect(cataloguedClassOf(step(), row.builtin, "refused")).toBeNull();
     });
 
     it(`${row.label}: an accepted step is in no class`, () => {
@@ -132,16 +129,43 @@ describe("catalogued classes of a step in no budget class", () => {
     expect(cataloguedClassOf(step(), I_DATA, "overBudget")).toBeNull();
   });
 
-  it("iData of 2^64: a failure or a refusal is interimDataDecoding", () => {
-    expect(cataloguedClassOf(step(), I_DATA, "failed")).toBe(
-      "interimDataDecoding",
-    );
-    expect(cataloguedClassOf(step(), I_DATA, "refused")).toBe(
-      "interimDataDecoding",
-    );
+  it("iData of 2^64: a failure or a refusal is in no class", () => {
+    expect(cataloguedClassOf(step(), I_DATA, "failed")).toBeNull();
+    expect(cataloguedClassOf(step(), I_DATA, "refused")).toBeNull();
   });
 
   it("iData of 2^64: an accepted step is in no class", () => {
     expect(cataloguedClassOf(step(), I_DATA, "accepted")).toBeNull();
+  });
+});
+
+describe("catalogued classes of a step revealing an empty byte string", () => {
+  const program: CekStepFuzzProgram = {
+    label: "bData of the empty byte string",
+    term: lam(
+      builtinCall(B_DATA, [
+        UPLCConst.byteString(new DataB(new Uint8Array()).bytes),
+      ]),
+    ),
+    context: new DataI(0n),
+    tightBudget: false,
+  };
+  const step = () => stepExecuting(program, B_DATA);
+
+  it("bData of the empty byte string: the step reveals Data ending in an empty byte string", () => {
+    const { witness } = step();
+    const result = "result" in witness ? witness.result : undefined;
+    expect(result?.kind).toBe("constant");
+    if (result?.kind !== "constant") return;
+    expect(Buffer.from(result.witness.payloadCbor).toString("hex")).toBe("40");
+  });
+
+  it("bData of the empty byte string: a failure or a refusal is in no class", () => {
+    expect(cataloguedClassOf(step(), B_DATA, "failed")).toBeNull();
+    expect(cataloguedClassOf(step(), B_DATA, "refused")).toBeNull();
+  });
+
+  it("bData of the empty byte string: an accepted step is in no class", () => {
+    expect(cataloguedClassOf(step(), B_DATA, "accepted")).toBeNull();
   });
 });
