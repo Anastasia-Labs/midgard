@@ -310,7 +310,7 @@ export const makeScenario = async ({
       stepIndex: input.stepIndex,
       nextStepIndex: input.nextStepIndex,
       nextDatum: input.nextDatum,
-      opening: input.opening,
+      openingFor: () => input.opening,
       ...(input.checkpointCbor === undefined
         ? {}
         : { checkpointCbor: input.checkpointCbor }),

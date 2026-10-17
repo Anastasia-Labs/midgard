@@ -114,7 +114,7 @@ every stale site and adds none (`--check` only reports).
   pass. Blind spot: a parameter under another name (`finalityDepth`) or from
   another module is not seen; block-mining loop counters are flagged (the
   baselined test drivers). [eslint: midgard/depth-through-heads]
-- **Tests observe behaviour, not source text.** A package test may not read
-  source or prose as text, nor `toMatch` over `JSON.stringify`: exercise the
-  module, or delete the test. Scope and blind spots: the rule file's header.
-  [eslint: midgard/tests-observe-behavior]
+- **Tests observe behaviour, not source text or stringified values.** Scope
+  and blind spots: the rule file's header. [eslint: midgard/tests-observe-behavior]
+- **Redeemer ledger indices come from the builder callback.** Scope and blind
+  spots: the rule file's header. [eslint: midgard/redeemer-index-from-builder]

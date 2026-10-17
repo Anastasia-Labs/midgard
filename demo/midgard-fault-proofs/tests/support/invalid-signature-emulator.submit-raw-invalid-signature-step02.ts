@@ -112,11 +112,6 @@ export const submitRawInvalidSignatureStep02 = async ({
     label: "raw invalid-signature step 02",
   });
   const referenceInputs = [...published, stepReference];
-  const addrTxWitsOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Raw invalid-signature step 02",
-  });
   const feeInput = selectFeeInput(
     (await lucid.wallet().getUtxos()).filter(
       (utxo) => utxo.datum == null && utxo.datumHash == null,
@@ -155,7 +150,11 @@ export const submitRawInvalidSignatureStep02 = async ({
               contracts.fraudProof.policyId,
               "raw invalid-signature step 02 fraud-proof",
             ),
-            addr_tx_wits_opening: addrTxWitsOpening,
+            addr_tx_wits_opening: faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              label: "Raw invalid-signature step 02",
+            }),
             bad_addr_tx_wit_index:
               badAddrTxWitIndex ?? subject.badAddrTxWitIndex,
           },

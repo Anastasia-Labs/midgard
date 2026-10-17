@@ -138,12 +138,8 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
     ...carriage.referenceInputs,
     ...carriageReferenceInputs,
   ];
-  const resolvedClaim =
-    claimResolver?.(references) ??
-    claim ??
-    (() => {
-      throw new Error(`${LABEL}: accepted dispatch omitted field claim`);
-    })();
+  if (claimResolver === undefined && claim === undefined)
+    throw new Error(`${LABEL}: accepted dispatch omitted field claim`);
   const next = config.contracts.fieldPreimageLengthMismatch.acceptedStep02;
   const datum = Data.to(
     {
@@ -166,6 +162,9 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    // §8.7 carriage indices count into the built reference-input set.
+    const resolvedClaim =
+      claimResolver === undefined ? claim! : claimResolver(ctx.referenceInputs);
     requireOwnSpendPurpose(ctx, threadUtxo, `${LABEL} accepted dispatch`);
     layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, LABEL),

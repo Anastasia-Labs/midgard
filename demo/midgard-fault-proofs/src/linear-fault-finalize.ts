@@ -12,6 +12,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -78,11 +79,18 @@ export const submitLinearFaultFinalize = async ({
     readonly fraudulentHeaderHash: string;
   };
   readonly spendRedeemerSchema: Parameters<typeof Data.to>[1];
-  readonly buildFamilyArgs: (layout: {
-    readonly inputIndex: bigint;
-    readonly outputIndex: bigint;
-    readonly fraudProofMintRedeemerIndex: bigint;
-  }) => Readonly<Record<string, unknown>>;
+  /**
+   * The family arguments, given the resolved layout and the builder context
+   * any further positional index must be read from.
+   */
+  readonly buildFamilyArgs: (
+    layout: {
+      readonly inputIndex: bigint;
+      readonly outputIndex: bigint;
+      readonly fraudProofMintRedeemerIndex: bigint;
+    },
+    ctx: RedeemerContext,
+  ) => Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
@@ -151,7 +159,7 @@ export const submitLinearFaultFinalize = async ({
       ),
     };
     return Data.to(
-      { Continue: [buildFamilyArgs(spendLayout)] },
+      { Continue: [buildFamilyArgs(spendLayout, ctx)] },
       spendRedeemerSchema,
     );
   }) satisfies BuildTxWithRedeemer;

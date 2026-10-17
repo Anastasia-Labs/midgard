@@ -209,12 +209,6 @@ export const submitStep04 = async ({
       walletUtxos,
     ),
   );
-  const tx2SpendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Double-spend step 04 tx2 spend-inputs",
-  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -248,7 +242,15 @@ export const submitStep04 = async ({
           fraudProofPolicyId: contracts.fraudProof.policyId,
           fraudProofUnit,
           fraudProofDatum,
-          tx2SpendInputsOpening,
+          tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
+            faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              ...(certificatePolicyId === undefined
+                ? {}
+                : { certificatePolicyId }),
+              label: "Double-spend step 04 tx2 spend-inputs",
+            }),
           doubleSpentInputIndex,
           onLayout: (layout) => {
             spendLayout = layout;

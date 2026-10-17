@@ -183,7 +183,7 @@ export const submitProtectedOutputSignerMissingStep04 = async ({
     stepIndex: 3,
     nextStepIndex: terminal ? 4 : 3,
     nextDatum,
-    opening: actuated.opening,
+    openingFor: actuated.openingFor,
     checkpointCbor: checkpoint.checkpointCbor,
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,

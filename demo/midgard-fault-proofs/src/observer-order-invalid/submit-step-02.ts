@@ -132,16 +132,6 @@ export const submitObserverOrderInvalidStep02 = async ({
     family: "observer-order-invalid",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "observerOrderInvalid field 3",
-  });
   const nextData = {
     subject: evidence.subject,
     observer_index: BigInt(evidence.observerIndex),
@@ -162,6 +152,12 @@ export const submitObserverOrderInvalidStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "observerOrderInvalid field 3",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "observerOrderInvalid step-02");
     const inputIndex = requireInputIndex(
       ctx,

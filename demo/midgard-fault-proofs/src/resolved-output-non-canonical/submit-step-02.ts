@@ -170,16 +170,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     family: "resolved-output-non-canonical",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "resolved-output-non-canonical field opening",
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -201,6 +191,12 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "resolved-output-non-canonical field opening",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

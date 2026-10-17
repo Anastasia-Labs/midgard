@@ -7,12 +7,11 @@ import { coordinate } from "./availability-challenge-emulator.attest-availabilit
 import { type AvailabilityFixtureOptions } from "./availability-challenge-emulator.availability-redeemer-script.js";
 import { createFixture } from "./availability-challenge-emulator.create-fixture.js";
 import {
-  type AvailabilityLayout,
-  index,
   inline,
-  mintIndex,
+  inputAt,
+  mintAt,
   outRef,
-  refIndex,
+  referenceAt,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 import {
   type AvailabilityFixture,
@@ -67,21 +66,17 @@ export const buildAvailabilityTimeout = async (
     ? open.plan.responseDeadline - 1_000n
     : BigInt(f.emulator.now());
   const queuePolicy = f.contracts.stateQueue.policyId;
-  const ctx: AvailabilityLayout = {
-    inputs: [record, terminal, queue, f.rootUtxo, f.correctionLockUtxo, pool],
-    policies: [open.policy, queuePolicy],
-    references: [
-      f.hubOracleRefInput,
-      f.reference("state-queue spending"),
-      f.reference("state-queue minting"),
-      f.reference("state-queue unavailable-timeout withdrawal"),
-      f.reference("correction-lock spending"),
-      f.reference("availability-challenge spending"),
-      f.reference("availability-challenge minting"),
-      f.reference("availability-challenge timeout withdrawal"),
-      f.reference("da-bond-pool spending"),
-    ],
-  };
+  const references = [
+    f.hubOracleRefInput,
+    f.reference("state-queue spending"),
+    f.reference("state-queue minting"),
+    f.reference("state-queue unavailable-timeout withdrawal"),
+    f.reference("correction-lock spending"),
+    f.reference("availability-challenge spending"),
+    f.reference("availability-challenge minting"),
+    f.reference("availability-challenge timeout withdrawal"),
+    f.reference("da-bond-pool spending"),
+  ];
   const rootDatum = SDK.encodeLinkedListNodeView({
     ...f.rootDatum,
     next: "Empty",
@@ -91,67 +86,65 @@ export const buildAvailabilityTimeout = async (
     .setMinFee(fee)
     .validFrom(Number(lower))
     .validTo(Number(lower + 60_000n))
-    .collectFrom([record, terminal], coordinate(ctx, open.policy))
+    .collectFrom([record, terminal], coordinate(open.policy))
     .collectFrom(
       [queue, f.rootUtxo],
       Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
     )
-    .collectFrom(
-      [f.correctionLockUtxo],
+    .collectFrom([f.correctionLockUtxo], (ctx) =>
       Data.to(
         {
           Correct: {
-            hub_oracle_ref_input_index: refIndex(ctx, f.hubOracleRefInput),
+            hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
           },
         },
         SDK.CorrectionLockRedeemer,
       ),
     )
-    .collectFrom(
-      [pool],
+    .collectFrom([pool], (ctx) =>
       Data.to(
         {
           Slash: {
-            hub_oracle_ref_input_index: refIndex(ctx, f.hubOracleRefInput),
-            state_queue_mint_redeemer_index: mintIndex(ctx, queuePolicy),
-            correction_lock_input_index: index(ctx, f.correctionLockUtxo),
+            hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+            state_queue_mint_redeemer_index: mintAt(ctx, queuePolicy),
+            correction_lock_input_index: inputAt(ctx, f.correctionLockUtxo),
             output_index: 3n,
           },
         },
         SDK.DaBondPoolSpendRedeemer,
       ),
     )
-    .readFrom([...ctx.references])
+    .readFrom(references)
     .mintAssets(
       {
         [open.policy + open.plan.challengeAssetName]: -1n,
         [open.terminalUnit]: -1n,
       },
-      Data.to(
-        {
-          TimeoutChallenge: {
-            yield_to_ref_input_index: refIndex(
-              ctx,
-              f.reference("availability-challenge timeout withdrawal"),
-            ),
-            hub_oracle_ref_input_index: refIndex(ctx, f.hubOracleRefInput),
-            record_input_index: index(ctx, record),
-            terminal_accumulator_input_index: index(ctx, terminal),
-            state_queue_mint_redeemer_index: mintIndex(ctx, queuePolicy),
-            pool_input_index: index(ctx, pool),
-            pool_output_index: 3n,
-            challenger_refund_output_index: 2n,
+      (ctx) =>
+        Data.to(
+          {
+            TimeoutChallenge: {
+              yield_to_ref_input_index: referenceAt(
+                ctx,
+                f.reference("availability-challenge timeout withdrawal"),
+              ),
+              hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+              record_input_index: inputAt(ctx, record),
+              terminal_accumulator_input_index: inputAt(ctx, terminal),
+              state_queue_mint_redeemer_index: mintAt(ctx, queuePolicy),
+              pool_input_index: inputAt(ctx, pool),
+              pool_output_index: 3n,
+              challenger_refund_output_index: 2n,
+            },
           },
-        },
-        SDK.DaAvailabilityMintRedeemer,
-      ),
+          SDK.DaAvailabilityMintRedeemer,
+        ),
     )
-    .mintAssets(
-      { [f.queueUnit]: -1n },
+    .mintAssets({ [f.queueUnit]: -1n }, (ctx) =>
       Data.to(
         {
           RemoveUnavailableBlockAfterTimeout: {
-            yield_to_ref_input_index: refIndex(
+            yield_to_ref_input_index: referenceAt(
               ctx,
               f.reference("state-queue unavailable-timeout withdrawal"),
             ),

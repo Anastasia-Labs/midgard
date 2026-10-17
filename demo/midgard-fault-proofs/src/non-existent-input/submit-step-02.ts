@@ -247,12 +247,6 @@ export const neSubmitStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const spendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Non-existent-input step 02 spend-inputs",
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
     carriageUtxos.reduce<readonly UTxO[]>(
@@ -278,6 +272,12 @@ export const neSubmitStep02 = async ({
   });
   let resolvedLayout: { inputIndex: bigint; outputIndex: bigint } | undefined;
   const redeemer = ((ctx) => {
+    const spendInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+      label: "Non-existent-input step 02 spend-inputs",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "non-existent-input step 02");
     const layout = {
       inputIndex: requireInputIndex(

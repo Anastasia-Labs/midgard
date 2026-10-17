@@ -193,14 +193,6 @@ export const submitMissingSignatureStep04 = async ({
         ]
       : []),
   ];
-  const addrTxWitsOpening = faultProofFieldOpening({
-    planned,
-    // §8.7 indices are into the complete reference-input set, including the
-    // step's own reference script.
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} address-witnesses`,
-  });
 
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = [...carriageUtxos].reduce<readonly UTxO[]>(
@@ -252,6 +244,14 @@ export const submitMissingSignatureStep04 = async ({
         });
 
   const spendRedeemer = ((ctx) => {
+    const addrTxWitsOpening = faultProofFieldOpening({
+      planned,
+      // §8.7 indices are into the complete reference-input set, including the
+      // step's own reference script.
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} address-witnesses`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const inputIndex = requireInputIndex(ctx, threadUtxo, STEP_LABEL);
     const layout: Step04SpendLayout = willFinalize

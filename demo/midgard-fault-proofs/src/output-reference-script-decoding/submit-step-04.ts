@@ -167,16 +167,6 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
           })
         ).certificateUtxo
       : undefined);
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(resolvedCertificate === undefined ? [] : [resolvedCertificate]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} reference bind`,
-  });
   const initialResult =
     evidence.initialControlCbor.length > 0
       ? OutputReferenceScriptResultClasses.Pending
@@ -208,6 +198,12 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} reference bind`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step04`);
     const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step04`);
     outputIndex = requireUniqueOutputIndex(

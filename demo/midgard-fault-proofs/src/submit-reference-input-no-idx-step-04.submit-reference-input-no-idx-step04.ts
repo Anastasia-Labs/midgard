@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxOutputCanonical,
-  type FieldOpening,
   FraudProofTokenDatum,
   isReferenceInputNoIdxViolation,
   MIDGARD_FIELD_INDEX,
@@ -158,8 +157,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "reference-input-no-idx step 04 fraud-proof mint",
   });
-  // The complete reference-input set the built transaction will declare, in
-  // build order — the opening derivation must see all of it (bug fc635c8f).
+  // The reference inputs the transaction reads. Opening indices resolve
+  // against the builder's final order inside the redeemer callback.
   const referenceInputs = [
     ...published,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
@@ -167,12 +166,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const outputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-    label: "Reference-input-no-idx step 04 outputs",
-  });
   // §5.2: the count the verdict rests on is the door's authenticated one, which
   // for tiers 1–2 is derived by walking the same preimage the door hashes.
   const producingTxOutputCount = planned.itemCount;
@@ -221,7 +214,13 @@ export const submitReferenceInputNoIdxStep04 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        outputsOpening,
+        outputsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+            label: "Reference-input-no-idx step 04 outputs",
+          }),
         onLayout: (layout) => {
           spendLayout = layout;
         },

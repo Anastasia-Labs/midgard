@@ -14,6 +14,7 @@ import {
 import {
   type BuildTxWithRedeemer,
   Data,
+  type RedeemerContext,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -168,7 +169,7 @@ export const makeInvalidSignatureStep02SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  addrTxWitsOpening,
+  addrTxWitsOpeningFor,
   badAddrTxWitIndex,
   onLayout,
 }: {
@@ -177,7 +178,8 @@ export const makeInvalidSignatureStep02SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly addrTxWitsOpening: FieldOpening;
+  /** Resolves the opening's carriage against the built reference inputs. */
+  readonly addrTxWitsOpeningFor: (ctx: RedeemerContext) => FieldOpening;
   readonly badAddrTxWitIndex: bigint;
   readonly onLayout: (layout: InvalidSignatureStep02SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -212,7 +214,7 @@ export const makeInvalidSignatureStep02SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-            addr_tx_wits_opening: addrTxWitsOpening,
+            addr_tx_wits_opening: addrTxWitsOpeningFor(ctx),
             bad_addr_tx_wit_index: badAddrTxWitIndex,
           },
         ],

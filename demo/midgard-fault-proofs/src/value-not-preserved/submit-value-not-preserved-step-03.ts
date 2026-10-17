@@ -300,28 +300,6 @@ export const submitValueNotPreservedStep03 = async ({
       : [unsafeSpendFieldRawUtxoForTest]),
     ...stepCarriage.referenceInputs,
   ]);
-  // §8.7 indices are into the complete reference-input set, including the
-  // step's own reference script; resolving against carriage alone is only
-  // accidentally correct for some out-ref orderings.
-  const outputsCarriage =
-    unsafeSpendFieldRawUtxoForTest === undefined
-      ? faultProofFieldCarriage({
-          planned: outputsPlan,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} outputs`,
-        })
-      : null;
-  const mintCarriage =
-    mintPlan === null
-      ? null
-      : faultProofFieldCarriage({
-          planned: mintPlan,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} mint`,
-        });
-
   const completedState: ValueNotPreservedStep04State = {
     bad_tx_id: state.bad_tx_id,
     claimed_asset: state.claimed_asset,
@@ -366,6 +344,26 @@ export const submitValueNotPreservedStep03 = async ({
       ),
     };
     resolvedLayout = layout;
+    // §8.7 indices count into the built reference-input set, which includes
+    // the step's own reference script.
+    const outputsCarriage =
+      unsafeSpendFieldRawUtxoForTest === undefined
+        ? faultProofFieldCarriage({
+            planned: outputsPlan,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: `${STEP_LABEL} outputs`,
+          })
+        : null;
+    const mintCarriage =
+      mintPlan === null
+        ? null
+        : faultProofFieldCarriage({
+            planned: mintPlan,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: `${STEP_LABEL} mint`,
+          });
     if (outputsCarriage === null && injectedRawUtxo === undefined) {
       throw valueNotPreservedSubmitError(
         "step-03 resolved neither an honest outputs carriage nor an injected one.",

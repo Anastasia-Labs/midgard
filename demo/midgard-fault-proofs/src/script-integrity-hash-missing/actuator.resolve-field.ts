@@ -1,8 +1,15 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import type { FieldOpening } from "@al-ft/midgard-sdk";
+import {
+  Data,
+  type LucidEvolution,
+  type RedeemerContext,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
+  faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
@@ -72,6 +79,14 @@ export const resolveField = async (
       ...publications,
       ...(certificate === undefined ? [] : [certificate]),
     ]),
+    /** The opening, resolved against the builder's final reference inputs. */
+    opening: (ctx: RedeemerContext): FieldOpening =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
+        label: `scriptIntegrityHashMissing field ${planned.fieldIndex.toString()} opening`,
+      }),
   });
 };
 

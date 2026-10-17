@@ -23,11 +23,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
 import {
@@ -176,11 +175,6 @@ export const submitNoReferenceInputStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: "no-reference-input step 04",
-  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -234,10 +228,9 @@ export const submitNoReferenceInputStep04 = async ({
       ),
     };
     spendLayout = layout;
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: "no-reference-input step 04",
     });
     const carriage: NonMembershipCarriage = carriedByChunks
@@ -315,11 +308,15 @@ export const submitNoReferenceInputStep04 = async ({
       ? collected
       : collected.readFrom([...referenceInputs]);
   const withCarriage = carriedByChunks
-    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
         chunkedNonMembershipClaimRedeemer({
           merkleRoot: inputDatum.data.blocks_transactions_root,
           keyBytes: inputDatum.data.missing_reference_input_tx_id,
-          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+            ctx,
+            chunks,
+            label: "no-reference-input step 04",
+          }),
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
         pexcludesRewardAddress,

@@ -107,16 +107,6 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} field 2`,
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -140,6 +130,12 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} field 2`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step02`);
     const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step02`);
     outputIndex = requireUniqueOutputIndex(

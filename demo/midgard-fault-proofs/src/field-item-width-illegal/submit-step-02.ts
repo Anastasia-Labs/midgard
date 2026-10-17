@@ -158,16 +158,6 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     family: "field-item-width-illegal",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "field-item-width-illegal field opening",
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -187,6 +177,12 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "field-item-width-illegal field opening",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "field-item-width-illegal step-02");
     const inputIndex = requireInputIndex(
       ctx,

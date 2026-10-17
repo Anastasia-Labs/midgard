@@ -145,7 +145,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     stepIndex: 1,
     nextStepIndex: scan ? 2 : 4,
     nextDatum,
-    opening: actuated.opening,
+    openingFor: actuated.openingFor,
     coordinateOutOfRange: evidence.route === "coordinate_out_of_range",
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,
