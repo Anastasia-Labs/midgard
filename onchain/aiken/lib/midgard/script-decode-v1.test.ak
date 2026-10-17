@@ -1055,6 +1055,7 @@ test script_decode_value_refusals() {
     refused([(#"01", [(#"", 1)]), (#"01", [(#"aa", 1)])]),
     refused([(#"01", [(#"bb", 1), (#"aa", 1)])]),
     refused([(#"01", [(#"aa", 1), (#"aa", 2)])]),
+    refused([(#"01", [(#"aa", 1), (#"cc", 1), (#"bb", 1)])]),
     refused([(#"01", [])]),
     refused([(builtin.replicate_byte(33, 0), [(#"", 1)])]),
     refused([(#"", [(builtin.replicate_byte(33, 0), 1)])]),
@@ -1062,6 +1063,18 @@ test script_decode_value_refusals() {
     refused([(#"", [(#"", -math.pow2(127) - 1)])]),
     refused([(#"", [(#"", math.pow2(400))])]),
   }
+}
+
+test script_decode_value_token_order_is_checked_in_a_list_of_values() {
+  let ordered = v_value([(#"01", [(#"aa", 1), (#"bb", 1), (#"cc", 1)])])
+  let unordered = v_value([(#"01", [(#"aa", 1), (#"cc", 1), (#"bb", 1)])])
+  expect Refused { class, .. } = bulk_record(
+    list_program([7, 5, 13], list.concat(list.repeat(ordered, 3), [unordered])),
+  )
+  expect Decoded { .. } = bulk_record(
+    list_program([7, 5, 13], list.repeat(ordered, 4)),
+  )
+  class == 17
 }
 
 // ## Cardano differential rows (E3)
