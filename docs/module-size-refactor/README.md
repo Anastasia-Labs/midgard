@@ -8,9 +8,10 @@ push, deployment or state reset was performed.
 
 ESLint defaults to **500 physical lines**, counting blank lines and comments.
 Every retained demo TS/JS overage has a file-specific cap and explanation in
-[module-size-exceptions.json](../../demo/module-size-exceptions.json). The cap
-validator requires the recorded size to equal the actual size, so growth and
-obsolete waivers both require an explicit update. There is no blanket test
+[module-size-exceptions.json](../../demo/module-size-exceptions.json). Each cap
+is a ceiling: a file may shrink without touching its entry, growth past the cap
+fails, and an entry whose file is back within 500 lines fails until it is
+deleted. There is no blanket test
 exception.
 
 The production TypeScript inventory falls from **159 to 21 files above 1,000
@@ -52,8 +53,8 @@ existing untracked working-tree blueprint was preserved.
 [module-size-exceptions.json](../../demo/module-size-exceptions.json) is the
 complete file-by-file inventory, including the exceptions outside demo's ESLint
 scope: four agent-tooling JS modules (spelled `../<path>`), one Rust ownership
-module and one SQL migration. Its validator holds every entry to its exact line
-count; ESLint also caps the demo TS/JS entries. Repeated reason patterns
+module and one SQL migration. Its validator holds every entry to its ceiling and
+refuses obsolete entries; ESLint also caps the demo TS/JS entries. Repeated reason patterns
 describe the actual retained boundary, rather than exempting an entire
 directory:
 
