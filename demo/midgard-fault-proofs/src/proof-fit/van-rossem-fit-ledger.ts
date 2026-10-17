@@ -2,12 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 
-export const VAN_ROSSEM_MAX_SIGNED_TX_BYTES = 16_384;
-export const VAN_ROSSEM_PUBLICATION_RESERVE_BYTES = 512;
-export const VAN_ROSSEM_PUBLICATION_TARGET_BYTES =
-  VAN_ROSSEM_MAX_SIGNED_TX_BYTES - VAN_ROSSEM_PUBLICATION_RESERVE_BYTES;
-export const VAN_ROSSEM_MAX_MEMORY_UNITS = 16_500_000n;
-export const VAN_ROSSEM_MAX_CPU_UNITS = 10_000_000_000n;
+import {
+  assertFitsVanRossem,
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+  VAN_ROSSEM_MAX_SIGNED_TX_BYTES,
+  VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
+} from "./van-rossem.js";
+
 export const VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION =
   "midgard-van-rossem-fit-ledger-v1" as const;
 
@@ -57,16 +59,7 @@ const entryFromMeasurement = (
 ): VanRossemFitLedgerEntry => {
   requireCanonicalLabel(measurement.name, "fit measurement name");
   requireCanonicalLabel(measurement.maximumShape, "maximum evidence shape");
-  if (
-    !Number.isSafeInteger(measurement.signedBytes) ||
-    measurement.signedBytes < 0 ||
-    measurement.memoryUnits < 0n ||
-    measurement.cpuUnits < 0n
-  ) {
-    throw new Error(
-      `fit measurement ${measurement.name} has a negative or unsafe value`,
-    );
-  }
+  assertFitsVanRossem(measurement, `fit measurement ${measurement.name}`);
   const signedByteMargin =
     VAN_ROSSEM_MAX_SIGNED_TX_BYTES - measurement.signedBytes;
   const memoryUnitMargin =
@@ -76,11 +69,6 @@ const entryFromMeasurement = (
     measurement.kind === "publication"
       ? VAN_ROSSEM_PUBLICATION_TARGET_BYTES - measurement.signedBytes
       : null;
-  if (signedByteMargin <= 0 || memoryUnitMargin <= 0n || cpuUnitMargin <= 0n) {
-    throw new Error(
-      `fit measurement ${measurement.name} has no positive Van Rossem margin`,
-    );
-  }
   if (publicationReserveMargin !== null && publicationReserveMargin < 0) {
     throw new Error(
       `publication ${measurement.name} exceeds the 15,872-byte reliable target`,

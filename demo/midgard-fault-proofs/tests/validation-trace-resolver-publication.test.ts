@@ -37,9 +37,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { VAN_ROSSEM_PUBLICATION_RESERVE_BYTES } from "../src/proof-fit/van-rossem.js";
 import {
   buildVanRossemFitLedger,
-  VAN_ROSSEM_PUBLICATION_RESERVE_BYTES,
   type VanRossemFitMeasurement,
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
