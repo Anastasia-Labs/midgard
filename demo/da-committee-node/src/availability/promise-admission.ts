@@ -240,7 +240,7 @@ export const committeePromiseAdmission = (args: {
       reason: "finite_runtime_policy_unavailable",
     },
   check: async (candidate) => {
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     const base = {
       deploymentId: args.config.deploymentFingerprint,
       candidateHeaderHash: candidate.record.headerHash,

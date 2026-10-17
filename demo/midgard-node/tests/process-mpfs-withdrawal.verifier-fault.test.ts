@@ -95,7 +95,7 @@ vi.mock("../src/mpf/transition-trace.js", async () => {
   };
 });
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 afterEach(() => {
   injected.fault = undefined;

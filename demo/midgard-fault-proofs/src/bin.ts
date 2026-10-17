@@ -62,12 +62,14 @@ if (
 ) {
   // Fault-proof preparation verifies Ed25519 signatures with libsodium, which
   // answers only once it has initialised.
-  ledgerEd25519SignatureReady.then(main).catch((error: unknown) => {
-    process.stderr.write(
-      `midgard-fault-proofs: ${formatUnknownError(error)}\n`,
-    );
-    process.exitCode = 1;
-  });
+  ledgerEd25519SignatureReady()
+    .then(main)
+    .catch((error: unknown) => {
+      process.stderr.write(
+        `midgard-fault-proofs: ${formatUnknownError(error)}\n`,
+      );
+      process.exitCode = 1;
+    });
 }
 export { main } from "./bin.main.js";
 export { parseArgs } from "./bin.parse-args.js";

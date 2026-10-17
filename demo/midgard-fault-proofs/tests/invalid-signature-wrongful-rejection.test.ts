@@ -22,7 +22,7 @@ import {
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 const txId = "11".repeat(32);
 const subject = (index: bigint) =>
   forcedVerdictSubject({

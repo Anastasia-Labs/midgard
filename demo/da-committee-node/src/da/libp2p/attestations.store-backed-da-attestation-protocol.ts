@@ -71,7 +71,7 @@ export class StoreBackedDaAttestationProtocol {
     readonly record: DaSignatureRecord;
     readonly sourcePeerId: string;
   }): Promise<DaAttestationPublishResult> {
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     const payload = await this.deps.store.getDaPayload(args.record.headerHash);
     if (!isVerifiedPayload(payload)) {
       return {

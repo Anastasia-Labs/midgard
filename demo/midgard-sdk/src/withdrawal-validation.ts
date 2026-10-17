@@ -151,7 +151,7 @@ export const classifyWithdrawalFromLedger = (
 > =>
   Effect.gen(function* () {
     yield* Effect.tryPromise({
-      try: () => ledgerEd25519SignatureReady,
+      try: () => ledgerEd25519SignatureReady(),
       catch: ledgerSignatureVerifierUnavailable,
     });
     const { ledgerOutRef, ledgerOutput } = input;

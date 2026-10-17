@@ -295,7 +295,7 @@ export const ingestDaConflictEvidence = async (args: {
   readonly context: DaGossipMessageHandlerContext;
   readonly receivedAt: Date;
 }): Promise<boolean> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   if (args.context.topicName !== DaGossipTopic.conflicts) {
     throw new Error("DA conflict evidence arrived on the wrong gossip topic");
   }

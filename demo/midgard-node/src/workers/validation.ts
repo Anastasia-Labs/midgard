@@ -99,7 +99,7 @@ const respond = (request: ValidationJobRequest): ValidationWorkerResponse => {
 // asynchronously: every job waits for it, in arrival order, and a failed
 // initialisation fails the job instead of answering it.
 port.on("message", (request: ValidationJobRequest) => {
-  void ledgerEd25519SignatureReady.then(
+  void ledgerEd25519SignatureReady().then(
     () => port.postMessage(respond(request)),
     (error: unknown) => port.postMessage(failed(request.jobId, error)),
   );

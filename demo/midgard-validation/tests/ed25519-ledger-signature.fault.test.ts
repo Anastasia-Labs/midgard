@@ -50,7 +50,7 @@ const seed = signerSeed(0);
 const identityRTransaction = () =>
   transactionWithWitnesses([ownKeyIdentityRVkeyWitness(TEST_SIGNER_SEED)]);
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 afterEach(() => {
   injected.verifyFault = false;

@@ -64,7 +64,7 @@ const recordVerdict = (body: Awaited<ReturnType<typeof recordWith>>) =>
     signerValidation,
   });
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 describe("DA attestation witness verification", () => {
   it("accepts the committee member's own witness", async () => {

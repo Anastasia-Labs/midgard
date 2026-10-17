@@ -216,7 +216,7 @@ export const runWatcherCommand = async (
 ): Promise<number> => {
   // The watcher's replay verifies Ed25519 signatures with libsodium, which
   // answers only once it has initialised.
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   return await execute(command, configPath, io, productionDependencies);
 };
 

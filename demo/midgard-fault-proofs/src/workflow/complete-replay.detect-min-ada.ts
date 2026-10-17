@@ -43,7 +43,7 @@ export const detectInvalidSignatures = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   return transactions.flatMap((transaction, transactionIndex) =>
     decodeAddressWitnessPreimage(
       transaction.nativeTx.witnessSet.addrTxWitsPreimageCbor,

@@ -231,7 +231,7 @@ export const prepareWithdrawalMistag = async ({
     committedWithdrawal,
     committedWithdrawalInfoCbor,
   );
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const bodyCbor = plutusConstrFieldCbor(infoCbor, [0]);
   await verifyCountedMembership({
     witness: committedWithdrawal,

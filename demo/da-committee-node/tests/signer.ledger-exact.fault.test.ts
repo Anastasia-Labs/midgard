@@ -63,7 +63,7 @@ const honestRecord = async () => {
   };
 };
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 afterEach(() => {
   injected.verifyFault = false;

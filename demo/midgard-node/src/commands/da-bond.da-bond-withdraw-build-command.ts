@@ -229,7 +229,7 @@ export const daBondAssembleCommand = async (
     );
   }
   // The witness checks run the ledger's Ed25519 check.
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const witnessSetCbors: string[] = [];
   for (const path of witnessPaths) {
     const witness = await readDaBondWitnessFile(path);

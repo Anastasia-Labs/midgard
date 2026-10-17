@@ -13,7 +13,7 @@ export const terminalDrainStressWallets = async (
   options: TerminalDrainStressWalletsOptions,
   runtime: StressWalletTerminalDrainRuntime,
 ): Promise<StressWalletTerminalDrainResult> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const outDir = options.outDir?.trim() || DEFAULT_STRESS_WALLET_DIR;
   return withExclusiveStressWalletFundsLock(outDir, () =>
     terminalDrainStressWalletsUnlocked(options, runtime),

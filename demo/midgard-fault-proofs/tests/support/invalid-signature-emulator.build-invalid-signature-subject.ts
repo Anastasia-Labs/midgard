@@ -212,7 +212,7 @@ export const buildInvalidSignatureSubject = async ({
 }): Promise<InvalidSignatureSubject> => {
   // Callers check these witnesses with the ledger's Ed25519 verifier, which
   // answers only once libsodium has initialised.
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const bodyOnly = nativeTxWithWitnesses({
     spendInputByte,
     fee,

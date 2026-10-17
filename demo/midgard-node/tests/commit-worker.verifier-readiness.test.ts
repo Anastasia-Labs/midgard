@@ -49,10 +49,11 @@ const injected = vi.hoisted(() => ({
 
 vi.mock("@al-ft/midgard-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@al-ft/midgard-core")>();
-  return Object.defineProperty({ ...actual }, "ledgerEd25519SignatureReady", {
-    enumerable: true,
-    get: () => injected.ready ?? actual.ledgerEd25519SignatureReady,
-  });
+  return {
+    ...actual,
+    ledgerEd25519SignatureReady: () =>
+      injected.ready ?? actual.ledgerEd25519SignatureReady(),
+  };
 });
 
 afterEach(() => {

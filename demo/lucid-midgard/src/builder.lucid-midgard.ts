@@ -174,7 +174,7 @@ export class LucidMidgard {
     networkOrConfig?: Network | LucidMidgardConfig,
   ): Promise<LucidMidgard> {
     const baseConfig = normalizeLucidMidgardConfig(networkOrConfig);
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     const { snapshot, config } = await readProviderSnapshot({
       provider,
       generation: 0,

@@ -14,7 +14,7 @@ import { nativeFaultFixture } from "./forced-native-first-fault.fixture.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /** The raw envelope must retain prior Phase A faults, then use the same native
  * scan as canonical witnesses. Optional output captures actual producer bytes

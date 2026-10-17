@@ -13,7 +13,7 @@ import { buildMissingSignatureForcedTransaction } from "./support/missing-signat
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const forcedBlock = (forged = false) => {
   const tx = buildMissingSignatureForcedTransaction({ forged });

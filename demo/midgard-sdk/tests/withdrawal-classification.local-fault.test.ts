@@ -112,7 +112,7 @@ describe("withdrawal classification and the ledger's verifier", () => {
       expect(settled).toBe(false);
     } finally {
       injected.release();
-      await ledgerEd25519SignatureReady;
+      await ledgerEd25519SignatureReady();
     }
     expect((await classified).validity).toBe("WithdrawalIsValid");
   });

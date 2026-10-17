@@ -22,7 +22,7 @@ import {
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /**
  * Malformed field-6 native bytes reach the ordered native scan for both source

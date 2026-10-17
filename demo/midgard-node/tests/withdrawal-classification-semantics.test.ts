@@ -19,7 +19,7 @@ import {
   classifyWithdrawalsInOrder,
 } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",

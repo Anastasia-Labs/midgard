@@ -1,6 +1,6 @@
 /**
  * Startup's wait for the ledger signature verifier
- * (`ledgerEd25519SignatureReady`): libsodium answers every Ed25519 check
+ * (`ledgerEd25519SignatureReady()`): libsodium answers every Ed25519 check
  * the node makes, and initialises asynchronously once per process.
  *
  * - It runs in `local_preflight`, before the instance lock, the database and
@@ -13,11 +13,13 @@
  *   `ledger_signature_verifier`), so the process exits non-zero and its
  *   supervisor restarts it (`withStartupHttpServer`).
  * - The verifier bounds its own initialisation
- *   (`LEDGER_ED25519_READY_TIMEOUT_MS`, which `attemptTimeout` matches), and
- *   one that fails or does not settle within it stays unavailable for the
- *   life of the process. Later attempts then fail at once, so the step is
- *   exhausted about `retryDelay` per attempt after the first: a restart is
- *   the retry that can clear it, and the node never runs without it.
+ *   (`LEDGER_ED25519_READY_TIMEOUT_MS`, which `attemptTimeout` matches),
+ *   measured from the first wait in the process: this step's first attempt
+ *   at the latest. One that fails or does not settle within it stays
+ *   unavailable for the life of the process, so later attempts fail at once
+ *   and the step is exhausted about `retryDelay` per attempt after the
+ *   first. A restart is the retry that can clear it, and the node never runs
+ *   without it.
  *
  * The bound is a constant, not configuration: initialisation is a local
  * WebAssembly instantiation with nothing external to wait on, so a short
@@ -67,7 +69,7 @@ export const awaitLedgerSignatureVerifierOnStartup = (
   const retryDelayMs = Duration.toMillis(Duration.decode(bounds.retryDelay));
   return retryStartupStep(
     Effect.tryPromise({
-      try: () => ledgerEd25519SignatureReady,
+      try: () => ledgerEd25519SignatureReady(),
       catch: (cause) =>
         new Error("The ledger signature verifier failed to initialise", {
           cause,

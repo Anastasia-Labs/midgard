@@ -255,7 +255,7 @@ export const honestEvidenceFor = (
 export const registeredContracts = async (harness: Harness) => {
   // Evidence preparation checks witnesses with the ledger's Ed25519 verifier,
   // which answers only once libsodium has initialised.
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,

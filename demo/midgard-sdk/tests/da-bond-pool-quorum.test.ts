@@ -55,7 +55,7 @@ describe("DA bond pool owner-quorum primitives", () => {
   let scene: Scene;
 
   beforeAll(async () => {
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     scene = await setupScene();
   });
 

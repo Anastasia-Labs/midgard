@@ -239,7 +239,7 @@ export const prepareInvalidSignatureFromTransactions = async ({
   readonly txId?: string;
   readonly outputDir?: string;
 }): Promise<PreparedInvalidSignatureOutput> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot = parseHex(
     expectedTransactionsRoot,

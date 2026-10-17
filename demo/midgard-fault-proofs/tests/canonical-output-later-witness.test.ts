@@ -17,7 +17,7 @@ import { beforeAll, expect, it } from "vitest";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 it.each([16384, 16385])(
   "rejects the canonical first fault before a malformed later address witness at output size %s",

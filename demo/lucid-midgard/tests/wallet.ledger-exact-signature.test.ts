@@ -106,7 +106,7 @@ const honestWitness = (): VKeyWitness =>
   );
 
 describe("ledger-exact address witness verification", () => {
-  beforeAll(() => ledgerEd25519SignatureReady);
+  beforeAll(() => ledgerEd25519SignatureReady());
 
   it("accepts an honestly signed witness in the wallet and the import", async () => {
     const witness = honestWitness();

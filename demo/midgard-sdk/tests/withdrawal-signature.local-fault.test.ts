@@ -58,7 +58,7 @@ vi.mock("@noble/hashes/blake2.js", async (importOriginal) => {
   };
 });
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 afterEach(() => {
   injected.verify = undefined;

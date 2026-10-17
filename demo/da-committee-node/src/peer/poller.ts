@@ -50,7 +50,7 @@ export class PeerSignaturePoller {
 
   async pollPeerSignatures(headerHash: string): Promise<void> {
     // Before the per-peer catch: an unready verifier is not a peer failure.
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     await Promise.all(
       this.deps.peers.map((peer) =>
         this.pollPeerSignaturesFrom(peer, headerHash),

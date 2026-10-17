@@ -218,7 +218,7 @@ export const walletFromPrivateKey = (
     address: async () => address,
     keyHash: async () => keyHash,
     signBodyHash: async (bodyHash) => {
-      await ledgerEd25519SignatureReady;
+      await ledgerEd25519SignatureReady();
       return makeVKeyWitness(bodyHash, parsedPrivateKey);
     },
   };
@@ -248,7 +248,7 @@ export const walletFromSeedPhrase = (
       : { rewardAddress: async () => wallet.rewardAddress as Address }),
     keyHash: async () => keyHash,
     signBodyHash: async (bodyHash) => {
-      await ledgerEd25519SignatureReady;
+      await ledgerEd25519SignatureReady();
       return makeVKeyWitness(bodyHash, privateKey);
     },
   };
@@ -314,7 +314,7 @@ export const walletFromExternalSigner = (
   signBodyHash: async (bodyHash) => {
     const normalizedBodyHash = normalizeBodyHash(bodyHash);
     const expectedKeyHash = await resolveExternalIdentity(signer, options);
-    await ledgerEd25519SignatureReady;
+    await ledgerEd25519SignatureReady();
     const witness = assertVKeyWitness(
       normalizedBodyHash,
       await signer.signBodyHash(normalizedBodyHash),

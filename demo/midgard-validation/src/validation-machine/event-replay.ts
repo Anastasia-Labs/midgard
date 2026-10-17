@@ -76,7 +76,7 @@ export const replayValidationVerdictEvent = (
 ): Effect.Effect<ValidationVerdictEvent, Error> =>
   Effect.gen(function* () {
     yield* Effect.tryPromise({
-      try: () => ledgerEd25519SignatureReady,
+      try: () => ledgerEd25519SignatureReady(),
       catch: ledgerSignatureVerifierUnavailable,
     });
     const snapshot = yield* Effect.try(() => {

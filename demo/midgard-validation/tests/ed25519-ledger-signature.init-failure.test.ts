@@ -67,7 +67,7 @@ const leftOf = async <A, E>(effect: Effect.Effect<A, E>) => {
 describe("Ed25519 verification when libsodium fails to initialise", () => {
   it("rejects readiness with the local fault, and the verifier raises it", async () => {
     expectLocalFault(
-      await ledgerEd25519SignatureReady.then(
+      await ledgerEd25519SignatureReady().then(
         () => undefined,
         (error: unknown) => error,
       ),

@@ -193,7 +193,7 @@ export const daSignatureRecordFromAttestation = async ({
   readonly announcerPeerId: string;
   readonly attestation: DaAttestationGossip;
 }): Promise<DaSignatureRecordFromAttestationResult> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const headerHash = attestation.headerHash.toString("hex");
   if (
     attestation.deploymentFingerprint.toString("hex") !== deploymentFingerprint

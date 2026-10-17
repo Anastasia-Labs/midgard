@@ -47,7 +47,7 @@ const ownerIdentityR = ownKeyIdentityRVkeyWitness(TEST_SIGNER_SEED);
 const otherIdentityR = ownKeyIdentityRVkeyWitness(signerSeed(1));
 
 describe("Ed25519 witness verdicts end to end", { timeout: 120_000 }, () => {
-  beforeAll(() => ledgerEd25519SignatureReady);
+  beforeAll(() => ledgerEd25519SignatureReady());
 
   it("rejects the signer's own key with R the identity and S h·a at that witness", async () => {
     const transaction = transactionWithWitnesses([ownerIdentityR]);

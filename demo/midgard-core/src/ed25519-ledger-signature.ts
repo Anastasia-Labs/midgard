@@ -66,56 +66,84 @@ export const ledgerSignatureVerifierUnavailable = (
 let sodiumReady = false;
 
 /**
- * How long libsodium may take to initialise before the verifier is
- * unavailable for the life of the process. Initialisation is a local
- * WebAssembly instantiation with nothing external to wait on; the node's
- * startup attempt uses the same bound.
+ * How long a wait for the verifier may take, measured from the first wait
+ * (`ledgerEd25519SignatureReady()`), before the verifier is unavailable for
+ * the life of the process. Initialisation is a local WebAssembly
+ * instantiation with nothing external to wait on; the node's startup attempt
+ * uses the same bound.
  */
 export const LEDGER_ED25519_READY_TIMEOUT_MS = 10_000;
+
+/** Set once the bound has run out: libsodium's later readiness no longer
+ * makes the verifier answer. */
+let readinessTimedOut = false;
+
+/** libsodium's initialisation, started when this module loads. Its failure
+ * is the verifier's local fault. */
+const initialisation: Promise<void> = sodium.ready.then(
+  () => {
+    if (!readinessTimedOut) sodiumReady = true;
+  },
+  (cause: unknown) => {
+    throw ledgerSignatureVerifierUnavailable(cause);
+  },
+);
+// A failed initialisation surfaces at the wait and at every verification; it
+// must not also end the process as an unhandled rejection.
+initialisation.catch(() => undefined);
+
+let readiness: Promise<void> | undefined;
 
 /**
  * Resolves once {@link verifyLedgerEd25519Signature} can answer. Rejects with
  * a `LedgerSignatureVerifierUnavailableError` if libsodium cannot initialise,
- * or has not within `LEDGER_ED25519_READY_TIMEOUT_MS`, so no caller that
- * awaits it waits longer than that. The outcome is settled once: every later
- * await gets the same rejection at once, and the verifier stays unavailable
- * even if libsodium initialises afterwards. Worker start-up and asynchronous
- * entry points await it before their first verification.
+ * at once, or has not within `LEDGER_ED25519_READY_TIMEOUT_MS` of the first
+ * call, so no caller waits longer than that. The bound starts at the first
+ * call, not when this module loads, so synchronous work between the two does
+ * not count against it.
+ *
+ * Every call returns the same promise, so the outcome is settled once: every
+ * later wait gets the same result at once, and after a timeout the verifier
+ * stays unavailable even if libsodium initialises afterwards. Worker start-up
+ * and asynchronous entry points wait on it before their first verification.
  */
-export const ledgerEd25519SignatureReady: Promise<void> = new Promise<void>(
-  (resolve, reject) => {
+export const ledgerEd25519SignatureReady = (): Promise<void> => {
+  if (readiness !== undefined) return readiness;
+  readiness = new Promise<void>((resolve, reject) => {
     let settled = false;
     // Not unref'd: a process with nothing else to do still waits out the
     // bound, and so reports the failure instead of ending with it unsettled.
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
+      readinessTimedOut = true;
       reject(
         new LedgerSignatureVerifierUnavailableError(
           `Ed25519 verification is unavailable: libsodium did not initialise within ${LEDGER_ED25519_READY_TIMEOUT_MS.toString()} ms`,
         ),
       );
     }, LEDGER_ED25519_READY_TIMEOUT_MS);
-    sodium.ready.then(
+    initialisation.then(
       () => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        sodiumReady = true;
         resolve();
       },
-      (cause: unknown) => {
+      (fault: unknown) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        reject(ledgerSignatureVerifierUnavailable(cause));
+        // Already the typed fault, which this returns as it is.
+        reject(ledgerSignatureVerifierUnavailable(fault));
       },
     );
-  },
-);
-// A failed initialisation surfaces where the promise is awaited and at every
-// verification; it must not also end the process as an unhandled rejection.
-ledgerEd25519SignatureReady.catch(() => undefined);
+  });
+  // As for the initialisation: a caller that drops the promise must not end
+  // the process with an unhandled rejection.
+  readiness.catch(() => undefined);
+  return readiness;
+};
 
 /**
  * Verifies an Ed25519 signature exactly as the ledger does.

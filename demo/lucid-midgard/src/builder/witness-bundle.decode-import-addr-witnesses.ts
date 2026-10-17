@@ -266,7 +266,7 @@ export const signMidgardNativeTx = async (
   tx: MidgardNativeTxFull,
   wallet: MidgardWallet,
 ): Promise<MidgardNativeTxFull> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const bodyHash = computeMidgardNativeTxId(tx);
   const witness = assertVKeyWitness(
     bodyHash,

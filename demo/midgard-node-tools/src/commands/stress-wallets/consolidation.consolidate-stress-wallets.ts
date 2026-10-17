@@ -18,7 +18,7 @@ export const consolidateStressWallets = async (
   options: ConsolidateStressWalletsOptions,
   runtime: StressWalletConsolidateRuntime,
 ): Promise<StressWalletConsolidateResult> => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   const outDir = options.outDir?.trim() || DEFAULT_STRESS_WALLET_DIR;
   const statePath = join(outDir, "consolidation-state.json");
   return withExclusiveStressWalletFundsLock(outDir, () =>

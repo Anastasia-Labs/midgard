@@ -37,7 +37,7 @@ import {
   TEST_SEEDS,
 } from "./stress-wallets.prepare-canonical-native-transfer.js";
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const NETWORK = "Preprod" as const;
 const sourceSeed = TEST_SEEDS[0]!;

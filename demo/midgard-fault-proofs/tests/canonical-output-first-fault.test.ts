@@ -19,7 +19,7 @@ import { forcedVerdictForRejection } from "../src/workflow/forced-rejection-reas
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 it("keeps the late oversized output ordinal ahead of an invalid signature", () => {
   const key = CML.PrivateKey.from_normal_bytes(

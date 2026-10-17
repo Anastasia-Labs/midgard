@@ -79,7 +79,7 @@ const message = Buffer.from(
 );
 
 describe("Ed25519 verification matches the ledger builtin", () => {
-  beforeAll(() => ledgerEd25519SignatureReady);
+  beforeAll(() => ledgerEd25519SignatureReady());
 
   it("verifies the named vectors exactly as the ledger does", () => {
     const vectors = namedEd25519Vectors(message);

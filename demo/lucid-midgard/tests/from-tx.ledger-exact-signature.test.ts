@@ -26,7 +26,7 @@ import {
   SigningError,
 } from "../src/index.js";
 
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /** A provider that serves only the protocol parameters building needs. */
 const provider: MidgardProvider = {

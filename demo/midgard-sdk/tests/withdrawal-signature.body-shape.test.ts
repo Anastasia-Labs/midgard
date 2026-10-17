@@ -15,7 +15,7 @@ import { verifyWithdrawalSignatureCbor } from "../src/withdrawal-signature.js";
  * another shape is refused as the body's, even under a signature the
  * ledger's verifier accepts over exactly those bytes.
  */
-beforeAll(() => ledgerEd25519SignatureReady);
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const key = CML.PrivateKey.from_normal_bytes(new Uint8Array(32).fill(9));
 const publicKey = Buffer.from(key.to_public().to_raw_bytes());

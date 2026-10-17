@@ -214,7 +214,7 @@ const startNode = async (
   }) => Promise<void>,
   jobTimeoutMs = JOB_TIMEOUT_MS,
 ) => {
-  await ledgerEd25519SignatureReady;
+  await ledgerEd25519SignatureReady();
   expect(existsSync(new URL("../dist/validation.js", import.meta.url))).toBe(
     true,
   );

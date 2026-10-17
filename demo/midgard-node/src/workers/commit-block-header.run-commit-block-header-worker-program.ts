@@ -57,7 +57,7 @@ const awaitCommitWorkerVerifier = (): Effect.Effect<
     LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.attemptTimeout,
   );
   return Effect.tryPromise({
-    try: () => ledgerEd25519SignatureReady,
+    try: () => ledgerEd25519SignatureReady(),
     catch: (cause) =>
       findLedgerSignatureVerifierUnavailable(cause) ??
       new LedgerSignatureVerifierUnavailableError(

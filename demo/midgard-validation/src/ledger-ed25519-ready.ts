@@ -16,6 +16,6 @@ export const awaitLedgerEd25519SignatureReady: Effect.Effect<
   void,
   LedgerSignatureVerifierUnavailableError
 > = Effect.tryPromise({
-  try: () => ledgerEd25519SignatureReady,
+  try: () => ledgerEd25519SignatureReady(),
   catch: ledgerSignatureVerifierUnavailable,
 });
