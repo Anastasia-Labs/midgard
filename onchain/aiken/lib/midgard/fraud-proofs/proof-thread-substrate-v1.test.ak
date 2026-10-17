@@ -248,7 +248,7 @@ test proof_thread_subject_rejects_a_substituted_forced_key() fail {
     transaction_id: prior_root,
     output_index: 0,
   }
-  substrate.open_subject_v1(
+  expect _ = substrate.open_subject_v1(
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
@@ -257,7 +257,8 @@ test proof_thread_subject_rejects_a_substituted_forced_key() fail {
         key: substituted_key,
       },
     },
-  ) == forced_accepted_subject_v1()
+  )
+  True
 }
 
 test proof_thread_subject_rejects_substituted_forced_source_bytes() fail {
@@ -270,7 +271,7 @@ test proof_thread_subject_rejects_substituted_forced_source_bytes() fail {
       compact_cbor: bytearray.concat(leaf.submitted_source.compact_cbor, #"00"),
     },
   }
-  substrate.open_subject_v1(
+  expect _ = substrate.open_subject_v1(
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
@@ -279,7 +280,8 @@ test proof_thread_subject_rejects_substituted_forced_source_bytes() fail {
         value: substituted_leaf,
       },
     },
-  ) == forced_accepted_subject_v1()
+  )
+  True
 }
 
 test proof_thread_subject_rejects_a_substituted_transaction_id() fail {
@@ -289,7 +291,7 @@ test proof_thread_subject_rejects_a_substituted_transaction_id() fail {
     ..leaf,
     tx_id: prior_root,
   }
-  substrate.open_subject_v1(
+  expect _ = substrate.open_subject_v1(
     tf.header_asset_name_v1(header),
     substrate.ForcedSource {
       header,
@@ -298,7 +300,8 @@ test proof_thread_subject_rejects_a_substituted_transaction_id() fail {
         value: substituted_leaf,
       },
     },
-  ) == forced_accepted_subject_v1()
+  )
+  True
 }
 
 // ## Typed-reason and terminal contradiction mutations
@@ -534,4 +537,29 @@ test proof_thread_event_door_accepts_the_last_transition_step() {
 
 test proof_thread_event_door_rejects_a_step_past_the_last_transition_step() fail {
   event_door_step_index_v1(1) >= 0
+}
+
+test proof_thread_event_door_rejects_a_negative_step() fail {
+  event_door_step_index_v1(-1) < 1
+}
+
+test proof_thread_subject_rejects_a_leaf_outside_the_header_forced_root() fail {
+  let honest = tf.forced_leaf_v1(fixture.valid_native_tx_v1(), ForcedTxValid)
+  let (header, _honest_membership) = forced_claim_v1(honest)
+  let other_leaf = tf.forced_leaf_v1(
+    rejected_transaction_v1(),
+    ForcedTxInvalid { reason: input_not_found_reason_v1() },
+  )
+  let other = tf.forced_leaf_membership_v1(tf.forced_order_key_v1(), other_leaf)
+  substrate.open_subject_v1(
+    tf.header_asset_name_v1(header),
+    substrate.ForcedSource {
+      header,
+      membership: transition_trace.RootMembershipProof {
+        ..other,
+        root: header.forced_transactions_root,
+        count: header.forced_transaction_count,
+      },
+    },
+  ).direction == substrate.direction_wrongful_rejection
 }

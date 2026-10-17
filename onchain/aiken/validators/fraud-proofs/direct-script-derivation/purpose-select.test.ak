@@ -352,3 +352,24 @@ test spend_door_arguments_encode_as_off_chain() {
   )
   cbor.serialise(redeemer) == #"d87a9fd8799f010203d8799f41a1d8799f41b2ffff41c3d8799f8004ffffff"
 }
+
+test selection_door_spend_requires_the_thread_owner() fail {
+  let spend = spend_fixture()
+  select_validator.main.spend(
+    other_script_hash,
+    fixture.next_step_script_hash,
+    other_script_hash,
+    other_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(spend.source),
+      },
+    ),
+    ct.Continue(door.Spend { input_index: 0, output_index: 0 }),
+    fixture.own_out_ref(),
+    Transaction { ..with_output(spend, spend.source), extra_signatories: [] },
+  )
+}
