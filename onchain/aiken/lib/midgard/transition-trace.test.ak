@@ -66,6 +66,26 @@ test accepts_typescript_raw_membership_fixture() {
   )
 }
 
+test raw_membership_refuses_a_wrong_value() {
+  !transition_trace.verify_root_membership_raw(
+    single_raw_root,
+    1,
+    #"01",
+    #"ab",
+    empty_proof,
+  )
+}
+
+test raw_membership_refuses_a_wrong_key() {
+  !transition_trace.verify_root_membership_raw(
+    single_raw_root,
+    1,
+    #"02",
+    #"aa",
+    empty_proof,
+  )
+}
+
 test accepts_typescript_raw_non_membership_fixture() {
   transition_trace.verify_root_non_membership_raw(
     single_raw_root,
