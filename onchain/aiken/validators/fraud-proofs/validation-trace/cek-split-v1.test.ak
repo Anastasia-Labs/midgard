@@ -5155,7 +5155,7 @@ fn run_context_redeemer_begin(length_delta: Int) -> Bool {
     ),
     ct.Continue(context_chain_action(f)),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, verified),
+    prover_continue_tx(ct_asset, verified),
   )
 }
 
