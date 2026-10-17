@@ -130,11 +130,18 @@ pub type ValidationAuxiliaryWitnessV1 {
     next_schedule_hash: ByteArray,
     proof: Proof,
   }
+  /// One resolved input replayed at the control's `replay_cursor`. Each replay
+  /// authenticates `value` in its own step: ScriptSources stage 3 against
+  /// `prior_ledger_root` with `proof`, ValueAndMint against the
+  /// resolved-item frontier stage 3 built, at leaf `replay_cursor`, with
+  /// `siblings`. Each phase reads only its own field.
   ResolvedInputReplayWitness {
     source_kind: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
+    proof: Proof,
+    siblings: List<ByteArray>,
   }
   ScriptPurposeScanWitness {
     purpose_kind: Int,

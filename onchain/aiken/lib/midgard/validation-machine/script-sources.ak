@@ -1,3 +1,4 @@
+use aiken/merkle_patricia_forestry.{Proof}
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/ledger_output_proof_v1
 use midgard/redeemer_item_proof_v1
@@ -93,6 +94,7 @@ pub fn verify_script_sources_stage_three_replay_semantics_v1(
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
+  proof: Proof,
 ) -> Bool {
   let control = script_sources_control_from_witness(witness.work_witness_cbor)
   and {
@@ -107,6 +109,7 @@ pub fn verify_script_sources_stage_three_replay_semantics_v1(
       key,
       next_schedule_hash,
       value,
+      proof,
     ),
   }
 }

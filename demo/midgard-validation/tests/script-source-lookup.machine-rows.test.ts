@@ -19,6 +19,7 @@ import {
   type DeterministicValidationMachineTrace,
   RejectCodes,
   runPhaseBValidationWithPatch,
+  validationMachineLedgerRoot,
 } from "../src/index.js";
 import {
   buildValidationOneStepArgument,
@@ -44,9 +45,10 @@ import {
  * unused. The machine authenticates inline sources first and resolved-output
  * sources after them, and its lookup visits the resolved-output sources first.
  *
- * Every script-source step of stages 3, 9 and 11 of each row's trace is
- * exported to `script-source-lookup-rows.test.ak`, where the Aiken machine
- * checks it through the one-step dispatcher and the deployed split verifiers.
+ * Every script-source step of stages 3, 9 and 11 of each row's trace, and
+ * every ValueAndMint resolved-input replay, is exported to
+ * `script-source-lookup-rows.test.ak`, where the Aiken machine checks it
+ * through the one-step dispatcher and the deployed split verifiers.
  * Set `MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1` to rewrite that file;
  * otherwise this suite fails when the checked-in vectors are stale.
  */
@@ -267,7 +269,11 @@ const machineTrace = async (row: Row) => {
         operations: expectedLedgerOps,
       })
     : [];
-  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
+  // A rejected trace leaves the ledger unchanged; its stage-3 replays still
+  // open each resolved input against this root.
+  const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
+    "hex",
+  );
   return await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -310,12 +316,28 @@ const stageNineVisits = (trace: DeterministicValidationMachineTrace) =>
 
 const ONE_STEP_STAGES = new Set([3, 9, 11]);
 
-/** Every stage-3, stage-9 and stage-11 step of the trace, as one-step input. */
+/**
+ * The ValueAndMint replay of a resolved input (control stage 2), which opens
+ * the resolved-item leaf ScriptSources stage 3 appended at its cursor.
+ */
+const VALUE_REPLAY_STAGE = 2;
+
+/**
+ * Every ScriptSources stage-3, stage-9 and stage-11 step of the trace and
+ * every ValueAndMint resolved-input replay, as one-step input.
+ */
 const oneStepVectors = (trace: DeterministicValidationMachineTrace) =>
   trace.witnesses.flatMap((witness, stateIndex) => {
-    if (witness.phase !== "scriptSources") return [];
-    const stage = scriptSourcesStage(witness.cbor);
-    if (!ONE_STEP_STAGES.has(stage)) return [];
+    const stage =
+      witness.phase === "scriptSources"
+        ? scriptSourcesStage(witness.cbor)
+        : witness.phase === "valueAndMint" &&
+            witness.auxiliary?.kind === "resolvedInputReplay"
+          ? VALUE_REPLAY_STAGE
+          : null;
+    if (stage === null) return [];
+    if (witness.phase === "scriptSources" && !ONE_STEP_STAGES.has(stage))
+      return [];
     const argument = buildValidationOneStepArgument({ trace, stateIndex });
     return [
       {
@@ -428,6 +450,10 @@ describe("script-source lookup: Phase B, trace builder and on-chain one-step agr
 
       const vectors = oneStepVectors(trace);
       expect(vectors.some(({ stage }) => stage === 9)).toBe(true);
+      if (row.rejection === null)
+        expect(
+          vectors.filter(({ stage }) => stage === VALUE_REPLAY_STAGE),
+        ).toHaveLength(row.spent.length + row.referenceInputs.length);
       exported.push({ name: row.name, rejection: row.rejection, vectors });
     },
     120_000,

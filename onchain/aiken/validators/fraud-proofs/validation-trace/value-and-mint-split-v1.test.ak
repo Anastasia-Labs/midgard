@@ -376,7 +376,8 @@ const replayed_input_key =
   #"8258200101010101010101010101010101010101010101010101010101010101010101010100"
 
 /// A native control whose single resolved input is `replayed_input_key`
-/// resolving to `descriptor_cbor`, with the matching one-node schedule.
+/// resolving to `descriptor_cbor`, with the matching one-node schedule and the
+/// one-leaf resolved-item frontier ScriptSources stage 3 builds for it.
 fn single_replayed_input_native_control(
   tx: MidgardTransaction,
   descriptor_cbor: ByteArray,
@@ -385,7 +386,16 @@ fn single_replayed_input_native_control(
     ..empty_native_control(tx),
     resolved_input_count: 1,
     spend_input_count: 1,
-    resolved_item_peaks: validation_merkle_v1.build_frontier([h_a]).peaks,
+    resolved_item_peaks: validation_merkle_v1.build_frontier(
+      [
+        script_proof_v1.resolved_context_item_leaf_hash(
+          0,
+          0,
+          replayed_input_key,
+          descriptor_cbor,
+        ),
+      ],
+    ).peaks,
     resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
       vm_witness.initial_resolution_accumulator(),
       0,
@@ -451,11 +461,26 @@ fn replay_begin_fixture() -> StepFixtureV1 {
 /// Kind 2: `replay_input` over an asset-free descriptor completes the input
 /// in one step.
 fn replay_input_fixture() -> StepFixtureV1 {
+  replay_input_fixture_over(3, 3, [])
+}
+
+/// Kind 2 over a frontier that resolves the input to a `ledger_lovelace`
+/// descriptor, replaying a `replayed_lovelace` descriptor with `siblings`. The
+/// claimed successor is the one the replayed descriptor yields, so only the
+/// frontier membership tells the two apart.
+fn replay_input_fixture_over(
+  ledger_lovelace: Int,
+  replayed_lovelace: Int,
+  siblings: List<ByteArray>,
+) -> StepFixtureV1 {
   let tx = empty_v1_transaction()
-  let descriptor_cbor = ledger_output_commitment_v1.encode(
-    descriptor_with_assets(0, 3),
+  let ledger_cbor = ledger_output_commitment_v1.encode(
+    descriptor_with_assets(0, ledger_lovelace),
   )
-  let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
+  let descriptor_cbor = ledger_output_commitment_v1.encode(
+    descriptor_with_assets(0, replayed_lovelace),
+  )
+  let native_control = single_replayed_input_native_control(tx, ledger_cbor)
   let control = ValueAndMintControlV1 {
     ..idle_control(native_control, 2),
     replay_schedule_hash: native_control.resolution_schedule_hash,
@@ -468,11 +493,16 @@ fn replay_input_fixture() -> StepFixtureV1 {
     ValueAndMintControlV1 {
       ..control,
       replay_cursor: 1,
-      replay_accumulator: native_control.resolved_inputs_accumulator,
+      replay_accumulator: vm_witness.resolved_input_accumulator_successor(
+        control.replay_accumulator,
+        0,
+        replayed_input_key,
+        descriptor_cbor,
+      ),
       replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: ValueAccumulatorV1 {
         ..control.value_accumulator,
-        lovelace_delta: 3,
+        lovelace_delta: replayed_lovelace,
       },
     },
     ResolvedInputReplayWitness {
@@ -480,6 +510,8 @@ fn replay_input_fixture() -> StepFixtureV1 {
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
+      proof: [],
+      siblings,
     },
   )
 }
@@ -886,6 +918,7 @@ type ReplayInputMirrorV1 {
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
+    siblings: List<ByteArray>,
   }
 }
 
@@ -1048,6 +1081,7 @@ test replay_input_wire_layout_is_pinned() {
       key: replayed_input_key,
       next_schedule_hash: h_a,
       value: #"8106",
+      siblings: [h_b],
     },
   )
   let mirror: ct.StepRedeemer<ReplayInputMirrorV1> = ct.Continue(
@@ -1059,6 +1093,7 @@ test replay_input_wire_layout_is_pinned() {
       key: replayed_input_key,
       next_schedule_hash: h_a,
       value: #"8106",
+      siblings: [h_b],
     },
   )
   let mirror_data: Data = mirror
@@ -1410,7 +1445,14 @@ fn run_replay_input(
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   expect
-      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value }
+      ResolvedInputReplayWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        value,
+        proof: _,
+        siblings,
+      }
     = auxiliary
   replay_input_validator.main.spend(
     fixture.next_step_script_hash,
@@ -1425,6 +1467,7 @@ fn run_replay_input(
         key,
         next_schedule_hash,
         value,
+        siblings,
       },
     ),
     fixture.own_out_ref(),
@@ -1718,6 +1761,18 @@ test replay_begin_validator_wins_the_stage_one_step() {
 
 test replay_input_validator_wins_an_asset_free_input_replay() {
   run_kind(2, replay_input_fixture())
+}
+
+// The replayed value is the resolved-item leaf ScriptSources stage 3 appended
+// at this cursor: a schedule-consistent step that replays any other value, or
+// opens the leaf with the wrong siblings, is refused.
+
+test replay_input_validator_refuses_a_value_the_resolved_frontier_does_not_hold() {
+  !run_kind(2, replay_input_fixture_over(3, 5, []))
+}
+
+test replay_input_validator_refuses_a_value_under_wrong_siblings() {
+  !run_kind(2, replay_input_fixture_over(3, 3, [h_a]))
 }
 
 test replay_asset_validator_wins_a_single_asset_fold() {

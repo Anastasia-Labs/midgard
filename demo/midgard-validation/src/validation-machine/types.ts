@@ -172,6 +172,16 @@ export type ValidationMachineWorkWitness = {
         readonly key: Buffer;
         readonly nextScheduleHash: Buffer;
         readonly value: Buffer;
+        /**
+         * ScriptSources stage 3: the prior-ledger membership proof for
+         * `(key, value)`. Empty (`0x80`) on a ValueAndMint replay.
+         */
+        readonly proofCbor: Buffer;
+        /**
+         * ValueAndMint: the resolved-item frontier siblings of the leaf at
+         * `replay_cursor`. Empty on a ScriptSources replay.
+         */
+        readonly siblings: readonly Buffer[];
       }
     | {
         readonly kind: "scriptPurposeScan";

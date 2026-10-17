@@ -139,6 +139,9 @@ export type CompletedValidationTrace = Pick<
   | "ledgerOps"
 > & { readonly rejectionCodeHash: Buffer };
 
+/** A ValueAndMint replay carries no ledger proof: the empty CBOR list. */
+const emptyReplayProofCbor = Buffer.from([0x80]);
+
 export const completeValidationTrace = (
   context: Effect.Effect.Success<ReturnType<typeof prepareValidationTrace>>,
 ): Effect.Effect<CompletedValidationTrace, Error> =>
@@ -2029,7 +2032,33 @@ export const completeValidationTrace = (
           );
 
           if (!stoppedAtRejection) {
-            for (const node of resolutionScheduleNodes) {
+            // The resolved-item frontier ScriptSources stage 3 built: each
+            // replay opens its own leaf in it.
+            const replayLeaves: Uint8Array[] = [];
+            for (const [itemIndex, node] of resolutionScheduleNodes.entries()) {
+              const descriptorCbor = ledgerDescriptorState.get(
+                node.key.toString("hex"),
+              );
+              if (descriptorCbor === undefined) {
+                return yield* Effect.fail(
+                  new Error(
+                    "value replay lost a previously authenticated ledger descriptor",
+                  ),
+                );
+              }
+              replayLeaves.push(
+                hashMidgardResolvedContextItemLeaf({
+                  sourceKind: node.sourceKind,
+                  itemIndex,
+                  key: node.key,
+                  outputCbor: descriptorCbor,
+                }),
+              );
+            }
+            for (const [
+              replayCursor,
+              node,
+            ] of resolutionScheduleNodes.entries()) {
               const outRefHex = node.key.toString("hex");
               const outputCbor = ledgerState.get(outRefHex);
               const descriptorCbor = ledgerDescriptorState.get(outRefHex);
@@ -2052,6 +2081,11 @@ export const completeValidationTrace = (
                   key: node.key,
                   nextScheduleHash: node.nextScheduleHash,
                   value: descriptorCbor,
+                  proofCbor: emptyReplayProofCbor,
+                  siblings: buildMidgardValidationMerkleMembership(
+                    replayLeaves,
+                    replayCursor,
+                  ).siblings,
                 },
               );
               const decodedValue = decodeMidgardTxOutput(outputCbor).value;

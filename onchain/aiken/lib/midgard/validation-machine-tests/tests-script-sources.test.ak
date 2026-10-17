@@ -1,5 +1,6 @@
 use aiken/cbor
 use aiken/collection/list
+use aiken/merkle_patricia_forestry.{Fork, Neighbor, Proof}
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
@@ -49,7 +50,8 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   script_sources_pending_redeemer_item_fixture,
   script_sources_receive_scan_step_fixture, script_sources_step_fixture,
   script_sources_step_fixture_with_resolved_items,
-  singleton_field_item_chunk_proof, submitted_source, v1_program_envelope,
+  singleton_field_item_chunk_proof, singleton_root, submitted_source,
+  v1_program_envelope,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   stage_zero_script_sources_control, stage_zero_script_sources_state,
@@ -676,16 +678,19 @@ test script_sources_replay_appends_reference_scripts() {
     empty_frontier,
     13,
   )
+  let ledger_root = singleton_root(key, value)
   vm_one_step.verify_one_step_evidence(
-    pre,
+    with_prior_ledger_root(pre, ledger_root),
     one_step_evidence(
       work_witness_cbor,
-      post,
+      with_prior_ledger_root(post, ledger_root),
       vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 1,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,
+        proof: [],
+        siblings: [],
       },
     ),
     inline_field_door(),
@@ -693,9 +698,14 @@ test script_sources_replay_appends_reference_scripts() {
   )
 }
 
-test script_sources_replay_appends_script_credential_spend_purposes() {
-  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
-  let key = encode_midgard_tx_input(input)
+fn with_prior_ledger_root(
+  state: validation_trace_v1.ValidationMachineStateV1,
+  prior_ledger_root: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 { ..state, prior_ledger_root }
+}
+
+fn script_credential_spend_value(lovelace: Int) -> ByteArray {
   let output = MidgardTxOutput {
     address: MidgardAddress {
       protected: False,
@@ -703,16 +713,29 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
       payment_credential: ScriptCredential(h_28_a),
       stake_credential: None,
     },
-    value: MidgardValue { lovelace: 0, assets: [] },
+    value: MidgardValue { lovelace, assets: [] },
     datum_cbor: None,
     script_ref: None,
   }
-  let value = replay_output_descriptor_fixture(
+  replay_output_descriptor_fixture(
     0,
     encode_midgard_tx_output(output),
     #"70" |> bytearray.concat(h_28_a),
     None,
   )
+}
+
+/// One stage-3 replay of a single spend whose prior ledger holds
+/// `ledger_value`. The witness replays `value` and the claimed successor is
+/// the exact successor of replaying `value`, so only the ledger proof can tell
+/// the two apart.
+fn spend_replay_step(
+  ledger_value: ByteArray,
+  value: ByteArray,
+  proof: Proof,
+) -> Bool {
+  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let key = encode_midgard_tx_input(input)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -765,20 +788,48 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
     purpose_frontier,
     13,
   )
+  let ledger_root = singleton_root(key, ledger_value)
   vm_one_step.verify_one_step_evidence(
-    pre,
+    with_prior_ledger_root(pre, ledger_root),
     one_step_evidence(
       work_witness_cbor,
-      post,
+      with_prior_ledger_root(post, ledger_root),
       vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,
+        proof,
+        siblings: [],
       },
     ),
     inline_field_door(),
     test_l1_slot_config,
+  )
+}
+
+test script_sources_replay_appends_script_credential_spend_purposes() {
+  let value = script_credential_spend_value(0)
+  spend_replay_step(value, value, [])
+}
+
+/// The schedule node fixes the key, not the value: a replayed value the prior
+/// ledger does not hold is refused at the ledger proof, although the claimed
+/// successor is the exact successor of replaying it.
+test script_sources_replay_refuses_a_value_the_prior_ledger_does_not_hold() {
+  !spend_replay_step(
+    script_credential_spend_value(0),
+    script_credential_spend_value(5),
+    [],
+  )
+}
+
+test script_sources_replay_refuses_a_proof_that_does_not_open_the_key() {
+  let value = script_credential_spend_value(0)
+  !spend_replay_step(
+    value,
+    value,
+    [Fork { skip: 0, neighbor: Neighbor { nibble: 0, prefix: #"", root: h_a } }],
   )
 }
 

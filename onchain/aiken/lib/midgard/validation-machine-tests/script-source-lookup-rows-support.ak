@@ -1,6 +1,7 @@
-//// Checks the script-source steps a TypeScript trace emits, one step at a
-//// time, through the one-step dispatcher and through the split verifier the
-//// deployment routes that step to. The vectors are produced by
+//// Checks the script-source steps and the ValueAndMint resolved-input replays
+//// a TypeScript trace emits, one step at a time, through the one-step
+//// dispatcher and through the split verifier the deployment routes that step
+//// to. The vectors are produced by
 //// demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts.
 
 use aiken/cbor
@@ -14,6 +15,7 @@ use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/script_sources_late_stages as late
 use midgard/validation_machine/script_sources_middle_semantics as middle
 use midgard/validation_machine/shared.{rejected_successor_is_exact}
+use midgard/validation_machine/value_and_mint as vm_value_and_mint
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
@@ -41,6 +43,10 @@ fn decode(vector: OneStepVector) -> DecodedStep {
   DecodedStep { stage: vector.stage, pre, transition, auxiliary }
 }
 
+/// The stage a ValueAndMint resolved-input replay vector carries: its control
+/// stage, which no exported ScriptSources step shares.
+const value_replay_stage = 2
+
 /// Stages 3, 9 and 11 read no committed field, so the door is never opened.
 const unopened_door =
   MachineFieldDoorV1 { reference_inputs: [], certificate_policy_id: #"" }
@@ -65,17 +71,37 @@ fn split_verifier_accepts(step: DecodedStep) -> Bool {
           ),
         }
       }
-    ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value } ->
-      and {
-        stage == 3,
-        middle.stage_three_replay(
+    ResolvedInputReplayWitness {
+      source_kind,
+      key,
+      next_schedule_hash,
+      value,
+      proof,
+      siblings,
+    } ->
+      if stage == value_replay_stage {
+        vm_value_and_mint.verify_value_and_mint_replay_input_semantics_v1(
           pre,
           transition,
           source_kind,
           key,
           next_schedule_hash,
           value,
-        ),
+          siblings,
+        )
+      } else {
+        and {
+          stage == 3,
+          middle.stage_three_replay(
+            pre,
+            transition,
+            source_kind,
+            key,
+            next_schedule_hash,
+            value,
+            proof,
+          ),
+        }
       }
     ScriptSourceScanWitness {
       source_index,
@@ -158,12 +184,20 @@ pub fn verifies_every_step(vectors: List<OneStepVector>) -> Bool {
       fn(vector) {
         let step = decode(vector)
         and {
-          vm_script_sources.verify_script_sources(
-            step.pre,
-            step.transition,
-            step.auxiliary,
-            unopened_door,
-          ),
+          if step.stage == value_replay_stage {
+            vm_value_and_mint.verify_value_and_mint(
+              step.pre,
+              step.transition,
+              step.auxiliary,
+            )
+          } else {
+            vm_script_sources.verify_script_sources(
+              step.pre,
+              step.transition,
+              step.auxiliary,
+              unopened_door,
+            )
+          },
           split_verifier_accepts(step),
         }
       },

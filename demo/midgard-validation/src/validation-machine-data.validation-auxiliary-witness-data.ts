@@ -89,6 +89,8 @@ export const validationAuxiliaryWitnessData = (
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
+        proofData(auxiliary.proofCbor),
+        byteList(auxiliary.siblings),
       ]);
     case "scriptPurposeScan":
       return new Constr(8, [

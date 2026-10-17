@@ -270,40 +270,65 @@ fn value_and_mint_replay_input(
   control: ValueAndMintControlV1,
 ) -> Bool {
   expect
-      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value }
-    = auxiliary
-  if and {
-    source_kind == 0 || source_kind == 1,
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
-    control.replay_cursor < control.native_control.resolved_input_count,
-  } {
-    let descriptor = ledger_output_commitment_v1.decode(value)
-    let next_value = if source_kind == 0 {
-      ValueAccumulatorV1 {
-        ..control.value_accumulator,
-        lovelace_delta: control.value_accumulator.lovelace_delta + descriptor.lovelace,
+      ResolvedInputReplayWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        value,
+        proof: _,
+        siblings,
       }
-    } else {
-      control.value_accumulator
-    }
-    let next_control = if or {
-      source_kind == 1,
-      descriptor.asset_count == 0,
-    } {
+    = auxiliary
+  // `value` is the resolved-item leaf ScriptSources stage 3 authenticated
+  // against `prior_ledger_root` at this cursor. The membership also bounds
+  // `replay_cursor` below `resolved_input_count`, and the leaf hash admits
+  // only source kinds 0 and 1.
+  if and {
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    validation_merkle_v1.verify_membership(
+      control.native_control.resolved_input_count,
+      control.native_control.resolved_item_peaks,
+      control.replay_cursor,
+      script_proof_v1.resolved_context_item_leaf_hash(
+        source_kind,
+        control.replay_cursor,
+        key,
+        value,
+      ),
+      siblings,
+    ),
+  } {
+    let next_control = if source_kind == 1 {
       complete_value_input_replay(
         control,
         source_kind,
         key,
         value,
         next_schedule_hash,
-        next_value,
+        control.value_accumulator,
       )
     } else {
-      ValueAndMintControlV1 {
-        ..control,
-        replay_asset_cursor: 1,
-        replay_value_hash: blake2b_256(value),
-        value_accumulator: next_value,
+      let descriptor = ledger_output_commitment_v1.decode(value)
+      let next_value = ValueAccumulatorV1 {
+        ..control.value_accumulator,
+        lovelace_delta: control.value_accumulator.lovelace_delta + descriptor.lovelace,
+      }
+      if descriptor.asset_count == 0 {
+        complete_value_input_replay(
+          control,
+          source_kind,
+          key,
+          value,
+          next_schedule_hash,
+          next_value,
+        )
+      } else {
+        ValueAndMintControlV1 {
+          ..control,
+          replay_asset_cursor: 1,
+          replay_value_hash: blake2b_256(value),
+          value_accumulator: next_value,
+        }
       }
     }
     value_and_mint_successor_is_exact(pre, witness, next_control)
@@ -797,6 +822,7 @@ pub fn verify_value_and_mint_replay_input_semantics_v1(
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
+  siblings: List<ByteArray>,
 ) -> Bool {
   let control = value_and_mint_control_from_witness(witness.work_witness_cbor)
   let Pair(_, control_is_well_formed) = value_and_mint_verified_body_v1(
@@ -812,7 +838,14 @@ pub fn verify_value_and_mint_replay_input_semantics_v1(
     value_and_mint_replay_input(
       pre,
       witness,
-      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value },
+      ResolvedInputReplayWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        value,
+        proof: [],
+        siblings,
+      },
       control,
     ),
   }

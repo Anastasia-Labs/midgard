@@ -243,6 +243,8 @@ export const canonicalValidationAuxiliaryWitnesses = [
       key: bytes("06"),
       nextScheduleHash: hash(0x22),
       value: bytes("07"),
+      proofCbor: bytes("80"),
+      siblings: [hash(0x32)],
     }),
   ],
   [

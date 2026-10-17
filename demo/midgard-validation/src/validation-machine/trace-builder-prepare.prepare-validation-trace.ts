@@ -2714,6 +2714,10 @@ export const prepareValidationTrace = (
                     key: node.key,
                     nextScheduleHash: node.nextScheduleHash,
                     value: descriptorCbor,
+                    // The prior-ledger membership proof the lookup step
+                    // carried for this node authenticates the replayed value.
+                    proofCbor: node.proofCbor,
+                    siblings: [],
                   },
                 );
                 if (!replayRemainingScheduleHash.equals(node.scheduleHash)) {

@@ -2,6 +2,7 @@
 //// Reuse the generic semantic engines with exact bounded successor splices.
 
 use aiken/cbor
+use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
@@ -72,6 +73,7 @@ pub fn stage_three_replay(
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
+  proof: Proof,
 ) -> Bool {
   let frame = raw.open_frame_v1(pre, witness, 30, 3)
   and {
@@ -84,6 +86,7 @@ pub fn stage_three_replay(
       key,
       next_schedule_hash,
       value,
+      proof,
     ),
   }
 }

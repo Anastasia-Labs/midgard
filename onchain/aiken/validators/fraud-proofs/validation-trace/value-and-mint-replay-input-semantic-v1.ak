@@ -21,6 +21,7 @@ pub type ActionV1 {
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
+    siblings: List<ByteArray>,
   }
 }
 
@@ -55,12 +56,15 @@ validator main(
         key,
         next_schedule_hash,
         value,
+        siblings,
       }) -> {
         let auxiliary = ResolvedInputReplayWitness {
           source_kind,
           key,
           next_schedule_hash,
           value,
+          proof: [],
+          siblings,
         }
         let auxiliary_data: Data = auxiliary
         continue_winning(
@@ -79,6 +83,7 @@ validator main(
             key,
             next_schedule_hash,
             value,
+            siblings,
           ),
           own_out_ref,
           tx,

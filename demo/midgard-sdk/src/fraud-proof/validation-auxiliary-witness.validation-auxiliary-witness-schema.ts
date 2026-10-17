@@ -95,6 +95,8 @@ export const buildValidationAuxiliaryWitnessSchema = <
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         value: Data.Bytes(),
+        proof: ProofSchema,
+        siblings: ByteArrayListSchema,
       }),
     }),
     Data.Object({

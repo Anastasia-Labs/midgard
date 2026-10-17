@@ -1,3 +1,4 @@
+use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -15,6 +16,7 @@ use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
 use midgard/mint_order
+use midgard/mpf_proof_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
   MintDeclaredAssetLimit, NetworkIdMismatch, OutputNonCanonical,
@@ -125,9 +127,15 @@ pub fn script_sources_replay_item(
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
+  proof: Proof,
 ) -> Bool {
-  let descriptor = ledger_output_commitment_v1.decode(value)
-  if resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash {
+  // The schedule node fixes (kind, key); the ledger proof fixes `value`, so
+  // every resolved-item leaf appended below is authenticated at its source.
+  if and {
+    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
+  } {
+    let descriptor = ledger_output_commitment_v1.decode(value)
     let next_sources = replay_source_frontier(control, key, descriptor)
     let next_purposes = replay_purpose_frontier(
       control,
@@ -251,7 +259,14 @@ pub fn script_sources_stage_three(
     }
   } else {
     when auxiliary is {
-      ResolvedInputReplayWitness { source_kind, key, next_schedule_hash, value } ->
+      ResolvedInputReplayWitness {
+        source_kind,
+        key,
+        next_schedule_hash,
+        value,
+        proof,
+        siblings: _,
+      } ->
         script_sources_replay_item(
           pre,
           witness,
@@ -260,6 +275,7 @@ pub fn script_sources_stage_three(
           key,
           next_schedule_hash,
           value,
+          proof,
         )
       _ -> False
     }

@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/compact.{
@@ -47,7 +48,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   script_sources_output_step_fixture,
   script_sources_output_step_fixture_with_resolved_items,
   script_sources_receive_scan_step_fixture, script_sources_step_fixture,
-  signer_frontier_for_tx, submitted_source,
+  signer_frontier_for_tx, singleton_root, submitted_source,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   stage_zero_script_sources_control, stage_zero_script_sources_work_witness,
@@ -154,6 +155,25 @@ pub fn resolution_schedule_terminal_state(
   control: vm_machine_types.ScriptSourcesControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  // The prior ledger holds the replayed last input alone, so its stage-3
+  // ledger proof is the empty singleton proof.
+  resolution_schedule_terminal_state_at(
+    control,
+    program_counter,
+    singleton_root(
+      maximum_input_schedule_last_key,
+      maximum_input_schedule_last_value,
+    ),
+  )
+}
+
+/// `resolution_schedule_terminal_state` over a prior ledger with root
+/// `prior_ledger_root`.
+pub fn resolution_schedule_terminal_state_at(
+  control: vm_machine_types.ScriptSourcesControlV1,
+  program_counter: Int,
+  prior_ledger_root: ByteArray,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let tx = empty_v1_transaction()
   let compact = midgard_transaction_to_compact(tx)
   let transaction_id = native_tx_id_for_version(
@@ -162,16 +182,83 @@ pub fn resolution_schedule_terminal_state(
   )
   let work_witness_cbor = stage_zero_script_sources_work_witness(control)
   Pair(
-    forced_pending_state(
-      transaction_id,
-      tx,
-      validation_context_cbor,
-      validation_trace_v1.ScriptSources,
-      program_counter,
-      work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
-    ),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..forced_pending_state(
+        transaction_id,
+        tx,
+        validation_context_cbor,
+        validation_trace_v1.ScriptSources,
+        program_counter,
+        work_witness_cbor,
+        validation_trace_v1.hash_ledger_delta(#"80"),
+      ),
+      prior_ledger_root,
+    },
     work_witness_cbor,
+  )
+}
+
+/// The stage-3 replay of the last input of `vector`'s schedule, replaying
+/// `value` over a prior ledger with root `prior_ledger_root`. The claimed
+/// successor is the one `value` yields, so the step is honest exactly when the
+/// ledger holds `value` at the last key and `proof` opens it.
+pub fn maximum_input_schedule_replay_step(
+  vector: ResolutionScheduleTerminalVectorV1,
+  prior_ledger_root: ByteArray,
+  value: ByteArray,
+  proof: Proof,
+) -> (
+  validation_trace_v1.ValidationMachineStateV1,
+  vm_machine_types.ValidationOneStepWitnessV1,
+  vm_machine_types.ValidationAuxiliaryWitnessV1,
+) {
+  let pre_control = resolution_schedule_terminal_control(vector)
+  let terminal_control = vm_machine_types.ScriptSourcesControlV1 {
+    ..pre_control,
+    resolved_item_peaks: validation_merkle_v1.append_leaf(
+      pre_control.replay_cursor,
+      pre_control.resolved_item_peaks,
+      script_proof_v1.resolved_context_item_leaf_hash(
+        vector.last_source_kind,
+        pre_control.replay_cursor,
+        vector.last_key,
+        value,
+      ),
+    ),
+    replay_cursor: pre_control.replay_cursor + 1,
+    replay_accumulator: vm_witness.resolved_input_accumulator_successor(
+      pre_control.replay_accumulator,
+      vector.last_source_kind,
+      vector.last_key,
+      value,
+    ),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+    spend_index: pre_control.spend_index + 1 - vector.last_source_kind,
+  }
+  let Pair(pre, work_witness_cbor) = resolution_schedule_terminal_state_at(
+    pre_control,
+    12,
+    prior_ledger_root,
+  )
+  let Pair(post, _) = resolution_schedule_terminal_state_at(
+    terminal_control,
+    13,
+    prior_ledger_root,
+  )
+  (
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    vm_machine_types.ResolvedInputReplayWitness {
+      source_kind: vector.last_source_kind,
+      key: vector.last_key,
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+      value,
+      proof,
+      siblings: [],
+    },
   )
 }
 
@@ -228,6 +315,8 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       key: vector.last_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: vector.last_value,
+      proof: [],
+      siblings: [],
     },
   }
   let finish_transition = vm_machine_types.ValidationOneStepWitnessV1 {
@@ -362,6 +451,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
+      [],
     ),
     vm_middle_semantics.stage_three_replay(
       pre,
@@ -370,6 +460,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
+      [],
     ),
     !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
@@ -378,6 +469,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
+      [],
     ),
     !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
@@ -386,6 +478,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       mutated_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
+      [],
     ),
     !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
@@ -394,6 +487,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       vector.last_key,
       h_a,
       vector.last_value,
+      [],
     ),
     !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       pre,
