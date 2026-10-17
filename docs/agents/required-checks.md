@@ -135,6 +135,7 @@ These modules serve preflight only. They select tooling self-tests instead
 of repeating unchanged protocol suites; Repo Tools CI remains required.
 Shared probes, artifact derivation, package execution and unknown new
 preflight helpers retain full scope. `--full` still runs every check locally.
+
 - `scripts/preflight.mjs`
 - `scripts/preflight/run.mjs`
 - `scripts/preflight/registry.mjs`
