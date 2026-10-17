@@ -6,9 +6,6 @@
  * parameters with local UPLC evaluation. Refusals are asserted on chain
  * (`expectOnchainRefusal`), never through an off-chain guard alone.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   computeHash32,
@@ -35,10 +32,6 @@ import {
   prepareOutputReferenceScriptDecodingEvidence,
   readOutputReferenceScriptScanState,
 } from "../src/output-reference-script-decoding/index.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
@@ -63,7 +56,6 @@ import {
   signatureScript,
   subjectTransaction,
 } from "./support/output-reference-script-decoding-emulator.js";
-import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
 
 const AUTHENTICATION_SEAMS = [
   "tx_membership",
@@ -85,13 +77,6 @@ const CANCELLABLE_STEPS = [
   "step-05",
   "step-06",
 ] as const;
-const SMALL_SHAPE = "small canonical output with Inline field-2 carriage";
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/output-reference-script-decoding-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
 
 const coverage = createLifecycleCoverageRecorder();
 const recorder = createMeasurementRecorder();
@@ -437,7 +422,6 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
       ...published,
     });
-    const small = { maximumShape: SMALL_SHAPE };
 
     progress("empty native payload");
     // `[0, h'']`: canonical validation classes it InvalidReferenceScript; the
@@ -457,9 +441,9 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       evidence,
       empty.txInclusion,
     );
-    record("small-step01", s1.measurement, small);
+    record("small-step01", s1.measurement);
     const s2 = await stages.step02(s1.result.nextThreadOutRef, evidence, empty);
-    record("small-step02", s2.measurement, small);
+    record("small-step02", s2.measurement);
     const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
     const s4 = await stages.step04(
       s3.threadOutRef,
@@ -467,13 +451,13 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       empty.compactCborHex,
       s2.result,
     );
-    record("small-step04-bind-malformed", s4.measurement, small);
+    record("small-step04-bind-malformed", s4.measurement);
     const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
     expect(s5.result.closed).toBe(true);
-    record("small-step05-closed-passthrough", s5.measurement, small);
+    record("small-step05-closed-passthrough", s5.measurement);
     const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
     expect(s6.result.fraudProofUnit).toBeTruthy();
-    record("small-step06-final-mint", s6.measurement, small);
+    record("small-step06-final-mint", s6.measurement);
     coverage.reason("OutputReferenceScriptMalformed", "accepted_invalid");
 
     progress("honest accepted signature script");
@@ -543,7 +527,6 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     record(
       "cancel-step06",
       (await stages.cancel(closed.nextThreadOutRef, 5)).measurement,
-      small,
     );
     coverage.cancelled("step-06");
   }, 900_000);
@@ -838,7 +821,6 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     record(
       "forced-cancel-step06",
       (await stages.cancel(closed.nextThreadOutRef, 5)).measurement,
-      { maximumShape: SMALL_SHAPE },
     );
     coverage.cancelled("step-06");
   }, 1_800_000);
@@ -869,22 +851,19 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(evidence.accusedClass).toBe(
       OutputReferenceScriptResultClasses.DepthLimit,
     );
-    const small = {
-      maximumShape: "12-deep nested all-of containers, Inline carriage",
-    };
     const s1 = await stages.step01Forced(
       stages.threadOf((await stages.init()).result),
       evidence,
       leaf,
       block.header,
     );
-    record("forced-depth-step01", s1.measurement, small);
+    record("forced-depth-step01", s1.measurement);
     const s2 = await stages.step02(
       s1.result.nextThreadOutRef,
       evidence,
       forcedSourceOf(leaf),
     );
-    record("forced-depth-step02", s2.measurement, small);
+    record("forced-depth-step02", s2.measurement);
     const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
     const s4 = await stages.step04(
       s3.threadOutRef,
@@ -892,7 +871,7 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       leaf.transaction.submitted_source.compact_cbor,
       s2.result,
     );
-    record("forced-depth-step04", s4.measurement, small);
+    record("forced-depth-step04", s4.measurement);
     const s5 = await stages.step05Loop(
       s4.result.nextThreadOutRef,
       evidence,
@@ -902,13 +881,12 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
             ? "forced-depth-step05-close"
             : `forced-depth-step05-scan-${index.toString()}`,
           scan.measurement,
-          small,
         ),
     );
     expect(s5.scans).toBeGreaterThan(1);
     const s6 = await stages.step06(s5.threadOutRef, evidence);
     expect(s6.result.fraudProofUnit).toBeTruthy();
-    record("forced-depth-step06-final-mint", s6.measurement, small);
+    record("forced-depth-step06-final-mint", s6.measurement);
     coverage.reason(
       "OutputReferenceScriptDepthLimit",
       "forced_rejection_wrong",
@@ -959,20 +937,19 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     expect(evidence.resultClass).toBe(
       OutputReferenceScriptResultClasses.NoFault,
     );
-    const small = { maximumShape: "signature script, Inline carriage" };
     const s1 = await stages.step01Forced(
       stages.threadOf((await stages.init()).result),
       evidence,
       leaf,
       block.header,
     );
-    record("forced-sig-step01", s1.measurement, small);
+    record("forced-sig-step01", s1.measurement);
     const s2 = await stages.step02(
       s1.result.nextThreadOutRef,
       evidence,
       forcedSourceOf(leaf),
     );
-    record("forced-sig-step02", s2.measurement, small);
+    record("forced-sig-step02", s2.measurement);
     const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
     const s4 = await stages.step04(
       s3.threadOutRef,
@@ -980,18 +957,18 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       leaf.transaction.submitted_source.compact_cbor,
       s2.result,
     );
-    record("forced-sig-step04", s4.measurement, small);
+    record("forced-sig-step04", s4.measurement);
     const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
     expect(s5.result.closed).toBe(true);
-    record("forced-sig-step05-close", s5.measurement, small);
+    record("forced-sig-step05-close", s5.measurement);
     const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
     expect(s6.result.fraudProofUnit).toBeTruthy();
-    record("forced-sig-step06-final-mint", s6.measurement, small);
+    record("forced-sig-step06-final-mint", s6.measurement);
     coverage.reason("OutputReferenceScriptMalformed", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
   }, 600_000);
 
-  it("declares the lifecycle coverage it exercised and reproduces the Van Rossem fit ledger", async () => {
+  it("declares the lifecycle coverage it exercised", () => {
     // Recorded while the suites above ran, never pre-filled. The only
     // omissions are the wrongful-ACCEPTANCE directions of the NodeLimit and
     // DepthLimit arms: `native_script_scan_v1` bounds both at 16,384 and a
@@ -1012,34 +989,6 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       }),
     ).toThrow(
       "incomplete fault-proof lifecycle coverage: OutputReferenceScriptNodeLimit success directions: accepted_invalid; OutputReferenceScriptDepthLimit success directions: accepted_invalid",
-    );
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: `outputReferenceScriptDecoding:${OUTPUT_REFERENCE_CATEGORY_ID}:testnet`,
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements: recorder.measurements,
-    });
-    expect(ledger.entries.length).toBeGreaterThan(30);
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (process.env["MIDGARD_WRITE_FIT_LEDGER"] === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(
-        `[output-reference-script-decoding-fit-ledger] wrote ${ledgerPath}`,
-      );
-    }
-    console.info(
-      `[output-reference-script-decoding-fit-ledger] ${JSON.stringify(ledger.entries)}`,
     );
   });
 });

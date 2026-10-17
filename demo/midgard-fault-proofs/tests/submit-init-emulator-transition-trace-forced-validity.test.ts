@@ -104,10 +104,8 @@ describe("transition-trace forced order validity interval", () => {
               forcedTransactionCount: 1n,
               totalEventCount: 1n,
               transitionStepCount: 1n,
-              validationTraceCount: 1n,
               transitionTraceRoot: "ab".repeat(32),
               eventToStepRoot: "bc".repeat(32),
-              validationTracesRoot: "cd".repeat(32),
             };
       const lifecycle = await setupChallenge({
         harness,

@@ -13,8 +13,8 @@ export const REDEEMER_DATA_CHUNK_BYTES = 4_095;
 /**
  * Execution memory a data step spends besides its nodes: the thread's spend
  * and successor checks, the window's chunk hashes and the stored stack root,
- * measured with margin. `redeemer_canonicity_w1_step_max` in the family's fit ledger measures the
- * costliest step against it.
+ * measured with margin. The family's lifecycle suite submits the costliest
+ * step, and the emulator submit guard holds it to the Van Rossem limits.
  */
 export const REDEEMER_DATA_STEP_FIXED_MEMORY = 400_000;
 

@@ -21,6 +21,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionWitnessSet, MidgardTxInput, MidgardVersionedScript,
   NativeCardanoScript, TxIsValid, native_tx_version_v1,
 }
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/fraud_proofs/validation_trace/phase_a_native_item_yield_v1 as item_yield
 use midgard/native_tx_field_access_v1
 use midgard/script_proof_v1
@@ -188,7 +189,6 @@ fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
 
 fn signatures_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -220,7 +220,6 @@ fn signatures_step_fixture(
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root,
     },
     work_witness_cbor,
   )
@@ -228,11 +227,9 @@ fn signatures_step_fixture(
 
 fn phase_a_native_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let Pair(signature_pre, _signature_work_witness_cbor) = signatures_step_fixture(
     tx,
-    ledger_delta_root,
   )
   let proof_source = forced_fixture.from_native_transaction(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
@@ -353,6 +350,15 @@ fn next_phase_a_native_state(
 /// the redeemer item proof) — a satisfiable opening the flat reversion never
 /// touched.
 fn native_item_yield_transaction(mutation: Int) -> Bool {
+  shaped_native_item_yield_transaction(mutation, census.honest)
+}
+
+/// `native_item_yield_transaction`, its L1 transaction reshaped by `shape`
+/// (see `thread_census_fixture_v1`).
+fn shaped_native_item_yield_transaction(
+  mutation: Int,
+  shape: fn(item_l1.Transaction) -> item_l1.Transaction,
+) -> Bool {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: NativeCardanoScript,
@@ -370,7 +376,7 @@ fn native_item_yield_transaction(mutation: Int) -> Bool {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let next_work = phase_a_native_scan_witness(
     tx,
@@ -524,6 +530,7 @@ fn native_item_yield_transaction(mutation: Int) -> Bool {
       Pair(item_l1.Withdraw(item_address.Script(reward_hash)), reward_redeemer),
     ],
   }
+    |> shape
   and {
     item_dispatcher.main.spend(
       item_fixture.next_step_script_hash,
@@ -594,4 +601,32 @@ test native_item_refuses_wrong_dispatcher_hash() fail {
 
 test foreign_item_yield_refuses_native_header() {
   !native_item_yield_transaction(8)
+}
+
+// ## Census: who funds and who signs the winning item move
+//
+// The native item dispatcher only ever awards, so anyone may move it; a lone
+// thread input pays up to the cap and no more, and beside another input the
+// thread keeps its value.
+
+test census_anyone_moves_the_native_item_paying_the_cap_from_the_thread() {
+  shaped_native_item_yield_transaction(
+    0,
+    fn(tx) { census.without_signers(census.lone_input_paying(census.cap)(tx)) },
+  )
+}
+
+test census_the_native_item_paying_over_the_cap_is_refused() fail {
+  shaped_native_item_yield_transaction(
+    0,
+    census.lone_input_paying(census.cap + 1),
+  )
+}
+
+test census_the_native_item_beside_a_wallet_input_keeps_the_thread_value() {
+  shaped_native_item_yield_transaction(0, census.beside_wallet_input(0))
+}
+
+test census_the_native_item_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  shaped_native_item_yield_transaction(0, census.beside_wallet_input(1))
 }

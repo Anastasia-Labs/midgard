@@ -141,7 +141,6 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,

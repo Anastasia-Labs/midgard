@@ -10,8 +10,9 @@ const SCAN_CHUNK_BYTES = 4_095;
 /**
  * Execution memory a datum step spends besides its nodes: the thread's spend
  * and successor checks and the admission of one or two item chunks against
- * the stored chunk hashes, measured with margin. `tonc_datum_verdict_step_max`
- * in the family's fit ledger measures the costliest step against it.
+ * the stored chunk hashes, measured with margin. The family's datum lifecycle
+ * suite submits the costliest step, and the emulator submit guard holds it to
+ * the Van Rossem limits.
  */
 export const TRANSACTION_OUTPUT_DATUM_STEP_FIXED_MEMORY = 500_000;
 

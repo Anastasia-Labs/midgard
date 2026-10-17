@@ -166,8 +166,9 @@ export const buildRetainedValidationBlockFixture = async ({
     minFeeB,
     prevUtxosRoot: priorLedgerRoot,
     ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
-    validationTracesRoot: root.root,
-    validationTraceCount: root.count,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     transitionTraceRoot: transitionRoot.root,
     ...(postLedger === undefined ? {} : { utxosRoot: postLedger.root }),
   };

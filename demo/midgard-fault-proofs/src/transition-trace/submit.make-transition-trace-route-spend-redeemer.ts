@@ -40,6 +40,12 @@ export type SubmitTransitionTraceProofConfig = {
   readonly depositOpening?: TransitionDepositOpening;
   /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  /**
+   * The published field-preimage certificate minting script, for an accepted
+   * transaction whose field openings need tier-3 certificates. Defaults to the
+   * deployment's `fieldPreimageCertificateMint` reference script.
+   */
+  readonly fieldCertificateReferenceScript?: UTxO;
   readonly awaitConfirmation?: boolean;
 };
 

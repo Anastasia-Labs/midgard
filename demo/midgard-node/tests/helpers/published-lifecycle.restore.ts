@@ -2,6 +2,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  loadOrCreateRunSharedFixture,
+  makeRunScratchDirectory,
+} from "@al-ft/midgard-test-support/run-shared-fixtures";
+import {
   CML,
   Emulator,
   generateEmulatorAccount,
@@ -40,10 +44,6 @@ import {
 } from "./published-workflow-deployment.js";
 import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
 import { makeJournalDirectory } from "./run-journal-directory.js";
-import {
-  loadOrCreateRunSharedFixture,
-  makeRunScratchDirectory,
-} from "./run-shared-fixture-directory.js";
 
 const preprodEmulatorLucid = (emulator: Emulator) =>
   createMainnetEmulatorLucid(emulator, "Preprod");
@@ -228,7 +228,7 @@ const clearRestoredDeploymentRows = () =>
 
 /** One deployment per protection duration per run: the first file to need
  * it deploys and shares it while files that start at the same time wait for
- * it (`run-shared-fixture-directory.ts`), and every later file restores that
+ * it (`@al-ft/midgard-test-support/run-shared-fixtures`), and every later file restores that
  * same plain-data prefix. The deployment path reads no per-file setting and
  * no module a test file mocks. Without the package's global setup each file
  * deploys its own, as before. */

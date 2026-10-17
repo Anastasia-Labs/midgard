@@ -19,13 +19,13 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationDisputeEvidenceBundle,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   makeNativeTx,
@@ -44,7 +44,7 @@ const blueprint = JSON.parse(
 // A regenerated blueprint carries no definition for
 // `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`:
 // the auxiliary crosses the wire as `Data` into the yield dispatchers'
-// builtin decodes, so its pin is the frozen 41-arm tag/arity corpus
+// builtin decodes, so its pin is the frozen 37-arm tag/arity corpus
 // (`validation-controls-abi.test.ts` freezes the vectors' bytes and digest)
 // plus the cross-language producer vectors in
 // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.
@@ -231,7 +231,7 @@ const expectExactBundle = (
   // the hashed `(transition, auxiliary)` preimage, pinned below its envelope.
   expect(bundle.oneStepArgument.evidenceCbor.length).toBeLessThan(16 * 1024);
   expect(bundle.oneStepArgument.resolverIndex).toBeGreaterThanOrEqual(0);
-  expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
+  expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(13);
   // Every index is a prepare + semantic family now: the semantic resolver
   // index is always selected (never null).
   expect(bundle.oneStepArgument.semanticResolverIndex).toBeGreaterThanOrEqual(
@@ -254,8 +254,8 @@ describe("validation dispute evidence construction", () => {
       challengerTrace.states.length - 1,
     );
     expect(bundle.oneStepArgument).toMatchObject({
-      resolverIndex: 13,
-      semanticResolverIndex: 7,
+      resolverIndex: 12,
+      semanticResolverIndex: 10,
     });
   });
 

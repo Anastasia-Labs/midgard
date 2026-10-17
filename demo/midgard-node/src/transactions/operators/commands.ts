@@ -24,7 +24,10 @@ import {
   retireOperatorProgram,
   slashDuplicateOperatorProgram,
 } from "./exit.js";
-import { OperatorFundingShortfall } from "./funding-preflight.js";
+import {
+  OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
+} from "./funding-preflight.js";
 import { operatorStatusProgram, type OperatorStatusReport } from "./status.js";
 import {
   planTakeoverProgram,
@@ -46,11 +49,13 @@ export const isOperatorCommandRefusal = (
   | OperatorCommandRefusal
   | OperatorExitRefusal
   | OperatorRegistrationRefusal
-  | OperatorFundingShortfall =>
+  | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty =>
   error instanceof OperatorCommandRefusal ||
   error instanceof OperatorExitRefusal ||
   error instanceof OperatorRegistrationRefusal ||
-  error instanceof OperatorFundingShortfall;
+  error instanceof OperatorFundingShortfall ||
+  error instanceof OperatorWalletInputsEmpty;
 
 const OPERATOR_KEY_HASH_HEX = /^[0-9a-f]{56}$/;
 

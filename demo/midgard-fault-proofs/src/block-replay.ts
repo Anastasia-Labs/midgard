@@ -2,10 +2,14 @@
  * The block replay: a block's DA payload replayed over its parent's ledger.
  * Every event is re-run (L2 and forced transactions through the validation
  * machine, user events through the caller's L1 material), and every committed
- * transition, event-to-step mapping and validation descriptor must equal the
- * replay's canonical bytes. The node's foreign-block import and the watcher's
- * ledger both run this one function; each supplies its own ledger-root
- * computation and L1 event material.
+ * transition and event-to-step mapping must equal the replay's canonical bytes.
+ * Validation descriptors are derived data the header does not commit: each
+ * replayed transaction needs one, canonical and bounded, carrying the replayed
+ * verdict, and nothing more is asked of it (the DA committee's rule). CEK
+ * program material is likewise uncommitted: replay uses the entries an event
+ * reaches and ignores the rest. The node's foreign-block import and the
+ * watcher's ledger both run this one function; each supplies its own
+ * ledger-root computation and L1 event material.
  *
  * Faults of the payload are thrown (defects); the callbacks' and the root
  * computation's failures pass through.
@@ -15,11 +19,9 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  placeholderValidationTraceDescriptorV1,
   type RejectedTx,
   replayValidationVerdictEvent,
   type ValidationMachineLedgerEntry,
-  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -36,7 +38,6 @@ import {
   importedEventProgramSidecar,
   importedProgramMaterial,
 } from "./block-replay.program-material.js";
-import { forcedRejectionReason } from "./workflow/forced-rejection-reason.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -47,6 +48,14 @@ export {
   encodeTransitionStepCbor,
   transitionPhaseRank,
 } from "./block-replay.encoding.js";
+
+/**
+ * The verdict of a validation descriptor, which must be canonical for its
+ * schema and a bounded V1 descriptor, as the DA committee requires (the SDK
+ * decoder both run).
+ */
+const descriptorVerdict = (valueHex: string) =>
+  SDK.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
 
 /** One ledger entry: the out-ref key bytes and the full output CBOR. */
 export type BlockReplayLedgerEntry = {
@@ -175,7 +184,6 @@ export const replayBlockEvents = (
     )
       throw new Error("foreign transaction preimage coverage mismatch");
     const material = importedProgramMaterial(body.cek_program_material);
-    const reached = new Set<string>();
     let root = yield* input.ledgerRoot(input.parentEntries);
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
@@ -226,7 +234,6 @@ export const replayBlockEvents = (
             sourceKind,
             ledger,
             material,
-            reached,
           }),
           ledgerWitnessEntries: witnessEntries,
           blockTimeMs: input.blockTimeMs,
@@ -255,27 +262,12 @@ export const replayBlockEvents = (
         for (const key of replay.statePatch.deletedOutRefs) ledger.delete(key);
         for (const [key, output] of replay.statePatch.upsertedOutRefs)
           ledger.set(key, output);
-        const expected = SDK.validationTraceDescriptorDataFromCore(
-          placeholderValidationTraceDescriptorV1(
-            {
-              eventKeyCbor: Buffer.from(key, "hex"),
-              transactionCommitment: validationTransactionCommitmentV1({
-                canonicalTransactionCbor: cbor,
-                sourceKind,
-              }),
-            },
-            replay.verdict,
-            replay.rejection === undefined
-              ? null
-              : forcedRejectionReason(replay.rejection),
-          ),
-        );
-        if (
-          descriptors.get(key) !==
-          LucidData.to(expected, SDK.ValidationTraceDescriptor)
-        )
+        const descriptor = descriptors.get(key);
+        if (descriptor === undefined)
+          throw new Error("foreign event lacks its validation descriptor");
+        if (descriptorVerdict(descriptor) !== replay.verdict)
           throw new Error(
-            "foreign validation descriptor differs from the placeholder for the replayed verdict",
+            "foreign validation descriptor verdict differs from the replayed verdict",
           );
         descriptors.delete(key);
       } else {
@@ -329,8 +321,6 @@ export const replayBlockEvents = (
       }
       mappings.delete(key);
     }
-    if (reached.size !== material.length)
-      throw new Error("foreign block CEK material contains unreachable nodes");
     if (
       expectedSources.size !== 0 ||
       mappings.size !== 0 ||

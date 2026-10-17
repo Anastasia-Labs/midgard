@@ -178,7 +178,6 @@ export const resolverPhaseIndex = (
     scriptIntegrity: 10,
     cek: 11,
     valueAndMint: 12,
-    ledgerDelta: 13,
     terminal: -1,
   }[phase];
   if (index < 0) {

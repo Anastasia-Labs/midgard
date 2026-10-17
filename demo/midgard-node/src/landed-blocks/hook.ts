@@ -53,6 +53,8 @@ export const landedBlockHook =
         cursor === null ? {} : { prunedThroughSlot: cursor.prunedThroughSlot },
       ),
     );
+    if (options.ports.bindRetained !== undefined)
+      await options.run(options.ports.bindRetained(read.queue));
     const root = read.queue.root;
     if (options.publish !== undefined && root !== null) {
       const { depth, position } = options.publish;

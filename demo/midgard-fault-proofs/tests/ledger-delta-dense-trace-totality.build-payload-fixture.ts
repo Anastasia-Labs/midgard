@@ -137,13 +137,6 @@ export const buildPayloadFixture = async ({
         value: Buffer.from(value, "hex"),
       })),
     ),
-    validationTraces: await buildCountedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraces.map(([key, value]) => ({
-        key: Buffer.from(key, "hex"),
-        value: Buffer.from(value, "hex"),
-      })),
-    ),
   };
   const counts = {
     withdrawalCount: BigInt(withdrawals.length),
@@ -168,8 +161,10 @@ export const buildPayloadFixture = async ({
     depositsRoot: roots.deposits.root,
     transitionTraceRoot: roots.transitionTrace.root,
     eventToStepRoot: roots.eventToStep.root,
-    validationTracesRoot: roots.validationTraces.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime: 10n,
     endTime: 20n,
     blockSlot: 0n,

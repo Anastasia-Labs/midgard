@@ -9,7 +9,6 @@ import {
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { expect } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -24,7 +23,6 @@ import {
 import { submitMissingSignatureForcedAction } from "../../src/missing-signature/submit-forced.js";
 import { submitMissingSignatureInit } from "../../src/missing-signature/submit-missing-signature-init.js";
 import type { PreparedMissingSignatureWrongfulRejection } from "../../src/missing-signature/wrongful-rejection.js";
-import type { VanRossemFitMeasurement } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { requireComputationThreadToken } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
@@ -119,10 +117,9 @@ const commitForcedBlock = async (
  * One block whose single forced leaf rejects `transactionFor(shape)` with
  * `RequiredSignerUnsigned { signerIndex }`, the published step scripts, and
  * the stage runners every missing-signature forced lifecycle drives. Each
- * submission's measurement is appended to `fitMeasurements`.
+ * submission is held to the proof-fit bounds.
  */
 export const setupMissingSignatureForcedScenario = async (
-  fitMeasurements: VanRossemFitMeasurement[],
   shape: Parameters<typeof transactionFor>[0] = {},
   signerIndex = 0n,
 ) => {
@@ -185,14 +182,6 @@ export const setupMissingSignatureForcedScenario = async (
       submit,
     );
     for (const measurement of measurements) {
-      fitMeasurements.push({
-        name: `${expect.getState().currentTestName}:${stage}:${fitMeasurements.length}`,
-        kind: measurement.executionMemory === 0n ? "publication" : "lifecycle",
-        maximumShape: expect.getState().currentTestName!,
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
       expectProofFit({
         stage,
         measurement,

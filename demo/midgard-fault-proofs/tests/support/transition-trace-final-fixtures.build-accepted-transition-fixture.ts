@@ -1,10 +1,15 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardMpfDeletionOpening,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxProofSource,
-  encodeMidgardFieldPreimage,
   encodeMidgardSpendInputItem,
+  parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -14,16 +19,22 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
+import { type TransitionProofMaterial } from "../../src/transition-trace/proof-material.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
-import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
+import {
+  syntheticDeepInsertProof,
+  syntheticDeepMembershipProof,
+} from "./synthetic-deep-proof.js";
 
 /**
  * One L2 transaction over an otherwise empty ledger. By default it spends
  * nothing and produces `outputCbors`. With `drained`, the ledger instead holds
  * one entry (the first of `outputCbors`) that the transaction spends while
  * producing nothing, so the honest post root is the committed empty-ledger
- * root and the dishonest one is the MPF library's null root.
+ * root and the dishonest one is the MPF library's null root. With `forced`, the
+ * same transaction is committed instead as a forced leaf carrying that
+ * verdict, and the witness is the accepted forced transition.
  */
 export const buildAcceptedTransitionFixture = async ({
   operatorVkey,
@@ -31,6 +42,10 @@ export const buildAcceptedTransitionFixture = async ({
   honest = false,
   depth = 0,
   drained = false,
+  spentCount = 0,
+  ledgerFill = 0,
+  ledgerDepth = 0,
+  forced,
   outputCbors = [
     Buffer.from("a200581d60" + "aa".repeat(28) + "01821a001e8480a0", "hex"),
   ],
@@ -40,8 +55,24 @@ export const buildAcceptedTransitionFixture = async ({
   honest?: boolean;
   depth?: number;
   drained?: boolean;
+  /** Spend this many ledger entries (each holding the first output) as well. */
+  spentCount?: number;
+  /** Unrelated ledger entries, so MPF proofs have a realistic depth. */
+  ledgerFill?: number;
+  /**
+   * Insert the single output at this MPF depth (64 is the deepest a path
+   * allows) into a synthesised ledger, in place of an otherwise empty one.
+   */
+  ledgerDepth?: number;
+  /** Commit the transaction as a forced leaf with this verdict. */
+  forced?: "valid" | "invalid";
   outputCbors?: Buffer[];
 }) => {
+  if (
+    ledgerDepth > 0 &&
+    (drained || spentCount > 0 || ledgerFill > 0 || outputCbors.length !== 1)
+  )
+    throw new Error("ledgerDepth needs exactly one output and nothing spent.");
   const drainedEntry = drained
     ? {
         outRef: encodeMidgardSpendInputItem({
@@ -61,32 +92,85 @@ export const buildAcceptedTransitionFixture = async ({
           }).descriptorCbor,
         );
   const txOutputCbors = drained ? [] : outputCbors;
+  const extraSpent = Array.from({ length: spentCount }, (_, outputIndex) => ({
+    outRef: encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0xed),
+      outputIndex,
+    }),
+    value: Buffer.from(
+      buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex,
+        outputCbor: outputCbors[0]!,
+      }).descriptorCbor,
+    ),
+  }));
+  const fill = Array.from({ length: ledgerFill }, (_, index) => ({
+    key: encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0xec),
+      outputIndex: index,
+    }),
+    value: Buffer.alloc(32, 0x01),
+  }));
+  const spendInputCbors = [
+    ...(drainedEntry === null ? [] : [drainedEntry.outRef]),
+    ...extraSpent.map(({ outRef }) => outRef),
+  ];
   const native = makeNativeTx({
-    spendInputCbors: drainedEntry === null ? [] : [drainedEntry.outRef],
+    spendInputCbors,
     fee: drained ? 2_000_000n : 0n,
     outputCbors: txOutputCbors,
   });
   const txId = computeMidgardNativeTxId(native).toString("hex");
-  const source = deriveMidgardNativeTxProofSource(native);
-  const encodedSource = Data.to(
-    {
-      tx_id: txId,
-      source: {
-        compact_cbor: source.compactCbor.toString("hex"),
-        witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
-        field_preimage_lengths_cbor:
-          source.fieldPreimageLengthsCbor.toString("hex"),
-      },
-    },
-    SDK.L2TransactionSource,
-  );
-  const ledger = await Trie.fromList(
-    drainedEntry === null
+  const source =
+    forced === undefined
+      ? deriveMidgardNativeTxProofSource(native)
+      : deriveMidgardForcedTxProofSource(
+          materializeMidgardForcedTxFromCanonical(native),
+        );
+  const proofSource = {
+    compact_cbor: source.compactCbor.toString("hex"),
+    witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+    field_preimage_lengths_cbor:
+      source.fieldPreimageLengthsCbor.toString("hex"),
+  };
+  const txOrderId: SDK.OutputReference = {
+    transactionId: "f1".repeat(32),
+    outputIndex: 0n,
+  };
+  const sourceKey =
+    forced === undefined ? txId : Data.to(txOrderId, SDK.OutputReference);
+  const encodedSource =
+    forced === undefined
+      ? Data.to({ tx_id: txId, source: proofSource }, SDK.L2TransactionSource)
+      : Data.to(
+          {
+            tx_id: txId,
+            submitted_source: proofSource,
+            verdict:
+              forced === "valid"
+                ? ("ForcedTxValid" as const)
+                : {
+                    ForcedTxInvalid: {
+                      reason: {
+                        PlutusExecutionFailed: {
+                          purpose_kind: 0n,
+                          purpose_index: 0n,
+                        },
+                      },
+                    },
+                  },
+          },
+          SDK.ForcedInclusionTxV1,
+        );
+  const ledger = await Trie.fromList([
+    ...(drainedEntry === null
       ? []
-      : [{ key: drainedEntry.outRef, value: drainedValue! }],
-  );
-  const preUtxosRoot =
-    drainedEntry === null
+      : [{ key: drainedEntry.outRef, value: drainedValue! }]),
+    ...extraSpent.map(({ outRef, value }) => ({ key: outRef, value })),
+    ...fill,
+  ]);
+  let preUtxosRoot =
+    ledger.hash === null
       ? SDK.EMPTY_MERKLE_TREE_ROOT
       : ledger.hash.toString("hex");
   const spent: SDK.LedgerDeleteWitness[] = [];
@@ -102,6 +186,21 @@ export const buildAcceptedTransitionFixture = async ({
     });
     await ledger.delete(drainedEntry.outRef);
   }
+  for (const { outRef, value } of extraSpent) {
+    const proved = await ledger.prove(outRef);
+    const opening = await buildMidgardMpfDeletionOpening(
+      ledger,
+      outRef,
+      parseMidgardMpfProofJson(proved.toJSON()),
+    );
+    spent.push({
+      key: outRef.toString("hex"),
+      value: value.toString("hex"),
+      opening: opening.toString("hex"),
+      delete_proof: Data.from(proved.toCBOR().toString("hex"), SDK.Proof),
+    });
+    await ledger.delete(outRef);
+  }
   const produced: SDK.LedgerInsertWitness[] = [];
   for (const [index, bytes] of txOutputCbors.entries()) {
     const key = encodeMidgardSpendInputItem({
@@ -114,15 +213,20 @@ export const buildAcceptedTransitionFixture = async ({
         outputCbor: bytes,
       }).descriptorCbor,
     );
-    await ledger.insert(key, value);
+    const deepInsert =
+      ledgerDepth === 0
+        ? null
+        : syntheticDeepInsertProof({ key, value, branchLevels: ledgerDepth });
+    if (deepInsert === null) await ledger.insert(key, value);
+    else preUtxosRoot = deepInsert.preRoot;
     const proof = Data.from(
-      (await ledger.prove(key)).toCBOR().toString("hex"),
+      deepInsert?.proofCbor ??
+        (await ledger.prove(key)).toCBOR().toString("hex"),
       SDK.Proof,
     );
     produced.push({
       key: key.toString("hex"),
       value: value.toString("hex"),
-      non_membership_proof: proof,
       insert_proof: proof,
     });
   }
@@ -130,23 +234,37 @@ export const buildAcceptedTransitionFixture = async ({
   const step: SDK.TransitionStep = {
     schema_version: 1n,
     step_index: 0n,
-    event_key: { L2TransactionEventKey: { tx_id: txId } },
-    phase: "L2Transaction",
+    event_key:
+      forced === undefined
+        ? { L2TransactionEventKey: { tx_id: txId } }
+        : { ForcedTransactionEventKey: { tx_order_id: txOrderId } },
+    phase: forced === undefined ? "L2Transaction" : "ForcedTransaction",
     pre_utxos_root: preUtxosRoot,
     post_utxos_root: !honest
       ? dishonest
-      : ledger.hash === null
-        ? SDK.EMPTY_MERKLE_TREE_ROOT
-        : ledger.hash.toString("hex"),
+      : ledgerDepth > 0
+        ? syntheticDeepInsertProof({
+            key: Buffer.from(produced[0]!.key, "hex"),
+            value: Buffer.from(produced[0]!.value, "hex"),
+            branchLevels: ledgerDepth,
+          }).postRoot
+        : ledger.hash === null
+          ? SDK.EMPTY_MERKLE_TREE_ROOT
+          : ledger.hash.toString("hex"),
   };
-  const event = { step_index: 0n, phase: "L2Transaction" as const };
+  const event = { step_index: 0n, phase: step.phase };
   const roots = await Promise.all([
-    buildCountedRoot(SDK.ROOT_DOMAINS.transactionsV1, [
-      {
-        key: Buffer.from(txId, "hex"),
-        value: Buffer.from(encodedSource, "hex"),
-      },
-    ]),
+    buildCountedRoot(
+      forced === undefined
+        ? SDK.ROOT_DOMAINS.transactionsV1
+        : SDK.ROOT_DOMAINS.forcedTransactionsV1,
+      [
+        {
+          key: Buffer.from(sourceKey, "hex"),
+          value: Buffer.from(encodedSource, "hex"),
+        },
+      ],
+    ),
     buildCountedRoot(SDK.ROOT_DOMAINS.transitionTrace, [
       {
         key: Buffer.from(Data.to(0n), "hex"),
@@ -166,7 +284,7 @@ export const buildAcceptedTransitionFixture = async ({
     depth === 0
       ? null
       : syntheticDeepMembershipProof({
-          key: Buffer.from(txId, "hex"),
+          key: Buffer.from(sourceKey, "hex"),
           value: Buffer.from(encodedSource, "hex"),
           branchLevels: depth,
         });
@@ -183,14 +301,16 @@ export const buildAcceptedTransitionFixture = async ({
   const header: SDK.Header = {
     ...makeHeader(operatorVkey, now),
     utxosRoot: step.post_utxos_root,
-    transactionsRoot: transactions!.root,
+    ...(forced === undefined
+      ? { transactionsRoot: transactions!.root, l2TransactionCount: 1n }
+      : {
+          forcedTransactionsRoot: transactions!.root,
+          forcedTransactionCount: 1n,
+        }),
     transitionTraceRoot: trace!.root,
     eventToStepRoot: mapping!.root,
-    validationTracesRoot: "cc".repeat(32),
-    l2TransactionCount: 1n,
     totalEventCount: 1n,
     transitionStepCount: 1n,
-    validationTraceCount: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const rootFields = (root: typeof transactions) => ({
@@ -200,38 +320,42 @@ export const buildAcceptedTransitionFixture = async ({
     count: root!.count,
     proof: [],
   });
+  const transition = {
+    trace_proof: { ...rootFields(trace), key: 0n, value: step },
+    event_to_step: {
+      ...rootFields(mapping),
+      key: step.event_key,
+      value: event,
+    },
+    source_membership: {
+      ...rootFields(transactions),
+      key: sourceKey,
+      value: encodedSource,
+      proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
+    },
+  };
   const proof: SDK.TransitionFaultProof = {
     challenged_header_hash: headerHash,
     header,
     fault: {
       InvalidOneStepTransition: {
-        witness: {
-          L2TransactionTransition: {
-            trace_proof: { ...rootFields(trace), key: 0n, value: step },
-            event_to_step: {
-              ...rootFields(mapping),
-              key: step.event_key,
-              value: event,
-            },
-            source_membership: {
-              ...rootFields(transactions),
-              key: txId,
-              value: encodedSource,
-              proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
-            },
-            spend_inputs_preimage: encodeMidgardFieldPreimage(
-              drainedEntry === null ? [] : [drainedEntry.outRef],
-            ).toString("hex"),
-            outputs_preimage:
-              encodeMidgardFieldPreimage(txOutputCbors).toString("hex"),
-            spent_utxos: spent,
-            produced_utxos: produced,
-          },
-        },
+        witness:
+          forced === undefined
+            ? { L2TransactionTransition: transition }
+            : { ValidForcedTransactionTransition: transition },
       },
     },
   };
-  return { header, headerHash, proof, drainedEntry };
+  const material: TransitionProofMaterial = {
+    proofCbor: Data.to(proof, SDK.TransitionFaultProof),
+    l2Replay: {
+      spendInputCbors: spendInputCbors.map((item) => item.toString("hex")),
+      outputCbors: txOutputCbors.map((item) => item.toString("hex")),
+      spentUtxos: spent,
+      producedUtxos: produced,
+    },
+  };
+  return { header, headerHash, proof: material, drainedEntry };
 };
 
 export const buildDepositTransitionFixture = async ({
@@ -355,7 +479,6 @@ export const buildDepositTransitionFixture = async ({
             projected_utxo: {
               key: key.toString("hex"),
               value: value.toString("hex"),
-              non_membership_proof: insert,
               insert_proof: insert,
             },
           },

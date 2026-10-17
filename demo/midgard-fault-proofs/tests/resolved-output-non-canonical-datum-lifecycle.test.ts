@@ -7,19 +7,13 @@
  * and a forced rejection of the densest canonical datums, refuse an honest
  * acceptance of a canonical datum, refuse forged datum steps and cancel a
  * thread parked on the datum step. The envelope's lifecycle is in
- * resolved-output-non-canonical-lifecycle.test.ts; the two files together
- * write the fit ledger.
+ * resolved-output-non-canonical-lifecycle.test.ts.
  */
 import { describe, expect, it } from "vitest";
 
 import {
-  beginMeasuredCase,
   coverage,
   DATUM_SEAMS,
-  expectMeasuredFit,
-  MEASURED_CASES,
-  measureFitPart,
-  passMeasuredCase,
   progress,
   record,
 } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
@@ -42,8 +36,6 @@ import {
 } from "./support/resolved-output-non-canonical-emulator.js";
 
 describe("resolvedOutputNonCanonical inline-datum verdict", () => {
-  measureFitPart("datum", [MEASURED_CASES.densestDatum]);
-
   it("convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step", async () => {
     const context = await makeResolvedOutputContext();
     // Zero written with a one-byte argument it does not need.
@@ -140,9 +132,7 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
   }, 900_000);
 
   it("convicts a forced rejection of maximum outputs whose inline datums are the densest canonical Data, reading each to its verdict, and measures the costliest datum step", async () => {
-    beginMeasuredCase(MEASURED_CASES.densestDatum);
     let costliest: CompleteSignedTransactionMeasurement | undefined;
-    let costliestShape = "";
     for (const shape of [
       "map-chain",
       "generic-constructors",
@@ -207,7 +197,6 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
           captured.measurement.executionMemory > costliest.executionMemory
         ) {
           costliest = captured.measurement;
-          costliestShape = shape;
         }
       };
       const first = await stages.step04Datum(walked.threadOutRef, evidence);
@@ -230,15 +219,12 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
       expect(minted.result.fraudProofUnit).toBeTruthy();
       coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "forced_rejection_wrong");
     }
-    record("ronc_datum_verdict_step_max", costliest!, {
-      maximumShape: `${MAXIMUM_DATUM_BYTES.toLocaleString("en-US")}-byte inline datum (${costliestShape}, the costliest of map chains, generic constructors, flat integers and chunked byte strings) filling a ${RESOLVED_OUTPUT_MAXIMUM_BYTES.toLocaleString("en-US")}-byte output`,
-    });
-    passMeasuredCase();
+    record("ronc_datum_verdict_step_max", costliest!);
   }, 3_600_000);
 
   // A case, not an afterAll: a run filtered to some cases (the traced-refusal
   // run) skips it instead of judging coverage the filter left unexercised.
-  it("covers both verdict directions, every datum seam and the datum-step cancel within the measured fit", () => {
+  it("covers both verdict directions, every datum seam and the datum-step cancel", () => {
     const observed = coverage.snapshot();
     expect(
       observed.successfulDirectionByReason[RESOLVED_OUTPUT_REASON_ARM],
@@ -250,6 +236,5 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
       expect.arrayContaining([...DATUM_SEAMS]),
     );
     expect(observed.cancelledPhysicalSteps).toContain("step-04-datum");
-    expectMeasuredFit();
   });
 });

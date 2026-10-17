@@ -32,7 +32,6 @@ import "./support/emulator/proof-fit.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/removal-deployment.js";
 import "./support/emulator/setup-tx.js";
-import "./support/measured-fit-ledger.js";
 import "./support/network-id-emulator.js";
 import "./support/network-id-shapes.js";
 import "./support/submit-init-emulator-fixtures.js";

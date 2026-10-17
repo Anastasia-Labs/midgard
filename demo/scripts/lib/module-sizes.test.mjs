@@ -55,7 +55,28 @@ test("a module-size cap names a repository file by one spelling", async () => {
     assert.deepEqual(check([{ file, max: 501, reason }]), [
       `Invalid or duplicate exception: ${file}`,
     ]);
-  assert.match(check([{ file: "a/b.ts", max: 502, reason }])[0], /actual 501/u);
+  // A cap is a ceiling: a file under it passes, growth past it fails, and a
+  // file back within the 500-line limit makes the exception obsolete.
+  assert.deepEqual(check([{ file: "a/b.ts", max: 900, reason }]), []);
+  assert.match(
+    moduleSizeExceptionFailures([{ file: "a/b.ts", max: 501, reason }], {
+      demoRoot,
+      read: () => `${body}y\n`,
+    })[0],
+    /502 lines exceeds its cap 501/u,
+  );
+  assert.match(
+    moduleSizeExceptionFailures([{ file: "a/b.ts", max: 501, reason }], {
+      demoRoot,
+      read: () => `${Array(500).fill("x").join("\n")}\n`,
+    })[0],
+    /delete the obsolete exception/u,
+  );
+  // Size history lives in git, not in the justification.
+  assert.deepEqual(
+    check([{ file: "a/b.ts", max: 501, reason: "kept. C3 (+15): grew" }]),
+    ["Invalid or duplicate exception: a/b.ts"],
+  );
 });
 
 test("ESLint caps each demo TS/JS entry and lints no other capped file", async () => {

@@ -23,10 +23,10 @@
 //// derivation is quoted about.
 ////
 //// Reproduce the direct reading on its own -- outside the tree run, which is
-//// the only place it fits -- by restoring the body recorded in
-//// `scripts/native-script-scan-exec-ledger-v1.json` under `derivedRows` and
-//// selecting it alone; that ledger entry carries the command, the three
-//// independent direct readings taken of it, and the extrapolation cross-check.
+//// the only place it fits -- by restoring the body the native-script-scan
+//// ledger recorded under `derivedRows` (in git history before 2026-10-16) and
+//// selecting it alone; that entry carried the command, the three independent
+//// direct readings taken of it, and the extrapolation cross-check.
 ////
 //// The deep shape is the worst case, not merely a large one: at three bytes a
 //// node it spends every byte of `max_reachable_payload_bytes` on a node, while

@@ -119,9 +119,6 @@ export const parseWatcherStateQueueHeader = (
         BigInt(record.l2TransactionCount) +
         BigInt(record.depositCount) ||
     BigInt(record.transitionStepCount) !== BigInt(record.totalEventCount) ||
-    BigInt(record.validationTraceCount) !==
-      BigInt(record.forcedTransactionCount) +
-        BigInt(record.l2TransactionCount) ||
     (BigInt(record.withdrawalCount) === 0n) !==
       (record.withdrawalsRoot === EMPTY_MERKLE_ROOT) ||
     (BigInt(record.forcedTransactionCount) === 0n) !==
@@ -134,8 +131,10 @@ export const parseWatcherStateQueueHeader = (
       (record.transitionTraceRoot === EMPTY_MERKLE_ROOT) ||
     (BigInt(record.totalEventCount) === 0n) !==
       (record.eventToStepRoot === EMPTY_MERKLE_ROOT) ||
-    (BigInt(record.validationTraceCount) === 0n) !==
-      (record.validationTracesRoot === EMPTY_MERKLE_ROOT)
+    // The header pins the validation-trace pair to the empty root and a zero
+    // count; the block body alone carries the traces and their number.
+    BigInt(record.validationTraceCount) !== 0n ||
+    record.validationTracesRoot !== EMPTY_MERKLE_ROOT
   ) {
     return null;
   }

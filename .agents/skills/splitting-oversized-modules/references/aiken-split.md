@@ -113,10 +113,11 @@ nothing about them. Instead:
 - Compare the collected test total of `aiken check` before and after; nothing
   compares it for you. CI runs the whole suite in
   `[ci: aiken-ci.yml/Compile and run the Aiken test suite with the pinned fork]`.
-- Test selectors are module-qualified. The execution ledgers in
-  `onchain/aiken/scripts/*-exec-ledger-v1.json` pin module names (for example
-  `"module": "midgard/native-tx-carriage-v1.test"`) and CI's
-  `Pin the … execution ledger` steps in `aiken-ci.yml` verify them.
+- Test selectors are module-qualified. The script budgets in
+  `demo/midgard-core/src/script-budgets.json` name tests by Aiken module (for
+  example `"test": "midgard/native_tx_carriage_v1.test/<test>"`), and CI's
+  `Hold every script budget to its ceiling` step in `aiken-ci.yml` fails on a
+  budget whose test no longer exists. Rename the entries in the same change.
 - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
   rebinds named constants inside `onchain/aiken/lib/midgard/validation-machine-tests/constants.ak` by path.
   Keep those constants in that fixture module, or re-point the generator in the same

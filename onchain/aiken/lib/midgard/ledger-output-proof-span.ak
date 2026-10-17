@@ -35,7 +35,16 @@ fn scan_integer(control: raw.Frame, index: Int) -> Int {
 pub fn demanded_span(control: raw.Frame) -> Option<(Int, Int)> {
   let stage = raw.integer(control, 1)
   if stage == proof.stage_datum_traversal {
-    datum.next_source_span(control)
+    // An empty span reads no output bytes, so it demands no window.
+    when datum.next_source_span(control) is {
+      Some(span) ->
+        if span.2nd > 0 {
+          Some(span)
+        } else {
+          None
+        }
+      None -> None
+    }
   } else if stage == proof.stage_reference_script_commitment {
     let item_offset = scan_integer(
       control,

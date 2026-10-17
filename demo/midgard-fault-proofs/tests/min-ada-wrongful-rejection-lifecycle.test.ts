@@ -1,6 +1,3 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import "node:crypto";
-import "node:fs/promises";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
@@ -18,7 +15,6 @@ import "../src/min-ada/submit-step-02.js";
 import "../src/min-ada/submit-step-03.js";
 import "../src/min-ada/submit-step-04.js";
 import "../src/min-ada/workflow-artifact.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/publish-proof-chunks.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/transition-trace/phas.js";
@@ -31,13 +27,10 @@ import "./support/final-catalogue-emulator.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./support/synthetic-deep-proof.js";
-import "./min-ada-wrongful-rejection-lifecycle.rows.js";
 import "./min-ada-wrongful-rejection-lifecycle.setup.js";
 
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-
-import { afterAll, describe, expect, it } from "vitest";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
+import { describe, expect, it } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -51,12 +44,7 @@ import { submitMinAdaTxStep02 } from "../src/min-ada/submit-step-02.js";
 import { submitMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
 import { submitMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { rows } from "./min-ada-wrongful-rejection-lifecycle.rows.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
@@ -64,21 +52,6 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./support/submit-init-emulator-shared.js";
-
-afterAll(async () => {
-  if (process.env.MIN_ADA_FIT_LEDGER_PATH)
-    await writeVanRossemFitLedger(
-      process.env.MIN_ADA_FIT_LEDGER_PATH,
-      buildVanRossemFitLedger({
-        category: "minAda",
-        blueprintSha256: createHash("sha256")
-          .update(await readFile(process.env.MIDGARD_REAL_BLUEPRINT_PATH!))
-          .digest("hex"),
-        measurements: rows,
-      }),
-      { namedByCaller: true },
-    );
-});
 
 describe("minimum-Ada forced rejection", () => {
   it.each([
@@ -127,29 +100,23 @@ describe("minimum-Ada forced rejection", () => {
         publish: true,
         label: "min-ada outputs",
       });
-      const carriage = await f.capture(
-        "field-publications",
-        () =>
-          publishFaultProofFieldCarriage({
-            lucid: f.h.proverLucid,
-            signer: f.h.proverSigner,
-            planned,
-            publisherAddress: f.h.proverSigner.address,
-            label: "min-ada outputs",
-          }),
-        "publication",
+      const carriage = await f.capture("field-publications", () =>
+        publishFaultProofFieldCarriage({
+          lucid: f.h.proverLucid,
+          signer: f.h.proverSigner,
+          planned,
+          publisherAddress: f.h.proverSigner.address,
+          label: "min-ada outputs",
+        }),
       );
       let certificateUtxo: import("@lucid-evolution/lucid").UTxO | undefined;
       if (planned.plan.tier === "Certified") {
-        const ref = await f.capture(
-          "certificate-publication",
-          () =>
-            publishPlainReferenceScriptUtxo({
-              lucid: f.h.funderLucid,
-              script: f.h.contracts.fieldPreimageCertificate.mintingScript,
-              label: "min-ada field certificate",
-            }),
-          "publication",
+        const ref = await f.capture("certificate-publication", () =>
+          publishPlainReferenceScriptUtxo({
+            lucid: f.h.funderLucid,
+            script: f.h.contracts.fieldPreimageCertificate.mintingScript,
+            label: "min-ada field certificate",
+          }),
         );
         const certified = await f.capture("certificate", () =>
           certifyFaultProofFieldCarriage({
@@ -261,14 +228,11 @@ describe("minimum-Ada forced rejection", () => {
         }),
       );
       expect(proof.txHash).toHaveLength(64);
-      const removal = await f.capture(
-        "removal-publications",
-        () =>
-          publishRemovalReferenceScripts({
-            lucid: f.h.proverLucid,
-            contracts: f.h.contracts,
-          }),
-        "publication",
+      const removal = await f.capture("removal-publications", () =>
+        publishRemovalReferenceScripts({
+          lucid: f.h.proverLucid,
+          contracts: f.h.contracts,
+        }),
       );
       const now = BigInt(f.h.emulator.now());
       await f.capture("remove", () =>
@@ -386,14 +350,11 @@ describe("minimum-Ada forced rejection", () => {
           witnessReferenceScripts: f.h.witnessReferenceScripts,
         }),
       );
-      const removal = await f.capture(
-        "removal-publications",
-        () =>
-          publishRemovalReferenceScripts({
-            lucid: f.h.proverLucid,
-            contracts: f.h.contracts,
-          }),
-        "publication",
+      const removal = await f.capture("removal-publications", () =>
+        publishRemovalReferenceScripts({
+          lucid: f.h.proverLucid,
+          contracts: f.h.contracts,
+        }),
       );
       const now = BigInt(f.h.emulator.now());
       await f.capture("remove", () =>

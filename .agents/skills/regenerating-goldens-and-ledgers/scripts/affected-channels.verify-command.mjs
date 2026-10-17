@@ -196,16 +196,11 @@ export const commandTokens = (channel) => {
     tokens.add(match[1]);
   // A workflow may run the check through the preflight registry by id
   // (`node scripts/preflight.mjs --run <id>`). The registry names a channel
-  // `golden:<name>` or `docs:<name>` after its `<kind>:<name>:check` script,
-  // and a ledger `exec-ledger:<id>` after its `verify-<id>-exec-ledger-v1.mjs`.
+  // `golden:<name>` or `docs:<name>` after its `<kind>:<name>:check` script.
   for (const match of check.matchAll(
     /\brun\s+(fixtures|docs):([A-Za-z0-9_.:-]+):check(?![\w:.-])/gu,
   ))
     tokens.add(`--run ${match[1] === "docs" ? "docs" : "golden"}:${match[2]}`);
-  for (const match of check.matchAll(
-    /\bverify-([a-z0-9-]+)-exec-ledger-v1\.mjs\b/gu,
-  ))
-    tokens.add(`--run exec-ledger:${match[1]}`);
   for (const generator of channel.generators ?? [])
     tokens.add(posix.basename(generator));
   for (const output of channel.outputs ?? [])

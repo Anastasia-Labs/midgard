@@ -84,12 +84,33 @@ import {
   TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
   type TransitionTraceFinalSpendLayout,
 } from "./submit.make-transition-trace-route-spend-redeemer.js";
+import { prepareTransitionFieldStep } from "./submit.transition-field-step.js";
 import { transitionTraceRouteDatum } from "./submit.transition-trace-route-datum.js";
 import { transitionTraceYieldData } from "./yield-data.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
-/** Exact terminal selected by the authenticated router output. */
-export const submitTransitionTraceFinal = async ({
+type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+};
+
+/**
+ * Exact terminal selected by the authenticated router output. A checkpoint
+ * final continues the thread at its own output, one transaction per step;
+ * the steps run in a loop, so each step's state is released once its
+ * transaction confirms rather than held for the rest of the thread.
+ */
+export const submitTransitionTraceFinal = async (
+  config: SubmitTransitionTraceFinalConfig,
+): Promise<SubmitTransitionTraceFinalResult> => {
+  let step = config;
+  for (;;) {
+    const outcome = await submitTransitionTraceFinalStep(step);
+    if (outcome.kind === "final") return outcome.result;
+    step = { ...step, ...outcome.continuation };
+  }
+};
+
+const submitTransitionTraceFinalStep = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -100,11 +121,22 @@ export const submitTransitionTraceFinal = async ({
   additionalReferenceInputs = [],
   depositOpening,
   witnessReferenceScripts,
+  fieldCertificateReferenceScript,
   preSubmitBoundary,
   awaitConfirmation = true,
-}: SubmitTransitionTraceProofConfig & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-}): Promise<SubmitTransitionTraceFinalResult> => {
+}: SubmitTransitionTraceFinalConfig): Promise<
+  | {
+      readonly kind: "checkpoint";
+      readonly continuation: Pick<
+        SubmitTransitionTraceFinalConfig,
+        "threadOutRef" | "depositOpening"
+      >;
+    }
+  | {
+      readonly kind: "final";
+      readonly result: SubmitTransitionTraceFinalResult;
+    }
+> => {
   const proof = readTransitionProof(proofInput);
   const {
     deploymentInfo: parsedDeploymentInfo,
@@ -362,11 +394,15 @@ export const submitTransitionTraceFinal = async ({
                 ? []
                 : [depositExternalReference]),
             ];
+  const outputCbors = allYieldData.find(
+    (item) => item.outputCbors !== undefined,
+  )?.outputCbors;
+  // Only the phases that read the selected output's bytes carry its chunks.
   const selectedOutput =
-    checkpoint?.data == null
-      ? undefined
-      : allYieldData.find((item) => item.outputCbors !== undefined)
-          ?.outputCbors?.[Number(checkpoint.data.output_index)];
+    checkpoint?.data?.output_hash &&
+    [2n, 3n, 7n, 8n, 10n].includes(checkpoint.data.phase)
+      ? outputCbors?.[Number(checkpoint.data.output_index)]
+      : undefined;
   const outputReferences =
     selectedOutput === undefined
       ? []
@@ -405,12 +441,33 @@ export const submitTransitionTraceFinal = async ({
     checkpoint?.data != null &&
     !transitionTracePhaseIsTerminal(checkpoint.data)
   ) {
+    const semantic = semanticYields[0];
+    const fieldStep = await prepareTransitionFieldStep({
+      lucid,
+      network,
+      signer,
+      deploymentInfo: parsedDeploymentInfo,
+      contracts,
+      proof: proofInput,
+      state: checkpoint.data,
+      outputCbors,
+      publish: preSubmitBoundary === undefined,
+      fieldCertificateReferenceScript,
+      baseReferences: [
+        hubOracleUtxo,
+        finalReferenceScript,
+        ...(semantic === undefined ? [] : [semantic.reference]),
+        ...continuationReferences,
+        ...proofReferences,
+        ...outputReferences,
+      ],
+    });
     const planned = nextTransitionTracePhase({
       state: checkpoint.data,
       proof: proofInput,
       yields: allYieldData,
+      ...fieldStep.openings,
     });
-    const semantic = semanticYields[0];
     const nextDatum = Data.to(
       { fraud_prover: signer.paymentKeyHash, data: planned.state },
       TransitionTraceProofCommitmentDatum,
@@ -505,14 +562,7 @@ export const submitTransitionTraceFinal = async ({
       .newTx()
       .collectFrom([selectFeeInput(await lucid.wallet().getUtxos())])
       .collectFrom([threadUtxo], redeemer)
-      .readFrom([
-        hubOracleUtxo,
-        finalReferenceScript,
-        ...(semantic === undefined ? [] : [semantic.reference]),
-        ...continuationReferences,
-        ...proofReferences,
-        ...outputReferences,
-      ]);
+      .readFrom([...fieldStep.referenceInputs]);
     if (depositWitness !== null) {
       const { node } = await resolveCompletedFraudQueueNode({
         lucid,
@@ -535,6 +585,7 @@ export const submitTransitionTraceFinal = async ({
         0n,
         planned.redeemer,
       );
+    checkpointBuilder = fieldStep.withdraw(checkpointBuilder, planned);
     const completed = await checkpointBuilder.pay
       .ToContract(
         threadUtxo.address,
@@ -570,6 +621,7 @@ export const submitTransitionTraceFinal = async ({
                   expectedScript: semantic.validator.withdrawalScript,
                 },
               ]),
+          ...fieldStep.referenceScripts,
         ],
       }),
       boundary: preSubmitBoundary,
@@ -584,20 +636,13 @@ export const submitTransitionTraceFinal = async ({
     await lucid.awaitTx(txHash);
     if (nextIndex === undefined)
       throw new Error("transition checkpoint layout unresolved");
-    return await submitTransitionTraceFinal({
-      lucid,
-      blueprint,
-      deploymentInfo,
-      network,
-      signer,
-      threadOutRef: `${txHash}#${nextIndex.toString()}`,
-      proof: proofInput,
-      depositOpening: retainedDeposit,
-      additionalReferenceInputs,
-      witnessReferenceScripts,
-      preSubmitBoundary,
-      awaitConfirmation,
-    });
+    return {
+      kind: "checkpoint",
+      continuation: {
+        threadOutRef: `${txHash}#${nextIndex.toString()}`,
+        depositOpening: retainedDeposit,
+      },
+    };
   }
 
   const completedFraud =
@@ -756,7 +801,7 @@ export const submitTransitionTraceFinal = async ({
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
-  return Object.freeze({
+  const result = Object.freeze({
     txHash,
     inputIndex: Number(spendLayout.inputIndex),
     outputIndex: Number(spendLayout.outputIndex),
@@ -774,4 +819,5 @@ export const submitTransitionTraceFinal = async ({
     finalIndex,
     awaitedConfirmation: awaitConfirmation,
   });
+  return { kind: "final", result };
 };

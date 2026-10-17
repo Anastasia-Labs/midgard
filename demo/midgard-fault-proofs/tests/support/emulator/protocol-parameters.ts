@@ -6,6 +6,12 @@ import {
   type ProtocolParameters,
 } from "@lucid-evolution/lucid";
 
+import {
+  VAN_ROSSEM_MAX_CPU_UNITS,
+  VAN_ROSSEM_MAX_MEMORY_UNITS,
+  VAN_ROSSEM_MAX_SIGNED_TX_BYTES,
+} from "../../../src/proof-fit/van-rossem.js";
+
 export type DiagnosticCardanoParameterOverrides = Pick<
   ProtocolParameters,
   | "minFeeA"
@@ -27,9 +33,9 @@ export type DiagnosticCardanoParameterOverrides = Pick<
  * fault-proof Lucid Evolution emulator lifecycle.
  */
 export const VAN_ROSSEM_TRANSACTION_LIMITS = Object.freeze({
-  maxTxSize: 16_384,
-  maxTxExMem: 16_500_000n,
-  maxTxExSteps: 10_000_000_000n,
+  maxTxSize: VAN_ROSSEM_MAX_SIGNED_TX_BYTES,
+  maxTxExMem: VAN_ROSSEM_MAX_MEMORY_UNITS,
+  maxTxExSteps: VAN_ROSSEM_MAX_CPU_UNITS,
 });
 
 export const requireJsonRecord = (

@@ -97,34 +97,19 @@ const detectSingleLedgerTransitions = async (
             : mutation.delete_proof,
         label: `${kind} transition mutation`,
       });
-      const candidates = [proof];
-      if ("non_membership_proof" in mutation) {
-        candidates.push(
-          mpfProofFromWitness({
-            key,
-            value: undefined,
-            proof: mutation.non_membership_proof,
-            label: `${kind} transition membership`,
-          }),
-        );
-      } else {
+      if (!("insert_proof" in mutation))
         requireDeletionKeepsTwoChildren({
           proof: mutation.delete_proof,
           opening: mutation.opening,
           label: `${kind} transition mutation`,
         });
-      }
-      for (const candidate of candidates) {
-        if (
-          normalizedMpfRoot(
-            candidate.verify(!inserting),
-            "transition pre-root",
-          ) !== source.trace_proof.value.pre_utxos_root
-        )
-          throw new Error(
-            "Single ledger transition proof differs from authenticated pre-root",
-          );
-      }
+      if (
+        normalizedMpfRoot(proof.verify(!inserting), "transition pre-root") !==
+        source.trace_proof.value.pre_utxos_root
+      )
+        throw new Error(
+          "Single ledger transition proof differs from authenticated pre-root",
+        );
       const after = normalizedMpfRoot(
         proof.verify(inserting),
         "transition post-root",

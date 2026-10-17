@@ -64,6 +64,8 @@ export type NativeTxOptions = {
   readonly invalidVkeyWitness?: true;
   readonly omitVkeyWitness?: true;
   readonly privateKey?: CML.PrivateKey;
+  /** Keys that each add a valid witness after the first one. */
+  readonly extraVkeyWitnessKeys?: readonly CML.PrivateKey[];
   readonly version?: 1n;
 };
 

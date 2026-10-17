@@ -103,7 +103,8 @@ export const verifyDeploymentMembers = (
     )
       throw new Error(`Invalid deployment commands for ${contract}`);
     for (const path of member.familyPaths) {
-      const key = JSON.stringify([member.family, path]);
+      // One path may carry one member of each purpose.
+      const key = JSON.stringify([member.family, path, member.purpose]);
       if (path.length === 0 || paths.has(key))
         throw new Error(
           `Invalid or duplicated family member path for ${contract}`,

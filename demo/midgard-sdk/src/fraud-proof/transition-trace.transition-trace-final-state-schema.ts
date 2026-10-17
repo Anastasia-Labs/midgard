@@ -7,6 +7,7 @@ import {
   type EventToStepProof,
   type IndexedTraceProof,
 } from "../transition-trace.js";
+import { FieldOpeningSchema } from "./field-opening.js";
 import {
   type FaultProofStepCancel,
   faultProofStepDatumSchema,
@@ -17,6 +18,12 @@ import {
   TraceBoundarySide,
 } from "./transition-trace.invalid-one-step-transition-witness-schema.js";
 import {
+  type LedgerDeleteWitness,
+  LedgerDeleteWitnessSchema,
+  type LedgerInsertWitness,
+  LedgerInsertWitnessSchema,
+} from "./transition-trace.invalid-one-step-transition-witness-schema.js";
+import {
   CountFaultWitness,
   InvalidOneStepTransitionWitness,
   OmittedDueL1EventWitness,
@@ -25,7 +32,6 @@ import {
   TransitionFaultProof,
   TransitionFaultProofSchema,
 } from "./transition-trace.transition-fault-schema.js";
-import { type ValidationClaimWitness } from "./validation-dispute.js";
 
 export const TransitionTraceRouteArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -149,23 +155,120 @@ export const TransitionTraceYieldFinalSpendRedeemer =
     TransitionTraceYieldFinalSpendRedeemerSchema,
   );
 
-export const TransitionTraceOpenedOutputsSchema = Data.Object({
-  spend_input_keys: Data.Array(Data.Bytes()),
-  output_hashes: Data.Array(Data.Bytes()),
+/**
+ * One resumed field-walk step of the accepted-transaction final (on-chain
+ * `final_yield.WalkStep`): the field opening and the 53-byte walk or 87-byte
+ * grammar checkpoint the thread's committed hash names (`""` when the grammar
+ * opens).
+ */
+export const TransitionTraceWalkStepSchema = Data.Object({
+  opening: FieldOpeningSchema,
+  checkpoint_bytes: Data.Bytes(),
 });
 
-export type TransitionTraceOpenedOutputs = Data.Static<
-  typeof TransitionTraceOpenedOutputsSchema
+export type TransitionTraceWalkStep = Data.Static<
+  typeof TransitionTraceWalkStepSchema
 >;
 
-export const TransitionTraceOpenedOutputs =
-  asDataType<TransitionTraceOpenedOutputs>(TransitionTraceOpenedOutputsSchema);
+export const TransitionTraceWalkStep = asDataType<TransitionTraceWalkStep>(
+  TransitionTraceWalkStepSchema,
+);
+
+/**
+ * One phase-1 delete step (on-chain `accepted_transaction_yields.DeleteStep`):
+ * the resumed spend-inputs walk and one delete witness per input it visits.
+ */
+export const TransitionTraceDeleteStepSchema = Data.Object({
+  opening: FieldOpeningSchema,
+  checkpoint_bytes: Data.Bytes(),
+  witnesses: Data.Array(LedgerDeleteWitnessSchema),
+});
+
+export type TransitionTraceDeleteStep = {
+  readonly opening: TransitionTraceWalkStep["opening"];
+  readonly checkpoint_bytes: string;
+  readonly witnesses: readonly LedgerDeleteWitness[];
+};
+
+export const TransitionTraceDeleteStep = asDataType<TransitionTraceDeleteStep>(
+  TransitionTraceDeleteStepSchema,
+);
 
 const TransitionTraceDataSummarySchema = Data.Object({
   root: Data.Bytes(),
   cbor_length: Data.Integer(),
   memory: Data.Integer(),
 });
+
+/**
+ * One phase-11 output step (on-chain `accepted_transaction_yields.OutputStep`):
+ * the resumed outputs walk and, for an output replayed whole, its ledger
+ * insert witness.
+ */
+export const TransitionTraceOutputStepSchema = Data.Object({
+  walk: TransitionTraceWalkStepSchema,
+  insert: LedgerInsertWitnessSchema,
+});
+
+export type TransitionTraceOutputStep = {
+  readonly walk: TransitionTraceWalkStep;
+  readonly insert: LedgerInsertWitness;
+};
+
+export const TransitionTraceOutputStep = asDataType<TransitionTraceOutputStep>(
+  TransitionTraceOutputStepSchema,
+);
+
+const TransitionTraceSummaryTripleSchema = Data.Tuple([
+  TransitionTraceDataSummarySchema,
+  TransitionTraceDataSummarySchema,
+  TransitionTraceDataSummarySchema,
+]);
+
+/**
+ * The redeemer of the output-step descriptor verifier (on-chain
+ * `output_pipeline.OutputDescriptorClaim`). `facts` is the Data of the output's
+ * terminal scan facts.
+ */
+export const TransitionTraceOutputDescriptorClaimSchema = Data.Object({
+  index: Data.Integer(),
+  bytes: Data.Bytes(),
+  descriptor: Data.Bytes(),
+  facts: Data.Any(),
+  summary: TransitionTraceSummaryTripleSchema,
+});
+
+export type TransitionTraceOutputDescriptorClaim = Data.Static<
+  typeof TransitionTraceOutputDescriptorClaimSchema
+>;
+
+export const TransitionTraceOutputDescriptorClaim =
+  asDataType<TransitionTraceOutputDescriptorClaim>(
+    TransitionTraceOutputDescriptorClaimSchema,
+  );
+
+/**
+ * The redeemer of the output-step summary verifier (on-chain
+ * `output_pipeline.OutputSummaryClaim`): the output's bytes and scan facts,
+ * the Data of its three summaries, the value fold's asset witnesses and the
+ * datum walk witness.
+ */
+export const TransitionTraceOutputSummaryClaimSchema = Data.Object({
+  bytes: Data.Bytes(),
+  facts: Data.Any(),
+  summary: Data.Any(),
+  value_witnesses: Data.Array(Data.Any()),
+  datum: Data.Any(),
+});
+
+export type TransitionTraceOutputSummaryClaim = Data.Static<
+  typeof TransitionTraceOutputSummaryClaimSchema
+>;
+
+export const TransitionTraceOutputSummaryClaim =
+  asDataType<TransitionTraceOutputSummaryClaim>(
+    TransitionTraceOutputSummaryClaimSchema,
+  );
 
 export const TransitionTraceOutputSummariesSchema = Data.Object({
   summaries: Data.Array(
@@ -190,8 +293,11 @@ export const TransitionTraceFinalStateSchema = Data.Object({
   kind: Data.Integer(),
   phase: Data.Integer(),
   proof_commitment: Data.Object({ hash: Data.Bytes() }),
-  opened: TransitionTraceOpenedOutputsSchema,
-  input_index: Data.Integer(),
+  tx_id: Data.Bytes(),
+  inputs_walk: Data.Bytes(),
+  outputs_walk: Data.Bytes(),
+  output_count: Data.Integer(),
+  output_hash: Data.Bytes(),
   output_index: Data.Integer(),
   current_root: Data.Bytes(),
   summaries: TransitionTraceOutputSummariesSchema,
@@ -314,21 +420,6 @@ export const outOfWindowSourceEventFault = (
 
 export const countFault = (witness: CountFaultWitness): TransitionFault => ({
   CountFault: { witness },
-});
-
-export const acceptedTransactionTransitionMismatchFault = ({
-  claim,
-  terminalAcceptanceWitnessCbor,
-}: {
-  readonly claim: ValidationClaimWitness;
-  readonly terminalAcceptanceWitnessCbor: string;
-}): TransitionFault => ({
-  AcceptedTransactionTransitionMismatch: {
-    witness: {
-      claim,
-      terminal_acceptance_witness_cbor: terminalAcceptanceWitnessCbor,
-    },
-  },
 });
 
 export type TransitionTraceFaultProofFixture = {

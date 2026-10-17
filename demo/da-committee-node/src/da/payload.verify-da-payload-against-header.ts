@@ -10,6 +10,8 @@ import {
   type DaPayloadCountSet,
   type DaPayloadRootSet,
   DaPayloadValidationError,
+  headerCommittedCounts,
+  headerCommittedRoots,
   type PayloadVerificationOptions,
   readMonotonicNow,
   recordTiming,
@@ -154,7 +156,10 @@ export const verifyDaPayloadAgainstHeader = async (
     }
     const roots = await computeDaPayloadRoots(payload);
     const counts = payload.block_body.counts;
-    const rootMismatchFields = daPayloadRootMismatches(header, roots);
+    const rootMismatchFields = daPayloadRootMismatches(
+      header,
+      headerCommittedRoots(roots),
+    );
     if (rootMismatchFields.length > 0) {
       throw new DaPayloadValidationError(
         "root_mismatch",
@@ -163,7 +168,7 @@ export const verifyDaPayloadAgainstHeader = async (
     }
     const countMismatchFields = daPayloadCountMismatches(
       daPayloadHeaderCounts(header),
-      counts,
+      headerCommittedCounts(counts),
     );
     if (countMismatchFields.length > 0) {
       throw new DaPayloadValidationError(
@@ -183,6 +188,7 @@ export const verifyDaPayloadAgainstHeader = async (
         rootsMatch: true,
         stateQueueOutRef: options.stateQueueOutRef,
         headerHash: normalizedHeaderHash,
+        // The body-built validation-trace pair, not the header's pinned one.
         rootSummary: roots,
         countSummary: counts,
         l1Header: {

@@ -112,10 +112,22 @@ export type ValidationSummary = {
 };
 
 export type DaStoredPayloadRootSet = PayloadRootSet & {
+  /**
+   * The header pins the validation-trace pair to the empty tree, so this
+   * field means one of two things depending on the record. Locally verified
+   * records, stored payload records, proof bundles and payload metadata carry
+   * the root built from the body's `validation_traces`. Signature records
+   * converted from a peer attestation and the submitter reconciler's context
+   * carry the header's pinned root. Nothing compares the two.
+   */
   readonly validationTracesRoot: string;
 };
 
 export type DaStoredPayloadCountSet = PayloadCountSet & {
+  /**
+   * The body's declared trace count, or the header's pinned zero, by the same
+   * split as `DaStoredPayloadRootSet.validationTracesRoot`.
+   */
   readonly validationTraceCount: bigint;
 };
 

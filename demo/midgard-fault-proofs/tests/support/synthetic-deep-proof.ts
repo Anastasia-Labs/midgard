@@ -375,3 +375,59 @@ export const syntheticDeepSharedRootProofs = ({
 
   return { root: root.toString("hex"), openings, branchLevels };
 };
+
+/**
+ * An insertion of `(key, value)` at the deepest point an MPF path allows:
+ * `branchLevels - 1` forced branch levels and then a leaf neighbour whose path
+ * shares every earlier nibble with the key's. Returns the roots before and
+ * after the insertion, both reconstructed by the library's own `verify`.
+ */
+export const syntheticDeepInsertProof = ({
+  key,
+  value,
+  branchLevels = MAXIMUM_PROOF_STEP_COUNT,
+}: {
+  readonly key: Buffer;
+  readonly value: Buffer;
+  readonly branchLevels?: number;
+}) => {
+  if (
+    !Number.isInteger(branchLevels) ||
+    branchLevels < 1 ||
+    branchLevels > MAXIMUM_PROOF_STEP_COUNT
+  ) {
+    throw new Error(
+      `branchLevels must be an integer in 1..${String(MAXIMUM_PROOF_STEP_COUNT)}, got ${String(branchLevels)}.`,
+    );
+  }
+  const path = mpfPath(key);
+  const neighborPath =
+    path.slice(0, branchLevels - 1) +
+    ((nibbleAt(path, branchLevels - 1) + 1) % 16).toString(16) +
+    path.slice(branchLevels);
+  const proof = Proof.fromJSON(key, value, [
+    ...Array.from({ length: branchLevels - 1 }, (_unused, level) => ({
+      type: "branch",
+      skip: 0,
+      neighbors: branchNeighbors(level),
+    })),
+    {
+      type: "leaf",
+      skip: 0,
+      neighbor: {
+        key: neighborPath,
+        value: computeHash32(Buffer.from("neighbour")).toString("hex"),
+      },
+    },
+  ]);
+  const before = proof.verify(false);
+  const after = proof.verify(true);
+  if (before === null || after === null) {
+    throw new Error("Synthetic deep insertion did not reconstruct its roots.");
+  }
+  return {
+    preRoot: before.toString("hex"),
+    postRoot: after.toString("hex"),
+    proofCbor: proof.toCBOR().toString("hex"),
+  };
+};

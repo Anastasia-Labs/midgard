@@ -150,16 +150,14 @@ export const retainHistoryTransactions = async (
         value: Buffer.from(value, "hex"),
       })),
     );
-  const [validation, transition] = await Promise.all([
-    root(SDK.ROOT_DOMAINS.validationTraces, descriptors),
-    root(SDK.ROOT_DOMAINS.transitionTrace, transitions),
-  ]);
+  const transition = await root(SDK.ROOT_DOMAINS.transitionTrace, transitions);
+  // The header keeps the base's pinned validation-trace pair; the body keeps
+  // the retained traces.
   const header: SDK.Header = {
     ...base.header,
     expectedNetworkId: input.predecessor.header.expectedNetworkId,
     operatorVkey: input.operatorVkey,
     blockSlot: input.blockSlot,
-    validationTracesRoot: validation.root,
     transitionTraceRoot: transition.root,
     transitionStepCount: BigInt(transitions.length),
   };

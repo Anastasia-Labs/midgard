@@ -5,7 +5,6 @@ import {
 } from "./bounded-item.js";
 import {
   finalizeMidgardCekDataTraverse,
-  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
   nextMidgardCekDataTraverseSpan,
 } from "./cek-data-traverse.js";
 import type { MidgardCekDataSummary } from "./cek-semantic.js";
@@ -122,33 +121,51 @@ export const nextMidgardRedeemerItemProofSpan = (
   return null;
 };
 
-const authenticatedSpan = ({
-  control,
+type SourceSpan = {
+  readonly absoluteStart: number;
+  readonly length: number;
+};
+
+/**
+ * The chunks a source span reads (mirrors `authenticated_span` in
+ * redeemer-item-proof-v1.ak): the chunk of its first byte and the chunk of its
+ * last byte. An empty span reads none, so null.
+ */
+export const midgardRedeemerItemSpanChunks = ({
   absoluteStart,
   length,
+}: SourceSpan): { readonly first: number; readonly last: number } | null =>
+  length <= 0
+    ? null
+    : {
+        first: Math.floor(absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES),
+        last: Math.floor(
+          (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+        ),
+      };
+
+const authenticatedSpan = ({
+  control,
+  span,
   chunkProof,
   nextChunkProof,
 }: {
   readonly control: MidgardRedeemerItemProofControl;
-  readonly absoluteStart: number;
-  readonly length: number;
+  readonly span: SourceSpan;
   readonly chunkProof: MidgardBoundedItemChunkProof;
   readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
 }): Buffer | null => {
+  const { absoluteStart, length } = span;
+  const chunks = midgardRedeemerItemSpanChunks(span);
   if (
-    length <= 0 ||
-    length > MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN ||
+    chunks === null ||
     absoluteStart < 0 ||
     absoluteStart + length > control.totalLength
   ) {
     return null;
   }
-  const firstChunkIndex = Math.floor(
-    absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
-  const lastChunkIndex = Math.floor(
-    (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
+  // A derived span is at most 132 bytes, under the 4,095-byte chunk.
+  const { first: firstChunkIndex, last: lastChunkIndex } = chunks;
   const matches = (
     proof: MidgardBoundedItemChunkProof,
     chunkIndex: number,
@@ -161,12 +178,7 @@ const authenticatedSpan = ({
       expectedCommitment: control.itemCommitment,
       proof,
     });
-  if (
-    lastChunkIndex > firstChunkIndex + 1 ||
-    !matches(chunkProof, firstChunkIndex)
-  ) {
-    return null;
-  }
+  if (!matches(chunkProof, firstChunkIndex)) return null;
   const localStart =
     absoluteStart - firstChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
   if (lastChunkIndex === firstChunkIndex) {
@@ -182,6 +194,47 @@ const authenticatedSpan = ({
     : null;
 };
 
+/**
+ * Authenticate a source window against the item commitment (mirrors
+ * `authenticate_source_window`): no span and an empty span within the item
+ * take no chunk proof, and a non-empty span takes exactly the proofs of the
+ * chunks it reads. Null is missing, extra or wrong evidence; otherwise the
+ * window's bytes, or null bytes for no span.
+ */
+export const authenticateMidgardRedeemerItemSourceWindow = ({
+  control,
+  span,
+  witness,
+}: {
+  readonly control: MidgardRedeemerItemProofControl;
+  readonly span: SourceSpan | null;
+  readonly witness: Pick<
+    MidgardRedeemerItemProofWitness,
+    "chunkProof" | "nextChunkProof"
+  >;
+}): { readonly sourceBytes: Buffer | null } | null => {
+  if (span === null) {
+    return witness.chunkProof === null && witness.nextChunkProof === null
+      ? { sourceBytes: null }
+      : null;
+  }
+  if (witness.chunkProof === null) {
+    return span.length === 0 &&
+      span.absoluteStart >= 0 &&
+      span.absoluteStart <= control.totalLength &&
+      witness.nextChunkProof === null
+      ? { sourceBytes: Buffer.alloc(0) }
+      : null;
+  }
+  const sourceBytes = authenticatedSpan({
+    control,
+    span,
+    chunkProof: witness.chunkProof,
+    nextChunkProof: witness.nextChunkProof,
+  });
+  return sourceBytes === null ? null : { sourceBytes };
+};
+
 /** Authenticate the canonical next source window, distinguishing no window from invalid evidence. */
 export const readMidgardRedeemerItemProofSource = ({
   control,
@@ -189,23 +242,11 @@ export const readMidgardRedeemerItemProofSource = ({
 }: {
   readonly control: MidgardRedeemerItemProofControl;
   readonly witness: MidgardRedeemerItemProofWitness;
-}): { readonly sourceBytes: Buffer | null } | null => {
-  if (!isWellFormedMidgardRedeemerItemProofControl(control)) return null;
-  const span = nextMidgardRedeemerItemProofSpan(control);
-  let sourceBytes: Buffer | null = null;
-  if (span === null) {
-    if (witness.chunkProof !== null || witness.nextChunkProof !== null) {
-      return null;
-    }
-  } else {
-    if (witness.chunkProof === null) return null;
-    sourceBytes = authenticatedSpan({
-      control,
-      ...span,
-      chunkProof: witness.chunkProof,
-      nextChunkProof: witness.nextChunkProof,
-    });
-    if (sourceBytes === null) return null;
-  }
-  return { sourceBytes };
-};
+}): { readonly sourceBytes: Buffer | null } | null =>
+  isWellFormedMidgardRedeemerItemProofControl(control)
+    ? authenticateMidgardRedeemerItemSourceWindow({
+        control,
+        span: nextMidgardRedeemerItemProofSpan(control),
+        witness,
+      })
+    : null;

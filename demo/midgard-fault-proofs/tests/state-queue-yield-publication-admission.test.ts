@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   CML,
   Emulator,
@@ -11,12 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../src/proof-fit/van-rossem.js";
 import {
   alwaysSucceedsBlueprintPath,
   readBlueprint,
@@ -32,19 +23,13 @@ import {
   publishStateQueueYieldReferenceScript,
 } from "./support/emulator/reference-scripts.js";
 
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/state-queue-publication-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
 describe("state-queue withdraw-zero publication admission V1", () => {
   it("publishes the mint policy and every arm-specific rewarding script under Van Rossem limits", async () => {
     const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const consumer = generateEmulatorAccount({ lovelace: 1_000_000_000n });
+    const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const emulator = new Emulator(
-      [account, consumer],
+      [account, consumer, publisher],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
     alignEmulatorToWholeSecond(emulator);
@@ -53,7 +38,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(account.seedPhrase);
     const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-      await createReferenceScriptPublisher(lucid, emulator.now());
+      await createReferenceScriptPublisher(lucid, publisher, emulator);
     const policy = CML.NativeScript.from_cbor_hex(
       referenceScriptAuth.mintingScriptCBOR,
     );
@@ -61,6 +46,9 @@ describe("state-queue withdraw-zero publication admission V1", () => {
     expect(signers.len()).toBe(1);
     const publisherKey = signers.get(0);
     expect(publisherKey.to_hex()).toBe(
+      getAddressDetails(publisher.address).paymentCredential!.hash,
+    );
+    expect(publisherKey.to_hex()).not.toBe(
       getAddressDetails(account.address).paymentCredential!.hash,
     );
     expect(publisherKey.to_hex()).not.toBe(
@@ -80,7 +68,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       referenceScriptPublisher,
     };
 
-    const measurements: VanRossemFitMeasurement[] = [];
+    const measured: string[] = [];
     const mint = await publishPlainReferenceScriptUtxo({
       lucid: consumerLucid,
       script: contracts.stateQueue.mintingScript,
@@ -94,14 +82,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(
         VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
       );
-      measurements.push({
-        name,
-        maximumShape: "fully applied reference-script publication",
-        kind: "publication",
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
+      measured.push(name);
     };
     record("mint", mint.publicationMeasurement);
     for (const arm of [
@@ -117,7 +98,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
         arm,
       });
       record(arm, publication.publicationMeasurement);
-      expect(publication.utxo.address).toBe(account.address);
+      expect(publication.utxo.address).toBe(publisher.address);
       await expect(lucid.utxosByOutRef([nonceUtxo])).resolves.toEqual([
         nonceUtxo,
       ]);
@@ -137,7 +118,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
     // Every publication the admission claim covers was actually measured: the
     // mint policy plus one rewarding script per state-queue arm, no arm
     // silently absent from the loop above.
-    expect(measurements.map((measurement) => measurement.name)).toEqual([
+    expect(measured).toEqual([
       "mint",
       "commit",
       "unattestedTimeout",
@@ -145,16 +126,5 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       "fraudRemoval",
       "merge",
     ]);
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: "stateQueue/publication",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-    }
   });
 });

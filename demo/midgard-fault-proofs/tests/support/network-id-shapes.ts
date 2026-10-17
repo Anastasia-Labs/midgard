@@ -4,9 +4,7 @@
  * Both are properties of the §8 carriage planner, not of any one measurement:
  * the §10 scan folds the field in batches, so the bound on a provable forced
  * transaction is the largest field the carriage can authenticate, not the
- * largest one a single transaction can decode. They live here rather than in a
- * suite because the fit ledger and the lifecycle suite must pin the same two
- * numbers, and a divergence between them would be a silent coverage hole.
+ * largest one a single transaction can decode.
  */
 
 /**

@@ -73,6 +73,7 @@ export * from "./out-ref.js";
 export * from "./plutus-data-cbor.js";
 export * from "./redeemer-item-proof.js";
 export * from "./retention-window.js";
+export * from "./script-budgets.js";
 export * from "./script-proof.js";
 export * from "./validation-dispute.js";
 export * from "./validation-merkle.js";

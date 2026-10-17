@@ -8,7 +8,6 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/field-opening.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/witnesses.js";
@@ -26,22 +25,14 @@ import "./witness-script-decoding-lifecycle.authentication-seams.js";
 import "./witness-script-decoding-lifecycle.make-harness.js";
 import "./witness-script-decoding-lifecycle.scan-honest-accepted-to-close.js";
 
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
   planWitnessScriptDecodingStep03Transition,
   WitnessScriptDecodingResultClasses,
 } from "../src/witness-script-decoding/index.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -57,13 +48,10 @@ import {
 import {
   AUTHENTICATION_SEAMS,
   CANCELLABLE_STEPS,
-  CATEGORY_ID,
   coverage,
   DEEP_DEPTH,
-  ledgerPath,
-  measurements,
   REASON_ARMS,
-  WRITE_LEDGER,
+  recordedNames,
 } from "./witness-script-decoding-lifecycle.authentication-seams.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
@@ -118,22 +106,21 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
 
     // Cancel from every physical step.
     await h.cancel(
-      await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(setup.fraudulentBlockOutRef, null),
       0,
       "accepted-header-cancel-step01",
-      shape.label,
     );
     const atStep02 = await h.step01Accepted(
-      await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(setup.fraudulentBlockOutRef, null),
       inclusionOf(shape),
       setup.fraudulentBlockOutRef,
       0n,
     );
-    await h.cancel(atStep02, 1, "accepted-header-cancel-step02", shape.label);
+    await h.cancel(atStep02, 1, "accepted-header-cancel-step02");
     const atStep03 = (
       await h.step02(
         await h.step01Accepted(
-          await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+          await h.init(setup.fraudulentBlockOutRef, null),
           inclusionOf(shape),
           setup.fraudulentBlockOutRef,
           0n,
@@ -145,13 +132,13 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         published.certificateUtxo,
       )
     ).nextThreadOutRef;
-    await h.cancel(atStep03, 2, "accepted-header-cancel-step03", shape.label);
+    await h.cancel(atStep03, 2, "accepted-header-cancel-step03");
     const atStep04 = (
       await h.scanToClose(
         (
           await h.step02(
             await h.step01Accepted(
-              await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+              await h.init(setup.fraudulentBlockOutRef, null),
               inclusionOf(shape),
               setup.fraudulentBlockOutRef,
               0n,
@@ -165,17 +152,12 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         ).nextThreadOutRef,
         evidence,
         null,
-        shape.label,
       )
     ).threadOutRef;
-    await h.cancel(atStep04, 3, "accepted-header-cancel-step04", shape.label);
+    await h.cancel(atStep04, 3, "accepted-header-cancel-step04");
 
     // Step-01 seam: the transaction's membership in the committed block.
-    const membershipThread = await h.init(
-      setup.fraudulentBlockOutRef,
-      null,
-      shape.label,
-    );
+    const membershipThread = await h.init(setup.fraudulentBlockOutRef, null);
     await expectOnchainRefusal(() =>
       h.step01Accepted(
         membershipThread,
@@ -190,7 +172,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     // Step-02 seam: a coordinate past the field's item count. Step 01 binds
     // any non-negative ordinal; the field door refuses the opening.
     const outOfRange = await h.step01Accepted(
-      await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(setup.fraudulentBlockOutRef, null),
       inclusionOf(shape),
       setup.fraudulentBlockOutRef,
       1n,
@@ -220,7 +202,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const honestBound = (
       await h.step02(
         await h.step01Accepted(
-          await h.init(setup.fraudulentBlockOutRef, null, honestNative.label),
+          await h.init(setup.fraudulentBlockOutRef, null),
           inclusionOf(honestNative),
           setup.fraudulentBlockOutRef,
           0n,
@@ -250,11 +232,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         (
           await h.step02(
             await h.step01Accepted(
-              await h.init(
-                setup.fraudulentBlockOutRef,
-                null,
-                honestPlutus.label,
-              ),
+              await h.init(setup.fraudulentBlockOutRef, null),
               inclusionOf(honestPlutus),
               setup.fraudulentBlockOutRef,
               0n,
@@ -265,7 +243,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         ).nextThreadOutRef,
         plutusEvidence,
         null,
-        honestPlutus.label,
       )
     ).threadOutRef;
     await expectOnchainRefusal(() => h.step04Raw(plutusClosed));
@@ -276,7 +253,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       setup.fraudulentBlockOutRef,
       "accepted-header-init",
-      shape.label,
     );
     const bound = await h.step01Accepted(
       init,
@@ -284,7 +260,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       setup.fraudulentBlockOutRef,
       0n,
       "accepted-header-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -301,20 +276,18 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "accepted-header",
-      shape.label,
     );
     expect(closed.resumes).toBe(0);
     await h.step04(
       closed.threadOutRef,
       evidence,
       "accepted-header-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(setup.headerHash);
     coverage.reason("WitnessScriptHeaderMalformed", "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     coverage.scenario("maximum_supported_evidence");
-    await h.remove(setup.headerHash, "accepted-header-remove", shape.label);
+    await h.remove(setup.headerHash, "accepted-header-remove");
   }, 900_000);
 
   it("convicts the accepted malformed payload at the maximum item through the resumable scan, refusing every field-opening and scan seam first", async () => {
@@ -332,7 +305,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
 
     // Step-02 seams on one bound thread.
     const bound = await h.step01Accepted(
-      await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(setup.fraudulentBlockOutRef, null),
       inclusionOf(shape),
       setup.fraudulentBlockOutRef,
       0n,
@@ -465,7 +438,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       setup.fraudulentBlockOutRef,
       "accepted-native-init",
-      shape.label,
     );
     const rebound = await h.step01Accepted(
       init,
@@ -473,7 +445,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       setup.fraudulentBlockOutRef,
       0n,
       "accepted-native-step01",
-      shape.label,
     );
     const reopened = await h.step02(
       rebound,
@@ -487,7 +458,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       reopened.nextThreadOutRef,
       evidence,
       "accepted-native",
-      shape.label,
     );
     expect(closed.resumes).toBeGreaterThan(0);
     expect((await h.scanStateAt(closed.threadOutRef, 3)).result_class).toBe(
@@ -497,13 +467,12 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       closed.threadOutRef,
       evidence,
       "accepted-native-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(setup.headerHash);
     coverage.reason("WitnessNativeScriptMalformed", "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     coverage.scenario("maximum_supported_evidence");
-    await h.remove(setup.headerHash, "accepted-native-remove", shape.label);
+    await h.remove(setup.headerHash, "accepted-native-remove");
   }, 900_000);
 
   it("convicts the accepted empty tag-0 payload, which step 02 closes as the structural class", async () => {
@@ -520,7 +489,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       setup.fraudulentBlockOutRef,
       "accepted-empty-init",
-      shape.label,
     );
     const bound = await h.step01Accepted(
       init,
@@ -528,7 +496,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       setup.fraudulentBlockOutRef,
       0n,
       "accepted-empty-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -544,19 +511,17 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "accepted-empty",
-      shape.label,
     );
     expect(closed.resumes).toBe(0);
     await h.step04(
       closed.threadOutRef,
       evidence,
       "accepted-empty-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(setup.headerHash);
     coverage.reason("WitnessNativeScriptMalformed", "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
-    await h.remove(setup.headerHash, "accepted-empty-remove", shape.label);
+    await h.remove(setup.headerHash, "accepted-empty-remove");
   }, 600_000);
 
   it("contradicts a wrongful header-malformed rejection of a decodable script, refusing every forced-door seam first", async () => {
@@ -610,11 +575,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       ["successor_script", { nextStepIndex: 2 }],
     ];
     for (const [seam, patch] of seams) {
-      const thread = await h.init(
-        forced.setup.fraudulentBlockOutRef,
-        null,
-        shape.label,
-      );
+      const thread = await h.init(forced.setup.fraudulentBlockOutRef, null);
       await expectOnchainRefusal(() =>
         h.step01ForcedRaw(thread, forced, evidence, patch),
       );
@@ -629,7 +590,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const published = await h.publishField(shape, null);
     expect(published.certificateUtxo).toBeUndefined();
     const rawThread = await h.step01Forced(
-      await h.init(forced.setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(forced.setup.fraudulentBlockOutRef, null),
       forced,
       evidence.finding.witnessSetHash,
       0n,
@@ -645,7 +606,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       forced.setup.fraudulentBlockOutRef,
       "forced-header-init",
-      shape.label,
     );
     const bound = await h.step01Forced(
       init,
@@ -653,7 +613,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       evidence.finding.witnessSetHash,
       0n,
       "forced-header-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -665,7 +624,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "forced-header",
-      shape.label,
     );
     expect((await h.scanStateAt(closed.threadOutRef, 3)).result_class).toBe(
       BigInt(WitnessScriptDecodingResultClasses.NoFault),
@@ -674,16 +632,11 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       closed.threadOutRef,
       evidence,
       "forced-header-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(forced.setup.headerHash);
     coverage.reason("WitnessScriptHeaderMalformed", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
-    await h.remove(
-      forced.setup.headerHash,
-      "forced-header-remove",
-      shape.label,
-    );
+    await h.remove(forced.setup.headerHash, "forced-header-remove");
   }, 600_000);
 
   it("contradicts a wrongful native-malformed rejection of a non-native script, which closes at step 02", async () => {
@@ -695,7 +648,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       forced.setup.fraudulentBlockOutRef,
       "forced-native-init",
-      shape.label,
     );
     const bound = await h.step01Forced(
       init,
@@ -703,7 +655,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       evidence.finding.witnessSetHash,
       0n,
       "forced-native-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -718,22 +669,16 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "forced-native",
-      shape.label,
     );
     await h.step04(
       closed.threadOutRef,
       evidence,
       "forced-native-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(forced.setup.headerHash);
     coverage.reason("WitnessNativeScriptMalformed", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
-    await h.remove(
-      forced.setup.headerHash,
-      "forced-native-remove",
-      shape.label,
-    );
+    await h.remove(forced.setup.headerHash, "forced-native-remove");
   }, 600_000);
 
   it("contradicts a wrongful node-limit rejection of the widest canonical script the field bound admits", async () => {
@@ -750,7 +695,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       forced.setup.fraudulentBlockOutRef,
       "forced-node-wide-init",
-      shape.label,
     );
     const bound = await h.step01Forced(
       init,
@@ -758,7 +702,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       evidence.finding.witnessSetHash,
       0n,
       "forced-node-wide-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -772,7 +715,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "forced-node-wide",
-      shape.label,
     );
     // 2,119 primitive steps in sixteen-step segments, plus one segment cut
     // at a bounded-item chunk window: 134 scan transactions, 133 of them
@@ -782,17 +724,12 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       closed.threadOutRef,
       evidence,
       "forced-node-wide-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(forced.setup.headerHash);
     coverage.reason("WitnessNativeScriptNodeLimit", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
     coverage.scenario("maximum_supported_evidence");
-    await h.remove(
-      forced.setup.headerHash,
-      "forced-node-wide-remove",
-      shape.label,
-    );
+    await h.remove(forced.setup.headerHash, "forced-node-wide-remove");
   }, 900_000);
 
   it("contradicts a wrongful depth-limit rejection of the deepest canonical script the field bound admits", async () => {
@@ -810,7 +747,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const init = await h.init(
       forced.setup.fraudulentBlockOutRef,
       "forced-depth-deep-init",
-      shape.label,
     );
     const bound = await h.step01Forced(
       init,
@@ -818,7 +754,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       evidence.finding.witnessSetHash,
       0n,
       "forced-depth-deep-step01",
-      shape.label,
     );
     const opened = await h.step02(
       bound,
@@ -832,7 +767,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       opened.nextThreadOutRef,
       evidence,
       "forced-depth-deep",
-      shape.label,
     );
     // `2·depth + 2` primitive steps in sixteen-step segments, plus the cuts
     // the planner makes at the eight bounded-item chunk windows of the
@@ -846,7 +780,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       closed.threadOutRef,
       evidence,
       "forced-depth-deep-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(forced.setup.headerHash);
     coverage.reason("WitnessNativeScriptDepthLimit", "forced_rejection_wrong");
@@ -854,11 +787,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     if (DEEP_DEPTH === DEEP_MAXIMUM_DEPTH)
       coverage.scenario("maximum_supported_evidence");
     await runEmulatorLifecycleStage("witness-depth.remove", () =>
-      h.remove(
-        forced.setup.headerHash,
-        "forced-depth-deep-remove",
-        shape.label,
-      ),
+      h.remove(forced.setup.headerHash, "forced-depth-deep-remove"),
     );
   }, 1_800_000);
 
@@ -873,7 +802,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       const evidence = forcedEvidence(shape, forced.orderKey, reason);
       expect(evidence.resultClass).toBe(evidence.finding.accusedClass);
       const bound = await h.step01Forced(
-        await h.init(forced.setup.fraudulentBlockOutRef, null, shape.label),
+        await h.init(forced.setup.fraudulentBlockOutRef, null),
         forced,
         evidence.finding.witnessSetHash,
         0n,
@@ -883,7 +812,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         opened.nextThreadOutRef,
         evidence,
         null,
-        shape.label,
       );
       await expectOnchainRefusal(() => h.step04Raw(closed.threadOutRef));
       coverage.reason(arm);
@@ -896,11 +824,7 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     const h = await makeHarness();
     const shape = smallCanonicalShape();
     const forced = await h.forcedBlock(shape, "NetworkIdMismatch");
-    const thread = await h.init(
-      forced.setup.fraudulentBlockOutRef,
-      null,
-      shape.label,
-    );
+    const thread = await h.init(forced.setup.fraudulentBlockOutRef, null);
     await expectOnchainRefusal(() =>
       submitWitnessScriptDecodingStep01ForcedRaw({
         lucid: h.lucid,
@@ -926,14 +850,11 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
     await h.cancel(thread, 0);
   }, 600_000);
 
-  it("closes the coverage gate and the Van Rossem fit ledger", async () => {
-    // A successful proof mint is not a completed journey. Refuse to write
-    // partial evidence if any preceding lifecycle failed during removal.
+  it("closes the coverage gate", () => {
+    // A successful proof mint is not a completed journey: every lifecycle
+    // above must have reached its removal.
     expect(
-      measurements
-        .map((entry) => entry.name)
-        .filter((name) => name.endsWith("-remove"))
-        .sort(),
+      recordedNames.filter((name) => name.endsWith("-remove")).sort(),
     ).toEqual([
       "accepted-empty-remove",
       "accepted-header-remove",
@@ -964,33 +885,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       }),
     ).toThrow(
       "incomplete fault-proof lifecycle coverage: WitnessNativeScriptNodeLimit success directions: accepted_invalid; WitnessNativeScriptDepthLimit success directions: accepted_invalid",
-    );
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: `witnessScriptDecoding:${CATEGORY_ID}:testnet`,
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (WRITE_LEDGER) {
-      if (DEEP_DEPTH !== DEEP_MAXIMUM_DEPTH)
-        throw new Error("the ledger is written only at the maximum deep shape");
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(`[witness-script-decoding-fit-ledger] wrote ${ledgerPath}`);
-    }
-    console.info(
-      `[witness-script-decoding-fit-ledger] ${JSON.stringify(ledger.entries)}`,
     );
   });
 });

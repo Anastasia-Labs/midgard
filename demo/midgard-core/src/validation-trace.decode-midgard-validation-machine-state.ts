@@ -4,7 +4,6 @@ import {
   asBytes,
   decodeSingleCbor,
   encodeCbor,
-  encodeCborArrayRaw,
 } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -13,34 +12,20 @@ import {
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "./consensus-profile.js";
 import {
-  encodeMidgardMpfProofDescriptor,
-  type MidgardMpfProofDescriptor,
-} from "./mpf-proof-fold.js";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "./plutus-data-cbor.js";
-import {
-  buildMidgardValidationMerkleFrontier,
-  commitMidgardValidationMerkleFrontier,
-  type MidgardValidationMerkleFrontier,
-} from "./validation-merkle.js";
-import {
   asBoundedUint,
-  encodeMidgardValidationMachineState,
   exactCode,
   fail,
   hashDomain,
-  LEDGER_DELTA_DOMAIN,
+  MIDGARD_VALIDATION_MACHINE_STATE_FIELDS,
   type MidgardValidationMachineState,
-  MidgardValidationPhase,
-  type MidgardValidationPhaseName,
+  type MidgardValidationMachineStateFieldName,
   type MidgardValidationTraceDescriptor,
   MidgardValidationVerdict,
   phaseNames,
   sourceKindNames,
-  STATE_HASH_DOMAIN,
   validateVerdictRejectionBinding,
   VALIDATION_CONTEXT_DOMAIN,
   verdictNames,
-  WORK_WITNESS_DOMAIN,
   ZERO_HASH32,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
 
@@ -51,78 +36,84 @@ export const decodeMidgardValidationMachineState = (
     decodeSingleCbor(bytes),
     "validation_machine_state_v1",
   );
-  if (fields.length !== 15) {
+  const fieldCount = MIDGARD_VALIDATION_MACHINE_STATE_FIELDS.length;
+  if (fields.length !== fieldCount) {
     return fail(
-      "validation_machine_state_v1 must contain exactly 15 fields",
+      `validation_machine_state_v1 must contain exactly ${fieldCount.toString()} fields`,
       `length=${fields.length.toString()}`,
     );
   }
-  const machineVersion = asBoundedUint(fields[0], "state.machine_version", 255);
+  const field = (name: MidgardValidationMachineStateFieldName): unknown =>
+    fields[MIDGARD_VALIDATION_MACHINE_STATE_FIELDS.indexOf(name)];
+  const hash = (
+    name: MidgardValidationMachineStateFieldName,
+    label: string,
+  ): Hash32 => ensureHash32(asBytes(field(name), label), label);
+  const machineVersion = asBoundedUint(
+    field("machineVersion"),
+    "state.machine_version",
+    255,
+  );
   if (machineVersion !== MIDGARD_VALIDATION_MACHINE_VERSION) {
     return fail(
       "Unsupported validation machine version",
       machineVersion.toString(),
     );
   }
-  const executionCpu = asBigInt(fields[10], "state.execution_cpu");
-  const executionMemory = asBigInt(fields[11], "state.execution_memory");
+  const executionCpu = asBigInt(field("executionCpu"), "state.execution_cpu");
+  const executionMemory = asBigInt(
+    field("executionMemory"),
+    "state.execution_memory",
+  );
   if (executionCpu < 0n || executionMemory < 0n) {
     return fail("Validation execution units must be unsigned");
   }
-  const verdict = exactCode(fields[12], "validation verdict", verdictNames);
-  const rejectionCodeHash = ensureHash32(
-    asBytes(fields[13], "state.rejection_code_hash"),
+  const verdict = exactCode(
+    field("verdict"),
+    "validation verdict",
+    verdictNames,
+  );
+  const rejectionCodeHash = hash(
+    "rejectionCodeHash",
     "state.rejection_code_hash",
   );
   validateVerdictRejectionBinding(verdict, rejectionCodeHash, "state");
   return {
     machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-    eventKeyHash: ensureHash32(
-      asBytes(fields[1], "state.event_key_hash"),
-      "state.event_key_hash",
-    ),
-    transactionId: ensureHash32(
-      asBytes(fields[2], "state.transaction_id"),
-      "state.transaction_id",
-    ),
-    transactionCommitment: ensureHash32(
-      asBytes(fields[3], "state.transaction_commitment"),
+    eventKeyHash: hash("eventKeyHash", "state.event_key_hash"),
+    transactionId: hash("transactionId", "state.transaction_id"),
+    transactionCommitment: hash(
+      "transactionCommitment",
       "state.transaction_commitment",
     ),
-    validationContextHash: ensureHash32(
-      asBytes(fields[4], "state.validation_context_hash"),
+    validationContextHash: hash(
+      "validationContextHash",
       "state.validation_context_hash",
     ),
-    sourceKind: exactCode(fields[5], "validation source kind", sourceKindNames),
-    priorLedgerRoot: ensureHash32(
-      asBytes(fields[6], "state.prior_ledger_root"),
-      "state.prior_ledger_root",
+    sourceKind: exactCode(
+      field("sourceKind"),
+      "validation source kind",
+      sourceKindNames,
     ),
-    phase: exactCode(fields[7], "validation phase", phaseNames),
+    priorLedgerRoot: hash("priorLedgerRoot", "state.prior_ledger_root"),
+    phase: exactCode(field("phase"), "validation phase", phaseNames),
     programCounter: asBoundedUint(
-      fields[8],
+      field("programCounter"),
       "state.program_counter",
       0xffff_ffff,
     ),
-    workRoot: ensureHash32(
-      asBytes(fields[9], "state.work_root"),
-      "state.work_root",
-    ),
+    workRoot: hash("workRoot", "state.work_root"),
     executionCpu,
     executionMemory,
     verdict,
     rejectionCodeHash,
-    ledgerDeltaRoot: ensureHash32(
-      asBytes(fields[14], "state.ledger_delta_root"),
-      "state.ledger_delta_root",
-    ),
   };
 };
 
-export const hashMidgardValidationMachineState = (
-  state: MidgardValidationMachineState,
-): Hash32 =>
-  hashDomain(STATE_HASH_DOMAIN, encodeMidgardValidationMachineState(state));
+export {
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+} from "./validation-trace.hash-midgard-validation-step.js";
 
 export const encodeMidgardValidationTraceDescriptor = (
   descriptor: MidgardValidationTraceDescriptor,
@@ -224,103 +215,10 @@ export const decodeMidgardValidationTraceDescriptor = (
   };
 };
 
-/**
- * Commits the canonical witness consumed by one validation-machine
- * transition. The phase and program counter are inside the commitment so the
- * same bytes cannot be replayed as a different instruction.
- */
-export const hashMidgardValidationWorkWitness = ({
-  phase,
-  programCounter,
-  witnessCbor,
-}: {
-  readonly phase: MidgardValidationPhaseName;
-  readonly programCounter: number;
-  readonly witnessCbor: Uint8Array;
-}): Hash32 =>
-  hashDomain(
-    WORK_WITNESS_DOMAIN,
-    encodeCborArrayRaw([
-      encodeCbor(BigInt(MidgardValidationPhase[phase])),
-      encodeCbor(
-        BigInt(
-          asBoundedUint(
-            programCounter,
-            "work_witness.program_counter",
-            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-          ),
-        ),
-      ),
-      Buffer.from(
-        aikenSerialisedPlutusDataCborPreservingMapOrder(
-          encodeCbor(Buffer.from(witnessCbor)).toString("hex"),
-        ),
-        "hex",
-      ),
-    ]),
-  );
-
 export const hashMidgardValidationContext = (
   canonicalContextCbor: Uint8Array,
 ): Hash32 =>
   hashDomain(VALIDATION_CONTEXT_DOMAIN, Buffer.from(canonicalContextCbor));
-
-export const hashMidgardValidationLedgerDeltaCbor = (
-  canonicalLedgerDeltaCbor: Uint8Array,
-): Hash32 =>
-  hashDomain(LEDGER_DELTA_DOMAIN, Buffer.from(canonicalLedgerDeltaCbor));
-
-const LEDGER_DELTA_OPERATION_DOMAIN = Buffer.from(
-  "MidgardValidationLedgerDeltaOperationV1",
-  "utf8",
-);
-
-export type MidgardValidationLedgerDeltaOperation =
-  | {
-      readonly type: "delete";
-      readonly key: Uint8Array;
-    }
-  | {
-      readonly type: "insert";
-      readonly key: Uint8Array;
-      readonly value: Uint8Array;
-    };
-
-export type MidgardValidationAuthenticatedLedgerDeltaOperation =
-  MidgardValidationLedgerDeltaOperation & {
-    readonly proofDescriptor: MidgardMpfProofDescriptor;
-  };
-
-export const hashMidgardValidationLedgerDeltaOperation = (
-  operation: MidgardValidationAuthenticatedLedgerDeltaOperation,
-): Hash32 =>
-  hashDomain(
-    LEDGER_DELTA_OPERATION_DOMAIN,
-    Buffer.concat([
-      encodeCbor(operation.type === "delete" ? 0n : 1n),
-      encodeCbor(Buffer.from(operation.key)),
-      encodeCbor(
-        operation.type === "delete"
-          ? Buffer.alloc(0)
-          : Buffer.from(operation.value),
-      ),
-      encodeMidgardMpfProofDescriptor(operation.proofDescriptor),
-    ]),
-  );
-
-export const buildMidgardValidationLedgerDeltaFrontier = (
-  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperation[],
-): MidgardValidationMerkleFrontier =>
-  buildMidgardValidationMerkleFrontier(
-    operations.map(hashMidgardValidationLedgerDeltaOperation),
-  );
-
-export const hashMidgardValidationLedgerDelta = (
-  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperation[],
-): Hash32 =>
-  commitMidgardValidationMerkleFrontier(
-    buildMidgardValidationLedgerDeltaFrontier(operations),
-  );
 
 export const MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH = ensureHash32(
   ZERO_HASH32,

@@ -158,13 +158,31 @@ export const rebind = async (payload: SDK.DaPayload) => {
     ...payload.block_body.header,
     ...roots,
     utxosRoot: payload.block_body.header.utxosRoot,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
   };
+  return withHeader(payload, header);
+};
+
+const withHeader = async (payload: SDK.DaPayload, header: SDK.Header) => {
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
     ...payload,
     block_body: { ...payload.block_body, header, header_hash: headerHash },
   };
 };
+
+/** The payload under a header that commits its built validation-trace pair. */
+export const withBuiltValidationTracePair = async (payload: SDK.DaPayload) =>
+  withHeader(payload, {
+    ...payload.block_body.header,
+    validationTracesRoot: (
+      await Effect.runPromise(computeDaPayloadRoots(payload))
+    ).validationTracesRoot,
+    validationTraceCount: payload.block_body.counts.validationTraceCount,
+  });
 
 const imported = (
   payload: SDK.DaPayload,
