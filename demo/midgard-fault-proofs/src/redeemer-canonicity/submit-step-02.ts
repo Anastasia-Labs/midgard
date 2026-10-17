@@ -173,16 +173,6 @@ export const submitRedeemerCanonicityStep02 = async ({
     family: "redeemer-canonicity",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "redeemer-canonicity field opening",
-  });
   const bound = {
     subject: evidence.subject,
     witness_set_hash: state.witness_set_hash,
@@ -214,6 +204,12 @@ export const submitRedeemerCanonicityStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "redeemer-canonicity field opening",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "redeemer-canonicity step-02");
     const inputIndex = requireInputIndex(
       ctx,

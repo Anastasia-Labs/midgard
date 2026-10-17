@@ -8,7 +8,6 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
-  requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
@@ -106,28 +105,6 @@ export const submitObserversForbiddenStep02 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("observersForbidden: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[1].spendingScriptHash,
-    family: "observers-forbidden-on-untagged-network",
-    stepIndex,
-  });
-  const opening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-      ...(witnessReferenceScripts.computationThreadMint === undefined
-        ? []
-        : [witnessReferenceScripts.computationThreadMint]),
-      ...(witnessReferenceScripts.fraudProofMint === undefined
-        ? []
-        : [witnessReferenceScripts.fraudProofMint]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "observers forbidden field 3",
-  });
   return await submitLinearFaultFinalize({
     lucid,
     family: "observers-forbidden-on-untagged-network",
@@ -139,15 +116,19 @@ export const submitObserversForbiddenStep02 = async ({
     threadUtxo,
     threadToken,
     spendRedeemerSchema: ObserversForbiddenStep02RedeemerSchema,
-    buildFamilyArgs: ({
-      inputIndex,
-      outputIndex,
-      fraudProofMintRedeemerIndex,
-    }) => ({
+    buildFamilyArgs: (
+      { inputIndex, outputIndex, fraudProofMintRedeemerIndex },
+      ctx,
+    ) => ({
       input_index: inputIndex,
       output_index: outputIndex,
       fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-      observer_opening: opening,
+      observer_opening: faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "observers forbidden field 3",
+      }),
     }),
     referenceScriptUtxo,
     carriageUtxos,

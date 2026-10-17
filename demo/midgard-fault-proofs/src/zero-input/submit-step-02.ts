@@ -8,7 +8,6 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
-  requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
@@ -104,28 +103,6 @@ export const submitZeroInputStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("zeroInput: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[1].spendingScriptHash,
-    family: "zero-input",
-    stepIndex,
-  });
-  const opening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-      ...(witnessReferenceScripts.computationThreadMint === undefined
-        ? []
-        : [witnessReferenceScripts.computationThreadMint]),
-      ...(witnessReferenceScripts.fraudProofMint === undefined
-        ? []
-        : [witnessReferenceScripts.fraudProofMint]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "zero input field 0",
-  });
   return await submitLinearFaultFinalize({
     lucid,
     family: "zero-input",
@@ -137,15 +114,19 @@ export const submitZeroInputStep02V1 = async ({
     threadUtxo,
     threadToken,
     spendRedeemerSchema: ZeroInputStep02RedeemerSchema,
-    buildFamilyArgs: ({
-      inputIndex,
-      outputIndex,
-      fraudProofMintRedeemerIndex,
-    }) => ({
+    buildFamilyArgs: (
+      { inputIndex, outputIndex, fraudProofMintRedeemerIndex },
+      ctx,
+    ) => ({
       input_index: inputIndex,
       output_index: outputIndex,
       fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-      spend_inputs_opening: opening,
+      spend_inputs_opening: faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "zero input field 0",
+      }),
     }),
     referenceScriptUtxo,
     carriageUtxos,

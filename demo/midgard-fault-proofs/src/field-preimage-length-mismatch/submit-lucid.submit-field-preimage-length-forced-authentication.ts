@@ -103,6 +103,9 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    // §8.7 carriage indices count into the built reference-input set.
+    const resolvedClaim =
+      claimResolver === undefined ? claim! : claimResolver(ctx.referenceInputs);
     requireOwnSpendPurpose(ctx, threadUtxo, `${LABEL} forced auth`);
     layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, LABEL),
@@ -135,12 +138,8 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
     role: "forced step-02",
   });
   const completeReferences = [reference, ...carriageReferenceInputs];
-  const resolvedClaim =
-    claimResolver?.(completeReferences) ??
-    claim ??
-    (() => {
-      throw new Error(`${LABEL}: forced authentication omitted field claim`);
-    })();
+  if (claimResolver === undefined && claim === undefined)
+    throw new Error(`${LABEL}: forced authentication omitted field claim`);
   config.signer.selectWallet(config.lucid);
   const feeInput = selectFeeInput(await config.lucid.wallet().getUtxos());
   const unsigned = await config.lucid

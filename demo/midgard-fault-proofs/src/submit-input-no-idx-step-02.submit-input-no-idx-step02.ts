@@ -169,12 +169,6 @@ export const submitInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const spendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-    label: "Input-no-idx step 02 spend-inputs",
-  });
 
   const step03Datum = Data.to(
     {
@@ -193,6 +187,12 @@ export const submitInputNoIdxStep02 = async ({
   });
   let resolvedLayout: InputNoIdxStep02Layout | undefined;
   const redeemer = ((ctx) => {
+    const spendInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+      label: "Input-no-idx step 02 spend-inputs",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "input-no-idx step 02");
     const layout: InputNoIdxStep02Layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, "input-no-idx step 02"),

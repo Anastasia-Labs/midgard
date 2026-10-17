@@ -9,6 +9,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -145,7 +146,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   signer,
   threadOutRef,
   evidence,
-  opening,
+  openingFor,
   carriageUtxos,
   certificateUtxo,
   action,
@@ -161,7 +162,8 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: MintDeclaredAssetLimitEvidence;
-  readonly opening: FieldOpening;
+  /** The opening, resolved against the builder's final reference inputs. */
+  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
   readonly action: MintDeclaredAssetLimitStep02WireAction;
@@ -256,7 +258,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     const common = {
       input_index: inputIndex,
       output_index: outputIndex,
-      opening,
+      opening: openingFor(ctx),
     };
     const familyAction =
       action.kind === "direct"
@@ -397,24 +399,6 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     planned,
   });
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[1].spendingScriptHash,
-    family: "mint-declared-asset-limit",
-    stepIndex: 1,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriage.carriageUtxos,
-      stepReference,
-      ...(carriage.certificateUtxo === undefined
-        ? []
-        : [carriage.certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "mintDeclaredAssetLimit field 5",
-  });
   return await submitMintDeclaredAssetLimitStep02Raw({
     lucid,
     contracts,
@@ -422,7 +406,13 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     threadOutRef,
     evidence,
-    opening,
+    openingFor: (ctx) =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "mintDeclaredAssetLimit field 5",
+      }),
     ...carriage,
     ...mintDeclaredStep02WirePlan({ staged, action }),
     referenceScriptUtxo,

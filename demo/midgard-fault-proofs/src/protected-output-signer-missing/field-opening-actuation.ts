@@ -1,5 +1,9 @@
 import type { FieldOpening } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type {
+  LucidEvolution,
+  RedeemerContext,
+  UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -43,7 +47,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
 }): Promise<{
-  readonly opening: FieldOpening;
+  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly referenceInputs: readonly UTxO[];
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
@@ -86,12 +90,13 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   ];
   await onReady?.();
   return Object.freeze({
-    opening: faultProofFieldOpening({
-      planned,
-      referenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label,
-    }),
+    openingFor: (ctx: RedeemerContext): FieldOpening =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label,
+      }),
     referenceInputs: Object.freeze(referenceInputs),
     carriageUtxos: Object.freeze(carriage),
     ...(certificate === undefined ? {} : { certificateUtxo: certificate }),

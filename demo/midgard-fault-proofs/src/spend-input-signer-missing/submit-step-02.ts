@@ -204,12 +204,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
     stepReference,
     ...(resolved === undefined ? [] : membershipCarriage.referenceInputs),
   ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "spend-input-signer-missing spend inputs",
-  });
   // The witness-scan route hands the credential to step 03; every direct
   // route writes the terminal verdict step 02 derives on chain
   // (`direct_verdict_v1`) and continues at step 05.
@@ -248,6 +242,12 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "spend-input-signer-missing spend inputs",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

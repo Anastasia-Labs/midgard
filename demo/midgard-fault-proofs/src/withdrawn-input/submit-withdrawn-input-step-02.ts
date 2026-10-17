@@ -155,12 +155,6 @@ export const submitWithdrawnInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletInputs = referenceInputs.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
@@ -187,6 +181,12 @@ export const submitWithdrawnInputStep02 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

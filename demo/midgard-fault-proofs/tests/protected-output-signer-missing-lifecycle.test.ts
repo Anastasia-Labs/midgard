@@ -54,7 +54,7 @@ import {
   forcedVerdictSubject,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
@@ -393,13 +393,17 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       references[3]!,
       step03Result.result.certificateUtxo!,
     ];
-    const honestOpening = faultProofFieldOpening({
-      planned: witnessPlan,
-      referenceInputs: honestReferenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: "protected-output max scan opening",
-    });
-    const rawScan = (opening: SDK.FieldOpening, checkpointCbor: string) =>
+    const honestOpening = (ctx: RedeemerContext) =>
+      faultProofFieldOpening({
+        planned: witnessPlan,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "protected-output max scan opening",
+      });
+    const rawScan = (
+      openingFor: (ctx: RedeemerContext) => SDK.FieldOpening,
+      checkpointCbor: string,
+    ) =>
       submitProtectedOutputSignerOpeningTransition({
         lucid: harness.proverLucid,
         contracts,
@@ -415,7 +419,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
           } as never,
           ProtectedOutputSignerStep04DatumSchema as never,
         ),
-        opening,
+        openingFor,
         checkpointCbor,
         referenceScriptUtxo: references[3]!,
         carriageReferenceInputs: honestReferenceInputs,
@@ -423,7 +427,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       });
     await expectOnchainRefusal(() =>
       rawScan(
-        withSwappedCertificateSlot(honestOpening),
+        (ctx) => withSwappedCertificateSlot(honestOpening(ctx)),
         checkpointAt(0).checkpointCbor,
       ),
     );

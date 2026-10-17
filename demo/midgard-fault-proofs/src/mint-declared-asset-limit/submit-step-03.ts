@@ -147,16 +147,6 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
     family: "mint-declared-asset-limit",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "mintDeclaredAssetLimit fold field 5",
-  });
   const nextData =
     next.kind === "decision"
       ? {
@@ -179,6 +169,12 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "mintDeclaredAssetLimit fold field 5",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "mintDeclaredAssetLimit step-03");
     const inputIndex = requireInputIndex(
       ctx,

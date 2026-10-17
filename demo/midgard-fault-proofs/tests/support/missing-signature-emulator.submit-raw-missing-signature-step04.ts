@@ -166,13 +166,6 @@ export const submitRawMissingSignatureStep04 = async ({
     ...fraudProofCarriage.referenceInputs,
     ...carriageUtxos,
   ];
-  const opening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId:
-      harness.missingSignature.fieldPreimageCertificatePolicyId,
-    label: "raw missing-signature step-04",
-  });
   harness.proverSigner.selectWallet(harness.proverLucid);
   const walletUtxos = await harness.proverLucid.wallet().getUtxos();
   const candidates = [...carriageUtxos].reduce<readonly UTxO[]>(
@@ -214,7 +207,13 @@ export const submitRawMissingSignatureStep04 = async ({
                 harness.missingSignature.fraudProof.policyId,
                 "raw missing-signature fraud-proof mint",
               ),
-              addr_tx_wits_opening: opening,
+              addr_tx_wits_opening: faultProofFieldOpening({
+                planned,
+                referenceInputs: ctx.referenceInputs,
+                certificatePolicyId:
+                  harness.missingSignature.fieldPreimageCertificatePolicyId,
+                label: "raw missing-signature step-04",
+              }),
               checkpoint_cbor: null,
             },
           },

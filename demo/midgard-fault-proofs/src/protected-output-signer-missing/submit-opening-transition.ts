@@ -9,6 +9,7 @@ import {
   Data,
   type Data as PlutusData,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -31,7 +32,7 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   stepIndex,
   nextStepIndex,
   nextDatum,
-  opening,
+  openingFor,
   checkpointCbor,
   coordinateOutOfRange,
   referenceScriptUtxo,
@@ -49,7 +50,8 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   /** Step 02 continues at index 2 (witness scan) or index 4 (direct verdict). */
   readonly nextStepIndex: 2 | 3 | 4;
   readonly nextDatum: string;
-  readonly opening: FieldOpening;
+  /** The opening, resolved against the built transaction's reference inputs. */
+  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly checkpointCbor?: string;
   /** Step 02 only: names the out-of-range direct arm in the redeemer. */
   readonly coordinateOutOfRange?: boolean;
@@ -102,7 +104,7 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
           {
             input_index: inputIndex,
             output_index: outputIndex,
-            opening,
+            opening: openingFor(ctx),
             // Step 02's redeemer names the out-of-range arm; the scan and
             // credential arms leave it unset.
             ...(stepIndex === 1
