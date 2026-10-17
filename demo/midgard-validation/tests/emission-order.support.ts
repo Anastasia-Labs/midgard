@@ -4,7 +4,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -13,13 +13,18 @@ import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  type DeterministicValidationMachineTrace,
   RejectCodes,
   rejectionReasonOfSubject,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
+  validationMachineLedgerRoot,
 } from "../src/index.js";
 import type { RejectCode } from "../src/types.js";
-import { buildValidationOneStepArgument } from "../src/validation-machine-data.js";
+import {
+  buildValidationOneStepArgument,
+  validationMachineStateData,
+} from "../src/validation-machine-data.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -231,7 +236,11 @@ export const machineTrace = async (row: Row) => {
         operations: expectedLedgerOps,
       })
     : [];
-  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
+  // A rejection leaves the ledger as it is: input resolution proves each
+  // lookup against this root.
+  const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
+    "hex",
+  );
   return await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -261,6 +270,44 @@ export const machineTrace = async (row: Row) => {
   );
 };
 
+/** The trace names the row's verdict: its code and its asserted reason. */
+export const expectTraceVerdict = (
+  row: Row,
+  trace: DeterministicValidationMachineTrace,
+) => {
+  expect(trace.verdict).toBe(row.expected === null ? "accepted" : "rejected");
+  expect(trace.rejectionCode).toBe(row.expected?.code ?? null);
+  if (row.expected !== null) {
+    expect(
+      assertedReason(row.expected.reason, trace.rejectionReason),
+    ).toStrictEqual(expectedReason(row.expected.reason));
+  }
+};
+
+/** The trace's stopping step: the step into its terminal state. */
+export const stoppingStep = (trace: DeterministicValidationMachineTrace) =>
+  trace.witnesses.length -
+  1 -
+  [...trace.witnesses]
+    .reverse()
+    .findIndex((witness) => witness.phase !== "terminal");
+
+/** The stopping step as on-chain one-step input, each part as CBOR hex. */
+export const stoppingStepVector = (
+  trace: DeterministicValidationMachineTrace,
+) => {
+  const stateIndex = stoppingStep(trace);
+  const argument = buildValidationOneStepArgument({ trace, stateIndex });
+  return {
+    phase: trace.witnesses[stateIndex]!.phase,
+    pre: Data.to(
+      validationMachineStateData(trace.states[stateIndex]!) as never,
+    ),
+    transition: argument.transitionCbor.toString("hex"),
+    auxiliary: argument.auxiliaryCbor.toString("hex"),
+  };
+};
+
 /** The producer's verdict, then the trace's, then the stopping step's. */
 export const expectRowVerdicts = async (row: Row) => {
   const { rejection, route } = await producer(row);
@@ -282,23 +329,14 @@ export const expectRowVerdicts = async (row: Row) => {
   }
 
   const trace = await machineTrace(row);
-  expect(trace.verdict).toBe(row.expected === null ? "accepted" : "rejected");
-  expect(trace.rejectionCode).toBe(row.expected?.code ?? null);
-  if (row.expected !== null) {
-    expect(
-      assertedReason(row.expected.reason, trace.rejectionReason),
-    ).toStrictEqual(expectedReason(row.expected.reason));
-  }
+  expectTraceVerdict(row, trace);
   // The producer and the trace builder name the same reason, whole.
   expect(trace.rejectionReason).toStrictEqual(producerReason);
 
   // The stopping step's one-step argument builds from this trace.
-  const stop =
-    trace.witnesses.length -
-    1 -
-    [...trace.witnesses]
-      .reverse()
-      .findIndex((witness) => witness.phase !== "terminal");
-  const argument = buildValidationOneStepArgument({ trace, stateIndex: stop });
+  const argument = buildValidationOneStepArgument({
+    trace,
+    stateIndex: stoppingStep(trace),
+  });
   expect(argument.semanticResolverIndex).toBeGreaterThanOrEqual(0);
 };
