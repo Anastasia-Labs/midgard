@@ -1,12 +1,19 @@
 /**
  * The landed frontier's floor on the follower prune (plan §7.3, §11, N3).
- * While the confirmed-ledger frontier lags the queue (the merged root passed
- * it, or a live block waits unprocessed), the follower keeps every fact from
- * the slot the frontier's header became the queue root (or, failing that,
- * was appended): the queue history the walk from the frontier reads, and the
- * events the blocks after it replay, retired ones included. Caught up (the
- * live root is the frontier and every live node is processed), or with the
- * frontier's header outside the facts, it sets no floor.
+ *
+ * - Lagging (the merged root passed the frontier, or a live block waits
+ *   unprocessed), the follower keeps every fact from the slot the frontier's
+ *   header became the queue root (or, failing that, was appended): the queue
+ *   history the walk from the frontier reads, and the events the blocks
+ *   after it replay, retired ones included.
+ * - Caught up or lagging, it also keeps every fact after `T` of a block
+ *   starting at the frontier's end, less one slot (`earliestAdmissionSlot`,
+ *   the bound the replay's forced-order coverage checks). A block a node
+ *   replays starts at or after that end: every node after the frontier may
+ *   still leave the queue, and the block after a removed one starts at its
+ *   predecessor's end. So the forced orders such a block names stay in the
+ *   facts once admitted.
+ * - With the frontier's header outside the facts, it sets no floor.
  *
  * The prune reports how far the floor holds its boundary back, by the
  * floor's name (`floorLags`); readiness shows it as the degraded detail
@@ -27,6 +34,7 @@ import {
   type StateQueueProjectionConfig,
 } from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
+import { earliestAdmissionSlot } from "./replay-foreign.complete.js";
 import { Frontier, retrieveRows } from "./store.js";
 
 /** What the floor needs from the node: the frontier and the processed headers. */
@@ -56,6 +64,8 @@ export const landedFrontierPruneFloor = (options: {
   readonly config: StateQueueProjectionConfig;
   /** The node's frontier needs; a failed read holds the prune back. */
   readonly needs: () => Promise<FrontierNeeds>;
+  /** The slot holding a POSIX time, as the replay maps it; a throw holds the prune back. */
+  readonly slotOf: (unixTimeMs: number) => number;
 }): PruneFloor => ({
   name: "landed_frontier",
   floor: async ({ tx, dialect }) => {
@@ -81,22 +91,31 @@ export const landedFrontierPruneFloor = (options: {
       entry.element.element.datum.key === "Empty";
     const live = elements.filter((entry) => entry.stored.spent === null);
     const liveRoot = live.find(isRoot);
+    const carrying = (root: boolean) =>
+      elements.filter(
+        (entry) =>
+          isRoot(entry) === root && entry.element.headerHash === frontier,
+      );
+    const header = carrying(true)[0] ?? carrying(false)[0];
+    if (header === undefined) return null;
+    const admitted = earliestAdmissionSlot(
+      header.element.endTimeMs,
+      options.slotOf,
+    );
+    if (admitted === null) return 0;
+    const orders = Math.max(0, admitted - 1);
     if (
       liveRoot?.element.headerHash === frontier &&
       live.every(
         (entry) => isRoot(entry) || processed.has(entry.element.headerHash),
       )
     )
-      return null;
-    const carrying = (root: boolean) =>
-      elements
-        .filter(
-          (entry) =>
-            isRoot(entry) === root && entry.element.headerHash === frontier,
-        )
-        .map((entry) => entry.stored);
-    const slot = earliest(carrying(true)) ?? earliest(carrying(false));
-    return slot === null ? null : Math.max(0, slot - 1);
+      return orders;
+    const slot =
+      earliest(carrying(true).map((entry) => entry.stored)) ??
+      earliest(carrying(false).map((entry) => entry.stored)) ??
+      0;
+    return Math.min(orders, Math.max(0, slot - 1));
   },
 });
 
@@ -104,10 +123,12 @@ export const landedFrontierPruneFloor = (options: {
 export const landedStateQueueProjection = (
   config: StateQueueProjectionConfig,
   run: <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>,
+  slotOf: (unixTimeMs: number) => number,
 ): FollowerProjection => ({
   ...stateQueueProjection(config),
   pruneFloor: landedFrontierPruneFloor({
     config,
     needs: () => run(landedFrontierNeeds),
+    slotOf,
   }),
 });

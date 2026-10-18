@@ -323,6 +323,16 @@ it("preserves only the exact pending block hash field and canonical hash shape",
   ).toEqual({ diagnostic: { unconfirmedSubmittedBlockTxHash: "[redacted]" } });
 });
 
+it("shows the landed-block holds that stop the follower as their typed reasons", () => {
+  const source = {
+    ready: false,
+    reasons: ["landed_block_local_fault", "landed_block_origin_after_frontier"],
+  };
+  expect(publicReadinessPresentation(source, "preprod-public", {})).toEqual(
+    source,
+  );
+});
+
 it.each(["mainnet", "preprod-public"])(
   "shows a census reason code by name in %s while its details stay redacted",
   (profile) => {

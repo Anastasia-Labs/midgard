@@ -99,6 +99,10 @@ import { isQueueOutput } from "./state-queue-sim.model.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");
 
+/** The sim's header times are not tied to its L1 slots, so this maps every one past any slot the corpus reaches: the floor's forced-order extension is inert here, and its own rows (`landed-blocks-prune-floor.test.ts`) cover it. */
+const slotOfHeaderTimeAfterCorpus = (unixTimeMs: number): number =>
+  2 ** 40 + Math.floor(unixTimeMs / 1_000);
+
 export const landedBlocksSimProjection = (
   env: LandedSimEnv,
 ): FollowerProjection => {
@@ -441,6 +445,7 @@ export const landedBlocksSimProjection = (
     pruneFloor: landedFrontierPruneFloor({
       config: SIM_QUEUE_CONFIG,
       needs: () => run(landedFrontierNeeds),
+      slotOf: slotOfHeaderTimeAfterCorpus,
     }),
     traffic: landedBlocksTraffic(
       env.universe,

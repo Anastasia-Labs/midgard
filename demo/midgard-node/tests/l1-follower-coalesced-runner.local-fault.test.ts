@@ -1,12 +1,16 @@
 /**
  * The coalesced runner's bound on a local fault: a run that ends with a
- * block held on `landed_block_verifier_unavailable`, `landed_block_local_fault`
- * or `landed_block_replay_incomplete` is retried on the capped backoff, and
+ * block held on `landed_block_verifier_unavailable`, `landed_block_local_fault`,
+ * `landed_block_replay_incomplete` or `landed_block_forced_order_pending` is
+ * retried on the capped backoff, and
  * once a fixed number of runs ended on a local fault, of any of these kinds,
  * with no progress past the faulted blocks the runner stops and reports it;
  * the node exits non-zero on that report for its supervisor to restart it.
  * The count lives in the process, so a restarted node that meets the same
  * fault on the same block retries within the same bound and exits again.
+ * A fatal hold (`landed_block_origin_after_frontier`: the follower store's
+ * origin is too late for the blocks after the landed frontier) is not
+ * retried: the first run that ends on it stops the runner and reports it.
  *
  * Only progress past a faulted block (processing commits it) starts the
  * count over. A run free of the fault (a wait), a transient failure, or a
@@ -18,13 +22,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   type DriverHold,
+  isFatalHold,
   isRetriedHold,
   localFaultSubject,
   transientFailure,
 } from "../src/l1-events/driver.js";
 import {
   combineHolds,
+  LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_LOCAL_FAULT,
+  LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
 } from "../src/landed-blocks/holds.js";
 import { replayOutcomeHold } from "../src/landed-blocks/replay-outcome-hold.js";
@@ -56,7 +63,7 @@ const faulted = (block: string): readonly DriverHold[] => [
 /** The held run processing ends on when replaying `block` fails locally as
  * `kind`. */
 const failedLocally =
-  (kind: "local_fault" | "incomplete") =>
+  (kind: "local_fault" | "incomplete" | "forced_order_pending") =>
   (block: string): readonly DriverHold[] => [
     combineHolds([
       replayOutcomeHold(kind, `block ${block}: ${kind}: injected`, block),
@@ -64,6 +71,16 @@ const failedLocally =
   ];
 const computeFault = failedLocally("local_fault");
 const incomplete = failedLocally("incomplete");
+const forcedOrderPending = failedLocally("forced_order_pending");
+
+/** The held run processing ends on when `block`'s replay finds the
+ * follower store's origin too late for it. */
+const lateOrigin = (block: string): DriverHold =>
+  replayOutcomeHold(
+    "origin_after_frontier",
+    `block ${block}: the follower's origin is after T(B): injected`,
+    block,
+  );
 
 /** A run free of the fault, still held (a wait) so the runner retries it. */
 const waiting = (block: string): readonly DriverHold[] => [
@@ -282,6 +299,11 @@ describe("coalescedRunner's local-fault bound", () => {
   it.each([
     ["local_fault", computeFault, LANDED_BLOCK_LOCAL_FAULT],
     ["incomplete", incomplete, LANDED_BLOCK_REPLAY_INCOMPLETE],
+    [
+      "forced_order_pending",
+      forcedOrderPending,
+      LANDED_BLOCK_FORCED_ORDER_PENDING,
+    ],
   ] as const)(
     "retries the %s hold on the backoff within the same bound, then stops and reports it",
     async (_kind, fail, reason) => {
@@ -332,5 +354,56 @@ describe("coalescedRunner's local-fault bound", () => {
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(state.runs()).toBe(3);
     expect(state.reports).toEqual([]);
+  });
+});
+
+describe("coalescedRunner's fatal hold", () => {
+  it("stops on the first run that ends on a late-origin store and reports it, without retrying", async () => {
+    const state = runner(() => [combineHolds([lateOrigin(BLOCK)])!]);
+    state.trigger();
+    await advance(state, 3);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(state.runs()).toBe(1);
+    expect(state.reports).toHaveLength(1);
+    expect(state.reports[0]!.map((hold) => hold.reason)).toEqual([
+      LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+    ]);
+    // A later trigger (a follower change) runs nothing.
+    state.trigger();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(state.runs()).toBe(1);
+  });
+
+  it("stops on a late-origin store named beside a wait, under its reason", async () => {
+    const state = runner(() => [
+      combineHolds([...waiting(BLOCK), lateOrigin(BLOCK)])!,
+    ]);
+    state.trigger();
+    await advance(state, 3);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(state.runs()).toBe(1);
+    expect(state.reports.map((report) => report[0]!.reason)).toEqual([
+      LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+    ]);
+  });
+
+  it("neither retries nor reports a verdict, which is not fatal", async () => {
+    const verdict = combineHolds([
+      replayOutcomeHold("invalid", `block ${BLOCK}: injected`, BLOCK),
+    ])!;
+    expect([isRetriedHold(verdict), isFatalHold(verdict)]).toEqual([
+      false,
+      false,
+    ]);
+    const state = runner(() => [verdict]);
+    state.trigger();
+    await advance(state, 3);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(state.runs()).toBe(1);
+    expect(state.reports).toEqual([]);
+    // A follower change runs it again.
+    state.trigger();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(state.runs()).toBe(2);
   });
 });

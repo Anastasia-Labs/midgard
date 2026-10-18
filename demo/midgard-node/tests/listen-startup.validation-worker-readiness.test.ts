@@ -24,6 +24,7 @@ import { join } from "node:path";
 
 import {
   findLedgerSignatureVerifierUnavailable,
+  LEDGER_ED25519_READY_TIMEOUT_MS,
   ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -148,7 +149,11 @@ vi.mock("../src/services/l1-follower.js", async (importOriginal) => {
   };
 });
 
-const JOB_TIMEOUT_MS = 2_000;
+// A worker answers its readiness job once it has loaded its module and its
+// verifier is ready: up to 8.3 s on a loaded two-core host. The job waits as
+// long as the verifier's own bound, which starts only once the worker has
+// loaded, so the job times out first when an initialisation never settles.
+const JOB_TIMEOUT_MS = LEDGER_ED25519_READY_TIMEOUT_MS;
 /** Pool starts in all: the ledger signature verifier's startup bound. */
 const ATTEMPTS = 3;
 const INJECTED = "injected worker libsodium initialisation failure";
@@ -292,7 +297,7 @@ const HELD = expect.stringMatching(/the node stays up, unready/u);
 
 const nodeExit = (
   fiber: Fiber.RuntimeFiber<void, unknown>,
-  withinMs = 8 * JOB_TIMEOUT_MS,
+  withinMs = 5 * JOB_TIMEOUT_MS,
 ) =>
   Effect.runPromise(
     Fiber.await(fiber).pipe(Effect.timeout(`${withinMs} millis`)),
@@ -349,7 +354,7 @@ describe("node startup while its validation workers initialise", () => {
         );
       });
     },
-    60_000,
+    120_000,
   );
 
   it.each([
@@ -361,7 +366,7 @@ describe("node startup while its validation workers initialise", () => {
           causeChain(cause).map((link) => (link as Error).message),
         ).toContainEqual("injected worker crash"),
       JOB_TIMEOUT_MS,
-      8 * JOB_TIMEOUT_MS,
+      5 * JOB_TIMEOUT_MS,
     ],
     [
       // A job timeout well past the time a worker takes to load and reach
@@ -439,7 +444,7 @@ describe("node startup while its validation workers initialise", () => {
   it("a worker that stops once while it answers its readiness job is retried and the node starts", async () => {
     await startNode("crash-once", async ({ fiber, pools, failures }) => {
       await vi.waitFor(() => expect(reached.follower).toBe(1), {
-        timeout: 20_000,
+        timeout: 3 * JOB_TIMEOUT_MS,
       });
       expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
       expect(failures).toEqual([]);
@@ -448,12 +453,12 @@ describe("node startup while its validation workers initialise", () => {
       expect(pools[1]!.isClosed()).toBe(false);
       expect(fiber.unsafePoll()).toBeNull();
     });
-  }, 60_000);
+  }, 120_000);
 
   it("a worker initialisation that fails once is retried and the node starts", async () => {
     await startNode("fault-once", async ({ pools, failures, workersRead }) => {
       await vi.waitFor(() => expect(reached.follower).toBe(1), {
-        timeout: 20_000,
+        timeout: 3 * JOB_TIMEOUT_MS,
       });
       expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
       expect(failures).toEqual([]);
@@ -462,14 +467,14 @@ describe("node startup while its validation workers initialise", () => {
       expect(pools[1]!.isClosed()).toBe(false);
       expect(workersRead()).toBe(2);
     });
-  }, 60_000);
+  }, 120_000);
 
   it("a worker initialisation that succeeds starts the node as before, on one pool", async () => {
     await startNode(
       "ready",
       async ({ fiber, pools, failures, workersRead }) => {
         await vi.waitFor(() => expect(reached.follower).toBe(1), {
-          timeout: 20_000,
+          timeout: 3 * JOB_TIMEOUT_MS,
         });
         expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
         expect(failures).toEqual([]);
@@ -479,5 +484,5 @@ describe("node startup while its validation workers initialise", () => {
         expect(fiber.unsafePoll()).toBeNull();
       },
     );
-  }, 60_000);
+  }, 120_000);
 });

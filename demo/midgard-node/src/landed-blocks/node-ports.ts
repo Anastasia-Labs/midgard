@@ -4,7 +4,7 @@
  * for the view check, the foreign replay, the node's block journals, and
  * the driver's recompute for the rebase.
  */
-import type { FactStore } from "@al-ft/midgard-l1-follower";
+import type { FactStore, OriginConfig } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -42,7 +42,8 @@ const genesis = Effect.gen(function* () {
 
 /**
  * The node's landed-block ports over `store`, with the follower plan's
- * configs, the driver's recompute as the rebase, and the deployment's
+ * configs (with its origin's `hubOracleOneShot`, which the protocol-init tx
+ * spends), the driver's recompute as the rebase, and the deployment's
  * availability commitment authority.
  */
 export const nodeLandedBlockPorts = (
@@ -51,6 +52,7 @@ export const nodeLandedBlockPorts = (
     readonly projection: EventProjectionConfig;
     readonly forcedOrders: ForcedOrderConfig;
     readonly stateQueue: StateQueueProjectionConfig;
+    readonly origin?: Pick<OriginConfig, "hubOracleOneShot">;
   },
   rebase: (reason: string) => Effect.Effect<DriverHold | undefined>,
   availability: () => SDK.DaPayloadAvailabilityAuthority,
@@ -60,6 +62,7 @@ export const nodeLandedBlockPorts = (
     events: plan.projection,
     forcedOrders: plan.forcedOrders,
     availability,
+    hubOracleOneShot: plan.origin?.hubOracleOneShot,
   });
   return {
     confirmView,
