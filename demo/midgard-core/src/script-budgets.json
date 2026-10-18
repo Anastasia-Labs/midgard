@@ -200,18 +200,16 @@
     "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_an_accepted_normal_transaction": {
       "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_an_accepted_normal_transaction",
       "ceiling": {
-        "mem": 2552984,
-        "cpu": 957314782
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 2516192,
+        "cpu": 948364802
+      }
     },
     "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_a_published_chunk_membership_proof": {
       "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_a_published_chunk_membership_proof",
       "ceiling": {
-        "mem": 3690916,
-        "cpu": 1395539890
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 3654125,
+        "cpu": 1386589910
+      }
     },
     "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction": {
       "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction",
@@ -258,18 +256,17 @@
     "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_authenticates_and_starts_the_machine": {
       "test": "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_authenticates_and_starts_the_machine",
       "ceiling": {
-        "mem": 3564928,
-        "cpu": 1457807614
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 3525213,
+        "cpu": 1450514655
+      }
     },
     "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor": {
       "test": "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor",
       "ceiling": {
-        "mem": 2633128,
-        "cpu": 1079832697
+        "mem": 2589571,
+        "cpu": 1071680553
       },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+      "raisedBecause": "The shared fraud-proof thread continue now delegates to its value-rule form, which validation-trace moves share: one more function application per continued step, +100 mem / +16,000 cpu."
     },
     "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_commits_a_partial_advance": {
       "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_commits_a_partial_advance",
@@ -618,32 +615,29 @@
     "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_00064": {
       "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_00064",
       "ceiling": {
-        "mem": 8210170,
-        "cpu": 2633649554
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 8007290,
+        "cpu": 2606787370
+      }
     },
     "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_01024": {
       "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_01024",
       "ceiling": {
-        "mem": 129000216,
-        "cpu": 41411098506
+        "mem": 125792701,
+        "cpu": 40987776443
       },
       "aboveBasis": {
         "why": "the alternative driver A3 names, `native_script_v1.inspect_native_script`, is over the basis at 1,025 nodes too. Swapping drivers does not rescue the item; it moves the crossing from 76 nodes to 100. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+      }
     },
     "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_deep_01024": {
       "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_deep_01024",
       "ceiling": {
-        "mem": 152566626,
-        "cpu": 46771923906
+        "mem": 148942500,
+        "cpu": 46023192299
       },
       "aboveBasis": {
         "why": "`inspect_native_script` on the deep shape at 1,025 nodes, over the basis by 11.9x. It is measured on both shapes for the same reason the predicate is: to show the crossing does not depend on which shape an operator picks. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+      }
     },
     "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_00064": {
       "test": "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_00064",
@@ -964,8 +958,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 10347921,
-        "cpu": 3673618398
+        "mem": 10323501,
+        "cpu": 3671105548
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_fixture_only": {
@@ -980,8 +974,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 10483048,
-        "cpu": 3717533034
+        "mem": 10458628,
+        "cpu": 3715020185
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_fixture_only": {
@@ -996,8 +990,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 10619009,
-        "cpu": 3761592082
+        "mem": 10594589,
+        "cpu": 3759079233
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_fixture_only": {
@@ -1080,7 +1074,7 @@
         "cpu": 4696315453
       },
       "aboveBasis": {
-        "why": "13,334,636 mem whole-test, 101.0% of the basis, and 13,199,563 net of its fixture-only twin, 100.0%. The descriptor dimension's measured crossing after the script-decode composition moved the 3,413- to 3,545-byte rungs inside the basis. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+        "why": "13,310,458 mem whole-test, 100.8% of the basis; 13,175,385 net of its fixture-only twin, 99.8%. The 3,413- to 3,545-byte rungs now read inside the basis (refit at 23d0518444), so the 4,865- and 4,931-byte rungs keep the descriptor dimension's measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_fixture_only": {
@@ -1099,7 +1093,7 @@
         "cpu": 4740327524
       },
       "aboveBasis": {
-        "why": "13,469,005 mem whole-test, 102.0% of the basis, and 13,333,889 net of its fixture-only twin, 101.0%. The descriptor dimension's measured crossing after the script-decode composition moved the 3,413- to 3,545-byte rungs inside the basis. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+        "why": "13,444,827 mem whole-test, 101.9% of the basis, and 13,309,711 net of its fixture-only twin, 100.8%. The 3,413- to 3,545-byte rungs now read inside the basis (refit at 23d0518444), so the 4,865- and 4,931-byte rungs keep the descriptor dimension's measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_fixture_only": {
@@ -1114,19 +1108,17 @@
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent",
       "env": "testnet",
       "ceiling": {
-        "mem": 9228985,
-        "cpu": 4003843053
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 9123217,
+        "cpu": 3984186102
+      }
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent_fixture_only": {
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 4346089,
-        "cpu": 1884729409
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 4298356,
+        "cpu": 1875725093
+      }
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte": {
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte",
@@ -1308,19 +1300,17 @@
       "test": "midgard/ledger_output_descriptor_v1.test/builds_small_reference_output_exactly",
       "env": "testnet",
       "ceiling": {
-        "mem": 3881732,
-        "cpu": 1647680862
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 3826538,
+        "cpu": 1637395591
+      }
     },
     "testnet:midgard/ledger_output_descriptor_v1.test/builds_native_reference_script_output_exactly": {
       "test": "midgard/ledger_output_descriptor_v1.test/builds_native_reference_script_output_exactly",
       "env": "testnet",
       "ceiling": {
-        "mem": 3886377,
-        "cpu": 1653662987
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 3846654,
+        "cpu": 1646974508
+      }
     },
     "testnet:midgard/ledger_output_descriptor_v1.test/builds_rich_multi_chunk_output_exactly": {
       "test": "midgard/ledger_output_descriptor_v1.test/builds_rich_multi_chunk_output_exactly",
@@ -1342,19 +1332,17 @@
       "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_deposit_transition_fault",
       "env": "testnet",
       "ceiling": {
-        "mem": 9357474,
-        "cpu": 4043866437
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 9251707,
+        "cpu": 4024209486
+      }
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof.test/rejects_valid_deposit_transition_with_arbitrary_projected_output": {
       "test": "midgard/fraud_proofs/transition_trace/proof.test/rejects_valid_deposit_transition_with_arbitrary_projected_output",
       "env": "testnet",
       "ceiling": {
-        "mem": 5323538,
-        "cpu": 2370278061
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 5270250,
+        "cpu": 2360384945
+      }
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault": {
       "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault",
@@ -1377,10 +1365,9 @@
       "minusControl": "deposit_arm_datum_absent_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 4882896,
-        "cpu": 2119113645
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+        "mem": 4824861,
+        "cpu": 2108461009
+      }
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte - deposit_arm_datum_1_byte_fixture_only": {
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte",
@@ -1648,8 +1635,8 @@
       "minusControl": "descriptor_3479_bytes_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 10353027,
-        "cpu": 3585809338
+        "mem": 10328607,
+        "cpu": 3583296489
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives - descriptor_3545_bytes_fixture_only": {
@@ -1657,8 +1644,8 @@
       "minusControl": "descriptor_3545_bytes_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 10488525,
-        "cpu": 3628071837
+        "mem": 10464105,
+        "cpu": 3625558987
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives - descriptor_4073_bytes_fixture_only": {
@@ -1715,7 +1702,7 @@
         "cpu": 4569054097
       },
       "aboveBasis": {
-        "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,333,889 mem net of every fixture the test builds, 101.0% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
+        "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,309,711 mem net of every fixture the test builds, 100.8% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
       }
     }
   },
