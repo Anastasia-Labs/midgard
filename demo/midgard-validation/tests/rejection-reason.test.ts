@@ -148,6 +148,24 @@ const LOCATED: readonly (readonly [
     { OutputBelowMinAda: { output_index: 2n } },
   ],
   [
+    "malformed output reference script",
+    RejectCodes.InvalidFieldType,
+    { arm: "OutputReferenceScriptMalformed", index: 1n },
+    { OutputReferenceScriptMalformed: { output_index: 1n } },
+  ],
+  [
+    "output reference script over the node limit",
+    RejectCodes.NativeScriptNodeCount,
+    { arm: "OutputReferenceScriptNodeLimit", index: 3n },
+    { OutputReferenceScriptNodeLimit: { output_index: 3n } },
+  ],
+  [
+    "output reference script over the depth limit",
+    RejectCodes.NativeScriptDepth,
+    { arm: "OutputReferenceScriptDepthLimit", index: 4n },
+    { OutputReferenceScriptDepthLimit: { output_index: 4n } },
+  ],
+  [
     "input asset accumulation",
     RejectCodes.AssetCount,
     { arm: "InputAssetAccumulationLimit", index: 3n, assetIndex: 9n },

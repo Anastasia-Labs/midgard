@@ -1,3 +1,4 @@
+import { encodeCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 
 import { RejectCodes } from "../src/index.js";
@@ -26,9 +27,7 @@ import {
  * anything else.
  *
  * Each multi-fault row has a single-fault control per fault, and one row
- * accepts. The non-canonical output's own control is `BAD_OUTPUT_CONTROL`:
- * the trace builder does not build a rejected output proof, so that row
- * asserts the producer alone.
+ * accepts.
  */
 
 const ABSENT = outRefFromByte(0x70);
@@ -70,7 +69,7 @@ const HEADER_MALFORMED: Expected = {
 type Spend = { readonly outRef: Buffer; readonly output?: Buffer };
 const SIGNED: Spend = { outRef: keySpent, output: funded };
 
-const at = (
+export const at = (
   name: string,
   kind: Row["kind"],
   guard: boolean,
@@ -169,7 +168,7 @@ export const WIDE_OUTPUT_ROW: Row = at(
   { outputs: [WIDE_OUTPUT] },
 );
 
-/** The non-canonical output alone; see the header. */
+/** The non-canonical output alone. */
 export const BAD_OUTPUT_CONTROL: Row = at(
   "control_bad_output",
   "control",
@@ -181,3 +180,95 @@ export const BAD_OUTPUT_CONTROL: Row = at(
   SIGNED,
   { outputs: [funded, BAD_OUTPUT] },
 );
+
+/** `funded` with one more field, `key`, holding `value` (its CBOR). */
+const withField = (key: bigint, value: string): Buffer =>
+  Buffer.concat([
+    Buffer.from([funded[0]! + 1]),
+    funded.subarray(1),
+    encodeCbor(key),
+    Buffer.from(value, "hex"),
+  ]);
+const withScriptRef = (scriptRef: string): Buffer => withField(3n, scriptRef);
+/** An inline datum, the integer 1 in a non-minimal head: not canonical. */
+const NON_CANONICAL_DATUM = withField(2n, "421801");
+/** `funded` followed by one more byte: the output does not end at its map. */
+const TRAILING_BYTE = Buffer.concat([funded, Buffer.from([0x00])]);
+/** A native reference script requiring one key: canonical. */
+const NATIVE_REF = withScriptRef(`820058208200581c${"6b".repeat(28)}`);
+/** A native reference script whose body is not a native script. */
+const MALFORMED_REF = withScriptRef("820043820700");
+/** A native reference script with an empty body. */
+const EMPTY_NATIVE_REF = withScriptRef("820040");
+/** A Plutus V3 reference script whose program does not decode. */
+export const UNDECODABLE_PLUTUS_REF = withScriptRef("820341" + "00");
+
+const output = (
+  name: string,
+  kind: Row["kind"],
+  guard: boolean,
+  expected: Expected | null,
+  outputs: readonly Buffer[],
+): Row => ({
+  ...at(name, kind, guard, expected, SIGNED, { outputs }),
+  name: `fo_${name}`,
+});
+const refMalformed = (index: bigint): Expected => ({
+  code: RejectCodes.InvalidFieldType,
+  reason: { OutputReferenceScriptMalformed: { output_index: index } },
+});
+const nonCanonical = (index: bigint): Expected => ({
+  code: RejectCodes.InvalidOutput,
+  reason: { OutputNonCanonical: { output_index: index } },
+});
+
+/**
+ * The class of a forced transaction's faulty output, as the output proof
+ * decides it. A native reference script that does not parse is its own
+ * class; an output that does not parse is non-canonical; the first faulty
+ * output is the one cited. An undecodable Plutus reference script is not yet
+ * refused, so a later fault is the first.
+ */
+export const FORCED_OUTPUT_ROWS: readonly Row[] = [
+  output("accept_native_ref", "accept", true, null, [NATIVE_REF]),
+  output("control_malformed_ref", "control", false, refMalformed(0n), [
+    MALFORMED_REF,
+  ]),
+  output("control_empty_native_ref", "control", false, refMalformed(0n), [
+    EMPTY_NATIVE_REF,
+  ]),
+  output("control_bad_output", "control", true, nonCanonical(0n), [BAD_OUTPUT]),
+  output("control_trailing_byte", "control", true, nonCanonical(0n), [
+    TRAILING_BYTE,
+  ]),
+  output("control_non_canonical_datum", "control", true, nonCanonical(0n), [
+    NON_CANONICAL_DATUM,
+  ]),
+  output(
+    "non_canonical_datum_before_malformed_ref",
+    "multi",
+    true,
+    nonCanonical(0n),
+    [NON_CANONICAL_DATUM, MALFORMED_REF],
+  ),
+  output("malformed_ref_before_bad_output", "multi", false, refMalformed(0n), [
+    MALFORMED_REF,
+    BAD_OUTPUT,
+  ]),
+  output("bad_output_before_malformed_ref", "multi", true, nonCanonical(0n), [
+    BAD_OUTPUT,
+    MALFORMED_REF,
+  ]),
+  output("plutus_ref_before_malformed_ref", "multi", false, refMalformed(1n), [
+    UNDECODABLE_PLUTUS_REF,
+    MALFORMED_REF,
+  ]),
+];
+
+/** An undecodable Plutus reference script alone: accepted for now. */
+export const UNDECODABLE_PLUTUS_REF_ROW: Row = {
+  ...at("plutus_ref", "accept", true, null, SIGNED, {
+    outputs: [UNDECODABLE_PLUTUS_REF],
+  }),
+  name: "fp_plutus_ref",
+};

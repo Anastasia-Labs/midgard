@@ -3,6 +3,7 @@ import {
   isMidgardNativeScriptContainerKind,
   MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
   type MidgardNativeScriptScanFrame,
+  type MidgardNativeScriptStructureControl,
   MidgardNativeScriptStructureResultKinds,
   MidgardNativeScriptStructureStages,
   type MidgardNativeScriptStructureStepResult,
@@ -16,10 +17,23 @@ import {
   readToken,
 } from "./native-script-scan.read-token.js";
 
-export const buildMidgardNativeScriptStructureTrace = (
+/**
+ * The structure scan of `scriptBytes` up to its end or its first refusal: the
+ * advancing steps, then the step whose result refuses the script (its
+ * control, its frame and the refusing result kind), or `null` when the scan
+ * terminates.
+ */
+export const traceMidgardNativeScriptStructure = (
   scriptBytes: Uint8Array,
   startOffset = 0,
-): readonly MidgardNativeScriptStructureTraceStep[] => {
+): {
+  readonly steps: readonly MidgardNativeScriptStructureTraceStep[];
+  readonly refusal: {
+    readonly control: MidgardNativeScriptStructureControl;
+    readonly frame: MidgardNativeScriptScanFrame | null;
+    readonly kind: string;
+  } | null;
+} => {
   const bytes = Buffer.from(scriptBytes);
   let control = initialMidgardNativeScriptStructureControl({
     startOffset,
@@ -35,17 +49,22 @@ export const buildMidgardNativeScriptStructureTrace = (
     let result: MidgardNativeScriptStructureStepResult | null;
     let frame: MidgardNativeScriptScanFrame | null = null;
     if (control.stage === MidgardNativeScriptStructureStages.Token) {
-      const token = readToken({
-        control,
-        window: bytes,
-        windowOffset: control.cursor - startOffset,
-      });
       result = advanceMidgardNativeScriptStructureToken({
         control,
         window: bytes,
         windowOffset: control.cursor - startOffset,
       });
+      // A token that does not read refuses the scan: it opens no frame.
+      const token =
+        result?.kind === MidgardNativeScriptStructureResultKinds.Advanced
+          ? readToken({
+              control,
+              window: bytes,
+              windowOffset: control.cursor - startOffset,
+            })
+          : null;
       if (
+        token !== null &&
         isMidgardNativeScriptContainerKind(token.kind) &&
         token.childCount > 0
       ) {
@@ -82,9 +101,10 @@ export const buildMidgardNativeScriptStructureTrace = (
       result === null ||
       result.kind !== MidgardNativeScriptStructureResultKinds.Advanced
     ) {
-      throw new Error(
-        `Canonical V1 native-script scan failed: ${result?.kind ?? "malformed"}`,
-      );
+      return {
+        steps,
+        refusal: { control, frame, kind: result?.kind ?? "malformed" },
+      };
     }
     steps.push({ control, next: result.control, frame });
     control = result.control;
@@ -94,6 +114,20 @@ export const buildMidgardNativeScriptStructureTrace = (
     !isExactMidgardNativeScriptStructureTerminal(control)
   ) {
     throw new Error("Canonical V1 native-script scan did not terminate");
+  }
+  return { steps, refusal: null };
+};
+
+export const buildMidgardNativeScriptStructureTrace = (
+  scriptBytes: Uint8Array,
+  startOffset = 0,
+): readonly MidgardNativeScriptStructureTraceStep[] => {
+  const { steps, refusal } = traceMidgardNativeScriptStructure(
+    scriptBytes,
+    startOffset,
+  );
+  if (refusal !== null) {
+    throw new Error(`Canonical V1 native-script scan failed: ${refusal.kind}`);
   }
   return steps;
 };

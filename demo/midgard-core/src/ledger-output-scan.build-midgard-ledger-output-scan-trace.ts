@@ -166,9 +166,22 @@ export const isExactMidgardLedgerOutputScanTerminal = ({
       control.referenceScriptOffset + control.referenceScriptLength ===
         totalLength);
 
-export const buildMidgardLedgerOutputScanTrace = (
+/**
+ * The output scan of `outputCbor` up to its end or its first refusal: the
+ * advancing steps, then the step whose window the scan refuses (its control
+ * and the chunks that window spans), or `null` when the scan terminates.
+ */
+export const traceMidgardLedgerOutputScan = (
   outputCbor: Uint8Array,
-): MidgardLedgerOutputScanTrace => {
+): {
+  readonly steps: readonly MidgardLedgerOutputScanTraceStep[];
+  readonly terminal: MidgardLedgerOutputScanControl;
+  readonly refusal: {
+    readonly control: MidgardLedgerOutputScanControl;
+    readonly chunkIndex: number;
+    readonly nextChunkIndex: number | null;
+  } | null;
+} => {
   const bytes = Buffer.from(outputCbor);
   const initial = initialMidgardLedgerOutputScanControl();
   const steps: MidgardLedgerOutputScanTraceStep[] = [];
@@ -220,7 +233,15 @@ export const buildMidgardLedgerOutputScanTrace = (
       windowOffset: control.cursor - chunkStart,
     });
     if (next === null) {
-      throw new Error("Canonical V1 ledger output scan failed closed");
+      return {
+        steps,
+        terminal: control,
+        refusal: {
+          control,
+          chunkIndex,
+          nextChunkIndex: tokenStage && hasNextChunk ? chunkIndex + 1 : null,
+        },
+      };
     }
     let asset: MidgardLedgerOutputAsset | null = null;
     if (control.stage === MidgardLedgerOutputScanStages.Asset) {
@@ -250,12 +271,40 @@ export const buildMidgardLedgerOutputScanTrace = (
     control = next;
   }
   if (
-    !isExactMidgardLedgerOutputScanTerminal({
+    isExactMidgardLedgerOutputScanTerminal({
       control,
       totalLength: bytes.length,
     })
   ) {
-    throw new Error("Canonical V1 ledger output scan did not terminate");
+    return { steps, terminal: control, refusal: null };
   }
-  return { initial, steps, terminal: control };
+  // A scan that ends before the last byte is refused at the next step, whose
+  // window is the chunk holding its cursor.
+  if (
+    control.stage === MidgardLedgerOutputScanStages.Terminal &&
+    control.cursor < bytes.length
+  ) {
+    return {
+      steps,
+      terminal: control,
+      refusal: {
+        control,
+        chunkIndex: Math.floor(
+          control.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+        ),
+        nextChunkIndex: null,
+      },
+    };
+  }
+  throw new Error("Canonical V1 ledger output scan did not terminate");
+};
+
+export const buildMidgardLedgerOutputScanTrace = (
+  outputCbor: Uint8Array,
+): MidgardLedgerOutputScanTrace => {
+  const { steps, terminal, refusal } = traceMidgardLedgerOutputScan(outputCbor);
+  if (refusal !== null) {
+    throw new Error("Canonical V1 ledger output scan failed closed");
+  }
+  return { initial: initialMidgardLedgerOutputScanControl(), steps, terminal };
 };

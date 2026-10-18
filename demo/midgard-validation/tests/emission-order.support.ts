@@ -204,7 +204,7 @@ const PHASE_A_CONFIG = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
-const transactionOf = (row: Row) => {
+export const transactionOf = (row: Row) => {
   const transaction = makeNativeTx({ ...row.tx, privateKey: KEY });
   const witnessSet =
     row.scriptItems === undefined
@@ -410,8 +410,11 @@ export const expectProducerAndTraceVerdicts = async (row: Row) => {
   return trace;
 };
 
-/** The producer's verdict, then the trace's, then the stopping step's. */
-export const expectRowVerdicts = async (row: Row) => {
+/**
+ * The producer's verdict, then the trace's, then the stopping step's; returns
+ * the trace.
+ */
+export const expectRowVerdictsTrace = async (row: Row) => {
   const trace = await expectProducerAndTraceVerdicts(row);
 
   // The stopping step's one-step argument builds from this trace.
@@ -420,4 +423,10 @@ export const expectRowVerdicts = async (row: Row) => {
     stateIndex: stoppingStep(trace),
   });
   expect(argument.semanticResolverIndex).toBeGreaterThanOrEqual(0);
+  return trace;
+};
+
+/** The producer's verdict, then the trace's, then the stopping step's. */
+export const expectRowVerdicts = async (row: Row): Promise<void> => {
+  await expectRowVerdictsTrace(row);
 };

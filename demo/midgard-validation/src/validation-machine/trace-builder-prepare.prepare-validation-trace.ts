@@ -50,6 +50,7 @@ import {
   midgardScriptSourcePhysicalIndex,
   type MidgardValidationMerkleFrontier,
   type MidgardValidationPhaseName,
+  traceMidgardLedgerOutputProof,
   verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import {
@@ -138,6 +139,7 @@ import {
   safeBlockTime,
   sameLedgerOps,
 } from "./trace-builder-prepare.ordered-phases.js";
+import { refusedOutputStopReason } from "./trace-builder-prepare.refused-output-stop-reason.js";
 import { ValidationTraceStopped } from "./trace-builder-stop.js";
 import type {
   MintFoldTraceControl,
@@ -2946,6 +2948,26 @@ export const prepareValidationTrace = (
                 rejection !== null &&
                 terminalPhase === "scriptSources" &&
                 rejection.code === RejectCodes.NetworkIdMismatch;
+              const stageFiveWitness = (
+                outputProof?: Parameters<
+                  typeof scriptSourcesWitnessCbor
+                >[0]["outputProof"],
+              ) =>
+                scriptSourcesWitnessCbor({
+                  ...scriptSourceControl,
+                  stage: 5,
+                  sourceFrontier: replaySourceFrontier,
+                  redeemerFrontier,
+                  replayCursor,
+                  replayAccumulator,
+                  replayRemainingScheduleHash,
+                  spendIndex: replaySpendIndex,
+                  purposeFrontier: replayPurposeFrontier,
+                  outputCursor,
+                  outputFrontier,
+                  receiveScan: receiveSourceScan(),
+                  ...(outputProof === undefined ? {} : { outputProof }),
+                });
               for (const outputCbor of outputCbors) {
                 const outputItem = outputsCollection.items[outputCursor];
                 if (
@@ -2958,64 +2980,51 @@ export const prepareValidationTrace = (
                     ),
                   );
                 }
-                const outputProof = buildMidgardLedgerOutputProofTrace({
+                const proofOutcome = traceMidgardLedgerOutputProof({
                   outputIndex: outputCursor,
                   outputCbor,
                 });
-                const outputMaterial =
-                  buildCanonicalMidgardLedgerOutputMaterial({
-                    outputIndex: outputCursor,
-                    outputCbor,
-                  });
-                const signerProof = protectedOutputSignerProof(outputCbor);
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                  }),
-                  {
-                    kind: "ledgerOutputProofBegin",
-                    outputIndex: outputCursor,
-                    totalLength: outputItem.bytes.length,
-                    itemCommitment: outputItem.commitment,
-                    siblings: outputMembership(outputCursor).siblings,
-                  },
-                );
-                for (const proofStep of outputProof.steps) {
+                pushWitness("scriptSources", stageFiveWitness(), {
+                  kind: "ledgerOutputProofBegin",
+                  outputIndex: outputCursor,
+                  totalLength: outputItem.bytes.length,
+                  itemCommitment: outputItem.commitment,
+                  siblings: outputMembership(outputCursor).siblings,
+                });
+                for (const proofStep of proofOutcome.kind === "accepted"
+                  ? proofOutcome.trace.steps
+                  : [...proofOutcome.steps, proofOutcome.refusingStep]) {
                   pushWitness(
                     "scriptSources",
-                    scriptSourcesWitnessCbor({
-                      ...scriptSourceControl,
-                      stage: 5,
-                      sourceFrontier: replaySourceFrontier,
-                      redeemerFrontier,
-                      replayCursor,
-                      replayAccumulator,
-                      replayRemainingScheduleHash,
-                      spendIndex: replaySpendIndex,
-                      purposeFrontier: replayPurposeFrontier,
-                      outputCursor,
-                      outputFrontier,
-                      receiveScan: receiveSourceScan(),
-                      outputProof: proofStep.control,
-                    }),
+                    stageFiveWitness(proofStep.control),
                     {
                       kind: "ledgerOutputProofStep",
                       witness: proofStep.witness,
                     },
                   );
                 }
+                // The machine refuses the output at the refusing step.
+                if (proofOutcome.kind === "refused") {
+                  const reason = refusedOutputStopReason({
+                    outputIndex: outputCursor,
+                    refusal: proofOutcome.refusal,
+                    rejection,
+                    terminalPhase,
+                  });
+                  if (reason instanceof Error) {
+                    return yield* Effect.fail(reason);
+                  }
+                  stopReason = reason;
+                  stoppedAtRejection = true;
+                  break;
+                }
+                const outputProof = proofOutcome.trace;
+                const outputMaterial =
+                  buildCanonicalMidgardLedgerOutputMaterial({
+                    outputIndex: outputCursor,
+                    outputCbor,
+                  });
+                const signerProof = protectedOutputSignerProof(outputCbor);
                 // Chained descriptor-fact attachment: each canonical group is
                 // one checkpointed machine step over the same finalize witness
                 // shape, its commitments derived from the terminal control
@@ -3023,28 +3032,10 @@ export const prepareValidationTrace = (
                 // fact to commit exactly the output's descriptor.
                 let factsProof = outputProof.terminal;
                 while (!midgardLedgerOutputProofFactsComplete(factsProof)) {
-                  pushWitness(
-                    "scriptSources",
-                    scriptSourcesWitnessCbor({
-                      ...scriptSourceControl,
-                      stage: 5,
-                      sourceFrontier: replaySourceFrontier,
-                      redeemerFrontier,
-                      replayCursor,
-                      replayAccumulator,
-                      replayRemainingScheduleHash,
-                      spendIndex: replaySpendIndex,
-                      purposeFrontier: replayPurposeFrontier,
-                      outputCursor,
-                      outputFrontier,
-                      receiveScan: receiveSourceScan(),
-                      outputProof: factsProof,
-                    }),
-                    {
-                      kind: "ledgerOutputProofFinalize",
-                      signerProof: { kind: "none" },
-                    },
-                  );
+                  pushWitness("scriptSources", stageFiveWitness(factsProof), {
+                    kind: "ledgerOutputProofFinalize",
+                    signerProof: { kind: "none" },
+                  });
                   const attached =
                     attachMidgardLedgerOutputProofFacts(factsProof);
                   if (attached === null) {
@@ -3056,28 +3047,10 @@ export const prepareValidationTrace = (
                   }
                   factsProof = attached;
                 }
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                    outputProof: factsProof,
-                  }),
-                  {
-                    kind: "ledgerOutputProofFinalize",
-                    signerProof,
-                  },
-                );
+                pushWitness("scriptSources", stageFiveWitness(factsProof), {
+                  kind: "ledgerOutputProofFinalize",
+                  signerProof,
+                });
                 const output = decodeMidgardTxOutput(outputCbor);
                 const address = decodeMidgardAddressBytes(output.address);
                 // Stage 5 is where the machine refuses both output faults, so
@@ -3155,23 +3128,7 @@ export const prepareValidationTrace = (
                 outputCursor += 1;
               }
               if (!stoppedAtRejection) {
-                pushWitness(
-                  "scriptSources",
-                  scriptSourcesWitnessCbor({
-                    ...scriptSourceControl,
-                    stage: 5,
-                    sourceFrontier: replaySourceFrontier,
-                    redeemerFrontier,
-                    replayCursor,
-                    replayAccumulator,
-                    replayRemainingScheduleHash,
-                    spendIndex: replaySpendIndex,
-                    purposeFrontier: replayPurposeFrontier,
-                    outputCursor,
-                    outputFrontier,
-                    receiveScan: receiveSourceScan(),
-                  }),
-                );
+                pushWitness("scriptSources", stageFiveWitness());
                 let mintPurposeFrontier = replayPurposeFrontier;
                 for (const policyItem of mintCollection.items) {
                   pushWitness(

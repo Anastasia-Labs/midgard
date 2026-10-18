@@ -262,9 +262,10 @@ export const validatePhaseASingle = (
   // first faulty output, which Phase B refuses after input resolution, and
   // the projection before the first faulty script item, refused below after
   // the signatures and the native scripts before it.
-  const heldOutputFaultIndex = forced
-    ? locateMidgardForcedTxOutputFault(queuedTx.txCbor)?.itemIndex
+  const heldOutputFault = forced
+    ? (locateMidgardForcedTxOutputFault(queuedTx.txCbor) ?? undefined)
     : undefined;
+  const heldOutputFaultIndex = heldOutputFault?.itemIndex;
   let submittedTx: MidgardSubmittedTx | null = null;
   let rawProjection: MidgardRawEnvelopePhaseAProjection | null = null;
   let heldScriptFault: MidgardForcedTxWitnessScriptFault | null = null;
@@ -463,7 +464,7 @@ export const validatePhaseASingle = (
     arrivalSeq: queuedTx.arrivalSeq,
     createdAt: queuedTx.createdAt,
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
-    heldOutputFaultIndex,
+    heldOutputFault,
   });
 };
 

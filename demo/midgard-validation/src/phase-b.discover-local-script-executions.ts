@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 
+import { forcedTxOutputFaultRejection } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
 import {
   findRedeemerByPointer,
   MidgardRedeemerPointer,
@@ -193,16 +194,13 @@ export const discoverLocalScriptExecutions = (
     protectedReceivingHashes.add(scriptHash);
   }
   // A forced transaction's held output follows the outputs above.
-  if (candidate.heldOutputFaultIndex !== undefined) {
+  if (candidate.heldOutputFault !== undefined) {
+    const { itemIndex, itemClass } = candidate.heldOutputFault;
     return {
       kind: "rejected",
-      code: RejectCodes.InvalidOutput,
-      detail: `output[${candidate.heldOutputFaultIndex}] is not a canonical ledger output`,
+      ...forcedTxOutputFaultRejection(candidate.heldOutputFault),
+      detail: `output[${itemIndex}] is faulty: ${itemClass}`,
       consensusPhase: "scriptSources",
-      subject: {
-        arm: "OutputNonCanonical",
-        index: BigInt(candidate.heldOutputFaultIndex),
-      },
     };
   }
 

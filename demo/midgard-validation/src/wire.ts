@@ -5,6 +5,7 @@ import {
 import type { Address } from "@lucid-evolution/lucid";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import type { MidgardForcedTxOutputFault } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
 import type {
   MidgardLedgerOutput,
   MidgardLedgerTx,
@@ -104,7 +105,7 @@ export type WirePhaseACandidateV1 = {
     readonly redeemerWitnessHash: Bytes;
     readonly requiresLocalScriptDiscovery: boolean;
   };
-  readonly heldOutputFaultIndex?: number;
+  readonly heldOutputFault?: MidgardForcedTxOutputFault;
 };
 
 type PhaseACandidateWireFields =
@@ -112,7 +113,7 @@ type PhaseACandidateWireFields =
   | "submission"
   | "graph"
   | "derived"
-  | "heldOutputFaultIndex";
+  | "heldOutputFault";
 const phaseACandidateWireIsExhaustive: Exclude<
   keyof PhaseAValidatedTx,
   PhaseACandidateWireFields
@@ -327,9 +328,9 @@ export const serializePhaseACandidate = (
       requiresLocalScriptDiscovery:
         candidate.derived.requiresLocalScriptDiscovery,
     },
-    ...(candidate.heldOutputFaultIndex === undefined
+    ...(candidate.heldOutputFault === undefined
       ? {}
-      : { heldOutputFaultIndex: candidate.heldOutputFaultIndex }),
+      : { heldOutputFault: candidate.heldOutputFault }),
   } satisfies WirePhaseACandidateV1;
 };
 
@@ -410,7 +411,7 @@ export const deserializePhaseACandidate = (
     requiresLocalScriptDiscovery:
       candidate.derived.requiresLocalScriptDiscovery,
   },
-  ...(candidate.heldOutputFaultIndex === undefined
+  ...(candidate.heldOutputFault === undefined
     ? {}
-    : { heldOutputFaultIndex: candidate.heldOutputFaultIndex }),
+    : { heldOutputFault: candidate.heldOutputFault }),
 });
