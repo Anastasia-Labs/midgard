@@ -470,6 +470,13 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   Inspect the named event's rows.
 - `l1_event_undecodable:<count>` (a detail): that many projected events do
   not decode into the node's rows and are left out; `refused` names them.
+- `landed_frontier_prune_floor:<slots>` (a detail): the landed frontier's
+  prune floor holds the follower's prune boundary that many slots back, so
+  the store keeps the facts unprocessed landed blocks are judged on. In
+  normal operation it holds the boundary back by about the event wait plus
+  the event validity range plus the unmerged span after the frontier; a lag
+  of that size is expected and the node stays ready. Look into a lag that
+  keeps growing past it.
 - `l1_own_block_forced_order_orphaned:<count>` (a detail): that many forced
   rows of landed own blocks have an order that left the chain. The node
   follows the block and stays ready; the forced-order hook logs a warning
@@ -519,9 +526,59 @@ first hold by priority is the reason, the rest are in its detail):
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
-  does not know at the view. Wait; it is re-read every run.
-- `landed_block_forced_order_pending`: a forced order in a foreign block's
-  window cannot be read back yet. Wait.
+  does not know at the view, and the follower's facts do not cover the
+  range the block's events could be admitted in (the prune passed the
+  range's start, so an order admitted in it or the follower's refusal of
+  one may be gone; the store was reset or rolled back since the view; the
+  follower's cursor or its refusals could not be read; the block's start
+  maps to no slot; or its origin is after that range's start and the
+  protocol-init fact that could cover it is unreadable). Where the facts
+  cover the range, the block is
+  `landed_block_invalid` instead. A
+  local fault on the block: it is read again every run, and after eight
+  runs in a row end on it with no progress past it the node exits non-zero
+  (`node_transient_budget_exhausted source=driver
+reason=landed_block_event_unknown`); a restart meets the same bound again.
+  Reset the follower store (`midgard-l1-follower reset --to-origin`, with
+  `l1Origin` early enough for the detail's slot) or resync the node, then
+  restart.
+- `landed_block_forced_order_pending`: a forced order admitted in a foreign
+  block's window cannot be read back from the follower's facts at the view
+  (its output is absent, not authentic, or has no datum there). The landed
+  frontier's prune floor keeps every order and output the window of a block
+  after the frontier can admit, so this arises only from a store pruned
+  while the floor did not apply or from inconsistent facts, never from the
+  block. A local fault on the block: it is read again every run, and after
+  eight runs in a row end on it with no progress past it the node exits
+  non-zero (`node_transient_budget_exhausted source=driver
+reason=landed_block_forced_order_pending`); a restart meets the same bound
+  again. Reset the follower store (`midgard-l1-follower reset --to-origin`)
+  or resync the node, then restart.
+- `landed_block_origin_after_frontier`: the follower store's origin is too
+  late for the blocks after the landed frontier. A foreign block names an
+  event the follower does not know at the view, and the origin is after
+  the slot that block's events could first be admitted at (the detail names
+  both slots), or the block's node output was seeded at the origin, or the
+  block names a deposit or withdrawal the follower refused because the
+  retention output its payload is read from is not in its facts: a
+  retention output the follower's facts do not hold, created before its
+  origin. The detail then names the referenced outputs absent from the
+  facts (`<tx hash>#<index>`), one of which is that retention output. The
+  facts cannot judge the block, and the block is never blamed for it. A
+  store whose `l1Origin` is the documented point before the
+  `prepareHubOracleNonce` block holds the protocol-init tx (the tx that
+  spends `hubOracleOneShot`), so no event is admitted before its origin
+  and no node output predates it. Not retried: the node exits non-zero at
+  once (`node_transient_budget_exhausted source=driver
+reason=landed_block_origin_after_frontier`); a restart on the same store
+  exits again. Reset the follower store with an earlier `l1Origin`, then
+  restart (`midgard-l1-follower reset --to-origin`), or resync the node:
+  where the detail names two slots, at or before the earlier one; where it
+  names outputs, before the block that created each of them. For each named
+  `<tx hash>`, `midgard-l1-follower find-origin --tx <tx hash>
+--network-magic <n>` prints the `l1Origin` immediately before the block
+  holding that tx; use the earliest of them (or any earlier point) as
+  `l1Origin`. Otherwise, before the `prepareHubOracleNonce` block.
 - `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
   a foreign block failed in this node's own computation (hashing, the payload
   roots, a library the replay runs), or its Ed25519 verifier could not

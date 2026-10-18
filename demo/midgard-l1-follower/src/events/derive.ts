@@ -31,6 +31,10 @@ import type {
   WithdrawalSummary,
 } from "../types.js";
 import type { EventListConfig, EventProjectionConfig } from "./config.js";
+import {
+  RETENTION_OUTPUT_UNSEEN,
+  retentionUnseenDetail,
+} from "./retention-unseen.js";
 import { EVENTS_TABLE, REFUSALS_TABLE, RETIREMENTS_TABLE } from "./schema.js";
 
 export type RetirementReason = "absorbed" | "payout_initialized" | "refunded";
@@ -161,9 +165,21 @@ export type AdmittedEvent = Readonly<{
 }>;
 
 /**
+ * `openOrder`'s refusal of an external payload no given retained output
+ * holds. `admit` refuses it as `RETENTION_OUTPUT_UNSEEN` where a referenced
+ * output is absent from the facts, else as `malformed`.
+ */
+class RetainedPayloadMissing extends Error {
+  constructor() {
+    super("no referenced retention output holds the external payload");
+  }
+}
+
+/**
  * Opens an Order output exactly as the SDK's witness capture does, with an
  * external payload read from `retained` (the referenced retention output).
- * Throws when the output does not authenticate as an Order of this list.
+ * Throws when the output does not authenticate as an Order of this list
+ * (`RetainedPayloadMissing` when no retained output holds its payload).
  */
 export const openOrder = (
   utxo: UTxO,
@@ -192,8 +208,7 @@ export const openOrder = (
           aikenSerialisedPlutusDataCborPreservingMapOrder(candidate.datum),
         ) === storage,
     );
-    if (retainedDataUtxo?.datum == null)
-      throw new Error("external order references no retention datum");
+    if (retainedDataUtxo?.datum == null) throw new RetainedPayloadMissing();
     rawPayload = plutusConstrFieldCbor(retainedDataUtxo.datum, [1]);
   }
   const payloadCbor =
@@ -257,11 +272,12 @@ const refuse = async (
   at: Readonly<{ tx: TxSummary; outRef: OutRef }>,
   kind: string,
   key: Buffer,
-  reason: "retired_key" | "malformed",
+  reason: "retired_key" | "malformed" | typeof RETENTION_OUTPUT_UNSEEN,
   detail: string,
 ): Promise<void> => {
   // One refusal per output: an output holding several list tokens is
-  // refused under the first, never failing the block on the second.
+  // refused under the first, never failing the block on the second. An
+  // unseen refusal's detail is its outref list, kept whole.
   await context.tx.query(
     `INSERT INTO ${REFUSALS_TABLE} (slot, tx_hash, output_index, kind, event_key, reason, detail) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tx_hash, output_index) DO NOTHING`,
     [
@@ -271,7 +287,7 @@ const refuse = async (
       kind,
       key,
       reason,
-      detail.slice(0, 500),
+      reason === RETENTION_OUTPUT_UNSEEN ? detail : detail.slice(0, 500),
     ],
   );
 };
@@ -320,12 +336,18 @@ const retire = async (
   );
 };
 
+/**
+ * The referenced outputs at the list's retention address with an inline
+ * datum (`retained`), and the referenced outputs the facts do not hold
+ * (`absent`).
+ */
 const retainedOutputs = async (
   context: Context,
   tx: TxSummary,
   list: EventListConfig,
-): Promise<UTxO[]> => {
+): Promise<Readonly<{ retained: UTxO[]; absent: OutRef[] }>> => {
   const out: UTxO[] = [];
+  const absent: OutRef[] = [];
   for (const outRef of tx.referenceInputs) {
     const row = (
       await context.tx.query(
@@ -333,8 +355,11 @@ const retainedOutputs = async (
         [outRef.txHash, outRef.index],
       )
     )[0];
-    if (row === undefined || row.datum === null || row.datum === undefined)
+    if (row === undefined) {
+      absent.push(outRef);
       continue;
+    }
+    if (row.datum === null || row.datum === undefined) continue;
     if (hex(Buffer.from(row.address as Uint8Array)) !== list.retentionAddress)
       continue;
     out.push({
@@ -345,7 +370,7 @@ const retainedOutputs = async (
       datum: hex(Buffer.from(row.datum as Uint8Array)),
     });
   }
-  return out;
+  return { retained: out, absent };
 };
 
 const admit = async (
@@ -358,18 +383,32 @@ const admit = async (
   if (await isLive(context, list.kind, key)) return; // a continuation
   const at = { tx, outRef: created.outRef };
   let event: AdmittedEvent | "not_an_order";
+  let absent: readonly OutRef[] = [];
   try {
     if (created.output.scriptRef !== null)
       throw new Error("list output carries a reference script");
+    const referenced =
+      created.output.datum === null
+        ? { retained: [], absent: [] }
+        : await retainedOutputs(context, tx, list);
+    absent = referenced.absent;
     event = openOrder(
       lucidUtxo(created.outRef, created.output),
       list,
-      created.output.datum === null
-        ? []
-        : await retainedOutputs(context, tx, list),
+      referenced.retained,
     );
   } catch (error) {
-    await refuse(context, at, list.kind, key, "malformed", String(error));
+    // Unseen only where a referenced output is absent from the facts: one
+    // they hold at another address or with another datum is malformed.
+    const unseen = error instanceof RetainedPayloadMissing && absent.length > 0;
+    await refuse(
+      context,
+      at,
+      list.kind,
+      key,
+      unseen ? RETENTION_OUTPUT_UNSEEN : "malformed",
+      unseen ? retentionUnseenDetail(absent) : String(error),
+    );
     return;
   }
   if (event === "not_an_order") return; // a filler or the root

@@ -22,20 +22,28 @@ import type { MergePoint } from "./confirmed-merges.js";
 import { ViewMoved } from "./ports.js";
 
 /**
- * A queue node: its header hash, header, block time (its commit time) and
- * availability status (whether a committee commitment binds its payload).
+ * A queue node: its header hash, header, block time (its commit time),
+ * availability status (whether a committee commitment binds its payload)
+ * and the slot its node output entered the facts at.
  */
 export type LandedNode = Readonly<{
   headerHash: string;
   header: SDK.Header;
   blockTime: bigint;
   daAvailability: SDK.DaAvailabilityStateQueueStatus;
+  /**
+   * The slot of the block that created the node output read (for a header
+   * read from the history, its earliest retained one); null for a seeded
+   * output, which entered the facts at the origin.
+   */
+  enteredSlot: number | null;
 }>;
 
-/** The landed node a queue node datum carries. */
+/** The landed node a queue node datum carries, its output entered at `enteredSlot`. */
 export const landedNodeOf = (
   headerHash: string,
   datum: Parameters<typeof SDK.getStateQueueNodeFromStateQueueDatum>[0],
+  enteredSlot: number | null,
 ) =>
   Effect.map(
     SDK.getStateQueueNodeFromStateQueueDatum(datum),
@@ -44,6 +52,7 @@ export const landedNodeOf = (
       header: node.header,
       blockTime: node.block_time,
       daAvailability: node.da_attestation,
+      enteredSlot,
     }),
   );
 
@@ -59,6 +68,11 @@ export type QueueHistory = Readonly<{
   statuses: ReadonlyMap<string, SDK.DaAvailabilityStateQueueStatus>;
   /** Each header's end time, from a node or a root that carried it. */
   endTimes: ReadonlyMap<string, bigint>;
+  /**
+   * The slot each node's earliest retained output was created at; null when
+   * one was seeded.
+   */
+  enteredSlots: ReadonlyMap<string, number | null>;
   /**
    * The root output that made each header the queue root (the earliest
    * retained one, if a header was ever re-rooted), where its creation is
@@ -97,6 +111,7 @@ export const decodeHistory = (
   const blockTimes = new Map<string, bigint>();
   const statuses = new Map<string, SDK.DaAvailabilityStateQueueStatus>();
   const endTimes = new Map<string, bigint>();
+  const enteredSlots = new Map<string, number | null>();
   const roots = new Map<string, MergePoint>();
   for (const element of elements) {
     if (element.element.datum.key === "Empty") {
@@ -126,8 +141,16 @@ export const decodeHistory = (
     )
       statuses.set(element.headerHash, node.right.da_attestation);
     endTimes.set(element.headerHash, node.right.header.endTime);
+    // A seeded output entered at the origin, before any created one.
+    const entered = enteredSlots.get(element.headerHash);
+    const slot = element.created?.slot ?? null;
+    if (
+      entered === undefined ||
+      (entered !== null && (slot === null || slot < entered))
+    )
+      enteredSlots.set(element.headerHash, slot);
   }
-  return { headers, blockTimes, statuses, endTimes, roots };
+  return { headers, blockTimes, statuses, endTimes, enteredSlots, roots };
 };
 
 /** `to` and its ancestors after the first one `stop` accepts, oldest first. */
@@ -160,6 +183,7 @@ export const lineageBack = (
       header,
       blockTime,
       daAvailability: history.statuses.get(cursor) ?? "Unattested",
+      enteredSlot: history.enteredSlots.get(cursor) ?? null,
     });
     cursor = header.prevHeaderHash;
   }
