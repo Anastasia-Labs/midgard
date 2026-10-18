@@ -2,7 +2,8 @@
  * Stake registrations funded from a wallet of small coins. Each coin is
  * smaller than one registration deposit, so a builder must select enough of
  * them for the deposits, the fee and the change; a wallet whose coins cannot
- * cover that is refused by name, spending nothing.
+ * cover that is refused by name, spending nothing, and a wallet view with no
+ * output is refused as empty before any build.
  */
 import "./helpers/follower-emulator-installed.js";
 
@@ -26,6 +27,7 @@ import {
   ensureScriptRewardAccountRegisteredProgram,
 } from "../src/transactions/script-reward-registration.js";
 import { RewardRegistrationUnfunded } from "../src/transactions/utils.reward-registration-funding.js";
+import { causeTrail } from "./helpers/builder-wallet-view.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -189,4 +191,32 @@ it("refuses by name a single script reward registration its coins cannot cover, 
   expectRefusedByName(result);
   expect(submitted).toHaveLength(0);
   expect(await balance()).toBe(COIN);
+});
+
+const expectRefusedAsEmptyView = (result: Either.Either<unknown, unknown>) => {
+  expect(Either.isLeft(result)).toBe(true);
+  expect(causeTrail(result)).toContain("wallet_view_empty");
+};
+
+it("refuses an availability registration from an empty wallet view as empty", async () => {
+  const { lucid, contracts, submitted } = await smallCoinWallet(0);
+  const result = await runWithoutFollower(
+    ensureAvailabilityChallengeRewardAccountsRegisteredProgram(
+      lucid,
+      contracts,
+    ).pipe(Effect.either),
+  );
+  expectRefusedAsEmptyView(result);
+  expect(submitted).toHaveLength(0);
+});
+
+it("refuses a runtime batch from an empty wallet view as empty", async () => {
+  const { lucid, contracts, submitted } = await smallCoinWallet(0);
+  const result = await runWithoutFollower(
+    ensureRuntimeRewardAccountsRegisteredProgram(lucid, contracts).pipe(
+      Effect.either,
+    ),
+  );
+  expectRefusedAsEmptyView(result);
+  expect(submitted).toHaveLength(0);
 });

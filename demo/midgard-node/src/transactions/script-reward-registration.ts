@@ -13,8 +13,8 @@ import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-
 import { handleSignSubmit } from "./utils.js";
 import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
 import {
+  readSelectedWalletFunding,
   readSelectedWalletView,
-  requireWalletViewInputs,
 } from "./utils.wallet-view.js";
 
 const fundingFailure = (cause: WalletViewUnavailable) =>
@@ -72,14 +72,15 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     // deployment's initialization nonces, so none is reserved here.
     for (let offset = 0; offset < missing.length; offset += 32) {
       const batch = missing.slice(offset, offset + 32);
-      const view = yield* readSelectedWalletView(lucid).pipe(
-        Effect.mapError(fundingFailure),
-      );
+      const funding = yield* readSelectedWalletFunding(
+        lucid,
+        "runtime reward-account registrations",
+      ).pipe(Effect.mapError(fundingFailure));
       const tx = yield* Effect.tryPromise({
         try: () =>
           buildRewardRegistrationsTx(
             lucid,
-            view,
+            funding,
             batch.map(({ rewardAddress }) => rewardAddress),
             "the runtime reward-account registrations",
           ),
@@ -228,15 +229,10 @@ export const ensureScriptRewardAccountRegisteredProgram = (
     if (before.registered) return { ...before, txHash: null };
     // The registration selects its own inputs for its deposit
     // (`buildRewardRegistrationsTx`); an empty view is refused by name first.
-    const funding = yield* readSelectedWalletView(lucid).pipe(
-      Effect.flatMap((view) =>
-        requireWalletViewInputs(
-          view,
-          "the script reward-account registration",
-        ).pipe(Effect.map((utxos) => ({ address: view.address, utxos }))),
-      ),
-      Effect.mapError(fundingFailure),
-    );
+    const funding = yield* readSelectedWalletFunding(
+      lucid,
+      "the script reward-account registration",
+    ).pipe(Effect.mapError(fundingFailure));
     const tx = yield* Effect.tryPromise({
       try: () =>
         buildRewardRegistrationsTx(
