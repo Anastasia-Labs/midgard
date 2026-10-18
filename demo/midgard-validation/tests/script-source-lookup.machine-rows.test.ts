@@ -336,6 +336,12 @@ const AIKEN_ROWS_PATH = fileURLToPath(
   ),
 );
 
+/**
+ * Rows whose stage-9 match step is also checked against the skip that moves
+ * past the matching source; the skip must be refused.
+ */
+const SKIP_THE_MATCH_ROWS = new Set(["first_of_two_references"]);
+
 const renderAikenRows = (
   rows: readonly {
     readonly name: string;
@@ -349,7 +355,7 @@ const renderAikenRows = (
     "",
     "use midgard/rejection_reason_v1",
     "use midgard/validation_machine_tests/script_source_lookup_rows_support.{",
-    "  OneStepVector, rejects_with, verifies_every_step,",
+    "  OneStepVector, refuses_skipping_the_match, rejects_with, verifies_every_step,",
     "}",
     "",
   ];
@@ -397,6 +403,13 @@ const renderAikenRows = (
       );
     }
     lines.push("}", "");
+    if (SKIP_THE_MATCH_ROWS.has(row.name))
+      lines.push(
+        `test ${row.name}_refuses_skipping_the_match() {`,
+        `  refuses_skipping_the_match(${row.name}_steps)`,
+        "}",
+        "",
+      );
   }
   return lines.join("\n");
 };
