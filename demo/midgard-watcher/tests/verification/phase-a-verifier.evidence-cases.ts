@@ -163,18 +163,12 @@ export const EVIDENCE_CASES: readonly EvidenceCase[] = [
     fromNativeTx({ outputs: manyOutputs(2000) }),
   ),
   evidenceCase(
-    "plutus witness is not a canonical bounded program envelope",
+    "Plutus witness does not contain a CBOR-wrapped Flat program",
     RejectCodes.ScriptProgramEncoding,
     "canonicalDecode",
     fromNativeTx({
       scriptWitnesses: [plutusV3ScriptWitness(Buffer.from([0x00]))],
     }),
-  ),
-  evidenceCase(
-    "missing program-material sidecar",
-    RejectCodes.CekProgramMaterial,
-    "canonicalDecode",
-    fromNativeTx({}, { programMaterialSidecarCbor: null }),
   ),
   evidenceCase(
     "declared redeemer ex-units over the per-tx cap",

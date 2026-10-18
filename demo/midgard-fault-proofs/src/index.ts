@@ -101,6 +101,7 @@ export * from "./submit-transition-trace-proof.js";
 export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
+export * from "./validation-cek-selection.js";
 export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-classification-fault.js";
 export * from "./withdrawal-mistag/index.js";

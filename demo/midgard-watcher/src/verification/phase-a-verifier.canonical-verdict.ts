@@ -1,17 +1,9 @@
 import {
-  decodeMidgardCekProgramMaterialDaEntry,
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialEntry,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
-import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_CONSENSUS_PROFILE_ID,
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
-import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import type { Header } from "@al-ft/midgard-sdk";
 import type {
@@ -210,88 +202,6 @@ export const makeWatcherPhaseAConfig = (input: {
     strictnessProfile: MIDGARD_CONSENSUS_PROFILE_ID,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   });
-};
-
-// ---------------------------------------------------------------------------
-// Program-material projection
-// ---------------------------------------------------------------------------
-
-export const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
-
-/**
- * Reconstructs the per-transaction CEK program-material sidecar from the
- * block-wide, content-addressed `cek_program_material` set.
- *
- * The operator's per-transaction sidecars are NOT recoverable from public DA:
- * the block merges and deduplicates them by content root
- * (`mergeMidgardCekProgramMaterialSidecarsV1`, cek-proof.ts:3856). Handing the
- * merged superset to Phase A would be wrong in the unsafe direction's mirror
- * image - it would reject honest transactions, because
- * `verifyMidgardCekProgramMaterialBundle` requires every supplied node to be
- * reachable from the transaction's own program envelopes.
- *
- * So the watcher projects the superset down to the reachable subset, and it
- * does so with the canonical reachability computation itself: the envelopes
- * come from `collectMidgardAttachedProgramEnvelopes` and the reachable roots
- * come from `verifyMidgardCekProgramMaterialBundle(..., allowUnreachable)`.
- * There is no watcher-authored traversal. If that canonical computation throws
- * for any reason, the complete block-wide set is handed to Phase A unchanged,
- * so the canonical validator - not this function - renders the verdict.
- *
- * A forced transaction carries no program material: its witness scripts are
- * native, so its sidecar is always empty.
- */
-export const projectProgramMaterialSidecar = (
-  txCbor: Buffer,
-  blockMaterial: readonly MidgardCekProgramMaterialEntry[],
-  sourceKind: "normal" | "forced",
-): Buffer => {
-  if (blockMaterial.length === 0 || sourceKind === "forced") {
-    return EMPTY_SIDECAR;
-  }
-  try {
-    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
-    const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
-    const verifications = verifyMidgardCekProgramMaterialBundle(
-      envelopes,
-      blockMaterial,
-      { allowUnreachable: true },
-    );
-    const reached = new Set<string>();
-    for (const verification of verifications) {
-      for (const root of verification.reachableRoots) {
-        reached.add(root);
-      }
-    }
-    return encodeMidgardCekProgramMaterialSidecar(
-      blockMaterial.filter((entry) =>
-        reached.has(Buffer.from(entry.root).toString("hex")),
-      ),
-    );
-  } catch {
-    return encodeMidgardCekProgramMaterialSidecar(blockMaterial);
-  }
-};
-
-/** Decodes the block-wide DA program-material entries, or fails closed. */
-export const decodeBlockProgramMaterial = (
-  entries: readonly (readonly [string, string])[],
-): readonly MidgardCekProgramMaterialEntry[] => {
-  try {
-    return Object.freeze(
-      entries.map(([rootHex, valueHex]) =>
-        decodeMidgardCekProgramMaterialDaEntry(
-          Buffer.from(rootHex, "hex"),
-          Buffer.from(valueHex, "hex"),
-        ),
-      ),
-    );
-  } catch {
-    return fail(
-      "malformed_program_material",
-      "$.payload.block_body.cek_program_material",
-    );
-  }
 };
 
 // ---------------------------------------------------------------------------

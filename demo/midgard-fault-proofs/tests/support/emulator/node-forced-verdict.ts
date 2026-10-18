@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { OperatorVerdict } from "@al-ft/midgard-sdk";
 import {
@@ -20,14 +19,12 @@ export const nodeForcedVerdict = async ({
   transactionId,
   forcedCanonicalCbor,
   ledger = [],
-  programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar([]),
   nowCardanoSlotNo = 0n,
 }: {
   readonly transactionId: Buffer;
   readonly forcedCanonicalCbor: Buffer;
   /** Ledger entries as `[out-ref item bytes, output bytes]`. */
   readonly ledger?: readonly (readonly [Buffer, Buffer])[];
-  readonly programMaterialSidecarCbor?: Buffer;
   readonly nowCardanoSlotNo?: bigint;
 }): Promise<OperatorVerdict> => {
   const phaseA = await Effect.runPromise(
@@ -37,7 +34,6 @@ export const nodeForcedVerdict = async ({
           sourceKind: "forced",
           txId: transactionId,
           txCbor: forcedCanonicalCbor,
-          programMaterialSidecarCbor,
           arrivalSeq: 0n,
           createdAt: new Date(0),
         },

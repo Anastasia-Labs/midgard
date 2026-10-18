@@ -212,7 +212,6 @@ export const commitForcedBlock = async (
             transitionTraceRawEntry(leaf.forcedEntry[0], leaf.canonicalHex),
           ),
         ),
-        cek_program_material: [],
         validation_traces: sortedDaEntries(validationEntries),
         validation_trace_witnesses: [],
         counts,

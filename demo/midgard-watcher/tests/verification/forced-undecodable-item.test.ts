@@ -5,7 +5,6 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeCbor,
   encodeMidgardFieldPreimage,
@@ -114,7 +113,6 @@ const replay = (txCbor: Buffer, committed: string) =>
     authority: {
       phase: "ForcedTransaction",
       canonicalNativeTxCbor: txCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       committedForcedValidity: committed,
       eventKeyFingerprint: "undecodable-item",
     } as ValidatedEventAuthority,

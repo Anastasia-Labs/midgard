@@ -75,10 +75,6 @@ const retainedBlock = async (): Promise<Block> => {
   )!;
   return await buildStrictRetainedDaPairFixture({
     canonicalTransactionCbor: Buffer.from(boundary.canonicalCborHex, "hex"),
-    canonicalMaterialSidecarCbor:
-      boundary.canonicalMaterialSidecarCborHex === undefined
-        ? undefined
-        : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex"),
   });
 };
 

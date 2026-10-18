@@ -42,7 +42,6 @@ export const buildJourneyForcedTransaction = async (
   const material = prepareJourneyForcedTransaction(input);
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: material.transaction.canonicalCbor,
-    programMaterial: material.programMaterial,
     predecessor: input.predecessor,
     ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,

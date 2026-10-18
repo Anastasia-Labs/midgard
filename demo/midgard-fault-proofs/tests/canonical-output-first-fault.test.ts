@@ -5,7 +5,6 @@ import {
   ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { RejectCodes, validatePhaseASingle } from "@al-ft/midgard-validation";
 import {
   makeMinAdaFundedExactSizeOutputItem,
@@ -52,7 +51,6 @@ it("keeps the late oversized output ordinal ahead of an invalid signature", () =
       txId: transaction.txId,
       txCbor: encodeMidgardForcedTxCanonical(transaction.tx),
       sourceKind: "forced",
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       arrivalSeq: 0n,
       createdAt: new Date(0),
     },

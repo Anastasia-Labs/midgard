@@ -70,7 +70,6 @@ describe("malformed inputs", () => {
     expect(() =>
       watcherPhaseAQueuedTxs({
         transactions: [{ txId: "zz", txCbor: Buffer.alloc(1) }],
-        programMaterial: [],
       }),
     ).toThrow(WatcherPhaseAVerifierError);
   });

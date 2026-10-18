@@ -318,7 +318,6 @@ const buildForcedTransitionTraceFixture = async ({
         event_to_step: sortedDaEntries(eventToStepEntries),
         transaction_preimages: [],
         forced_transaction_preimages: sortedDaEntries(forcedPreimageEntries),
-        cek_program_material: [],
         validation_traces: sortedDaEntries(validationTraceEntries),
         validation_trace_witnesses: [],
         counts,

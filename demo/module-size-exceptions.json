@@ -95,11 +95,6 @@
     "reason": "The transaction builder, trusted completion factories and validation callbacks form a mutually dependent ownership group. They share branded construction and transaction lifecycle invariants; separating the group requires redesigning those boundaries rather than moving independent declarations."
   },
   {
-    "file": "lucid-midgard/src/builder.lucid-midgard.ts",
-    "max": 513,
-    "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
-  },
-  {
     "file": "lucid-midgard/src/builder.tx-builder.ts",
     "max": 952,
     "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
@@ -830,11 +825,6 @@
     "reason": "This self-identifying probe executable captures its own source path/hash and runs an ordered native-engine verification sequence. Moving its execution changes the recorded identity and process boundary; a dedicated probe redesign is needed before splitting it."
   },
   {
-    "file": "midgard-node/tests/admission-writer.test.ts",
-    "max": 501,
-    "reason": "Retained test registration “durable admission microbatch writer” (437 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-node/tests/availability-challenge-command.test.ts",
     "max": 559,
     "reason": "Retained test registration “operational availability commands” (505 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -880,11 +870,6 @@
     "reason": "Retained test registration “commit block planner” (704 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/commit-da-frame-step-down-persistence.test.ts",
-    "max": 513,
-    "reason": "One persistence journey sharing one commit-worker fixture."
-  },
-  {
     "file": "midgard-node/tests/commit-end-time.test.ts",
     "max": 507,
     "reason": "Retained test registration “commit end-time resolver” (482 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -898,11 +883,6 @@
     "file": "midgard-node/tests/commit-stage-eviction.test.ts",
     "max": 745,
     "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault or a non-reproducing failure holds), plus coverage deferral and rejection."
-  },
-  {
-    "file": "midgard-node/tests/commit-worker-failure-lease-classification.test.ts",
-    "max": 507,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
     "file": "midgard-node/tests/contract-deployment-info.contract-deployment-info.ts",

@@ -97,7 +97,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 14 canonical codes the Phase B pipeline can emit, in `RejectCodes`
+ * The 13 canonical codes the Phase B pipeline can emit, in `RejectCodes`
  * declaration order.
  *
  * Provenance, one entry per `reject(...)`/`fail(...)` call site in phase-b.ts:
@@ -109,8 +109,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
  * (:915, :925, :1097, :1106), `E_MIN_ADA` (the output-descriptor scan),
  * `E_VALUE_NOT_PRESERVED` (:1061, :1160),
  * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_ASSET_COUNT` (the
- * ValueAndMint walk, phase-b.check-value-and-mint.ts),
- * `E_CEK_PROGRAM_MATERIAL` (:247, :551).
+ * ValueAndMint walk, phase-b.check-value-and-mint.ts).
  */
 export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.InvalidOutput,
@@ -126,7 +125,6 @@ export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.ValueNotPreserved,
   RejectCodes.PlutusScriptInvalid,
   RejectCodes.AssetCount,
-  RejectCodes.CekProgramMaterial,
 ] as const);
 
 export const REACHABLE_SET: ReadonlySet<string> = new Set<string>(
@@ -175,8 +173,6 @@ export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
   Object.freeze({
     [RejectCodes.InvalidOutput]:
       "dominated: prior-state entries must produce an exact canonical V1 ledger descriptor (buildCanonicalMidgardLedgerEntryOutputMaterialV1) before the replay starts, so an output byte string that decodeMidgardTxOutput would reject never reaches Phase B - it is reported as malformed_prior_state instead.",
-    [RejectCodes.CekProgramMaterial]:
-      "dominated: the sidecar handed to Phase B is the one canonical Phase A already accepted (E_CEK_PROGRAM_MATERIAL, phase-a.ts:456/487), and the watcher projects it with the canonical reachability computation itself, so the Phase B re-verification cannot be the first to fail. Reference-script-carried CEK envelopes are the one residual path and have no deterministic block fixture in this lane.",
   } as const);
 
 /**
@@ -224,7 +220,7 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION =
 /**
  * The 10 canonical codes neither W24 nor W25 claims, each with the reason no
  * canonical call site in either pipeline can emit it. Together with the two
- * reachable sets and the Phase-A-owned set these exhaust the 51-member
+ * reachable sets and the Phase-A-owned set these exhaust the 50-member
  * vocabulary, which is what makes the W24 + W25 union total.
  */
 export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =
@@ -232,7 +228,7 @@ export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.UnsupportedFieldNonEmpty]:
       "no call site in either pipeline: V1 canonical decoding rejects unsupported fields structurally, so the code is never constructed.",
     [RejectCodes.PlutusEvaluationUnavailable]:
-      "no call site in phase-b.ts: the pipeline always has an evaluator - config.evaluateProofScript when supplied, otherwise the in-process structural CEK executor this lane uses - and every evaluation failure path, including a thrown CEK error, is mapped to E_PLUTUS_SCRIPT_INVALID. The code is therefore not environment-dependent for the watcher: there is no watcher configuration under which the canonical pipeline can report evaluation as unavailable, because the watcher never injects a remote or optional evaluator.",
+      "no rejection call site: decoder/evaluator infrastructure failures propagate as typed errors and hold replay; explicit script failures use E_PLUTUS_SCRIPT_INVALID.",
     [RejectCodes.CertificatesForbidden]:
       "no call site in either pipeline: V1 canonical transactions have no certificate field to carry, so the prohibition is structural.",
     [RejectCodes.NonZeroWithdrawal]:
@@ -240,7 +236,7 @@ export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.DatumSize]:
       "no call site in either pipeline: datum bounds are enforced by the output/ledger-output preimage bounds that surface as E_LEDGER_OUTPUT_SIZE in W24.",
     [RejectCodes.ScriptProgramAggregateSize]:
-      "no call site in either pipeline: the aggregate program bound is checked by the CEK bundle verifier and surfaces as E_CEK_PROGRAM_MATERIAL.",
+      "no call site in either pipeline: carried Flat scripts are bounded by canonical transaction, field-preimage and per-script limits; no separate material bundle is admitted.",
     [RejectCodes.RedeemerSize]:
       "no call site in either pipeline: the redeemer preimage bound surfaces as E_FIELD_PREIMAGE_SIZE in W24.",
     [RejectCodes.MintForbidden]:

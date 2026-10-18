@@ -43,7 +43,6 @@ export const parseAuthority = (
       "origin",
       "committedClaim",
       "canonicalNativeTxCborHex",
-      "programMaterialSidecarCborHex",
       "transitionEffect",
     ],
     "event authority",
@@ -115,7 +114,6 @@ export const parseAuthority = (
   text(c.valueCborHex, "event claim value", HEX);
   nullableText(c.canonicalNativeTxCborHex, "event claim native", HEX);
   nullableText(r.canonicalNativeTxCborHex, "event native", HEX);
-  nullableText(r.programMaterialSidecarCborHex, "event sidecar", HEX);
   if (phase === "ForcedTransaction") {
     text(r.canonicalNativeTxCborHex, "forced native", HEX);
     equal(
@@ -125,7 +123,6 @@ export const parseAuthority = (
     );
   } else {
     equal(r.canonicalNativeTxCborHex, null, "ordinary event native");
-    equal(r.programMaterialSidecarCborHex, null, "ordinary event sidecar");
     equal(c.canonicalNativeTxCborHex, null, "ordinary event claim native");
   }
   const committedClaim = c as unknown as WatcherCommittedEventClaim;
@@ -183,9 +180,6 @@ export const parseAuthority = (
     origin: origin as unknown as WatcherBlockReplayEventOriginRecord,
     committedClaim,
     canonicalNativeTxCborHex: r.canonicalNativeTxCborHex as string | null,
-    programMaterialSidecarCborHex: r.programMaterialSidecarCborHex as
-      | string
-      | null,
     transitionEffect:
       effect as unknown as WatcherBlockReplayEventAuthorityRecord["transitionEffect"],
   };

@@ -165,7 +165,9 @@ export const createOutputReferenceScriptDecodingBoundConfig = (
   binding: FraudProofWorkflowDeploymentBinding<"outputReferenceScriptDecoding">,
 ): ManifestBoundOutputReferenceScriptDecodingConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
-    readonly outputReferenceScriptDecoding?: OutputReferenceScriptDecodingContracts;
+    readonly outputReferenceScriptDecoding?: OutputReferenceScriptDecodingContracts & {
+      readonly scriptDecode: { readonly policyId: string };
+    };
   };
   const chain = localContracts.outputReferenceScriptDecoding;
   const certificate = binding.fieldPreimageCertificate;

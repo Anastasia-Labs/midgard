@@ -205,13 +205,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
 
   it("selects certified maximum carriage and materializes its chunk frontier", () => {
     // One non-native item can occupy the complete 32,768-byte field while the
-    // decoder still reaches a deterministic no-fault result.
+    // exact Plutus decoder still reaches a deterministic refusal.
     const payload = Buffer.alloc(32_758, 7);
     const item = Buffer.concat([Buffer.from("821880597ff6", "hex"), payload]);
     const maximum = evidence({ item });
     expect(maximum.fieldPreimageHex.length / 2).toBe(32_768);
     expect(maximum.carriage).toBe("Certified");
     expect(maximum.chunkProofCount).toBe(9);
+    expect(maximum.resultClass).toBe(101);
   });
 
   it("matches the frozen engine at the exact and adjacent node/depth boundaries", () => {
