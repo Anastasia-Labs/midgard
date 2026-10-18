@@ -63,8 +63,8 @@ export const deriveCekContextBinding = (input: {
   readonly auxiliary: Data;
 }) => {
   const cek = cborArray(input.workWitnessCbor, 11);
-  const native = cborArray(cek[0]!, 26);
-  for (const index of [7, 11, 13, 15, 17, 18, 20, 22]) {
+  const native = cborArray(cek[0]!, 25);
+  for (const index of [6, 10, 12, 14, 16, 17, 19, 21]) {
     const peaks = native[index];
     if (!Array.isArray(peaks))
       throw new Error("Expected native frontier peaks");
@@ -90,7 +90,7 @@ export const deriveCekContextBinding = (input: {
     contextFields[index] = record(array(contextFields[index]!, 3));
   const context = record(contextFields);
   const facts = record(
-    [0, 1, 2, 4, 6, 7, 8, 9, 12, 13, 14, 15, 16, 18, 19, 20].map(
+    [0, 1, 2, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 17, 18, 19].map(
       (index) => native[index]!,
     ),
   );

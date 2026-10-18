@@ -207,16 +207,13 @@ test script_sources_commits_unique_supported_redeemers() {
         control: tail_control,
       })
     = redeemer_item_proof_v1.step_v1(item_control, header_witness)
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -241,12 +238,10 @@ test script_sources_commits_unique_supported_redeemers() {
   let Pair(item_post, item_work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     empty_frontier,
     redeemer_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -255,12 +250,10 @@ test script_sources_commits_unique_supported_redeemers() {
   let Pair(final_post, _) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     2,
     empty_frontier,
     redeemer_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -361,16 +354,13 @@ test script_sources_stage_one_begin_matches_canonical_transition() {
         control: tail_control,
       })
     = redeemer_item_proof_v1.step_v1(item_control, header_witness)
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -393,12 +383,10 @@ test script_sources_stage_one_begin_matches_canonical_transition() {
   let Pair(item_post, item_work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     empty_frontier,
     redeemer_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -407,12 +395,10 @@ test script_sources_stage_one_begin_matches_canonical_transition() {
   let Pair(final_post, _) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     2,
     empty_frontier,
     redeemer_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -483,16 +469,13 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
     indexed_inline_source_leaves(script, 0, 17),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     source_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -501,12 +484,10 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
   let Pair(post, _) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     2,
     source_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -541,7 +522,6 @@ test script_sources_binds_resolved_input_replay_schedule() {
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
@@ -549,12 +529,10 @@ test script_sources_binds_resolved_input_replay_schedule() {
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     1,
-    accumulator,
     2,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -563,12 +541,10 @@ test script_sources_binds_resolved_input_replay_schedule() {
   let Pair(post, _) = script_sources_step_fixture(
     tx,
     1,
-    accumulator,
     3,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     schedule,
     0,
     empty_frontier,
@@ -638,13 +614,6 @@ test script_sources_replay_appends_reference_scripts() {
   let resolved_item_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.resolved_context_item_leaf_hash(1, 0, key, value)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
-    accumulator,
-    1,
-    key,
-    value,
-  )
   let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
@@ -652,12 +621,10 @@ test script_sources_replay_appends_reference_scripts() {
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     1,
-    next_accumulator,
     3,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     schedule,
     0,
     empty_frontier,
@@ -666,13 +633,11 @@ test script_sources_replay_appends_reference_scripts() {
   let Pair(post, _) = script_sources_step_fixture_with_resolved_items(
     tx,
     1,
-    next_accumulator,
     3,
     source_frontier,
     empty_frontier,
     1,
     resolved_item_frontier,
-    next_accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -749,13 +714,6 @@ fn spend_replay_step(
   let resolved_item_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.resolved_context_item_leaf_hash(0, 0, key, value)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
-    accumulator,
-    0,
-    key,
-    value,
-  )
   let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
@@ -763,12 +721,10 @@ fn spend_replay_step(
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     1,
-    next_accumulator,
     3,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     schedule,
     0,
     empty_frontier,
@@ -777,13 +733,11 @@ fn spend_replay_step(
   let Pair(post, _) = script_sources_step_fixture_with_resolved_items(
     tx,
     1,
-    next_accumulator,
     3,
     empty_frontier,
     empty_frontier,
     1,
     resolved_item_frontier,
-    next_accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     1,
     purpose_frontier,
@@ -922,17 +876,14 @@ test script_sources_rejects_an_output_total_count_the_field_denies() {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     4,
     empty_frontier,
     empty_frontier,
     0,
     validation_merkle_v1.build_frontier([]),
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -946,13 +897,11 @@ test script_sources_rejects_an_output_total_count_the_field_denies() {
   let Pair(successor, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     4,
     empty_frontier,
     empty_frontier,
     0,
     validation_merkle_v1.build_frontier([]),
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1021,7 +970,6 @@ test script_sources_collects_protected_receive_source() {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_active_output_proof_fixture(
     tx,
     0,
@@ -1033,13 +981,11 @@ test script_sources_collects_protected_receive_source() {
   let Pair(post, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     5,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1356,16 +1302,13 @@ test script_sources_finishes_canonical_observer_purposes() {
 test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1459,16 +1402,13 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
   let observer_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1479,13 +1419,11 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
   let Pair(after_observer, after_observer_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,
@@ -1510,13 +1448,11 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
   let Pair(mutated_after_observer, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1748,16 +1684,13 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     indexed_inline_source_leaves(script, 0, 1),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     1,
     source_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1766,12 +1699,10 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
   let Pair(post, post_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     2,
     source_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1787,12 +1718,10 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
   let Pair(mutated_post, _) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     3,
     source_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1832,16 +1761,13 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     indexed_spend_purpose_leaves(0, 17),
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier,

@@ -252,16 +252,13 @@ fn output_begin(delta: Int) -> Bool {
     [leaves.output_leaf_hash(0, bytes)],
   )
   let empty = merkle.build_frontier([])
-  let accumulator = work.initial_resolution_accumulator()
   let Pair(pre, cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     5,
     empty,
     empty,
     0,
-    accumulator,
     work.empty_resolution_schedule_hash(),
     0,
     empty,

@@ -46,7 +46,6 @@ use midgard/validation_machine/shared.{
 use midgard/validation_machine/witness.{
   empty_receive_purpose_scan_control, empty_resolution_schedule_hash,
   encode_script_sources_witness, resolution_schedule_node_hash,
-  resolved_input_accumulator_successor,
 }
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -165,7 +164,6 @@ pub fn script_sources_replay_item(
       control.field_preimage_lengths_cbor,
       control.context_cbor,
       control.resolved_input_count,
-      control.resolved_inputs_accumulator,
       control.signer_count,
       control.signer_frontier_commitment,
       next_resolved_item_peaks,
@@ -175,12 +173,6 @@ pub fn script_sources_replay_item(
       control.redeemer_count,
       control.redeemer_peaks,
       control.replay_cursor + 1,
-      resolved_input_accumulator_successor(
-        control.replay_accumulator,
-        source_kind,
-        key,
-        value,
-      ),
       next_schedule_hash,
       control.spend_index + if source_kind == 0 {
         1
@@ -226,7 +218,6 @@ pub fn script_sources_stage_three(
       control.field_preimage_lengths_cbor,
       control.context_cbor,
       control.resolved_input_count,
-      control.resolved_inputs_accumulator,
       control.signer_count,
       control.signer_frontier_commitment,
       control.resolved_item_peaks,
@@ -236,7 +227,6 @@ pub fn script_sources_stage_three(
       control.redeemer_count,
       control.redeemer_peaks,
       control.replay_cursor,
-      control.replay_accumulator,
       control.replay_remaining_schedule_hash,
       control.spend_index,
       control.purpose_count,
@@ -254,8 +244,6 @@ pub fn script_sources_stage_three(
     )
     and {
       auxiliary == NoAuxiliaryWitness,
-      control.replay_cursor == control.resolved_input_count,
-      control.replay_accumulator == control.resolved_inputs_accumulator,
       witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
       witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptSources,

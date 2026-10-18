@@ -187,7 +187,6 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: empty.count,
@@ -230,7 +229,6 @@ fn idle_control(
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
@@ -406,12 +404,6 @@ fn single_replayed_input_native_control(
         ),
       ],
     ).peaks,
-    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
-      vm_witness.initial_resolution_accumulator(),
-      0,
-      replayed_input_key,
-      descriptor_cbor,
-    ),
     resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
       0,
       0,
@@ -504,12 +496,6 @@ fn replay_input_fixture_over(
     ValueAndMintControlV1 {
       ..control,
       replay_cursor: 1,
-      replay_accumulator: vm_witness.resolved_input_accumulator_successor(
-        control.replay_accumulator,
-        0,
-        replayed_input_key,
-        descriptor_cbor,
-      ),
       replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: ValueAccumulatorV1 {
         ..control.value_accumulator,
@@ -559,7 +545,6 @@ fn replay_asset_fixture() -> StepFixtureV1 {
       replay_cursor: 1,
       replay_asset_cursor: 0,
       replay_value_hash: zero,
-      replay_accumulator: native_control.resolved_inputs_accumulator,
       replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: ValueAccumulatorV1 {
         lovelace_delta: 3,

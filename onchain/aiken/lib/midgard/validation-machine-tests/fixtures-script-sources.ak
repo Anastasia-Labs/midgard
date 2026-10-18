@@ -59,9 +59,7 @@ use midgard/validation_trace_v1
 pub fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
     original_schedule_hash: #"37dd5fe0c36256fb12a17ffe1c03c85f0554a83579f4ad5000f9baf2fbdd2877",
-    terminal_accumulator: #"fb2154b7f046126c8cda87674c2822c3dad1ac294531845e6e6b49c0035e4858",
     terminal_frontier_commitment: #"8d0f7813e70f9bf63f84b78365a38e5c00efb807ac4f5ed16d21f0eff4b5e5b7",
-    penultimate_accumulator: #"7f4f9eb3bfca6b31c4c6781cc36b58f0305c7cafbfbbe4dbfef9ad2370f8cbdc",
     penultimate_remaining_schedule_hash: #"05d16c4dddaaec7b5c46fbdc0268b27ef430a0cea60630349adaf9f31fd7ff9b",
     penultimate_spend_index: 433,
     penultimate_resolved_item_peaks: [
@@ -96,9 +94,7 @@ pub fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTermi
 pub fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
     original_schedule_hash: #"ffe1307d29932bb07004f4586071371d7f31bde1d565c0800353e345244e9ce7",
-    terminal_accumulator: #"e0254c2da094b13f9857dd7f442bd346f74ccf0f4a1337bd1328983d80156421",
     terminal_frontier_commitment: #"b4757e20d40f58687e5421545c69f0399d6de0026a8e9728ec6e9bb13b510a46",
-    penultimate_accumulator: #"cef5b3dc9392a0a6f359309a1b6ef88bc48196c7d85e4b2ab2b539a778fec226",
     penultimate_remaining_schedule_hash: #"9ac79f779bf4a86b8a6c3835a012e644f7ad7ceff000393c453a177137a1b48d",
     penultimate_spend_index: 1,
     penultimate_resolved_item_peaks: [
@@ -142,11 +138,9 @@ pub fn resolution_schedule_terminal_control(
   vm_machine_types.ScriptSourcesControlV1 {
     ..base,
     resolved_input_count: 434,
-    resolved_inputs_accumulator: vector.terminal_accumulator,
     resolved_item_peaks: vector.penultimate_resolved_item_peaks,
     stage: 3,
     replay_cursor: 433,
-    replay_accumulator: vector.penultimate_accumulator,
     replay_remaining_schedule_hash: vector.penultimate_remaining_schedule_hash,
     spend_index: vector.penultimate_spend_index,
     resolution_schedule_hash: vector.original_schedule_hash,
@@ -227,12 +221,6 @@ pub fn maximum_input_schedule_replay_step(
       ),
     ),
     replay_cursor: pre_control.replay_cursor + 1,
-    replay_accumulator: vm_witness.resolved_input_accumulator_successor(
-      pre_control.replay_accumulator,
-      vector.last_source_kind,
-      vector.last_key,
-      value,
-    ),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: pre_control.spend_index + 1 - vector.last_source_kind,
   }
@@ -268,12 +256,6 @@ pub fn verify_maximum_input_schedule_terminal_vector(
   vector: ResolutionScheduleTerminalVectorV1,
 ) -> Bool {
   let pre_control = resolution_schedule_terminal_control(vector)
-  let terminal_accumulator = vm_witness.resolved_input_accumulator_successor(
-    pre_control.replay_accumulator,
-    vector.last_source_kind,
-    vector.last_key,
-    vector.last_value,
-  )
   let terminal_resolved_item_peaks = validation_merkle_v1.append_leaf(
     pre_control.replay_cursor,
     pre_control.resolved_item_peaks,
@@ -289,7 +271,6 @@ pub fn verify_maximum_input_schedule_terminal_vector(
     ..pre_control,
     resolved_item_peaks: terminal_resolved_item_peaks,
     replay_cursor: 434,
-    replay_accumulator: terminal_accumulator,
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: terminal_spend_index,
   }
@@ -334,61 +315,11 @@ pub fn verify_maximum_input_schedule_terminal_vector(
     work_witness_cbor: pre_work_witness_cbor,
     claimed_successor: finish,
   }
-  let malformed_terminal_cursor_peaks = validation_merkle_v1.append_leaf(
-    434,
-    terminal_resolved_item_peaks,
-    h_a,
-  )
-  let malformed_terminal_cursor_control = vm_machine_types.ScriptSourcesControlV1 {
-    ..terminal_control,
-    resolved_item_peaks: malformed_terminal_cursor_peaks,
-    replay_cursor: 435,
-  }
-  let malformed_terminal_cursor_finish_control = vm_machine_types.ScriptSourcesControlV1 {
-    ..malformed_terminal_cursor_control,
-    stage: 4,
-  }
-  let
-      Pair(malformed_terminal_cursor,
-      malformed_terminal_cursor_work_witness_cbor)
-    = resolution_schedule_terminal_state(malformed_terminal_cursor_control, 13)
-  let Pair(malformed_terminal_cursor_finish, _) = resolution_schedule_terminal_state(
-    malformed_terminal_cursor_finish_control,
-    14,
-  )
-  let malformed_terminal_cursor_transition = vm_machine_types.ValidationOneStepWitnessV1 {
-    work_witness_cbor: malformed_terminal_cursor_work_witness_cbor,
-    claimed_successor: malformed_terminal_cursor_finish,
-  }
-  let malformed_terminal_accumulator_control = vm_machine_types.ScriptSourcesControlV1 {
-    ..terminal_control,
-    replay_accumulator: h_a,
-  }
-  let malformed_terminal_accumulator_finish_control = vm_machine_types.ScriptSourcesControlV1 {
-    ..malformed_terminal_accumulator_control,
-    stage: 4,
-  }
-  let
-      Pair(malformed_terminal_accumulator,
-      malformed_terminal_accumulator_work_witness_cbor)
-    = resolution_schedule_terminal_state(
-    malformed_terminal_accumulator_control,
-    13,
-  )
-  let Pair(malformed_terminal_accumulator_finish, _) = resolution_schedule_terminal_state(
-    malformed_terminal_accumulator_finish_control,
-    14,
-  )
-  let malformed_terminal_accumulator_transition = vm_machine_types.ValidationOneStepWitnessV1 {
-    work_witness_cbor: malformed_terminal_accumulator_work_witness_cbor,
-    claimed_successor: malformed_terminal_accumulator_finish,
-  }
   let stage_two_control = vm_machine_types.ScriptSourcesControlV1 {
     ..pre_control,
     resolved_item_peaks: [],
     stage: 2,
     replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
     replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
   }
@@ -431,7 +362,6 @@ pub fn verify_maximum_input_schedule_terminal_vector(
     #"ff",
   )
   and {
-    terminal_accumulator == vector.terminal_accumulator,
     validation_merkle_v1.frontier_commitment(434, terminal_resolved_item_peaks) == vector.terminal_frontier_commitment,
     bytearray.length(cbor.serialise(replay_evidence)) < 16_384,
     bytearray.length(cbor.serialise(finish_evidence)) < 16_384,
@@ -510,14 +440,6 @@ pub fn verify_maximum_input_schedule_terminal_vector(
     !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       pre,
       premature_transition,
-    ),
-    !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
-      malformed_terminal_cursor,
-      malformed_terminal_cursor_transition,
-    ),
-    !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
-      malformed_terminal_accumulator,
-      malformed_terminal_accumulator_transition,
     ),
     vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       terminal,
@@ -637,16 +559,13 @@ pub fn canonical_output_commitment_step_with_successor(
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
-    accumulator,
     4,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -658,13 +577,11 @@ pub fn canonical_output_commitment_step_with_successor(
   let Pair(after_item, after_item_work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     4,
     empty_frontier,
     empty_frontier,
     0,
     validation_merkle_v1.build_frontier([]),
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -678,12 +595,10 @@ pub fn canonical_output_commitment_step_with_successor(
   let Pair(post, _) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     5,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -753,16 +668,13 @@ pub fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(before_begin, before_begin_work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     5,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1230,16 +1142,13 @@ pub fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
   let final_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1250,13 +1159,11 @@ pub fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
   let Pair(after_observer, after_observer_work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,

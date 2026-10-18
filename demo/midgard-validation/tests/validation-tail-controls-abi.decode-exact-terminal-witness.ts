@@ -88,7 +88,7 @@ export const EXPECTED = {
   valueAccumulatorCbor:
     "8407582054545454545454545454545454545454545454545454545454545454545454540201",
   valueAndMintControlHash:
-    "d30dfeaa4f1f3323bf2824a1051ef943fee27a31779e171678abe4c05ba2b2e0",
+    "59968072f9e010668a5f061bcafe19f7748cf8c3048aa21ee9aff99ab096220a",
   // Independent Aiken vectors: validation-tail-controls-v1-abi.test.ak,
   // terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact.
   terminalAcceptanceCbor: "820140",

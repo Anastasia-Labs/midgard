@@ -29,9 +29,8 @@ use midgard/validation_machine/shared.{
 }
 use midgard/validation_machine/witness.{
   empty_resolution_schedule_hash, encode_value_and_mint_control_v1,
-  initial_resolution_accumulator, initial_value_accumulator,
-  native_scripts_control_is_well_formed, resolution_schedule_node_hash,
-  resolved_input_accumulator_successor, value_and_mint_control_from_witness,
+  initial_value_accumulator, native_scripts_control_is_well_formed,
+  resolution_schedule_node_hash, value_and_mint_control_from_witness,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -173,7 +172,6 @@ fn value_and_mint_stage_zero(
     control.replay_cursor == 0,
     control.replay_asset_cursor == 0,
     control.replay_value_hash == no_rejection_code_hash,
-    control.replay_accumulator == initial_resolution_accumulator(),
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
     control.output_cursor == 0,
     control.output_asset_cursor == 0,
@@ -202,9 +200,6 @@ fn value_and_mint_stage_one(
 
 fn complete_value_input_replay(
   control: ValueAndMintControlV1,
-  source_kind: Int,
-  key: ByteArray,
-  value: ByteArray,
   next_schedule_hash: ByteArray,
   next_value_accumulator: ValueAccumulatorV1,
 ) -> ValueAndMintControlV1 {
@@ -213,12 +208,6 @@ fn complete_value_input_replay(
     replay_cursor: control.replay_cursor + 1,
     replay_asset_cursor: 0,
     replay_value_hash: no_rejection_code_hash,
-    replay_accumulator: resolved_input_accumulator_successor(
-      control.replay_accumulator,
-      source_kind,
-      key,
-      value,
-    ),
     replay_remaining_schedule_hash: next_schedule_hash,
     value_accumulator: next_value_accumulator,
   }
@@ -250,10 +239,8 @@ fn value_and_mint_replay_finish(
 ) -> Bool {
   and {
     auxiliary == NoAuxiliaryWitness,
-    control.replay_cursor == control.native_control.resolved_input_count,
     control.replay_asset_cursor == 0,
     control.replay_value_hash == no_rejection_code_hash,
-    control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
     value_and_mint_successor_is_exact(
       pre,
       witness,
@@ -306,9 +293,6 @@ fn value_and_mint_replay_input(
     let next_control = if source_kind == 1 {
       complete_value_input_replay(
         control,
-        source_kind,
-        key,
-        value,
         next_schedule_hash,
         control.value_accumulator,
       )
@@ -319,14 +303,7 @@ fn value_and_mint_replay_input(
         lovelace_delta: control.value_accumulator.lovelace_delta + descriptor.lovelace,
       }
       if descriptor.asset_count == 0 {
-        complete_value_input_replay(
-          control,
-          source_kind,
-          key,
-          value,
-          next_schedule_hash,
-          next_value,
-        )
+        complete_value_input_replay(control, next_schedule_hash, next_value)
       } else {
         ValueAndMintControlV1 {
           ..control,
@@ -372,7 +349,6 @@ fn value_and_mint_replay_asset(
       key,
       next_schedule_hash,
     ) == control.replay_remaining_schedule_hash,
-    control.replay_cursor < control.native_control.resolved_input_count,
     blake2b_256(descriptor_cbor) == control.replay_value_hash,
     asset_index == control.replay_asset_cursor - 1,
   } {
@@ -390,9 +366,6 @@ fn value_and_mint_replay_asset(
         pre,
         witness,
         control,
-        source_kind,
-        key,
-        descriptor_cbor,
         next_schedule_hash,
         descriptor.asset_count,
         apply_value_asset_mutation(
@@ -661,10 +634,8 @@ fn value_and_mint_stage_five(
 ) -> Bool {
   and {
     auxiliary == NoAuxiliaryWitness,
-    control.replay_cursor == control.native_control.resolved_input_count,
     control.replay_asset_cursor == 0,
     control.replay_value_hash == no_rejection_code_hash,
-    control.replay_accumulator == control.native_control.resolved_inputs_accumulator,
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
     control.output_cursor == control.native_control.output_count,
     control.output_asset_cursor == 0,
@@ -745,7 +716,6 @@ fn value_and_mint_verified_body_v1(
       native_control.execution_cursor == native_control.execution_count,
       bytearray.length(control.replay_schedule_hash) == 32,
       bytearray.length(control.replay_value_hash) == 32,
-      bytearray.length(control.replay_accumulator) == 32,
       bytearray.length(control.replay_remaining_schedule_hash) == 32,
       control.replay_cursor >= 0,
       control.replay_cursor <= native_control.resolved_input_count,
@@ -1126,9 +1096,6 @@ fn value_and_mint_replay_asset_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ValueAndMintControlV1,
-  source_kind: Int,
-  key: ByteArray,
-  descriptor_cbor: ByteArray,
   next_schedule_hash: ByteArray,
   asset_count: Int,
   outcome: ValueAccumulatorUpdateV1,
@@ -1146,14 +1113,7 @@ fn value_and_mint_replay_asset_successor(
     ValueAccumulatorMutationInvalid -> False
     ValueAccumulatorUpdated(next_value) -> {
       let next_control = if control.replay_asset_cursor == asset_count {
-        complete_value_input_replay(
-          control,
-          source_kind,
-          key,
-          descriptor_cbor,
-          next_schedule_hash,
-          next_value,
-        )
+        complete_value_input_replay(control, next_schedule_hash, next_value)
       } else {
         ValueAndMintControlV1 {
           ..control,
@@ -1261,16 +1221,12 @@ pub fn verify_value_and_mint_replay_asset_dispatch(
       key,
       next_schedule_hash,
     ) == control.replay_remaining_schedule_hash,
-    control.replay_cursor < control.native_control.resolved_input_count,
     blake2b_256(d.descriptor_cbor) == control.replay_value_hash,
     d.asset_index == control.replay_asset_cursor - 1,
     value_and_mint_replay_asset_successor(
       pre,
       witness,
       control,
-      source_kind,
-      key,
-      d.descriptor_cbor,
       next_schedule_hash,
       d.asset_count,
       claim.outcome,

@@ -52,13 +52,13 @@ pub fn open_frame_v1(
   expected_item_count: Int,
   expected_stage: Int,
 ) -> RawScriptSourcesFrameV1 {
-  expect expected_item_count == 30 || expected_item_count == 31
+  expect expected_item_count == 28 || expected_item_count == 29
   let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == expected_item_count
   expect
       [
-        compact, ws, lengths, context, resolved_count, accumulator, signer_count,
+        compact, ws, lengths, context, resolved_count, signer_count,
         signer_frontier, resolved_peaks, stage,
         ..
       ]
@@ -73,7 +73,6 @@ pub fn open_frame_v1(
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
     |> bytearray.concat(encode_definite_bytes(context_cbor))
     |> bytearray.concat(cbor.serialise(builtin.un_i_data(resolved_count)))
-    |> bytearray.concat(encode_definite_bytes(builtin.un_b_data(accumulator)))
     |> bytearray.concat(cbor.serialise(builtin.un_i_data(signer_count)))
     |> bytearray.concat(
         encode_definite_bytes(builtin.un_b_data(signer_frontier)),
@@ -198,7 +197,7 @@ pub fn replace_stage_v1(
   splice_v1(
     witness_cbor,
     frame.stage_offset,
-    cbor.serialise(item_int_v1(frame, 9)),
+    cbor.serialise(item_int_v1(frame, 8)),
     cbor.serialise(next_stage),
   )
 }
@@ -207,7 +206,7 @@ pub fn append_extension_v1(
   witness_cbor: ByteArray,
   extension: ByteArray,
 ) -> ByteArray {
-  splice_v1(witness_cbor, 0, #"981e", #"981f")
+  splice_v1(witness_cbor, 0, #"981c", #"981d")
     |> bytearray.concat(encode_definite_bytes(extension))
 }
 
@@ -217,7 +216,7 @@ pub fn replace_extension_v1(
   next_extension: ByteArray,
 ) -> ByteArray {
   let old = encode_definite_bytes(old_extension)
-  expect builtin.slice_bytearray(0, 2, witness_cbor) == #"981f"
+  expect builtin.slice_bytearray(0, 2, witness_cbor) == #"981d"
   splice_v1(
     witness_cbor,
     bytearray.length(witness_cbor) - bytearray.length(old),
@@ -237,7 +236,7 @@ pub fn drop_extension_v1(
     old,
     #"",
   )
-    |> splice_v1(0, #"981f", #"981e")
+    |> splice_v1(0, #"981d", #"981c")
 }
 
 pub fn successor_is_exact_v1(

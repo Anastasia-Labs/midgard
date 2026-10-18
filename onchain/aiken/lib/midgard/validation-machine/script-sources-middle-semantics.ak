@@ -18,8 +18,7 @@ use midgard/validation_machine/machine_types.{
 use midgard/validation_machine/script_sources_middle_stages as middle
 use midgard/validation_machine/witness.{
   empty_resolution_schedule_hash, empty_script_discovery_control,
-  encode_mint_fold_control, initial_resolution_accumulator,
-  script_sources_control_from_data_items,
+  encode_mint_fold_control, script_sources_control_from_data_items,
 }
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
@@ -37,17 +36,16 @@ pub fn stage_two_advance(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 2)
+  let frame = raw.open_frame_v1(pre, witness, 28, 2)
   and {
     raw.item_int_v1(frame, 4) > 0,
-    raw.item_int_v1(frame, 14) == 0,
-    raw.item_frontier_v1(frame, 8) == [],
-    raw.item_bytes_v1(frame, 15) == initial_resolution_accumulator(),
-    raw.item_bytes_v1(frame, 16) == empty_resolution_schedule_hash(),
-    raw.item_int_v1(frame, 17) == 0,
-    raw.item_int_v1(frame, 18) == 0,
-    raw.item_frontier_v1(frame, 19) == [],
-    raw.item_bytes_v1(frame, 29) != empty_resolution_schedule_hash(),
+    raw.item_int_v1(frame, 13) == 0,
+    raw.item_frontier_v1(frame, 7) == [],
+    raw.item_bytes_v1(frame, 14) == empty_resolution_schedule_hash(),
+    raw.item_int_v1(frame, 15) == 0,
+    raw.item_int_v1(frame, 16) == 0,
+    raw.item_frontier_v1(frame, 17) == [],
+    raw.item_bytes_v1(frame, 27) != empty_resolution_schedule_hash(),
     raw.successor_is_exact_v1(
       pre,
       witness,
@@ -56,9 +54,9 @@ pub fn stage_two_advance(
         raw.replace_items_v1(
           frame,
           witness.work_witness_cbor,
-          16,
+          14,
           1,
-          encode_definite_bytes(raw.item_bytes_v1(frame, 29)),
+          encode_definite_bytes(raw.item_bytes_v1(frame, 27)),
         ),
         3,
       ),
@@ -76,9 +74,9 @@ pub fn stage_three_replay(
   value: ByteArray,
   proof: Proof,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 3)
+  let frame = raw.open_frame_v1(pre, witness, 28, 3)
   and {
-    raw.item_bytes_v1(frame, 16) != empty_resolution_schedule_hash(),
+    raw.item_bytes_v1(frame, 14) != empty_resolution_schedule_hash(),
     middle.script_sources_replay_item(
       pre,
       witness,
@@ -97,11 +95,9 @@ pub fn stage_three_finish(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 3)
+  let frame = raw.open_frame_v1(pre, witness, 28, 3)
   and {
-    raw.item_bytes_v1(frame, 16) == empty_resolution_schedule_hash(),
-    raw.item_int_v1(frame, 14) == raw.item_int_v1(frame, 4),
-    raw.item_bytes_v1(frame, 15) == raw.item_bytes_v1(frame, 5),
+    raw.item_bytes_v1(frame, 14) == empty_resolution_schedule_hash(),
     raw.successor_is_exact_v1(
       pre,
       witness,
@@ -116,7 +112,7 @@ pub fn stage_four_begin(
   door: field_door.MachineFieldDoorV1,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 4)
+  let frame = raw.open_frame_v1(pre, witness, 28, 4)
   middle.script_sources_stage_four_with_successor(
     pre,
     witness,
@@ -130,7 +126,7 @@ pub fn stage_four_begin(
         raw.replace_items_v1(
           frame,
           witness.work_witness_cbor,
-          21,
+          19,
           3,
           cbor.serialise(next.output_count)
             |> bytearray.concat(
@@ -147,7 +143,7 @@ pub fn stage_four_finish(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 4)
+  let frame = raw.open_frame_v1(pre, witness, 28, 4)
   let compact = decode_tx_compact_view_v1(pre.source_kind, frame.compact_cbor)
   let control = base_control(frame)
   let empty = compact.body.outputs_hash == native_tx_field_access_v1.empty_field_commitment
@@ -175,7 +171,7 @@ pub fn stage_six_begin(
   item_index: Int,
   carriage: native_tx_field_access_v1.FieldCarriageV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 6)
+  let frame = raw.open_frame_v1(pre, witness, 28, 6)
   let Pair(verified, ws) = verify_tx_proof_source_v1(
     pre.source_kind,
     pre.transaction_id,
@@ -197,7 +193,7 @@ pub fn stage_six_begin(
       let next_cbor = raw.replace_items_v1(
         frame,
         witness.work_witness_cbor,
-        28,
+        26,
         1,
         encode_mint_fold_control(next.mint_fold),
       )
@@ -207,7 +203,7 @@ pub fn stage_six_begin(
         raw.replace_items_v1(
           frame,
           next_cbor,
-          18,
+          16,
           2,
           cbor.serialise(next.purpose_count)
             |> bytearray.concat(
@@ -225,7 +221,7 @@ pub fn stage_six_asset(
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 6)
+  let frame = raw.open_frame_v1(pre, witness, 28, 6)
   middle.script_sources_fold_mint_asset_with_successor(
     pre,
     witness,
@@ -239,7 +235,7 @@ pub fn stage_six_asset(
         raw.replace_items_v1(
           frame,
           witness.work_witness_cbor,
-          28,
+          26,
           1,
           encode_mint_fold_control(next.mint_fold),
         ),
@@ -252,7 +248,7 @@ pub fn stage_six_finish(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw.open_frame_v1(pre, witness, 30, 6)
+  let frame = raw.open_frame_v1(pre, witness, 28, 6)
   let control = base_control(frame)
   let fold = control.mint_fold
   let compact = decode_tx_compact_view_v1(pre.source_kind, frame.compact_cbor)
@@ -265,11 +261,11 @@ pub fn stage_six_finish(
   let next_cbor = raw.replace_items_v1(
     frame,
     witness.work_witness_cbor,
-    28,
+    26,
     1,
     encode_mint_fold_control(next_fold),
   )
-  let next_cbor = raw.replace_items_v1(frame, next_cbor, 20, 1, #"00")
+  let next_cbor = raw.replace_items_v1(frame, next_cbor, 18, 1, #"00")
   and {
     empty || fold.policy_count >= 0 && fold.policy_cursor == fold.policy_count && fold.active_policy == #"",
     raw.successor_is_exact_v1(

@@ -69,12 +69,12 @@ fn drop_fields(fields: List<Data>, count: Int) -> List<Data> {
 /// The execution frontier of a bound CEK witness control. `control` is the
 /// binder-authenticated `CekWitnessControlV1`, whose field 0 is the
 /// `NativeScriptsControlV1`; `execution_count` and `execution_peaks` are its
-/// fields 21 and 22.
+/// fields 20 and 21.
 pub fn execution_frontier(control: Data) -> (Int, List<FrontierPeak>) {
   let native = builtin.un_constr_data(
     builtin.head_list(builtin.un_constr_data(control).2nd),
   ).2nd
-  let execution = drop_fields(native, 21)
+  let execution = drop_fields(native, 20)
   expect count: Int = builtin.head_list(execution)
   expect peaks: List<FrontierPeak> = builtin.head_list(
     builtin.tail_list(execution),

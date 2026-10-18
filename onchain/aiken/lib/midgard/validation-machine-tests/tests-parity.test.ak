@@ -266,16 +266,13 @@ test stage_differential_seven_observer_routes_agree() {
   let observer_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -291,13 +288,11 @@ test stage_differential_seven_observer_routes_agree() {
   let Pair(post, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,
@@ -313,13 +308,11 @@ test stage_differential_seven_observer_routes_agree() {
   let Pair(mutated_post, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
-    accumulator,
     7,
     empty_frontier,
     empty_frontier,
     0,
     empty_frontier,
-    accumulator,
     vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
@@ -1390,13 +1383,13 @@ test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
 test encode_resolve_inputs_initial_equals_generic_none(
   args via fuzz.tuple3(
     fuzz.list_between(fuzz.bytearray(), 4, 4),
-    fuzz.list_between(fuzz.bytearray_fixed(32), 4, 4),
+    fuzz.list_between(fuzz.bytearray_fixed(32), 3, 3),
     fuzz.tuple(fuzz.int_at_least(0), fuzz.int_at_least(0)),
   ),
 ) {
   let (sources, hashes, counters) = args
   expect [compact, witnesses, lengths, context] = sources
-  expect [accumulator, remaining, frontier, schedule] = hashes
+  expect [remaining, frontier, schedule] = hashes
   let (cursor, signers) = counters
   vm_witness.encode_resolve_inputs_initial_witness(
     compact,
@@ -1404,7 +1397,6 @@ test encode_resolve_inputs_initial_equals_generic_none(
     lengths,
     context,
     cursor,
-    accumulator,
     remaining,
     signers,
     frontier,
@@ -1415,7 +1407,6 @@ test encode_resolve_inputs_initial_equals_generic_none(
     lengths,
     context,
     cursor,
-    accumulator,
     remaining,
     signers,
     frontier,

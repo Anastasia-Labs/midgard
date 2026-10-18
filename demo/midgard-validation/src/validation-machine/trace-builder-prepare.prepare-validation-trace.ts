@@ -113,9 +113,7 @@ import {
 } from "./control-encoding.js";
 import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
-  advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
-  initialMidgardResolvedInputsAccumulator,
   orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
@@ -905,12 +903,10 @@ export const prepareValidationTrace = (
     const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCbor;
     const scriptSourcesWitnessCbor = (input: {
       readonly resolvedInputCount: number;
-      readonly resolvedInputsAccumulator: Buffer;
       readonly stage: number;
       readonly sourceFrontier: MidgardValidationMerkleFrontier;
       readonly redeemerFrontier: MidgardValidationMerkleFrontier;
       readonly replayCursor?: number;
-      readonly replayAccumulator?: Buffer;
       readonly replayRemainingScheduleHash?: Buffer;
       readonly spendIndex?: number;
       readonly purposeFrontier?: MidgardValidationMerkleFrontier;
@@ -963,7 +959,6 @@ export const prepareValidationTrace = (
         proofSource.fieldPreimageLengthsCbor,
         contextCbor,
         BigInt(input.resolvedInputCount),
-        input.resolvedInputsAccumulator,
         BigInt(signerFrontier.count),
         signerFrontierCommitment,
         encodeFrontierPeaks(resolvedItemFrontier),
@@ -973,7 +968,6 @@ export const prepareValidationTrace = (
         BigInt(input.redeemerFrontier.count),
         encodeFrontierPeaks(input.redeemerFrontier),
         BigInt(input.replayCursor ?? 0),
-        input.replayAccumulator ?? initialMidgardResolvedInputsAccumulator(),
         input.replayRemainingScheduleHash ??
           emptyMidgardInputResolutionSchedule(),
         BigInt(input.spendIndex ?? 0),
@@ -2120,7 +2114,6 @@ export const prepareValidationTrace = (
           ),
         );
       }
-      let resolutionAccumulator = initialMidgardResolvedInputsAccumulator();
       let remainingScheduleHash = resolutionScheduleHash;
       let resolutionCursor = 0;
       const resolutionWitnessCbor = (
@@ -2138,7 +2131,6 @@ export const prepareValidationTrace = (
           proofSource.fieldPreimageLengthsCbor,
           contextCbor,
           BigInt(resolutionCursor),
-          resolutionAccumulator,
           remainingScheduleHash,
           BigInt(signerFrontier.count),
           signerFrontierCommitment,
@@ -2296,12 +2288,6 @@ export const prepareValidationTrace = (
             break;
           }
 
-          resolutionAccumulator = advanceMidgardResolvedInputsAccumulator({
-            accumulator: resolutionAccumulator,
-            sourceKind: item.sourceKind,
-            key: item.key,
-            value: descriptorCbor,
-          });
           remainingScheduleHash = item.nextScheduleHash;
           resolutionCursor += 1;
         }
@@ -2317,7 +2303,6 @@ export const prepareValidationTrace = (
           pushWitness("resolveInputs", resolutionWitnessCbor(undefined));
           const scriptSourceControl = {
             resolvedInputCount: resolutionItems.length,
-            resolvedInputsAccumulator: resolutionAccumulator,
           };
           let authenticatedInlineSourceFrontier = emptyValidationFrontier;
           let inlineSourceTotalCount = 0;
@@ -2670,7 +2655,6 @@ export const prepareValidationTrace = (
                 }),
               );
               let replayCursor = 0;
-              let replayAccumulator = initialMidgardResolvedInputsAccumulator();
               let replayRemainingScheduleHash = resolutionScheduleHash;
               let replaySpendIndex = 0;
               let replaySourceFrontier = inlineScriptSourceFrontier;
@@ -2707,7 +2691,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: replayPurposeFrontier,
@@ -2816,12 +2799,6 @@ export const prepareValidationTrace = (
                     outputCbor: descriptorCbor,
                   }),
                 );
-                replayAccumulator = advanceMidgardResolvedInputsAccumulator({
-                  accumulator: replayAccumulator,
-                  sourceKind: node.sourceKind,
-                  key: node.key,
-                  value: descriptorCbor,
-                });
                 replayRemainingScheduleHash = node.nextScheduleHash;
                 replayCursor += 1;
               }
@@ -2833,7 +2810,6 @@ export const prepareValidationTrace = (
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
-                  replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
@@ -2848,7 +2824,6 @@ export const prepareValidationTrace = (
                   sourceFrontier: replaySourceFrontier,
                   redeemerFrontier,
                   replayCursor,
-                  replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
                   purposeFrontier: replayPurposeFrontier,
@@ -2968,7 +2943,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: replayPurposeFrontier,
@@ -2993,7 +2967,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: replayPurposeFrontier,
@@ -3023,7 +2996,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: replayPurposeFrontier,
@@ -3056,7 +3028,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: replayPurposeFrontier,
@@ -3146,7 +3117,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: replayPurposeFrontier,
@@ -3165,7 +3135,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: mintPurposeFrontier,
@@ -3251,7 +3220,6 @@ export const prepareValidationTrace = (
                         sourceFrontier: replaySourceFrontier,
                         redeemerFrontier,
                         replayCursor,
-                        replayAccumulator,
                         replayRemainingScheduleHash,
                         spendIndex: replaySpendIndex,
                         purposeFrontier: mintPurposeFrontier,
@@ -3330,7 +3298,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: mintPurposeFrontier,
@@ -3358,7 +3325,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: observerPurposeFrontier,
@@ -3427,7 +3393,6 @@ export const prepareValidationTrace = (
                     sourceFrontier: replaySourceFrontier,
                     redeemerFrontier,
                     replayCursor,
-                    replayAccumulator,
                     replayRemainingScheduleHash,
                     spendIndex: replaySpendIndex,
                     purposeFrontier: allPurposeFrontier,
@@ -3519,7 +3484,6 @@ export const prepareValidationTrace = (
                       sourceFrontier: replaySourceFrontier,
                       redeemerFrontier,
                       replayCursor,
-                      replayAccumulator,
                       replayRemainingScheduleHash,
                       spendIndex: replaySpendIndex,
                       purposeFrontier: allPurposeFrontier,
@@ -4006,7 +3970,6 @@ export const prepareValidationTrace = (
                       proofSource.fieldPreimageLengthsCbor,
                       contextCbor,
                       BigInt(scriptSourceControl.resolvedInputCount),
-                      scriptSourceControl.resolvedInputsAccumulator,
                       BigInt(replaySpendIndex),
                       encodeFrontierPeaks(resolvedItemFrontier),
                       BigInt(signerFrontier.count),

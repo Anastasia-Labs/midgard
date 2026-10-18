@@ -2243,7 +2243,6 @@ fn raw_envelope_control() -> vm_machine_types.ScriptSourcesControlV1 {
     field_preimage_lengths_cbor: raw_field_preimage_lengths_cbor,
     context_cbor: raw_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: zero,
     signer_count: 0,
     signer_frontier_commitment: zero,
     resolved_item_peaks: [],
@@ -2253,7 +2252,6 @@ fn raw_envelope_control() -> vm_machine_types.ScriptSourcesControlV1 {
     redeemer_count: 0,
     redeemer_peaks: [],
     replay_cursor: 0,
-    replay_accumulator: zero,
     replay_remaining_schedule_hash: zero,
     spend_index: 0,
     purpose_count: 0,
@@ -2275,7 +2273,7 @@ fn raw_envelope_control() -> vm_machine_types.ScriptSourcesControlV1 {
 }
 
 /// The canonical stage-1 pending redeemer-item witness the machine commits:
-/// `encode_definite_array_header(31)` over the thirty base items plus
+/// `encode_definite_array_header(29)` over the twenty-eight base items plus
 /// `encode_definite_bytes(<pending item control hash>)`.
 fn raw_envelope_witness_cbor(pending_item_control_hash: ByteArray) -> ByteArray {
   vm_witness.encode_script_sources_redeemer_item_witness(
@@ -2395,7 +2393,7 @@ test raw_envelope_accepts_canonical_stage_one_pending_witness() {
   and {
     // The canonical witness really is definite-length framed, so the shape the
     // pre-fix code demanded is a genuinely different byte string.
-    bytearray.take(witness_cbor, 2) == encode_definite_array_header(31),
+    bytearray.take(witness_cbor, 2) == encode_definite_array_header(29),
     witness_cbor != raw_envelope_serialise_data_witness_cbor(hash_a),
     // The successor commitment the module derives must be byte-identical to the
     // machine's own canonical encoder for the next pending hash -- this is the
@@ -2435,7 +2433,7 @@ test raw_envelope_rejects_serialise_data_witness_and_mutated_successor() {
     )
   }
   // Same control, `serialiseData` framing: still deserialises to the same
-  // thirty-one items, so the module reaches its framing checks and must reject.
+  // twenty-nine items, so the module reaches its framing checks and must reject.
   expect Some(serialise_data_items) = cbor.deserialise(serialise_data_cbor)
   let serialise_data_successor_cbor = raw_envelope_serialise_data_witness_cbor(
     hash_b,
@@ -2450,7 +2448,7 @@ test raw_envelope_rejects_serialise_data_witness_and_mutated_successor() {
     hash_a,
   )
   and {
-    list.length(builtin.un_list_data(serialise_data_items)) == 31,
+    list.length(builtin.un_list_data(serialise_data_items)) == 29,
     serialise_data_cbor != witness_cbor,
     bytearray.take(serialise_data_cbor, 1) == #"9f",
     verify(

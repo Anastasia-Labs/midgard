@@ -234,11 +234,13 @@ describe("independent validation event replay", () => {
       // when the program began returning Unit (PV 11 halt rule), when each
       // execution began with Cardano's 100 cpu / 100 memory startup cost, and
       // when the ledger-delta phase and the state's ledger-delta root were
-      // removed, so acceptance follows multi-asset accounting directly.
+      // removed, so acceptance follows multi-asset accounting directly, and
+      // again when each schedule node bound its input's field position and the
+      // resolved-input accumulators were removed.
       const expectedTraceHash =
         executionCount === 1
-          ? "275a8a02a1300071cfeeb9f5eaf8b71ae91ec277dd37700165427c2b6f494084"
-          : "e3c6aae68868fd7d52e535b058df1df67cfaa517d4a9f289143ef57d83b4b246";
+          ? "56d9ce36b269df6246560b022101a5917528c3283dfbc8b4eeb56fe5e9a74105"
+          : "b1afa201d7e6f85786d1f942d895236fedfef13e9365eab2dbd3b4f6d5bad6b0";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );

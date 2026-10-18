@@ -19,9 +19,7 @@ pub type AuthenticatedOutputMaterialV1 {
 
 pub type ResolutionScheduleTerminalVectorV1 {
   original_schedule_hash: ByteArray,
-  terminal_accumulator: ByteArray,
   terminal_frontier_commitment: ByteArray,
-  penultimate_accumulator: ByteArray,
   penultimate_remaining_schedule_hash: ByteArray,
   penultimate_spend_index: Int,
   penultimate_resolved_item_peaks: List<validation_merkle_v1.FrontierPeak>,

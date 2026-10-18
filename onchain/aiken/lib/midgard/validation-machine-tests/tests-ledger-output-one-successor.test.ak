@@ -329,7 +329,6 @@ fn ri_state(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    vm_witness.initial_resolution_accumulator(),
     schedule,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
@@ -386,7 +385,6 @@ fn ri_pre(
     tx,
     singleton_root(key, descriptor_cbor),
     1,
-    vm_witness.initial_resolution_accumulator(),
     8,
   )
   ri_state(tx, base, key, descriptor_cbor, before, 9)
@@ -745,12 +743,6 @@ fn ri_finalize_accepts(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     2,
-    vm_witness.resolved_input_accumulator_successor(
-      vm_witness.initial_resolution_accumulator(),
-      0,
-      key,
-      descriptor_cbor,
-    ),
     vm_witness.empty_resolution_schedule_hash(),
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(

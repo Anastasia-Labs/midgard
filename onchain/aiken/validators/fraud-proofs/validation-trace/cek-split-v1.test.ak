@@ -220,7 +220,6 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: empty.count,
@@ -3054,7 +3053,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"43af4831f31bcf8837ddbb2c11f7539bc4f0b33a8ebc27237f752d33c92de882"
+  blake2b_256(cbor.serialise(vector)) == #"ab195c9e1a5495be151dc6829bc2c5c243fde1209309cf40171a8a612f3c121f"
 }
 
 // ---------------------------------------------------------------------------

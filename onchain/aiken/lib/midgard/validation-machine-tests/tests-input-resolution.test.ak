@@ -987,7 +987,6 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        vm_witness.initial_resolution_accumulator(),
         vm_witness.transaction_resolution_schedule_hash(
           tx.body.inputs,
           tx.body.reference_inputs,
@@ -1193,14 +1192,7 @@ fn resolve_inputs_passes_the_validity_check(
       validity_interval_end,
     },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    0,
-    accumulator,
-    7,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 0, 7)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let resolution_schedule_hash = vm_witness.transaction_resolution_schedule_hash(
@@ -1213,7 +1205,6 @@ fn resolve_inputs_passes_the_validity_check(
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
-    accumulator,
     resolution_schedule_hash,
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
@@ -1248,7 +1239,7 @@ test resolve_inputs_begins_authenticated_membership_output() {
   resolve_inputs_authenticated_membership_step(0)
 }
 
-test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
+test resolve_inputs_empty_pending_witness_decodes_as_exact_array_10() {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
@@ -1259,15 +1250,14 @@ test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
     tx,
     null_hash,
     1,
-    vm_witness.initial_resolution_accumulator(),
     8,
   )
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let fields = builtin.un_list_data(data)
-  expect Some(pending_data) = list.at(fields, 9)
-  expect Some(schedule_data) = list.at(fields, 10)
+  expect Some(pending_data) = list.at(fields, 8)
+  expect Some(schedule_data) = list.at(fields, 9)
   and {
-    list.length(fields) == 11,
+    list.length(fields) == 10,
     builtin.un_b_data(pending_data) == #"00",
     builtin.un_b_data(schedule_data) == vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
@@ -1292,12 +1282,10 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     ..base,
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     null_hash,
     1,
-    accumulator,
     8,
   )
   let rejection_code = rejection_reason_v1.InputNotFound {
@@ -1348,14 +1336,7 @@ fn resolve_inputs_rejects_the_validity_interval_exactly(
       validity_interval_end,
     },
   }
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    0,
-    accumulator,
-    7,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 0, 7)
   let rejection_code = rejection_reason_v1.ValidityIntervalExcludesBlockSlot
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -1386,14 +1367,7 @@ fn resolve_inputs_rejects_the_validity_interval_exactly(
 
 test resolve_inputs_finalizes_into_script_source_resolution() {
   let tx = empty_v1_transaction()
-  let accumulator = vm_witness.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    h_c,
-    1,
-    accumulator,
-    8,
-  )
+  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(tx, h_c, 1, 8)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
@@ -1409,7 +1383,6 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        accumulator,
         signer_frontier.count,
         validation_merkle_v1.frontier_commitment(
           signer_frontier.count,
@@ -1422,7 +1395,6 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        vm_witness.initial_resolution_accumulator(),
         vm_witness.empty_resolution_schedule_hash(),
         0,
         0,

@@ -57,7 +57,7 @@ validator main(
         let frame = raw.open_frame_v1(
           datum |> semantic_pre_state,
           transition,
-          30,
+          28,
           source_yield.middle_stage(yield_role_index),
         )
         let yield_hash = validation_semantic_yield_v1.require_semantic_yield_v1(

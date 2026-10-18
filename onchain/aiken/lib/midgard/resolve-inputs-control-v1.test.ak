@@ -11,7 +11,6 @@ fn control_fixture() -> raw.ResolveInputsControlRawV1 {
     field_preimage_lengths_cbor: #"02",
     context_cbor: #"03",
     cursor: 0,
-    accumulator: #"0000000000000000000000000000000000000000000000000000000000000000",
     remaining_schedule_hash: #"1111111111111111111111111111111111111111111111111111111111111111",
     signer_count: 0,
     signer_frontier_commitment: #"2222222222222222222222222222222222222222222222222222222222222222",
@@ -23,13 +22,13 @@ fn control_fixture() -> raw.ResolveInputsControlRawV1 {
 test raw_no_pending_encoding_equals_generic(
   args via fuzz.tuple3(
     fuzz.list_between(fuzz.bytearray(), 4, 4),
-    fuzz.list_between(fuzz.bytearray_fixed(32), 4, 4),
+    fuzz.list_between(fuzz.bytearray_fixed(32), 3, 3),
     fuzz.tuple(fuzz.int_at_least(0), fuzz.int_at_least(0)),
   ),
 ) {
   let (sources, hashes, counters) = args
   expect [compact, ws, lengths, context] = sources
-  expect [accumulator, remaining, frontier, schedule] = hashes
+  expect [remaining, frontier, schedule] = hashes
   let (cursor, signers) = counters
   let c = raw.ResolveInputsControlRawV1 {
     compact_cbor: compact,
@@ -37,7 +36,6 @@ test raw_no_pending_encoding_equals_generic(
     field_preimage_lengths_cbor: lengths,
     context_cbor: context,
     cursor,
-    accumulator,
     remaining_schedule_hash: remaining,
     signer_count: signers,
     signer_frontier_commitment: frontier,
@@ -50,7 +48,6 @@ test raw_no_pending_encoding_equals_generic(
     lengths,
     context,
     cursor,
-    accumulator,
     remaining,
     signers,
     frontier,
@@ -90,7 +87,6 @@ test raw_pending_initial_encoding_equals_generic(
     c.field_preimage_lengths_cbor,
     c.context_cbor,
     c.cursor,
-    c.accumulator,
     c.remaining_schedule_hash,
     c.signer_count,
     c.signer_frontier_commitment,

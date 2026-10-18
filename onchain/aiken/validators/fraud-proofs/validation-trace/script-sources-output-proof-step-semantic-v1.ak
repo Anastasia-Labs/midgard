@@ -32,13 +32,13 @@ use midgard/validation_trace_v1.{ScriptSources, ValidationMachineStateV1}
 /// as its extension item.
 const output_proof_stage: Int = 5
 
-const extension_index: Int = 30
+const extension_index: Int = 28
 
-const frame_item_count: Int = 31
+const frame_item_count: Int = 29
 
-/// Frame item 20 is the ScriptSources `output_cursor`: the field-2 ordinal of
+/// Frame item 18 is the ScriptSources `output_cursor`: the field-2 ordinal of
 /// the output under proof.
-const output_cursor_index: Int = 20
+const output_cursor_index: Int = 18
 
 pub type ActionV1 {
   VerifyOutputProofStep {
@@ -47,7 +47,7 @@ pub type ActionV1 {
     transition: ValidationOneStepWitnessV1,
     /// `LedgerOutputProofWitnessV1` on the wire; decoded only by the yields.
     proof_witness: Data,
-    /// The pre ledger-output-proof control, pinned to frame item 30.
+    /// The pre ledger-output-proof control, pinned to frame item 28.
     control_cbor: ByteArray,
     /// The successor control the stage yield attests, or `#""` in rejection
     /// mode.

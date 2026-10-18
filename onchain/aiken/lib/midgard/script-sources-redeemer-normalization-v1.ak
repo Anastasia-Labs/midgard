@@ -433,11 +433,10 @@ pub fn verify_raw_envelope_v1(
       [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
-        resolved_input_count_data, resolved_inputs_accumulator_data,
-        signer_count_data, signer_frontier_commitment_data,
-        resolved_item_peaks_data, stage_data, source_count_data,
-        source_peaks_data, redeemer_count_data, redeemer_peaks_data,
-        replay_cursor_data, replay_accumulator_data,
+        resolved_input_count_data, signer_count_data,
+        signer_frontier_commitment_data, resolved_item_peaks_data, stage_data,
+        source_count_data, source_peaks_data, redeemer_count_data,
+        redeemer_peaks_data, replay_cursor_data,
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
@@ -462,13 +461,13 @@ pub fn verify_raw_envelope_v1(
   // are the *canonical* ones produced by
   // `vm_witness.encode_script_sources_redeemer_item_witness`
   // (validation-machine-v1.ak:7337, dispatched from
-  // `exact_script_sources_control:7462`): a definite-length 31-item array,
-  // `encode_definite_array_header(31)` = `98 1f`, holding the thirty
+  // `exact_script_sources_control:7462`): a definite-length 29-item array,
+  // `encode_definite_array_header(29)` = `98 1d`, holding the twenty-eight
   // `encode_script_sources_witness` base items followed by
   // `encode_definite_bytes(<32-byte pending item control hash>)`.
   //
   // The previous reconstruction rebuilt those bytes with
-  // `cbor.serialise(<Data list of the thirty base items>)`. `cbor.serialise` is
+  // `cbor.serialise(<Data list of the twenty-eight base items>)`. `cbor.serialise` is
   // Plutus `serialiseData`, which emits the INDEFINITE array header `9f` (159)
   // for any non-empty list and chunks every bytestring longer than 64 bytes as
   // `5f..ff`. Feeding that to `decode_definite_array_header_at` hit the
@@ -489,23 +488,18 @@ pub fn verify_raw_envelope_v1(
     bytearray.length(work_witness_cbor) - 34,
     work_witness_cbor,
   )
-  // Rebuilt exactly as `encode_script_sources_witness` builds its first eight
-  // items (validation-machine-v1.ak:1062-1078), only with the 31-item header
-  // that `encode_script_sources_redeemer_item_witness` substitutes. These eight
+  // Rebuilt exactly as `encode_script_sources_witness` builds its first seven
+  // items (validation-machine-v1.ak:1062-1078), only with the 29-item header
+  // that `encode_script_sources_redeemer_item_witness` substitutes. These seven
   // carry every bytestring long enough for `serialiseData` to chunk, so an
   // indefinite-form witness fails here as well as at the array header.
-  let canonical_prefix_head = encode_definite_array_header(31)
+  let canonical_prefix_head = encode_definite_array_header(29)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
     |> bytearray.concat(encode_definite_bytes(context_cbor))
     |> bytearray.concat(
         cbor.serialise(builtin.un_i_data(resolved_input_count_data)),
-      )
-    |> bytearray.concat(
-        encode_definite_bytes(
-          builtin.un_b_data(resolved_inputs_accumulator_data),
-        ),
       )
     |> bytearray.concat(cbor.serialise(builtin.un_i_data(signer_count_data)))
     |> bytearray.concat(
@@ -522,7 +516,7 @@ pub fn verify_raw_envelope_v1(
     let Pair(_, auxiliary_fields) = builtin.un_constr_data(auxiliary)
     expect [_, current_data, _] = auxiliary_fields
     expect current: RedeemerItemProofControlV1 = current_data
-    let frame = raw_frame.open_frame_v1(pre, transition, 31, 1)
+    let frame = raw_frame.open_frame_v1(pre, transition, 29, 1)
     let next_peaks = validation_merkle_v1.append_leaf(
       redeemer_count,
       decode_frontier_peaks(redeemer_peaks_data),
@@ -535,7 +529,7 @@ pub fn verify_raw_envelope_v1(
     let folded = raw_frame.replace_items_v1(
       frame,
       work_witness_cbor,
-      12,
+      11,
       2,
       cbor.serialise(redeemer_count + 1)
         |> bytearray.concat(validation_merkle_v1.encode_frontier(next_peaks)),
@@ -569,10 +563,8 @@ pub fn verify_raw_envelope_v1(
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(context_cbor) == pre.validation_context_hash,
     builtin.un_i_data(resolved_input_count_data) >= 0,
-    bytearray.length(builtin.un_b_data(resolved_inputs_accumulator_data)) == 32,
     builtin.un_i_data(signer_count_data) >= 0,
     bytearray.length(builtin.un_b_data(signer_frontier_commitment_data)) == 32,
-    bytearray.length(builtin.un_b_data(replay_accumulator_data)) == 32,
     bytearray.length(builtin.un_b_data(replay_remaining_schedule_hash_data)) == 32,
     builtin.un_list_data(purpose_peaks_data) == [],
     builtin.un_list_data(output_peaks_data) == [],

@@ -78,10 +78,8 @@ import type { RejectCode } from "../types.js";
 import { RejectCodes } from "../types.js";
 import { outputCborMeetsMinAda } from "../value-accounting.js";
 import {
-  advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
   hash32,
-  initialMidgardResolvedInputsAccumulator,
 } from "./input-resolution.js";
 import {
   hashValidationMachineNativeScriptFrame,
@@ -1967,8 +1965,6 @@ export const completeValidationTrace = (
           let valueReplayCursor = 0;
           let valueReplayAssetCursor = 0;
           let valueReplayValueHash = Buffer.alloc(32);
-          let valueReplayAccumulator =
-            initialMidgardResolvedInputsAccumulator();
           let valueReplayRemainingScheduleHash =
             emptyMidgardInputResolutionSchedule();
           let valueOutputCursor = 0;
@@ -1979,7 +1975,6 @@ export const completeValidationTrace = (
             readonly stage: number;
             readonly replayScheduleHash: Buffer;
             readonly replayCursor?: number;
-            readonly replayAccumulator?: Buffer;
             readonly replayRemainingScheduleHash?: Buffer;
             readonly outputCursor?: number;
             readonly mintCursor?: number;
@@ -1991,7 +1986,6 @@ export const completeValidationTrace = (
               BigInt(input.replayCursor ?? valueReplayCursor),
               BigInt(valueReplayAssetCursor),
               valueReplayValueHash,
-              input.replayAccumulator ?? valueReplayAccumulator,
               input.replayRemainingScheduleHash ??
                 valueReplayRemainingScheduleHash,
               BigInt(input.outputCursor ?? valueOutputCursor),
@@ -2161,12 +2155,6 @@ export const completeValidationTrace = (
               if (stoppedAtRejection) break;
               valueReplayAssetCursor = 0;
               valueReplayValueHash = Buffer.alloc(32);
-              valueReplayAccumulator = advanceMidgardResolvedInputsAccumulator({
-                accumulator: valueReplayAccumulator,
-                sourceKind: node.sourceKind,
-                key: node.key,
-                value: descriptorCbor,
-              });
               valueReplayRemainingScheduleHash = node.nextScheduleHash;
               valueReplayCursor += 1;
             }

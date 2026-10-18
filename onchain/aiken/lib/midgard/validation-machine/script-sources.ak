@@ -46,7 +46,6 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.field_preimage_lengths_cbor,
     control.context_cbor,
     control.resolved_input_count,
-    control.resolved_inputs_accumulator,
     control.signer_count,
     control.signer_frontier_commitment,
     control.resolved_item_peaks,
@@ -56,7 +55,6 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.redeemer_count,
     control.redeemer_peaks,
     control.replay_cursor,
-    control.replay_accumulator,
     control.replay_remaining_schedule_hash,
     control.spend_index,
     control.purpose_count,
@@ -76,8 +74,6 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     script_sources_control_is_bound(pre, witness, control),
     control.stage == 3,
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
-    control.replay_cursor == control.resolved_input_count,
-    control.replay_accumulator == control.resolved_inputs_accumulator,
     witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptSources,
@@ -120,9 +116,9 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 30, 5)
+  let frame = raw_frame.open_frame_v1(pre, witness, 28, 5)
   and {
-    raw_frame.item_int_v1(frame, 20) == raw_frame.item_int_v1(frame, 21),
+    raw_frame.item_int_v1(frame, 18) == raw_frame.item_int_v1(frame, 19),
     raw_frame.successor_is_exact_v1(
       pre,
       witness,
@@ -139,14 +135,14 @@ pub fn verify_script_sources_output_proof_begin_semantics_v1(
   item_commitment: ByteArray,
   siblings: List<ByteArray>,
 ) -> Bool {
-  let frame = raw_frame.open_frame_v1(pre, witness, 30, 5)
-  let output_count = raw_frame.item_int_v1(frame, 21)
+  let frame = raw_frame.open_frame_v1(pre, witness, 28, 5)
+  let output_count = raw_frame.item_int_v1(frame, 19)
   and {
-    output_index == raw_frame.item_int_v1(frame, 20),
+    output_index == raw_frame.item_int_v1(frame, 18),
     output_index < output_count,
     validation_merkle_v1.verify_membership(
       output_count,
-      raw_frame.item_frontier_v1(frame, 22),
+      raw_frame.item_frontier_v1(frame, 20),
       output_index,
       script_proof_v1.output_item_leaf_hash(
         output_index,
