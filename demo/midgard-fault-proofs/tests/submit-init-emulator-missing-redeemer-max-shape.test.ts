@@ -133,6 +133,9 @@ const summary = (steps: readonly StepMeasurement[]) => {
 };
 
 describe("missing-redeemer consensus-maximum observer shape", () => {
+  // An emulator max-shape row: the cap search builds a full transaction per
+  // step. Measured alone at 4.6-6.6 s under load, so the bound is 3x the
+  // slowest run.
   it("fills every observer-route field to its cap", () => {
     const { count, scriptBytes, dataBytes } = maximumShape(true);
     const at = fieldBytes(
@@ -171,7 +174,7 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
         }),
       ).redeemers,
     ).toBeGreaterThan(FIELD_CAP);
-  });
+  }, 20_000);
 
   it("convicts an accepted transaction whose last observer has no redeemer", async () => {
     const harness = await makeMissingRedeemerHarness();

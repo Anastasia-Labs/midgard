@@ -73,7 +73,6 @@ describe("typed rejection-reason disposition", () => {
     // Their workflows retired because DA carries no validation-trace states.
     expect(missingNonInteractiveInstallations(installed)).toEqual([
       "ScriptSourceMissing -> missingScriptSource",
-      "RedeemerMissing -> missingRedeemer",
       "UnusedScriptWitness -> unusedScriptWitness",
       "UnusedRedeemer -> unusedRedeemer",
       "ExecutionNativeScriptMalformed -> executionSourceScriptDecoding",
