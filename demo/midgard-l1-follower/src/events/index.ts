@@ -24,6 +24,7 @@ export {
   eventDerivation,
   ledgerOrderedRedeemers,
   openOrder,
+  retentionUnseenRefusalsIn,
   retirementEvidence,
   type RetirementReason,
   zeroWithdrawalRedeemer,

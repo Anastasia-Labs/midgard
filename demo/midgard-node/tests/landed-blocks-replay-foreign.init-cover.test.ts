@@ -226,13 +226,20 @@ describe("the protocol-init fact and the prune", () => {
     return { store, initSlot };
   };
 
-  it("outlives the prune: an absent deposit is still invalid, an absent forced order waits", async () => {
+  // The prune passed the start of the range, `initSlot - 1`: an order
+  // admitted there, or the follower's refusal of a deposit, may be gone.
+  it("outlives the prune, and an absent deposit or forced order waits once the prune passed the range's start", async () => {
     const { store, initSlot } = await prunedThroughInit();
     expect(await store.protocolInit(ONE_SHOT)).toMatchObject({
       slot: initSlot,
     });
     const deposit = await earlyBlock(store, strangerDepositBlock);
-    expect(await replayed(store, deposit)).toMatchObject({ kind: "invalid" });
+    expect(await replayed(store, deposit)).toMatchObject({
+      kind: "event_unknown",
+      detail: expect.stringContaining(
+        `the follower's refusals in the block's range may be pruned: the facts are pruned through slot ${initSlot.toString()}, past slot ${(initSlot - 1).toString()}`,
+      ),
+    });
     const order = await earlyBlock(store, strangerOrderBlock);
     expect(await replayed(store, order)).toMatchObject({
       kind: "event_unknown",

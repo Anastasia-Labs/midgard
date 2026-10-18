@@ -28,6 +28,14 @@
  * - A forced order's spend is not bound to the block's entry, so the prune
  *   must be at or before `T(B)`: every order admitted in the window, spent or
  *   not, is then still in the facts.
+ * - A deposit or withdrawal with an external payload is admitted on chain
+ *   with the retention output holding its payload as a reference input. The
+ *   follower refuses it (`retention_output_unseen`) when that output is not
+ *   in its facts: it was created before the origin, so naming it is a store
+ *   whose origin is too late for the block (`userAbsentWhere`). A refusal
+ *   leaves the facts once the prune passes its slot, so an absent deposit or
+ *   withdrawal is the block's fault only with the prune at or before `T(B)`
+ *   as well.
  * - No event is admitted before the protocol-init spend (the valid tx that
  *   spends the deployment's `hubOracleOneShot`); one in that spend's block
  *   is admitted at its slot. A store holding that spend at the view saw
@@ -36,6 +44,10 @@
  *   origin.
  */
 import type { FactStore, OutRef, View } from "@al-ft/midgard-l1-follower";
+import {
+  eventKeyOfId,
+  retentionUnseenRefusalsIn,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -156,7 +168,7 @@ export const eventCoverage = (
  * since is still seen; the spend counts where it is at or before the view.
  * A read that fails leaves a late origin a bounded wait.
  */
-export const coverageAt = async (
+const cursorCoverage = async (
   store: Pick<FactStore, "cursor" | "protocolInit">,
   oneShot: OutRef | undefined,
   view: View,
@@ -190,6 +202,31 @@ export const coverageAt = async (
   );
 };
 
+/**
+ * The coverage at `view`, with the deposits and withdrawals the follower
+ * refused because the retention output their payload is read from is not in
+ * its facts (`${kind}:${event key hex}`, at or before the view; null when
+ * unread). They are read before the cursor, as every fact is.
+ */
+export type CoverageAt = EventCoverage &
+  Readonly<{ unseenRetention: ReadonlySet<string> | null }>;
+
+export const coverageAt = async (
+  store: Pick<FactStore, "cursor" | "protocolInit" | "transaction">,
+  oneShot: OutRef | undefined,
+  view: View,
+  input: CoverageInput,
+  slotOf: (unixTimeMs: number) => number,
+): Promise<CoverageAt> => {
+  const unseenRetention = await store
+    .transaction("read", (tx) => retentionUnseenRefusalsIn(tx, view.point.slot))
+    .catch(() => null);
+  return {
+    ...(await cursorCoverage(store, oneShot, view, input, slotOf)),
+    unseenRetention,
+  };
+};
+
 /** The verdict on an event `kind` `id` a block names and the view does not know. */
 export type Absent = (kind: string, id: string) => Verdict;
 
@@ -212,6 +249,45 @@ export const absentWhere =
       : (coverage.lateOrigin === true ? originAfterFrontier : unknownEvent)(
           `${kind} ${id} is not known at the view: ${coverage.detail}`,
         );
+
+/** How the follower keys its refusal of the `kind` event `id`; null for an id that is no event id's CBOR. */
+const refusalKey = (kind: string, id: string): string | null => {
+  try {
+    return `${kind}:${eventKeyOfId(Buffer.from(id, "hex")).toString("hex")}`;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * An absent deposit or withdrawal (`absentWhere` over the user coverage),
+ * where the facts cover the block's range: refused by the follower because
+ * the retention output its payload is read from is not in its facts, which
+ * admission puts on chain before the order, so the store's origin is too
+ * late for the block (`origin_after_frontier`). Otherwise the block's fault
+ * only while every refusal in the block's range is still in the facts: the
+ * prune at or before `T(B)`, as for a forced order (else a bounded
+ * `event_unknown`).
+ */
+export const userAbsentWhere =
+  ({ user, txOrder, unseenRetention }: CoverageAt): Absent =>
+  (kind, id) => {
+    if (!user.complete) return absentWhere(user)(kind, id);
+    const key = refusalKey(kind, id);
+    if (key !== null && unseenRetention?.has(key) === true)
+      return originAfterFrontier(
+        `${kind} ${id} was refused by the follower: the retention output its payload is read from is not in its facts, so it predates the follower's origin`,
+      );
+    if (unseenRetention === null)
+      return unknownEvent(
+        `${kind} ${id} is not known at the view, and the follower's refusals are unreadable`,
+      );
+    if (!txOrder.complete)
+      return unknownEvent(
+        `${kind} ${id} is not known at the view, and the follower's refusals in the block's range may be pruned: ${txOrder.detail}`,
+      );
+    return absentWhere(user)(kind, id);
+  };
 
 /**
  * `known` are the in-window ids, `seen` every id the view knows: an id

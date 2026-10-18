@@ -527,11 +527,12 @@ first hold by priority is the reason, the rest are in its detail):
   are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
   does not know at the view, and the follower's facts do not cover the
-  range the block's events could be admitted in (the prune reached the slot
-  the block's node output entered at (for a forced order, passed the
-  range's start), the store was reset or rolled back since the view, or its
-  origin is after that range's start and the protocol-init fact that could
-  cover it is unreadable). Where the facts cover the range, the block is
+  range the block's events could be admitted in (the prune passed the
+  range's start, so an order admitted in it or the follower's refusal of
+  one may be gone; the store was reset or rolled back since the view; the
+  follower's refusals could not be read; or its origin is after that
+  range's start and the protocol-init fact that could cover it is
+  unreadable). Where the facts cover the range, the block is
   `landed_block_invalid` instead. A
   local fault on the block: it is read again every run, and after eight
   runs in a row end on it with no progress past it the node exits non-zero
@@ -556,18 +557,23 @@ reason=landed_block_forced_order_pending`); a restart meets the same bound
   late for the blocks after the landed frontier. A foreign block names an
   event the follower does not know at the view, and the origin is after
   the slot that block's events could first be admitted at (the detail names
-  both slots), or the block's node output was seeded at the origin. The
-  facts cannot judge the block, and the block is never blamed for it. It
-  cannot fire on a store that started at or before protocol init: a store
-  whose `l1Origin` is before the block of the protocol-init tx (the tx that
-  spends `hubOracleOneShot`) holds that tx's spend, no event is admitted
-  before it, and no node output predates it. A
+  both slots), or the block's node output was seeded at the origin, or the
+  block names a deposit or withdrawal the follower refused because the
+  retention output its payload is read from is not in its facts (that
+  output was created before the origin). The facts cannot judge the block,
+  and the block is never blamed for it. It cannot fire on a store whose
+  `l1Origin` is the documented point before the `prepareHubOracleNonce`
+  block: such a store holds the protocol-init tx (the tx that spends
+  `hubOracleOneShot`), so no event is admitted before its origin and no
+  node output predates it, and it holds every retention output, whose
+  address is derived from that block's hub oracle. A
   configuration error: not retried, and the node exits non-zero at once
   (`node_transient_budget_exhausted source=driver
 reason=landed_block_origin_after_frontier`); a restart on the same store
   exits again. Reset the follower store with an earlier `l1Origin` (at or
   before the earlier slot the detail names, where it names two, or before
-  the protocol-init block; `midgard-l1-follower reset --to-origin`), or
+  the `prepareHubOracleNonce` block;
+  `midgard-l1-follower reset --to-origin`), or
   resync the node, then restart.
 - `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
   a foreign block failed in this node's own computation (hashing, the payload

@@ -21,6 +21,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, datumToHash, type UTxO } from "@lucid-evolution/lucid";
 
 import { encodeOutRef } from "../codec.js";
+import type { SqlTx } from "../sql/backend.js";
 import type { DerivationContext, DerivationHook } from "../store/context.js";
 import type {
   OutputSummary,
@@ -161,9 +162,25 @@ export type AdmittedEvent = Readonly<{
 }>;
 
 /**
+ * The refusal of an external Order whose retention output is not among the
+ * referenced outputs the facts hold. Admission authenticates that output on
+ * chain, so the facts lack it only when it was created before the store's
+ * origin.
+ */
+export const RETENTION_OUTPUT_UNSEEN = "retention_output_unseen";
+
+/** `openOrder`'s refusal of an external payload it cannot read: `RETENTION_OUTPUT_UNSEEN`. */
+class RetentionOutputUnseen extends Error {
+  constructor() {
+    super("external order references no retention output the facts hold");
+  }
+}
+
+/**
  * Opens an Order output exactly as the SDK's witness capture does, with an
  * external payload read from `retained` (the referenced retention output).
- * Throws when the output does not authenticate as an Order of this list.
+ * Throws when the output does not authenticate as an Order of this list
+ * (`RetentionOutputUnseen` when no retained output holds its payload).
  */
 export const openOrder = (
   utxo: UTxO,
@@ -192,8 +209,7 @@ export const openOrder = (
           aikenSerialisedPlutusDataCborPreservingMapOrder(candidate.datum),
         ) === storage,
     );
-    if (retainedDataUtxo?.datum == null)
-      throw new Error("external order references no retention datum");
+    if (retainedDataUtxo?.datum == null) throw new RetentionOutputUnseen();
     rawPayload = plutusConstrFieldCbor(retainedDataUtxo.datum, [1]);
   }
   const payloadCbor =
@@ -257,7 +273,7 @@ const refuse = async (
   at: Readonly<{ tx: TxSummary; outRef: OutRef }>,
   kind: string,
   key: Buffer,
-  reason: "retired_key" | "malformed",
+  reason: "retired_key" | "malformed" | typeof RETENTION_OUTPUT_UNSEEN,
   detail: string,
 ): Promise<void> => {
   // One refusal per output: an output holding several list tokens is
@@ -275,6 +291,27 @@ const refuse = async (
     ],
   );
 };
+
+/**
+ * The orders refused as `RETENTION_OUTPUT_UNSEEN` at or before `atSlot`, as
+ * `${kind}:${event key hex}`. A refusal stays in the facts until the prune
+ * passes its slot.
+ */
+export const retentionUnseenRefusalsIn = async (
+  tx: SqlTx,
+  atSlot: number,
+): Promise<ReadonlySet<string>> =>
+  new Set(
+    (
+      await tx.query(
+        `SELECT kind, event_key FROM ${REFUSALS_TABLE} WHERE reason = ? AND slot <= ?`,
+        [RETENTION_OUTPUT_UNSEEN, atSlot],
+      )
+    ).map(
+      (row) =>
+        `${String(row.kind)}:${hex(Buffer.from(row.event_key as Uint8Array))}`,
+    ),
+  );
 
 const retire = async (
   context: Context,
@@ -369,7 +406,16 @@ const admit = async (
         : await retainedOutputs(context, tx, list),
     );
   } catch (error) {
-    await refuse(context, at, list.kind, key, "malformed", String(error));
+    await refuse(
+      context,
+      at,
+      list.kind,
+      key,
+      error instanceof RetentionOutputUnseen
+        ? RETENTION_OUTPUT_UNSEEN
+        : "malformed",
+      String(error),
+    );
     return;
   }
   if (event === "not_an_order") return; // a filler or the root

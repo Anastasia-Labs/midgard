@@ -82,6 +82,7 @@ import {
   coverageAt,
   exact,
   unknownAt,
+  userAbsentWhere,
 } from "./replay-foreign.complete.js";
 import {
   payloadOf,
@@ -379,7 +380,7 @@ export const foreignBlockReplayer = (deps: {
             unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
         ),
       );
-      const absent = absentWhere(coverage.user);
+      const absent = userAbsentWhere(coverage);
       const { payload, acquired, bound, served } = yield* payloadOf(
         fetchDa,
         refetching,
