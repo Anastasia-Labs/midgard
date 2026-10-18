@@ -7,7 +7,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageTwoAdvance yield",
       manifestPosition: 128,
-      publicationPosition: 436,
+      publicationPosition: 438,
       referenceRolePosition: 243,
       commands: [],
       validatorTitle:
@@ -19,7 +19,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources StageThreeReplay yield",
       manifestPosition: 129,
-      publicationPosition: 437,
+      publicationPosition: 439,
       referenceRolePosition: 244,
       commands: [],
       validatorTitle:
@@ -31,7 +31,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources StageThreeFinish yield",
       manifestPosition: 130,
-      publicationPosition: 438,
+      publicationPosition: 440,
       referenceRolePosition: 245,
       commands: [],
       validatorTitle:
@@ -42,7 +42,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageFourBegin yield",
       manifestPosition: 131,
-      publicationPosition: 439,
+      publicationPosition: 441,
       referenceRolePosition: 246,
       commands: [],
       validatorTitle:
@@ -53,7 +53,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageFourFinish yield",
       manifestPosition: 132,
-      publicationPosition: 440,
+      publicationPosition: 442,
       referenceRolePosition: 247,
       commands: [],
       validatorTitle:
@@ -65,7 +65,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources StageSixBeginPolicy yield",
       manifestPosition: 133,
-      publicationPosition: 441,
+      publicationPosition: 443,
       referenceRolePosition: 248,
       commands: [],
       validatorTitle:
@@ -77,7 +77,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources StageSixFoldAsset yield",
       manifestPosition: 134,
-      publicationPosition: 442,
+      publicationPosition: 444,
       referenceRolePosition: 249,
       commands: [],
       validatorTitle:
@@ -88,7 +88,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageSixFinish yield",
       manifestPosition: 135,
-      publicationPosition: 443,
+      publicationPosition: 445,
       referenceRolePosition: 250,
       commands: [],
       validatorTitle:
@@ -99,7 +99,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources observer item yield",
       manifestPosition: 136,
-      publicationPosition: 444,
+      publicationPosition: 446,
       referenceRolePosition: 251,
       commands: [],
       validatorTitle:
@@ -110,7 +110,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources observer bound yield",
       manifestPosition: 137,
-      publicationPosition: 445,
+      publicationPosition: 447,
       referenceRolePosition: 252,
       commands: [],
       validatorTitle:
@@ -122,7 +122,7 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace script-sources redeemer descriptor yield",
       manifestPosition: 138,
-      publicationPosition: 446,
+      publicationPosition: 448,
       referenceRolePosition: 253,
       commands: [],
       validatorTitle:

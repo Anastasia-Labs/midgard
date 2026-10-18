@@ -10,11 +10,13 @@ import { buildFaultProofSpendingStep } from "./shared.js";
 export const MISSING_REDEEMER_CLAIM_TITLES = {
   familyEntry: deployedTitle("fraudProofMissingRedeemerFamilyEntry"),
   start: deployedTitle("fraudProofMissingRedeemerClaimStart"),
+  spendStart: deployedTitle("fraudProofMissingRedeemerClaimSpendStart"),
   spendScan: deployedTitle("fraudProofMissingRedeemerClaimSpendScan"),
   mintGrammar: deployedTitle("fraudProofMissingRedeemerClaimMintGrammar"),
   mintScan: deployedTitle("fraudProofMissingRedeemerClaimMintScan"),
   receiveGrammar: deployedTitle("fraudProofMissingRedeemerClaimReceiveGrammar"),
   receiveOutputs: deployedTitle("fraudProofMissingRedeemerClaimReceiveOutputs"),
+  receiveFinish: deployedTitle("fraudProofMissingRedeemerClaimReceiveFinish"),
   receiveDeclaration: deployedTitle(
     "fraudProofMissingRedeemerClaimReceiveDeclaration",
   ),
@@ -81,6 +83,11 @@ export const buildMissingRedeemerClaimContracts = ({
       [next, ...certified],
       "claimed spend scan",
     );
+    const spendStart = yield* step(
+      T.spendStart,
+      [spendScan.spendingScriptHash, ...certified],
+      "claimed spend start",
+    );
     const mintScan = yield* step(
       T.mintScan,
       [next, ...certified],
@@ -96,9 +103,14 @@ export const buildMissingRedeemerClaimContracts = ({
       [next, computationThreadPolicyId],
       "claimed receive declaration",
     );
+    const receiveFinish = yield* step(
+      T.receiveFinish,
+      [receiveDeclaration.spendingScriptHash, ...certified],
+      "claimed receive finish",
+    );
     const receiveOutputs = yield* step(
       T.receiveOutputs,
-      [receiveDeclaration.spendingScriptHash, ...certified],
+      [receiveFinish.spendingScriptHash, ...certified],
       "claimed receive outputs",
     );
     const receiveGrammar = yield* step(
@@ -110,7 +122,7 @@ export const buildMissingRedeemerClaimContracts = ({
       T.start,
       [
         next,
-        spendScan.spendingScriptHash,
+        spendStart.spendingScriptHash,
         mintGrammar.spendingScriptHash,
         receiveGrammar.spendingScriptHash,
         ...certified,
@@ -119,11 +131,13 @@ export const buildMissingRedeemerClaimContracts = ({
     );
     return {
       start,
+      spendStart,
       spendScan,
       mintGrammar,
       mintScan,
       receiveGrammar,
       receiveOutputs,
+      receiveFinish,
       receiveDeclaration,
       adjudicate,
       claimedGrammar,

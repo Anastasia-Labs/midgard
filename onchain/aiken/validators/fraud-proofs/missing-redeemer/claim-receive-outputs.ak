@@ -6,7 +6,7 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_redeemer/claim_receive as claim
 
 validator main(
-  declaration_hash: ScriptHash,
+  finish_hash: ScriptHash,
   thread_policy: PolicyId,
   certificate_policy: PolicyId,
 ) {
@@ -28,6 +28,7 @@ validator main(
         )
       ct.Continue(action) -> {
         let Pair(input_index, output_index) = claim.output_indices_v1(action)
+        let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
         let own_hash, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
@@ -35,8 +36,8 @@ validator main(
           input_index,
           output_index,
           own_ref,
-          tx.inputs,
-          tx.outputs,
+          inputs,
+          outputs,
         )
         expect Some(state) = input_state
         when action is {
@@ -46,7 +47,7 @@ validator main(
               opening,
               checkpoint_bytes,
               witnesses,
-              tx.reference_inputs,
+              reference_inputs,
               certificate_policy,
             )
             and {
@@ -54,15 +55,11 @@ validator main(
               output_state == expected,
             }
           }
-          claim.Finish { args } -> {
-            let expected: Data = claim.finish_outputs_v1(
-              state,
-              args,
-              tx.reference_inputs,
-              certificate_policy,
-            )
+          // The finish role authenticates the field and its exhaustion.
+          claim.Finish { .. } -> {
+            let expected: Data = state
             and {
-              output_hash == declaration_hash,
+              output_hash == finish_hash,
               output_state == expected,
             }
           }

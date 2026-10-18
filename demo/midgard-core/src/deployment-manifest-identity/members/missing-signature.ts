@@ -46,8 +46,8 @@ export const missingSignatureMembers = defineDeploymentFamily(
     fraudProofMissingSignatureForcedStep: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-signature forced step",
-      manifestPosition: 433,
-      publicationPosition: 339,
+      manifestPosition: 435,
+      publicationPosition: 341,
       referenceRolePosition: 76,
       commands: [],
       validatorTitle: "fraud_proofs/missing_signature/forced_step.main.spend",
@@ -56,8 +56,8 @@ export const missingSignatureMembers = defineDeploymentFamily(
     fraudProofMissingSignatureForcedSigner: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-signature forced signer",
-      manifestPosition: 434,
-      publicationPosition: 340,
+      manifestPosition: 436,
+      publicationPosition: 342,
       referenceRolePosition: 77,
       commands: [],
       validatorTitle: "fraud_proofs/missing_signature/forced_signer.main.spend",
@@ -66,8 +66,8 @@ export const missingSignatureMembers = defineDeploymentFamily(
     fraudProofMissingSignatureForcedWitness: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof missing-signature forced witness",
-      manifestPosition: 435,
-      publicationPosition: 341,
+      manifestPosition: 437,
+      publicationPosition: 343,
       referenceRolePosition: 78,
       commands: [],
       validatorTitle:

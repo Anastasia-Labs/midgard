@@ -18,6 +18,7 @@ use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
   ClaimPurposeStateV1, ExistingPurpose, ImpossiblePurpose,
 }
 use midgard/fraud_proofs/missing_redeemer/claim_start
+use midgard/native_tx_machine_walk_v1 as walk
 
 pub type StateV1 {
   context: ClaimContextV1,
@@ -29,49 +30,85 @@ pub type StateV1 {
   complete: Bool,
 }
 
+/// The claim start hands the context over unchanged to the spend start role,
+/// whose open transaction resolves the raw item and ranks the first page.
+pub type OpenActionV1 {
+  input_index: Int,
+  output_index: Int,
+  raw_item_index: Int,
+  opening: FieldOpeningV1,
+  descriptor_cbor: ByteArray,
+  membership: MembershipCarriage,
+  budget: Int,
+}
+
+pub type OpenDatum =
+  ct.StepDatum<ClaimContextV1>
+
+pub type OpenRedeemer =
+  ct.StepRedeemer<OpenActionV1>
+
 pub type Datum =
   ct.StepDatum<StateV1>
 
 pub type SpendRedeemer =
   ct.StepRedeemer<workers.MintActionV1>
 
-pub fn initial_v1(
+/// The spend field is opened once: the authenticated view resolves the raw
+/// item's credential and the same walk ranks the first page. The claimed
+/// coordinate is checked by `finish_v1`, the only exit to a fact.
+pub fn open_v1(
   context: ClaimContextV1,
   raw_item_index: Int,
   opening: FieldOpeningV1,
   descriptor_cbor: ByteArray,
   membership: MembershipCarriage,
+  budget: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   certificate_policy_id: PolicyId,
 ) -> StateV1 {
-  expect claim_start.distinct_coordinate_v1(context, purpose.spend).index >= 0
+  expect and {
+      budget > 0,
+      budget <= workers.scan_batch,
+    }
   let bound = context.bound
-  let target = purpose.open_spend_credential_v1(
-    bound.bound,
-    raw_item_index,
+  let Pair(view, position) = field_opening_v1.opened_field_walk(
     opening,
+    cursor.anchor_v1(bound.bound, spend_inputs_field_index),
+    spend_inputs_field_index,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  let target = purpose.spend_credential_in_view_v1(
+    bound.bound,
+    view,
+    raw_item_index,
     descriptor_cbor,
     membership,
     reference_inputs,
     redeemers,
-    certificate_policy_id,
   )
-  let (field_cursor, _, complete) = cursor.initial_with_completion_v1(
-    bound.bound,
-    spend_inputs_field_index,
-    opening,
-    reference_inputs,
-    certificate_policy_id,
+  let Pair(rank, advanced) = workers.fold_spend_rank_v1(
+    view,
+    position,
+    budget,
+    0,
+    target.subject,
   )
   StateV1 {
     context,
     source_index: bound.source_index,
-    cursor: field_cursor,
+    cursor: cursor.CursorV1 {
+      bound: bound.bound,
+      field_index: spend_inputs_field_index,
+      phase: cursor.Walking,
+      checkpoint_hash: walk.field_walk_checkpoint_hash(advanced),
+    },
     raw_item_index,
     target,
-    rank: 0,
-    complete,
+    rank,
+    complete: walk.walk_is_complete(advanced),
   }
 }
 

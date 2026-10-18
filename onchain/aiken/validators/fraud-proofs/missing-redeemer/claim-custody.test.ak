@@ -6,9 +6,11 @@ use env
 use fraud_proofs/missing_redeemer/claim_mint_grammar as mint_grammar_entry
 use fraud_proofs/missing_redeemer/claim_mint_scan as mint_entry
 use fraud_proofs/missing_redeemer/claim_receive_declaration as declaration_entry
+use fraud_proofs/missing_redeemer/claim_receive_finish as finish_entry
 use fraud_proofs/missing_redeemer/claim_receive_grammar as receive_grammar_entry
 use fraud_proofs/missing_redeemer/claim_receive_outputs as outputs_entry
 use fraud_proofs/missing_redeemer/claim_spend_scan as spend_entry
+use fraud_proofs/missing_redeemer/claim_spend_start as spend_start_entry
 use fraud_proofs/missing_redeemer/claim_start as start_entry
 use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/computation_thread as ct
@@ -24,6 +26,7 @@ use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/field_opening_v1
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_mint as mint
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
@@ -39,6 +42,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1 as descriptor
+use midgard/native_tx_machine_walk_v1 as walk
 use midgard/rejection_reason_v1 as reasons
 
 const hash = #"33333333333333333333333333333333333333333333333333333333"
@@ -158,7 +162,7 @@ fn spend_fixture(key: Bool, claimed_index: Int) {
     block.compact_cbor,
     list.map(inputs, encode_midgard_tx_input),
   )
-  let state = spend.initial_v1(
+  let state = spend.open_v1(
     initial,
     2,
     opening,
@@ -167,18 +171,26 @@ fn spend_fixture(key: Bool, claimed_index: Int) {
       membership_proof: [],
       membership_proof_script_redeemer_index: 0,
     },
+    1,
     [],
     [fixture.phas_withdraw_redeemer_entry(pre_root, key, value)],
     fixture.test_certificate_policy_id,
   )
-  let Pair(_, checkpoint) = cursor.initial_v1(
-    initial.bound.bound,
-    0,
+  let Pair(view, position) = field_opening_v1.opened_field_walk(
     opening,
+    cursor.anchor_v1(initial.bound.bound, 0),
+    0,
     [],
     fixture.test_certificate_policy_id,
   )
-  (state, opening, checkpoint, value, key)
+  let Pair(_, after_first) = workers.fold_spend_rank_v1(
+    view,
+    position,
+    1,
+    0,
+    #"",
+  )
+  (state, opening, walk.encode_field_walk_checkpoint(after_first), value, key)
 }
 
 fn complete_spend(key: Bool, claimed_index: Int) {
@@ -190,7 +202,7 @@ fn complete_spend(key: Bool, claimed_index: Int) {
       output_index: 0,
       opening,
       checkpoint_bytes: checkpoint,
-      budget: 3,
+      budget: 2,
     },
     [],
     fixture.test_certificate_policy_id,
@@ -270,10 +282,13 @@ test claim_start_cannot_choose_another_successor() {
   !start_complete(3)
 }
 
-fn start_spend(signatures: List<ByteArray>) {
-  let (state, opening, _, value, key) = spend_fixture(True, 1)
-  let expected: Data = state
-  let tx = step_tx(expected, signatures, False)
+fn start_spend(changed: Bool) {
+  let (state, _, _, _, _) = spend_fixture(True, 1)
+  let output: Data = if changed {
+    flipped(state.context)
+  } else {
+    state.context
+  }
   start_entry.main.spend(
     hash,
     fixture.next_step_script_hash,
@@ -287,8 +302,36 @@ fn start_spend(signatures: List<ByteArray>) {
         data: Some(state.context),
       },
     ),
+    ct.Continue(start.Spend { input_index: 0, output_index: 0 }),
+    fixture.own_out_ref(),
+    step_tx(output, [], False),
+  )
+}
+
+test claim_start_hands_the_spend_context_over_without_a_signature() {
+  start_spend(False)
+}
+
+test claim_start_spend_handover_cannot_alter_the_context() {
+  !start_spend(True)
+}
+
+fn spend_open(signatures: List<ByteArray>) {
+  let (state, opening, _, value, key) = spend_fixture(True, 1)
+  let output: Data = state
+  let tx = step_tx(output, signatures, False)
+  spend_start_entry.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state.context),
+      },
+    ),
     ct.Continue(
-      start.Spend {
+      spend.OpenActionV1 {
         input_index: 0,
         output_index: 0,
         raw_item_index: 2,
@@ -298,6 +341,7 @@ fn start_spend(signatures: List<ByteArray>) {
           membership_proof: [],
           membership_proof_script_redeemer_index: 0,
         },
+        budget: 1,
       },
     ),
     fixture.own_out_ref(),
@@ -315,15 +359,15 @@ fn start_spend(signatures: List<ByteArray>) {
 }
 
 test spend_free_raw_choice_requires_the_prover_signature_positive() {
-  start_spend([fixture.fraud_prover_key_hash])
+  spend_open([fixture.fraud_prover_key_hash])
 }
 
 test spend_free_raw_choice_missing_signature_refuses() fail {
-  start_spend([])
+  spend_open([])
 }
 
 test spend_free_raw_choice_wrong_signature_refuses() fail {
-  start_spend([hash])
+  spend_open([hash])
 }
 
 fn spend_finish(changed: Bool) {
@@ -550,7 +594,38 @@ test receive_grammar_cannot_change_observation() {
   !receive_grammar(True)
 }
 
-fn receive_outputs(changed: Bool) {
+fn receive_outputs_handover(changed: Bool) {
+  let (_, _, state, _) = receive_ready()
+  let output: Data = if changed {
+    receive_claim.OutputStateV1 { ..state, target_ordinal: 1 }
+  } else {
+    state
+  }
+  outputs_entry.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(receive_claim.Finish { input_index: 0, output_index: 0 }),
+    fixture.own_out_ref(),
+    step_tx(output, [], False),
+  )
+}
+
+test receive_outputs_hands_the_scan_to_its_finish_role() {
+  receive_outputs_handover(False)
+}
+
+test receive_outputs_handover_cannot_change_the_leaf_target() {
+  !receive_outputs_handover(True)
+}
+
+fn receive_finish(changed: Bool) {
   let (_, args, state, checkpoint) = receive_ready()
   let args = start.FinishOpeningArgsV1 {
     input_index: 0,
@@ -572,7 +647,7 @@ fn receive_outputs(changed: Bool) {
   } else {
     next
   }
-  outputs_entry.main.spend(
+  finish_entry.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
@@ -582,18 +657,18 @@ fn receive_outputs(changed: Bool) {
         data: Some(state),
       },
     ),
-    ct.Continue(receive_claim.Finish { args }),
+    ct.Continue(args),
     fixture.own_out_ref(),
     step_tx(output, [], False),
   )
 }
 
-test receive_outputs_handoff_authenticates_empty_exhaustion() {
-  receive_outputs(False)
+test receive_finish_authenticates_empty_exhaustion() {
+  receive_finish(False)
 }
 
-test receive_outputs_cannot_change_leaf_target_at_handoff() {
-  !receive_outputs(True)
+test receive_finish_cannot_change_leaf_target() {
+  !receive_finish(True)
 }
 
 fn declaration_finish(changed: Bool) {

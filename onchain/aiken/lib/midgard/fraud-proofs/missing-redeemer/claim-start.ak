@@ -6,7 +6,6 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{MembershipCarriage}
 use midgard/fraud_proofs/direct_script_derivation/cursor
 use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
   PurposeCoordinateV1,
@@ -24,14 +23,8 @@ use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
 
 pub type StartActionV1 {
   Complete { input_index: Int, output_index: Int }
-  Spend {
-    input_index: Int,
-    output_index: Int,
-    raw_item_index: Int,
-    opening: opening.FieldOpeningV1,
-    descriptor_cbor: ByteArray,
-    membership: MembershipCarriage,
-  }
+  /// Hands the context to the spend scan, which opens the field there.
+  Spend { input_index: Int, output_index: Int }
   SpendOutOfRange {
     input_index: Int,
     output_index: Int,
@@ -66,7 +59,7 @@ pub type StartRedeemer =
 pub fn start_indices_v1(action: StartActionV1) -> Pair<Int, Int> {
   when action is {
     Complete { input_index, output_index } -> Pair(input_index, output_index)
-    Spend { input_index, output_index, .. } -> Pair(input_index, output_index)
+    Spend { input_index, output_index } -> Pair(input_index, output_index)
     SpendOutOfRange { input_index, output_index, .. } ->
       Pair(input_index, output_index)
     Observe { input_index, output_index, .. } -> Pair(input_index, output_index)

@@ -55,19 +55,24 @@ export const deriveValidationTraceDeploymentId = (
   return deploymentId;
 };
 
+// Parsing an already-parsed blueprint returns it unchanged, so the parameter
+// records of every application stay with the one blueprint a caller holds.
+const parsedBlueprints = new WeakSet<object>();
+
 export const parseFaultProofBlueprint = (
   value: unknown,
 ): FaultProofBlueprint => {
   if (typeof value !== "object" || value === null) {
     throw new Error("Fault proof blueprint must be a JSON object");
   }
+  if (parsedBlueprints.has(value)) return value as FaultProofBlueprint;
 
   const validators = (value as { readonly validators?: unknown }).validators;
   if (!Array.isArray(validators)) {
     throw new Error("Fault proof blueprint must contain validators[]");
   }
 
-  return {
+  const parsed: FaultProofBlueprint = {
     validators: validators.map((validator, index) => {
       if (typeof validator !== "object" || validator === null) {
         throw new Error(`validators[${index}] must be an object`);
@@ -118,6 +123,8 @@ export const parseFaultProofBlueprint = (
       };
     }),
   };
+  parsedBlueprints.add(parsed);
+  return parsed;
 };
 
 export const getBlueprintValidator = (

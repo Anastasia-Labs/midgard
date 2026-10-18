@@ -1,5 +1,5 @@
 /** Real-contract emulator fixtures for the `missingRedeemer` family: the
- * harness, the 37 published role scripts, field carriage, and a driver from
+ * harness, the 39 published role scripts, field carriage, and a driver from
  * a genuine Init through step-01 and the planned custody to the terminal. */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";

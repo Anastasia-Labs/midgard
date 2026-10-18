@@ -294,115 +294,137 @@ export const missingRedeemerMembers = defineDeploymentFamily(
       validatorTitle: "fraud_proofs/missing_redeemer/claim_start.main.spend",
       familyPaths: [["steps", "26"]],
     },
-    fraudProofMissingRedeemerClaimSpendScan: {
+    fraudProofMissingRedeemerClaimSpendStart: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-spend-scan",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-spend-start",
       manifestPosition: 401,
       publicationPosition: 274,
       referenceRolePosition: 511,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_spend_scan.main.spend",
+        "fraud_proofs/missing_redeemer/claim_spend_start.main.spend",
       familyPaths: [["steps", "27"]],
     },
-    fraudProofMissingRedeemerClaimMintGrammar: {
+    fraudProofMissingRedeemerClaimSpendScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-mint-grammar",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-spend-scan",
       manifestPosition: 402,
       publicationPosition: 275,
       referenceRolePosition: 512,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_mint_grammar.main.spend",
+        "fraud_proofs/missing_redeemer/claim_spend_scan.main.spend",
       familyPaths: [["steps", "28"]],
     },
-    fraudProofMissingRedeemerClaimMintScan: {
+    fraudProofMissingRedeemerClaimMintGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-mint-scan",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-mint-grammar",
       manifestPosition: 403,
       publicationPosition: 276,
       referenceRolePosition: 513,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_mint_scan.main.spend",
+        "fraud_proofs/missing_redeemer/claim_mint_grammar.main.spend",
       familyPaths: [["steps", "29"]],
     },
-    fraudProofMissingRedeemerClaimReceiveGrammar: {
+    fraudProofMissingRedeemerClaimMintScan: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-receive-grammar",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-mint-scan",
       manifestPosition: 404,
       publicationPosition: 277,
       referenceRolePosition: 514,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_grammar.main.spend",
+        "fraud_proofs/missing_redeemer/claim_mint_scan.main.spend",
       familyPaths: [["steps", "30"]],
     },
-    fraudProofMissingRedeemerClaimReceiveOutputs: {
+    fraudProofMissingRedeemerClaimReceiveGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-receive-outputs",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-receive-grammar",
       manifestPosition: 405,
       publicationPosition: 278,
       referenceRolePosition: 515,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_outputs.main.spend",
+        "fraud_proofs/missing_redeemer/claim_receive_grammar.main.spend",
       familyPaths: [["steps", "31"]],
     },
-    fraudProofMissingRedeemerClaimReceiveDeclaration: {
+    fraudProofMissingRedeemerClaimReceiveOutputs: {
       purpose: "spend",
-      referenceRole:
-        "V1 fraud-proof missing-redeemer claim-receive-declaration",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-receive-outputs",
       manifestPosition: 406,
       publicationPosition: 279,
       referenceRolePosition: 516,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_receive_declaration.main.spend",
+        "fraud_proofs/missing_redeemer/claim_receive_outputs.main.spend",
       familyPaths: [["steps", "32"]],
     },
-    fraudProofMissingRedeemerClaimAdjudicate: {
+    fraudProofMissingRedeemerClaimReceiveFinish: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claim-adjudicate",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-receive-finish",
       manifestPosition: 407,
       publicationPosition: 280,
       referenceRolePosition: 517,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claim_adjudicate.main.spend",
+        "fraud_proofs/missing_redeemer/claim_receive_finish.main.spend",
       familyPaths: [["steps", "33"]],
     },
-    fraudProofMissingRedeemerClaimedRedeemerGrammar: {
+    fraudProofMissingRedeemerClaimReceiveDeclaration: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-grammar",
+      referenceRole:
+        "V1 fraud-proof missing-redeemer claim-receive-declaration",
       manifestPosition: 408,
       publicationPosition: 281,
       referenceRolePosition: 518,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main.spend",
+        "fraud_proofs/missing_redeemer/claim_receive_declaration.main.spend",
       familyPaths: [["steps", "34"]],
     },
-    fraudProofMissingRedeemerClaimedRedeemerScan: {
+    fraudProofMissingRedeemerClaimAdjudicate: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-scan",
+      referenceRole: "V1 fraud-proof missing-redeemer claim-adjudicate",
       manifestPosition: 409,
       publicationPosition: 282,
       referenceRolePosition: 519,
       commands: [],
       validatorTitle:
-        "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main.spend",
+        "fraud_proofs/missing_redeemer/claim_adjudicate.main.spend",
       familyPaths: [["steps", "35"]],
     },
-    fraudProofMissingRedeemerStep05: {
+    fraudProofMissingRedeemerClaimedRedeemerGrammar: {
       purpose: "spend",
-      referenceRole: "V1 fraud-proof missing-redeemer step-05",
+      referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-grammar",
       manifestPosition: 410,
       publicationPosition: 283,
       referenceRolePosition: 520,
       commands: [],
-      validatorTitle: "fraud_proofs/missing_redeemer/step_05.main.spend",
+      validatorTitle:
+        "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main.spend",
       familyPaths: [["steps", "36"]],
+    },
+    fraudProofMissingRedeemerClaimedRedeemerScan: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof missing-redeemer claimed-redeemer-scan",
+      manifestPosition: 411,
+      publicationPosition: 284,
+      referenceRolePosition: 521,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main.spend",
+      familyPaths: [["steps", "37"]],
+    },
+    fraudProofMissingRedeemerStep05: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof missing-redeemer step-05",
+      manifestPosition: 412,
+      publicationPosition: 285,
+      referenceRolePosition: 522,
+      commands: [],
+      validatorTitle: "fraud_proofs/missing_redeemer/step_05.main.spend",
+      familyPaths: [["steps", "38"]],
     },
   },
 );

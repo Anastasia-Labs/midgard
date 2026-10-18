@@ -21,7 +21,7 @@ export type MissingRedeemerContracts = {
   readonly fieldPreimageCertificatePolicyId: string;
 };
 
-/** Named roles; fails closed when the chain is not the 37-role graph. */
+/** Named roles; fails closed when the chain is not the 39-role graph. */
 export const missingRedeemerContractRoles = (
   contracts: MissingRedeemerContracts,
 ): SDK.MissingRedeemerRoles =>

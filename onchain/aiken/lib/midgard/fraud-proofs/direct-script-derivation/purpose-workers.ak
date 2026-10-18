@@ -21,6 +21,7 @@ use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{
   FieldOpeningV1, mint_field_index, opened_field_walk, spend_inputs_field_index,
 }
+use midgard/native_tx_field_access_v1.{FieldViewV1}
 use midgard/native_tx_machine_walk_v1 as walk
 
 /// The selection door chooses the purpose kind. A spend selection is opened by
@@ -254,6 +255,29 @@ pub fn advance_spend_v1(
 
 /// Shared rank transition for observed script targets and claimed key/script
 /// targets. The authenticated raw field contributes every spent outref.
+/// Counts the walked spend items that sort before `subject`.
+pub fn fold_spend_rank_v1(
+  view: FieldViewV1,
+  position: walk.FieldWalkCheckpointV1,
+  budget: Int,
+  initial_rank: Int,
+  subject: ByteArray,
+) -> Pair<Int, walk.FieldWalkCheckpointV1> {
+  walk.walk_fold(
+    view,
+    position,
+    budget,
+    initial_rank,
+    fn(rank, _, item) {
+      rank + if bytearray.compare(item, subject) == Less {
+        1
+      } else {
+        0
+      }
+    },
+  )
+}
+
 pub fn advance_spend_rank_v1(
   field_cursor: cursor.CursorV1,
   subject: ByteArray,
@@ -274,18 +298,12 @@ pub fn advance_spend_rank_v1(
     reference_inputs,
     certificate_policy_id,
   )
-  let Pair(rank, advanced) = walk.walk_fold(
+  let Pair(rank, advanced) = fold_spend_rank_v1(
     view,
     position,
     args.budget,
     initial_rank,
-    fn(rank, _, item) {
-      rank + if bytearray.compare(item, subject) == Less {
-        1
-      } else {
-        0
-      }
-    },
+    subject,
   )
   (
     cursor.after_v1(field_cursor, advanced),

@@ -716,6 +716,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRdmrS03",
   "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRdmrS04",
   "V1 fraud-proof missing-redeemer claim-start": "V1FpMissingRdmrClaimStart",
+  "V1 fraud-proof missing-redeemer claim-spend-start":
+    "V1FpMissingRdmrClaimSpendStart",
   "V1 fraud-proof missing-redeemer claim-spend-scan":
     "V1FpMissingRdmrClaimSpend",
   "V1 fraud-proof missing-redeemer claim-mint-grammar":
@@ -726,6 +728,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1FpMissingRdmrClaimRecvGrammar",
   "V1 fraud-proof missing-redeemer claim-receive-outputs":
     "V1FpMissingRdmrClaimRecvOutputs",
+  "V1 fraud-proof missing-redeemer claim-receive-finish":
+    "V1FpMissingRdmrClaimRecvFinish",
   "V1 fraud-proof missing-redeemer claim-receive-declaration":
     "V1FpMissingRdmrClaimRecvDecl",
   "V1 fraud-proof missing-redeemer claim-adjudicate":

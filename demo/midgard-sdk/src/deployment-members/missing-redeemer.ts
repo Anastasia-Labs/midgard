@@ -82,34 +82,40 @@ export const missingRedeemerRecipes = {
   fraudProofMissingRedeemerClaimStart: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[26],
   ),
-  fraudProofMissingRedeemerClaimSpendScan: spend(
+  fraudProofMissingRedeemerClaimSpendStart: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[27],
   ),
-  fraudProofMissingRedeemerClaimMintGrammar: spend(
+  fraudProofMissingRedeemerClaimSpendScan: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[28],
   ),
-  fraudProofMissingRedeemerClaimMintScan: spend(
+  fraudProofMissingRedeemerClaimMintGrammar: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[29],
   ),
-  fraudProofMissingRedeemerClaimReceiveGrammar: spend(
+  fraudProofMissingRedeemerClaimMintScan: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[30],
   ),
-  fraudProofMissingRedeemerClaimReceiveOutputs: spend(
+  fraudProofMissingRedeemerClaimReceiveGrammar: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[31],
   ),
-  fraudProofMissingRedeemerClaimReceiveDeclaration: spend(
+  fraudProofMissingRedeemerClaimReceiveOutputs: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[32],
   ),
-  fraudProofMissingRedeemerClaimAdjudicate: spend(
+  fraudProofMissingRedeemerClaimReceiveFinish: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[33],
   ),
-  fraudProofMissingRedeemerClaimedRedeemerGrammar: spend(
+  fraudProofMissingRedeemerClaimReceiveDeclaration: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[34],
   ),
-  fraudProofMissingRedeemerClaimedRedeemerScan: spend(
+  fraudProofMissingRedeemerClaimAdjudicate: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[35],
   ),
-  fraudProofMissingRedeemerStep05: spend(
+  fraudProofMissingRedeemerClaimedRedeemerGrammar: spend(
     (c) => c.fraudProofContracts.missingRedeemer.steps[36],
+  ),
+  fraudProofMissingRedeemerClaimedRedeemerScan: spend(
+    (c) => c.fraudProofContracts.missingRedeemer.steps[37],
+  ),
+  fraudProofMissingRedeemerStep05: spend(
+    (c) => c.fraudProofContracts.missingRedeemer.steps[38],
   ),
 } as const;

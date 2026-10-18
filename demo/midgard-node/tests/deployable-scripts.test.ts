@@ -107,7 +107,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(521);
+      expect(manifest).toHaveLength(553);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -119,7 +119,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(516);
+    expect(realTargets).toHaveLength(548);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -148,7 +148,7 @@ describe("deployable-script catalogue", () => {
       const manifest = manifestDeployableScripts(contracts).filter(
         ({ contract }) => !caseContracts.has(contract),
       );
-      expect(manifest).toHaveLength(515);
+      expect(manifest).toHaveLength(547);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -160,7 +160,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(contracts === real ? 510 : 509);
+      expect(targets).toHaveLength(contracts === real ? 542 : 541);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST
@@ -189,7 +189,7 @@ describe("deployable-script catalogue", () => {
           !caseContracts.has(contract) &&
           !dataCanonicityContracts.has(contract),
       );
-      expect(manifest).toHaveLength(511);
+      expect(manifest).toHaveLength(543);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -203,7 +203,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(contracts === real ? 506 : 505);
+      expect(targets).toHaveLength(contracts === real ? 538 : 537);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST
@@ -237,7 +237,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(504);
+      expect(roles).toHaveLength(536);
       expect(orderDigest(roles)).toEqual(
         PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
       );
@@ -252,7 +252,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(contracts === real ? 499 : 498);
+      expect(targets).toHaveLength(contracts === real ? 531 : 530);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
@@ -295,7 +295,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(510);
+      expect(roles).toHaveLength(542);
       expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
       const targets = withRetiredBondRole(
         nodeRuntimeReferenceScriptTargets(contracts)
@@ -307,7 +307,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(contracts === real ? 505 : 504);
+      expect(targets).toHaveLength(contracts === real ? 537 : 536);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST

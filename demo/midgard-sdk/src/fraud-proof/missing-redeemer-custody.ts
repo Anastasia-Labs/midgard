@@ -50,15 +50,7 @@ export const MissingRedeemerEntryAction =
 /** 0 Complete, 1 Spend, 2 SpendOutOfRange, 3 Observe, 4 Mint, 5 Receive. */
 export const MissingRedeemerClaimStartActionSchema = Data.Enum([
   Data.Object({ Complete: Data.Object(indices) }),
-  Data.Object({
-    Spend: Data.Object({
-      ...indices,
-      raw_item_index: Data.Integer(),
-      opening: FieldOpeningSchema,
-      descriptor_cbor: Data.Bytes(),
-      membership: MembershipCarriageSchema,
-    }),
-  }),
+  Data.Object({ Spend: Data.Object(indices) }),
   Data.Object({ SpendOutOfRange: Data.Object(opened) }),
   Data.Object({ Observe: Data.Object(opened) }),
   Data.Object({ Mint: Data.Object(opened) }),
@@ -75,6 +67,17 @@ export const MissingRedeemerClaimStartAction =
 export const MissingRedeemerClaimFinishOpeningArgsSchema = Data.Object({
   ...opened,
   checkpoint_bytes: Data.Bytes(),
+});
+
+/** The spend start's only action: resolve the raw item and rank a first
+ * page of at most the scan batch. */
+export const MissingRedeemerClaimSpendOpenActionSchema = Data.Object({
+  ...indices,
+  raw_item_index: Data.Integer(),
+  opening: FieldOpeningSchema,
+  descriptor_cbor: Data.Bytes(),
+  membership: MembershipCarriageSchema,
+  budget: Data.Integer(),
 });
 
 export const MissingRedeemerClaimSpendStateSchema = Data.Object({
@@ -119,6 +122,7 @@ export const MissingRedeemerClaimMintActionSchema = Data.Enum([
 
 export const MissingRedeemerClaimReceiveOutputStateSchema = Data.Object({
   context: MissingRedeemerClaimContextSchema,
+  target_ordinal: Data.Integer(),
   scan: DirectReceiveOutputStateSchema,
 });
 export type MissingRedeemerClaimReceiveOutputState = Data.Static<
@@ -150,9 +154,7 @@ export const MissingRedeemerClaimReceiveOutputActionSchema = Data.Enum([
       witnesses: Data.Array(DirectReceiveOutputWitnessSchema),
     }),
   }),
-  Data.Object({
-    Finish: Data.Object({ args: MissingRedeemerClaimFinishOpeningArgsSchema }),
-  }),
+  Data.Object({ Finish: Data.Object(indices) }),
 ]);
 
 /** 0 Resolve, 1 Lookup, 2 LookupScan. */
@@ -212,6 +214,16 @@ export type MissingRedeemerClaimStartRedeemer = Data.Static<
 export const MissingRedeemerClaimStartRedeemer =
   asDataType<MissingRedeemerClaimStartRedeemer>(
     MissingRedeemerClaimStartRedeemerSchema,
+  );
+
+export const MissingRedeemerClaimSpendOpenRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingRedeemerClaimSpendOpenActionSchema);
+export type MissingRedeemerClaimSpendOpenRedeemer = Data.Static<
+  typeof MissingRedeemerClaimSpendOpenRedeemerSchema
+>;
+export const MissingRedeemerClaimSpendOpenRedeemer =
+  asDataType<MissingRedeemerClaimSpendOpenRedeemer>(
+    MissingRedeemerClaimSpendOpenRedeemerSchema,
   );
 
 export const MissingRedeemerClaimSpendDatumSchema = faultProofStepDatumSchema(
@@ -289,6 +301,15 @@ export type MissingRedeemerClaimReceiveOutputRedeemer = Data.Static<
 export const MissingRedeemerClaimReceiveOutputRedeemer =
   asDataType<MissingRedeemerClaimReceiveOutputRedeemer>(
     MissingRedeemerClaimReceiveOutputRedeemerSchema,
+  );
+export const MissingRedeemerClaimReceiveFinishRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingRedeemerClaimFinishOpeningArgsSchema);
+export type MissingRedeemerClaimReceiveFinishRedeemer = Data.Static<
+  typeof MissingRedeemerClaimReceiveFinishRedeemerSchema
+>;
+export const MissingRedeemerClaimReceiveFinishRedeemer =
+  asDataType<MissingRedeemerClaimReceiveFinishRedeemer>(
+    MissingRedeemerClaimReceiveFinishRedeemerSchema,
   );
 export const MissingRedeemerClaimReceiveDeclarationDatumSchema =
   faultProofStepDatumSchema(MissingRedeemerClaimReceiveDeclarationStateSchema);

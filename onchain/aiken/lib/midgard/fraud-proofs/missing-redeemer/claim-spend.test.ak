@@ -14,6 +14,7 @@ use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/field_opening_v1
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
   ExistingPurpose, ImpossiblePurpose,
@@ -27,6 +28,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1 as descriptor
+use midgard/native_tx_machine_walk_v1 as walk
 use midgard/rejection_reason_v1 as reasons
 
 const hash = #"33333333333333333333333333333333333333333333333333333333"
@@ -146,7 +148,8 @@ fn spend_fixture(key: Bool, claimed_index: Int) {
     block.compact_cbor,
     list.map(inputs, encode_midgard_tx_input),
   )
-  let state = spend.initial_v1(
+  // The open ranks the first item; the scan ranks the remaining two.
+  let state = spend.open_v1(
     initial,
     2,
     opening,
@@ -155,18 +158,67 @@ fn spend_fixture(key: Bool, claimed_index: Int) {
       membership_proof: [],
       membership_proof_script_redeemer_index: 0,
     },
+    1,
     [],
     [fixture.phas_withdraw_redeemer_entry(pre_root, key, value)],
     fixture.test_certificate_policy_id,
   )
-  let Pair(_, checkpoint) = cursor.initial_v1(
-    initial.bound.bound,
-    0,
+  let Pair(view, position) = field_opening_v1.opened_field_walk(
     opening,
+    cursor.anchor_v1(initial.bound.bound, 0),
+    0,
     [],
     fixture.test_certificate_policy_id,
   )
-  (state, opening, checkpoint, value, key)
+  let Pair(_, after_first) = workers.fold_spend_rank_v1(
+    view,
+    position,
+    1,
+    0,
+    #"",
+  )
+  (state, opening, walk.encode_field_walk_checkpoint(after_first), value, key)
+}
+
+fn open_with_budget(budget: Int) {
+  let (state, opening, _, value, key) = spend_fixture(True, 1)
+  spend.open_v1(
+    state.context,
+    2,
+    opening,
+    value,
+    RedeemerCarriedMembership {
+      membership_proof: [],
+      membership_proof_script_redeemer_index: 0,
+    },
+    budget,
+    [],
+    [
+      fixture.phas_withdraw_redeemer_entry(
+        state.cursor.bound.event_pre_root,
+        key,
+        value,
+      ),
+    ],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+test open_ranks_a_whole_field_in_its_first_page() {
+  let state = open_with_budget(3)
+  and {
+    state.complete,
+    state.rank == 1,
+    spend.finish_v1(state).purpose == impossible(0, 1),
+  }
+}
+
+test open_needs_a_nonempty_page() fail {
+  open_with_budget(0).rank == 0
+}
+
+test open_page_is_bounded_by_the_scan_batch() fail {
+  open_with_budget(workers.scan_batch + 1).complete
 }
 
 fn complete_spend(key: Bool, claimed_index: Int) {
@@ -178,7 +230,7 @@ fn complete_spend(key: Bool, claimed_index: Int) {
       output_index: 0,
       opening,
       checkpoint_bytes: checkpoint,
-      budget: 3,
+      budget: 2,
     },
     [],
     fixture.test_certificate_policy_id,
@@ -224,7 +276,7 @@ test incomplete_rank_cannot_prove_impossibility() fail {
 
 test wrong_raw_item_cannot_reuse_the_descriptor() fail {
   let (state, opening, _, value, key) = spend_fixture(True, 1)
-  spend.initial_v1(
+  spend.open_v1(
     state.context,
     1,
     opening,
@@ -233,6 +285,7 @@ test wrong_raw_item_cannot_reuse_the_descriptor() fail {
       membership_proof: [],
       membership_proof_script_redeemer_index: 0,
     },
+    1,
     [],
     [
       fixture.phas_withdraw_redeemer_entry(
@@ -247,7 +300,7 @@ test wrong_raw_item_cannot_reuse_the_descriptor() fail {
 
 test wrong_membership_root_cannot_prove_a_key_credential() fail {
   let (state, opening, _, value, key) = spend_fixture(True, 1)
-  spend.initial_v1(
+  spend.open_v1(
     state.context,
     2,
     opening,
@@ -256,6 +309,7 @@ test wrong_membership_root_cannot_prove_a_key_credential() fail {
       membership_proof: [],
       membership_proof_script_redeemer_index: 0,
     },
+    1,
     [],
     [fixture.phas_withdraw_redeemer_entry(root, key, value)],
     fixture.test_certificate_policy_id,

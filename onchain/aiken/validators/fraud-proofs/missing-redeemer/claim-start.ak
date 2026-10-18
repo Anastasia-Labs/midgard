@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -6,12 +5,11 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_redeemer/claim_mint
 use midgard/fraud_proofs/missing_redeemer/claim_receive
-use midgard/fraud_proofs/missing_redeemer/claim_spend
 use midgard/fraud_proofs/missing_redeemer/claim_start as claim
 
 validator main(
   claim_adjudicate_hash: ScriptHash,
-  spend_scan_hash: ScriptHash,
+  spend_start_hash: ScriptHash,
   mint_grammar_hash: ScriptHash,
   receive_grammar_hash: ScriptHash,
   thread_policy: PolicyId,
@@ -36,7 +34,7 @@ validator main(
       ct.Continue(action) -> {
         let Pair(input_index, output_index) = claim.start_indices_v1(action)
         expect Some(step_datum) = datum
-        let _, _, fraud_prover, input_state, output_hash, output_state <- continue(
+        let _, _, _, input_state, output_hash, output_state <- continue(
           thread_policy,
           step_datum,
           input_index,
@@ -51,26 +49,9 @@ validator main(
             let next: Data = claim.complete_v1(state)
             Pair(claim_adjudicate_hash, next)
           }
-          claim.Spend {
-            raw_item_index,
-            opening,
-            descriptor_cbor,
-            membership,
-            ..
-          } -> {
-            // Raw position is a free choice until the completed rank scan.
-            expect list.has(tx.extra_signatories, fraud_prover)
-            let next: Data = claim_spend.initial_v1(
-              state,
-              raw_item_index,
-              opening,
-              descriptor_cbor,
-              membership,
-              tx.reference_inputs,
-              tx.redeemers,
-              certificate_policy,
-            )
-            Pair(spend_scan_hash, next)
+          claim.Spend { .. } -> {
+            let next: Data = state
+            Pair(spend_start_hash, next)
           }
           claim.SpendOutOfRange { opening, .. } -> {
             let next: Data = claim.spend_out_of_range_v1(

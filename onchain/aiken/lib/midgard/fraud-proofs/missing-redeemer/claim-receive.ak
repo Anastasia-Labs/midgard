@@ -19,8 +19,11 @@ use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
 }
 use midgard/fraud_proofs/missing_redeemer/claim_start.{FinishOpeningArgsV1}
 
+/// `target_ordinal` is the leaf's receive ordinal, derived once at the claim
+/// start and checked against the leaf again by `finish_declaration_v1`.
 pub type OutputStateV1 {
   context: ClaimContextV1,
+  target_ordinal: Int,
   scan: receive.OutputStateV1,
 }
 
@@ -37,7 +40,8 @@ pub type OutputActionV1 {
     checkpoint_bytes: ByteArray,
     witnesses: List<receive.OutputWitnessV1>,
   }
-  Finish { args: FinishOpeningArgsV1 }
+  /// Hands the completed scan to the receive finish role unchanged.
+  Finish { input_index: Int, output_index: Int }
 }
 
 pub type OutputDatum =
@@ -52,13 +56,16 @@ pub type GrammarRedeemer =
 pub type OutputRedeemer =
   ct.StepRedeemer<OutputActionV1>
 
+pub type FinishRedeemer =
+  ct.StepRedeemer<FinishOpeningArgsV1>
+
 pub type DeclarationRedeemer =
   ct.StepRedeemer<declaration.Action>
 
 pub fn output_indices_v1(action: OutputActionV1) -> Pair<Int, Int> {
   when action is {
     Scan { input_index, output_index, .. } -> Pair(input_index, output_index)
-    Finish { args } -> Pair(args.input_index, args.output_index)
+    Finish { input_index, output_index } -> Pair(input_index, output_index)
   }
 }
 
@@ -68,14 +75,17 @@ pub fn initial_v1(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> OutputStateV1 {
-  expect claim_start.distinct_coordinate_v1(context, purpose.receive).index >= 0
+  let target_ordinal = claim_start.distinct_coordinate_v1(
+    context,
+    purpose.receive,
+  ).index
   let Pair(scan, _) = receive.initial_outputs_v1(
     context.bound,
     opening,
     reference_inputs,
     certificate_policy_id,
   )
-  OutputStateV1 { context, scan }
+  OutputStateV1 { context, target_ordinal, scan }
 }
 
 pub fn certify_v1(
@@ -113,7 +123,8 @@ pub fn advance_outputs_v1(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> OutputStateV1 {
-  expect list.length(witnesses) <= workers.scan_batch
+  // Every witness consumes one authenticated output, so a page is bounded by
+  // the field itself and the step budget, as in the derivation's own scan.
   let Pair(scan, _) = receive.advance_outputs_v1(
     state.scan,
     opening,
@@ -125,16 +136,15 @@ pub fn advance_outputs_v1(
   OutputStateV1 { ..state, scan }
 }
 
+/// The declaration state copies the completed bound and source index, which
+/// `finish_declaration_v1` compares with the claim context through
+/// `claim_start.finish_v1`.
 pub fn finish_outputs_v1(
   state: OutputStateV1,
   args: FinishOpeningArgsV1,
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> DeclarationStateV1 {
-  let coordinate = claim_start.distinct_coordinate_v1(
-    state.context,
-    purpose.receive,
-  )
   let completed = receive.finish_outputs_v1(
     state.scan,
     args.opening,
@@ -142,14 +152,9 @@ pub fn finish_outputs_v1(
     reference_inputs,
     certificate_policy_id,
   )
-  expect
-    BoundIndexV1 {
-      bound: completed.cursor.bound,
-      source_index: completed.source_index,
-    } == state.context.bound
   DeclarationStateV1 {
     context: state.context,
-    scan: receive.initial_declaration_v1(completed, Some(coordinate.index)),
+    scan: receive.initial_declaration_v1(completed, Some(state.target_ordinal)),
   }
 }
 

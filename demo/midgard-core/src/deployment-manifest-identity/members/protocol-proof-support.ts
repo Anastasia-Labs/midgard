@@ -86,7 +86,7 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   computationThreadMint: {
     purpose: "mint",
     referenceRole: "V1 fraud-proof computation-thread minting",
-    manifestPosition: 438,
+    manifestPosition: 440,
     publicationPosition: 24,
     referenceRolePosition: 144,
     commands: [],
@@ -96,7 +96,7 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   chunkedVerifyWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 MPF chunked-verify withdrawal",
-    manifestPosition: 439,
+    manifestPosition: 441,
     publicationPosition: 26,
     referenceRolePosition: 146,
     commands: [],
@@ -106,7 +106,7 @@ export const protocolProofSupportMembers = defineDeploymentFamily("protocol", {
   pexcludesWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 MPF pexcludes withdrawal",
-    manifestPosition: 440,
+    manifestPosition: 442,
     publicationPosition: 27,
     referenceRolePosition: 147,
     commands: [],

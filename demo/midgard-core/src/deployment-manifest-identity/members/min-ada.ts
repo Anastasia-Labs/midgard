@@ -44,8 +44,8 @@ export const minAdaMembers = defineDeploymentFamily("minAda", {
   fraudProofMinAdaStep02TxWithdraw: {
     purpose: "withdraw",
     referenceRole: "V1 fraud-proof min-ada step-02 tx yield",
-    manifestPosition: 557,
-    publicationPosition: 558,
+    manifestPosition: 559,
+    publicationPosition: 560,
     referenceRolePosition: 379,
     commands: [],
     validatorTitle: "fraud_proofs/min_ada/step_02_yields.tx.withdraw",
