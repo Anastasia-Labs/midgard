@@ -34,8 +34,8 @@ import {
  * the order (b), (c), (d), (a), (e), then the forced rows. The bundle
  * controls, the native limit refusals and the forced wide output have no
  * vector here; nor do the rows refused with an undecodable Plutus reference
- * script, which the machine cannot stop on until its output proof has that
- * class (TI-3).
+ * script: the machine has no successor for that refusal, so it has no trace
+ * (the script-decode family proves it).
  *
  * Set `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` to rewrite that file; otherwise
  * this suite fails when the checked-in vectors are stale.
@@ -47,8 +47,8 @@ import {
  * the row.
  */
 
-/** A row whose machine stop is pending TI-3; see the header. */
-const pendingPlutusOutputClass = (row: Row) =>
+/** A row with no machine trace; see the header. */
+const notProvableByTrace = (row: Row) =>
   typeof row.expected?.reason === "object" &&
   row.expected.reason !== null &&
   "PlutusScriptUndecodable" in row.expected.reason;
@@ -63,7 +63,7 @@ const ROWS: readonly Row[] = [
   BAD_OUTPUT_CONTROL,
   ...FORCED_OUTPUT_ROWS,
   UNDECODABLE_PLUTUS_REF_ROW,
-].filter((row) => !pendingPlutusOutputClass(row));
+].filter((row) => !notProvableByTrace(row));
 
 const AIKEN_ROWS_PATH = fileURLToPath(
   new URL(

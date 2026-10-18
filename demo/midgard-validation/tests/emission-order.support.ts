@@ -12,7 +12,7 @@ import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-tr
 import { EventKey } from "@al-ft/midgard-sdk";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { expect } from "vitest";
 
 import {
@@ -20,11 +20,14 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
+  DirectValidationTraceUnavailable,
+  placeholderValidationTraceDescriptorV1,
   RejectCodes,
   rejectionReasonOfSubject,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   validationMachineLedgerRoot,
+  validationTransactionCommitmentV1,
 } from "../src/index.js";
 import type { RejectCode } from "../src/types.js";
 import {
@@ -280,7 +283,8 @@ export const producer = async (row: Row) => {
   return { rejection: phaseB.rejected[0] ?? null, route };
 };
 
-export const machineTrace = async (row: Row) => {
+/** The trace builder's run on a row, as an effect. */
+export const machineTraceEffect = async (row: Row) => {
   const transaction = transactionOf(row);
   const entries = row.state.map(([outRef, output]) => ({ outRef, output }));
   const accepted = row.expected === null;
@@ -306,33 +310,34 @@ export const machineTrace = async (row: Row) => {
   const unchangedRoot = (await validationMachineLedgerRoot(entries)).toString(
     "hex",
   );
-  return await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: eventKeyOf(row),
-      sourceKind: row.source ?? "normal",
-      blockTimeMs: 1_750_000_000_000,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 100n,
-      transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
-      priorUtxosRoot: accepted
-        ? ledgerMutationSteps[0]!.preRoot.toString("hex")
-        : unchangedRoot,
-      postUtxosRoot: accepted
-        ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
-        : unchangedRoot,
-      ledgerWitnessEntries: entries,
-      expectedLedgerOps,
-      ledgerMutationSteps,
-      expectedVerdict: accepted ? "accepted" : "rejected",
-      expectedRejectionCode: row.expected?.code ?? null,
-    }),
-  );
+  return buildDeterministicValidationMachineTrace({
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    eventKeyCbor: eventKeyOf(row),
+    sourceKind: row.source ?? "normal",
+    blockTimeMs: 1_750_000_000_000,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    blockSlot: 100n,
+    transactionId: transaction.txId,
+    canonicalTransactionCbor: transaction.txCbor,
+    priorUtxosRoot: accepted
+      ? ledgerMutationSteps[0]!.preRoot.toString("hex")
+      : unchangedRoot,
+    postUtxosRoot: accepted
+      ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
+      : unchangedRoot,
+    ledgerWitnessEntries: entries,
+    expectedLedgerOps,
+    ledgerMutationSteps,
+    expectedVerdict: accepted ? "accepted" : "rejected",
+    expectedRejectionCode: row.expected?.code ?? null,
+  });
 };
+
+export const machineTrace = async (row: Row) =>
+  await Effect.runPromise(await machineTraceEffect(row));
 
 /** The trace names the row's verdict: its code and its asserted reason. */
 export const expectTraceVerdict = (
@@ -372,8 +377,8 @@ export const stoppingStepVector = (
   };
 };
 
-/** The producer's verdict, then the trace's; returns the trace. */
-export const expectProducerAndTraceVerdicts = async (row: Row) => {
+/** The producer's verdict; returns its reason. */
+export const expectProducerVerdict = async (row: Row) => {
   const { rejection, route } = await producer(row);
   if (row.route !== undefined) expect(route).toBe(row.route);
   // An output network mismatch is tx-global and records no subject.
@@ -396,7 +401,12 @@ export const expectProducerAndTraceVerdicts = async (row: Row) => {
       });
     }
   }
+  return producerReason;
+};
 
+/** The producer's verdict, then the trace's; returns the trace. */
+export const expectProducerAndTraceVerdicts = async (row: Row) => {
+  const producerReason = await expectProducerVerdict(row);
   const trace = await machineTrace(row);
   expectTraceVerdict(row, trace);
   // The producer and the trace builder name the same reason, whole.
@@ -423,4 +433,41 @@ export const expectRowVerdictsTrace = async (row: Row) => {
 /** The producer's verdict, then the trace's, then the stopping step's. */
 export const expectRowVerdicts = async (row: Row): Promise<void> => {
   await expectRowVerdictsTrace(row);
+};
+
+/**
+ * A row whose first fault the machine has no successor for: an undecodable
+ * Plutus item (arm 48), which the script-decode family proves. The producer
+ * names it, the placeholder descriptor commits it, and the trace builder
+ * returns that it is not provable by trace: a typed result, neither a throw
+ * nor a step the machine refuses. Returns the producer's reason.
+ */
+export const expectProducerVerdictNotProvableByTrace = async (row: Row) => {
+  const producerReason = await expectProducerVerdict(row);
+  if (producerReason === null || row.expected === null)
+    return expect.fail(`${row.name}: the row is not a rejection`);
+  const transaction = transactionOf(row);
+  const descriptor = placeholderValidationTraceDescriptorV1(
+    {
+      eventKeyCbor: eventKeyOf(row),
+      transactionCommitment: validationTransactionCommitmentV1({
+        canonicalTransactionCbor: transaction.txCbor,
+        sourceKind: row.source ?? "normal",
+      }),
+    },
+    "rejected",
+    producerReason,
+  );
+  expect(descriptor.stepCount).toBe(1);
+  const exit = await Effect.runPromiseExit(await machineTraceEffect(row));
+  if (Exit.isSuccess(exit))
+    return expect.fail(`${row.name}: the trace builder traced it`);
+  expect([...Cause.defects(exit.cause)]).toEqual([]);
+  const failures = [...Cause.failures(exit.cause)];
+  expect(failures).toHaveLength(1);
+  expect(failures[0]).toBeInstanceOf(DirectValidationTraceUnavailable);
+  expect((failures[0] as DirectValidationTraceUnavailable).rejectionCode).toBe(
+    row.expected.code,
+  );
+  return producerReason;
 };

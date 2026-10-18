@@ -1,3 +1,4 @@
+import { type RejectionReason, rejectionReasonPhase } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,8 +16,11 @@ import {
 import {
   expectControlledRows,
   expectProducerAndTraceVerdicts,
+  expectProducerVerdict,
+  expectProducerVerdictNotProvableByTrace,
   expectRowVerdicts,
   expectRowVerdictsTrace,
+  type Row,
   stoppingStep,
   transactionOf,
 } from "./emission-order.support.js";
@@ -49,9 +53,23 @@ describe("emission order: a forced transaction's first fault", () => {
   );
 });
 
+/** An undecodable Plutus item's row: the machine has no successor for it. */
+const notProvableByTrace = (row: Row) =>
+  typeof row.expected?.reason === "object" &&
+  row.expected.reason !== null &&
+  "PlutusScriptUndecodable" in row.expected.reason;
+
+const OUTPUT_ROWS = [...FORCED_OUTPUT_ROWS, UNDECODABLE_PLUTUS_REF_ROW];
+const rowNamed = (name: string) =>
+  OUTPUT_ROWS.find((row) => row.name === name)!;
+const phaseOf = (reason: unknown) =>
+  rejectionReasonPhase(reason as RejectionReason, {
+    body_network_mismatch: false,
+  });
+
 /** A forced transaction's faulty output, by class. */
 describe("emission order: a forced transaction's faulty output", () => {
-  it.each([...FORCED_OUTPUT_ROWS, UNDECODABLE_PLUTUS_REF_ROW])(
+  it.each(OUTPUT_ROWS.filter((row) => !notProvableByTrace(row)))(
     "$name",
     async (row) => {
       const trace = await expectRowVerdictsTrace(row);
@@ -62,6 +80,37 @@ describe("emission order: a forced transaction's faulty output", () => {
         );
     },
     180_000,
+  );
+
+  // An undecodable Plutus reference script is refused at the script-source
+  // phase (first-fault-v1 phase 8), and the trace builder returns that the
+  // refusal is not provable by trace.
+  it.each(OUTPUT_ROWS.filter(notProvableByTrace))(
+    "$name",
+    async (row) => {
+      const reason = await expectProducerVerdictNotProvableByTrace(row);
+      expect(phaseOf(reason)).toBe(8);
+    },
+    180_000,
+  );
+
+  // With a native and a Plutus reference-script fault in either order, the
+  // producer's first fault is first under first-fault-v1: no fault of the
+  // row, alone, is in an earlier phase.
+  it.each([
+    ["fo_plutus_ref_before_malformed_ref"],
+    ["fo_malformed_ref_before_plutus_ref"],
+  ])(
+    "%s: the producer's first fault is first under first-fault-v1",
+    async (name) => {
+      const reason = await expectProducerVerdict(rowNamed(name));
+      const lone = await Promise.all(
+        ["fp_plutus_ref", "fo_control_malformed_ref"].map((control) =>
+          expectProducerVerdict(rowNamed(control)),
+        ),
+      );
+      expect(phaseOf(reason)).toBe(Math.min(...lone.map(phaseOf)));
+    },
   );
 });
 

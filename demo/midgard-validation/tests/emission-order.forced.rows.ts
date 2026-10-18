@@ -231,8 +231,9 @@ const nonCanonical = (index: bigint): Expected => ({
  * decides it. A native reference script that does not parse is its own
  * class; an output that does not parse is non-canonical; the first faulty
  * output is the one cited. An undecodable Plutus reference script is refused
- * at its own output (D3, forced too); the output proof has no class for it
- * yet, so its rows' traces are red until it does (TI-3).
+ * at its own output (D3, forced too); the output proof has no class for it,
+ * so the script-decode family proves that refusal and the trace builder
+ * returns that it is not provable by trace.
  */
 export const FORCED_OUTPUT_ROWS: readonly Row[] = [
   output("accept_native_ref", "accept", true, null, [NATIVE_REF]),
@@ -271,6 +272,10 @@ export const FORCED_OUTPUT_ROWS: readonly Row[] = [
     plutusRefUndecodable(0n),
     [UNDECODABLE_PLUTUS_REF, MALFORMED_REF],
   ),
+  output("malformed_ref_before_plutus_ref", "multi", false, refMalformed(0n), [
+    MALFORMED_REF,
+    UNDECODABLE_PLUTUS_REF,
+  ]),
 ];
 
 /**
