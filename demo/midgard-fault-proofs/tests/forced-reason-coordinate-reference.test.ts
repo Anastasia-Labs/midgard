@@ -343,11 +343,11 @@ describe("forced reference InputNotFound coordinate the node writes", () => {
     let thread = await s.init();
     for (const stepIndex of [0, 1, 2] as const)
       thread = (await s.rawStep(thread, stepIndex)).nextThreadOutRef;
-    // The only membership the ledger can prove is reference 0's. The step
-    // authenticates its inputs and the absence rule returns false.
+    // The only membership the ledger can prove is reference 0's, so the
+    // terminal step's membership check of the selected input refuses.
     await expectOnchainRefusal(() => s.rawStep(thread, 3), {
       refusedBy: "fraud_proofs/no_reference_input/step_04",
-      check: /^Validator returned false$/u,
+      check: /^expect mpf_proof_v1\.has_value_hash\( state\.pre_utxos_root,/u,
     });
   }, 600_000);
 });
