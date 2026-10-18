@@ -232,7 +232,7 @@ describe("scheduler refresh SDK builder on the Lucid emulator", () => {
         },
         "00",
       ).complete({ localUPLCEval: true }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("MISSING_SCRIPT");
   }, 300_000);
 
   it("rejects Lucid validity times outside the safe number range", async () => {

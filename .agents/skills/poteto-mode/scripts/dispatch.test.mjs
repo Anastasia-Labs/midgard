@@ -174,6 +174,18 @@ test("an unauthenticated provider names the login command instead of a bare exit
       );
     }
   }
+  const quoting =
+    "Approve: the CLI now prints Not logged in when the token is missing.";
+  const verdict = await runInvocation(
+    buildInvocation({ provider: "claude" }, tmpdir()),
+    "review",
+    {
+      spawnImpl: nodeStub(
+        `process.stdin.resume(); console.log(${JSON.stringify(quoting)})`,
+      ),
+    },
+  );
+  assert.equal(verdict.output.trim(), quoting);
   await assert.rejects(
     runInvocation(buildInvocation({ provider: "codex" }, tmpdir()), "review", {
       spawnImpl: nodeStub(

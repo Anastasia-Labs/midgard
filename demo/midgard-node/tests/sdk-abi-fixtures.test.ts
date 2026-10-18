@@ -43,7 +43,7 @@ import {
 } from "./sdk-abi-fixtures.header-fixture.js";
 
 describe("SDK canonical ABI fixtures", () => {
-  it("keeps SDK protocol timing constants aligned with canonical Aiken values", () => {
+  it("reads each SDK timing constant from the profile field rendered into its Aiken constant", () => {
     expect(SDK.SHIFT_DURATION_MS).toBe(aikenEnvConst("shift_duration"));
     expect(SDK.REGISTRATION_DURATION_MS).toBe(
       aikenEnvConst("registration_duration"),

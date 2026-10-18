@@ -22,6 +22,13 @@
 //
 // Tooling tests under scripts/ legitimately read the files the tool under
 // test writes, and are out of scope.
+//
+// Blind spots: a read through a local wrapper (`const read = (p) =>
+// readFileSync(p)`) or an import alias (`readFileSync as rf`), a path found by
+// walking a directory (`readdirSync(...).filter(...)`), and a path taken from
+// a destructured loop over tuples are not followed. A regular expression run
+// over text the test read (`PATTERN.test(readFileSync(file))`) is reported
+// only when the path itself is.
 
 import { defineRule } from "../baseline.mjs";
 import {

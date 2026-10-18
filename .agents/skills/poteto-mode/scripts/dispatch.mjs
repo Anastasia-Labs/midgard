@@ -232,6 +232,9 @@ export function isolateCodexMcp(invocation, execImpl = execFileSync) {
 // the caller's session, so name the fix instead of a bare exit status.
 const AUTH_FAILURE =
   /Failed to authenticate|OAuth (?:session|token) (?:has )?expired|Invalid API key|Please run \/login|Not logged in/iu;
+// A successful exit counts as a login failure only when the whole reply opens
+// with one; a one-line verdict may quote such a message.
+const AUTH_FAILURE_REPLY = new RegExp(`^(?:${AUTH_FAILURE.source})`, "iu");
 
 function providerFailure(command, code, output, stderr) {
   const text = `${stderr}\n${output}`;
@@ -300,7 +303,10 @@ export function runInvocation(
         );
       else if (!output.trim())
         reject(new Error("Provider returned an empty response"));
-      else if (!output.trim().includes("\n") && AUTH_FAILURE.test(output))
+      else if (
+        !output.trim().includes("\n") &&
+        AUTH_FAILURE_REPLY.test(output.trim())
+      )
         reject(providerFailure(invocation.command, code, output, errors));
       else accept({ output, stderr: errors });
     });
