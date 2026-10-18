@@ -42,18 +42,62 @@ jobs:
 
       - name: Build the head blueprint
         working-directory: onchain/aiken
-        run: ../../scripts/aiken build --silent --out "$RUNNER_TEMP/head.json"
+        run: |
+          ../../scripts/aiken --version > "$RUNNER_TEMP/head-compiler"
+          ../../scripts/aiken build --silent --out "$RUNNER_TEMP/head.json"
 
       # Each side builds with its own pinned compiler, so a compiler bump shows
-      # up as the size movement it causes.
+      # up as the size movement it causes. A merge base without scripts/aiken
+      # pinned its compiler as the aiken-lang/setup-aiken version of its own
+      # Aiken CI workflow: that release is fetched, checked against its
+      # published digest and run from outside PATH. A base that pins neither
+      # stops the job rather than being built with another compiler.
       - name: Build the merge-base blueprint
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
           base="$RUNNER_TEMP/base-tree"
-          git worktree add --detach "$base" "$(git merge-base "$BASE_SHA" HEAD)"
+          git worktree add --detach "$base" "$merge_base"
+          if [ -e "$base/scripts/aiken" ]; then
+            aiken="$base/scripts/aiken"
+          else
+            workflow=.github/workflows/aiken-ci.yml
+            versions="$(git show "$merge_base:$workflow" 2>/dev/null | awk '
+              /uses:[[:space:]]*aiken-lang\/setup-aiken@/ { pinned = 1; next }
+              pinned && /^[[:space:]]*-[[:space:]]/ { pinned = 0 }
+              pinned && /^[[:space:]]*version:/ { print $2; pinned = 0 }
+            ' | tr -d "\"'" | sort -u)" || true
+            if ! printf '%s\n' "$versions" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+              echo "::error title=Merge-base compiler not pinned::the merge base $merge_base has no scripts/aiken, and its $workflow pins no single aiken-lang/setup-aiken version"
+              exit 1
+            fi
+            asset=aiken-x86_64-unknown-linux-musl.tar.gz
+            release="https://github.com/aiken-lang/aiken/releases/download/$versions/$asset"
+            (
+              cd "$RUNNER_TEMP"
+              curl -fsSL -o "$asset" "$release"
+              curl -fsSL -o "$asset.sha256" "$release.sha256"
+              sha256sum -c "$asset.sha256"
+              mkdir base-aiken
+              tar -xzf "$asset" -C base-aiken --strip-components=1
+            )
+            aiken="$RUNNER_TEMP/base-aiken/aiken"
+          fi
           cd "$base/onchain/aiken"
-          ../../scripts/aiken build --silent --out "$RUNNER_TEMP/base.json"
+          "$aiken" --version > "$RUNNER_TEMP/base-compiler"
+          "$aiken" build --silent --out "$RUNNER_TEMP/base.json"
 
       - name: Write the ABI and compiled-size movement to the summary
-        run: node scripts/ci/review-surface.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -euo pipefail
+          base_compiler="$(cat "$RUNNER_TEMP/base-compiler")"
+          head_compiler="$(cat "$RUNNER_TEMP/head-compiler")"
+          {
+            if [ "$base_compiler" != "$head_compiler" ]; then
+              echo "The compilers differ: the merge base was built with $base_compiler and the head with $head_compiler, so part of the movement below can come from the compiler rather than the change."
+              echo
+            fi
+            node scripts/ci/review-surface.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json"
+          } >> "$GITHUB_STEP_SUMMARY"
