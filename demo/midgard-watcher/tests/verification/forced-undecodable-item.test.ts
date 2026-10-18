@@ -69,12 +69,22 @@ const plainOutputBody = encodeMidgardTxOutput({
   value: { lovelace: 1_000_000n, assets: new Map() },
 }).subarray(1);
 
+type Stage = "phaseA" | "phaseB";
+
 // Transactions the tx-order mint admits whose items do not decode, with the
-// rejection the node commits for them.
-const SHAPES: readonly (readonly [string, SDK.RejectionReason, Buffer])[] = [
+// rejection the node commits for them and the phase that commits it. Outputs
+// are read after input resolution, so a transaction spending an input absent
+// from the empty pre-state is refused for that input first.
+const SHAPES: readonly (readonly [
+  string,
+  SDK.RejectionReason,
+  Stage,
+  Buffer,
+])[] = [
   [
     "an output with a non-canonical inline datum",
-    { OutputNonCanonical: { output_index: 0n } },
+    { InputNotFound: { source_kind: 0n, input_index: 0n } },
+    "phaseB",
     transaction(
       [
         Buffer.concat([
@@ -89,7 +99,8 @@ const SHAPES: readonly (readonly [string, SDK.RejectionReason, Buffer])[] = [
   ],
   [
     "an output whose address does not decode",
-    { OutputNonCanonical: { output_index: 0n } },
+    { InputNotFound: { source_kind: 0n, input_index: 0n } },
+    "phaseB",
     transaction(
       [
         Buffer.concat([
@@ -105,6 +116,7 @@ const SHAPES: readonly (readonly [string, SDK.RejectionReason, Buffer])[] = [
   [
     "a native script whose body does not decode",
     { WitnessNativeScriptMalformed: { script_index: 0n } },
+    "phaseA",
     transaction([], [Buffer.from("820043820700", "hex")]),
   ],
 ];
@@ -146,15 +158,15 @@ const replay = (txCbor: Buffer, committed: string) =>
 
 it.each(SHAPES)(
   "accepts the node's rejection of a forced transaction with %s",
-  async (_name, reason, txCbor) => {
+  async (_name, reason, stage, txCbor) => {
     const verdict = watcherForcedOperatorVerdict({
       ForcedTxInvalid: { reason },
     })!;
     expect(verdict).not.toBeNull();
     const accepted = await replay(txCbor, verdict);
     expect(accepted?.fact).toMatchObject({
-      phaseAStatus: "rejected",
-      phaseBStatus: "not_run",
+      phaseAStatus: stage === "phaseA" ? "rejected" : "accepted",
+      phaseBStatus: stage === "phaseA" ? "not_run" : "rejected",
       canonicalOperatorValidity: verdict,
       authenticatedOperatorValidity: verdict,
     });

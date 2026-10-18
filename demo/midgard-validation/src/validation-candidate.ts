@@ -146,6 +146,7 @@ type BuildPhaseAValidatedTxArgs = {
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
   readonly redeemerWitnessHash: Buffer;
+  readonly heldOutputFaultIndex?: number;
 };
 
 export const buildPhaseAValidatedTx = ({
@@ -157,6 +158,7 @@ export const buildPhaseAValidatedTx = ({
   arrivalSeq,
   createdAt,
   redeemerWitnessHash,
+  heldOutputFaultIndex,
 }: BuildPhaseAValidatedTxArgs): PhaseAValidatedTx => {
   const outputAddresses = ledgerTx.outputs.map((output) =>
     projectAddress(output.address),
@@ -210,8 +212,11 @@ export const buildPhaseAValidatedTx = ({
         ledgerTx.redeemers.length > 0 ||
         ledgerTx.requiredObserverHashes.length > 0 ||
         ledgerTx.mint.assets.length > 0 ||
-        outputAddresses.some((address) => address.protected),
+        outputAddresses.some((address) => address.protected) ||
+        // Only the full route reaches the output scan that refuses it.
+        heldOutputFaultIndex !== undefined,
     },
+    ...(heldOutputFaultIndex === undefined ? {} : { heldOutputFaultIndex }),
   };
 };
 

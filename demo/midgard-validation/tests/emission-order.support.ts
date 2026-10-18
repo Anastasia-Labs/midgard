@@ -3,9 +3,14 @@ import {
   encodeCbor,
   encodeMidgardFieldPreimage,
 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
+import { EventKey } from "@al-ft/midgard-sdk";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -163,6 +168,11 @@ export type Row = {
    * `tx.scriptWitnesses`: a row can carry an item no script encoder writes.
    */
   readonly scriptItems?: readonly Buffer[];
+  /**
+   * A forced transaction: the tx-order mint admits one whose outputs or
+   * script items do not decode, so its rows can carry such items.
+   */
+  readonly source?: "forced";
   readonly expected: Expected | null;
 };
 
@@ -194,16 +204,46 @@ const PHASE_A_CONFIG = {
 
 const transactionOf = (row: Row) => {
   const transaction = makeNativeTx({ ...row.tx, privateKey: KEY });
+  const witnessSet =
+    row.scriptItems === undefined
+      ? transaction.tx.witnessSet
+      : {
+          ...transaction.tx.witnessSet,
+          scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(row.scriptItems),
+        };
+  if (row.source === "forced") {
+    // A forced transaction's id is its body's, which the key signed.
+    const { version, body } = transaction.tx;
+    return {
+      txId: transaction.txId,
+      txCbor: encodeMidgardForcedTxCanonical(
+        materializeMidgardForcedTxFromCanonical({ version, body, witnessSet }),
+      ),
+    };
+  }
   if (row.scriptItems === undefined) return transaction;
   // The key signs the body, so the witness set can change under it.
-  return encodeRecomputedNativeTx({
-    ...transaction.tx,
-    witnessSet: {
-      ...transaction.tx.witnessSet,
-      scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(row.scriptItems),
-    },
-  });
+  return encodeRecomputedNativeTx({ ...transaction.tx, witnessSet });
 };
+
+/** The event key of a row's source: a forced one names its order. */
+const eventKeyOf = (row: Row) =>
+  row.source === "forced"
+    ? Buffer.from(
+        Data.to(
+          {
+            ForcedTransactionEventKey: {
+              tx_order_id: {
+                transactionId: "4d".repeat(32),
+                outputIndex: 0n,
+              },
+            },
+          },
+          EventKey,
+        ),
+        "hex",
+      )
+    : encodeCbor([2n, Buffer.alloc(32, 0x41)]);
 
 /** The producer: Phase A, then Phase B on what Phase A admits. */
 export const producer = async (row: Row) => {
@@ -214,6 +254,7 @@ export const producer = async (row: Row) => {
         {
           txId: transaction.txId,
           txCbor: transaction.txCbor,
+          sourceKind: row.source ?? "normal",
           arrivalSeq: 0n,
           createdAt: new Date(0),
           programMaterialSidecarCbor: row.sidecar,
@@ -272,8 +313,8 @@ export const machineTrace = async (row: Row) => {
     buildDeterministicValidationMachineTrace({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
-      sourceKind: "normal",
+      eventKeyCbor: eventKeyOf(row),
+      sourceKind: row.source ?? "normal",
       blockTimeMs: 1_750_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
@@ -335,8 +376,8 @@ export const stoppingStepVector = (
   };
 };
 
-/** The producer's verdict, then the trace's, then the stopping step's. */
-export const expectRowVerdicts = async (row: Row) => {
+/** The producer's verdict, then the trace's; returns the trace. */
+export const expectProducerAndTraceVerdicts = async (row: Row) => {
   const { rejection, route } = await producer(row);
   if (row.route !== undefined) expect(route).toBe(row.route);
   // An output network mismatch is tx-global and records no subject.
@@ -359,6 +400,12 @@ export const expectRowVerdicts = async (row: Row) => {
   expectTraceVerdict(row, trace);
   // The producer and the trace builder name the same reason, whole.
   expect(trace.rejectionReason).toStrictEqual(producerReason);
+  return trace;
+};
+
+/** The producer's verdict, then the trace's, then the stopping step's. */
+export const expectRowVerdicts = async (row: Row) => {
+  const trace = await expectProducerAndTraceVerdicts(row);
 
   // The stopping step's one-step argument builds from this trace.
   const argument = buildValidationOneStepArgument({

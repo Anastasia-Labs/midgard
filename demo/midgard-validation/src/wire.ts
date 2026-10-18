@@ -104,13 +104,15 @@ export type WirePhaseACandidateV1 = {
     readonly redeemerWitnessHash: Bytes;
     readonly requiresLocalScriptDiscovery: boolean;
   };
+  readonly heldOutputFaultIndex?: number;
 };
 
 type PhaseACandidateWireFields =
   | "ledgerTx"
   | "submission"
   | "graph"
-  | "derived";
+  | "derived"
+  | "heldOutputFaultIndex";
 const phaseACandidateWireIsExhaustive: Exclude<
   keyof PhaseAValidatedTx,
   PhaseACandidateWireFields
@@ -325,6 +327,9 @@ export const serializePhaseACandidate = (
       requiresLocalScriptDiscovery:
         candidate.derived.requiresLocalScriptDiscovery,
     },
+    ...(candidate.heldOutputFaultIndex === undefined
+      ? {}
+      : { heldOutputFaultIndex: candidate.heldOutputFaultIndex }),
   } satisfies WirePhaseACandidateV1;
 };
 
@@ -405,4 +410,7 @@ export const deserializePhaseACandidate = (
     requiresLocalScriptDiscovery:
       candidate.derived.requiresLocalScriptDiscovery,
   },
+  ...(candidate.heldOutputFaultIndex === undefined
+    ? {}
+    : { heldOutputFaultIndex: candidate.heldOutputFaultIndex }),
 });

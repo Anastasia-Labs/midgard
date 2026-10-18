@@ -147,6 +147,13 @@ export type PhaseAValidatedTx = {
     readonly redeemerWitnessHash: Buffer;
     readonly requiresLocalScriptDiscovery: boolean;
   };
+
+  /**
+   * A forced transaction's first output that is not a canonical ledger
+   * output. `ledgerTx.outputs` stops before it, and Phase B refuses the
+   * transaction at the ScriptSources output scan, where the machine reads it.
+   */
+  readonly heldOutputFaultIndex?: number;
 };
 
 /**

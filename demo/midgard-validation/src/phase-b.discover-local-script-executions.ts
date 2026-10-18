@@ -192,6 +192,19 @@ export const discoverLocalScriptExecutions = (
     const scriptHash = paymentCred.hash.toString("hex");
     protectedReceivingHashes.add(scriptHash);
   }
+  // A forced transaction's held output follows the outputs above.
+  if (candidate.heldOutputFaultIndex !== undefined) {
+    return {
+      kind: "rejected",
+      code: RejectCodes.InvalidOutput,
+      detail: `output[${candidate.heldOutputFaultIndex}] is not a canonical ledger output`,
+      consensusPhase: "scriptSources",
+      subject: {
+        arm: "OutputNonCanonical",
+        index: BigInt(candidate.heldOutputFaultIndex),
+      },
+    };
+  }
 
   const mintValue = mintDeltaToScriptMintValue(candidate.derived.mintDelta);
   const mintPolicies = candidate.derived.mintPolicyHashHexes;
