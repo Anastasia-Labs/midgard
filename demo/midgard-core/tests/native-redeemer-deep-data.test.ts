@@ -60,13 +60,9 @@ describe("redeemer Data validation without a CML probe", () => {
   }, 60_000);
 
   it("validates deep Midgard redeemer entries without parsing them through CML", () => {
-    // Depth 1,024 exercises the recursion-free entry validation and stays
-    // inside CML's own ceiling (~1,522) for the unavoidable materialization
-    // step of the reverse bridge, so the round-trip must be exact. Depths
-    // beyond that ceiling still trap inside the reverse bridge's required
-    // `CML.PlutusData.from_cbor_bytes` materialization (and a wasm trap
-    // poisons the shared instance), so the reverse direction is exercised at
-    // the maximum only in wasm-patched environments, never in this suite.
+    // Depth 1,024 exercises the recursion-free entry validation and the
+    // reverse bridge's required `CML.PlutusData.from_cbor_bytes`
+    // materialization, so the round-trip must be exact.
     const preimage = spendRedeemerPreimage(unaryConstructorDataCborHex(1_024));
     const redeemers = midgardRedeemersToCardano(preimage);
     expect(redeemers).toBeDefined();
