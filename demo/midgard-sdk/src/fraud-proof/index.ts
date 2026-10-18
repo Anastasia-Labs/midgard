@@ -39,6 +39,7 @@ export * from "./min-fee.js";
 export * from "./mint-authorization.js";
 export * from "./missing-redeemer.js";
 export * from "./missing-redeemer-claim.js";
+export * from "./missing-redeemer-custody.js";
 export * from "./missing-signature.js";
 export * from "./native.js";
 export * from "./native-script-decoding.js";
