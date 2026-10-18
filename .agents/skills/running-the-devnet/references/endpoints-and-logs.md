@@ -262,16 +262,17 @@ Commitment and liveness (raised by fibers, cleared by them):
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
 - `commit_worker_verifier_unavailable`: the commit worker's runs since the
-  last successful commit kept failing on this node's Ed25519 verifier, up to
-  the local-fault run limit. A local fault: the node exits non-zero for its
-  supervisor to restart it. If it repeats after a restart, check the node's
-  libsodium install and read the detail.
+  last successful commit kept failing on local faults, up to the local-fault
+  run limit, the last on this node's Ed25519 verifier. A local fault: the
+  node exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
 - `commit_worker_withdrawal_unclassifiable`: the commit worker's runs since
   the last successful commit kept failing on local faults, up to the
   local-fault run limit, the last on a due withdrawal this node cannot
-  classify. A local fault: the node exits non-zero for its supervisor to
-  restart it. The detail names the row by its event id and says which case
-  it is:
+  classify. The runs count together whichever withdrawal row each failed on,
+  and only a successful commit resets the count. A local fault: the node
+  exits non-zero for its supervisor to restart it. The detail names the last
+  row by its event id and says which case it is:
   - the row or the ledger output it names does not decode (the row's event
     info, l2_value or l2_outref, or that ledger output). If it repeats after
     a restart, compare that `withdrawal_utxos` row with the withdrawal event

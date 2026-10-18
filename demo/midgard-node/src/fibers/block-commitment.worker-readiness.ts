@@ -22,7 +22,8 @@ export const COMMIT_WORKER_FAILED_ESCALATION_MS = 10 * 60_000;
 /**
  * The reason the node exits under (source `commit_worker`) once
  * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
- * commit failed on this process's Ed25519 verifier fault.
+ * commit failed on a local fault, the last of them on this process's Ed25519
+ * verifier fault.
  */
 export const COMMIT_WORKER_VERIFIER_UNAVAILABLE =
   "commit_worker_verifier_unavailable";
@@ -157,19 +158,20 @@ const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
 /**
  * Bounds commit-worker attempts that fail on a local fault
  * (`FailureOutput.localFault`): this process's Ed25519 verifier fault, or a
- * due withdrawal row it cannot classify, named in `localFaultSubject`. This is how the coalesced runner bounds a local fault
- * on a landed block: each such failure counts, and once `limit` of them
+ * due withdrawal row it cannot classify, named in `localFaultSubject`. This
+ * is how the coalesced runner bounds a local fault on a landed block: each
+ * such failure counts, whichever row it names, and once `limit` of them
  * accrue without a successful commit (`COMMIT_SUCCEEDED`) between them the
  * node exits non-zero (`transient-exhaustion.ts`) for its supervisor to
- * restart it, under the reason of the fault that reached the bound. A
- * successful commit resets the count, and a failure on a different row than
- * the last one counted starts it afresh at one, since that row's failure
- * shows the earlier row was classified. A wait (for the commit base or
- * window), a no-op, a skip, or a failure that is not a local fault leaves it
- * as it is, so a persistent fault interleaved with them still reaches the
- * bound. The count is this process's, so a restarted node meeting the same
- * fault retries within the same bound and exits again. Failures that are not
- * local faults are never counted and stay `commit_worker_failed` as before.
+ * restart it, under the reason of the fault that reached the bound. Only a
+ * successful commit resets the count. The latest row is kept for the exit's
+ * detail alone, which names it and its case. A wait (for the commit base or
+ * window), a no-op, a skip, or a failure that is not a local fault leaves the
+ * count as it is, so a persistent fault interleaved with them still reaches
+ * the bound. The count is this process's, so a restarted node meeting the
+ * same fault retries within the same bound and exits again. Failures that are
+ * not local faults are never counted and stay `commit_worker_failed` as
+ * before.
  */
 export const boundCommitWorkerLocalFaults = (
   globals: Pick<
@@ -189,9 +191,7 @@ export const boundCommitWorkerLocalFaults = (
       ? COMMIT_SUCCEEDED.has(output.type)
         ? { runs: 0, row: undefined }
         : count
-      : row !== undefined && count.row !== undefined && count.row !== row
-        ? { runs: 1, row }
-        : { runs: count.runs + 1, row: row ?? count.row },
+      : { runs: count.runs + 1, row: row ?? count.row },
   ).pipe(
     Effect.flatMap((count) =>
       fault !== undefined && count.runs >= limit

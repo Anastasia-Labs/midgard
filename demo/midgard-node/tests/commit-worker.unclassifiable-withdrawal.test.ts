@@ -7,8 +7,9 @@
  * one local-fault bound: `LOCAL_FAULT_RUN_LIMIT` attempts failing on a local
  * fault without a successful commit between them exit the node non-zero under
  * `commit_worker_withdrawal_unclassifiable`, naming the row, and a restarted
- * node meets the same bound again. A successful commit or a failure on a
- * different row starts the count afresh. An honest row is classified on every
+ * node meets the same bound again. The count is of attempts, whichever row
+ * each failed on, and only a successful commit starts it afresh; the exit
+ * names the row of the last attempt. An honest row is classified on every
  * attempt and never counted.
  */
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
@@ -121,12 +122,11 @@ describe("commit attempts over a withdrawal row this node cannot classify", () =
     }
   }, 60_000);
 
-  it("counts afresh from a failure on a different row, and exits naming that row", async () => {
+  it("counts on across a failure on a different row, and exits naming that row", async () => {
     const first = await unreadableRow(0x01);
     const second = await unreadableRow(0x02);
     const globals = await freshProcess();
     await attempts(globals, first, LOCAL_FAULT_RUN_LIMIT - 1);
-    await attempts(globals, second, LOCAL_FAULT_RUN_LIMIT - 1);
     expect(await exhausted(globals)).toBe(false);
     await attempt(globals, second);
     expect(await exhausted(globals)).toBe(true);
@@ -134,6 +134,67 @@ describe("commit attempts over a withdrawal row this node cannot classify", () =
     expect(spent?.reason).toBe(EXIT_REASON);
     expect(spent?.message).toContain(`withdrawal ${idOf(second)}`);
     expect(spent?.message).not.toContain(idOf(first));
+  }, 60_000);
+
+  it.each([
+    {
+      shape: "alternate between two rows",
+      rowAt: (index: number) => (index % 2 === 0 ? 0x01 : 0x02),
+    },
+    {
+      shape: "come from one row intermittently, a different row between",
+      rowAt: (index: number) => (index % 2 === 1 ? 0x01 : 0x10 + index),
+    },
+    {
+      shape: "come from a new due row on every attempt",
+      rowAt: (index: number) => 0x20 + index,
+    },
+  ])(
+    "exits at the bound when its failures $shape, naming the last row",
+    async ({ rowAt }) => {
+      const rows = await Promise.all(
+        Array.from({ length: LOCAL_FAULT_RUN_LIMIT }, (_, index) =>
+          unreadableRow(rowAt(index)),
+        ),
+      );
+      const globals = await freshProcess();
+      for (const entry of rows.slice(0, -1)) await attempt(globals, entry);
+      expect(await exhausted(globals)).toBe(false);
+      const last = rows.at(-1)!;
+      await attempt(globals, last);
+      expect(await exhausted(globals)).toBe(true);
+      const { spent } = await servingExit(globals);
+      expect(spent).toMatchObject({
+        source: COMMIT_WORKER_SOURCE,
+        reason: EXIT_REASON,
+      });
+      expect(spent?.message).toContain(`withdrawal ${idOf(last)}`);
+      expect(spent?.message).toContain("the row or the ledger output");
+      for (const entry of rows)
+        if (idOf(entry) !== idOf(last))
+          expect(spent?.message).not.toContain(idOf(entry));
+    },
+    60_000,
+  );
+
+  it("counts afresh from a successful commit between failures on different rows", async () => {
+    const rows = [await unreadableRow(0x01), await unreadableRow(0x02)];
+    const failOn = async (
+      globals: Awaited<ReturnType<typeof freshProcess>>,
+    ) => {
+      for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT - 1; index += 1)
+        await attempt(globals, rows[index % 2]!);
+    };
+    for (const success of SUCCESSES) {
+      const label = success.type;
+      const globals = await freshProcess();
+      await failOn(globals);
+      expect(take(globals, success), label).toEqual(success);
+      await failOn(globals);
+      expect(await exhausted(globals), label).toBe(false);
+      await attempt(globals, rows[0]!);
+      expect(await exhausted(globals), label).toBe(true);
+    }
   }, 60_000);
 
   it("exits at the bound when its attempts are interleaved with waits and failures that are not local faults", async () => {
