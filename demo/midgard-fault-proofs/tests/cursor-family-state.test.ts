@@ -427,6 +427,7 @@ describe("production cursor-family authenticated state V1", () => {
       "withdrawalMistag",
       "valueNotPreserved",
       "mintAuthorization",
+      "missingRedeemer",
     ]);
     for (const candidate of Object.values(CURSOR_FAMILY_SPECS)) {
       expect(Object.isFrozen(candidate)).toBe(true);

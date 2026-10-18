@@ -18,6 +18,7 @@ import {
 } from "../linear-fault-family.js";
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import { submitNativeTxBinding } from "../native-tx-binding.js";
+import type { PublishedProofChunk } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
@@ -45,12 +46,13 @@ type Step01Common = {
   readonly awaitConfirmation?: boolean;
 };
 
-const boundSourceDatum = (
+/** The datum step-01 pays to `bindEvent`: the bound source, owned by `prover`. */
+export const missingRedeemerStep01Datum = (
   material: DirectScriptMaterial,
-  signer: ResolvedProverSigner,
+  prover: string,
 ) =>
   Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: material.sourceBound },
+    { fraud_prover: prover, data: material.sourceBound },
     SDK.DirectBindEventDatum,
   );
 
@@ -79,6 +81,7 @@ export const submitMissingRedeemerStep01Accepted = async ({
   network,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
   witnessReferenceScripts,
   ...common
 }: Step01Common & {
@@ -86,6 +89,8 @@ export const submitMissingRedeemerStep01Accepted = async ({
   readonly network: Network;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  /** Published chunks carrying the inclusion proof; inline when absent. */
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
 }) => {
   const { material, signer } = common;
@@ -111,7 +116,8 @@ export const submitMissingRedeemerStep01Accepted = async ({
     threadToken,
     stateQueueBlockOutRef,
     txInclusion,
-    nextDatum: boundSourceDatum(material, signer),
+    ...(publishedProofChunks === undefined ? {} : { publishedProofChunks }),
+    nextDatum: missingRedeemerStep01Datum(material, signer.paymentKeyHash),
     spendRedeemerSchema: SDK.MissingRedeemerStep01Redeemer,
     wrapInclusionCarriage: (inclusion) => ({
       source: { AcceptedSource: { inclusion } },
@@ -154,7 +160,7 @@ export const submitMissingRedeemerStep01Forced = async ({
     eventKey,
   });
   const next = contracts.steps[1]!;
-  const nextDatum = boundSourceDatum(material, signer);
+  const nextDatum = missingRedeemerStep01Datum(material, signer.paymentKeyHash);
   let outputIndex: bigint | undefined;
   const label = `${MISSING_REDEEMER_CATEGORY_LABEL} forced step-01`;
   const redeemer = ((ctx) => {

@@ -232,6 +232,7 @@ export const NO_DIGEST_FAMILIES = [
   "missingSignature",
   "networkId",
   "valueNotPreserved",
+  "missingRedeemer",
 ];
 
 export const REPLAY_CONTEXT_FAMILIES = [
@@ -243,6 +244,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "transitionTrace",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
+  "missingRedeemer",
 ];
 
 /**

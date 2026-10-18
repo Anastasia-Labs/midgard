@@ -13,7 +13,6 @@ import {
 export const UNINSTALLED_FRAUD_PROOF_CATEGORIES = Object.freeze([
   "validationTraceDispute",
   "unusedRedeemer",
-  "missingRedeemer",
   "missingScriptSource",
   "unusedScriptWitness",
   "scriptIntegrityHashMismatch",

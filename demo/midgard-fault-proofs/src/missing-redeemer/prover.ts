@@ -142,3 +142,48 @@ export const requireConvictingMissingRedeemerProof = async (
     );
   return prepared;
 };
+
+/** Stands in for the prover key where only the verdict matters: no datum
+ * built against it is ever submitted, and conviction never reads it. */
+const DETECTION_PROVER = "00".repeat(28);
+
+/**
+ * Whether the bound leaf convicts on a shape this prover can carry, without
+ * planning custody: an accepted leaf yields its first convicting observer; a
+ * `RedeemerMissing` rejection naming no valid purpose or an observer purpose
+ * yields its claim verdict. Every other leaf is `null`.
+ */
+export const missingRedeemerDetection = async (
+  material: DirectScriptMaterial,
+): Promise<{ readonly observedIndex: bigint | null } | null> => {
+  const reason = material.bound.subject.rejection_reason;
+  if (reason === null && material.fields[3]!.length === 0) return null;
+  if (
+    reason !== null &&
+    (typeof reason === "string" || !("RedeemerMissing" in reason))
+  )
+    return null;
+  const evidence = await buildDirectSourceIndexEvidence(material);
+  if (reason === null) {
+    const [index] = await missingRedeemerObservedCandidates(material, evidence);
+    return index === undefined ? null : { observedIndex: index };
+  }
+  const coordinate = SDK.purposeCoordinateOfReason(reason);
+  if (
+    coordinate !== null &&
+    SDK.purposeCoordinateIsValid(coordinate) &&
+    coordinate.kind !== 2n
+  )
+    return null;
+  const inputs = {
+    material,
+    evidence,
+    prover: DETECTION_PROVER,
+    plan: missingRedeemerFieldPlans(material, DETECTION_PROVER),
+  };
+  const claim = await missingRedeemerClaimRoute(
+    inputs,
+    missingRedeemerClaimEntry(inputs).context,
+  );
+  return missingRedeemerConvicts(claim.final) ? { observedIndex: null } : null;
+};
