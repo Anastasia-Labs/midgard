@@ -92,5 +92,8 @@ describe("script-decode ticks over nested lists", () => {
       );
       expect(deepest).toBeLessThanOrEqual(1.1 * shallow);
     },
+    // The depth-4 row takes about 2.2 s alone and about 8.7 s on a loaded CI
+    // runner, past the 5 s default.
+    60_000,
   );
 });
