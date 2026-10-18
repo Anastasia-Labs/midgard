@@ -549,18 +549,16 @@ export const prepareValidationTrace = (
           }
           await trie.insert(entry.outRef, descriptorCbor);
         }
-        return await Promise.all(
-          resolutionScheduleNodes.map(async (node) =>
-            Buffer.from(
-              (
-                await trie.prove(
-                  node.key,
-                  !ledgerDescriptorState.has(node.key.toString("hex")),
-                )
-              ).toCBOR(),
-            ),
-          ),
-        );
+        // One proof at a time: the trie allows a single proof in flight.
+        const proofs: Buffer[] = [];
+        for (const node of resolutionScheduleNodes) {
+          const proof = await trie.prove(
+            node.key,
+            !ledgerDescriptorState.has(node.key.toString("hex")),
+          );
+          proofs.push(Buffer.from(proof.toCBOR()));
+        }
+        return proofs;
       },
       catch: (cause) =>
         cause instanceof Error

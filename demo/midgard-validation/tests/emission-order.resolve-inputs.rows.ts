@@ -211,3 +211,72 @@ export const bundleControl = (route: "full" | "plain"): Row => ({
   // No arm names this fault; the trace builder reads only the code.
   expected: { code: RejectCodes.CekProgramMaterial, reason: "EmptyInputs" },
 });
+
+const PRESENT = outRefFromByte(0x05);
+
+/** A spend-and-reference vector over a ledger holding `PRESENT` alone. */
+const overPresent = (
+  name: string,
+  kind: Row["kind"],
+  expected: Expected | null,
+  spendInputs: readonly Buffer[],
+  referenceInputs: readonly Buffer[] = [],
+  state: readonly (readonly [Buffer, Buffer])[] = [[PRESENT, funded]],
+): Row => ({
+  name: `a_keys_${name}`,
+  kind,
+  guard: true,
+  state,
+  sidecar: EMPTY_SIDECAR,
+  tx: { spendInputs, referenceInputs, outputs: [funded] },
+  expected,
+});
+
+/**
+ * Several absent keys over a non-empty ledger. The trace proves each key's
+ * presence or absence against the one ledger trie, key by key.
+ */
+export const ABSENT_KEYS: readonly Row[] = [
+  overPresent(
+    "accept",
+    "accept",
+    null,
+    [PRESENT],
+    [HIGH, LOW],
+    [
+      [PRESENT, funded],
+      [LOW, funded],
+      [HIGH, funded],
+    ],
+  ),
+  overPresent("missing_spends", "multi", SPEND_NOT_FOUND, [PRESENT, LOW, HIGH]),
+  overPresent("control_missing_low_spend", "control", SPEND_NOT_FOUND, [
+    PRESENT,
+    LOW,
+  ]),
+  overPresent("control_missing_high_spend", "control", SPEND_NOT_FOUND, [
+    PRESENT,
+    HIGH,
+  ]),
+  overPresent(
+    "missing_references",
+    "multi",
+    REFERENCE_NOT_FOUND,
+    [PRESENT],
+    [HIGH, LOW],
+  ),
+  overPresent(
+    "control_missing_low_reference",
+    "control",
+    REFERENCE_NOT_FOUND,
+    [PRESENT],
+    [LOW],
+  ),
+  overPresent(
+    "control_missing_high_reference",
+    "control",
+    REFERENCE_NOT_FOUND,
+    [PRESENT],
+    [HIGH],
+  ),
+];

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { RejectCodes } from "../src/index.js";
 import {
+  ABSENT_KEYS,
   bundleControl,
   FULL,
   PLAIN,
@@ -25,6 +26,12 @@ describe("emission order (a): merged input resolution on both Phase B routes", (
   });
 
   it.each([...FULL, ...PLAIN])("$name", expectRowVerdicts, 180_000);
+
+  it("the absent-key rows have a single-fault control per fault", () => {
+    expectControlledRows(ABSENT_KEYS, ["a_keys_"]);
+  });
+
+  it.each(ABSENT_KEYS)("$name", expectRowVerdicts, 180_000);
 
   it.each([bundleControl("full"), bundleControl("plain")])(
     "$name",
