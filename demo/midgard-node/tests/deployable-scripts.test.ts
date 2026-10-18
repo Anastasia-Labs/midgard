@@ -114,7 +114,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(509);
+    expect(realTargets).toHaveLength(510);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -150,7 +150,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(503);
+      expect(targets).toHaveLength(504);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST
@@ -193,7 +193,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(499);
+      expect(targets).toHaveLength(500);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST
@@ -242,7 +242,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(492);
+      expect(targets).toHaveLength(493);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
@@ -297,7 +297,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(498);
+      expect(targets).toHaveLength(499);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST

@@ -9,6 +9,22 @@ use midgard/cek_semantic_chain as chain
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 
+/// The bls12_381_millerLoop budget. Its cost does not depend on the argument
+/// values, and both roots are already checked by `arguments_root_v1`, so it is
+/// evaluated once, when the script is compiled.
+const miller_loop_budget =
+  builtin_witness.direct_builtin_budget_v1(
+    70,
+    [
+      builtin_witness.BlsMillerLoopValue(
+        #"0000000000000000000000000000000000000000000000000000000000000000",
+      ),
+      builtin_witness.BlsMillerLoopValue(
+        #"0000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    ],
+  )
+
 validator main(
   final_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
@@ -57,7 +73,6 @@ validator main(
             count,
             root,
           )
-        let budget = builtin_witness.direct_builtin_budget_v1(70, arguments)
         expect
           bound.post == machine.exact_state(
             bound.pre,
@@ -66,8 +81,8 @@ validator main(
             proof.empty_environment_root_v1,
             bound.pre.continuation_root,
             0,
-            budget.cpu,
-            budget.memory,
+            miller_loop_budget.cpu,
+            miller_loop_budget.memory,
           )
         chain.continue_core(
           final_script_hash,

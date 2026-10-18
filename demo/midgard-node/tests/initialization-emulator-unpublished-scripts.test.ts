@@ -1,4 +1,5 @@
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core/consensus-profile";
+import { CML, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
@@ -12,18 +13,21 @@ import {
 } from "./initialization-emulator.init-emulator-lucid.js";
 
 /**
- * script_decode_v1 and the CEK core BLS budget step do not fit in one L1
- * transaction, so initialization publishes every reference script except
- * theirs. This pins both sides of that one exception set: nothing else is
- * skipped, and none of those scripts is published.
+ * script_decode_v1 does not fit in one L1 transaction, so initialization
+ * publishes every reference script except its two. This pins both sides of
+ * that one exception set: nothing else is skipped and none of those scripts is
+ * published. The CEK core BLS budget step, formerly in the set, publishes under
+ * the publication target.
  */
 const NOT_YET_PUBLISHED_CONTRACTS = new Set([
   "scriptDecodeSpend",
   "scriptDecodeMint",
-  "validationTraceDisputeCekCoreBlsBudget",
 ]);
 
-it("initializes and publishes every reference script outside the exception set", async () => {
+const PUBLICATION_TARGET_BYTES =
+  MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationTransactionBytes;
+
+it("initializes and publishes every reference script outside the exception set, the BLS budget step under the publication target", async () => {
   const {
     emulator,
     lucid,
@@ -32,6 +36,13 @@ it("initializes and publishes every reference script outside the exception set",
     operatorSeedPhrase,
     referenceScriptAuth,
   } = await initEmulatorLucid();
+  const submitted: string[] = [];
+  const submit = emulator.submitTx.bind(emulator);
+  emulator.submitTx = async (cbor) => {
+    const hash = await submit(cbor);
+    submitted.push(cbor);
+    return hash;
+  };
   const contracts = await loadContracts(
     { txHash: nonceUtxo.txHash, outputIndex: nonceUtxo.outputIndex },
     referenceScriptAuth,
@@ -81,8 +92,6 @@ it("initializes and publishes every reference script outside the exception set",
   const excludedHashes = [
     contracts.scriptDecode.spendingScriptHash,
     contracts.scriptDecode.policyId,
-    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsBudget
-      .spendingScriptHash,
   ];
   const referenceHashes = (
     await lucid.utxosAt(referenceScriptsAddress)
@@ -93,4 +102,24 @@ it("initializes and publishes every reference script outside the exception set",
   for (const hash of excludedHashes) {
     expect(referenceHashes).not.toContain(hash);
   }
+  const blsBudgetHash =
+    contracts.fraudProofContracts.validationTraceDispute.cekCoreStages.blsBudget
+      .spendingScriptHash;
+  expect(referenceHashes).toContain(blsBudgetHash);
+
+  // The CEK core BLS budget step publishes in a transaction under the target.
+  const blsPublications = submitted.filter((cbor) => {
+    const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+    for (let index = 0; index < outputs.len(); index += 1) {
+      const scriptRef = outputs.get(index).script_ref();
+      if (scriptRef != null && scriptRef.hash().to_hex() === blsBudgetHash) {
+        return true;
+      }
+    }
+    return false;
+  });
+  expect(blsPublications).toHaveLength(1);
+  expect(blsPublications[0]!.length / 2).toBeLessThanOrEqual(
+    PUBLICATION_TARGET_BYTES,
+  );
 }, 600_000);

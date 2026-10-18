@@ -536,6 +536,28 @@ test miller_loop_expression_and_final_verify_are_authenticated() {
   }
 }
 
+/// The bls12_381_millerLoop budget does not depend on its argument roots, so a
+/// step may take it as one value computed for any two roots.
+test miller_loop_budget_is_the_same_for_every_pair_of_roots(
+  roots via fuzz.both(fuzz.bytearray_fixed(32), fuzz.bytearray_fixed(32)),
+) {
+  let (left, right) = roots
+  let zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+  cek_builtin_v1.direct_builtin_budget_v1(
+    70,
+    [
+      cek_builtin_v1.BlsMillerLoopValue(left),
+      cek_builtin_v1.BlsMillerLoopValue(right),
+    ],
+  ) == cek_builtin_v1.direct_builtin_budget_v1(
+    70,
+    [
+      cek_builtin_v1.BlsMillerLoopValue(zero),
+      cek_builtin_v1.BlsMillerLoopValue(zero),
+    ],
+  )
+}
+
 test six_leaf_miller_loop_proof_fits_the_l1_execution_reserve() {
   let expression = triple_miller_loop_expression()
   let leaf_root = cek_proof_v1.hash_bls_miller_loop_expression_v1(

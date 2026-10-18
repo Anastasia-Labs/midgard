@@ -29,7 +29,6 @@ export const manifestDeployableScripts = (
 const NOT_YET_PUBLISHABLE_CONTRACTS: ReadonlySet<string> = new Set([
   "scriptDecodeSpend",
   "scriptDecodeMint",
-  "validationTraceDisputeCekCoreBlsBudget",
 ]);
 
 /** The same members projected into the historical reference publication order. */
