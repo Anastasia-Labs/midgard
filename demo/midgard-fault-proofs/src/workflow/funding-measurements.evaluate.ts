@@ -368,7 +368,7 @@ export const evaluateWorkflowFundingTransaction = async (input: {
     references,
     collateral,
     evidence: {
-      evaluator: "lucid-evolution-0.8.0:aiken-local-phase-two" as const,
+      evaluator: "lucid-evolution:aiken-local-phase-two" as const,
       evaluatorNetwork: config.network,
       evaluatorSlotConfig: { ...config.slotConfig },
       protocolParameters: protocolSnapshot(parameters),

@@ -9,6 +9,8 @@
  *   of the same block created. All of it found: `resolved`, with the nine
  *   field preimages. Some created before the block: `carriage_pending`,
  *   for the driver hook to resolve by outref. Unopenable: `malformed`.
+ *   An output whose datum no order cast accepts opens an `unreadable` row
+ *   (`readForcedOrder`): never due, and named by no honest block.
  *
  * Each opened order's outref also enters the follower's key set
  * (`l1_event_keys`, kind `forced`): the node's forced row is backed while it
@@ -18,6 +20,7 @@
  * rewind of the D-t row is the registry's; the key's is the follower's own
  * (§5.4).
  */
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   createdOutputs,
   type DerivationContext,
@@ -28,8 +31,8 @@ import {
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Effect, Either } from "effect";
 
 import { FORCED_ADMISSION_KIND } from "../database/l1-admission-identity.js";
 import {
@@ -40,7 +43,7 @@ import {
   txOrderMintRedeemer,
 } from "./carriage.js";
 import type { ForcedOrderConfig } from "./config.js";
-import { FORCED_ORDERS_TABLE } from "./schema.js";
+import { FORCED_ORDER_UNREADABLE, FORCED_ORDERS_TABLE } from "./schema.js";
 
 const hex = (bytes: Buffer): string => bytes.toString("hex");
 
@@ -63,12 +66,72 @@ export const lucidUtxo = (outRef: OutRef, output: OutputSummary): UTxO => {
   };
 };
 
-/** The order an output authenticates as, or null when it is not one. */
+/**
+ * What an output holding a tx-order token reads as, the one decision the
+ * derivation, the reads and foreign replay share: an `order`, its datum read
+ * as the chain reads it (`SDK.utxoToTxOrderUTxO`); or `unreadable`, a datum
+ * no order cast accepts, with the id and inclusion time the tx-order mint
+ * reads of every order it admits (event field 0 and integer field 1) and why.
+ */
+export type ForcedOrderReading =
+  | Readonly<{ kind: "order"; order: SDK.TxOrderUTxOV1 }>
+  | Readonly<{
+      kind: "unreadable";
+      idCbor: Buffer;
+      inclusionTime: bigint;
+      detail: string;
+    }>;
+
+const message = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/** The output holds exactly one token besides ada, one unit under `policyId`. */
+const holdsOneToken = (utxo: UTxO, policyId: string): boolean => {
+  const tokens = Object.entries(utxo.assets).filter(
+    ([unit]) => unit !== "lovelace",
+  );
+  return (
+    tokens.length === 1 &&
+    tokens[0]![0].startsWith(policyId) &&
+    tokens[0]![1] === 1n
+  );
+};
+
+/** What `utxo` reads as (`ForcedOrderReading`), or null when it is no order. */
+export const readForcedOrder = (
+  utxo: UTxO,
+  policyId: string,
+): ForcedOrderReading | null => {
+  const read = Effect.runSync(
+    Effect.either(SDK.utxoToTxOrderUTxO(utxo, policyId)),
+  );
+  if (Either.isRight(read)) return { kind: "order", order: read.right };
+  if (utxo.datum == null || !holdsOneToken(utxo, policyId)) return null;
+  try {
+    const { idCbor } = SDK.userEventCborFieldsFromInlineDatum(utxo);
+    const inclusionTime: unknown = Data.from(
+      plutusConstrFieldCbor(utxo.datum, [1]),
+    );
+    if (typeof inclusionTime !== "bigint") return null;
+    return {
+      kind: "unreadable",
+      idCbor: Buffer.from(idCbor),
+      inclusionTime,
+      detail: `${read.left.message}: ${message(read.left.cause)}`.slice(0, 500),
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** The order an output reads as, or null when it is not a readable one. */
 export const authenticOrder = (
   utxo: UTxO,
   policyId: string,
-): SDK.TxOrderUTxOV1 | null =>
-  Effect.runSync(SDK.utxosToTxOrderUTxOs([utxo], policyId))[0] ?? null;
+): SDK.TxOrderUTxOV1 | null => {
+  const reading = readForcedOrder(utxo, policyId);
+  return reading?.kind === "order" ? reading.order : null;
+};
 
 /** The reference inputs as stored: their 34-byte outrefs, concatenated in ledger order. */
 export const encodeReferenceInputs = (outRefs: readonly OutRef[]): Buffer =>
@@ -94,15 +157,16 @@ const blockDatums = (
 };
 
 type Row = Readonly<{
-  status: "resolved" | "carriage_pending" | "malformed";
+  status:
+    | "resolved"
+    | "carriage_pending"
+    | "malformed"
+    | typeof FORCED_ORDER_UNREADABLE;
   mintRedeemer: Buffer | null;
   blockDatums: Readonly<Record<string, string | null>>;
   fieldPreimages: Buffer | null;
   detail: string | null;
 }>;
-
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 /** The row of an authenticated order created by `tx` (steps 0 and 1). */
 export const resolveInBlock = (
@@ -181,12 +245,21 @@ export const forcedOrderDerivation = (
         if (names === undefined) continue;
         if (![...names.keys()].some((n) => mintsName(tx, config.policyId, n)))
           continue;
-        const order = authenticOrder(
+        const reading = readForcedOrder(
           lucidUtxo(entry.outRef, entry.output),
           config.policyId,
         );
-        if (order === null) continue;
-        const row = resolveInBlock(context, tx, order, config.policyId);
+        if (reading === null) continue;
+        const row: Row =
+          reading.kind === "order"
+            ? resolveInBlock(context, tx, reading.order, config.policyId)
+            : {
+                status: FORCED_ORDER_UNREADABLE,
+                mintRedeemer: null,
+                blockDatums: {},
+                fieldPreimages: null,
+                detail: reading.detail,
+              };
         await context.tx.query(
           `INSERT INTO ${FORCED_ORDERS_TABLE} (order_tx_hash, order_output_index, order_tx_index, block_hash, height, order_slot, spent_slot, parent_slot, parent_hash, inclusion_time, status, reference_inputs, mint_redeemer, block_datums, field_preimages, detail) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
@@ -198,7 +271,10 @@ export const forcedOrderDerivation = (
             block.point.slot,
             previous.point.slot,
             previous.point.hash,
-            order.datum.inclusion_time.toString(),
+            (reading.kind === "order"
+              ? reading.order.datum.inclusion_time
+              : reading.inclusionTime
+            ).toString(),
             row.status,
             encodeReferenceInputs(tx.referenceInputs),
             row.mintRedeemer,
@@ -207,6 +283,8 @@ export const forcedOrderDerivation = (
             row.detail,
           ],
         );
+        // An unreadable order backs no forced row, so it has no key.
+        if (reading.kind !== "order") continue;
         const key = encodeOutRef(entry.outRef);
         await context.tx.query(
           "INSERT INTO l1_event_keys (kind, key, origin_outref, first_canonical_slot) VALUES (?, ?, ?, ?)",

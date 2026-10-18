@@ -60,8 +60,7 @@ export {
 } from "./block-replay.faults.js";
 export {
   attributeWithdrawalClassificationFault,
-  WITHDRAWAL_INFO_NODE_BOUND,
-  withdrawalClassificationInputBounded,
+  withdrawalClassificationInputReadable,
 } from "./withdrawal-classification-fault.js";
 
 /**

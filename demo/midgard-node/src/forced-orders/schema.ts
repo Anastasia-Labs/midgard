@@ -23,6 +23,13 @@ export const FORCED_ORDER_TABLES: readonly TemporalTableSpec[] = [
 ];
 
 /**
+ * The status of an order whose datum no order cast accepts. It is never due:
+ * reads of live orders, the commit horizon and strike citations pass over
+ * it, and foreign replay judges a block naming it invalid.
+ */
+export const FORCED_ORDER_UNREADABLE = "unreadable";
+
+/**
  * `status`:
  * - `resolved`: every carried field was read in the order's block (§12.3
  *   step 1, or tier 1 inline), and `field_preimages` holds all nine;
@@ -30,7 +37,9 @@ export const FORCED_ORDER_TABLES: readonly TemporalTableSpec[] = [
  *   the driver hook resolves it (steps 2 to 4);
  * - `malformed`: the order authenticates but its mint redeemer or in-block
  *   carriage does not open (`detail` says why). The real tx-order mint
- *   admits no such order.
+ *   admits no such order;
+ * - `unreadable` (`FORCED_ORDER_UNREADABLE`): the output holds an order token
+ *   but no order cast accepts its datum (`detail` says why).
  */
 const forcedOrderSql = (dialect: DialectName): string => {
   const bytes = dialect === "postgres" ? "bytea" : "BLOB";

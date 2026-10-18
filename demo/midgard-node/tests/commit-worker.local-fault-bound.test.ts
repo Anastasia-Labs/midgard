@@ -36,7 +36,9 @@ import {
  * fault is retried; `LOCAL_FAULT_RUN_LIMIT` attempts failing on it without a
  * successful commit between them exit the node non-zero, and a restarted node
  * meets the same bound again. Only a successful commit resets the count: waits
- * and failures that are not the fault leave it, and are never counted.
+ * and failures that are not local faults leave it, and are never counted. A
+ * withdrawal row this node cannot classify is a local fault in the same bound
+ * (`commit-worker.unclassifiable-withdrawal.test.ts`).
  */
 /** The reason the node exits under, from source `commit_worker`. */
 const EXIT_REASON = "commit_worker_verifier_unavailable";
@@ -179,6 +181,12 @@ const attempts = async (
 /** The parent takes `output` from the worker. */
 const take = (globals: Globals, output: WorkerOutput) =>
   takeCommitWorkerOutput(globals, output, 16);
+
+/** A failed attempt that is not a local fault (an L1 submission failure). */
+const NOT_LOCAL: WorkerOutput = {
+  type: "FailureOutput",
+  error: "Block commitment worker failure: L1 submission refused",
+};
 
 const submitted = {
   submittedTxHash: "11".repeat(32),
@@ -332,19 +340,37 @@ describe("commit attempts under a verifier fault", () => {
     expect(await exhausted(globals)).toBe(true);
   }, 60_000);
 
-  it("exits at the bound when the fault is interleaved with failures that are not it", async () => {
+  it("exits at the bound when the fault is interleaved with failures that are not local faults", async () => {
+    injected.fault = new Error("injected verifier fault");
+    const globals = await freshProcess();
+    const entry = await order();
+    for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT - 1; index += 1) {
+      expect(take(globals, NOT_LOCAL)).toEqual(NOT_LOCAL);
+      await attempt(globals, entry);
+    }
+    take(globals, NOT_LOCAL);
+    expect(await exhausted(globals)).toBe(false);
+    await attempt(globals, entry);
+    expect(await exhausted(globals)).toBe(true);
+  }, 60_000);
+
+  it("counts the fault and a withdrawal row this node cannot classify in one bound", async () => {
     injected.fault = new Error("injected verifier fault");
     const globals = await freshProcess();
     const entry = await order();
     // Event info that is not Data fails the attempt before any signature.
     const other = await order(Buffer.from("ff", "hex"));
-    for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT - 1; index += 1) {
-      const failed = await attempt(globals, other);
-      expect(failed.output?.type).toBe("FailureOutput");
-      expect(failed.output).not.toHaveProperty("localFault");
-      await attempt(globals, entry);
+    for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT / 2; index += 1) {
+      expect((await attempt(globals, other)).output).toMatchObject({
+        type: "FailureOutput",
+        localFault: "withdrawal_unclassifiable",
+      });
+      if (index < LOCAL_FAULT_RUN_LIMIT / 2 - 1)
+        expect((await attempt(globals, entry)).output).toMatchObject({
+          type: "FailureOutput",
+          localFault: "verifier_unavailable",
+        });
     }
-    await attempt(globals, other);
     expect(await exhausted(globals)).toBe(false);
     await attempt(globals, entry);
     expect(await exhausted(globals)).toBe(true);
@@ -374,16 +400,11 @@ describe("commit attempts under a verifier fault", () => {
     }
   }, 60_000);
 
-  it("leaves a failure that is not the fault as it was: retried, never counted", async () => {
+  it("leaves a failure that is not a local fault as it was: retried, never counted", async () => {
     injected.fault = new Error("injected verifier fault");
     const globals = await freshProcess();
-    // Event info that is not Data fails the attempt before any signature.
-    const entry = await order(Buffer.from("ff", "hex"));
-    const outputs = await attempts(globals, entry, 2 * LOCAL_FAULT_RUN_LIMIT);
-    for (const output of outputs) {
-      expect(output?.type).toBe("FailureOutput");
-      expect(output).not.toHaveProperty("localFault");
-    }
+    for (let index = 0; index < 2 * LOCAL_FAULT_RUN_LIMIT; index += 1)
+      expect(take(globals, NOT_LOCAL)).toEqual(NOT_LOCAL);
     expect(await exhausted(globals)).toBe(false);
     expect(await reasons(globals)).toEqual([
       { source: COMMIT_WORKER_SOURCE, reason: COMMIT_WORKER_FAILED },

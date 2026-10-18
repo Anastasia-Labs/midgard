@@ -34,7 +34,7 @@ const MAX_LEAF_BYTES = BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES);
  * Whether `bytes` starts with an integer head (major 0 or 1) or a bignum tag
  * (2 or 3, in any head width). Lucid decodes anything else to a non-integer
  * or fails, so refusing it first keeps the accept set while keeping nested
- * CBOR away from Lucid's recursive decoder. (Where Lucid itself would fail,
+ * CBOR away from Lucid's decoder. (Where Lucid itself would fail,
  * the error now names the leaf instead of carrying Lucid's message.)
  */
 const startsWithIntegerHead = (bytes: Uint8Array): boolean => {

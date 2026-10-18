@@ -9,8 +9,12 @@ users and L1 interact with the rollup.
 
 ## Validators
 
-- **`deposit`**: validates deposits moving funds from L1 into the L2 ledger.
-- **`withdrawal`**: validates withdrawal orders moving funds from L2 back to L1.
+- **`history`**: one event-history list script per kind, deposits and
+  withdrawals. It admits each event order at mint, keeps the list ordered, and
+  retires each committed event at settlement: a deposit to the reserve, a valid
+  withdrawal to the payout, an invalid one back to its refund address.
+- **`history-retirement`** and **`history-data`**: the list's retirement
+  observer and the retention script for externally stored event data.
 - **`tx-order-v1`**: validates transaction-order events used to sequence L2
   transactions into blocks, including their exact canonical source commitments.
 - **`witness`**: the per-event certificate script binding registration and

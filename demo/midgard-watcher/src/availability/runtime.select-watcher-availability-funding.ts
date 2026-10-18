@@ -73,6 +73,7 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
       openRefused.push({
         headerHash,
         reason: "insufficient-availability-capital",
+        shortfall: cause.shortfall,
         requiredLovelace: cause.requiredLovelace.toString(),
         availableLovelace: cause.availableLovelace.toString(),
         detail: cause.message,
@@ -164,11 +165,12 @@ export const selectWatcherAvailabilityFunding = (input: {
   }
   if (collateral === undefined)
     throw new WatcherAvailabilityCapitalShortfall(
-      `Availability wallet needs separate plain-ADA collateral of at least ${input.collateralLovelace.toString()} lovelace in at most ${WATCHER_AVAILABILITY_MAX_COLLATERAL_INPUTS.toString()} coins`,
+      `Availability wallet needs separate plain-ADA collateral of at least ${input.collateralLovelace.toString()} lovelace in at most ${WATCHER_AVAILABILITY_MAX_COLLATERAL_INPUTS.toString()} coins: ADA-only coins with no datum and no reference script at the wallet address, none of exactly ${input.openingLovelace.toString()} lovelace (the opening input)`,
       input.collateralLovelace,
       collateralCandidates
         .slice(-WATCHER_AVAILABILITY_MAX_COLLATERAL_INPUTS)
         .reduce((sum, utxo) => sum + utxo.assets.lovelace, 0n),
+      "collateral",
     );
   const collateralSet = new Set(collateral);
   const spending = candidates.filter(
@@ -182,14 +184,20 @@ export const selectWatcherAvailabilityFunding = (input: {
   );
   if (spendable < input.requiredWorkingLovelace) {
     throw new WatcherAvailabilityCapitalShortfall(
-      "Availability wallet cannot fund the challenger bond and reachable timeout removal path",
+      `Availability wallet cannot fund the challenger bond and reachable timeout removal path: it needs ${input.requiredWorkingLovelace.toString()} lovelace in unreserved ADA-only coins with no datum, beside ${input.collateralLovelace.toString()} lovelace of collateral, and holds ${spendable.toString()}`,
       input.requiredWorkingLovelace,
       spendable,
+      "working-capital",
     );
   }
   const funding = spending.at(-1);
   if (funding === undefined)
-    throw new Error("Availability wallet has no independent fee funding");
+    throw new WatcherAvailabilityCapitalShortfall(
+      "Availability wallet has no independent fee funding: it needs one unreserved ADA-only coin with no datum beside its collateral",
+      input.requiredWorkingLovelace,
+      0n,
+      "working-capital",
+    );
   const exactOpening = spending.find(
     (utxo) => utxo.assets.lovelace === input.openingLovelace,
   );

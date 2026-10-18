@@ -165,3 +165,27 @@ export const userEventEntry = (
     ? { kind: "deposit", entry: depositEntry(event, network) }
     : { kind: "withdrawal", entry: withdrawalEntry(event) };
 };
+
+export type UserEventReading =
+  | Readonly<{ kind: "readable"; entry: UserEventEntry }>
+  | Readonly<{ kind: "undecodable"; detail: string }>;
+
+/**
+ * Whether the node reads a projected event as a user event. This is the one
+ * decision both sides take: ingestion leaves an `undecodable` event out
+ * (`l1_event_undecodable`), so no local block holds it, and foreign replay
+ * judges a block's window without it.
+ */
+export const readUserEvent = (
+  event: ProjectedEvent,
+  network: Network,
+): UserEventReading => {
+  try {
+    return { kind: "readable", entry: userEventEntry(event, network) };
+  } catch (cause) {
+    return {
+      kind: "undecodable",
+      detail: cause instanceof Error ? cause.message : String(cause),
+    };
+  }
+};
