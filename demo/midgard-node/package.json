@@ -213,7 +213,7 @@
         {
           "command": [
             "tsup",
-            "src/workers/*",
+            "src/workers/**/*",
             "--minify",
             "--format",
             "esm"

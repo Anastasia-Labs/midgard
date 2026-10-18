@@ -8,6 +8,7 @@ export {
   type CanonicalBlockClassification,
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
+  firstCanonicalViolationDetection,
   type UnprovableGap,
 } from "./classification.classify-canonical-block-violations.js";
 export {

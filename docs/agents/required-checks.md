@@ -623,6 +623,7 @@ Golden channel rejection-reason-v1 (@al-ft/midgard-core).
   - `demo/flake.lock`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json`
+  - `onchain/aiken/lib/midgard/rejection-reason-v1.ak`
   - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
@@ -835,6 +836,7 @@ Golden channel script-decode-haskell-v1 (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs`
+  - `demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs`
   - `demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json`
   - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.bulk-data.mjs`
   - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs`

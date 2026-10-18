@@ -38,6 +38,7 @@ import {
   DaPayloadsDB,
 } from "../src/database/index.js";
 import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
+import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
 import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -207,7 +208,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       readinessTransport = undefined;
 
       const fixture = await makePayloadFixture();
-      const insert = insertFromFixture(fixture);
+      const insert = await insertFromFixture(fixture);
       await Effect.runPromise(
         provideDatabaseLayers(
           Effect.gen(function* () {
@@ -411,9 +412,11 @@ const runtimeManifest = (
   },
 });
 
-const insertFromFixture = (
+// The header pins the validation-trace pair to the empty tree, so the row takes
+// that pair from the body, as local persist does.
+const insertFromFixture = async (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
-): DaPayloadsDB.InsertInput => ({
+): Promise<DaPayloadsDB.InsertInput> => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
   [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
@@ -430,8 +433,9 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
-  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
-    fixture.header.validationTracesRoot,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: (
+    await Effect.runPromise(computeDaPayloadRoots(fixture.payload))
+  ).validationTracesRoot,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,
@@ -442,7 +446,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]:
     fixture.header.transitionStepCount,
   [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]:
-    fixture.header.validationTraceCount,
+    fixture.payload.block_body.counts.validationTraceCount,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
   [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(2),

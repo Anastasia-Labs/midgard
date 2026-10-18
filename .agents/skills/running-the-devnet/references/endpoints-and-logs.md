@@ -135,6 +135,29 @@ deadline:
   paths and that the node has written them.
 - `l1_slot_mapping_pending`: the ledger's slot mapping read failed
   transiently. Check the L1 node and its sidecar.
+- `role_non_follower_l1_config` (a `failedReason`, step `l1_access`): the
+  node was started with a non-follower L1 setting (`L1_ACCESS` other than
+  `follower`, `L1_PROVIDER`, a Kupo, Ogmios or Blockfrost endpoint); the
+  log names it. Unset it and restart the node.
+- `l1_node_unconfigured` (a `failedReason`, step `l1_access`): no local
+  node is configured for the follower (`L1_NODE_SOCKET_PATH`,
+  `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`). Configure it
+  and restart the node.
+- `ledger_signature_verifier_unavailable`: the Ed25519 signature verifier,
+  in the node or in a validation worker, has not initialised yet or failed
+  to. It is tried 3 times, 1 s apart; past that the node exits non-zero
+  and its supervisor restarts it. If it repeats, read the log for the
+  verifier's error.
+- `validation_worker_crashed`: a validation worker stopped while it
+  answered its readiness job (an error it did not handle, its heap limit,
+  a non-zero exit). Retried and bounded as
+  `ledger_signature_verifier_unavailable`. Read the worker's error in the
+  log.
+- `validation_worker_load_failed`, `validation_worker_start_failed` (each a
+  `failedReason`, step `validation_workers`): a validation worker's module,
+  or one it imports, did not load, or the workers did not start for another
+  reason. The node exits non-zero. Check that the node's build is complete,
+  then read the log for the cause.
 - `database_unreachable`: PostgreSQL does not answer or refuses
   connections; a pool waits to open, or the schema check waits to run.
   Restore Postgres reachability.
@@ -190,6 +213,12 @@ deadline:
   `mpf_closure_missing`, `native_mpf_restore_index_cap_exceeded`) that the
   driver does not retry ends startup with it as `failedReason`; one it
   retries ends startup once it has stood for the database budget.
+- `l1_driver_transient_failure` (a `failedReason`, step `driver`): the
+  follower-change driver ran out of its transient budget or its
+  local-fault bound with no hold to name; otherwise the first hold's own
+  reason is named. The node exits non-zero and its supervisor restarts it.
+  Read the `node_transient_budget_exhausted` line and the driver's log
+  lines before it.
 
 Core checks (`src/commands/readiness.ts`, the readiness handler):
 
