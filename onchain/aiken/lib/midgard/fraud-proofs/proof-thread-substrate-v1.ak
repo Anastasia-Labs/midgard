@@ -94,8 +94,8 @@ pub type EventPreStateV1 {
 /// `decode_header_view` (protocol version), and the carriage binds that
 /// node's key, the commit-time hash of this header, to the thread name. Only
 /// the accepted scalar is checked here. A forced source's header is supplied
-/// by the prover, so its protocol version and thread binding are checked
-/// before its leaf is opened.
+/// by the prover, so its thread binding is checked before its leaf is opened;
+/// the committed header it names was decoded at commit.
 pub fn open_subject_v1(
   thread_name: ByteArray,
   source: SubjectSourceV1,
@@ -105,13 +105,13 @@ pub fn open_subject_v1(
       bind_accepted_subject_v1(tx_inclusion)
     ForcedSource { header, membership } -> {
       let header_data: Data = header
-      expect and {
-          header.protocol_version == ledger_state.protocol_version_v1,
-          utils.serialise_and_hash_28(header_data) == bytearray.drop(
-            thread_name,
-            fraud_proof_catalogue.id_byte_count,
-          ),
-        }
+      // The thread name binds this header's hash, and thread init binds that
+      // hash to a committed node whose commit decoded the protocol version.
+      expect
+        utils.serialise_and_hash_28(header_data) == bytearray.drop(
+          thread_name,
+          fraud_proof_catalogue.id_byte_count,
+        )
       bind_forced_subject_v1(header, membership)
     }
   }
@@ -195,35 +195,34 @@ fn bind_accepted_subject_v1(verified: VerifiedTxSourceView) -> VerdictSubjectV1 
   }
 }
 
-/// Authenticates raw forced-leaf bytes against the header's counted root.
+/// Whether raw forced-leaf bytes are a member of the header's counted root.
 /// Typed subjects and raw admission proofs share this membership door; raw
-/// callers retain the exact bytes so their own grammar predicate can inspect
-/// a committed value that does not decode as a typed leaf.
+/// callers keep their own bytes so their grammar predicate can inspect a
+/// committed value that does not decode as a typed leaf.
 pub fn open_forced_leaf_raw_v1(
   header: ledger_state.HeaderV1,
   raw_key: ByteArray,
   raw_value: ByteArray,
   phas_root: ByteArray,
   proof: Proof,
-) -> ByteArray {
+) -> Bool {
   // The domain, root, and count come from the header itself, so only the
   // counted-root consistency and the raw membership remain to be checked.
-  expect and {
-      transition_trace.counted_root_is_consistent(
-        transition_trace.ForcedTransactionsV1RootDomain,
-        header.forced_transactions_root,
-        phas_root,
-        header.forced_transaction_count,
-      ),
-      transition_trace.verify_root_membership_raw(
-        phas_root,
-        header.forced_transaction_count,
-        raw_key,
-        raw_value,
-        proof,
-      ),
-    }
-  raw_value
+  and {
+    transition_trace.counted_root_is_consistent(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      phas_root,
+      header.forced_transaction_count,
+    ),
+    transition_trace.verify_root_membership_raw(
+      phas_root,
+      header.forced_transaction_count,
+      raw_key,
+      raw_value,
+      proof,
+    ),
+  }
 }
 
 /// The authenticated leaf's verdict, including the exact rejection reason.
@@ -272,17 +271,16 @@ fn bind_forced_subject_v1(
     leaf.submitted_source.witness_set_compact_cbor,
     leaf.submitted_source.field_preimage_lengths_cbor,
   )
+  // The membership is opened under the header's own domain, root and count,
+  // so the carried copies of those three fields are not read.
   expect and {
-      membership.domain == transition_trace.ForcedTransactionsV1RootDomain,
-      membership.root == header.forced_transactions_root,
-      membership.count == header.forced_transaction_count,
       open_forced_leaf_raw_v1(
         header,
         cbor.serialise(membership.key),
         cbor.serialise(leaf),
         membership.phas_root,
         membership.proof,
-      ) == cbor.serialise(leaf),
+      ),
       verified.version == native_tx_version_v1,
       verified.tx_id == leaf.tx_id,
     }

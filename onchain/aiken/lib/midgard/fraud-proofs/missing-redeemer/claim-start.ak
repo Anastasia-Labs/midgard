@@ -134,11 +134,9 @@ pub fn complete_v1(context: ClaimContextV1) -> ClaimPurposeStateV1 {
       } else {
         expect Some(observed) = context.observed
         let selection = observed.authenticated.selection
+        // `finish_v1` binds the purpose to the leaf coordinate, and the
+        // observed scan only starts on a purpose at its own selection.
         expect Some(actual) = selection.purpose
-        expect and {
-            coordinate == selection.coordinate,
-            actual.coordinate == coordinate,
-          }
         ExistingPurpose { purpose: actual }
       }
       finish_v1(context, context.bound, fact)

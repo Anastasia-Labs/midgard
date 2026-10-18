@@ -75,10 +75,7 @@ validator main(
 
         // 2. §2.4.3(d): a leaf of the counted `transactions_root` is an
         //    acceptance verdict only when its own embedded validity scalar
-        //    claims `TxIsValid`. Direction A's accusation is against exactly
-        //    that acceptance.
-        expect bad_tx_view.tx_compact.validity_code == Some(0)
-
+        //    claims `TxIsValid`; `open_subject_v1` checks that scalar.
         // 3. The thread advances to step-02 carrying the bound subject.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = engine.BoundAccepted {

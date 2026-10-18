@@ -397,14 +397,13 @@ test proof_thread_subject_forced_rejected_input_not_found_v1() {
 test proof_thread_raw_and_typed_open_the_same_forced_leaf() {
   let leaf = tf.forced_leaf_v1(fixture.valid_native_tx_v1(), ForcedTxValid)
   let (header, membership) = forced_claim_v1(leaf)
-  let raw = substrate.open_forced_leaf_raw_v1(
+  substrate.open_forced_leaf_raw_v1(
     header,
     cbor.serialise(membership.key),
     cbor.serialise(leaf),
     membership.phas_root,
     membership.proof,
   )
-  raw == cbor.serialise(leaf)
 }
 
 test proof_thread_raw_open_rejects_one_byte_appended_to_leaf() fail {
@@ -416,7 +415,7 @@ test proof_thread_raw_open_rejects_one_byte_appended_to_leaf() fail {
     bytearray.concat(cbor.serialise(leaf), #"00"),
     membership.phas_root,
     membership.proof,
-  ) == cbor.serialise(leaf)
+  )
 }
 
 test proof_thread_verdict_projection_preserves_all_subject_kinds() {
