@@ -466,3 +466,30 @@ test event_ledger_terminal_convicts_forced_acceptance_of_an_absent_input() {
     ],
   )
 }
+
+fn presence_against_rejection_reason_v1(kind: Int, index: Int) -> Bool {
+  let input = fixture.absent_midgard_tx_input()
+  let key = encode_midgard_tx_input(input)
+  let root = mpf.root(mpf.insert(mpf.empty, key, #"d87980", []))
+  let reason = InputNotFound { source_kind: kind, input_index: index }
+  let subject = substrate.VerdictSubjectV1 {
+    ..terminal_subject_v1(1, 1),
+    rejection_reason: Some(reason),
+  }
+  terminal.verdict_contradiction_v1(
+    ledger_state_v1(subject, Some(input), root),
+    Present { value_hash: blake2b_256(#"d87980"), proof: [] },
+    [],
+    [],
+  )
+}
+
+// The selected input is field 0, index 0. A rejection that names another
+// input refuses presence evidence for the selected one.
+test event_ledger_terminal_refuses_presence_against_a_rejection_naming_another_index() {
+  !presence_against_rejection_reason_v1(0, 1)
+}
+
+test event_ledger_terminal_refuses_presence_against_a_rejection_naming_another_field() {
+  !presence_against_rejection_reason_v1(1, 0)
+}
