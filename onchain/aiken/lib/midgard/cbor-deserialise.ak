@@ -102,7 +102,9 @@ fn maybe_item(
   } else {
     let next = index_bytearray(bytes, offset)
     let offset = offset + 1
-    if next < 0x20 {
+    if next < 0x18 {
+      return(i_data(next), offset)
+    } else if next < 0x20 {
       maybe_argument(
         bytes,
         length,
@@ -118,6 +120,20 @@ fn maybe_item(
         next - 0x20,
         fn(n, offset) { return(i_data(-1 - n), offset) },
       )
+    } else if next == 0x58 {
+      if offset >= length {
+        None
+      } else {
+        let width = index_bytearray(bytes, offset)
+        if width > bound {
+          None
+        } else {
+          return(
+            b_data(slice_bytearray(offset + 1, width, bytes)),
+            offset + 1 + width,
+          )
+        }
+      }
     } else if next < 0x80 {
       maybe_byte_string(
         bytes,
@@ -126,6 +142,16 @@ fn maybe_item(
         offset,
         next,
         fn(b, offset) { return(b_data(b), offset) },
+      )
+    } else if next < 0x98 {
+      maybe_sized_items(
+        maybe_item,
+        bytes,
+        length,
+        bound,
+        offset,
+        next - 0x80,
+        fn(xs, offset) { return(list_data(xs), offset) },
       )
     } else if next < 0xa0 {
       maybe_list(
@@ -603,9 +629,11 @@ fn maybe_sized_entries(
 // more relative to that major type, which `argument` refuses.
 //
 // Script size: the reads are written for size, since every script that
-// decodes links them. A head's argument is read through `argument` even when
-// it sits in the head, and the 2-, 4- or 8-byte width comes from a table, at
-// the cost of a call or an index per item.
+// decodes links them. A head's argument is read through `argument`, and the
+// 2-, 4- or 8-byte width comes from a table, at the cost of a call or an index
+// per item. The commonest heads are read in line instead, in both variants:
+// an integer below 24, and a byte string or chunk with a one-byte length
+// (`58`). `deserialise` also reads a list of fewer than 24 items in line.
 
 /// Continues with the `data` that `deserialise(bytes)` returns as
 /// `Some(data)`, and fails the script where it returns `None`. Use it with
@@ -652,7 +680,9 @@ fn item(
 ) -> Data {
   let next = index_bytearray(bytes, offset)
   let offset = offset + 1
-  if next < 0x20 {
+  if next < 0x18 {
+    return(i_data(next), offset)
+  } else if next < 0x20 {
     argument(bytes, offset, next, fn(n, offset) { return(i_data(n), offset) })
   } else if next < 0x40 {
     argument(
@@ -660,6 +690,13 @@ fn item(
       offset,
       next - 0x20,
       fn(n, offset) { return(i_data(-1 - n), offset) },
+    )
+  } else if next == 0x58 {
+    let width = index_bytearray(bytes, offset)
+    expect width <= bound
+    return(
+      b_data(slice_bytearray(offset + 1, width, bytes)),
+      offset + 1 + width,
     )
   } else if next < 0x80 {
     byte_string(
@@ -890,6 +927,16 @@ fn chunks(
   let offset = offset + 1
   if head == token_break {
     return(read, offset)
+  } else if head == 0x58 {
+    let width = index_bytearray(bytes, offset)
+    expect width <= bound
+    chunks(
+      bytes,
+      bound,
+      offset + 1 + width,
+      append_bytearray(read, slice_bytearray(offset + 1, width, bytes)),
+      return,
+    )
   } else {
     definite_bytes(
       bytes,
