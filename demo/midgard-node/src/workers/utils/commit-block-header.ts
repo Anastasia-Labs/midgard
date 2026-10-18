@@ -90,18 +90,35 @@ export type NothingToCommitOutput = {
   type: "NothingToCommitOutput";
 };
 
+/**
+ * `localFault` is set when the failure is a local fault: this process's
+ * Ed25519 verifier fault (`LedgerSignatureVerifierUnavailableError`), or a
+ * due withdrawal row this node cannot classify from its bytes
+ * (`WithdrawalUnclassifiableError`), whose event id (hex) is
+ * `localFaultSubject`. The parent retries either for a bounded number of
+ * attempts without a successful commit before the node exits.
+ */
 export type FailureOutput = {
   type: "FailureOutput";
   error: string;
-  /** Set when the failure is this process's Ed25519 verifier fault
-   * (`LedgerSignatureVerifierUnavailableError`): a local fault the parent
-   * retries for a bounded number of attempts without a successful commit
-   * before the node exits. */
-  localFault?: typeof VERIFIER_UNAVAILABLE_FAULT;
-};
+} & LocalFaultMark;
+
+/** `FailureOutput`'s local fault, if it is one. */
+export type LocalFaultMark =
+  | { localFault?: undefined; localFaultSubject?: undefined }
+  | {
+      localFault: typeof VERIFIER_UNAVAILABLE_FAULT;
+      localFaultSubject?: undefined;
+    }
+  | {
+      localFault: typeof WITHDRAWAL_UNCLASSIFIABLE_FAULT;
+      localFaultSubject: string;
+    };
 
 /** `FailureOutput.localFault` of an Ed25519 verifier fault. */
 export const VERIFIER_UNAVAILABLE_FAULT = "verifier_unavailable";
+/** `FailureOutput.localFault` of a withdrawal row this node cannot classify. */
+export const WITHDRAWAL_UNCLASSIFIABLE_FAULT = "withdrawal_unclassifiable";
 
 export type RegisteredDueWorkOutput = {
   type: "RegisteredDueWorkOutput";

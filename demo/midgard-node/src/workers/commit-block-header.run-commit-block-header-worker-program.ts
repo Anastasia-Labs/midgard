@@ -35,10 +35,13 @@ import {
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import {
+  type LocalFaultMark,
   VERIFIER_UNAVAILABLE_FAULT,
+  WITHDRAWAL_UNCLASSIFIABLE_FAULT,
   WorkerInput,
   WorkerOutput,
 } from "./utils/commit-block-header.js";
+import { findWithdrawalUnclassifiable } from "./utils/mpf/withdrawal-classification.js";
 
 /**
  * The worker's wait for its Ed25519 verifier, bounded as one startup attempt
@@ -213,9 +216,30 @@ export const runCommitBlockHeaderWorkerProgram = (
       : Effect.provideService(FollowerWrite, workerInput.history),
   );
 
+/** The local fault a failure's errors carry, if any: this process's Ed25519
+ * verifier fault, else a due withdrawal row this node cannot classify. */
+const localFaultOf = (errors: readonly unknown[]): LocalFaultMark => {
+  if (
+    errors.some(
+      (error) => findLedgerSignatureVerifierUnavailable(error) !== undefined,
+    )
+  )
+    return { localFault: VERIFIER_UNAVAILABLE_FAULT };
+  const row = errors
+    .map(findWithdrawalUnclassifiable)
+    .find((found) => found !== undefined);
+  return row === undefined
+    ? {}
+    : {
+        localFault: WITHDRAWAL_UNCLASSIFIABLE_FAULT,
+        localFaultSubject: row.eventId,
+      };
+};
+
 /** The worker's outgoing failure boundary, shared with in-process
- * acceptance. A failure carrying this process's Ed25519 verifier fault is
- * marked `localFault`, which the parent bounds. */
+ * acceptance. A failure carrying a local fault (this process's Ed25519
+ * verifier fault, or a withdrawal row this node cannot classify, named in
+ * `localFaultSubject`) is marked `localFault`, which the parent bounds. */
 export const captureCommitWorkerFailure = <E, R>(
   program: Effect.Effect<WorkerOutput, E, R>,
 ) =>
@@ -224,12 +248,7 @@ export const captureCommitWorkerFailure = <E, R>(
       Effect.succeed({
         type: "FailureOutput",
         error: `Block commitment worker failure: ${Cause.pretty(cause)}`,
-        ...([...Cause.failures(cause), ...Cause.defects(cause)].some(
-          (error) =>
-            findLedgerSignatureVerifierUnavailable(error) !== undefined,
-        )
-          ? { localFault: VERIFIER_UNAVAILABLE_FAULT }
-          : {}),
+        ...localFaultOf([...Cause.failures(cause), ...Cause.defects(cause)]),
       } satisfies WorkerOutput),
     ),
   );

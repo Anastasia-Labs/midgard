@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
 import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation";
-import { Effect, Option } from "effect";
+import { Data, Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";
 import * as Ledger from "../../../database/utils/ledger.js";
@@ -15,6 +15,50 @@ import { heldBuildError } from "../../../mpf/commit-rejection.evict-uncommittabl
 
 /** The commit stage a withdrawal classification's local fault holds. */
 export const WITHDRAWAL_CLASSIFICATION_STAGE = "Withdrawal classification";
+
+/**
+ * A due withdrawal row this node cannot classify from its bytes: its event
+ * info, l2_value or l2_outref, or the ledger output it names, does not
+ * decode. It names the row by its event id (hex). Carried as the cause of the
+ * classification's `DatabaseError`, it marks the commit worker's failure as a
+ * local fault on that row, which the parent bounds
+ * (`boundCommitWorkerLocalFaults`).
+ */
+export class WithdrawalUnclassifiableError extends Data.TaggedError(
+  "WithdrawalUnclassifiableError",
+)<{
+  readonly eventId: string;
+  readonly message: string;
+  readonly cause: unknown;
+}> {}
+
+/** The `WithdrawalUnclassifiableError` `error` is or has as a cause, if any. */
+export const findWithdrawalUnclassifiable = (
+  error: unknown,
+): WithdrawalUnclassifiableError | undefined => {
+  let current = error;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current instanceof WithdrawalUnclassifiableError) return current;
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+};
+
+/** `error` with its cause as the row's `WithdrawalUnclassifiableError`. */
+const unclassifiable = (
+  entry: WithdrawalsDB.Entry,
+  error: { readonly message: string; readonly cause?: unknown },
+): DatabaseError =>
+  new DatabaseError({
+    table: WithdrawalsDB.tableName,
+    message: error.message,
+    cause: new WithdrawalUnclassifiableError({
+      eventId: entry[WithdrawalsDB.Columns.ID].toString("hex"),
+      message: error.message,
+      cause: error.cause,
+    }),
+  });
 
 export type ClassifiedWithdrawal = {
   readonly entry: WithdrawalsDB.Entry;
@@ -78,15 +122,18 @@ export const classifyWithdrawal = ({
       ...classification,
     })),
     // A verifier fault stays the cause as it is, so the commit path can tell
-    // this process's fault from a failure of the withdrawal's bytes.
-    Effect.mapError(
-      (error) =>
-        new DatabaseError({
-          table: WithdrawalsDB.tableName,
-          message: error.message,
-          cause: findLedgerSignatureVerifierUnavailable(error) ?? error.cause,
-        }),
-    ),
+    // this process's fault from a failure of the withdrawal's bytes, which
+    // names the row.
+    Effect.mapError((error) => {
+      const verifier = findLedgerSignatureVerifierUnavailable(error);
+      return verifier === undefined
+        ? unclassifiable(entry, error)
+        : new DatabaseError({
+            table: WithdrawalsDB.tableName,
+            message: error.message,
+            cause: verifier,
+          });
+    }),
     // A runtime fault of the classifier is this node's: the withdrawal is
     // not classified, and the build holds (nothing is committed or
     // projected) until a later build classifies it.
@@ -147,7 +194,9 @@ export const classifyWithdrawalsInOrder = ({
     const drained = new Set<string>();
     const classified: ClassifiedWithdrawal[] = [];
     for (const entry of entries) {
-      const ledgerOutRef = yield* WithdrawalsDB.toLedgerOutRef(entry);
+      const ledgerOutRef = yield* WithdrawalsDB.toLedgerOutRef(entry).pipe(
+        Effect.mapError((error) => unclassifiable(entry, error)),
+      );
       const ledgerOutRefHex = ledgerOutRef.toString("hex");
       const output = drained.has(ledgerOutRefHex)
         ? undefined

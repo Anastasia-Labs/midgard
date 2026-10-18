@@ -23,6 +23,14 @@ export const COMMIT_WORKER_FAILED_ESCALATION_MS = 10 * 60_000;
  */
 export const COMMIT_WORKER_VERIFIER_UNAVAILABLE =
   "commit_worker_verifier_unavailable";
+/**
+ * The reason the node exits under (source `commit_worker`) once
+ * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
+ * commit failed on a local fault, the last of them on a due withdrawal row
+ * this node cannot classify from its bytes. The detail names the row.
+ */
+export const COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE =
+  "commit_worker_withdrawal_unclassifiable";
 /** The liveness source `commit_base_pending` is raised under. */
 export const COMMIT_BASE_SOURCE = "commit_base";
 /**
@@ -133,18 +141,22 @@ const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
 ]);
 
 /**
- * Bounds commit-worker attempts that fail on this process's Ed25519 verifier
- * fault (`FailureOutput.localFault`), as the coalesced runner bounds a local
- * fault on a landed block: each such failure counts, and once `limit` of them
+ * Bounds commit-worker attempts that fail on a local fault
+ * (`FailureOutput.localFault`): this process's Ed25519 verifier fault, or a
+ * due withdrawal row it cannot classify from its bytes, named in
+ * `localFaultSubject`. This is how the coalesced runner bounds a local fault
+ * on a landed block: each such failure counts, and once `limit` of them
  * accrue without a successful commit (`COMMIT_SUCCEEDED`) between them the
  * node exits non-zero (`transient-exhaustion.ts`) for its supervisor to
- * restart it. Only a successful commit resets the count. A wait (for the
- * commit base or window), a no-op, a skip, or a failure that is not the fault
- * leaves it as it is, so a persistent fault interleaved with them still
- * reaches the bound. The count is this process's, so a restarted node meeting
- * the same fault retries within the same bound and exits again. Failures that
- * are not the fault are never counted and stay `commit_worker_failed` as
- * before.
+ * restart it, under the reason of the fault that reached the bound. A
+ * successful commit resets the count, and a failure on a different row than
+ * the last one counted starts it afresh at one, since that row's failure
+ * shows the earlier row was classified. A wait (for the commit base or
+ * window), a no-op, a skip, or a failure that is not a local fault leaves it
+ * as it is, so a persistent fault interleaved with them still reaches the
+ * bound. The count is this process's, so a restarted node meeting the same
+ * fault retries within the same bound and exits again. Failures that are not
+ * local faults are never counted and stay `commit_worker_failed` as before.
  */
 export const boundCommitWorkerLocalFaults = (
   globals: Pick<
@@ -158,21 +170,36 @@ export const boundCommitWorkerLocalFaults = (
     output.type === "FailureOutput" && output.localFault !== undefined
       ? output
       : undefined;
-  return Ref.updateAndGet(globals.COMMIT_WORKER_LOCAL_FAULT_RUNS, (runs) =>
-    fault !== undefined
-      ? runs + 1
-      : COMMIT_SUCCEEDED.has(output.type)
-        ? 0
-        : runs,
+  const row = fault?.localFaultSubject;
+  return Ref.updateAndGet(globals.COMMIT_WORKER_LOCAL_FAULT_RUNS, (count) =>
+    fault === undefined
+      ? COMMIT_SUCCEEDED.has(output.type)
+        ? { runs: 0, row: undefined }
+        : count
+      : row !== undefined && count.row !== undefined && count.row !== row
+        ? { runs: 1, row }
+        : { runs: count.runs + 1, row: row ?? count.row },
   ).pipe(
-    Effect.flatMap((runs) =>
-      fault !== undefined && runs >= limit
+    Effect.flatMap((count) =>
+      fault !== undefined && count.runs >= limit
         ? Effect.sync(() =>
-            signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
-              source: COMMIT_WORKER_SOURCE,
-              reason: COMMIT_WORKER_VERIFIER_UNAVAILABLE,
-              detail: `${runs} commit attempts since the last successful commit failed on the Ed25519 verifier: ${fault.error}`,
-            }),
+            signalTransientExhausted(
+              globals.TRANSIENT_EXHAUSTION,
+              row === undefined
+                ? {
+                    source: COMMIT_WORKER_SOURCE,
+                    reason: COMMIT_WORKER_VERIFIER_UNAVAILABLE,
+                    detail:
+                      count.row === undefined
+                        ? `${count.runs} commit attempts since the last successful commit failed on the Ed25519 verifier: ${fault.error}`
+                        : `${count.runs} commit attempts since the last successful commit failed on a local fault (withdrawal ${count.row} could not be classified), the last on the Ed25519 verifier: ${fault.error}`,
+                  }
+                : {
+                    source: COMMIT_WORKER_SOURCE,
+                    reason: COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE,
+                    detail: `${count.runs} commit attempts since the last successful commit failed on a local fault, the last on withdrawal ${row}, which this node cannot classify: ${fault.error}`,
+                  },
+            ),
           )
         : Effect.void,
     ),

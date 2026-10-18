@@ -2,8 +2,13 @@
  * The node decodes a withdrawal whose L1 datum is deeply nested, or nested
  * to the admission bound: the follower-change driver's sink ingests it
  * (never `l1_event_undecodable`), and the history projection builds its
- * row. Event info of the wrong shape is still refused by both.
+ * row. Event info of the wrong shape is still refused by both. Every row
+ * ingestion stores is one the commit's withdrawal classification reads.
  */
+import {
+  encodeMidgardTxOutput,
+  midgardAddressFromText,
+} from "@al-ft/midgard-core/codec";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -24,6 +29,7 @@ import {
   replaceCborItemOnce,
 } from "@al-ft/midgard-test-support/deep-plutus-data";
 import { SqlClient } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -36,6 +42,7 @@ import {
   withFollowerWrite,
 } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
+import { classifyWithdrawalsInOrder } from "../src/workers/utils/mpf/withdrawal-classification.js";
 import { writeFollowerView } from "./helpers/follower-view.js";
 import {
   admissionTx,
@@ -155,8 +162,8 @@ const ingest = (event: ProjectedEvent) =>
       if (outcome.kind !== "applied")
         throw new Error(`outcome ${outcome.kind}`);
       const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ event_id: Buffer; l1_datum: Buffer }>`
-        SELECT event_id, l1_datum FROM ${sql(WithdrawalsDB.tableName)}`;
+      const rows = yield* sql<WithdrawalsDB.Entry>`
+        SELECT * FROM ${sql(WithdrawalsDB.tableName)}`;
       return { ingestion: outcome.ingestion, rows };
     }),
   );
@@ -271,5 +278,61 @@ describe("history projection of deeply nested withdrawal datums", () => {
     expect(result.left.message).toBe(
       "Failed to project withdrawal history data into an offchain withdrawal entry",
     );
+  });
+});
+
+/** The helper's withdrawals are owned by this key hash and carry 9 ADA. */
+const OWNER = "cd".repeat(28);
+const OWNER_OUTPUT = encodeMidgardTxOutput({
+  address: midgardAddressFromText(
+    CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(CML.Ed25519KeyHash.from_hex(OWNER)),
+    )
+      .to_address()
+      .to_bech32(undefined),
+  ),
+  value: { lovelace: 9_000_000n, assets: new Map() },
+});
+
+/** The commit's classification of `rows` over a ledger holding each row's
+ * outref at its owner, as the block build runs it. */
+const classified = (rows: readonly WithdrawalsDB.Entry[]) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const baseOutputs = new Map<string, Buffer>();
+      for (const row of rows)
+        baseOutputs.set(
+          (yield* WithdrawalsDB.toLedgerOutRef(row)).toString("hex"),
+          OWNER_OUTPUT,
+        );
+      return yield* classifyWithdrawalsInOrder({ entries: rows, baseOutputs });
+    }).pipe(Effect.either),
+  );
+
+describe("classification of the withdrawal rows ingestion stores (Postgres)", () => {
+  const ingested = [
+    { name: "an honest withdrawal", event: () => projectedWithdrawal() },
+    ...DEEP_PLUTUS_DATA_CASES.map((deep) => ({
+      name: `a withdrawal with a ${deep.shape} datum ${deep.depth} deep`,
+      event: async () =>
+        withInlineDatum(await projectedWithdrawal(), deepPlutusDataCbor(deep)),
+    })),
+    ...(["list", "constr"] as const).map((shape) => ({
+      name: `a withdrawal whose ${shape} datum is nested to the admission bound`,
+      event: async () => (await atAdmissionBound(shape)).event,
+    })),
+  ];
+
+  it.each(ingested)("reads the row of $name", async ({ event }) => {
+    const { rows } = await ingest(await event());
+    expect(rows).toHaveLength(1);
+    const result = await classified(rows);
+    if (result._tag === "Left") throw result.left;
+    // The helper's signature is not the owner's: a verdict on the signature
+    // shows every column it stored was read.
+    expect(result.right.map(({ validity }) => validity)).toEqual([
+      "IncorrectWithdrawalSignature",
+    ]);
   });
 });
