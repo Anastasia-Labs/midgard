@@ -1,5 +1,6 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { COMMITTEE_DECISION_PRUNE_FAILED } from "../src/committee-service.decision-pruning.js";
 import { CommitteeService } from "../src/committee-service.js";
@@ -14,6 +15,10 @@ import {
 } from "./helpers.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { fakeL1Source } from "./helpers/fake-l1-source.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /**
  * A tick prunes its deletable signed decisions after its signing and

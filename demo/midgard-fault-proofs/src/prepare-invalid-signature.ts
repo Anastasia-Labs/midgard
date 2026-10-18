@@ -38,7 +38,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { deriveMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
+import {
+  deriveMidgardNativeTxWitnessSetCompact,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
   decodeAddressWitnessPreimage,
@@ -236,6 +239,7 @@ export const prepareInvalidSignatureFromTransactions = async ({
   readonly txId?: string;
   readonly outputDir?: string;
 }): Promise<PreparedInvalidSignatureOutput> => {
+  await ledgerEd25519SignatureReady();
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot = parseHex(
     expectedTransactionsRoot,

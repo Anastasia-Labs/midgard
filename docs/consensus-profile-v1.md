@@ -251,8 +251,12 @@ bytes are an SDK input format, not the consensus identity: the SDK decodes
 them and emits the canonical term DAG. This removes an otherwise separate
 untrusted bytes-to-term interpretation from L1 consensus.
 
-The authoring decoder must round-trip to the exact canonical Flat bytes before
-the graph is accepted. UPLC 1.1.0 type-instantiation forces that the authoring
+The authoring decoder reads the raw Flat exactly as the Cardano ledger reads a
+Plutus V3 script at protocol version 11: it refuses every program Cardano
+refuses and accepts every spelling Cardano accepts, such as padded Flat words
+and non-minimal Data constant encodings. The graph commits each constant's
+value in canonical form, so every spelling of a program builds the same graph.
+UPLC 1.1.0 type-instantiation forces that the authoring
 library represents implicitly around polymorphic builtins are restored as
 explicit authenticated term nodes. Missing, duplicated, or otherwise
 non-canonical builtin forces therefore reject instead of being normalized into
@@ -446,7 +450,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196c`
+Profile digest: `271f645320284a52f09fd1a879453c09d0a738be1a042720d045c8faf9f5ccdb`
 
 ```json
 {
@@ -486,7 +490,7 @@ Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196
     "maxAddressWitnessesPreimageBytes": 32768,
     "maxCanonicalTransactionBytesPerBlock": 16777216,
     "maxCekBlobChunkBytes": 4095,
-    "maxCekBuiltinTag": 86,
+    "maxCekBuiltinTag": 100,
     "maxCekDirectBlsExpressionDepth": 10,
     "maxCekDirectBlsMillerLoopLeaves": 10,
     "maxCekProgramEnvelopeBytes": 50,

@@ -14,6 +14,7 @@ import {
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
+import { PLUTUS_SCRIPT_ITEM_KIND_WITNESS } from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
   acceptedTransactionSubject,
@@ -36,11 +37,14 @@ import {
   witnessScriptDecodingViolationId,
 } from "./workflow.witness-script-decoding-config-from-binding.js";
 
-/** Complete replay member: scans every accepted field-6 item and exact forced coordinate. */
-export const detectWitnessScriptDecodingCompleteReplay = (
+export type WitnessScriptDecodingReplayFinding = CanonicalViolationDetection &
+  Readonly<{ evidence: WitnessScriptDecodingEvidence }>;
+
+/** Every accepted field-6 item and exact forced coordinate that closes, with its evidence. */
+export const witnessScriptDecodingCompleteReplayFindings = (
   evidence: CanonicalBlockEvidence,
-): readonly CanonicalViolationDetection[] => {
-  const detections: CanonicalViolationDetection[] = [];
+): readonly WitnessScriptDecodingReplayFinding[] => {
+  const detections: WitnessScriptDecodingReplayFinding[] = [];
   for (const [
     transactionIndex,
     transaction,
@@ -77,6 +81,7 @@ export const detectWitnessScriptDecodingCompleteReplay = (
         violationId,
         position: BigInt(transactionIndex),
         diagnostic: `accepted transaction ${transactionId} has undecodable field-6 script ${scriptIndex.toString()}`,
+        evidence: prepared,
       });
     }
   }
@@ -96,7 +101,13 @@ export const detectWitnessScriptDecodingCompleteReplay = (
             ? reason.WitnessNativeScriptNodeLimit
             : "WitnessNativeScriptDepthLimit" in reason
               ? reason.WitnessNativeScriptDepthLimit
-              : undefined;
+              : "PlutusScriptUndecodable" in reason &&
+                  reason.PlutusScriptUndecodable.item_kind ===
+                    PLUTUS_SCRIPT_ITEM_KIND_WITNESS
+                ? {
+                    script_index: reason.PlutusScriptUndecodable.item_index,
+                  }
+                : undefined;
     if (payload === undefined) continue;
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       transaction.fullTransactionCbor,
@@ -142,10 +153,19 @@ export const detectWitnessScriptDecodingCompleteReplay = (
       violationId,
       position: BigInt(forcedIndex),
       diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for a decodable field-6 script ${scriptIndex.toString()}`,
+      evidence: prepared,
     });
   }
   return detections;
 };
+
+/** Complete replay member: scans every accepted field-6 item and exact forced coordinate. */
+export const detectWitnessScriptDecodingCompleteReplay = (
+  evidence: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] =>
+  witnessScriptDecodingCompleteReplayFindings(evidence).map(
+    ({ evidence: _evidence, ...detection }) => detection,
+  );
 
 export type WitnessScriptDecodingRuntimeLoader = Readonly<{
   config: LoadManifestBoundWitnessScriptDecodingConfig;

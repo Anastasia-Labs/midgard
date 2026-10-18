@@ -274,6 +274,7 @@ export const buildFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       fieldPreimageCertificate: shared.fieldPreimageCertificate,
+      scriptDecode: shared.scriptDecode,
       doubleSpend,
       nonExistentInput,
       noReferenceInput,

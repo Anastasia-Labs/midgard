@@ -31,6 +31,9 @@ export const landedBlockHook =
     readonly run: <A>(
       effect: Effect.Effect<A, never, R | Database>,
     ) => Promise<A>;
+    /** Called with each block's header hash once processing committed its
+     * row (`ProcessOptions.committed`). */
+    readonly committed?: (headerHash: string) => void;
     /** Publishes where `confirmed_ledger` stands after each run. */
     readonly publish?: Readonly<{
       depth: DepthParameters;
@@ -47,11 +50,14 @@ export const landedBlockHook =
     // A cursor read that fails only skips this run's fold prune.
     const cursor = await options.store.cursor().catch(() => null);
     const held = await options.run(
-      processLandedQueue(
-        options.ports,
-        read.queue,
-        cursor === null ? {} : { prunedThroughSlot: cursor.prunedThroughSlot },
-      ),
+      processLandedQueue(options.ports, read.queue, {
+        ...(cursor === null
+          ? {}
+          : { prunedThroughSlot: cursor.prunedThroughSlot }),
+        ...(options.committed === undefined
+          ? {}
+          : { committed: options.committed }),
+      }),
     );
     if (options.ports.bindRetained !== undefined)
       await options.run(options.ports.bindRetained(read.queue));

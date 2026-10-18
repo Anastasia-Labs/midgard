@@ -346,6 +346,31 @@ describe("watcher availability funding", () => {
       }),
     ).toThrow("separate plain-ADA collateral");
   });
+  it("types each refusal by the missing capital, with its amounts", () => {
+    const refused = (utxos: ReturnType<typeof utxo>[]) => {
+      try {
+        selectWatcherAvailabilityFunding({
+          utxos,
+          collateralLovelace: 5n,
+          openingLovelace: 100n,
+          requiredWorkingLovelace: 130n,
+        });
+      } catch (cause) {
+        return cause;
+      }
+      throw new Error("expected a refusal");
+    };
+    expect(refused([utxo(1, 100n)])).toMatchObject({
+      shortfall: "collateral",
+      requiredLovelace: 5n,
+      availableLovelace: 0n,
+    });
+    expect(refused([utxo(0, 5n), utxo(1, 100n)])).toMatchObject({
+      shortfall: "working-capital",
+      requiredLovelace: 130n,
+      availableLovelace: 100n,
+    });
+  });
   it("excludes reserved spending capital while allowing the actor's existing collateral", () => {
     const collateral = utxo(0, 5n);
     const reserved = utxo(1, 100n);

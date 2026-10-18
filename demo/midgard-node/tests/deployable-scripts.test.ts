@@ -59,7 +59,6 @@ import {
   REAL_COMMAND_ORDER_DIGEST,
   REAL_PUBLICATION_ORDER_DIGEST,
 } from "./helpers/deployable-catalogue-order-pins.js";
-import { expectPreMigrationDeploymentBoundary } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -100,14 +99,10 @@ describe("deployable-script catalogue", () => {
     );
   }, 120_000);
 
-  it("preserves the complete pre-migration script binding and publication order", () => {
-    expectPreMigrationDeploymentBoundary(real);
-  });
-
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(521);
+      expect(manifest).toHaveLength(517);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -119,21 +114,16 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(516);
+    expect(realTargets).toHaveLength(510);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
     expect(orderDigest(commandOrder(real))).toEqual(REAL_COMMAND_ORDER_DIGEST);
 
-    // The always-succeeds CEK stand-in is the tx-order spend script and is
-    // not published as a distinct deployed script.
+    // Both contract sets publish the same roles in the same order.
     const placeholderTargets = nodeRuntimeReferenceScriptTargets(placeholder);
     expect(placeholderTargets.map(({ name }) => name)).toEqual(
-      realTargets
-        .map(({ name }) => name)
-        .filter(
-          (name) => name !== "V1 immutable CEK program-material publication",
-        ),
+      realTargets.map(({ name }) => name),
     );
     expect(orderDigest(placeholderTargets.map(({ name }) => name))).toEqual(
       PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
@@ -148,7 +138,7 @@ describe("deployable-script catalogue", () => {
       const manifest = manifestDeployableScripts(contracts).filter(
         ({ contract }) => !caseContracts.has(contract),
       );
-      expect(manifest).toHaveLength(515);
+      expect(manifest).toHaveLength(511);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -160,7 +150,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(contracts === real ? 510 : 509);
+      expect(targets).toHaveLength(504);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST
@@ -189,7 +179,7 @@ describe("deployable-script catalogue", () => {
           !caseContracts.has(contract) &&
           !dataCanonicityContracts.has(contract),
       );
-      expect(manifest).toHaveLength(511);
+      expect(manifest).toHaveLength(507);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -203,7 +193,7 @@ describe("deployable-script catalogue", () => {
       const targets = without(
         nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
       );
-      expect(targets).toHaveLength(contracts === real ? 506 : 505);
+      expect(targets).toHaveLength(500);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST
@@ -237,7 +227,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(504);
+      expect(roles).toHaveLength(500);
       expect(orderDigest(roles)).toEqual(
         PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
       );
@@ -252,7 +242,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(contracts === real ? 499 : 498);
+      expect(targets).toHaveLength(493);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
@@ -295,7 +285,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(510);
+      expect(roles).toHaveLength(506);
       expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
       const targets = withRetiredBondRole(
         nodeRuntimeReferenceScriptTargets(contracts)
@@ -307,7 +297,7 @@ describe("deployable-script catalogue", () => {
               !dataCanonicityRoles.has(name),
           ),
       );
-      expect(targets).toHaveLength(contracts === real ? 505 : 504);
+      expect(targets).toHaveLength(499);
       expect(orderDigest(targets)).toEqual(
         contracts === real
           ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST

@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import {
   makeNativeTx,
@@ -6,7 +7,7 @@ import {
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import type { PhaseAConfig, QueuedTx } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   evaluateWatcherPhaseAQueuedTxs,
@@ -364,3 +365,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());

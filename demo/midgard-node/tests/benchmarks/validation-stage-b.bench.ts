@@ -452,7 +452,6 @@ const runPoolPhaseA = async (
     }
     cacheStats.push({
       workerThreadId: response.workerThreadId,
-      publicKeyCache: response.publicKeyCache,
       addressCache: response.addressCache,
     });
     for (const item of response.results) {
@@ -1232,7 +1231,7 @@ describe("Phase 2 sustained real-Postgres Stage B operator benchmark", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        { config: phaseAConfig, signatureVerifier: "node" },
+        { config: phaseAConfig },
       );
       const reports: StageBReplicaReport[] = [];
       const workerCacheStats = new Map<number, WorkerCacheSnapshot>();
@@ -1410,7 +1409,6 @@ describe("Phase 2 sustained real-Postgres Stage B operator benchmark", () => {
         expectedAccepted,
         expectedLedgerRows,
         poolSize,
-        signatureVerifier: "node",
         drainLoops,
         batchSize,
         chunkSize,

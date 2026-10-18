@@ -6,9 +6,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
     fraudProofNativeScriptDecoding: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof native-script-decoding step-01",
-      manifestPosition: 201,
-      publicationPosition: 107,
-      referenceRolePosition: 69,
+      manifestPosition: 202,
+      publicationPosition: 108,
+      referenceRolePosition: 70,
       commands: [],
       validatorTitle: "fraud_proofs/native_script_decoding/step_01.main.spend",
       familyPaths: [["firstStep"], ["steps", "0"]],
@@ -16,9 +16,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
     fraudProofNativeScriptDecodingStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof native-script-decoding step-02",
-      manifestPosition: 202,
-      publicationPosition: 108,
-      referenceRolePosition: 70,
+      manifestPosition: 203,
+      publicationPosition: 109,
+      referenceRolePosition: 71,
       commands: [],
       validatorTitle: "fraud_proofs/native_script_decoding/step_02.main.spend",
       familyPaths: [["steps", "1"]],
@@ -27,9 +27,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof native-script-decoding step-03 open-subject",
-      manifestPosition: 203,
-      publicationPosition: 109,
-      referenceRolePosition: 71,
+      manifestPosition: 204,
+      publicationPosition: 110,
+      referenceRolePosition: 72,
       commands: [],
       validatorTitle:
         "fraud_proofs/native_script_decoding/step_03_open_subject.main.spend",
@@ -39,9 +39,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof native-script-decoding step-03 bind-descriptor",
-      manifestPosition: 204,
-      publicationPosition: 110,
-      referenceRolePosition: 72,
+      manifestPosition: 205,
+      publicationPosition: 111,
+      referenceRolePosition: 73,
       commands: [],
       validatorTitle:
         "fraud_proofs/native_script_decoding/step_03_bind_descriptor.main.spend",
@@ -51,9 +51,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof native-script-decoding step-03 advance-or-close",
-      manifestPosition: 205,
-      publicationPosition: 111,
-      referenceRolePosition: 73,
+      manifestPosition: 206,
+      publicationPosition: 112,
+      referenceRolePosition: 74,
       commands: [],
       validatorTitle:
         "fraud_proofs/native_script_decoding/step_03_advance_or_close.main.spend",
@@ -62,9 +62,9 @@ export const nativeScriptDecodingMembers = defineDeploymentFamily(
     fraudProofNativeScriptDecodingStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof native-script-decoding step-04",
-      manifestPosition: 206,
-      publicationPosition: 112,
-      referenceRolePosition: 74,
+      manifestPosition: 207,
+      publicationPosition: 113,
+      referenceRolePosition: 75,
       commands: [],
       validatorTitle: "fraud_proofs/native_script_decoding/step_04.main.spend",
       familyPaths: [["steps", "5"]],

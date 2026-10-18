@@ -23,8 +23,6 @@ export {
   CardanoDatum,
   CardanoDatumSchema,
   castConfirmedStateToData,
-  CekProgramMaterialDatum,
-  CekProgramMaterialDatumSchema,
   ConfirmedState,
   confirmedStateNextHeaderProtocolVersion,
   ConfirmedStateSchema,

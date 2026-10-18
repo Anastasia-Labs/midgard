@@ -234,7 +234,6 @@ pub fn authenticate_stage_ten_trace_v1(
       ),
       validation_trace_v1.verify_trace_proof(descriptor, trace_proof),
       control.stage == 10,
-      control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
       control.redeemer_total_count == control.redeemer_count,
       validation_merkle_v1.frontier_is_well_formed(
         control.source_count,

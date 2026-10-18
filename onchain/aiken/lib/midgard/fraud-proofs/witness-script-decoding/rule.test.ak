@@ -7,9 +7,11 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/witness_script_decoding/rule
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
-  RejectionReasonV1, WitnessNativeScriptDepthLimit, WitnessNativeScriptMalformed,
-  WitnessNativeScriptNodeLimit, WitnessScriptHeaderMalformed,
+  PlutusScriptUndecodable, RejectionReasonV1, WitnessNativeScriptDepthLimit,
+  WitnessNativeScriptMalformed, WitnessNativeScriptNodeLimit,
+  WitnessScriptHeaderMalformed,
 }
+use midgard/script_decode_v1.{Decoded, ScriptDecodeRecordV1}
 use midgard/validation_merkle_v1
 
 const accepted_tx_id =
@@ -90,16 +92,19 @@ test distinguishes_header_payload_and_non_native_results() {
     bound,
     fixture.malformed_wrapper_item_v1(),
     scan_hash,
+    None,
   )
   let payload = rule.authenticate_item_v1(
     bound,
     fixture.malformed_payload_item_v1(),
     scan_hash,
+    None,
   )
   let plutus = rule.authenticate_item_v1(
     bound,
     fixture.plutus_script_item_v1(),
     scan_hash,
+    Some(fixture.plutus_script_record_v1(0)),
   )
   and {
     header.result_class == rule.result_header_malformed,
@@ -114,7 +119,7 @@ test distinguishes_header_payload_and_non_native_results() {
 test frozen_scan_reaches_exact_terminal_through_authenticated_chunk() {
   let item = fixture.signature_script_item_v1()
   let bound = rule.bind_subject_v1(accepted_subject(), witness_hash, 0)
-  let state = rule.authenticate_item_v1(bound, item, scan_hash)
+  let state = rule.authenticate_item_v1(bound, item, scan_hash, None)
   let control = native_script_scan_v1.decode_structure_control_v1(
     state.control_cbor,
   )
@@ -131,7 +136,7 @@ test frozen_scan_reaches_exact_terminal_through_authenticated_chunk() {
 test frozen_scan_preserves_native_malformed_class() {
   let item = fixture.malformed_payload_item_v1()
   let bound = rule.bind_subject_v1(accepted_subject(), witness_hash, 0)
-  let state = rule.authenticate_item_v1(bound, item, scan_hash)
+  let state = rule.authenticate_item_v1(bound, item, scan_hash, None)
   let control = native_script_scan_v1.decode_structure_control_v1(
     state.control_cbor,
   )
@@ -148,7 +153,7 @@ test frozen_scan_preserves_native_malformed_class() {
 test refuses_a_substituted_item_chunk() fail {
   let item = fixture.signature_script_item_v1()
   let bound = rule.bind_subject_v1(accepted_subject(), witness_hash, 0)
-  let state = rule.authenticate_item_v1(bound, item, scan_hash)
+  let state = rule.authenticate_item_v1(bound, item, scan_hash, None)
   let control = native_script_scan_v1.decode_structure_control_v1(
     state.control_cbor,
   )
@@ -168,6 +173,7 @@ test checkpoint_binds_the_next_expected_script() {
     bound,
     fixture.signature_script_item_v1(),
     scan_hash,
+    None,
   )
   and {
     rule.state_is_authentic_v1(state),
@@ -187,6 +193,7 @@ test closes_both_verdict_directions_with_exact_polarity() {
     accepted_bound,
     fixture.malformed_wrapper_item_v1(),
     scan_hash,
+    None,
   )
   let accepted_closed = rule.closed_state_v1(
     malformed,
@@ -202,6 +209,7 @@ test closes_both_verdict_directions_with_exact_polarity() {
     forced_bound,
     fixture.signature_script_item_v1(),
     scan_hash,
+    None,
   )
   let forced_closed = rule.closed_state_v1(
     valid,
@@ -220,6 +228,7 @@ test honest_verdicts_do_not_convict() {
     accepted_bound,
     fixture.plutus_script_item_v1(),
     scan_hash,
+    Some(fixture.plutus_script_record_v1(0)),
   )
   let accepted_closed = rule.closed_state_v1(
     valid,
@@ -235,6 +244,7 @@ test honest_verdicts_do_not_convict() {
     forced_bound,
     fixture.malformed_wrapper_item_v1(),
     scan_hash,
+    None,
   )
   let forced_closed = rule.closed_state_v1(
     malformed,
@@ -380,6 +390,7 @@ test empty_tag0_payload_is_the_native_malformed_class() {
     rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
     item,
     scan_hash,
+    None,
   )
   let honest = rule.authenticate_item_v1(
     rule.bind_subject_v1(
@@ -389,11 +400,13 @@ test empty_tag0_payload_is_the_native_malformed_class() {
     ),
     item,
     scan_hash,
+    None,
   )
   let wrong_class = rule.authenticate_item_v1(
     rule.bind_subject_v1(forced_header_subject(), witness_hash, 0),
     item,
     scan_hash,
+    None,
   )
   and {
     accepted.result_class == rule.result_native_malformed,
@@ -445,6 +458,7 @@ test binds_every_accused_class_and_contradicts_only_a_different_result() {
         bound,
         fixture.signature_script_item_v1(),
         scan_hash,
+        None,
       )
       let other = if accused == rule.result_node_limit {
         rule.result_depth_limit
@@ -489,6 +503,7 @@ test refuses_a_malformed_checkpoint() fail {
       rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
       fixture.malformed_wrapper_item_v1(),
       scan_hash,
+      None,
     ),
     rule.result_header_malformed,
     final_hash,
@@ -508,6 +523,7 @@ test refuses_a_substituted_successor_in_the_checkpoint() fail {
     rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
     fixture.signature_script_item_v1(),
     scan_hash,
+    None,
   )
   let rerouted = rule.WitnessScriptScanStateV1 {
     ..state,
@@ -525,9 +541,148 @@ test closed_non_native_result_is_honest_for_an_accepted_block() {
       rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
       fixture.plutus_script_item_v1(),
       scan_hash,
+      Some(fixture.plutus_script_record_v1(0)),
     ),
     rule.result_no_fault,
     final_hash,
   )
   !rule.terminal_contradiction_v1(state)
+}
+
+// ## Plutus items: the decode record
+
+/// The closed state of the Plutus witness script under `subject` and `record`.
+fn plutus_closed(
+  subject: substrate.VerdictSubjectV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> rule.WitnessScriptScanStateV1 {
+  let state = rule.authenticate_item_v1(
+    rule.bind_subject_v1(subject, witness_hash, 0),
+    fixture.plutus_script_item_v1(),
+    scan_hash,
+    record,
+  )
+  rule.closed_state_v1(state, state.result_class, final_hash)
+}
+
+fn undecodable(class: Int) -> substrate.VerdictSubjectV1 {
+  forced_subject_with(
+    PlutusScriptUndecodable { item_kind: 0, item_index: 0, class },
+  )
+}
+
+test plutus_item_closes_with_its_decode_record_class() {
+  let decoded = plutus_closed(
+    accepted_subject(),
+    Some(fixture.plutus_script_record_v1(0)),
+  )
+  let refused = plutus_closed(
+    accepted_subject(),
+    Some(fixture.plutus_script_record_v1(5)),
+  )
+  and {
+    decoded.result_class == rule.result_no_fault,
+    refused.result_class == rule.result_plutus_refused_base + 5,
+    rule.state_is_authentic_v1(decoded),
+    rule.state_is_authentic_v1(refused),
+  }
+}
+
+/// An accepted block carrying a script Cardano refuses to decode convicts;
+/// one carrying a decodable script does not.
+test plutus_refusal_convicts_an_accepted_block() {
+  and {
+    rule.terminal_contradiction_v1(
+      plutus_closed(
+        accepted_subject(),
+        Some(fixture.plutus_script_record_v1(16)),
+      ),
+    ),
+    !rule.terminal_contradiction_v1(
+      plutus_closed(
+        accepted_subject(),
+        Some(fixture.plutus_script_record_v1(0)),
+      ),
+    ),
+  }
+}
+
+/// A forced rejection naming the record's class is honest; a different class
+/// or a decodable script convicts it.
+test plutus_undecodable_rejection_convicts_only_a_different_result() {
+  let bound = rule.bind_subject_v1(undecodable(16), witness_hash, 0)
+  and {
+    bound.accused_class == rule.result_plutus_refused_base + 16,
+    !rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(16))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(15))),
+    ),
+    rule.terminal_contradiction_v1(
+      plutus_closed(undecodable(16), Some(fixture.plutus_script_record_v1(0))),
+    ),
+  }
+}
+
+/// A native item named as undecodable Plutus closes with its native result,
+/// which differs from every Plutus class.
+test plutus_undecodable_rejection_of_a_native_item_convicts() {
+  let state = rule.authenticate_item_v1(
+    rule.bind_subject_v1(undecodable(1), witness_hash, 0),
+    fixture.malformed_wrapper_item_v1(),
+    scan_hash,
+    None,
+  )
+  rule.terminal_contradiction_v1(
+    rule.closed_state_v1(state, state.result_class, final_hash),
+  )
+}
+
+test refuses_a_plutus_item_without_its_record() fail {
+  expect _ = plutus_closed(accepted_subject(), None)
+  True
+}
+
+test refuses_another_scripts_record() fail {
+  let other = Decoded {
+    script_hash: final_hash,
+    language: 3,
+    program_version: 1,
+    term_root: #"",
+    phase2_class: 0,
+  }
+  expect _ = plutus_closed(accepted_subject(), Some(other))
+  True
+}
+
+test refuses_a_record_for_a_native_item() fail {
+  expect _ = rule.authenticate_item_v1(
+    rule.bind_subject_v1(accepted_subject(), witness_hash, 0),
+    fixture.signature_script_item_v1(),
+    scan_hash,
+    Some(fixture.plutus_script_record_v1(0)),
+  )
+  True
+}
+
+test refuses_an_output_item_kind() fail {
+  expect _ = rule.bind_subject_v1(
+    forced_subject_with(
+      PlutusScriptUndecodable { item_kind: 1, item_index: 0, class: 1 },
+    ),
+    witness_hash,
+    0,
+  )
+  True
+}
+
+test refuses_an_undecodable_coordinate_substitution() fail {
+  expect _ = rule.bind_subject_v1(undecodable(1), witness_hash, 1)
+  True
+}
+
+test refuses_an_undecodable_class_zero() fail {
+  expect _ = rule.bind_subject_v1(undecodable(0), witness_hash, 0)
+  True
 }

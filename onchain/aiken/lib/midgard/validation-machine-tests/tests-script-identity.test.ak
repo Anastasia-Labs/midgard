@@ -19,14 +19,12 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_a, h_b, h_c, validation_context_cbor, zero,
 }
-use midgard/validation_machine_tests/fixtures_cek.{
-  maximum_program_envelope_selection_is_exact,
-}
+use midgard/validation_machine_tests/fixtures_cek.{plutus_selection_is_exact}
 use midgard/validation_machine_tests/fixtures_ledger.{zero_filler_bytes}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   canonical_step_fixture, empty_v1_transaction, inline_field_carriage,
   inline_field_door, one_step_evidence, script_discovery_step_fixture,
-  submitted_source, v1_program_envelope,
+  submitted_source, v1_plutus_script,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   crossing_inline_source_hash_fixture, stage_zero_hash_block_checks_binding,
@@ -196,13 +194,13 @@ test maximum_script_program_instruction_evidence_is_bounded() {
   )
   and {
     bytearray.length(cbor.serialise(evidence)) < 16_384,
-    maximum_program_envelope_selection_is_exact(),
+    plutus_selection_is_exact(0),
   }
 }
 
 test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -259,7 +257,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
 
 test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -310,7 +308,7 @@ test script_sources_stage_zero_hash_block_refuses_a_substituted_source() fail {
 
 test script_sources_stage_zero_advances_an_inline_hash_round() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -373,7 +371,7 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
 
 test script_sources_stage_zero_commits_the_terminal_script_identity() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,

@@ -8,7 +8,10 @@ import "./availability-challenge-operation.reconcile.js";
 import "./availability-challenge-operation.reconcile-da-availability-operations.js";
 import "./availability-challenge-operation.create-da-availability-operation-observer.js";
 import "./availability-challenge-operation.run-da-availability-operation.js";
-export { buildDaAvailabilityFundingPreparationTx } from "./availability-challenge-operation.build-da-availability-funding-preparation-tx.js";
+export {
+  buildDaAvailabilityFundingPreparationTx,
+  type DaAvailabilityFundingPreparationInput,
+} from "./availability-challenge-operation.build-da-availability-funding-preparation-tx.js";
 export {
   createDaAvailabilityOperationObserver,
   type DaAvailabilityOperationBuild,

@@ -30,11 +30,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        resolved_reference_source_count,
-      }) -> {
+      ct.Continue(Args { input_index, output_index }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let _, _, _, input_state, output_hash, output_state <- continue(
@@ -48,10 +44,7 @@ validator main(
         )
         expect Some(staged) = input_state
         let expected: Data = initial_scan_v1(
-          authenticate_resolved_sources_v1(
-            staged,
-            resolved_reference_source_count,
-          ),
+          authenticate_resolved_sources_v1(staged),
           step_05_validator_script_hash,
         )
         and {

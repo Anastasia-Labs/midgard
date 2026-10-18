@@ -45,8 +45,8 @@ pub type OperatorVerdictV1 {
   ForcedTxInvalid { reason: RejectionReasonV1 }
 }
 
-/// The full space of operator rejection reasons — 48 constructors (arms
-/// 0–47), one per (reason, subject-space) pair. Declaration order is
+/// The full space of operator rejection reasons — 49 constructors (arms
+/// 0–48), one per (reason, subject-space) pair. Declaration order is
 /// wire-normative (catalogue §5/§6); arm 47 `MintItemMalformed` is the first
 /// arm of the T238 wave and new arms only ever append.
 pub type RejectionReasonV1 {
@@ -193,6 +193,13 @@ pub type RejectionReasonV1 {
   /// Field-5 mint item is non-canonical (policy or asset-name misorder).
   /// policy_index: field-5 item ordinal of the offending policy.
   MintItemMalformed { policy_index: Int }
+
+  // ── ScriptDecode (Plutus) ──────────────────────────────────────────
+  /// A Plutus script item whose program Cardano refuses to decode.
+  /// item_kind: 0 = field-6 witness script, 1 = field-2 output reference
+  /// script. item_index: that field's item ordinal. class: the decode
+  /// record's refusal class (1–17).
+  PlutusScriptUndecodable { item_kind: Int, item_index: Int, class: Int }
 }
 
 /// True when `reason` is an execution-scoped arm (35–38, 40, 41) whose purpose

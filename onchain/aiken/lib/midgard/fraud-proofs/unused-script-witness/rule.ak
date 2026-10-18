@@ -118,7 +118,7 @@ fn decode_frontier(items: List<Data>) -> List<validation_merkle_v1.FrontierPeak>
 fn decode_terminal_control(
   witness: TerminalScriptSourcesWitnessV1,
 ) -> TerminalScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness.witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness.witness_cbor)
   expect
       [
         compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor,
@@ -128,7 +128,7 @@ fn decode_terminal_control(
         discovery_cbor,
       ]
     = builtin.un_list_data(data)
-  let discovery_data <- cbor_deserialise.expect_deserialise(
+  let discovery_data <- cbor_deserialise.expect_deserialise_envelope(
     builtin.un_b_data(discovery_cbor),
   )
   expect

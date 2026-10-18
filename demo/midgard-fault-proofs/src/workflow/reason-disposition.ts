@@ -94,6 +94,11 @@ export const TYPED_REASON_DISPOSITIONS = Object.freeze({
   OutputBelowMinAda: direct("minAda"),
   ValueNotPreserved: direct("valueNotPreserved"),
   MintItemMalformed: direct("mintItemNonCanonical"),
+  // ScriptDecode
+  PlutusScriptUndecodable: direct(
+    "witnessScriptDecoding",
+    "outputReferenceScriptDecoding",
+  ),
 }) satisfies Readonly<Record<string, TypedReasonDisposition>>;
 
 export type TypedReasonArm = keyof typeof TYPED_REASON_DISPOSITIONS;

@@ -42,7 +42,7 @@ validator main(
             cek.execution_cursor < cek.control.execution_count,
             cek.execution_cpu_limit == 0,
             cek.execution_memory_limit == 0,
-            cek.program_envelope_hash == context.program_envelope_hash,
+            cek.program_script_hash == context.script_hash,
             cek.context_control_cbor == witness.encode_cek_context_control_v1(
               context,
             ),

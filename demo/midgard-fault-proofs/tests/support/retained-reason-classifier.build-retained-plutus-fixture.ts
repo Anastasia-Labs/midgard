@@ -104,6 +104,7 @@ const buildRetainedPlutusFixture = async (
   const output = encodeMidgardTxOutput({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
     value,
+    ...(options.outputReferenceScript === true ? { script_ref: script } : {}),
   });
   const redeemer = encodeMidgardRedeemerWitnessItem({
     purpose: "Spend",
@@ -122,7 +123,10 @@ const buildRetainedPlutusFixture = async (
           validityIntervalStart: options.validityInterval.start,
           validityIntervalEnd: options.validityInterval.end,
         }),
-    scriptWitnesses: [encodeMidgardVersionedScript(script)],
+    scriptWitnesses: [
+      encodeMidgardVersionedScript(script),
+      ...(options.extraScriptWitnesses ?? []),
+    ],
     redeemerWitnesses: [redeemer],
     scriptIntegrityHash: computeScriptIntegrityHashForLanguages(
       midgardFieldCommitment(encodeMidgardFieldPreimage([redeemer])),

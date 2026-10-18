@@ -60,7 +60,7 @@
     "@al-ft/l1-node-transport": "workspace:*",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
-    "@lucid-evolution/lucid": "0.8.0",
+    "@lucid-evolution/lucid": "0.8.3",
     "@noble/hashes": "^2.0.1",
     "fast-check": "^4.5.3",
     "pg": "^8.21.0",
@@ -112,9 +112,6 @@
         {
           "kind": "build",
           "package": "@al-ft/midgard-core"
-        },
-        {
-          "kind": "blueprint"
         },
         {
           "kind": "postgres"

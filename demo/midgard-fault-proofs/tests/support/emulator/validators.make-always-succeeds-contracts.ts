@@ -62,6 +62,8 @@ export const makeAlwaysSucceedsContracts = (
   const appendedFamilyFallback = makeSpendingValidator(
     alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
   );
+  // The always-succeeds state-queue pair stands in for the script-decode one.
+  const scriptDecode = alwaysAuthenticated(blueprint, "state_queue");
   const transitionTraceYield = () =>
     makeWithdrawalValidator(transitionTraceFirstStep.spendingScriptCBOR);
   const fraudProofContracts: FaultProofContractChains = {
@@ -152,17 +154,11 @@ export const makeAlwaysSucceedsContracts = (
         ledgerOutputDescriptorValueSummary: reserve,
         phaseANativeItemNative: reserve,
         phaseANativeItemForeign: reserve,
-        cekMaterialProgramTask: reserve,
-        cekMaterialDataTask: reserve,
         valueAndMintAssetFold: reserve,
         cekSelectionAuthenticate: reserve,
         cekSelectionSuccessor: reserve,
-        cekSelectionMaterialProgram: reserve,
-        cekSelectionMaterialData: reserve,
       },
       disputeBond: alwaysValidationTraceDispute,
-      cekProgramMaterial: alwaysValidationTraceDispute,
-      cekMaterialTraversal: alwaysValidationTraceDispute,
       cekContextStages: {
         settle: alwaysValidationTraceDispute,
         control: alwaysValidationTraceDispute,
@@ -475,7 +471,7 @@ export const makeAlwaysSucceedsContracts = (
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
     fieldPreimageCertificate: fieldPreimageCertificateV1,
-    cekProgramMaterial: fieldPreimage,
+    scriptDecode,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,
     payout: alwaysAuthenticated(blueprint, "payout"),

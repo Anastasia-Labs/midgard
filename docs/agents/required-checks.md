@@ -135,6 +135,7 @@ These modules serve preflight only. They select tooling self-tests instead
 of repeating unchanged protocol suites; Repo Tools CI remains required.
 Shared probes, artifact derivation, package execution and unknown new
 preflight helpers retain full scope. `--full` still runs every check locally.
+
 - `scripts/preflight.mjs`
 - `scripts/preflight/run.mjs`
 - `scripts/preflight/registry.mjs`
@@ -611,6 +612,25 @@ Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:rejection-reason-v1`
+
+Golden channel rejection-reason-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs`
+  - `demo/flake.lock`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json`
+  - `onchain/aiken/lib/midgard/rejection-reason-v1.ak`
+  - `scripts/lib/aiken.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
 ### `golden:ordered-collection-boundary-aiken`
 
 Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
@@ -755,6 +775,86 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/l1-node-transport/src/**`
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:plutus-data-cbor-decoding-v1`
+
+Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:script-decode-step-v1`
+
+Golden channel script-decode-step-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.bulk-data.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.writers.mjs`
+  - `onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:script-decode-haskell-v1`
+
+Golden channel script-decode-haskell-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs`
+  - `demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.bulk-data.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.writers.mjs`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
 
 ### `golden:ledger-output-proof-replay`
 

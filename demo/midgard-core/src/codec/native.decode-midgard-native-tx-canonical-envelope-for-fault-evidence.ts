@@ -221,6 +221,52 @@ export const decodeMidgardNativeTxProofFieldLengths = (
   });
 };
 
+const MAX_UINT64 = 2n ** 64n - 1n;
+
+/**
+ * The nine field-preimage lengths as exact unsigned 64-bit integers: the whole
+ * range the on-chain `da-hash-preimage` rule admits, with no narrowing to the
+ * JavaScript safe-integer range. Adjudicating a committed proof source must
+ * use this form, so a source the chain accepts is never called malformed.
+ */
+export const decodeMidgardNativeTxProofFieldLengthsExact = (
+  fieldPreimageLengthsCbor: Uint8Array,
+): readonly bigint[] =>
+  asFixedArray(
+    decodeSingleCbor(fieldPreimageLengthsCbor),
+    9,
+    "proof_source.field_preimage_lengths",
+  ).map((value, index) => {
+    const length = asUnsigned(
+      value,
+      `proof_source.field_preimage_lengths[${index.toString()}]`,
+    );
+    if (length > MAX_UINT64) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        "V1 field-preimage length exceeds 64 bits",
+        `index=${index.toString()},length=${length.toString()}`,
+      );
+    }
+    return length;
+  });
+
+/** The canonical encoding of nine exact unsigned 64-bit field lengths. */
+export const encodeMidgardNativeTxProofFieldLengthsExact = (
+  lengths: readonly bigint[],
+): Buffer => {
+  if (
+    lengths.length !== 9 ||
+    lengths.some((length) => length < 0n || length > MAX_UINT64)
+  ) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "V1 field-preimage lengths must contain exactly nine unsigned 64-bit integers",
+    );
+  }
+  return encodeCbor([...lengths]);
+};
+
 /**
  * The nine field-preimage byte lengths **in `docs/spec/midgard-tx.md` §2.4 wire
  * order** — which is not the record's declaration order.

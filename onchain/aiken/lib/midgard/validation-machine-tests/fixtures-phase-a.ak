@@ -10,7 +10,6 @@ use midgard/cek_context_chain as context_chain
 use midgard/cek_context_observer as bounded_observer
 use midgard/cek_context_step as bounded_context
 use midgard/cek_data_v1
-use midgard/cek_proof_v1
 use midgard/forced_submission_fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, forced_tx_proof_commitment_v1,
@@ -36,8 +35,7 @@ use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_a, h_b, h_c, maximum_mint_policy_item_cbor, validation_context_cbor,
-  zero,
+  h_28_a, h_a, h_c, maximum_mint_policy_item_cbor, validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixture_types.{
   AuthenticatedOutputMaterialV1,
@@ -167,8 +165,10 @@ pub fn maximum_mint_preimage_cbor() -> ByteArray {
   )
 }
 
-pub fn v1_program_envelope() -> ByteArray {
-  cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_a, 3, 144)
+/// A PlutusV3 script as Cardano carries it: the CBOR byte string wrapping a
+/// Flat program (the blueprint's `always succeeds` 1.1.0 program).
+pub fn v1_plutus_script() -> ByteArray {
+  #"5001010023259800b452689b2b20025735"
 }
 
 pub fn empty_mpf_proof_descriptor() -> mpf_proof_fold_v1.ProofDescriptorV1 {
@@ -1524,10 +1524,10 @@ pub fn cek_state_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let program_envelope_hash = if context_control_cbor == #"" {
+  let program_script_hash = if context_control_cbor == #"" {
     #""
   } else {
-    h_b
+    vm_witness.cek_context_control_from_cbor(context_control_cbor).script_hash
   }
   let work_witness_cbor = vm_witness.encode_cek_witness_v1(
     control,
@@ -1538,7 +1538,7 @@ pub fn cek_state_fixture(
     #"",
     0,
     0,
-    program_envelope_hash,
+    program_script_hash,
     -1,
     -1,
   )
@@ -1564,7 +1564,6 @@ pub fn empty_cek_context_control_fixture(
     stage,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,

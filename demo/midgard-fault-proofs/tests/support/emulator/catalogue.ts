@@ -13,6 +13,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
+import { encodePhasMembershipProofRedeemer } from "../../../src/index.js";
+
 export const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -29,6 +31,24 @@ export const encodeCatalogueKey = (id: string): Buffer =>
 
 export const encodeCatalogueValue = (scriptHash: string): Buffer =>
   Buffer.from(Data.to(scriptHash, asLucidSchema(ScriptHashSchema)), "hex");
+
+export const encodeCatalogueMembershipRedeemer = ({
+  root,
+  categoryId: id,
+  categoryScriptHash,
+  membershipProofCbor,
+}: {
+  readonly root: string;
+  readonly categoryId: string;
+  readonly categoryScriptHash: string;
+  readonly membershipProofCbor: string;
+}): string =>
+  encodePhasMembershipProofRedeemer({
+    root,
+    keyCbor: Data.to(id, asLucidSchema(categoryIdSchema)),
+    valueCbor: Data.to(categoryScriptHash, asLucidSchema(ScriptHashSchema)),
+    membershipProofCbor,
+  });
 
 export const trieRootHex = (trie: Trie): string =>
   trie.hash == null

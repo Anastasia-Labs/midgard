@@ -20,6 +20,7 @@ import { validateRetentionDays } from "../database/retention-policy.js";
 import { blockExUnitsBudgetConfig } from "./config.block-ex-units-budget.js";
 import { httpIngressConfig } from "./config.http-proxy-peers.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
+import { importCheckConfig } from "./config.import-check.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
 import {
@@ -201,6 +202,7 @@ const makeConfig = Effect.gen(function* () {
   );
   const nodeBehind = yield* nodeBehindConfig;
   const blockExUnitsBudget = yield* blockExUnitsBudgetConfig;
+  const importCheck = yield* importCheckConfig;
   const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
     "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
   ).pipe(Config.withDefault(12_000));
@@ -261,9 +263,6 @@ const makeConfig = Effect.gen(function* () {
     "VALIDATION_WORKER_JOB_TIMEOUT_MS",
     30_000,
   );
-  const validationWorkerNodeEd25519 = yield* Config.boolean(
-    "VALIDATION_WORKER_NODE_ED25519",
-  ).pipe(Config.withDefault(true));
   const validationDrainLoops = yield* boundedValidationInteger(
     "VALIDATION_DRAIN_LOOPS",
     4,
@@ -920,7 +919,6 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_WORKER_CHUNK_SIZE: validationWorkerChunkSize,
     VALIDATION_WORKER_INLINE_THRESHOLD: validationWorkerInlineThreshold,
     VALIDATION_WORKER_JOB_TIMEOUT_MS: validationWorkerJobTimeoutMs,
-    VALIDATION_WORKER_NODE_ED25519: validationWorkerNodeEd25519,
     VALIDATION_DRAIN_LOOPS: validationDrainLoops,
     VALIDATION_LEDGER_DELTA_LOG_MAX: validationLedgerDeltaLogMax,
     TX_QUEUE_POLL_INTERVAL_MS: txQueuePollIntervalMs,
@@ -957,6 +955,7 @@ const makeConfig = Effect.gen(function* () {
     COMMIT_EVENT_DEPTH: DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth,
     ...nodeBehind,
     BLOCK_EX_UNITS_BUDGET: blockExUnitsBudget,
+    IMPORT_CHECK: importCheck,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,

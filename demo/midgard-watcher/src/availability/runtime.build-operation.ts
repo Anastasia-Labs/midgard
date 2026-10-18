@@ -140,9 +140,10 @@ export const buildWatcherAvailabilityOperation = async (
       openingLovelace + parameters.max_open_fee_lovelace + minChange;
     if (funds.funding.assets.lovelace < preparing) {
       throw new WatcherAvailabilityCapitalShortfall(
-        "Availability funding needs one input large enough to prepare the exact challenger bond",
+        `Availability funding needs one input large enough to prepare the exact challenger bond: one ADA-only coin with no datum of at least ${preparing.toString()} lovelace (opening input ${openingLovelace.toString()} + preparation fee ${parameters.max_open_fee_lovelace.toString()} + change ${minChange.toString()}); the largest holds ${funds.funding.assets.lovelace.toString()}`,
         preparing,
         funds.funding.assets.lovelace,
+        "preparation-input",
       );
     }
     return {
@@ -151,7 +152,7 @@ export const buildWatcherAvailabilityOperation = async (
         SDK.buildDaAvailabilityFundingPreparationTx(
           buildLucid,
           {
-            fundingInput: funds.funding,
+            walletInputs: [funds.funding],
             outputLovelace: openingLovelace,
             feeLovelace: parameters.max_open_fee_lovelace,
             ...watcherAvailabilityValidity(),

@@ -1,11 +1,18 @@
 /**
- * Differential tests for the iterative Plutus Data reader, writer and memory
- * size against the code they replace: the pinned harmonic `dataFromCbor` for the
- * reader (same accept/reject decision and the same value, byte-string array
- * class included) and the old recursive encoder and memory function, vendored
- * in `plutus-data-iterative.recursive-oracles.ts`, for the other two
+ * The iterative Plutus Data reader against the Cardano ledger's decoder
+ * (`decodeData` in plutus-core 1.66 `PlutusCore/Data.hs`, run over the whole
+ * input), and the iterative writer and memory size against the recursive
+ * code they replace, vendored in `plutus-data-iterative.recursive-oracles.ts`
  * (byte-identical output, equal sizes).
+ *
+ * The expected decoder outcomes were produced by that plutus-core decoder and
+ * are pinned, so this test needs no Haskell toolchain: each edge vector's value
+ * (rendered by `render`) or refusal in
+ * `fixtures/plutus-data-cbor-decoding-v1.vectors.mjs`, and here, for the seeded
+ * inputs, the accepted count and a SHA-256 over every rendered outcome.
  */
+import { createHash } from "node:crypto";
+
 import {
   makeFuzzRng,
   PLUTUS_DATA_EDGE_INTEGERS,
@@ -16,7 +23,6 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
   DataMap,
@@ -27,7 +33,10 @@ import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
 import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
 import {
-  harmonicDataDifference,
+  PLUTUS_DATA_CARDANO_EDGE_VECTORS,
+  REFUSED,
+} from "./fixtures/plutus-data-cbor-decoding-v1.vectors.mjs";
+import {
   recursiveEncodeMidgardCekPlutusData,
   recursiveMidgardCekDataMemorySize,
 } from "./plutus-data-iterative.recursive-oracles.js";
@@ -49,22 +58,23 @@ const SEEDED_TIMEOUT_MS = 120_000;
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
-/** Checks one input as a Uint8Array and as a Buffer; returns the verdict. */
-const compareDecoders = (bytes: Uint8Array): boolean => {
-  let accepted = false;
-  for (const input of [Uint8Array.from(bytes), Buffer.from(bytes)]) {
-    const expected = attempt(() => dataFromCbor(input));
-    const actual = attempt(() => plutusDataFromCborIterative(input));
-    const label = `${hex(bytes)} as ${input.constructor.name}`;
-    expect(actual.accepted, label).toBe(expected.accepted);
-    if (expected.accepted && actual.accepted) {
-      expect(harmonicDataDifference(expected.value, actual.value), label).toBe(
-        undefined,
-      );
-      accepted = true;
-    }
+/** The rendering the pinned plutus-core outcomes use. */
+const render = (value: Data): string => {
+  if (value instanceof DataI) return `I ${value.int.toString()}`;
+  if (value instanceof DataB) return `B ${hex(value.bytes)}`;
+  if (value instanceof DataList)
+    return `L[${value.list.map(render).join(",")}]`;
+  if (value instanceof DataMap) {
+    return `M[${value.map
+      .map(
+        (entry) => `${render(entry.fst as Data)}=${render(entry.snd as Data)}`,
+      )
+      .join(",")}]`;
   }
-  return accepted;
+  if (value instanceof DataConstr) {
+    return `C ${value.constr.toString()}[${value.fields.map(render).join(",")}]`;
+  }
+  throw new Error("unknown Data value");
 };
 
 /** The encoder, memory and value checks for one harmonic value. */
@@ -77,142 +87,34 @@ const compareWriters = (value: Data, label: string): void => {
   );
 };
 
-const EDGE_VECTORS: readonly string[] = [
-  // Scalars, non-minimal heads, reserved and indefinite additional info.
-  "00",
-  "17",
-  "1818",
-  "1800",
-  "190000",
-  "1a00000001",
-  "1b0000000000000001",
-  "1bffffffffffffffff",
-  "3bffffffffffffffff",
-  "20",
-  "1c",
-  "1d",
-  "1e",
-  "1f",
-  "3f",
-  "5c",
-  "9c",
-  "bc",
-  "dc",
-  // Bignums: tag 2/3 over bytes, empty, chunked, below -2^64, over non-bytes.
-  "c249010000000000000000",
-  "c349010000000000000000",
-  "c349ffffffffffffffffff",
-  "c240",
-  "c340",
-  "c25f4101ff",
-  "c25f41014102ff",
-  "c200",
-  "c280",
-  "c2c249010000000000000000",
-  // Byte strings: definite, empty, indefinite with 0, 1, 2 chunks, nested.
-  "40",
-  "4401020304",
-  "5f",
-  "5fff",
-  "5f41aaff",
-  "5f41aa42bbccff",
-  "5f5f41aaffff",
-  "5f5fff41aaff",
-  "5f00ff",
-  "5f80ff",
-  "5f60ff",
-  // Text, simple and float items anywhere.
-  "60",
-  "6161",
-  "8160",
-  "a16000",
-  "f4",
-  "f6",
-  "f7",
-  "f93c00",
-  "fa3f800000",
-  "fb3ff0000000000000",
-  "81f5",
-  "d87981f6",
-  // Lists and maps: definite, indefinite, empty, duplicate and unsorted keys.
-  "80",
-  "9fff",
-  "9f00ff",
-  "8200",
-  "83000102",
-  "a0",
-  "bfff",
-  "bf0000ff",
-  "bf00ff",
-  "a2000000000",
-  "a200000001",
-  "a201000000",
-  "a20100000001",
-  "a1400041aa01",
-  "bf8000a000ff",
-  // Constructors: compact, general, tag 102, tag 1375, over non-arrays.
-  "d87980",
-  "d8799fff",
-  "d87f80",
-  "d9050080",
-  "d9050080",
-  "d9057880",
-  "d9057980",
-  "d8668218668080",
-  "d866820080",
-  "d866821a0000000180",
-  "d8668201",
-  "d86683000080",
-  "d8669f0080ff",
-  "d866820180ff",
-  "d9055f80",
-  "d95f80",
-  "d8790",
-  "d87900",
-  "d87940",
-  "d879a0",
-  "d87a9f00ff",
-  // Unknown and nested tags are transparent.
-  "c000",
-  "d81800",
-  "d9ffff00",
-  "da0001000000",
-  "dbffffffffffffffff00",
-  "c0c000",
-  "d879d87980",
-  // Truncations and trailing bytes.
-  "",
-  "18",
-  "19ff",
-  "41",
-  "81",
-  "9f",
-  "9f00",
-  "a1",
-  "a100",
-  "d879",
-  "0000",
-  "00ff",
-  "80ff",
-  "d87980ff00",
-  "ff",
-  "1f00",
-];
+/** The outcome of one input, as a Uint8Array and as a Buffer alike. */
+const outcomeOf = (bytes: Uint8Array): string => {
+  const outcomes = [Uint8Array.from(bytes), Buffer.from(bytes)].map((input) => {
+    const outcome = attempt(() => plutusDataFromCborIterative(input));
+    return outcome.accepted ? render(outcome.value) : REFUSED;
+  });
+  expect(outcomes[1], hex(bytes)).toBe(outcomes[0]);
+  return outcomes[0]!;
+};
 
-describe("plutusDataFromCborIterative vs harmonic dataFromCbor", () => {
+describe("plutusDataFromCborIterative vs the plutus-core decoder", () => {
   it("agrees on the edge vectors", () => {
-    for (const vector of EDGE_VECTORS) {
-      compareDecoders(Buffer.from(vector, "hex"));
+    for (const [vector, expected] of PLUTUS_DATA_CARDANO_EDGE_VECTORS) {
+      expect(outcomeOf(Buffer.from(vector, "hex")), vector).toBe(expected);
     }
+  });
+
+  it("round-trips the edge integers through the canonical writer", () => {
     for (const value of PLUTUS_DATA_EDGE_INTEGERS) {
-      compareDecoders(recursiveEncodeMidgardCekPlutusData(new DataI(value)));
+      const cbor = recursiveEncodeMidgardCekPlutusData(new DataI(value));
+      expect(outcomeOf(cbor), value.toString()).toBe(`I ${value.toString()}`);
     }
   });
 
   it(
     "agrees on 20,000 seeded inputs, malformed ones included",
     () => {
-      let accepted = 0;
+      const outcomes: string[] = [];
       for (let seed = 1; seed <= 20_000; seed += 1) {
         const rng = makeFuzzRng(seed);
         const bytes = randomPlutusDataCbor(rng, {
@@ -220,11 +122,22 @@ describe("plutusDataFromCborIterative vs harmonic dataFromCbor", () => {
           maxWidth: 1 + rng.int(5),
           malformedRate: seed % 2 === 0 ? 0 : 0.05,
         });
-        if (compareDecoders(bytes)) accepted += 1;
+        outcomes.push(outcomeOf(bytes));
       }
-      // Both decisions are exercised in volume.
-      expect(accepted).toBeGreaterThan(5_000);
-      expect(accepted).toBeLessThan(20_000);
+      expect(outcomes.filter((outcome) => outcome !== REFUSED).length).toBe(
+        12_911,
+      );
+      expect(
+        createHash("sha256")
+          .update(
+            outcomes
+              .map((outcome) => (outcome === REFUSED ? "ERR" : `OK ${outcome}`))
+              .join("\n"),
+          )
+          .digest("hex"),
+      ).toBe(
+        "5a8bb54ad69a16ada4048bbbf821c4ce6753ef9132b63b98c5c65f0bb77a0af1",
+      );
     },
     SEEDED_TIMEOUT_MS,
   );

@@ -24,8 +24,9 @@
  */
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
+import { isReplayLocalFault } from "./block-replay.faults.js";
 import { type BlockReplayContext, replayBlockEvents } from "./block-replay.js";
 import {
   type CheckedLedger,
@@ -227,6 +228,13 @@ export const createReplayedLedger = ({
       }),
     );
     if (Exit.isFailure(exit)) {
+      // A local fault says nothing about the block: it is raised, so the
+      // block is replayed again, never refused.
+      const local = [
+        ...Cause.defects(exit.cause),
+        ...Cause.failures(exit.cause),
+      ].find(isReplayLocalFault);
+      if (local !== undefined) throw local;
       const detail = String(exit.cause);
       unboundWait(source, headerHash, detail);
       refuse({ headerHash, kind: "replay-refused", detail });

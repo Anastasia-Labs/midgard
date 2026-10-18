@@ -238,8 +238,10 @@ A deposit locks the user's assets in an authenticated deposit UTxO. Its datum
 contains the event information; the UTxO's actual Value supplies the deposited
 assets used by L2 projection. A withdrawal request locks ADA and its event NFT;
 the requested L2 assets and destination are in its datum. Those requested assets
-are paid later from reserves. See the [deposit validator](../../onchain/aiken/validators/user-events/deposit.ak)
-and [withdrawal validator](../../onchain/aiken/validators/user-events/withdrawal.ak).
+are paid later from reserves. Both kinds use the
+[event-history list validator](../../onchain/aiken/validators/user-events/history.ak),
+which admits orders through `order_facts.admit` and retires them through the
+[retirement observer](../../onchain/aiken/validators/user-events/history-retirement.ak).
 
 The node selects events, derives the L2 transition, and commits event roots and
 trace roots in an optimistic header. Consecutive headers use contiguous event

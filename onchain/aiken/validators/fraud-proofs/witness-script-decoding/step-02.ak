@@ -11,11 +11,13 @@ use midgard/fraud_proofs/witness_script_decoding/step_02.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/native_tx_field_access_v1.{field_item_at}
+use midgard/script_decode_v1.{record_at_v1}
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
+  script_decode_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -33,7 +35,12 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { input_index, output_index, opening }) -> {
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        opening,
+        record_reference_input_index,
+      }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
         let
@@ -69,6 +76,11 @@ validator main(
           bound,
           item,
           step_03_validator_script_hash,
+          record_at_v1(
+            reference_inputs,
+            record_reference_input_index,
+            script_decode_policy_id,
+          ),
         )
         and {
           next_script_hash == step_03_validator_script_hash,

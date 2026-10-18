@@ -57,12 +57,8 @@ export const protocolRecipes = {
   txOrderMint: mint((c) => c.txOrder),
   fieldPreimageCertificateSpend: spend((c) => c.fieldPreimageCertificate),
   fieldPreimageCertificateMint: mint((c) => c.fieldPreimageCertificate),
-  // The explicit always-succeeds bundle uses the tx-order stand-in here.
-  cekProgramMaterialSpend: spend(
-    (c) => c.cekProgramMaterial,
-    (c) =>
-      c.cekProgramMaterial.spendingScriptHash !== c.txOrder.spendingScriptHash,
-  ),
+  scriptDecodeSpend: spend((c) => c.scriptDecode),
+  scriptDecodeMint: mint((c) => c.scriptDecode),
   settlementSpend: spend((c) => c.settlement),
   settlementMint: mint((c) => c.settlement),
   payoutSpend: spend((c) => c.payout),
