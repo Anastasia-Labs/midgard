@@ -1077,6 +1077,38 @@ test script_decode_value_token_order_is_checked_in_a_list_of_values() {
   class == 17
 }
 
+/// A Value whose third currency sorts before the second. These are the
+/// bytes the Plutus V3 evaluator refuses for unordered currency symbols.
+test script_decode_value_currency_order_is_checked_past_the_first_currency() {
+  let flat = program(
+    1,
+    con(
+      [13],
+      v_value([(#"01", [(#"", 1)]), (#"03", [(#"", 1)]), (#"02", [(#"", 1)])]),
+    ),
+  )
+  and {
+    wrap(flat) == #"581a0101004ea1010100810002410103008100024101020081000201",
+    class_of(flat) == 17,
+  }
+}
+
+test script_decode_value_currency_order_is_checked_in_a_list_of_values() {
+  let ordered = v_value(
+    [(#"01", [(#"", 1)]), (#"02", [(#"", 1)]), (#"03", [(#"", 1)])],
+  )
+  let unordered = v_value(
+    [(#"01", [(#"", 1)]), (#"03", [(#"", 1)]), (#"02", [(#"", 1)])],
+  )
+  expect Refused { class, .. } = bulk_record(
+    list_program([7, 5, 13], list.concat(list.repeat(ordered, 3), [unordered])),
+  )
+  expect Decoded { .. } = bulk_record(
+    list_program([7, 5, 13], list.repeat(ordered, 4)),
+  )
+  class == 17
+}
+
 // ## Cardano differential rows (E3)
 //
 // Raw Flat programs with the result the Plutus V3 evaluator (plutus-core
