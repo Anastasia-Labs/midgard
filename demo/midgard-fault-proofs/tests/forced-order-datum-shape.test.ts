@@ -23,9 +23,13 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   type OrderDatumRewrite,
+  orderRefundAddress,
   withOrderDatumRewrite,
 } from "./support/forced-order-refund.js";
-import { publishForcedOrderCarriage } from "./support/forced-order-settlement.js";
+import {
+  makeForcedOrderSettlementScenario,
+  publishForcedOrderCarriage,
+} from "./support/forced-order-settlement.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   expectOnchainRefusal,
@@ -66,6 +70,7 @@ const pointer = new Constr(0, [new Constr(1, [1n, 2n, 3n])]);
 const noStake = new Constr(1, []);
 const address = (payment: Data, stake: Data) =>
   Data.to(new Constr(0, [payment, stake]));
+const noDatum = Data.to(new Constr(0, []));
 const datumHash = (hex: string) => Data.to(new Constr(1, [hex]));
 const inlineDatum = (data: Data) => Data.to(new Constr(2, [data]));
 
@@ -282,4 +287,173 @@ describe("order datum shape at the real tx-order mint", () => {
     },
     300_000,
   );
+});
+
+/** A refund shape the property draws: payment, stake part and refund datum. */
+type RefundShape = {
+  readonly payment: { readonly script: boolean; readonly length: number };
+  readonly stake:
+    | null
+    | "pointer"
+    | { readonly script: boolean; readonly length: number };
+  readonly datum: null | "inline" | { readonly hashLength: number };
+};
+
+/** Mulberry32: a fixed seed gives the same shapes on every run. */
+const seeded = (seed: number) => {
+  let state = seed >>> 0;
+  return (bound: number) => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) % bound >>> 0;
+  };
+};
+
+const HASH_LENGTHS = [28, 28, 28, 28, 28, 27, 29, 0, 32] as const;
+const draw = (seed: number, count: number): readonly RefundShape[] => {
+  const next = seeded(seed);
+  const length = () => HASH_LENGTHS[next(HASH_LENGTHS.length)]!;
+  return Array.from({ length: count }, () => {
+    const stake = next(4);
+    const datum = next(4);
+    return {
+      payment: { script: next(2) === 1, length: length() },
+      stake:
+        stake === 0
+          ? null
+          : stake === 1
+            ? "pointer"
+            : { script: stake === 3, length: length() },
+      datum:
+        datum === 0
+          ? null
+          : datum === 1
+            ? "inline"
+            : { hashLength: datum === 2 ? 32 : 31 + 2 * next(2) },
+    };
+  });
+};
+
+/** The shapes a ledger output can carry, which the mint is to admit. */
+const ledgerPayable = (shape: RefundShape) =>
+  shape.payment.length === 28 &&
+  (shape.stake === null ||
+    (shape.stake !== "pointer" && shape.stake.length === 28)) &&
+  (shape.datum === null ||
+    shape.datum === "inline" ||
+    shape.datum.hashLength === 32);
+
+/** The order rewrite and refund for one shape; `index` keeps hashes apart. */
+const refundOf = (shape: RefundShape, index: number) => {
+  const credential = (
+    part: { readonly script: boolean; readonly length: number },
+    byte: number,
+  ) => (part.script ? script : key)(part.length, byte);
+  const stake =
+    shape.stake === null
+      ? noStake
+      : shape.stake === "pointer"
+        ? pointer
+        : inline(credential(shape.stake, 0x80 + index));
+  const refundDatum =
+    shape.datum === null
+      ? noDatum
+      : shape.datum === "inline"
+        ? inlineDatum(new Constr(0, [BigInt(index)]))
+        : datumHash(hash(shape.datum.hashLength, 0xc0 + index));
+  return {
+    rewrite: refunding(
+      address(credential(shape.payment, 0x40 + index), stake),
+      refundDatum,
+    ),
+  };
+};
+
+const SETTLED = [
+  ["a 28-byte key with a 28-byte inline key stake part", 0],
+  ["a 28-byte key with no stake part", 1],
+  ["a 28-byte script with a 28-byte inline script stake part", 2],
+  ["a definite-length spelling", 3],
+] as const;
+const SETTLED_SHAPES: readonly RefundShape[] = [
+  {
+    payment: { script: false, length: 28 },
+    stake: { script: false, length: 28 },
+    datum: null,
+  },
+  { payment: { script: false, length: 28 }, stake: null, datum: null },
+  {
+    payment: { script: true, length: 28 },
+    stake: { script: true, length: 28 },
+    datum: { hashLength: 32 },
+  },
+];
+/** Draws 4 shapes the ledger can pay and 10 others, which between them hold a
+ * payment hash, a stake hash, a pointer and a datum hash each on its own. */
+const PROPERTY_SEED = 0x5eed_000a;
+const PROPERTY_SHAPES = draw(PROPERTY_SEED, 14);
+
+describe("refunds the tx-order mint admits settle", () => {
+  let s: Awaited<ReturnType<typeof makeForcedOrderSettlementScenario>>;
+  const shapes = [...SETTLED_SHAPES, null, ...PROPERTY_SHAPES];
+
+  beforeAll(async () => {
+    s = await makeForcedOrderSettlementScenario({
+      submitted,
+      refunds: shapes.map((shape, index) =>
+        shape === null ? { rewrite: definiteLength } : refundOf(shape, index),
+      ),
+    });
+  }, 900_000);
+
+  /** Settle order `index` and read back the refund output it paid. */
+  const settleAndReadRefund = async (index: number) => {
+    const order = s.minted[index]!;
+    await s.settleOrder(index);
+    const network = SELECTED_DEPLOYMENT_PROFILE.network;
+    const paid = (
+      await s.h.proverLucid.utxosAt(orderRefundAddress(network, order))
+    ).filter((utxo) => utxo.assets.lovelace === order.assets.lovelace);
+    expect(paid).toHaveLength(1);
+    const refundDatum = Data.from(
+      plutusConstrFieldCbor(order.datum!, [REFUND_DATUM_FIELD]),
+    ) as Constr<string>;
+    if (refundDatum.index === 0) {
+      expect(paid[0]!.datum ?? paid[0]!.datumHash).toBeUndefined();
+    } else if (refundDatum.index === 1) {
+      expect(paid[0]!.datumHash).toBe(refundDatum.fields[0]);
+    } else {
+      expect(paid[0]!.datum).toBe(
+        plutusConstrFieldCbor(order.datum!, [REFUND_DATUM_FIELD, 0]),
+      );
+    }
+  };
+
+  it.each(SETTLED)(
+    "%s mints and settles",
+    async (_name, index) => {
+      expect(s.refusals[index]).toBeUndefined();
+      await settleAndReadRefund(index);
+    },
+    300_000,
+  );
+
+  it("across drawn refund shapes, every order the mint admits settles", async () => {
+    const offset = SETTLED_SHAPES.length + 1;
+    const admitted = PROPERTY_SHAPES.map((shape) => ledgerPayable(shape));
+    // Both polarities are drawn, so neither half of the property is vacuous.
+    expect(admitted.filter(Boolean)).toHaveLength(4);
+    expect(admitted.filter((payable) => !payable)).toHaveLength(10);
+    for (const [draw, payable] of admitted.entries()) {
+      const index = offset + draw;
+      expect(
+        { shape: PROPERTY_SHAPES[draw], minted: s.minted[index] !== undefined },
+        `seed ${PROPERTY_SEED.toString(16)} draw ${draw.toString()}`,
+      ).toEqual({ shape: PROPERTY_SHAPES[draw], minted: payable });
+      if (payable) await settleAndReadRefund(index);
+      else expect(s.refusals[index]).toMatch(/failed script execution/u);
+    }
+  }, 900_000);
 });
