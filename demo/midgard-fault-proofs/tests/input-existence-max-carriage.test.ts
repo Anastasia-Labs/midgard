@@ -6,8 +6,8 @@ import {
   computeHash28,
   computeHash32,
   encodeCbor,
-  materializeMidgardNativeTxFromCanonical,
   encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -25,8 +25,8 @@ import {
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { submitInputExistenceStep } from "../src/input-existence/submit.js";
 import {
-  publishProofChunks,
   type PublishedProofChunk,
+  publishProofChunks,
 } from "../src/publish-proof-chunks.js";
 import { submitInit } from "../src/submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
@@ -179,13 +179,6 @@ describe("registered maximum event/transition counted membership", () => {
           ),
           shape,
         );
-        const validationEntry =
-          small.reconstruction.payload.block_body.validation_traces[0]!;
-        const validationProof = proofFor(
-          Buffer.from(validationEntry[0], "hex"),
-          Buffer.from(validationEntry[1], "hex"),
-          shape,
-        );
         const counted = (domain: SDK.RootDomain, phasRoot: string) =>
           commitCountedRoot({ domain, phasRoot, count: MODEL_COUNT });
         const header: SDK.Header = {
@@ -193,7 +186,6 @@ describe("registered maximum event/transition counted membership", () => {
           l2TransactionCount: MODEL_COUNT,
           totalEventCount: MODEL_COUNT,
           transitionStepCount: MODEL_COUNT,
-          validationTraceCount: MODEL_COUNT,
           transactionsRoot: await counted(
             SDK.ROOT_DOMAINS.transactionsV1,
             sourceProof.transactionsPhasRoot,
@@ -205,10 +197,6 @@ describe("registered maximum event/transition counted membership", () => {
           transitionTraceRoot: await counted(
             SDK.ROOT_DOMAINS.transitionTrace,
             traceProof.transactionsPhasRoot,
-          ),
-          validationTracesRoot: await counted(
-            SDK.ROOT_DOMAINS.validationTraces,
-            validationProof.transactionsPhasRoot,
           ),
         };
         const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
