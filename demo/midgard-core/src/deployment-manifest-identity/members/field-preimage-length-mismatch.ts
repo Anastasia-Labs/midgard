@@ -6,9 +6,9 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
     fraudProofFieldPreimageLengthMismatch: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-01",
-      manifestPosition: 258,
-      publicationPosition: 164,
-      referenceRolePosition: 401,
+      manifestPosition: 259,
+      publicationPosition: 165,
+      referenceRolePosition: 397,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
@@ -18,9 +18,9 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof field-preimage-length-mismatch step-02 accepted",
-      manifestPosition: 259,
-      publicationPosition: 165,
-      referenceRolePosition: 402,
+      manifestPosition: 260,
+      publicationPosition: 166,
+      referenceRolePosition: 398,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
@@ -30,9 +30,9 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof field-preimage-length-mismatch step-02 forced",
-      manifestPosition: 260,
-      publicationPosition: 166,
-      referenceRolePosition: 403,
+      manifestPosition: 261,
+      publicationPosition: 167,
+      referenceRolePosition: 399,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
@@ -41,9 +41,9 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
     fraudProofFieldPreimageLengthMismatchStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-03",
-      manifestPosition: 261,
-      publicationPosition: 167,
-      referenceRolePosition: 404,
+      manifestPosition: 262,
+      publicationPosition: 168,
+      referenceRolePosition: 400,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",

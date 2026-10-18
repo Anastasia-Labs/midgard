@@ -115,7 +115,7 @@ export const edgeDataCases = (): MidgardCekDifferentialCase[] => [
         C(0, []),
         C(7, [I(1n)]),
         C(200, [B(3), L([])]),
-        C(2n ** 64n, [I(2n)]),
+        C(2n ** 64n - 1n, [I(2n)]),
       ].map((value) =>
         letIn(
           data(value),

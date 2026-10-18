@@ -28,6 +28,8 @@ export const makeAlwaysSucceedsContracts = (
     blueprint,
     reserve,
   );
+  // The always-succeeds state-queue pair stands in for the script-decode one.
+  const scriptDecode = alwaysAuthenticated(blueprint, "state_queue");
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
   const fieldPreimage = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
@@ -115,7 +117,7 @@ export const makeAlwaysSucceedsContracts = (
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
     fieldPreimageCertificate: fieldPreimageCertificateV1,
-    cekProgramMaterial: fieldPreimage,
+    scriptDecode,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,
     payout: alwaysAuthenticated(blueprint, "payout"),

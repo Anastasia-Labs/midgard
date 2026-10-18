@@ -661,7 +661,9 @@ pub fn verify_compact_binding(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    witness.work_witness_cbor,
+  )
   expect
       [
         transaction_id_data, commitment_data, compact_cbor_data,

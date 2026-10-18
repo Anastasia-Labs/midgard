@@ -276,6 +276,8 @@ export const rewindToRoot = <R>(
 export type ProcessOptions = Readonly<{
   /** The follower's prune boundary: no rollback reaches a merge at or below it. */
   prunedThroughSlot?: number;
+  /** Called with each block's header hash once its row is committed. */
+  committed?: (headerHash: string) => void;
 }>;
 
 /**

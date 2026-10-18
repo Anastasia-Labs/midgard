@@ -4,6 +4,7 @@ import {
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
   type WitnessScriptDecodingBound,
   type WitnessScriptDecodingScanState,
@@ -60,6 +61,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
   certificateUtxo,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
+  scriptDecodeRecordUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
   onCarriageReady,
@@ -82,6 +84,11 @@ export const submitWitnessScriptDecodingStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
+  /**
+   * The decode record of the item's script when it is a Plutus script
+   * (`recordScriptDecode`); a native or malformed item takes none.
+   */
+  readonly scriptDecodeRecordUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void> | void;
@@ -169,15 +176,13 @@ export const submitWitnessScriptDecodingStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
+  const extraReferenceInputs = [
+    ...(resolvedCertificateUtxo === undefined ? [] : [resolvedCertificateUtxo]),
+    ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
+  ];
   const opening: FieldOpening = faultProofFieldOpening({
     planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(resolvedCertificateUtxo === undefined
-        ? []
-        : [resolvedCertificateUtxo]),
-    ],
+    referenceInputs: [...carriageUtxos, stepReference, ...extraReferenceInputs],
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${FAMILY} step 02 field 6`,
   });
@@ -215,7 +220,19 @@ export const submitWitnessScriptDecodingStep02 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            record_reference_input_index:
+              scriptDecodeRecordUtxo === undefined
+                ? -1n
+                : requireReferenceInputIndex(
+                    ctx,
+                    scriptDecodeRecordUtxo,
+                    `${FAMILY} step 02 decode record`,
+                  ),
+          },
         ],
       } as never,
       WitnessScriptDecodingStep02RedeemerSchema as never,
@@ -233,8 +250,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      resolvedCertificateUtxo === undefined ? [] : [resolvedCertificateUtxo],
+    extraReferenceInputs,
     preSubmitBoundary,
     awaitConfirmation,
   });

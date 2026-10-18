@@ -153,3 +153,64 @@ test resolve_later_phase_does_not_admit_earlier_input_fault() {
     None,
   )
 }
+
+fn script_item(kind: Int) -> reason.RejectionReasonV1 {
+  reason.PlutusScriptUndecodable { item_kind: kind, item_index: 0, class: 1 }
+}
+
+// A witness script item (kind 0) is decoded with the native witness scripts
+// and an output reference script item (kind 1) with the output scripts.
+test witness_script_item_follows_a_canonical_fault() {
+  !order.leaf_admits_fault_v1(
+    rejected(script_item(0)),
+    order.CanonicalFault(order.CanonicalItem { field_index: 4, item_index: 0 }),
+    None,
+  )
+}
+
+test witness_script_item_precedes_a_resolution_fault() {
+  order.leaf_admits_fault_v1(
+    rejected(script_item(0)),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    None,
+  )
+}
+
+test output_reference_script_item_follows_a_resolution_fault() {
+  !order.leaf_admits_fault_v1(
+    rejected(script_item(1)),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    None,
+  )
+}
+
+// No other item kind exists, so it has no phase.
+test script_item_of_unknown_kind_has_no_phase() fail {
+  order.phase_of_reason_v1(script_item(2)) >= 0
+}
+
+test script_item_of_negative_kind_has_no_phase() fail {
+  order.phase_of_reason_v1(script_item(-1)) >= 0
+}
+
+// Either verdict passes the body, so only an abort satisfies this row.
+test script_item_of_unknown_kind_refuses() fail {
+  let admitted = order.leaf_admits_fault_v1(
+    rejected(script_item(2)),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    None,
+  )
+  admitted || !admitted
+}
+
+test witness_script_item_shares_the_native_witness_script_phase() {
+  order.phase_of_reason_v1(script_item(0)) == order.phase_of_reason_v1(
+    reason.WitnessNativeScriptMalformed { script_index: 0 },
+  )
+}
+
+test output_reference_script_item_shares_the_output_script_phase() {
+  order.phase_of_reason_v1(script_item(1)) == order.phase_of_reason_v1(
+    reason.OutputReferenceScriptMalformed { output_index: 0 },
+  )
+}

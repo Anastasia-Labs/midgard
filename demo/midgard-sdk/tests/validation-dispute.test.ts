@@ -16,8 +16,6 @@ import {
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
   validationCaseThreadDataFromCore,
-  ValidationCekMaterialRoute,
-  type ValidationCekMaterialRoute as ValidationCekMaterialRouteData,
   ValidationDisputeTurnSchema,
   ValidationGameSpendRedeemer,
   ValidationMachinePhaseSchema,
@@ -294,58 +292,6 @@ describe("validation dispute ABI", () => {
       ),
     );
 
-    const materialRouteVectors = [
-      ["NoCekMaterial", "d87980"],
-      [
-        {
-          DirectCekMaterial: {
-            envelope_cbor: "0102",
-            sidecar_cbor: "0304",
-          },
-        },
-        "d87a9f420102420304ff",
-      ],
-      [
-        {
-          SinglePublicationCekMaterial: {
-            envelope_cbor: "0102",
-            reference_input_index: 2n,
-          },
-        },
-        "d87b9f42010202ff",
-      ],
-      [
-        {
-          MinimumMultiOutputCekMaterial: {
-            envelope_cbor: "0102",
-            reference_input_indices: [4n, 1n],
-          },
-        },
-        "d87c9f4201029f0401ffff",
-      ],
-      [
-        {
-          IncrementalCekMaterial: {
-            program_envelope_hash: "0c".repeat(32),
-          },
-        },
-        `d87d9f5820${"0c".repeat(32)}ff`,
-      ],
-    ] satisfies readonly (readonly [ValidationCekMaterialRouteData, string])[];
-    for (const [route, expectedCbor] of materialRouteVectors) {
-      expect(Data.to(route, ValidationCekMaterialRoute)).toBe(expectedCbor);
-      expect(Data.from(expectedCbor, ValidationCekMaterialRoute)).toEqual(
-        route,
-      );
-    }
-
-    for (const malformed of [
-      "d87e80", // adjacent route tag 5
-      "d87a9f420102ff", // DirectCekMaterial wrong arity
-      "d87c9f42010201ff", // multi indices field is not a list
-    ]) {
-      expect(() => Data.from(malformed, ValidationCekMaterialRoute)).toThrow();
-    }
     expect(
       Data.from(
         Data.to(evidence, ValidationOneStepEvidence),

@@ -394,7 +394,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
   let environment = cek_proof_v1.hash_environment_node_v1(h_02, tail, 2)
   let pre = state(
     cek_machine_v1.mode_compute,
-    cek_proof_v1.hash_variable_term_v1(1),
+    cek_proof_v1.hash_variable_term_v1(2),
     environment,
     cek_proof_v1.empty_continuation_root_v1,
     0,
@@ -432,7 +432,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
     cek_machine_v1.verify_core_step_v1(
       pre,
       lookup,
-      cek_machine_v1.ComputeVariable { index: 1 },
+      cek_machine_v1.ComputeVariable { index: 2 },
     ),
     cek_machine_v1.verify_core_step_v1(
       lookup,
@@ -449,6 +449,213 @@ test debruijn_lookup_walks_an_authenticated_environment() {
       },
     ),
   }
+}
+
+fn two_node_environment() -> ByteArray {
+  cek_proof_v1.hash_environment_node_v1(
+    h_02,
+    cek_proof_v1.hash_environment_node_v1(
+      h_01,
+      cek_proof_v1.empty_environment_root_v1,
+      1,
+    ),
+    2,
+  )
+}
+
+fn compute_variable_pre(index: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_variable_term_v1(index),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn unbound_variable_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_unbound_variable,
+    100,
+    100,
+  )
+}
+
+test variable_index_one_returns_the_innermost_binding() {
+  let pre = compute_variable_pre(1)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  let found = state(
+    cek_machine_v1.mode_return,
+    h_02,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 1 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      found,
+      cek_machine_v1.LookupEnvironment {
+        value: h_02,
+        tail: cek_proof_v1.hash_environment_node_v1(
+          h_01,
+          cek_proof_v1.empty_environment_root_v1,
+          1,
+        ),
+        length: 2,
+      },
+    ),
+  }
+}
+
+test variable_index_zero_fails_in_one_compute_step() {
+  let pre = compute_variable_pre(0)
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      unbound_variable_error(),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        -1,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        0,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+  }
+}
+
+test variable_index_above_the_environment_fails_at_the_empty_environment() {
+  let tail = cek_proof_v1.hash_environment_node_v1(
+    h_01,
+    cek_proof_v1.empty_environment_root_v1,
+    1,
+  )
+  let pre = compute_variable_pre(3)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    2,
+    16100,
+    200,
+  )
+  let lookup_tail = state(
+    cek_machine_v1.mode_lookup,
+    tail,
+    tail,
+    cek_proof_v1.empty_continuation_root_v1,
+    1,
+    16100,
+    200,
+  )
+  let lookup_empty = state(
+    cek_machine_v1.mode_lookup,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 3 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      lookup_tail,
+      cek_machine_v1.LookupEnvironment { value: h_02, tail, length: 2 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_tail,
+      lookup_empty,
+      cek_machine_v1.LookupEnvironment {
+        value: h_01,
+        tail: cek_proof_v1.empty_environment_root_v1,
+        length: 1,
+      },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_empty,
+      state(
+        cek_machine_v1.mode_halt_error,
+        cek_proof_v1.hash_error_term_v1(),
+        cek_proof_v1.empty_environment_root_v1,
+        cek_proof_v1.empty_continuation_root_v1,
+        cek_machine_v1.error_unbound_variable,
+        16100,
+        200,
+      ),
+      cek_machine_v1.LookupEmptyEnvironment,
+    ),
+  }
+}
+
+test variable_index_takes_the_full_word64_range() {
+  let largest = 18446744073709551615
+  let pre = compute_variable_pre(largest)
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    state(
+      cek_machine_v1.mode_lookup,
+      two_node_environment(),
+      two_node_environment(),
+      cek_proof_v1.empty_continuation_root_v1,
+      largest - 1,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeVariable { index: largest },
+  )
+}
+
+test variable_index_above_word64_does_not_hash() fail {
+  cek_proof_v1.hash_variable_term_v1(18446744073709551616) == #""
 }
 
 test builtin_force_and_application_enter_builtin_micro_machine() {
@@ -2012,4 +2219,258 @@ test malformed_ed25519_lengths_have_one_paid_failure_successor() {
       cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
     ),
   }
+}
+
+fn compute_builtin_pre(tag: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_builtin_term_v1(tag),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn explicit_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_explicit,
+    100,
+    100,
+  )
+}
+
+test compute_builtin_steps_a_resolved_tag() {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(86),
+    state(
+      cek_machine_v1.mode_return,
+      cek_proof_v1.hash_builtin_value_v1(
+        86,
+        0,
+        0,
+        cek_proof_v1.empty_sequence_root_v1,
+      ),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeBuiltin { tag: 86 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_87() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(87),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 87 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_100() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(100),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 100 },
+  )
+}
+
+test builtin_force_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_force_count(88) >= 0
+}
+
+test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_argument_count(94) >= 0
+}
+
+// ComputeConstant at the 64-bit and constructor-128 boundaries. The post root
+// is the TypeScript builder's root (cek-data.cardano-integer-layout.test.ts),
+// which commits Cardano's memory for the value; the step charges one
+// 16000/100 machine step after the 100/100 start-up.
+fn compute_constant_commits(
+  type_cbor: ByteArray,
+  payload_cbor: ByteArray,
+  root: ByteArray,
+) -> Bool {
+  cek_machine_v1.verify_core_step_v1(
+    state(
+      cek_machine_v1.mode_compute,
+      cek_proof_v1.hash_constant_term_v1(root),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      100,
+      100,
+    ),
+    state(
+      cek_machine_v1.mode_return,
+      root,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeConstant {
+      value: cek_constant_v1.ConstantWitnessV1 { type_cbor, payload_cbor },
+    },
+  )
+}
+
+test integer_constants_at_the_64_bit_boundary_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f00ff",
+      #"1bffffffffffffffff",
+      #"ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c249010000000000000000",
+      #"724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"3bffffffffffffffff",
+      #"42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c349010000000000000000",
+      #"9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
+    ),
+  }
+}
+
+test constructor_127_and_128_constants_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"d9057880",
+      #"6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d86682188080",
+      #"58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d8668218809fc249010000000000000000ff",
+      #"db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
+    ),
+  }
+}
+
+// Payloads Cardano's Data decoder refuses, each against the root of the value
+// it would otherwise spell.
+fn compute_data_constant_against(value: Data, payload_cbor: ByteArray) -> Bool {
+  compute_constant_commits(
+    #"9f08ff",
+    payload_cbor,
+    cek_constant_v1.constant_root_v1(
+      cek_constant_v1.ConstantWitnessV1 {
+        type_cbor: #"9f08ff",
+        payload_cbor: cbor.serialise(value),
+      },
+    ),
+  )
+}
+
+test data_constants_compute_against_the_roots_of_their_canonical_values() {
+  and {
+    compute_data_constant_against(
+      builtin.i_data(18446744073709551616),
+      #"c249010000000000000000",
+    ),
+    compute_data_constant_against(
+      builtin.i_data(-18446744073709551617),
+      #"c349010000000000000000",
+    ),
+    compute_data_constant_against(builtin.constr_data(0, []), #"d87980"),
+    compute_data_constant_against(builtin.constr_data(1, []), #"d87a80"),
+  }
+}
+
+test compute_constant_refuses_a_long_tag_2_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(18446744073709551616),
+    #"d80249010000000000000000",
+  )
+}
+
+test compute_constant_refuses_a_long_tag_3_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(-18446744073709551617),
+    #"d80349010000000000000000",
+  )
+}
+
+test compute_constant_refuses_constructor_102_with_a_negative_index() fail {
+  compute_data_constant_against(builtin.constr_data(0, []), #"d866822080")
+}
+
+test compute_constant_refuses_constructor_102_with_a_bignum_index() fail {
+  compute_data_constant_against(builtin.constr_data(1, []), #"d86682c2410180")
+}
+
+// ComputeConstant over Data payloads that end in an empty byte string, or
+// hold one before their last item: Cardano runs `(con data _)` over each for
+// 16100/200, and the post root is the TypeScript builder's.
+test data_constants_ending_in_an_empty_byte_string_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"40",
+      #"7d8fc47fe0106bf4067f0f776f6dbbf0c13c95e8c7e0ecf0c51390e25a313a1b",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f40ff",
+      #"4101754cf6a5ddecd24a6c34fa07ffbe84831bdcfe7f32450357b407732bad99",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d87a9f40ff",
+      #"52b6dbd7388a7127eaf8d8642346903ed308a293bbad5995b2b390bb02a0737d",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a10040",
+      #"acc70e559a6bd37b416cacee1edc031d20ec3afeb086293f521c02d809f28037",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a14040",
+      #"3bf83bc59fcdec011df7bbc526461f1e9cbfe216311f500f74570aef9232f932",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a2448d3ed5d702448d3ed5d740",
+      #"a37677e60441f8a71e7c3f976ebda7a9b26c6cee8132167754e538b918e0c403",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f4000ff",
+      #"5e36a939ee38e0f8b480a371c386bbd6649c318ec34c461ba2204825e90d8d6d",
+    ),
+  }
+}
+
+test compute_constant_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  compute_data_constant_against(builtin.b_data(#""), #"41")
+}
+
+test compute_constant_refuses_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  compute_data_constant_against(
+    builtin.list_data([builtin.b_data(#"")]),
+    #"8141",
+  )
 }

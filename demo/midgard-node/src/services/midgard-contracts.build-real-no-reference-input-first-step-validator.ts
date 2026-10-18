@@ -120,10 +120,9 @@ export type TxOrderContracts = {
   readonly txOrder: SDK.AuthenticatedValidator;
   readonly fieldPreimageCertificate: SDK.SpendingValidator &
     SDK.MintingValidator;
-  readonly cekProgramMaterial: SDK.SpendingValidator;
 };
 
-/** Derives tx-order and its certificate/material dependencies with the SDK recipe. */
+/** Derives tx-order and its certificate dependency with the SDK recipe. */
 export const buildRealTxOrderContracts = (
   network: Network,
   hubOraclePolicyId: string,

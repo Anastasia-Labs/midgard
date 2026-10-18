@@ -261,6 +261,7 @@ fn leaf_admits_observed_v1(
       reason.ProtectedOutputSignerMissing { .. } |
       reason.MintDeclaredAssetLimit { .. } |
       reason.MintItemMalformed { .. } |
+      reason.PlutusScriptUndecodable { .. } |
       reason.NetworkIdMismatch -> {
         expect fact == claim.NotRequired
         True

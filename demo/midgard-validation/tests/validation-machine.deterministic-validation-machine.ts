@@ -29,13 +29,11 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
   initialMidgardResolvedInputsAccumulator,
   MidgardRedeemerTag,
   RejectCodes,
-  validateCekRouteMaterial,
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
@@ -609,95 +607,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBeLessThanOrEqual(4_095);
     expect("script" in nativeExecutionWitness.source).toBe(false);
     expect("signerHashes" in nativeExecutionWitness).toBe(false);
-    const selectionStateIndex = trace.witnesses.findIndex(
-      (witness) => witness.auxiliary === nativeExecutionWitness,
-    );
-    const selectionArgument = buildValidationOneStepArgument({
-      trace,
-      stateIndex: selectionStateIndex,
-    });
-    expect(selectionArgument.cekRouteMaterial).toEqual({
-      envelopeCbor: program.envelopeCbor,
-      programMaterialSidecarCbor: trace.programMaterialSidecarCbor,
-      programEnvelopeHash: program.envelopeHash,
-    });
-    const laterCekStateIndex = trace.witnesses.findIndex(
-      (witness, index) =>
-        index > selectionStateIndex &&
-        witness.phase === "cek" &&
-        witness.auxiliary?.kind !== "nativeExecutionScan",
-    );
-    expect(
-      buildValidationOneStepArgument({
-        trace,
-        stateIndex: laterCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-    const nonCekStateIndex = trace.witnesses.findIndex(
-      (witness) => witness.phase !== "cek",
-    );
-    expect(
-      buildValidationOneStepArgument({
-        trace,
-        stateIndex: nonCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-
-    const routeMaterial = selectionArgument.cekRouteMaterial!;
-    const validateRouteMaterial = (value: unknown) =>
-      validateCekRouteMaterial({
-        value,
-        firstSourceChunk: nativeExecutionWitness.firstChunkProof.chunk,
-        languageTag: nativeExecutionWitness.languageTag as 3 | 128,
-      });
-    expect(validateRouteMaterial(routeMaterial)).toEqual(routeMaterial);
-    const substituteProgram = buildNonterminatingSelfApplicationProgram();
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        envelopeCbor: substituteProgram.envelopeCbor,
-        programEnvelopeHash: substituteProgram.envelopeHash,
-      }),
-    ).toThrow(/selected first-source-chunk payload/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: Buffer.concat([
-          routeMaterial.programMaterialSidecarCbor,
-          Buffer.from([0]),
-        ]),
-      }),
-    ).toThrow(/trailing|canonical/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-      }),
-    ).toThrow(/program material is missing root/u);
-    const retainedRoots = new Set(
-      [...program.material.keys()].map((root) => root.toLowerCase()),
-    );
-    const unrelatedEntry = [...substituteProgram.material.values()].find(
-      (entry) => !retainedRoots.has(Buffer.from(entry.root).toString("hex")),
-    );
-    if (unrelatedEntry === undefined) {
-      throw new Error("expected unrelated canonical CEK material");
-    }
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-          unrelatedEntry,
-        ]),
-      }),
-    ).toThrow(/unreachable/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programEnvelopeHash: Buffer.alloc(32, 0xff),
-      }),
-    ).toThrow(/program-envelope hash/u);
     const challengedDescriptorWitnesses = cekWitnesses.flatMap((witness) => {
       const auxiliary = witness.auxiliary;
       return auxiliary?.kind === "cekResolvedContextItem" ||

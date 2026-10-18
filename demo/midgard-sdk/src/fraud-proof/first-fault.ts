@@ -11,6 +11,23 @@ type ReasonArm<R = RejectionReason> = R extends string
     ? keyof R
     : never;
 
+type PhaseRule = number | ((reason: RejectionReason) => number);
+
+/**
+ * A Plutus item is decoded where its native siblings are: a witness script at
+ * PhaseANativeScripts, an output reference script at ScriptSources. No other
+ * item kind exists.
+ */
+const scriptItemPhase = (reason: RejectionReason): number => {
+  const kind =
+    typeof reason === "string" || !("PlutusScriptUndecodable" in reason)
+      ? undefined
+      : reason.PlutusScriptUndecodable.item_kind;
+  if (kind === 0n) return 5;
+  if (kind === 1n) return 8;
+  throw new Error("first-fault: unknown script item kind");
+};
+
 const PHASE = {
   FieldPreimageLengthMismatch: 0,
   FieldItemWidthIllegal: 0,
@@ -60,8 +77,9 @@ const PHASE = {
   MintAssetAccumulationLimit: 12,
   OutputBelowMinAda: 12,
   ValueNotPreserved: 12,
-} satisfies Record<ReasonArm, number>;
-const PHASE_BY_ARM: ReadonlyMap<string, number> = new Map(
+  PlutusScriptUndecodable: scriptItemPhase,
+} satisfies Record<ReasonArm, PhaseRule>;
+const PHASE_BY_ARM: ReadonlyMap<string, PhaseRule> = new Map(
   Object.entries(PHASE),
 );
 
@@ -70,7 +88,7 @@ export const rejectionReasonPhase = (reason: RejectionReason): number => {
   const phase = arm === undefined ? undefined : PHASE_BY_ARM.get(arm);
   if (phase === undefined)
     throw new Error("first-fault: unknown rejection arm");
-  return phase;
+  return typeof phase === "function" ? phase(reason) : phase;
 };
 
 export type CanonicalFaultPosition =

@@ -7,9 +7,10 @@
 //// `withdrawals_root`/`withdrawal_count` pair, whose leaves are
 //// `(WithdrawalId, WithdrawalInfo)`. Each leaf's `body.l2_outref` names the L2
 //// UTxO the withdrawal drains, and only a leaf whose `validity` is
-//// `WithdrawalIsValid` pays out at settlement
-//// (`validators/user-events/withdrawal.ak` pays a withdrawal order exactly when
-//// the committed verdict is `WithdrawalIsValid`).
+//// `WithdrawalIsValid` pays out at settlement (`user_events/history.history`
+//// retires a withdrawal order through `midgard/event_history/retirement`, which
+//// starts its payout only when the committed verdict is `WithdrawalIsValid` and
+//// refunds it otherwise).
 ////
 //// Violation identifier: **`DoubleWithdraw`** (spec
 //// `technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex` §DOUBLE-WITHDRAW).

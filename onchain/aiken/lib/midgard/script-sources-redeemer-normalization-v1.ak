@@ -426,7 +426,7 @@ pub fn verify_raw_envelope_v1(
   expected_next_item_control_hash: ByteArray,
   action_family: Int,
 ) -> Option<ScriptSourcesRedeemerEnvelopeFactsV1> {
-  let control_data <- cbor_deserialise.expect_deserialise(
+  let control_data <- cbor_deserialise.expect_deserialise_envelope(
     transition.work_witness_cbor,
   )
   expect

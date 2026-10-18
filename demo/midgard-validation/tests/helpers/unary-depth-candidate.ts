@@ -6,9 +6,8 @@ import { CML } from "@lucid-evolution/lucid";
  *
  * Extracted from `plutus-data-unary-depth-boundary.test.ts` so the boundary
  * suite and the out-of-process maximum-depth admission share one builder. The
- * transaction is assembled byte by byte rather than through CML precisely so
- * that constructing the candidate never depends on CML's recursive decoder —
- * that dependency is what made the maximum unreachable in the first place, and
+ * transaction is assembled byte by byte rather than through CML, so
+ * constructing the candidate never depends on CML reading the deep Data, and
  * the boundary suite pins the depth-one output against CML byte for byte.
  */
 
@@ -139,8 +138,8 @@ export type RawSignedCardanoUnaryCandidate = {
 
 /**
  * Builds the same simple Alonzo-map transaction shape as CML, but keeps the
- * tag-24 inline datum bytes opaque. This avoids treating the CML/WASM call
- * stack as a Cardano protocol depth limit. The depth-one result is compared
+ * tag-24 inline datum bytes opaque, so the only depth limit is the signed
+ * Cardano byte count. The depth-one result is compared
  * byte-for-byte with CML in the boundary suite, including the deterministic
  * vkey witness.
  */
@@ -243,8 +242,7 @@ export const buildRawSignedCardanoUnaryCandidate = ({
  * Only the V1 legacy shape needs the double-bytestring wrapping; V2 and V3 use
  * the plain `{ language_id => [cost model integers] }` map. Written out here so
  * the script-data hash below never has to route through
- * `CML.calc_script_data_hash`, which materializes the redeemer `PlutusData` and
- * therefore traps on maximum-depth unary Data.
+ * `CML.calc_script_data_hash`, which materializes the redeemer `PlutusData`.
  */
 const plutusV3LanguageViewsCbor = (costModel: readonly number[]): Buffer =>
   encodeCborMapRaw([
@@ -290,12 +288,11 @@ export type RawSignedCardanoUnaryRedeemerCandidate = {
  * candidate — the field-8 counterpart of
  * `buildRawSignedCardanoUnaryCandidate`.
  *
- * `buildSignedCardanoSpendRedeemersCandidateV1` cannot reach the genuine
- * maximum: it routes the redeemer through `CML.PlutusData.from_cbor_hex` and
- * derives the script-data hash through `CML.calc_script_data_hash`, and both
- * recurse over the Data tree. This builder assembles the same Conway map
+ * `buildSignedCardanoSpendRedeemersCandidateV1` routes the redeemer through
+ * `CML.PlutusData.from_cbor_hex` and derives the script-data hash through
+ * `CML.calc_script_data_hash`. This builder assembles the same Conway map
  * transaction byte by byte and keeps the redeemer Data opaque, so the only
- * limit left is the signed Cardano byte count. The depth-one result is pinned
+ * limit is the signed Cardano byte count. The depth-one result is pinned
  * byte-for-byte against the CML builder in the boundary suite, which is what
  * makes "the same transaction, only deeper" a measured claim rather than an
  * assumption.

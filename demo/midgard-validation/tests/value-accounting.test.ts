@@ -1,5 +1,6 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { RejectCodes, validatePhaseASingle } from "../src/index.js";
 import {
@@ -11,6 +12,10 @@ import {
   valuePreservationDelta,
 } from "../src/value-accounting.js";
 import { makeNativeTx, makeOutput, makeQueued } from "./validation-fixtures.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const policyId = "11".repeat(28);
 const assetName = "abcd";

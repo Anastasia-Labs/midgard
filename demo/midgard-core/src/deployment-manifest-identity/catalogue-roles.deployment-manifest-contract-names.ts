@@ -47,7 +47,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   // every position-derived downstream identity (the watcher's synthetic
   // catalogue among them) move with it and are re-pinned with cause in the same
   // batch, the same way the certificate's registration was appended below.
-  "cekProgramMaterialSpend",
+  "scriptDecodeSpend",
+  "scriptDecodeMint",
   "settlementSpend",
   "settlementMint",
   "payoutSpend",
@@ -314,7 +315,6 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeValueAndMintAssetFoldWithdraw",
   "validationTraceDisputePhaseANativeItemNativeWithdraw",
   "validationTraceDisputePhaseANativeItemForeignWithdraw",
-  "validationTraceDisputeCekMaterialTraversal",
   "validationTraceDisputeCekContextSettle",
   "validationTraceDisputeCekContextControl",
   "validationTraceDisputeCekContextReference",
@@ -384,12 +384,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeCekCoreTypeFailureKinds",
   "validationTraceDisputeCekCoreTypeFailureRoots",
 
-  "validationTraceDisputeCekMaterialProgramTaskWithdraw",
-  "validationTraceDisputeCekMaterialDataTaskWithdraw",
   "validationTraceDisputeCekSelectionAuthenticateWithdraw",
   "validationTraceDisputeCekSelectionSuccessorWithdraw",
-  "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
-  "validationTraceDisputeCekSelectionMaterialDataWithdraw",
 
   "fraudProofTransitionTraceDepositReplayWithdraw",
   "fraudProofMinAdaStep02TxWithdraw",

@@ -18,8 +18,10 @@ type ReasonVector = {
   readonly hash: string;
 };
 
-// Generated independently of this codec (a stand-alone Plutus Data encoder)
-// and pinned by the on-chain `rejection_reason_v1` vector tests.
+// Generated independently of this codec by
+// `scripts/generate-rejection-reason-v1-vectors.mjs` (a stand-alone Plutus Data
+// encoder; `pnpm run fixtures:rejection-reason-v1:check`) and pinned by the
+// on-chain `rejection_reason_v1` vector tests.
 const vectors = JSON.parse(
   readFileSync(
     new URL("./fixtures/rejection-reason-v1.vectors.json", import.meta.url),

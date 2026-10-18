@@ -1133,9 +1133,6 @@ export const buildMinimalFaultProofContracts = async (
           validationTraceDispute:
             validationTraceDisputeContracts.validationTraceDispute,
         }),
-    cekProgramMaterial:
-      validationTraceDisputeContracts?.validationTraceDispute
-        .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
     // Certification must mint and park the output under the same canonical
     // dual-purpose script every SDK family step is parameterized with.
     fieldPreimageCertificate: {

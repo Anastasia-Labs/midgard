@@ -10,7 +10,8 @@
  * Only what the chain would admit is cited: each candidate's live output must
  * pass the scheduler's own authentication (`SDK.citableNeglectedUserEvent`),
  * and a candidate that does not, or that the caller excludes (a citation a
- * strike already failed on), is passed over for the next one. The scan reads
+ * strike already failed on), is passed over for the next one; an
+ * `unreadable` tx order is no candidate at all. The scan reads
  * at most `NEGLECTED_EVENT_SCAN_LIMIT` candidates of each kind, so one bad
  * candidate never hides a valid later one and no read is unbounded.
  */
@@ -27,7 +28,10 @@ import { addressText, toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { ForcedOrderConfig } from "../forced-orders/config.js";
-import { FORCED_ORDERS_TABLE } from "../forced-orders/schema.js";
+import {
+  FORCED_ORDER_UNREADABLE,
+  FORCED_ORDERS_TABLE,
+} from "../forced-orders/schema.js";
 
 /**
  * The candidates of each kind one read considers, in inclusion order. It
@@ -152,9 +156,9 @@ const earliestTxOrder = async (
 ): Promise<SDK.NeglectedUserEventClaim | null> => {
   const rows = await tx.query(
     `SELECT order_tx_hash, order_output_index, inclusion_time FROM ${FORCED_ORDERS_TABLE}
-      WHERE spent_slot IS NULL AND inclusion_time > ?
+      WHERE spent_slot IS NULL AND inclusion_time > ? AND status <> ?
       ORDER BY inclusion_time, order_tx_hash, order_output_index LIMIT ?`,
-    [tailEndMs, NEGLECTED_EVENT_SCAN_LIMIT],
+    [tailEndMs, FORCED_ORDER_UNREADABLE, NEGLECTED_EVENT_SCAN_LIMIT],
   );
   return firstCitable(
     rows,

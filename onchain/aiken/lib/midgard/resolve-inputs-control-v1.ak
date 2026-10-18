@@ -28,7 +28,7 @@ pub type ResolveInputsControlRawV1 {
 pub fn control_raw_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlRawV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -143,7 +143,7 @@ pub type PendingRawV1 {
 
 pub fn pending_raw_from_cbor(pending_cbor: ByteArray) -> PendingRawV1 {
   expect pending_cbor != #"00"
-  let data <- cbor_deserialise.expect_deserialise(pending_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(pending_cbor)
   expect
       [
         source_kind_data, key_data, next_schedule_hash_data,

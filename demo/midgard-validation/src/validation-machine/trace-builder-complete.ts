@@ -14,7 +14,6 @@ import {
   encodeCbor,
   finalizeMidgardRedeemerItemProof,
   hashMidgardCekMachineState,
-  hashMidgardCekProgramEnvelope,
   hashMidgardMintAssetLeaf,
   hashMidgardRedeemerItemProofControl,
   hashMidgardResolvedContextItemLeaf,
@@ -722,7 +721,7 @@ export const completeValidationTrace = (
             readonly activeStateHash: Uint8Array | null;
             readonly executionCpuLimit: bigint;
             readonly executionMemoryLimit: bigint;
-            readonly programEnvelopeHash: Uint8Array | null;
+            readonly programScriptHash: Uint8Array | null;
             /** The running execution's context control on a core step. */
             readonly purposeOf?: MidgardCekContextControl;
           }): Buffer => {
@@ -747,7 +746,7 @@ export const completeValidationTrace = (
               activeStateHash: null,
               executionCpuLimit: 0n,
               executionMemoryLimit: 0n,
-              programEnvelopeHash: input.contextControl.programEnvelopeHash,
+              programScriptHash: input.contextControl.scriptHash,
             });
           const executionAuxiliary = (
             execution: ScriptExecutionProofEntry,
@@ -855,7 +854,7 @@ export const completeValidationTrace = (
                 activeStateHash: null,
                 executionCpuLimit: 0n,
                 executionMemoryLimit: 0n,
-                programEnvelopeHash: null,
+                programScriptHash: null,
               }),
               executionAuxiliary(executionEntry, executionIndex),
             );
@@ -928,8 +927,6 @@ export const completeValidationTrace = (
             let contextControl = initialMidgardCekContextControl({
               languageTag: executionEntry.languageTag,
               programTermRoot: programEnvelope.termRoot,
-              programEnvelopeHash:
-                hashMidgardCekProgramEnvelope(programEnvelope),
               purposeKind: executionEntry.purpose.purposeKind,
               purposeIndex: executionEntry.purpose.purposeIndex,
               scriptHash: executionEntry.purpose.scriptHash,
@@ -1917,7 +1914,7 @@ export const completeValidationTrace = (
                   activeStateHash: hashMidgardCekMachineState(pre),
                   executionCpuLimit: selected.value.exUnits.steps,
                   executionMemoryLimit: selected.value.exUnits.memory,
-                  programEnvelopeHash: contextControl.programEnvelopeHash,
+                  programScriptHash: contextControl.scriptHash,
                   purposeOf: contextControl,
                 }),
                 auxiliary,
@@ -1996,7 +1993,7 @@ export const completeValidationTrace = (
                 activeStateHash: null,
                 executionCpuLimit: 0n,
                 executionMemoryLimit: 0n,
-                programEnvelopeHash: null,
+                programScriptHash: null,
               }),
             );
           }

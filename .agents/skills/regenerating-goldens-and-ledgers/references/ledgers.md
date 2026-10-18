@@ -21,12 +21,15 @@ the aiken `demo/flake.lock` pins) judges every reading `<=` its ceiling:
 node onchain/aiken/scripts/script-budgets.mjs check [--module <aiken module>]...
 node onchain/aiken/scripts/script-budgets.mjs tighten [--module <aiken module>]...
 node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why>
+node onchain/aiken/scripts/script-budgets.mjs refit <name>
 ```
 
 CI judges the whole table from the complete test shards
 [ci: Aiken CI/Hold every script budget to its ceiling]. Locally, `check` runs a
 focused `aiken check` per budgeted module, so `--module` keeps it to the
-modules you touched. `node scripts/preflight.mjs` plans exactly those.
+modules you touched. `node scripts/preflight.mjs` plans exactly those. The
+plain `check` reaches the verdicts CI does for the same tree and table; the
+script's header says how to judge a CI run's own shard reports instead.
 
 - **Over its ceiling.** Shrink the script. If the cost is accepted, `raise`
   lifts that one ceiling to the reading plus 1% and records `--reason` in
@@ -36,9 +39,10 @@ modules you touched. `node scripts/preflight.mjs` plans exactly those.
 - **Missing.** A renamed or deleted test, or a control that no longer exists.
   Rename the entry, or delete it with the test.
 - **Now fits.** An `aboveBasis` entry records work that cannot fit an L1
-  transaction. A reading inside the basis means the claim is stale: drop
-  `aboveBasis` and bring the ceiling under the basis, after checking whatever
-  relied on the infeasibility.
+  transaction. A reading inside the basis means the claim is stale: `refit`
+  drops `aboveBasis` and lowers the ceiling to the reading plus 1%, capped at
+  the basis. Check whatever relied on the infeasibility first. `refit` refuses
+  a budget that is not now-fits.
 - **Out of band.** A `growth` claim holds the difference between two budgets
   inside a band, in both directions. Movement either way means the scaling the
   claim describes changed.

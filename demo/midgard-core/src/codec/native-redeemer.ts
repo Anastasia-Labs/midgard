@@ -84,10 +84,9 @@ const ensureSupportedCardanoRedeemerTag = (
 /**
  * Validates one canonical Plutus Data value without materializing a CML
  * object. Well-formedness uses the recursion-free
- * `assertMidgardPlutusDataWellFormed` pass instead of the former
- * `CML.PlutusData.from_cbor_bytes` probe, whose wasm build traps near 1,522
- * nested nodes, so validation depth is bounded only by the bytes that carry
- * the value.
+ * `assertMidgardPlutusDataWellFormed` pass, which replaced a
+ * `CML.PlutusData.from_cbor_bytes` probe, so validation depth is bounded only
+ * by the bytes that carry the value.
  */
 export const validateCanonicalPlutusDataCbor = (
   dataCbor: Uint8Array,
@@ -128,9 +127,8 @@ export const validateCanonicalPlutusDataCbor = (
 /**
  * Validates like `validateCanonicalPlutusDataCbor` and additionally parses
  * the value into a `CML.PlutusData` for callers that must hand Cardano a CML
- * object. The CML parse is unavoidable here and stays subject to CML's own
- * wasm recursion ceiling (~1,522 nested nodes), so this must only be used
- * where a CML value is genuinely required — today that is the reverse
+ * object. The CML parse is unavoidable here, so this must only be used where
+ * a CML value is genuinely required — today that is the reverse
  * Midgard-to-Cardano bridge, never the Cardano-to-Midgard admission path.
  */
 const canonicalPlutusData = (

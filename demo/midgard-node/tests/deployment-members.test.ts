@@ -39,7 +39,6 @@ describe("deployment member blueprint bindings", () => {
           "sdk-restoration-fixture",
           contract,
         ),
-      cekProgramMaterial: genuine.contracts.cekProgramMaterial,
       missingMember: (member) => {
         throw new Error(`Unrecorded SDK member: ${member}`);
       },
@@ -57,9 +56,6 @@ describe("deployment member blueprint bindings", () => {
       );
     expect(itemReferences(restored.cekContextItemStages)).toEqual(
       itemReferences(original.cekContextItemStages),
-    );
-    expect(restored.cekProgramMaterial).toBe(
-      genuine.contracts.cekProgramMaterial,
     );
     for (const member of ["steps", "prepareResolvers", "resolvers"] as const)
       expect(() => restored[member]).toThrow("Unrecorded SDK member:");

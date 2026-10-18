@@ -6,9 +6,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeLedgerOutputProofStructureWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof structure yield",
-      manifestPosition: 139,
-      publicationPosition: 449,
-      referenceRolePosition: 254,
+      manifestPosition: 140,
+      publicationPosition: 450,
+      referenceRolePosition: 255,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_yield.main.withdraw",
@@ -17,9 +17,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeLedgerOutputProofValueWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof value yield",
-      manifestPosition: 140,
-      publicationPosition: 450,
-      referenceRolePosition: 255,
+      manifestPosition: 141,
+      publicationPosition: 451,
+      referenceRolePosition: 256,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_value_yield.main.withdraw",
@@ -29,9 +29,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum fold-map yield",
-      manifestPosition: 141,
-      publicationPosition: 451,
-      referenceRolePosition: 256,
+      manifestPosition: 142,
+      publicationPosition: 452,
+      referenceRolePosition: 257,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_map_yield.main.withdraw",
@@ -41,9 +41,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum finalize-frame yield",
-      manifestPosition: 142,
-      publicationPosition: 452,
-      referenceRolePosition: 257,
+      manifestPosition: 143,
+      publicationPosition: 453,
+      referenceRolePosition: 258,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_finalize_frame_yield.main.withdraw",
@@ -53,9 +53,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-scalar yield",
-      manifestPosition: 143,
-      publicationPosition: 453,
-      referenceRolePosition: 258,
+      manifestPosition: 144,
+      publicationPosition: 454,
+      referenceRolePosition: 259,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_scalar_yield.main.withdraw",
@@ -65,9 +65,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum attach-integer yield",
-      manifestPosition: 144,
-      publicationPosition: 454,
-      referenceRolePosition: 259,
+      manifestPosition: 145,
+      publicationPosition: 455,
+      referenceRolePosition: 260,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_integer_yield.main.withdraw",
@@ -77,9 +77,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum fold-list yield",
-      manifestPosition: 145,
-      publicationPosition: 455,
-      referenceRolePosition: 260,
+      manifestPosition: 146,
+      publicationPosition: 456,
+      referenceRolePosition: 261,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_fold_list_yield.main.withdraw",
@@ -89,9 +89,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum advance-integer yield",
-      manifestPosition: 146,
-      publicationPosition: 456,
-      referenceRolePosition: 261,
+      manifestPosition: 147,
+      publicationPosition: 457,
+      referenceRolePosition: 262,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_integer_yield.main.withdraw",
@@ -101,9 +101,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof reference-script yield",
-      manifestPosition: 147,
-      publicationPosition: 457,
-      referenceRolePosition: 262,
+      manifestPosition: 148,
+      publicationPosition: 458,
+      referenceRolePosition: 263,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_reference_script_yield.main.withdraw",
@@ -113,9 +113,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof script-hash yield",
-      manifestPosition: 148,
-      publicationPosition: 458,
-      referenceRolePosition: 263,
+      manifestPosition: 149,
+      publicationPosition: 459,
+      referenceRolePosition: 264,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_script_hash_yield.main.withdraw",
@@ -125,9 +125,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof native-script yield",
-      manifestPosition: 149,
-      publicationPosition: 459,
-      referenceRolePosition: 264,
+      manifestPosition: 150,
+      publicationPosition: 460,
+      referenceRolePosition: 265,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_native_script_yield.main.withdraw",
@@ -137,9 +137,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof structure assets yield",
-      manifestPosition: 150,
-      publicationPosition: 460,
-      referenceRolePosition: 265,
+      manifestPosition: 151,
+      publicationPosition: 461,
+      referenceRolePosition: 266,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_assets_yield.main.withdraw",
@@ -149,9 +149,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof structure optional yield",
-      manifestPosition: 151,
-      publicationPosition: 461,
-      referenceRolePosition: 266,
+      manifestPosition: 152,
+      publicationPosition: 462,
+      referenceRolePosition: 267,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_optional_yield.main.withdraw",
@@ -161,9 +161,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof structure finish yield",
-      manifestPosition: 152,
-      publicationPosition: 462,
-      referenceRolePosition: 267,
+      manifestPosition: 153,
+      publicationPosition: 463,
+      referenceRolePosition: 268,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_structure_finish_yield.main.withdraw",
@@ -173,9 +173,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-sequence yield",
-      manifestPosition: 153,
-      publicationPosition: 463,
-      referenceRolePosition: 268,
+      manifestPosition: 154,
+      publicationPosition: 464,
+      referenceRolePosition: 269,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_sequence_yield.main.withdraw",
@@ -185,9 +185,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-map yield",
-      manifestPosition: 154,
-      publicationPosition: 464,
-      referenceRolePosition: 269,
+      manifestPosition: 155,
+      publicationPosition: 465,
+      referenceRolePosition: 270,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_map_yield.main.withdraw",
@@ -197,9 +197,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum head-large-constructor yield",
-      manifestPosition: 155,
-      publicationPosition: 465,
-      referenceRolePosition: 270,
+      manifestPosition: 156,
+      publicationPosition: 466,
+      referenceRolePosition: 271,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_head_large_constructor_yield.main.withdraw",
@@ -209,9 +209,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum attach-bytes yield",
-      manifestPosition: 156,
-      publicationPosition: 466,
-      referenceRolePosition: 271,
+      manifestPosition: 157,
+      publicationPosition: 467,
+      referenceRolePosition: 272,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_attach_bytes_yield.main.withdraw",
@@ -221,9 +221,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum advance-bytes yield",
-      manifestPosition: 157,
-      publicationPosition: 467,
-      referenceRolePosition: 272,
+      manifestPosition: 158,
+      publicationPosition: 468,
+      referenceRolePosition: 273,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_advance_bytes_yield.main.withdraw",
@@ -233,9 +233,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum finish yield",
-      manifestPosition: 158,
-      publicationPosition: 468,
-      referenceRolePosition: 273,
+      manifestPosition: 159,
+      publicationPosition: 469,
+      referenceRolePosition: 274,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_finish_yield.main.withdraw",
@@ -245,9 +245,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum large-constructor yield",
-      manifestPosition: 159,
-      publicationPosition: 469,
-      referenceRolePosition: 274,
+      manifestPosition: 160,
+      publicationPosition: 470,
+      referenceRolePosition: 275,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_large_constructor_yield.main.withdraw",
@@ -257,9 +257,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum large-fields yield",
-      manifestPosition: 160,
-      publicationPosition: 470,
-      referenceRolePosition: 275,
+      manifestPosition: 161,
+      publicationPosition: 471,
+      referenceRolePosition: 276,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_large_fields_yield.main.withdraw",
@@ -269,9 +269,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof datum close yield",
-      manifestPosition: 161,
-      publicationPosition: 471,
-      referenceRolePosition: 276,
+      manifestPosition: 162,
+      publicationPosition: 472,
+      referenceRolePosition: 277,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_datum_close_yield.main.withdraw",
@@ -280,9 +280,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeLedgerOutputProofSpanWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace ledger-output-proof span yield",
-      manifestPosition: 162,
-      publicationPosition: 472,
-      referenceRolePosition: 277,
+      manifestPosition: 163,
+      publicationPosition: 473,
+      referenceRolePosition: 278,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_span_yield.main.withdraw",
@@ -292,9 +292,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof scalar-integer yield",
-      manifestPosition: 163,
-      publicationPosition: 473,
-      referenceRolePosition: 278,
+      manifestPosition: 164,
+      publicationPosition: 474,
+      referenceRolePosition: 279,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_scalar_integer_yield.main.withdraw",
@@ -304,9 +304,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-proof scalar-bytes yield",
-      manifestPosition: 164,
-      publicationPosition: 474,
-      referenceRolePosition: 279,
+      manifestPosition: 165,
+      publicationPosition: 475,
+      referenceRolePosition: 280,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_proof_scalar_bytes_yield.main.withdraw",
@@ -316,9 +316,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-descriptor scan-facts yield",
-      manifestPosition: 165,
-      publicationPosition: 475,
-      referenceRolePosition: 280,
+      manifestPosition: 166,
+      publicationPosition: 476,
+      referenceRolePosition: 281,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_scan_facts_yield.main.withdraw",
@@ -328,9 +328,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-descriptor reference-script yield",
-      manifestPosition: 166,
-      publicationPosition: 476,
-      referenceRolePosition: 281,
+      manifestPosition: 167,
+      publicationPosition: 477,
+      referenceRolePosition: 282,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_reference_script_yield.main.withdraw",
@@ -340,9 +340,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-descriptor datum-summary yield",
-      manifestPosition: 167,
-      publicationPosition: 477,
-      referenceRolePosition: 282,
+      manifestPosition: 168,
+      publicationPosition: 478,
+      referenceRolePosition: 283,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_datum_summary_yield.main.withdraw",
@@ -352,9 +352,9 @@ export const validationTraceLedgerOutputYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace ledger-output-descriptor value-summary yield",
-      manifestPosition: 168,
-      publicationPosition: 478,
-      referenceRolePosition: 283,
+      manifestPosition: 169,
+      publicationPosition: 479,
+      referenceRolePosition: 284,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/ledger_output_descriptor_value_summary_yield.main.withdraw",

@@ -10,6 +10,7 @@ import {
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
   type RootMembershipProof,
   type WitnessScriptDecodingBound,
@@ -183,6 +184,8 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
   scriptWitnessItems,
   carriageUtxos,
   certificateUtxo,
+  scriptDecodeRecordUtxo,
+  recordReferenceInputIndex,
   referenceScriptUtxo,
   nextState,
   mutateOpening = (opening) => opening,
@@ -199,6 +202,10 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
   readonly scriptWitnessItems: readonly Uint8Array[];
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
+  /** The script-decode record of a Plutus item, read as a reference input. */
+  readonly scriptDecodeRecordUtxo?: UTxO;
+  /** Overrides the record's reference-input index (default: its real one). */
+  readonly recordReferenceInputIndex?: bigint;
   readonly referenceScriptUtxo: UTxO;
   readonly nextState: WitnessScriptDecodingScanState;
   readonly mutateOpening?: (
@@ -248,10 +255,14 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     family: FAMILY,
     stepIndex,
   });
+  const extraReferenceInputs = [
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
+  ];
   const referenceInputs = [
     ...carriageUtxos,
     stepReference,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...extraReferenceInputs,
   ];
   const opening = mutateOpening(
     faultProofFieldOpening({
@@ -284,7 +295,20 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            record_reference_input_index:
+              recordReferenceInputIndex ??
+              (scriptDecodeRecordUtxo === undefined
+                ? -1n
+                : requireReferenceInputIndex(
+                    ctx,
+                    scriptDecodeRecordUtxo,
+                    `${FAMILY} raw step 02 record`,
+                  )),
+          },
         ],
       } as never,
       WitnessScriptDecodingStep02RedeemerSchema as never,
@@ -303,8 +327,7 @@ export const submitWitnessScriptDecodingStep02Raw = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
+    extraReferenceInputs,
     awaitConfirmation: true,
   });
   if (outputIndex === undefined) throw new Error(`${FAMILY}: raw layout`);

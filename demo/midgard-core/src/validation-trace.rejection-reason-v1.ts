@@ -104,6 +104,10 @@ export const MIDGARD_REJECTION_REASON_V1_ARMS = [
   { name: "OutputBelowMinAda", fields: ["output_index"] },
   { name: "ValueNotPreserved", fields: [] },
   { name: "MintItemMalformed", fields: ["policy_index"] },
+  {
+    name: "PlutusScriptUndecodable",
+    fields: ["item_kind", "item_index", "class"],
+  },
 ] as const;
 
 type MidgardRejectionReasonV1ArmEntry =

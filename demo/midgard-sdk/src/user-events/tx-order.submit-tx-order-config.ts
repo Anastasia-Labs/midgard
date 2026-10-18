@@ -1,16 +1,14 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
-import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core/consensus-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { AddressSchema, POSIXTimeSchema } from "../common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
+import { DataCoercionError, UnauthenticUtxoError } from "../errors.js";
+import { authenticateUTxO, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
-  CekProgramMaterialDatum,
-  CekProgramMaterialDatumSchema,
   ForcedTxProofSource,
   TxOrderEventSchema,
 } from "../ledger-state.js";
@@ -45,6 +43,44 @@ export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
 
 export const TxOrderDatum = asDataType<TxOrderDatum>(TxOrderDatumSchema);
 
+/** A credential as the spend and the proofs cast it: a cast does not check a
+ * hash's length. */
+const CredentialAsReadSchema = Data.Enum([
+  Data.Object({ PublicKeyCredential: Data.Tuple([Data.Bytes()]) }),
+  Data.Object({ ScriptCredential: Data.Tuple([Data.Bytes()]) }),
+]);
+
+/**
+ * The order datum as the chain reads it: the decoded Data, whatever its
+ * encoding, in the shape the spend and the proofs cast it to. The refund
+ * address's credentials are not length-checked, as no cast checks them; the
+ * id, the payload hashes and the witness keep their lengths, which the mint
+ * fixes by equality.
+ */
+const TxOrderDatumAsReadSchema = Data.Object({
+  event: TxOrderEventSchema,
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  refund_address: Data.Object({
+    paymentCredential: CredentialAsReadSchema,
+    stakeCredential: Data.Nullable(
+      Data.Enum([
+        Data.Object({ Inline: Data.Tuple([CredentialAsReadSchema]) }),
+        Data.Object({
+          Pointer: Data.Object({
+            slotNumber: Data.Integer(),
+            transactionIndex: Data.Integer(),
+            certificateIndex: Data.Integer(),
+          }),
+        }),
+      ]),
+    ),
+  }),
+  refund_datum: CardanoDatumSchema,
+});
+
+const TxOrderDatumAsRead = asDataType<TxOrderDatum>(TxOrderDatumAsReadSchema);
+
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
 const encodeCanonicalPlutusData = <A>(
@@ -52,92 +88,12 @@ const encodeCanonicalPlutusData = <A>(
   schema: PlutusDataSchema,
 ): Buffer => Buffer.from(Data.to(value as never, schema as never), "hex");
 
-const decodeCanonicalPlutusData = <A>(
-  bytes: Uint8Array,
-  schema: PlutusDataSchema,
-  label: string,
-): A => {
-  const input = Buffer.from(bytes);
-  const decoded = Data.from(input.toString("hex"), schema as never) as A;
-  if (!encodeCanonicalPlutusData(decoded, schema).equals(input)) {
-    throw new Error(`${label} CBOR must use its exact canonical encoding`);
-  }
-  return decoded;
-};
-
 export const encodeTxOrderDatumCbor = (datum: TxOrderDatum): Buffer =>
   encodeCanonicalPlutusData(datum, TxOrderDatumSchema);
 
+/** An order datum's CBOR read as the chain reads it, in any encoding. */
 export const decodeTxOrderDatumCbor = (bytes: Uint8Array): TxOrderDatum =>
-  decodeCanonicalPlutusData(bytes, TxOrderDatumSchema, "TxOrderDatumV1");
-
-export const decodeCekProgramMaterialDatumCbor = (
-  bytes: Uint8Array,
-): CekProgramMaterialDatum =>
-  decodeCanonicalPlutusData(
-    bytes,
-    CekProgramMaterialDatumSchema,
-    "CekProgramMaterialDatumV1",
-  );
-
-export const CEK_SINGLE_PUBLICATION_DATUM_VERSION = 1n;
-
-/** Exact datum ABI for one immutable, reference-only complete CEK graph. */
-export const CekSinglePublicationDatumSchema = Data.Object({
-  version: Data.Integer(),
-  program_envelope_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-  sidecar_cbor: Data.Bytes(),
-});
-
-export type CekSinglePublicationDatum = Data.Static<
-  typeof CekSinglePublicationDatumSchema
->;
-
-export const CekSinglePublicationDatum = asDataType<CekSinglePublicationDatum>(
-  CekSinglePublicationDatumSchema,
-);
-
-const assertCekSinglePublicationDatum = (
-  datum: CekSinglePublicationDatum,
-): void => {
-  if (datum.version !== CEK_SINGLE_PUBLICATION_DATUM_VERSION) {
-    throw new Error("CEK single-publication datum must use version 1");
-  }
-};
-
-export const encodeCekSinglePublicationDatumCbor = (
-  datum: CekSinglePublicationDatum,
-): Buffer => {
-  assertCekSinglePublicationDatum(datum);
-  const encoded = encodeCanonicalPlutusData(
-    datum,
-    CekSinglePublicationDatumSchema,
-  );
-  if (
-    encoded.length >
-    MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes
-  ) {
-    throw new Error(
-      "CEK single-publication datum exceeds the reliable complete-item datum envelope",
-    );
-  }
-  return encoded;
-};
-
-export const decodeCekSinglePublicationDatumCbor = (
-  bytes: Uint8Array,
-): CekSinglePublicationDatum => {
-  const datum = decodeCanonicalPlutusData(
-    bytes,
-    CekSinglePublicationDatumSchema,
-    "CekSinglePublicationDatumV1",
-  ) as CekSinglePublicationDatum;
-  assertCekSinglePublicationDatum(datum);
-  // Reuse the encoder so decoded data is also bounded by the pinned
-  // single-publication datum envelope.
-  encodeCekSinglePublicationDatumCbor(datum);
-  return Object.freeze({ ...datum });
-};
+  Data.from(Buffer.from(bytes).toString("hex"), TxOrderDatumAsRead);
 
 export const TxOrderSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),
@@ -190,22 +146,28 @@ export const encodeTxOrderMintRedeemerCbor = (
 
 export type TxOrderUTxOV1 = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
 
+/** One output as a tx order, its datum read as the chain reads it, or why
+ * it is not one. */
+export const utxoToTxOrderUTxO = (
+  utxo: UTxO,
+  nftPolicy: string,
+): Effect.Effect<TxOrderUTxOV1, DataCoercionError | UnauthenticUtxoError> =>
+  authenticateUTxO<TxOrderDatum, UserEventExtraFields>(
+    utxo,
+    nftPolicy,
+    TxOrderDatumAsRead,
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
+      inclusionTime: new Date(Number(datum.inclusion_time)),
+    }),
+  );
+
+/** The outputs that are tx orders (`utxoToTxOrderUTxO`); the rest are dropped. */
 export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
 ): Effect.Effect<TxOrderUTxOV1[]> =>
-  authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
-    utxos,
-    nftPolicy,
-    TxOrderDatum,
-    (datum, utxo) => {
-      decodeTxOrderDatumCbor(Buffer.from(utxo.datum!, "hex"));
-      return {
-        ...userEventCborFieldsFromInlineDatum(utxo),
-        inclusionTime: new Date(Number(datum.inclusion_time)),
-      };
-    },
-  );
+  Effect.allSuccesses(utxos.map((utxo) => utxoToTxOrderUTxO(utxo, nftPolicy)));
 
 export type SubmitTxOrderReferenceScripts = {
   readonly txOrderMinting: UTxO;

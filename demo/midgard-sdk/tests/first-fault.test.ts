@@ -172,4 +172,31 @@ describe("first-fault traversal TypeScript twin", () => {
       ),
     ).toBe(false);
   });
+  const scriptItem = (itemKind: bigint): RejectionReason => ({
+    PlutusScriptUndecodable: { item_kind: itemKind, item_index: 0n, class: 1n },
+  });
+  it("decodes a witness script item with the native witness scripts", () => {
+    expect(rejectionReasonPhase(scriptItem(0n))).toBe(
+      rejectionReasonPhase({
+        WitnessNativeScriptMalformed: { script_index: 0n },
+      }),
+    );
+    expect(resolve(scriptItem(0n), point(0n, 0n, 1), null)).toBe(true);
+  });
+  it("decodes an output reference script item with the output scripts", () => {
+    expect(rejectionReasonPhase(scriptItem(1n))).toBe(
+      rejectionReasonPhase({
+        OutputReferenceScriptMalformed: { output_index: 0n },
+      }),
+    );
+    expect(resolve(scriptItem(1n), point(0n, 0n, 1), null)).toBe(false);
+  });
+  it.each([2n, -1n])(
+    "gives a script item of unknown kind %s no phase",
+    (kind) => {
+      expect(() => rejectionReasonPhase(scriptItem(kind))).toThrow(
+        /unknown script item kind/,
+      );
+    },
+  );
 });

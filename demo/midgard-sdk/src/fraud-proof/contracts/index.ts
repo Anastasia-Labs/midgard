@@ -389,8 +389,8 @@ export {
   MISSING_REDEEMER_CLAIM_TITLES,
   type MissingRedeemerClaimContracts,
 } from "./missing-redeemer-claim.js";
+export { buildScriptDecodeValidator } from "./script-decode.js";
 export {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,

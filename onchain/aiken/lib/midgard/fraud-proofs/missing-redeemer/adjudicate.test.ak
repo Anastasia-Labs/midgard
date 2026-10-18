@@ -328,6 +328,52 @@ test source_missing_order_puts_the_source_check_first() {
   }
 }
 
+fn script_item(kind: Int) -> Option<reasons.RejectionReasonV1> {
+  Some(
+    reasons.PlutusScriptUndecodable { item_kind: kind, item_index: 0, class: 1 },
+  )
+}
+
+// An undecodable Plutus item is decoded where its native siblings are: a
+// witness script before the purpose scans, an output reference script in the
+// same phase but as a whole-transaction check ahead of them.
+test undecodable_output_reference_script_precedes_every_purpose() {
+  and {
+    !adjudicate.convicts_v1(
+      final(script_item(1), seen(0, 0), claim.NotRequired),
+    ),
+    !adjudicate.convicts_v1(
+      final(script_item(1), seen(3, 9), claim.NotRequired),
+    ),
+  }
+}
+
+test undecodable_witness_script_precedes_every_purpose() {
+  and {
+    !adjudicate.convicts_v1(
+      final(script_item(0), seen(0, 0), claim.NotRequired),
+    ),
+    !adjudicate.convicts_v1(
+      final(script_item(0), seen(3, 9), claim.NotRequired),
+    ),
+  }
+}
+
+// Either verdict passes the body, so only an abort satisfies these rows.
+test undecodable_script_item_of_unknown_kind_refuses() fail {
+  let verdict = adjudicate.convicts_v1(
+    final(script_item(2), seen(0, 0), claim.NotRequired),
+  )
+  verdict || !verdict
+}
+
+test undecodable_output_reference_script_cannot_carry_a_purpose_fact() fail {
+  let verdict = adjudicate.convicts_v1(
+    final(script_item(1), seen(0, 0), absent_fact()),
+  )
+  verdict || !verdict
+}
+
 test non_purpose_reason_cannot_carry_a_purpose_fact() fail {
   adjudicate.convicts_v1(
     final(

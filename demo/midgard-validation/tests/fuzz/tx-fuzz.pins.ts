@@ -53,24 +53,17 @@ export const TX_FIXED_SET_PINS: TxRowPins = {
     "14876674": { known: { blsTagNumbering: 1 } },
     "14876681": { known: { startupCharge: 1 } },
     "14876682": { known: { blsTagNumbering: 1 } },
-    "14876683": {
-      known: { blsTagNumbering: 1 },
-      catalogued: { interimDataDecoding: 1 },
-    },
+    "14876683": { known: { blsTagNumbering: 1 } },
     "14876686": { known: { blsTagNumbering: 1 } },
     "14876687": { known: { costBeforeC1: 1 } },
     "14876691": { known: { startupCharge: 1 } },
     "14876693": { known: { blsTagNumbering: 1 } },
     "14876695": { known: { costBeforeC1: 1 } },
-    "14876700": { catalogued: { interimDataDecoding: 2 } },
     "14876701": { known: { blsTagNumbering: 1 } },
     "14876704": { known: { startupCharge: 1 } },
     "14876709": { known: { blsTagNumbering: 1 } },
     "14876711": { known: { costBeforeC1: 1 } },
-    "14876712": {
-      known: { nonUnitReturn: 1 },
-      catalogued: { interimDataDecoding: 2 },
-    },
+    "14876712": { known: { nonUnitReturn: 1 } },
     "14876718": { known: { blsTagNumbering: 1 } },
     "14876721": { known: { nonUnitReturn: 1 } },
     "14876725": { known: { blsTagNumbering: 1 } },
@@ -86,36 +79,26 @@ export const TX_FIXED_SET_PINS: TxRowPins = {
     nonUnitReturn: 2,
     startupCharge: 3,
   },
-  catalogued: { interimDataDecoding: 5 },
+  catalogued: {},
 };
 
 /** The corpus seeds' pins. */
 export const TX_CORPUS_PINS: TxRowPins = {
   seeds: {
-    "322290577": {
-      known: { costBeforeC1: 1 },
-      catalogued: { interimDataDecoding: 1 },
-    },
+    "322290577": { known: { costBeforeC1: 1 } },
     "330470803": { known: { caseOnConstant: 1 } },
     "590911258": { known: { caseOnConstant: 1 } },
     "1088032817": { known: { costBeforeC1: 1 } },
     "1405241274": {
       known: { blsTagNumbering: 1 },
-      catalogued: { interimDataDecoding: 1, nestedConstantCost: 1 },
+      catalogued: { nestedConstantCost: 1 },
     },
-    "1479182247": {
-      known: { costBeforeC1: 1 },
-      catalogued: { trailingEmptyBytesDecoding: 2 },
-    },
+    "1479182247": { known: { costBeforeC1: 1 } },
   },
   known: {
     blsTagNumbering: 1,
     caseOnConstant: 2,
     costBeforeC1: 3,
   },
-  catalogued: {
-    interimDataDecoding: 2,
-    nestedConstantCost: 1,
-    trailingEmptyBytesDecoding: 2,
-  },
+  catalogued: { nestedConstantCost: 1 },
 };

@@ -98,6 +98,17 @@ pub fn phase_of_reason_v1(
     reason.MintAssetAccumulationLimit { .. } -> 12
     reason.OutputBelowMinAda { .. } -> 12
     reason.ValueNotPreserved -> 12
+    // A Plutus item is decoded where its native siblings are: a witness
+    // script at PhaseANativeScripts, an output reference script at
+    // ScriptSources. No other item kind exists.
+    reason.PlutusScriptUndecodable { item_kind, .. } ->
+      if item_kind == 0 {
+        5
+      } else if item_kind == 1 {
+        8
+      } else {
+        fail
+      }
   }
 }
 

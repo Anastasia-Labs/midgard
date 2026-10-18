@@ -163,8 +163,7 @@ fn reference_script_facts(
 ///
 /// Total: `None` for every output whose descriptor does not exist, which is
 /// exactly the set the off-chain encoder also refuses — non-canonical output
-/// bytes, a canonical-but-unmaterialisable datum (§6.2 bignum/tag-102 forms),
-/// an out-of-domain output index, or a Cardano value wider than
+/// bytes, an out-of-domain output index, or a Cardano value wider than
 /// `max_cardano_value_cbor_bytes`. Callers `expect` the `Some`, so a fraud
 /// proof over such an output fails closed rather than minting on a value the
 /// ledger never held.

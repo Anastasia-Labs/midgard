@@ -433,6 +433,17 @@
       },
       "cbor": "d905289f182fff",
       "hash": "ea475757f825e41acf1cd6d3de55252c715db6cbcbac0a5e8286baa38bc6f191"
+    },
+    {
+      "arm": 48,
+      "name": "PlutusScriptUndecodable",
+      "fields": {
+        "item_kind": 1,
+        "item_index": 48,
+        "class": 16
+      },
+      "cbor": "d905299f01183010ff",
+      "hash": "9a1ec10d8aed3696fb21c0485a1c116c171b30d9e3ca275442eb94da12b418cb"
     }
   ],
   "extra": [
@@ -476,6 +487,17 @@
       },
       "cbor": "d905289f00ff",
       "hash": "f280ed3127a64fb8cb31fecb28c993f21ec05b890003c993d96570e723c255ba"
+    },
+    {
+      "arm": 48,
+      "name": "PlutusScriptUndecodable",
+      "fields": {
+        "item_kind": 0,
+        "item_index": 0,
+        "class": 1
+      },
+      "cbor": "d905299f000001ff",
+      "hash": "a2bf7b702c379749f6176e0efbdbd1ffbc8bb04566b8f77b43607e2da39be89a"
     }
   ]
 }

@@ -32,9 +32,10 @@ import "./support/synthetic-deep-proof.js";
 import "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
 import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
@@ -42,6 +43,10 @@ import { admitNativeScriptInvalidWorkflowArtifact } from "../src/native-script-i
 import { run } from "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
   it.each([

@@ -7,6 +7,21 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekPlutusData } from "./cek-constant.js";
+import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.decode.js";
+
+/**
+ * The Cardano-exact Flat decoder: `decodeCardanoFlatProgram` returns the
+ * program Cardano reads, or the refusal class and the bit offset of the
+ * refused item; `CardanoFlatRefusal` is the error the throwing entries raise.
+ */
+export {
+  type CardanoFlatDecodeResult,
+  decodeCardanoFlatProgram,
+} from "./cek-program.cardano-flat.decode.js";
+export {
+  CardanoFlatRefusal,
+  type CardanoFlatRefusalClass,
+} from "./cek-program.cardano-flat.reader.js";
 
 /** Flat uses Cardano Data CBOR inside Data constants, including nested types. */
 class CardanoFlatEncoder extends UPLCEncoder {
@@ -25,3 +40,11 @@ class CardanoFlatEncoder extends UPLCEncoder {
 export const encodeMidgardCekCardanoFlatProgram = (
   program: UPLCProgram,
 ): Buffer => Buffer.from(new CardanoFlatEncoder().compile(program));
+
+/**
+ * Reads a script's Flat bytes as the Cardano ledger does (Plutus V3, protocol
+ * version 11), or throws the `CardanoFlatRefusal`.
+ */
+export const decodeMidgardCekCardanoFlatProgram = (
+  flat: Uint8Array,
+): UPLCProgram => decodeCardanoFlatProgramOrThrow(flat);

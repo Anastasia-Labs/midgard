@@ -1,3 +1,4 @@
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import { CML } from "@lucid-evolution/lucid";
 
 import { DaAvailabilityCommitmentError } from "./availability-challenge.js";
@@ -145,7 +146,10 @@ export const witnessDaBondPoolTx = (
 /**
  * The vkey witnesses in `witnessSetCbor`, each verified against `bodyHash`,
  * as `[vkey hex, key hash hex, witness]`. Throws `invalid_witness` on a
- * witness set that does not decode or any signature that does not verify.
+ * witness set that does not decode or any signature the ledger's Ed25519
+ * check refuses. A verifier that is not available raises
+ * `LedgerSignatureVerifierUnavailableError`, never a refusal; await
+ * `ledgerEd25519SignatureReady` first.
  */
 const verifiedVkeyWitnesses = (
   own: <T extends Freeable>(value: T) => T,
@@ -173,7 +177,14 @@ const verifiedVkeyWitnesses = (
     const witness = own(vkeys.get(index));
     const vkey = own(witness.vkey());
     const keyHash = own(vkey.hash()).to_hex().toLowerCase();
-    if (!vkey.verify(bodyHash, own(witness.ed25519_signature()))) {
+    const signature = own(witness.ed25519_signature());
+    if (
+      !verifyLedgerEd25519Signature(
+        vkey.to_raw_bytes(),
+        bodyHash,
+        signature.to_raw_bytes(),
+      )
+    ) {
       throw witnessRefusal(
         "DA bond pool witness signature does not verify against the transaction body",
         keyHash,

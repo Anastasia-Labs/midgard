@@ -7,7 +7,6 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -35,6 +34,7 @@ use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/rejection_reason_v1
 use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, Refused}
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -57,10 +57,10 @@ use midgard/validation_machine_tests/fixtures_cek.{
   exact_output_descriptor_fixture, maximum_mint_field_terminal_fixture_v1,
   maximum_observer_field_terminal_fixture_v1,
   maximum_output_field_terminal_fixture_v1,
-  maximum_program_envelope_selection_is_exact,
   maximum_reference_input_field_terminal_fixture_v1,
   maximum_required_signer_field_terminal_fixture_v1,
-  maximum_spend_input_field_terminal_fixture_v1,
+  maximum_spend_input_field_terminal_fixture_v1, plutus_selection_fixture,
+  plutus_selection_holds, plutus_selection_is_exact, plutus_selection_record,
   verify_maximum_field_terminal_fixture_v1,
   verify_maximum_mint_field_terminal_fixture_v1,
 }
@@ -75,7 +75,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   maximum_mint_preimage_cbor, native_scripts_step_fixture,
   next_phase_a_native_state, observer_field_carriage, observer_hash_at,
   observer_hashes_from, one_step_evidence, singleton_field_item_chunk_proof,
-  submitted_commitment, submitted_source, v1_program_envelope,
+  submitted_commitment, submitted_source, v1_plutus_script,
   verify_cek_context_source_transition_fixture,
   verify_cek_context_transition_fixture,
 }
@@ -499,19 +499,101 @@ test mint_asset_leaf_vector_is_stable() {
   ) == #"4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479"
 }
 
-test cek_execution_selection_authenticates_program_and_context_subject() {
-  maximum_program_envelope_selection_is_exact()
+test cek_plutus_selection_starts_the_context_over_the_record_term_root() {
+  plutus_selection_is_exact(0)
 }
 
-test cek_effectful_selection_rejects_a_51_byte_program_envelope() {
-  let oversized = builtin.replicate_byte(
-    cek_proof_v1.max_program_envelope_cbor_bytes + 1,
-    0,
-  )
-  and {
-    bytearray.length(oversized) == 51,
-    cek_proof_v1.inspect_program_envelope_v1(oversized) == None,
+test cek_plutus_selection_fails_an_unavailable_program_version() {
+  plutus_selection_is_exact(script_decode_v1.class_version_unavailable)
+}
+
+test cek_plutus_selection_fails_an_open_term() {
+  plutus_selection_is_exact(script_decode_v1.class_open_term)
+}
+
+test cek_plutus_selection_needs_the_record() fail {
+  let f = plutus_selection_fixture(0)
+  plutus_selection_holds(f, f.evidence.transition.claimed_successor, None)
+}
+
+test cek_plutus_selection_refuses_another_script_record() {
+  let f = plutus_selection_fixture(0)
+  let other = Decoded {
+    script_hash: h_28_b,
+    language: 3,
+    program_version: 1,
+    term_root: h_a,
+    phase2_class: 0,
   }
+  and {
+    plutus_selection_holds(
+      f,
+      f.evidence.transition.claimed_successor,
+      Some(plutus_selection_record(0)),
+    ),
+    !plutus_selection_holds(
+      f,
+      f.evidence.transition.claimed_successor,
+      Some(other),
+    ),
+  }
+}
+
+test cek_plutus_selection_has_none_for_a_refused_record() fail {
+  let f = plutus_selection_fixture(0)
+  expect Decoded { script_hash, language, .. } = plutus_selection_record(0)
+  plutus_selection_holds(
+    f,
+    f.evidence.transition.claimed_successor,
+    Some(Refused { script_hash, language, class: 6, bit_offset: 40 }),
+  )
+}
+
+test cek_plutus_selection_runs_a_phase2_class_record_as_failing() {
+  let f = plutus_selection_fixture(0)
+  let failing = plutus_selection_fixture(script_decode_v1.class_open_term)
+  !plutus_selection_holds(
+    f,
+    f.evidence.transition.claimed_successor,
+    Some(plutus_selection_record(script_decode_v1.class_open_term)),
+  ) && !plutus_selection_holds(
+    failing,
+    failing.evidence.transition.claimed_successor,
+    Some(plutus_selection_record(0)),
+  )
+}
+
+/// A phase-2-class record fails the run with no budget spent: its honest
+/// successor holds, and the same successor charged `cpu` and `memory` more
+/// does not.
+fn phase2_class_failure_spends_no_budget(cpu: Int, memory: Int) -> Bool {
+  let spends_none = fn(phase2_class) {
+    let f = plutus_selection_fixture(phase2_class)
+    let record = Some(plutus_selection_record(phase2_class))
+    let post = f.evidence.transition.claimed_successor
+    let charged = validation_trace_v1.ValidationMachineStateV1 {
+      ..post,
+      execution_cpu: post.execution_cpu + cpu,
+      execution_memory: post.execution_memory + memory,
+    }
+    plutus_selection_holds(f, post, record) && !plutus_selection_holds(
+      f,
+      charged,
+      record,
+    )
+  }
+  and {
+    spends_none(script_decode_v1.class_open_term),
+    spends_none(script_decode_v1.class_version_unavailable),
+  }
+}
+
+test cek_plutus_selection_phase2_class_failure_spends_no_cpu() {
+  phase2_class_failure_spends_no_budget(1, 0)
+}
+
+test cek_plutus_selection_phase2_class_failure_spends_no_memory() {
+  phase2_class_failure_spends_no_budget(0, 1)
 }
 
 // Expected-failure inversion keeps the payload byte opaque. The two exact
@@ -574,7 +656,7 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
   }
   let effectful_script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let effectful_script_cbor = encode_midgard_versioned_script(effectful_script)
   let native_hash = script_proof_v1.versioned_script_hash(native_script)
@@ -676,6 +758,7 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
       0,
       0,
       0,
+      None,
     ),
   }
 }
@@ -685,7 +768,6 @@ test cross_language_cek_context_control_vectors() {
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_b,
@@ -717,7 +799,7 @@ test cross_language_cek_context_control_vectors() {
     },
   }
   and {
-    vm_witness.encode_cek_context_control_v1(context) == #"981900035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
+    vm_witness.encode_cek_context_control_v1(context) == #"981800035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
     vm_witness.hash_cek_redeemer_context_control_v1(
       vm_witness.initial_cek_redeemer_context_control_v1(0),
     ) == #"16d11fb592d3cad09ef73bd20c31a8d35a0f502c4eeeddf00ab3e8d037bb6a3f",
@@ -728,7 +810,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
   let tx = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let first_chunk_proof = singleton_field_item_chunk_proof(6, script_cbor)
@@ -1028,7 +1110,6 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     stage: 2,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -1759,6 +1840,7 @@ test cek_context_observer_complete_summary_relation_is_exact() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
 }
 
@@ -1819,6 +1901,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
   let asset_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(#"01") |> cek_data_v1.semantic_data_summary_v1,
@@ -1861,6 +1944,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
   let policy_items = cek_data_v1.prepend_data_pair_summary_v1(
     builtin.b_data(h_28_a) |> cek_data_v1.semantic_data_summary_v1,
@@ -1898,6 +1982,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
   and {
     init_step,
@@ -1906,7 +1991,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   }
 }
 
-test cek_context_redeemer_scalar_scan_is_content_addressed() {
+test cek_context_redeemer_scalar_item_completes_the_redeemer_map() {
   let redeemer = MidgardRedeemerWitness {
     purpose: SpendRedeemer,
     index: 0,
@@ -1934,16 +2019,17 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     redeemer_peaks: redeemer_frontier.peaks,
     purpose_peaks: purpose_frontier.peaks,
   }
-  let raw = cbor.serialise(builtin.i_data(0))
-  let scan = cek_data_scan_v1.initial_control_v1(
-    blake2b_256(raw),
-    bytearray.length(raw),
-  )
-  expect Some(completed_scan) = cek_data_scan_v1.reveal_leaf_control_step_v1(
-    scan,
-    raw,
-    None,
-    bytearray.length(raw),
+  let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  let redeemer_item_cbor = encode_midgard_redeemer_witness(redeemer)
+  expect Some(redeemer_tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(0)
+  let item_control = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_data,
+    0,
+    1,
+    bytearray.length(redeemer_item_cbor),
+    bounded_item_v1.from_bytes(8, 0, redeemer_item_cbor),
+    redeemer_tag,
+    0,
   )
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
@@ -1960,7 +2046,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   )
   let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
     ..vm_witness.initial_cek_redeemer_context_control_v1(1),
-    active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
+    active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
     purpose_bound: 0,
@@ -1977,7 +2063,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   }
   let map_items = cek_data_v1.prepend_data_pair_summary_v1(
     purpose_summary,
-    completed_scan.result,
+    redeemer_summary,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
   let completed_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
@@ -1985,8 +2071,12 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     map_items,
     active_scan_hash: #"",
     active_redeemer_leaf: #"",
-    active_purpose: cek_data_scan_v1.empty_result_v1(),
-    current_redeemer: completed_scan.result,
+    active_purpose: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
+    current_redeemer: redeemer_summary,
     purpose_bound: 0,
   }
   let next_control = vm_machine_types.CekContextControlV1 {
@@ -2052,13 +2142,11 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
   let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1(
     native_control.purpose_count,
   )
-  // The active redeemer scan is a bounded `redeemer_item_proof_v1` control, not
-  // the superseded free-standing `cek_data_scan_v1` control:
+  // The active redeemer scan is a bounded `redeemer_item_proof_v1` control:
   // `verify_cek_redeemer_data_step` seeds `active_scan_hash` with
   // `redeemer_item_proof_v1.hash_control_v1` of a fresh `mode_data` item control
   // (validation-machine-v1.ak:15818-15839) and the follow-on
   // `RedeemerItemStepWitness` branch re-derives exactly that hash (:15868).
-  // `validation-machine-v1.ak` no longer references `cek_data_scan_v1` at all.
   let redeemer_item_cbor = encode_midgard_redeemer_witness(redeemer)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(
     8,
@@ -2197,7 +2285,11 @@ fn cek_context_finalize_with_redeemer_count(redeemer_count: Int) -> Bool {
     map_items: redeemer_items,
     active_scan_hash: #"",
     active_redeemer_leaf: #"",
-    active_purpose: cek_data_scan_v1.empty_result_v1(),
+    active_purpose: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
     current_redeemer: redeemer_summary,
     purpose_bound: 0,
   }
@@ -2576,7 +2668,7 @@ fn cek_context_seed_admits(
     cek_machine_v1.hash_state_v1(initial_state),
     context_control.execution_cpu_limit,
     context_control.execution_memory_limit,
-    context_control.program_envelope_hash,
+    context_control.script_hash,
     written_kind,
     written_index,
   )
@@ -2825,6 +2917,7 @@ test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
 }
 
@@ -2893,6 +2986,7 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
     ),
     inline_field_door(),
     test_l1_slot_config,
+    None,
   )
 }
 
@@ -3016,7 +3110,7 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
     vm_shared.cek_machine_state_hash(machine_pre),
     1000000,
     1000000,
-    h_b,
+    h_28_a,
     0,
     0,
   )
@@ -3052,7 +3146,7 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
         vm_shared.cek_machine_state_hash(machine_success),
         1000000,
         1000000,
-        h_b,
+        h_28_a,
         0,
         0,
       ),

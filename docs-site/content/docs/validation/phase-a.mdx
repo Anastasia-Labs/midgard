@@ -15,7 +15,6 @@ any UTxO state; that is Phase B's job.
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
-  localContext?: PhaseALocalContext,
 ): Effect.Effect<PhaseAResult>
 ```
 
@@ -94,9 +93,11 @@ Every hash in `requiredSignerHashes` must appear in the transaction's
 
 ### 6. VKey witness signatures: `verifyVKeyWitnessSignatures`
 
-Each `MidgardLedgerVKeyWitness` is checked with CML: the raw `vkey` verifies the
-`signature` over the transaction body hash (`txId`). A failure yields
-`E_INVALID_SIGNATURE`.
+Each `MidgardLedgerVKeyWitness` is checked with `verifyLedgerEd25519Signature`
+from `@al-ft/midgard-core`, which verifies exactly as the ledger does: the raw
+`vkey` must verify the `signature` over the transaction body hash (`txId`). A
+signature that does not verify yields `E_INVALID_SIGNATURE`. A failure of the
+check itself is raised and is never a verdict on the transaction.
 
 ### 7. Native script witnesses: `validateNativeScriptWitnesses`
 

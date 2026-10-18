@@ -13,7 +13,6 @@ import type { OpenLoopCorpusRow } from "../../src/open-loop-corpus-format.js";
 import type { ValidationCacheStats } from "../../src/workers/utils/validation-pool.js";
 
 export type WorkerCacheSnapshot = {
-  readonly publicKeyCache: ValidationCacheStats;
   readonly addressCache: ValidationCacheStats;
 };
 
