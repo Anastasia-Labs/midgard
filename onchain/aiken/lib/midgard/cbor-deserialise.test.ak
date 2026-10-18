@@ -323,6 +323,10 @@ test decodes_byte_strings_of_64_bytes_and_longer_ones_in_chunks() {
       b(ab(65)),
     ),
     decodes_to(
+      bytearray.concat(#"5f41015818", bytearray.concat(ab(24), #"ff")),
+      b(bytearray.concat(#"01", ab(24))),
+    ),
+    decodes_to(
       bytearray.concat(
         #"5f5840",
         bytearray.concat(ab(64), bytearray.concat(#"5840", ab(64)))
@@ -342,10 +346,10 @@ test decodes_byte_strings_of_64_bytes_and_longer_ones_in_chunks() {
 const refused_by_both_entries: List<ByteArray> =
   [
     // Truncated, trailing bytes, misplaced breaks.
-    #"", #"18", #"19ff", #"1a0001", #"41", #"5801", #"5902ab", #"5b00000000",
-    #"81", #"8119", #"9f", #"9f00", #"a1", #"a100", #"bf00ff", #"bf000000ff",
-    #"d879", #"81d9", #"5f", #"5f41aa", #"0000", #"00ff", #"80ff", #"d87980ff00",
-    #"ff", #"8100ff", #"81ff", #"1f00", #"8200",
+    #"", #"18", #"19ff", #"1a0001", #"41", #"58", #"5801", #"5902ab",
+    #"5b00000000", #"81", #"8119", #"9f", #"9f00", #"a1", #"a100", #"bf00ff",
+    #"bf000000ff", #"d879", #"81d9", #"5f", #"5f41aa", #"0000", #"00ff", #"80ff",
+    #"d87980ff00", #"ff", #"8100ff", #"81ff", #"1f00", #"8200",
     // Reserved and indefinite heads.
     #"1c", #"1d", #"1e", #"1f", #"3c", #"3f", #"5c", #"5d", #"5e", #"9c", #"bc",
     #"dc", #"dd", #"de", #"df00", #"fc",

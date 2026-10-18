@@ -5,6 +5,7 @@ import {
   budgetName,
   judgeBudgets,
   raiseBudget,
+  refitBudget,
   tableProblems,
   tightenTable,
   withHeadroom,
@@ -272,6 +273,55 @@ test("raise lifts only an over-ceiling budget, with its reason, never past the b
         reason: " ",
       }),
     /--reason/u,
+  );
+});
+
+test("refit settles only a now-fits budget: drops aboveBasis, lowers to the reading plus 1%, never past the basis", () => {
+  const recorded = entry({
+    test: "m/was_big",
+    ceiling: { mem: 1_200, cpu: 12_000 },
+    aboveBasis: { why: "measured above the basis" },
+  });
+  const original = table(
+    recorded,
+    entry({ test: "m/other", ceiling: { mem: 900, cpu: 9_000 } }),
+  );
+  const refit = (measured) =>
+    refitBudget({
+      table: original,
+      basis,
+      name: recorded[0],
+      verdict: { status: "now-fits", measured },
+    });
+  const settled = refit({ mem: 500, cpu: 5_000 });
+  assert.deepEqual(settled.budgets["m/was_big"], {
+    test: "m/was_big",
+    ceiling: { mem: 505, cpu: 5_050 },
+  });
+  assert.deepEqual(settled.budgets["m/other"], original.budgets["m/other"]);
+  assert.deepEqual(tableProblems(settled, basis), []);
+  const capped = refit({ mem: 995, cpu: 10_000 });
+  assert.deepEqual(capped.budgets["m/was_big"].ceiling, basis);
+  for (const status of ["ok", "over", "missing"])
+    assert.throws(
+      () =>
+        refitBudget({
+          table: original,
+          basis,
+          name: recorded[0],
+          verdict: { status, measured: { mem: 500, cpu: 5_000 } },
+        }),
+      /not now-fits/u,
+    );
+  assert.throws(
+    () =>
+      refitBudget({
+        table: original,
+        basis,
+        name: "m/absent",
+        verdict: { status: "now-fits", measured: { mem: 1, cpu: 1 } },
+      }),
+    /no budget/u,
   );
 });
 
