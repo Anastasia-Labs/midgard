@@ -36,13 +36,14 @@ use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTransaction, MidgardTransactionWitnessSet, MidgardTxInput,
-  MidgardVersionedScript, NativeCardanoScript,
+  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
+  MidgardTxInput, MidgardVersionedScript, NativeCardanoScript,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_output_commitment_v1
 use midgard/native_tx_field_access_v1.{Inline, encode_field_preimage}
 use midgard/script_proof_v1
+use midgard/script_source_order_v1
 
 const prior_root =
   #"abababababababababababababababababababababababababababababababab"
@@ -448,7 +449,15 @@ fn reconstruct(
   inline: List<MidgardVersionedScript>,
   steps: List<ResolvedStep>,
 ) -> rule.AuthenticatedExecutionSourceV1 {
-  let block = block_with_inline(inline)
+  reconstruct_in(block_with_inline(inline), script, inline, steps)
+}
+
+fn reconstruct_in(
+  block: fixture.NativeBlockFixtureV1,
+  script: MidgardVersionedScript,
+  inline: List<MidgardVersionedScript>,
+  steps: List<ResolvedStep>,
+) -> rule.AuthenticatedExecutionSourceV1 {
   let references = walk_inline(
     block,
     selected_state(block, script),
@@ -654,4 +663,215 @@ test accepted_resolved_walk_refuses_another_field() fail {
     [],
     [ResolvedStep { ..spent(Some(script)), field_index: 2 }, referenced(None)],
   ).origin_kind == 1
+}
+
+// ---------------------------------------------------------------------------
+// Source order equivalence
+// ---------------------------------------------------------------------------
+//
+// The resolved-output walk realises the validation machine's script-source
+// order by construction instead of calling
+// `script_source_order_v1.script_source_physical_index`. These rows hold the
+// two definitions together: for each vector, the physical index the doors
+// select equals the one the machine's lookup reaches, the first cursor in
+// reference-first order whose physical source carries the purpose's hash.
+
+/// The sources of one transaction: its inline witnesses, and each spend and
+/// reference input with the reference script its output carries.
+type SourceVector {
+  inline: List<MidgardVersionedScript>,
+  spent: List<Pair<MidgardTxInput, Option<MidgardVersionedScript>>>,
+  referenced: List<Pair<MidgardTxInput, Option<MidgardVersionedScript>>>,
+}
+
+fn repeated_byte(byte: Int, width: Int) -> ByteArray {
+  list.foldl(
+    list.repeat(byte, width),
+    #"",
+    fn(next, bytes) { bytearray.push(bytes, next) },
+  )
+}
+
+fn out_ref(byte: Int, output_index: Int) -> MidgardTxInput {
+  MidgardTxInput { tx_id: repeated_byte(byte, 32), output_index }
+}
+
+fn other_script(byte: Int) -> MidgardVersionedScript {
+  sig_script(repeated_byte(byte, 28))
+}
+
+fn vector_block(vector: SourceVector) -> fixture.NativeBlockFixtureV1 {
+  let base = fixture.valid_native_tx_v1()
+  fixture.native_block_fixture_v1(
+    MidgardTransaction {
+      ..base,
+      body: MidgardTransactionBody {
+        ..base.body,
+        inputs: list.map(vector.spent, fn(Pair(input, _)) { input }),
+        reference_inputs: list.map(
+          vector.referenced,
+          fn(Pair(input, _)) { input },
+        ),
+      },
+      witness_set: MidgardTransactionWitnessSet {
+        ..base.witness_set,
+        script_tx_wits: vector.inline,
+      },
+    },
+  )
+}
+
+fn field_steps(
+  field_index: Int,
+  outputs: List<Pair<MidgardTxInput, Option<MidgardVersionedScript>>>,
+) -> List<ResolvedStep> {
+  list.indexed_map(
+    outputs,
+    fn(item_index, Pair(input, script)) {
+      ResolvedStep { field_index, item_index, input, script }
+    },
+  )
+}
+
+/// Both fields merged in ascending canonical out-ref order.
+fn vector_steps(vector: SourceVector) -> List<ResolvedStep> {
+  list.sort(
+    list.concat(field_steps(0, vector.spent), field_steps(1, vector.referenced)),
+    fn(left, right) {
+      bytearray.compare(
+        encode_midgard_tx_input(left.input),
+        encode_midgard_tx_input(right.input),
+      )
+    },
+  )
+}
+
+/// The physical index the applied doors select.
+fn walked_index(script: MidgardVersionedScript, vector: SourceVector) -> Int {
+  reconstruct_in(
+    vector_block(vector),
+    script,
+    vector.inline,
+    vector_steps(vector),
+  ).source_index
+}
+
+/// The physical index the machine's lookup reaches.
+fn machine_index(script: MidgardVersionedScript, vector: SourceVector) -> Int {
+  let resolved = list.flat_map(
+    vector_steps(vector),
+    fn(step) {
+      when step.script is {
+        None -> []
+        Some(source) -> [source]
+      }
+    },
+  )
+  let hashes = list.map(
+    list.concat(vector.inline, resolved),
+    script_proof_v1.versioned_script_hash,
+  )
+  let inline_count = list.length(vector.inline)
+  let source_count = list.length(hashes)
+  let target = script_proof_v1.versioned_script_hash(script)
+  expect Some(physical) = list.range(0, source_count - 1)
+    |> list.map(
+        fn(cursor) {
+          script_source_order_v1.script_source_physical_index(
+            inline_count,
+            source_count,
+            cursor,
+          )
+        },
+      )
+    |> list.find(fn(index) { list.at(hashes, index) == Some(target) })
+  physical
+}
+
+fn orders_agree(vector: SourceVector, expected: Int) -> Bool {
+  let script = false_script()
+  let walked = walked_index(script, vector)
+  and {
+    walked == machine_index(script, vector),
+    walked == expected,
+  }
+}
+
+test source_order_agrees_with_the_machine_for_an_inline_source() {
+  orders_agree(
+    SourceVector {
+      inline: [false_script()],
+      spent: [Pair(out_ref(0x10, 0), None)],
+      referenced: [Pair(out_ref(0x20, 0), None)],
+    },
+    0,
+  )
+}
+
+test source_order_agrees_with_the_machine_for_a_reference_input_source() {
+  orders_agree(
+    SourceVector {
+      inline: [],
+      spent: [Pair(out_ref(0x10, 0), None)],
+      referenced: [Pair(out_ref(0x20, 0), Some(false_script()))],
+    },
+    0,
+  )
+}
+
+test source_order_agrees_with_the_machine_for_a_spent_output_source() {
+  orders_agree(
+    SourceVector {
+      inline: [],
+      spent: [Pair(out_ref(0x10, 0), Some(false_script()))],
+      referenced: [Pair(out_ref(0x20, 0), None)],
+    },
+    0,
+  )
+}
+
+/// Spend and reference out-refs interleave: 0x10 (spent, no script), 0x20
+/// (reference, another script), 0x30 (spent, the script), 0x40 (reference,
+/// the script). Physical order is [inline, 0x20, 0x30, 0x40].
+test source_order_agrees_with_the_machine_for_interleaved_out_refs() {
+  orders_agree(
+    SourceVector {
+      inline: [other_script(0x42)],
+      spent: [
+        Pair(out_ref(0x10, 0), None),
+        Pair(out_ref(0x30, 0), Some(false_script())),
+      ],
+      referenced: [
+        Pair(out_ref(0x20, 0), Some(other_script(0x41))),
+        Pair(out_ref(0x40, 0), Some(false_script())),
+      ],
+    },
+    2,
+  )
+}
+
+/// The same hash on a reference input and on a spent output: the lower
+/// out-ref is taken, whichever field holds it.
+test source_order_agrees_with_the_machine_for_a_hash_in_both_fields() {
+  orders_agree(
+    SourceVector {
+      inline: [],
+      spent: [Pair(out_ref(0x30, 0), Some(false_script()))],
+      referenced: [Pair(out_ref(0x20, 0), Some(false_script()))],
+    },
+    0,
+  )
+}
+
+/// An inline witness repeats a reference input's script: the resolved source,
+/// after both inline witnesses physically, is taken.
+test source_order_agrees_with_the_machine_for_an_inline_duplicate() {
+  orders_agree(
+    SourceVector {
+      inline: [other_script(0x41), false_script()],
+      spent: [Pair(out_ref(0x10, 0), None)],
+      referenced: [Pair(out_ref(0x20, 0), Some(false_script()))],
+    },
+    2,
+  )
 }

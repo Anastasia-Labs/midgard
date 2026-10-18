@@ -150,22 +150,11 @@ fn initial_with_limit(
     scan_limit,
     source_peaks: frontier.peaks,
   }
-  let tx = rule.authenticate_transaction_sources_v1(
+  let tx = rule.AuthenticatedTransactionSourcesV1 {
     purpose,
-    if scan_limit > 0 {
-      1
-    } else {
-      0
-    },
-  )
-  let resolved = rule.authenticate_resolved_sources_v1(
-    tx,
-    if scan_limit > 1 {
-      scan_limit - 1
-    } else {
-      0
-    },
-  )
+    transaction_source_count: 1,
+  }
+  let resolved = rule.authenticate_resolved_sources_v1(tx)
   Pair(rule.initial_scan_v1(resolved, scan_hash), leaves)
 }
 
@@ -444,15 +433,20 @@ test batch_advance_over_a_prefix_agrees_with_split_batches() {
   advanced == split && advanced.found
 }
 
-fn trace_authenticated_purpose(
-  substitute_source_frontier: Bool,
-) -> rule.AuthenticatedPurposeV1 {
+/// The stage-9 control a missing-script-source proof opens: a source frontier
+/// over `leaves` whose first `inline_count` are the inline witnesses, and the
+/// purpose (`h28a`) at lookup cursor `source_cursor`.
+fn stage_nine_control(
+  leaves: List<ByteArray>,
+  inline_count: Int,
+  source_cursor: Int,
+) -> vm_machine_types.ScriptSourcesControlV1 {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h28a, #"aa")
-  let source = validation_merkle_v1.build_frontier([source_leaf(0, 0, h28b)])
+  let source = validation_merkle_v1.build_frontier(leaves)
   let purpose = validation_merkle_v1.build_frontier([purpose_leaf])
   let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
     purpose_cursor: 0,
-    source_cursor: source.count,
+    source_cursor,
     redeemer_cursor: 0,
     current_purpose_kind: 0,
     current_purpose_index: 0,
@@ -467,7 +461,7 @@ fn trace_authenticated_purpose(
     execution_count: 0,
     execution_peaks: [],
   }
-  let canonical_control = vm_machine_types.ScriptSourcesControlV1 {
+  vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: #"",
     witness_set_compact_cbor: #"",
     field_preimage_lengths_cbor: #"",
@@ -493,7 +487,7 @@ fn trace_authenticated_purpose(
     output_cursor: 0,
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    inline_source_count: source.count,
+    inline_source_count: inline_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -502,8 +496,14 @@ fn trace_authenticated_purpose(
     mint_fold: vm_witness.empty_mint_fold_control(),
     resolution_schedule_hash: h32,
   }
+}
+
+/// The machine state whose work root commits `control`.
+fn stage_nine_state(
+  control: vm_machine_types.ScriptSourcesControlV1,
+) -> validation_trace_v1.ValidationMachineStateV1 {
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let state = validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: blake2b_256(cbor.serialise(event_key)),
     transaction_id: tx_id,
@@ -517,9 +517,9 @@ fn trace_authenticated_purpose(
       validation_trace_v1.ScriptSources,
       7,
       vm_witness.encode_script_sources_discovery_witness(
-        canonical_control,
+        control,
         9,
-        discovery,
+        control.discovery,
       ),
     ),
     execution_cpu: 0,
@@ -528,6 +528,33 @@ fn trace_authenticated_purpose(
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
     ledger_delta_root: h32,
   }
+}
+
+/// The trace state step 02 hands step 03 for `control`, under a subject of
+/// `direction`.
+fn stage_nine_trace(
+  direction: Int,
+  control: vm_machine_types.ScriptSourcesControlV1,
+) -> rule.AuthenticatedTraceStateV1 {
+  rule.AuthenticatedTraceStateV1 {
+    bound: rule.bind_purpose_v1(
+      subject(direction, 0, 0),
+      h32,
+      1,
+      blake2b_256(#""),
+      0,
+      0,
+    ),
+    machine_state: stage_nine_state(control),
+  }
+}
+
+fn trace_authenticated_purpose(
+  substitute_source_frontier: Bool,
+) -> rule.AuthenticatedPurposeV1 {
+  let canonical_control = stage_nine_control([source_leaf(0, 0, h28b)], 1, 1)
+  let state = stage_nine_state(canonical_control)
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
   let state_hash = validation_trace_v1.hash_machine_state(state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
   let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
@@ -611,8 +638,11 @@ test fabricated_frontier_invalidates_committed_header_trace() fail {
 
 test honest_canonical_header_with_present_source_refuses_conviction() fail {
   let purpose = trace_authenticated_purpose(False)
-  let staged = rule.authenticate_transaction_sources_v1(purpose, 1)
-  let universe = rule.authenticate_resolved_sources_v1(staged, 0)
+  let staged = rule.AuthenticatedTransactionSourcesV1 {
+    purpose,
+    transaction_source_count: 1,
+  }
+  let universe = rule.authenticate_resolved_sources_v1(staged)
   let source_hashes = [source_leaf(0, 0, h28a)]
   let scanned = rule.advance_scan_v1(
     rule.initial_scan_v1(universe, scan_hash),
@@ -621,4 +651,82 @@ test honest_canonical_header_with_present_source_refuses_conviction() fail {
     final_hash,
   )
   rule.terminal_contradiction_v1(scanned)
+}
+
+// ---------------------------------------------------------------------------
+// Step 03's witness-located prefix
+// ---------------------------------------------------------------------------
+
+/// Step 03 over the stage-9 control of `leaves`, the first `inline_count` of
+/// them inline witnesses, at lookup cursor `source_cursor`.
+fn staged_sources(
+  direction: Int,
+  leaves: List<ByteArray>,
+  inline_count: Int,
+  source_cursor: Int,
+) -> rule.AuthenticatedTransactionSourcesV1 {
+  let control = stage_nine_control(leaves, inline_count, source_cursor)
+  rule.authenticate_transaction_sources_v1(
+    stage_nine_trace(direction, control),
+    control,
+    0,
+    h28a,
+    #"aa",
+    [],
+  )
+}
+
+/// Steps 04 to the finalizer over `sources` in one batch.
+fn staged_scan_convicts(
+  staged: rule.AuthenticatedTransactionSourcesV1,
+  sources: List<rule.SourceDescriptorV1>,
+) -> Bool {
+  rule.initial_scan_v1(rule.authenticate_resolved_sources_v1(staged), scan_hash)
+    |> rule.advance_scan_v1(sources, scan_hash, final_hash)
+    |> rule.terminal_contradiction_v1
+}
+
+/// One inline witness, then one resolved reference script; neither is `h28a`.
+fn inline_then_resolved() -> List<ByteArray> {
+  [source_leaf(0, 0, h28b), source_leaf(1, 1, h28b)]
+}
+
+/// The witness prefix is the control's inline count: source 0 is read at the
+/// witness location and source 1 at the resolved one, so the absence of the
+/// purpose's script is proven.
+test witness_prefix_is_the_inline_source_count() {
+  let leaves = inline_then_resolved()
+  staged_sources(0, leaves, 1, 2)
+    |> staged_scan_convicts(
+        [descriptor(leaves, 0, 0, h28b), descriptor(leaves, 1, 1, h28b)],
+      )
+}
+
+test witness_prefix_refuses_an_honest_acceptance_with_a_resolved_source() fail {
+  let leaves = [source_leaf(0, 0, h28b), source_leaf(1, 1, h28a)]
+  staged_sources(0, leaves, 1, 2)
+    |> staged_scan_convicts(
+        [descriptor(leaves, 0, 0, h28b), descriptor(leaves, 1, 1, h28a)],
+      )
+}
+
+/// A wrongful-rejection limit may end inside the inline witnesses: lookup
+/// cursor 0 over two inline witnesses limits the scan to source 0 while the
+/// witness prefix stays two.
+test wrongful_rejection_limit_within_the_witness_prefix_convicts() {
+  let leaves = [source_leaf(0, 0, h28a), source_leaf(1, 0, h28b)]
+  staged_sources(1, leaves, 2, 0)
+    |> staged_scan_convicts([descriptor(leaves, 0, 0, h28a)])
+}
+
+/// No work root commits more inline witnesses than sources: the control
+/// encoder that step 03 recomputes the work root with refuses it.
+test witness_prefix_refuses_more_inline_sources_than_sources() fail {
+  let leaves = inline_then_resolved()
+  staged_sources(0, leaves, 3, 2).purpose.source_count == 2
+}
+
+test witness_prefix_refuses_a_negative_inline_source_count() fail {
+  let leaves = inline_then_resolved()
+  staged_sources(0, leaves, -1, 2).purpose.source_count == 2
 }

@@ -162,6 +162,42 @@ fn stage_ten_authentication(
   wrong_rejection_hash: Bool,
   prior_root: ByteArray,
 ) -> rule.AuthenticatedPurposeV1 {
+  stage_ten_authentication_with_inline_sources(
+    direction,
+    language_tag,
+    stage,
+    substitute_source_key,
+    malformed_source_frontier,
+    wrong_machine_source_kind,
+    wrong_descriptor_verdict,
+    wrong_trace_state,
+    wrong_work_root,
+    wrong_transaction_id,
+    wrong_purpose_coordinate,
+    wrong_rejection_hash,
+    prior_root,
+    1,
+  )
+}
+
+/// `stage_ten_authentication` over a control of `inline_source_count` inline
+/// witnesses and one source.
+fn stage_ten_authentication_with_inline_sources(
+  direction: Int,
+  language_tag: Int,
+  stage: Int,
+  substitute_source_key: Bool,
+  malformed_source_frontier: Bool,
+  wrong_machine_source_kind: Bool,
+  wrong_descriptor_verdict: Bool,
+  wrong_trace_state: Bool,
+  wrong_work_root: Bool,
+  wrong_transaction_id: Bool,
+  wrong_purpose_coordinate: Bool,
+  wrong_rejection_hash: Bool,
+  prior_root: ByteArray,
+  inline_source_count: Int,
+) -> rule.AuthenticatedPurposeV1 {
   let out_ref = OutputReference { transaction_id: zero, output_index: 0 }
   let event_key = if direction == substrate.direction_wrongful_acceptance {
     ledger_state.L2TransactionEventKey { tx_id: zero }
@@ -247,7 +283,7 @@ fn stage_ten_authentication(
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    inline_source_count: 1,
+    inline_source_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -458,6 +494,28 @@ test native_language_stage_ten_refuses() fail {
     False,
     h32,
   ).source_language_tag == 0
+}
+
+/// No work root commits more inline witnesses than sources: the control
+/// encoder that the stage-10 authentication recomputes the work root with
+/// refuses it.
+test more_inline_sources_than_sources_refuses() fail {
+  stage_ten_authentication_with_inline_sources(
+    0,
+    3,
+    10,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    h32,
+    2,
+  ).source_language_tag == 3
 }
 
 test wrong_stage_refuses() fail {
