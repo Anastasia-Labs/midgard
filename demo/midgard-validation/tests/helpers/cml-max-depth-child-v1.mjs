@@ -1,23 +1,13 @@
 /**
  * Out-of-process runner for the C26 maximum-depth CML work.
  *
- * Two reasons this is a separate process rather than inline test code:
+ * Each maximum-depth operation runs in its own short-lived process, on a
+ * machine stack the caller sets with `--stack-size`. That keeps the flag
+ * scoped to the suites that pass it and every other suite's execution
+ * unchanged. `@lucid-evolution/cml` 0.1.2 reads the maximum on a stack below
+ * the 1,400 KB its 0.1.0 needed (`cml-wasm-shadow-stack.test.ts`).
  *
- *  1. `--stack-size`. Past the 16 MiB CML wasm shadow stack (built into the
- *     Node build of `@lucid-evolution/cml`; previously CML `6.2.0-2` and,
- *     before it, the retired install-time patcher raised it), a second,
- *     independent limit applies: V8 executes wasm frames on the real machine
- *     stack, so depth 4,043 also needs `--stack-size >= 1400`
- *     (2,000 is used for headroom). Setting that per-suite in a child process
- *     keeps default vitest execution — every other suite in every package —
- *     completely unchanged.
- *
- *  2. Trap containment. A CML wasm trap permanently poisons the
- *     `WebAssembly.Instance` for the whole process, so any case that is
- *     *expected* to trap (historically the stock-CML controls) must never
- *     share a worker with real assertions.
- *
- * Usage:  node --stack-size=2000 cml-max-depth-runner-v1.mjs <requestJsonPath>
+ * Usage:  node [--stack-size=<kb>] cml-max-depth-child-v1.mjs <requestJsonPath>
  * Writes a single JSON object to stdout. Never throws out of `main`; failures
  * are reported as `{ ok: false, ... }` so the caller can assert on them.
  *
