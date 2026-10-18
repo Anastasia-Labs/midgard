@@ -164,6 +164,28 @@ test finish_refuses_a_receipt_for_another_leaf_coordinate() fail {
   cbor.serialise(start.finish_v1(initial, initial.bound, impossible(2, 1))) != #""
 }
 
+test finish_accepts_an_impossible_receipt_at_an_invalid_coordinate() {
+  let initial = context(-1, 9)
+  start.finish_v1(initial, initial.bound, impossible(-1, 9)).purpose == impossible(
+    -1,
+    9,
+  )
+}
+
+test finish_refuses_an_existing_purpose_at_an_invalid_coordinate() fail {
+  let initial = context(-1, 9)
+  let coordinate = PurposeCoordinateV1 { kind: -1, index: 9 }
+  cbor.serialise(
+    start.finish_v1(
+      initial,
+      initial.bound,
+      ExistingPurpose {
+        purpose: PurposeV1 { coordinate, script_hash: hash, subject: hash },
+      },
+    ),
+  ) != #""
+}
+
 test finish_refuses_a_not_required_fact_for_a_coordinate_leaf() fail {
   let initial = context(2, 0)
   cbor.serialise(start.finish_v1(initial, initial.bound, NotRequired)) != #""

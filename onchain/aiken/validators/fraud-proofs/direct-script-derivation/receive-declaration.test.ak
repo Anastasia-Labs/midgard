@@ -1,3 +1,4 @@
+use cardano/transaction.{Transaction}
 use env
 use fraud_proofs/direct_script_derivation/receive_declaration as entry
 use midgard/computation_thread as ct
@@ -124,4 +125,58 @@ test completed_receive_selection_preserves_source_count() {
 
 test completed_receive_selection_preserves_event_bound() {
   !finish(0, False, 3)
+}
+
+const declared_hash =
+  #"33333333333333333333333333333333333333333333333333333333"
+
+fn declaration_scan(signatures: List<ByteArray>) -> Bool {
+  let Pair(output_root, expected_count) = receive.admit_output_v1(
+    env.empty_merkle_tree_root,
+    0,
+    0,
+    Some(declared_hash),
+    receive.FirstCredential { proof: [] },
+  )
+  let state = receive.DeclarationStateV1 {
+    ..empty_declaration(expected_count),
+    output_root,
+  }
+  let entries = [
+    receive.DeclaredCredentialV1 {
+      script_hash: declared_hash,
+      first_output_index: 0,
+      proof: [],
+    },
+  ]
+  let output: Data = receive.advance_declaration_v1(state, entries)
+  let tx = fixture.continue_same_step_l1_tx_v1(
+    bound().subject.transaction_id,
+    output,
+  )
+  entry.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(door.Scan { input_index: 0, output_index: 0, entries }),
+    fixture.own_out_ref(),
+    Transaction { ..tx, extra_signatories: signatures },
+  )
+}
+
+test declaration_scan_by_the_prover_is_accepted() {
+  declaration_scan([fixture.fraud_prover_key_hash])
+}
+
+test declaration_scan_without_a_signature_refuses() fail {
+  declaration_scan([])
+}
+
+test declaration_scan_by_another_signer_refuses() fail {
+  declaration_scan([declared_hash])
 }
