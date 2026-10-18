@@ -1055,6 +1055,35 @@
       }
     },
     {
+      "id": "cek-executor-differential-v1",
+      "kind": "fixture",
+      "summary": "Proof- and verdict-mode outcomes of the structural executor differential corpus, written by its test under MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 and asserted by the same test without it.",
+      "generators": [
+        "demo/midgard-validation/tests/cek-executor.differential.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "demo/midgard-validation/tests/helpers/cek-differential-*.ts",
+        "demo/midgard-validation/tests/helpers/cek-adversarial-shapes.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-executor-differential-v1.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/cek-executor.differential.test.ts"
+      }
+    },
+    {
       "id": "bench-validation-fixtures",
       "kind": "fixture",
       "summary": "Benchmark ledger and transaction-sequence fixtures for the node validation benchmarks.",

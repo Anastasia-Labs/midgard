@@ -144,9 +144,15 @@ The step-fuzz suite writes its coverage report under
 report is stale when the TypeScript step builder, the on-chain machine
 (`cek-machine-v1.ak` and its imports) or the fuzz programs change.
 
-| Channel                  | Output                                                           | Sync                                                                       | Check (CI)                                                                                                                                                                                                                                                          |
-| ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cek-step-fuzz-coverage` | `demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json` | `node scripts/contrib.mjs artifacts sync --channel cek-step-fuzz-coverage` | `node scripts/contrib.mjs artifacts check --channel cek-step-fuzz-coverage` runs the step-fuzz suite without the flag, which compares the fixed seed set's per-builtin coverage with the report [ci: Midgard Node CI/Build, typecheck, and test Midgard validation] |
+The structural executor differential writes its fixture under
+`MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1` and asserts it without the flag. The
+fixture is stale when the structural executor or the differential corpus
+changes.
+
+| Channel                        | Output                                                                     | Sync                                                                             | Check (CI)                                                                                                                                                                                                                                                                                |
+| ------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cek-step-fuzz-coverage`       | `demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json`           | `node scripts/contrib.mjs artifacts sync --channel cek-step-fuzz-coverage`       | `node scripts/contrib.mjs artifacts check --channel cek-step-fuzz-coverage` runs the step-fuzz suite without the flag, which compares the fixed seed set's per-builtin coverage with the report [ci: Midgard Node CI/Build, typecheck, and test Midgard validation]                       |
+| `cek-executor-differential-v1` | `demo/midgard-validation/tests/fixtures/cek-executor-differential-v1.json` | `node scripts/contrib.mjs artifacts sync --channel cek-executor-differential-v1` | `node scripts/contrib.mjs artifacts check --channel cek-executor-differential-v1` runs the differential test without the flag, which compares every corpus program's proof- and verdict-mode outcome with the fixture [ci: Midgard Node CI/Build, typecheck, and test Midgard validation] |
 
 ## Unchecked
 
