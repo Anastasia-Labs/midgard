@@ -15,7 +15,7 @@ import type { WatcherUserEvent } from "../../src/verification/user-event.js";
 /**
  * The withdrawal classifier failing at runtime on an event it handles is
  * this watcher's own fault: the replay raises it as such, so no claim is
- * made on the block. An event the Data parser cannot read is not.
+ * made on the block, however deep the event's info nests.
  */
 
 const fault = vi.hoisted(() => ({ on: false }));
@@ -150,14 +150,14 @@ describe("watcher withdrawal replay under a classifier runtime fault", () => {
     ]);
   });
 
-  it("never names a local fault on a datum nested past what the Data parser reads", async () => {
+  it("names a local fault on a datum nested 20,000 deep only when the classifier throws", async () => {
     const read = await withdrawalEvent(20_000);
     for (const on of [false, true]) {
       fault.on = on;
       const exit = await replayed(read, "00");
       fault.on = false;
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(localFaults(exit)).toEqual([]);
+      expect(localFaults(exit)).toHaveLength(on ? 1 : 0);
     }
   });
 });

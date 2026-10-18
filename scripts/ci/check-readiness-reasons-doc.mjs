@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 // Every reason the node can put in `/readyz` must have operator text in the
-// reasons doc.
+// reasons doc and an entry in the public presentation.
 //
 // The reasons are derived from the node's and the L1 follower package's
-// source rather than kept in a list here. A readiness module is one that
-// declares or reports a hold (`DriverHold`, `IntentPredicateWait`), raises a
-// liveness reason (`raiseLivenessIncident(`), or is one of the modules that
-// assemble `/readyz` (READINESS_MODULES). In those modules a reason is:
+// source rather than kept in a list here. A readiness module is one through
+// which a reason reaches `/readyz`:
+//   - an assembler (READINESS_ASSEMBLERS, the modules that answer `/readyz`);
+//   - a module whose function a readiness module calls into `reasons`: the
+//     callee of a value pushed onto, spread into or iterated into `reasons`
+//     (`reasons.push(...holds.reasons)` after `const holds = f(...)`), in
+//     the module that declares it, through re-exports (`f` reaches the build
+//     holds and the liveness reasons the L1 control plane derives this way);
+//   - a module that raises a liveness incident (`raiseLivenessIncident(`),
+//     declares or reports a follower-driver hold or intent wait
+//     (`DriverHold`, `IntentPredicateWait`), runs or fails a startup step
+//     under a reason (`retryStartupStep(`, `reportStartupWaiting(`,
+//     `startupStepFailed(`), or exits once a transient budget is spent
+//     (`signalTransientExhausted(`);
+//   - a module READINESS_MODULES names, one that hands its reasons on some
+//     other way.
+// In a readiness module a reason is:
 //   - a constant whose value is a snake_case name, `const NAME = "a_b"`, unless
 //     the constant names something other than a reason (NON_REASON_CONSTANT:
-//     a liveness source, a due-work kind, a table, a key);
-//   - the leading snake_case name of a string pushed onto `reasons`, returned
-//     or set as `reason:` (`reasons.push(\`queue_depth_exceeded:${n}\`)`);
+//     a liveness source, a startup step, a due-work kind, a table, a key);
+//   - the leading snake_case name of a string put in `reasons`, returned or
+//     set as `reason:` (also as its `??` fallback);
 //   - an imported constant whose value is a snake_case name, resolved in the
 //     node module or, for `@al-ft/midgard-l1-follower` imports, in the
 //     follower package (`wallet_seed_pending` reaches a hold this way).
@@ -21,10 +34,14 @@
 // (the interventions).
 // NOT_READINESS lists the names this finds that are not reasons.
 // A reason is documented when the reasons section of the doc names it in
-// backticks, alone or as the prefix of a parameterised form (`name:<n>`).
+// backticks, alone or as the prefix of a parameterised form (`name:<n>`). It
+// is presented when the branch of the public presentation that renders a
+// reason names it, shown or redacted, there or in a constant the branch reads
+// (the shown set, the bounded formats).
 //
-// Run from anywhere: `node scripts/ci/check-readiness-reasons-doc.mjs`.
-// Exit 0 when every reason is documented, 1 otherwise.
+// Run from anywhere: `node scripts/ci/check-readiness-reasons-doc.mjs
+// [--root <tree>]`. Exit 0 when every reason is documented and presented, 1
+// otherwise.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -39,33 +56,39 @@ const FOLLOWER_PACKAGE = /^@al-ft\/midgard-l1-follower(?:\/|$)/u;
 export const DOC =
   ".agents/skills/running-the-devnet/references/endpoints-and-logs.md";
 export const DOC_SECTION = "## Node `/readyz` reasons";
+export const PRESENTATION = `${NODE_SRC}/commands/listen-readiness-public-presentation.ts`;
+/** The guard of the presentation's branch that renders a reason. */
+export const PRESENTATION_BRANCH = 'key === "reasons"';
 
-/** Modules that assemble `/readyz` without declaring a hold themselves. */
-export const READINESS_MODULES = [
-  "commands/readiness.ts",
+/** The modules that answer `/readyz`: serving, and while the node starts. */
+export const READINESS_ASSEMBLERS = [
   "commands/listen-router.get-readiness-handler.ts",
-  "commands/listen-router.get-readiness-handler.inputs.ts",
-  "commands/listen-startup.await-landed-state-queue.ts",
-  "services/settlement-readiness.ts",
-  "services/globals.l1-control-plane.activity.ts",
-  "services/follower-write-gate.local.ts",
-  "services/l1-follower.readiness.ts",
-  "services/liveness-halt.ts",
+  "commands/listen.startup-http.ts",
+];
+
+/** Readiness modules no assembler call or reason channel reaches. */
+export const READINESS_MODULES = [
   "services/intent-journal.refusals.ts",
-  "services/startup-waiting.ts",
-  "services/node-instance-lock.ts",
   "l1-operator-set/snapshot.ts",
 ];
 
+/** A module that raises, holds, waits or fails under a named reason. */
+const REASON_CHANNEL =
+  /\bDriverHold\b|\bIntentPredicateWait\b|\b(?:raiseLivenessIncident|retryStartupStep|reportStartupWaiting|startupStepFailed|signalTransientExhausted)\(/u;
+
 /** Constant names whose value is not a readiness reason. */
 const NON_REASON_CONSTANT =
-  /(?:^|_)(?:SOURCE|KIND|KEY|TABLE|NAMESPACE|SCOPE|HOLDER|METRIC)$/u;
+  /(?:^|_)(?:SOURCE|STEP|KIND|KEY|TABLE|NAMESPACE|SCOPE|HOLDER|METRIC)$/u;
 
 /** Names a readiness module uses that never reach `/readyz`, with why. */
 export const NOT_READINESS = new Map([
   [
     "manifest_mismatch",
     "the operator watchdog's strike-gate verdict; readiness carries operator_watchdog_manifest_mismatch",
+  ],
+  [
+    "commit_stage_breaker",
+    "a commit build alarm the node reports under details only; it leaves the node ready",
   ],
 ]);
 
@@ -75,12 +98,17 @@ const CONSTANT = new RegExp(
   "gu",
 );
 const REPORTED = new RegExp(
-  `(?:reasons\\.push\\(|\\breturn|\\breason:)\\s*["\`](${SNAKE})(?=[:"\`])`,
+  `(?:\\breturn|\\breason:(?:[^,\\n]*\\?\\?)?)\\s*["\`](${SNAKE})(?=[:"\`])`,
   "gu",
 );
+const LITERAL = new RegExp(`["\`](${SNAKE})(?=[:"\`])`, "gu");
+/** Where a value enters `reasons`: the bracket after the match holds it. */
+const SINK =
+  /\breasons\.push\(|\breasons\s*[:=]\s*\[|\bfor\s*(?=\(\s*const\s+(?:reason|\{\s*reason\s*\}|\[[^\]]*\breason\s*\])\s+of\b)/gu;
+const IDENTIFIER = /[A-Za-z_$][\w$]*/gu;
 
-const IMPORT = /\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/gu;
-const IMPORTED_CONSTANT = /^(?:type\s+)?([A-Z][A-Z0-9_]*)(?:\s+as\s+\w+)?$/u;
+const IMPORT = /\bimport\s+(type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"/gu;
+const IMPORTED = /^(type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?$/u;
 
 const tsFiles = (dir) =>
   readdirSync(dir).flatMap((name) => {
@@ -89,9 +117,100 @@ const tsFiles = (dir) =>
     return path.endsWith(".ts") && !path.endsWith(".d.ts") ? [path] : [];
   });
 
-const isReadinessModule = (rel, text) =>
-  READINESS_MODULES.includes(rel) ||
-  /\bDriverHold\b|\bIntentPredicateWait\b|raiseLivenessIncident\(/u.test(text);
+/** The text from the bracket at `open` to the one that closes it. */
+const bracketed = (text, open) => {
+  const close = { "(": ")", "[": "]", "{": "}" };
+  const pending = [];
+  for (let at = open; at < text.length; at += 1) {
+    if (close[text[at]] !== undefined) pending.push(close[text[at]]);
+    else if (text[at] === pending.at(-1)) {
+      pending.pop();
+      if (pending.length === 0) return text.slice(open, at + 1);
+    }
+  }
+  return text.slice(open);
+};
+
+/** Each `import { ... }` binding of a module: local name, exported name,
+ * specifier, and whether it imports a type only. */
+const importsOf = (text) =>
+  [...text.matchAll(IMPORT)].flatMap(([, typeOnly, names, spec]) =>
+    names.split(",").flatMap((entry) => {
+      const match = IMPORTED.exec(entry.trim());
+      if (match === null) return [];
+      const [, typeEntry, name, local] = match;
+      const type = typeOnly !== undefined || typeEntry !== undefined;
+      return [{ local: local ?? name, name, spec, type }];
+    }),
+  );
+
+/** The `.ts` file a relative specifier from `path` names, or undefined. */
+const moduleFile = (path, spec) => {
+  if (!spec.startsWith(".")) return undefined;
+  const target = join(dirname(path), spec.replace(/\.js$/u, ".ts"));
+  return existsSync(target) ? target : undefined;
+};
+
+/** The module that declares `name` exported by `path`, through re-exports. */
+const declaringModule = (path, name, seen = new Set()) => {
+  if (path === undefined || seen.has(path)) return undefined;
+  seen.add(path);
+  const text = readFileSync(path, "utf8");
+  if (new RegExp(`\\b(?:const|function|class)\\s+${name}\\b`, "u").test(text))
+    return path;
+  for (const [, names, spec] of text.matchAll(
+    /\bexport\s*(?:\{([^}]*)\}|\*)\s*from\s*"([^"]+)"/gu,
+  )) {
+    const entry = names
+      ?.split(",")
+      .map((each) => each.trim().split(/\s+as\s+/u))
+      .find((each) => (each[1] ?? each[0]) === name);
+    if (names !== undefined && entry === undefined) continue;
+    const found = declaringModule(
+      moduleFile(path, spec),
+      entry?.[0] ?? name,
+      seen,
+    );
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+/** The text of every place `text` puts a value in `reasons`. */
+const sinksOf = (text) =>
+  [...text.matchAll(SINK)].map(({ index }) =>
+    bracketed(text, index + text.slice(index).search(/[([]/u)),
+  );
+
+/**
+ * The modules `path` calls into `reasons`: each imported value a sink names,
+ * directly or as the callee of the local constant it names.
+ */
+const calledProducers = (path, text, sinks) => {
+  const imports = new Map(
+    importsOf(text)
+      .filter(({ type }) => !type)
+      .map((binding) => [binding.local, binding]),
+  );
+  const callee = new Map();
+  for (const [, name, root] of text.matchAll(
+    /\bconst\s+([\w$]+)\s*(?::[^=\n]+)?=\s*(?:yield\*\s*|await\s+)?([\w$]+)\s*\(/gu,
+  ))
+    callee.set(name, [...(callee.get(name) ?? []), root]);
+  const producers = new Set();
+  for (const sink of sinks)
+    for (const name of sink.match(IDENTIFIER) ?? [])
+      for (const each of [name, ...(callee.get(name) ?? [])]) {
+        const binding = imports.get(each);
+        if (binding === undefined) continue;
+        const found = declaringModule(
+          moduleFile(path, binding.spec),
+          binding.name,
+        );
+        if (found !== undefined) producers.add(found);
+      }
+  return producers;
+};
 
 /** The snake_case constants a module declares, by name. */
 const constantsOf = (text) =>
@@ -164,34 +283,45 @@ export const followerReadinessReasons = (root = ROOT) => {
 /** The reasons the node can report, each with the modules naming it. */
 export const nodeReadinessReasons = (root = ROOT) => {
   const src = join(root, NODE_SRC);
-  for (const rel of READINESS_MODULES) statSync(join(src, rel)); // a moved readiness module fails here, by name
+  const listed = [...READINESS_ASSEMBLERS, ...READINESS_MODULES];
+  for (const rel of listed) statSync(join(src, rel)); // a moved readiness module fails here, by name
   const followerConstants = constantsUnder(join(root, FOLLOWER_SRC));
-  const importedConstant = (rel, spec, name) => {
+  const importedConstant = (path, spec, name) => {
     if (FOLLOWER_PACKAGE.test(spec)) return followerConstants.get(name);
-    if (!spec.startsWith(".")) return undefined;
-    const target = join(dirname(join(src, rel)), spec.replace(/\.js$/u, ".ts"));
-    return existsSync(target)
-      ? constantsOf(readFileSync(target, "utf8")).get(name)
-      : undefined;
+    const target = moduleFile(path, spec);
+    return target === undefined
+      ? undefined
+      : constantsOf(readFileSync(target, "utf8")).get(name);
   };
   const reasons = followerReadinessReasons(root);
-  for (const path of tsFiles(src)) {
+  const pending = [
+    ...listed.map((rel) => join(src, rel)),
+    ...tsFiles(src).filter((path) =>
+      REASON_CHANNEL.test(readFileSync(path, "utf8")),
+    ),
+  ];
+  for (const seen = new Set(); pending.length > 0; ) {
+    const path = pending.shift();
+    if (seen.has(path)) continue;
+    seen.add(path);
     const rel = relative(src, path);
     const text = readFileSync(path, "utf8");
-    if (!isReadinessModule(rel, text)) continue;
     const add = (reason) =>
       NOT_READINESS.has(reason) ||
       reasons.set(reason, [...(reasons.get(reason) ?? []), rel]);
+    const sinks = sinksOf(text);
     for (const [name, value] of constantsOf(text))
       if (!NON_REASON_CONSTANT.test(name)) add(value);
     for (const [, value] of text.matchAll(REPORTED)) add(value);
-    for (const [, names, spec] of text.matchAll(IMPORT))
-      for (const entry of names.split(",")) {
-        const name = IMPORTED_CONSTANT.exec(entry.trim())?.[1];
-        if (name === undefined || NON_REASON_CONSTANT.test(name)) continue;
-        const value = importedConstant(rel, spec, name);
-        if (value !== undefined) add(value);
-      }
+    for (const sink of sinks)
+      for (const [, value] of sink.matchAll(LITERAL)) add(value);
+    for (const { name, spec } of importsOf(text)) {
+      if (!/^[A-Z][A-Z0-9_]*$/u.test(name) || NON_REASON_CONSTANT.test(name))
+        continue;
+      const value = importedConstant(path, spec, name);
+      if (value !== undefined) add(value);
+    }
+    pending.push(...calledProducers(path, text, sinks));
   }
   return reasons;
 };
@@ -210,25 +340,81 @@ export const undocumentedReasons = (reasons, section) =>
     .filter((reason) => !new RegExp(`\`${reason}(?:\`|:)`, "u").test(section))
     .sort();
 
-const main = () => {
-  const docText = readFileSync(join(ROOT, DOC), "utf8");
+/** The snake_case names in `text`, a regex's `a_(?:b|c)` spelled out. */
+const snakeNames = (text) => {
+  const group = /([a-z0-9_]*)\(\?:([a-z0-9_|]+)\)([a-z0-9_]*)/u;
+  let spelled = text;
+  for (let match; (match = group.exec(spelled)) !== null; ) {
+    const [whole, before, alternatives, after] = match;
+    const each = alternatives.split("|").map((alt) => before + alt + after);
+    spelled = `${spelled.slice(0, match.index)}${each.join("|")}${spelled.slice(match.index + whole.length)}`;
+  }
+  return spelled.match(new RegExp(`(?<![\\w])${SNAKE}(?![\\w])`, "gu")) ?? [];
+};
+
+/**
+ * The reasons the public presentation names, shown or redacted: those the
+ * branch PRESENTATION_BRANCH guards names, and those of the constants it
+ * reads. Undefined when the presentation has no such branch.
+ */
+export const presentedReasons = (text) => {
+  const guard = text.indexOf(PRESENTATION_BRANCH);
+  const open = guard < 0 ? -1 : text.indexOf("{", guard);
+  if (open < 0) return undefined;
+  const branch = bracketed(text, open);
+  const read = new Set(branch.match(IDENTIFIER));
+  const constants = [
+    ...text.matchAll(/\bconst\s+([\w$]+)[^=]*=([\s\S]*?);\n/gu),
+  ].flatMap(([, name, value]) => (read.has(name) ? [value] : []));
+  return new Set(snakeNames([branch, ...constants].join("\n")));
+};
+
+/** The reasons the presentation does not name. */
+export const unpresentedReasons = (reasons, presented) =>
+  [...reasons].filter((reason) => !presented.has(reason)).sort();
+
+const main = (root) => {
+  const docText = readFileSync(join(root, DOC), "utf8");
   const section = reasonsSection(docText);
   if (section === undefined) {
     console.error(`${DOC}: no "${DOC_SECTION}" section`);
     return 1;
   }
-  const reasons = nodeReadinessReasons();
-  const missing = undocumentedReasons(reasons.keys(), section);
+  const presented = presentedReasons(
+    readFileSync(join(root, PRESENTATION), "utf8"),
+  );
+  if (presented === undefined) {
+    console.error(`${PRESENTATION}: no \`${PRESENTATION_BRANCH}\` branch`);
+    return 1;
+  }
+  const reasons = nodeReadinessReasons(root);
+  const missing = [
+    [
+      DOC,
+      "has no operator text for",
+      undocumentedReasons(reasons.keys(), section),
+    ],
+    [
+      PRESENTATION,
+      "has no entry for",
+      unpresentedReasons(reasons.keys(), presented),
+    ],
+  ].filter(([, , names]) => names.length > 0);
   if (missing.length === 0) {
     console.log(
-      `${reasons.size} node readiness reasons, all documented in ${DOC}`,
+      `${reasons.size} node readiness reasons, all documented in ${DOC} and presented in ${PRESENTATION}`,
     );
     return 0;
   }
-  console.error(`${DOC} has no operator text for:`);
-  for (const reason of missing)
-    console.error(`  ${reason} (${reasons.get(reason).join(", ")})`);
+  for (const [file, lacks, names] of missing) {
+    console.error(`${file} ${lacks}:`);
+    for (const reason of names)
+      console.error(`  ${reason} (${reasons.get(reason).join(", ")})`);
+  }
   return 1;
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) process.exit(main());
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const at = process.argv.indexOf("--root");
+  process.exit(main(at < 0 ? ROOT : resolve(process.argv[at + 1])));
+}

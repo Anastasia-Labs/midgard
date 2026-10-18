@@ -22,9 +22,8 @@ const fail = (message: string, detail?: string): never => {
  * `cbor.serialise`. Well-formedness is checked with the recursion-free
  * `assertMidgardPlutusDataWellFormed` pass, which is verdict-equivalent to
  * the recursive Lucid/CML `Data.from` probe it replaced once the canonicity
- * gate below is composed in, and — unlike CML's wasm build, which traps near
- * 1,522 nested nodes — admits every depth a maximal 16,384-byte Cardano
- * transaction can carry. The ledger `serialiseData` framing is then enforced
+ * gate below is composed in, and admits every depth a maximal 16,384-byte
+ * Cardano transaction can carry. The ledger `serialiseData` framing is then enforced
  * byte-exactly: non-empty lists and constructor fields are indefinite, Data
  * maps are definite and retain their explicit pair order, and byte strings
  * above 64 bytes use canonical 64-byte chunks. A structurally decodable

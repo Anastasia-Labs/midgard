@@ -189,10 +189,12 @@ pub type CommittedDepositSourceProofV1 =
 /// `DepositsRootDomain`, over `cbor.serialise` of the key and of the value,
 /// bound to `header.deposits_root` and `header.deposit_count` (see
 /// `midgard/fraud_proofs/transition_trace/proof`'s `verify_source_membership`,
-/// `DepositSourceMembership` arm, and `validators/user-events/deposit.ak`'s
-/// settlement-side membership check, which keys the same domain). Inventing a
-/// second membership rule here would let Q39 convict a block over a leaf the
-/// transition arms and the settlement spend path do not recognise as committed.
+/// `DepositSourceMembership` arm, and the `AbsorbDeposit` membership check that
+/// `user_events/history.history` runs on the settlement side through
+/// `midgard/event_history/retirement`, which keys the same domain under the
+/// same counted root). Inventing a second membership rule here would let Q39
+/// convict a block over a leaf the transition arms and the settlement spend
+/// path do not recognise as committed.
 ///
 /// The counted-root wrapper is what makes `deposit_count` load-bearing:
 /// `verify_root_membership_with_bytes` re-derives

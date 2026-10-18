@@ -5,7 +5,8 @@
  * become eligible at its inclusion time, so no block may end at or after
  * it: the bound is the earliest such inclusion time minus one. With no such
  * order there is no bound (`null`). An order that cannot be rebuilt bounds
- * the horizon as well; it also holds `/readyz` by name.
+ * the horizon as well; it also holds `/readyz` by name. An `unreadable`
+ * order is never due, so it bounds nothing.
  *
  * A node row without a header whose order is gone (a rollback removed it)
  * bounds the horizon the same way until the forced-order hook deletes it or
@@ -22,7 +23,7 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "../database/utils/common.js";
-import { FORCED_ORDERS_TABLE } from "./schema.js";
+import { FORCED_ORDER_UNREADABLE, FORCED_ORDERS_TABLE } from "./schema.js";
 
 export const forcedOrderHorizon = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -30,6 +31,7 @@ export const forcedOrderHorizon = Effect.gen(function* () {
       (SELECT MIN(f.inclusion_time)
         FROM ${sql(FORCED_ORDERS_TABLE)} f
         WHERE f.spent_slot IS NULL
+          AND f.status <> ${FORCED_ORDER_UNREADABLE}
           AND NOT EXISTS (
             SELECT 1 FROM ${sql(forcedTransactionsTable)} t
             WHERE t.tx_order_l1_tx_hash = f.order_tx_hash

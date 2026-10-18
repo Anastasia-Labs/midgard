@@ -631,9 +631,10 @@ fn maybe_sized_entries(
 // Script size: the reads are written for size, since every script that
 // decodes links them. A head's argument is read through `argument`, and the
 // 2-, 4- or 8-byte width comes from a table, at the cost of a call or an index
-// per item. The commonest heads are read in line instead, in both variants:
-// an integer below 24, and a byte string or chunk with a one-byte length
-// (`58`). `deserialise` also reads a list of fewer than 24 items in line.
+// per item. A few heads are read in line instead, in both variants: an
+// integer below 24, and a byte string or chunk with a one-byte length (`58`).
+// `deserialise` also reads a list of fewer than 24 items in line. These are
+// the in-line reads that keep the decoding sites within their script budgets.
 
 /// Continues with the `data` that `deserialise(bytes)` returns as
 /// `Some(data)`, and fails the script where it returns `None`. Use it with

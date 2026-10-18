@@ -13,6 +13,7 @@ import "./address-from-seed.js";
 import "./l1-command-access.js";
 import "./availability-challenge.plan-availability-command-action.js";
 import "./availability-challenge.build-availability-command-transaction.js";
+import "./availability-challenge.prepare-availability-opening-input.js";
 import "./availability-challenge.run-availability-challenge-command.js";
 export { buildAvailabilityCommandTransaction } from "./availability-challenge.build-availability-command-transaction.js";
 export {
@@ -20,7 +21,9 @@ export {
   assertAvailabilityTimeoutCollateral,
   type AvailabilityCommandAction,
   type AvailabilityCommandBuildContext,
+  availabilityCommandMinimumChangeLovelace,
   type AvailabilityCommandOptions,
+  availabilityPreparationAmounts,
   availabilityTimeoutCollateralLovelace,
   availabilityTimeoutRentRefundAddress,
   type AvailabilityUnitHistory,
@@ -28,4 +31,5 @@ export {
   planAvailabilityCommandAction,
   recoverAvailabilityOpenCommitment,
 } from "./availability-challenge.plan-availability-command-action.js";
+export { prepareAvailabilityOpeningInput } from "./availability-challenge.prepare-availability-opening-input.js";
 export { runAvailabilityChallengeCommand } from "./availability-challenge.run-availability-challenge-command.js";

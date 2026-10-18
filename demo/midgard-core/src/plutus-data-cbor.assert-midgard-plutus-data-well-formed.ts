@@ -100,11 +100,9 @@ type MidgardPlutusDataFrame =
  * no trailing content, in a single pass over an explicit frame stack.
  *
  * This is the recursion-free replacement for probing decodability through
- * the CML/lucid `Data.from` parser, whose wasm build overflows its fixed
- * 1 MiB shadow stack near 1,522 nested nodes (far below the depth-4,043
- * value a maximal 16,384-byte Cardano transaction carries) and whose
- * host-side walk is quadratic in depth. Depth here is bounded only by the
- * bytes that carry the value, so the admitted maximum keeps deriving from
+ * the CML/lucid `Data.from` parser. Depth here is bounded only by the bytes
+ * that carry the value, so the admitted maximum (the depth-4,043 value a
+ * maximal 16,384-byte Cardano transaction carries) keeps deriving from
  * Cardano transaction capacity rather than a recursion cap.
  *
  * The accepted grammar is differentially locked against

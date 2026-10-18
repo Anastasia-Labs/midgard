@@ -7,25 +7,13 @@ import { fileURLToPath } from "node:url";
 /**
  * Typed front end for `cml-max-depth-child-v1.mjs`.
  *
- * Maximum-depth Plutus Data work needs BOTH raised budgets:
- *
- *   - the CML wasm shadow stack — 16 MiB in the Node build of
- *     `@lucid-evolution/cml`, which links
- *     `-C link-arg=-zstack-size=16777216` (previously CML `6.2.0-2`, and
- *     before it the retired install-time patcher), and
- *   - V8's machine stack, raised with `--stack-size` (measured floor 1,400 KB
- *     at depth 4,043; 2,000 KB is used for headroom).
- *
- * `--stack-size` cannot be set from inside a running worker, and a CML wasm
- * trap poisons the `WebAssembly.Instance` for the remainder of the process, so
- * every max-depth operation runs in its own short-lived child. This is what
- * keeps the flag scoped to the suites that need it: no vitest pool option, no
+ * Every maximum-depth operation runs in its own short-lived child, on Node's
+ * default machine stack unless `stackSizeKb` sets one (`--stack-size`, which
+ * cannot be set from inside a running worker). No vitest pool option, no
  * `NODE_OPTIONS`, no change to how any other suite executes.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-export const MAX_DEPTH_V8_STACK_SIZE_KB = 2_000;
 
 export const CML_MAX_DEPTH_CHILD_SCRIPT = join(
   HERE,
@@ -79,15 +67,15 @@ const encodeBigints = (value: unknown): unknown => {
 export const runMaxDepthCmlOperation = (
   request: MaxDepthCmlRequest,
   {
-    stackSizeKb = MAX_DEPTH_V8_STACK_SIZE_KB,
+    stackSizeKb,
     timeoutMs = 300_000,
-  }: { readonly stackSizeKb?: number | null; readonly timeoutMs?: number } = {},
+  }: { readonly stackSizeKb?: number; readonly timeoutMs?: number } = {},
 ): MaxDepthCmlResult => {
   const scratch = mkdtempSync(join(tmpdir(), "midgard-c26-maxdepth-"));
   const requestPath = join(scratch, "request.json");
   writeFileSync(requestPath, JSON.stringify(encodeBigints(request)), "utf8");
   const nodeArgs = [
-    ...(stackSizeKb === null ? [] : [`--stack-size=${stackSizeKb}`]),
+    ...(stackSizeKb === undefined ? [] : [`--stack-size=${stackSizeKb}`]),
     CML_MAX_DEPTH_CHILD_SCRIPT,
     requestPath,
   ];
