@@ -3,8 +3,8 @@
 //// `pnpm --dir demo/midgard-core run fixtures:cek-staged-v1:sync`.
 ////
 //// Roots, lengths, memory words and leaves computed by the TypeScript twins of
-//// cek_staged_blob_v1 and cek_staged_integer_v1, required of the Aiken
-//// libraries on the same inputs.
+//// cek_staged_blob_v1, cek_staged_integer_v1 and cek_staged_integer_cbor_v1,
+//// required of the Aiken libraries on the same inputs.
 
 use aiken/builtin
 use aiken/cbor
@@ -16,6 +16,10 @@ use midgard/cek_proof_v1
 use midgard/cek_staged_blob_v1.{
   bind_operand_v1, chunk_bytes, collect_runs_v1, flat_root_of_pieces_v1,
   flat_root_v1,
+}
+use midgard/cek_staged_integer_cbor_v1.{
+  encode_integer_cbor_bulk_v1, integer_cbor_from_magnitude_bulk_v1,
+  integer_cbor_pieces_from_magnitude_v1, parse_integer_cbor_bulk_v1,
 }
 use midgard/cek_staged_integer_v1.{
   SignedLimbsV1, add_signed_v1, encode_canonical_integer_cbor_v1,
@@ -547,6 +551,8 @@ test integer_zero() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 1, 1).root == #"0c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da2",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -560,6 +566,8 @@ test integer_one() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 1, 1).root == #"6102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -573,6 +581,8 @@ test integer_minus_one() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 1, 1).root == #"045b6d8572fcb30c6ac06398f3dda84638c1f44e43df6acce9ec954870dfdc37",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -586,6 +596,8 @@ test integer_23() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 1, 1).root == #"a1aa9f6a11abd70d51540348a2408681bc14ef282219c94099948922e1948252",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -599,6 +611,8 @@ test integer_24() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 2, 1).root == #"028c3220c1da8bdb1581cc7d1166d8177cd7208fab4b0fbba6522a0143a8dc0a",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -612,6 +626,8 @@ test integer_minus_25() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 2, 1).root == #"643081a3969a6af7bd4382a4f851ebd9459fa5303a70759a3e6cec658f84adac",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -625,6 +641,8 @@ test integer_255() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 2, 1).root == #"049e6ab86d5bbbd337384903919f66d3ae7e496b549c836a958e71f6610d5c25",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -638,6 +656,8 @@ test integer_256() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 3, 1).root == #"ce9d5617fa206a1b62cf964640061866834d25168131ba52ad9509c13fd57e5a",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -651,6 +671,8 @@ test integer_65535() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 3, 1).root == #"9bbf09c7ab63b65f27b8e8ba76e8fc1a858905c9f33d8cce7802a183e01c59ac",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -664,6 +686,8 @@ test integer_65536() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 5, 1).root == #"d94505ab146a952c3682471919b97326cccc9c6c61e01470d5c92ddbca6bceb2",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -677,6 +701,8 @@ test integer_two_to_32_minus_one() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 5, 1).root == #"dd43b50de88f3631620a17487a32d197c0e2702d9859f8274fe1515155810288",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -690,6 +716,8 @@ test integer_two_to_32() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 9, 1).root == #"2915584917f470c7d92ba9099a542229bfa095ddeeeb39da5572ec96af2f9988",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -703,6 +731,8 @@ test integer_two_to_64_minus_one() {
     magnitude_words_v1(parsed) == 1,
     integer_leaf_from_cbor_v1(root, 9, 1).root == #"40f29979672c876f71d80a474f9143b15057551219c9f582113c1ee739414860",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -716,6 +746,8 @@ test integer_minus_two_to_64() {
     magnitude_words_v1(parsed) == 2,
     integer_leaf_from_cbor_v1(root, 9, 2).root == #"7caff5a7bfd69ce829f43423714295c30717997a87c2a32c7d9294d8661ef528",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -729,6 +761,8 @@ test integer_two_to_64() {
     magnitude_words_v1(parsed) == 2,
     integer_leaf_from_cbor_v1(root, 11, 2).root == #"6e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -742,6 +776,8 @@ test integer_minus_two_to_64_minus_one() {
     magnitude_words_v1(parsed) == 2,
     integer_leaf_from_cbor_v1(root, 11, 2).root == #"7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -755,6 +791,8 @@ test integer_two_to_512_minus_one() {
     magnitude_words_v1(parsed) == 8,
     integer_leaf_from_cbor_v1(root, 67, 8).root == #"b3ab1d3752fc6ec9c000f1093df8cde4478d2c41d1d6f02addd81a31a90b03fe",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -768,6 +806,8 @@ test integer_two_to_512() {
     magnitude_words_v1(parsed) == 9,
     integer_leaf_from_cbor_v1(root, 71, 9).root == #"cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -781,6 +821,8 @@ test integer_minus_two_to_512() {
     magnitude_words_v1(parsed) == 9,
     integer_leaf_from_cbor_v1(root, 67, 9).root == #"099e9cd2b078f18e6e216b99cddd7d504b00052fbeb0b3da6925c198e0699ab7",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -794,6 +836,8 @@ test integer_counting_64() {
     magnitude_words_v1(parsed) == 8,
     integer_leaf_from_cbor_v1(root, 67, 8).root == #"2603f904630b23a64b87b1c42477736b363bf0b4f7be8ab462f401bba9b67c40",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -807,6 +851,8 @@ test integer_minus_counting_65() {
     magnitude_words_v1(parsed) == 9,
     integer_leaf_from_cbor_v1(root, 71, 9).root == #"e8dd03770b36cb00798721d476d47f76736f80b13315d15ddf4e92597242ea66",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -820,6 +866,8 @@ test integer_ff_128() {
     magnitude_words_v1(parsed) == 16,
     integer_leaf_from_cbor_v1(root, 135, 16).root == #"d73a9f1d41ba9adbe9a73057d64b760c7007d1f0a82e6a252dd8f475959bbed0",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -833,6 +881,8 @@ test integer_minus_ff_129_minus_one() {
     magnitude_words_v1(parsed) == 17,
     integer_leaf_from_cbor_v1(root, 137, 17).root == #"313bda98db35f0d32c6fbd883da44c11a6acdc9280792635a9408cd639c98455",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -846,6 +896,8 @@ test integer_minus_two_to_4096() {
     magnitude_words_v1(parsed) == 65,
     integer_leaf_from_cbor_v1(root, 531, 65).root == #"bba4354f2d88725e5058d658d321728b16d99e79a268324ffd9e413aecd75cb4",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -859,6 +911,8 @@ test integer_largest() {
     magnitude_words_v1(parsed) == 4096,
     integer_leaf_from_cbor_v1(root, 33795, 4096).root == #"376413363891e6ac57d2c0f620ed5212eab1d468f08ebcea880fcd4f0187fc3a",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -872,6 +926,8 @@ test integer_smallest() {
     magnitude_words_v1(parsed) == 4096,
     integer_leaf_from_cbor_v1(root, 33795, 4096).root == #"c58fd645c9de89ed89b9f701e01d552872305d95773599cbf3e3ae7641a94b5e",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -885,6 +941,8 @@ test integer_minus_5a_32768() {
     magnitude_words_v1(parsed) == 4096,
     integer_leaf_from_cbor_v1(root, 33795, 4096).root == #"a0c6a1fa96d794c00d897cf9f09849d7175738a207d18d76606d516a9213cef7",
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }
 
@@ -896,6 +954,10 @@ test limbs_five_and_minus_five() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"5fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df3",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"3aaa70e63b8635b3b8dfffdad0e17d1733dcdbcf2ea150a11370ba8112f3290a",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"5fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df3",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"3aaa70e63b8635b3b8dfffdad0e17d1733dcdbcf2ea150a11370ba8112f3290a",
   }
 }
 
@@ -905,6 +967,10 @@ test limbs_ff_1536_and_one() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"1e00d47d08f5c563d17aa8012c6f581a3203032a0406a30891c356caa0d379fa",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"09ef471e6e9c3235db1db94ccd5adb25a13132805d4fbb0b72f27e33f5a6ea48",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"1e00d47d08f5c563d17aa8012c6f581a3203032a0406a30891c356caa0d379fa",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"09ef471e6e9c3235db1db94ccd5adb25a13132805d4fbb0b72f27e33f5a6ea48",
   }
 }
 
@@ -914,6 +980,10 @@ test limbs_growth_and_minus_one() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"be1442eda045834e7cc2ed733cf6497fb4d7e6127495b1908eb026df488c9bd9",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"1cbc5269284828b0e6e4469fac7206a1412b61f2763eaa5b8e9312c7600c68fa",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"be1442eda045834e7cc2ed733cf6497fb4d7e6127495b1908eb026df488c9bd9",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"1cbc5269284828b0e6e4469fac7206a1412b61f2763eaa5b8e9312c7600c68fa",
   }
 }
 
@@ -923,6 +993,10 @@ test limbs_counting_1025_and_minus_counting_1024() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"8326b448872935a772432a4b3e6ea661e8f8de501ed8e00b7069771f1e7f3d5d",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"9f2cc56b305688f2b41c004b9e7f94e1c119fd033c5fde3aa1db78d6c237e7cc",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"8326b448872935a772432a4b3e6ea661e8f8de501ed8e00b7069771f1e7f3d5d",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"9f2cc56b305688f2b41c004b9e7f94e1c119fd033c5fde3aa1db78d6c237e7cc",
   }
 }
 
@@ -932,6 +1006,10 @@ test limbs_largest_minus_one_and_one() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"02cd71f8e6e14a4f70635c5c28640fb6d7db5a4ad46ecbe34d823466e4516afb",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"cc08e239ea1f2edcbb56c286c02b4729c765665b057e4157c16b15b7703bc16b",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"02cd71f8e6e14a4f70635c5c28640fb6d7db5a4ad46ecbe34d823466e4516afb",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"cc08e239ea1f2edcbb56c286c02b4729c765665b057e4157c16b15b7703bc16b",
   }
 }
 
@@ -941,5 +1019,9 @@ test limbs_counting_32768_and_minus_7f_32768() {
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == #"ac74a9a92cd281dff07c6ae33af6de5818cb24c53283386e34b4b3610d253f43",
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == #"5034011b4e9844de986a9965070b3067db58caa85f8e0169225f230eb8c5c724",
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == #"ac74a9a92cd281dff07c6ae33af6de5818cb24c53283386e34b4b3610d253f43",
+    flat_root_of_pieces_v1(
+      integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b)),
+    ) == #"5034011b4e9844de986a9965070b3067db58caa85f8e0169225f230eb8c5c724",
   }
 }

@@ -2,7 +2,8 @@
 
 /**
  * The `cek-staged-v1` cross-language golden channel: the staged-operand and
- * staged-integer libraries (`cek_staged_blob_v1`, `cek_staged_integer_v1`)
+ * staged-integer libraries (`cek_staged_blob_v1`, `cek_staged_integer_v1`,
+ * and the bulk CBOR reader and writers of `cek_staged_integer_cbor_v1`)
  * against their TypeScript twins (built `dist/`).
  *
  * Every root here comes from TypeScript: blob roots from
@@ -17,8 +18,9 @@
  *     9,215, 9,216, 16,384, 32,768 and 65,536 B), equal to
  *     `cek_proof_v1.bounded_blob_root_v1` up to 9,215 B;
  *   * staged operands bound from staging reference inputs;
- *   * the Integer CBOR root, length, memory words and leaf of each value; and
- *   * the CBOR root of limbwise sums and differences.
+ *   * the Integer CBOR root, length, memory words and leaf of each value, read
+ *     and re-encoded by both the per-segment and the bulk reader and writer; and
+ *   * the CBOR root of limbwise sums and differences, written by both writers.
  *
  * usage: node scripts/generate-cek-staged-v1-goldens.mjs [--check]
  */
@@ -265,6 +267,8 @@ const integerTest = ({
     magnitude_words_v1(parsed) == ${words},
     integer_leaf_from_cbor_v1(root, ${cborLength}, ${words}).root == ${aikenBytes(leafRoot)},
     encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
   }
 }`;
 
@@ -328,6 +332,8 @@ const limbTest = ({
   and {
     flat_root_v1(integer_cbor_from_magnitude_v1(add_signed_v1(a, b))) == ${aikenBytes(sumRoot)},
     flat_root_v1(integer_cbor_from_magnitude_v1(subtract_signed_v1(a, b))) == ${aikenBytes(differenceRoot)},
+    flat_root_v1(integer_cbor_from_magnitude_bulk_v1(add_signed_v1(a, b))) == ${aikenBytes(sumRoot)},
+    flat_root_of_pieces_v1(integer_cbor_pieces_from_magnitude_v1(subtract_signed_v1(a, b))) == ${aikenBytes(differenceRoot)},
   }
 }`;
 
