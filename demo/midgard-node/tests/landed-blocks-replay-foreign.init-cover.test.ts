@@ -171,8 +171,9 @@ describe("a follower store that holds the protocol-init spend, T(B) before its o
   });
 
   // The facts are complete for the block's whole window only once the view
-  // reaches its end: the horizon check before the coverage
-  // (src/landed-blocks/replay-foreign.ts:306) holds the block until then.
+  // reaches its end: the horizon check before the coverage, in
+  // `foreignBlockReplayer`'s `replay` (src/landed-blocks/replay-foreign.ts),
+  // holds the block until then.
   it("holds an absent deposit, not invalid, while the view does not reach the block's end", async () => {
     const { store, chain } = await follow();
     await landInit(chain);
