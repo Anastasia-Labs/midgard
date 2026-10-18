@@ -38,9 +38,11 @@ export type ReplayHoldKind = keyof typeof HOLD_OF;
  * Only `invalid` (a verdict: the same view replays to the same answer) is
  * `notRetried`. Every other outcome is retried on the driver's backoff. A
  * local failure (`local_fault`, `incomplete`, `verifier_unavailable`: this
- * node's own computation, or its verifier, failed) is a `localFault` on block
- * `headerHash`, the block it stopped at, whatever the failure's text: retried
- * within the runner's bound.
+ * node's own computation, or its verifier, failed), and an event the facts
+ * lack where they do not cover the block's range (`event_unknown`: a gap in
+ * this node's facts), is a `localFault` on block `headerHash`, the block it
+ * stopped at, whatever the failure's text: retried within the runner's
+ * bound.
  */
 export const replayOutcomeHold = (
   kind: ReplayHoldKind,
@@ -52,7 +54,8 @@ export const replayOutcomeHold = (
     ? notRetried(hold)
     : kind === "local_fault" ||
         kind === "incomplete" ||
-        kind === "verifier_unavailable"
+        kind === "verifier_unavailable" ||
+        kind === "event_unknown"
       ? localFault(hold, headerHash)
       : hold;
 };

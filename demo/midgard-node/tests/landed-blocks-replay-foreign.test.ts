@@ -228,7 +228,9 @@ describe("foreign replay: withdrawals", () => {
     });
     expect(await replayed(store, stranger)).toMatchObject({
       kind: "event_unknown",
-      detail: `withdrawal ${unknown} is not known at the view`,
+      detail: expect.stringContaining(
+        `withdrawal ${unknown} is not known at the view`,
+      ),
     });
   });
 });

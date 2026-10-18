@@ -452,7 +452,19 @@ first hold by priority is the reason, the rest are in its detail):
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
-  does not know at the view. Wait; it is re-read every run.
+  does not know at the view, and the follower's facts do not cover the
+  range the block's events could be admitted in (its origin is after that
+  range's start, the prune reached the slot the block's node output entered
+  at, that output was seeded, or the store was reset or rolled back since
+  the view). Where the facts cover the range, the
+  block is `landed_block_invalid` instead. A local fault on the block: it is
+  read again every run, and after eight runs in a row end on it with no
+  progress past it the node exits non-zero
+  (`node_transient_budget_exhausted source=driver
+reason=landed_block_event_unknown`); a restart meets the same bound again.
+  Reset the follower store (`midgard-l1-follower reset --to-origin`, with
+  `l1Origin` early enough for the detail's slot) or resync the node, then
+  restart.
 - `landed_block_forced_order_pending`: a forced order in a foreign block's
   window cannot be read back yet. Wait.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign

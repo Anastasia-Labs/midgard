@@ -25,6 +25,12 @@ export type ReplayInput = Readonly<{
    * (another peer's copy may replay), never `invalid`.
    */
   daAvailability: SDK.DaAvailabilityStateQueueStatus;
+  /**
+   * The slot its node output entered the follower facts at; null for a
+   * seeded one. It anchors the range the facts must cover before an event
+   * the block names and the view lacks is the block's fault.
+   */
+  enteredSlot: number | null;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];
@@ -51,7 +57,9 @@ export type Replayed = Readonly<{
  * - `da_refetch_pending`: the retained payload no longer verified, was
  *   deleted, and its refetch has not been served yet;
  * - `event_unknown`: the block names an event the follower does not know at
- *   the view at all (a known one outside the window is `invalid`);
+ *   the view at all, and the facts do not cover the range its admission
+ *   could fall in (a known one outside the window, or an unknown one where
+ *   they do, is `invalid`);
  * - `forced_order_pending`: a forced order admitted in the block's window
  *   cannot be read back from the facts at the view yet;
  * - `local_fault`: this node's own computation failed where the block's

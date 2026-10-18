@@ -426,8 +426,9 @@ export const inNode = <A, E>(
   );
 
 /**
- * The replay input for `payload` on an empty parent at the store's view; its
- * node attested `payload`'s envelope unless `daAvailability` says otherwise.
+ * The replay input for `payload` on an empty parent at the store's view, its
+ * node output entered at the view's slot; its node attested `payload`'s
+ * envelope unless `daAvailability` says otherwise.
  */
 export const inputFor = async (
   store: FactStore,
@@ -435,15 +436,17 @@ export const inputFor = async (
   daAvailability?: SDK.DaAvailabilityStateQueueStatus,
 ): Promise<ReplayInput> => {
   const header = payload.block_body.header;
+  const view = (await store.currentView())!;
   return {
     headerHash: payload.block_body.header_hash,
     header,
     blockTime: header.endTime,
     daAvailability: daAvailability ?? (await attested(payload)),
+    enteredSlot: view.point.slot,
     parentHeaderHash: header.prevHeaderHash,
     parentUtxosRoot: header.prevUtxosRoot,
     parentEntries: [],
-    view: (await store.currentView())!,
+    view,
   };
 };
 

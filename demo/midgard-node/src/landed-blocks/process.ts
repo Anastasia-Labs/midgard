@@ -111,8 +111,10 @@ const decodeQueue = (queue: LandedStateQueue) =>
       root.element.datum,
     )).data;
     const nodes: LandedNode[] = [];
-    for (const { headerHash, element } of queue.nodes) {
-      nodes.push(yield* landedNodeOf(headerHash, element.datum));
+    for (const { headerHash, element, created } of queue.nodes) {
+      nodes.push(
+        yield* landedNodeOf(headerHash, element.datum, created?.slot ?? null),
+      );
     }
     return {
       root: {

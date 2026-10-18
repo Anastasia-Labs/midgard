@@ -7,8 +7,10 @@
  * admitted order, live or spent since, whatever its resolution status: the
  * facts at the view, never the node's ingested rows). The block's event
  * sets must be exactly the in-window events known there
- * (`start < inclusion <= end`): an id the payload names that is not known
- * there at all is `event_unknown` (see `holds.ts` for why it is a wait); a
+ * (`start < inclusion <= end`): a deposit or withdrawal id the payload
+ * names that is not known there at all is `invalid` where the facts cover
+ * the block's range (`replay-foreign.complete.ts`), else `event_unknown`
+ * (see `holds.ts`), as an unknown order id is; a
  * known id outside the window, a known in-window id it leaves out, or one
  * it names twice, is `invalid`; an in-window order whose output cannot be read
  * back at the view is `forced_order_pending`. A block that ends past what
@@ -71,6 +73,13 @@ import {
   type UnboundCopies,
 } from "./replay-foreign.bind.js";
 import {
+  type Absent,
+  absentWhere,
+  exact,
+  unknownAt,
+  userEventCoverage,
+} from "./replay-foreign.complete.js";
+import {
   payloadOf,
   type Refetching,
   type Served,
@@ -82,33 +91,6 @@ import {
   Verdict,
 } from "./replay-foreign.verdict.js";
 import type { WithdrawalMembership } from "./store.js";
-
-/**
- * `known` are the in-window ids, `seen` every id the view knows: an id
- * outside the window has a fixed inclusion time, so naming it is the
- * block's fault; one the view does not know at all may be a gap in this
- * node's facts, so it waits.
- */
-const exact = (
-  known: ReadonlySet<string>,
-  seen: ReadonlySet<string>,
-  named: readonly SDK.DaPayloadEntry[],
-  kind: string,
-) => {
-  const ids = named.map(([key]) => key);
-  if (new Set(ids).size !== ids.length)
-    return invalid(`the block names a ${kind} twice`);
-  const outside = ids.find((id) => !known.has(id) && seen.has(id));
-  if (outside !== undefined)
-    return invalid(`${kind} ${outside} is outside the block's window`);
-  const unknown = ids.find((id) => !known.has(id));
-  if (unknown !== undefined)
-    return unknownEvent(`${kind} ${unknown} is not known at the view`);
-  const left = [...known].find((id) => !ids.includes(id));
-  if (left !== undefined)
-    return invalid(`the block leaves out in-window ${kind} ${left}`);
-  return undefined;
-};
 
 /**
  * The forced orders admitted in the block's window at the view: order id
@@ -164,6 +146,7 @@ export const foreignReplayMaterial = (
   >,
   forced: ReadonlyMap<string, Buffer>,
   memberships: WithdrawalMembership[],
+  absent: Absent = unknownAt,
 ) => {
   const replayUserEvent: ImportedBlockReplayContext["replayUserEvent"] = ({
     step,
@@ -174,7 +157,7 @@ export const foreignReplayMaterial = (
       if (step.phase === "Deposit") {
         const entry = deposits.get(source[0]);
         if (entry === undefined)
-          return yield* Effect.fail(unknownEvent("a deposit is not known"));
+          return yield* Effect.fail(absent("deposit", source[0]));
         if (entry.info !== source[1])
           return yield* Effect.fail(
             invalid("a deposit differs from its L1 event"),
@@ -183,7 +166,7 @@ export const foreignReplayMaterial = (
       }
       const entry = withdrawals.get(source[0]);
       if (entry === undefined)
-        return yield* Effect.fail(unknownEvent("a withdrawal is not known"));
+        return yield* Effect.fail(absent("withdrawal", source[0]));
       const outRef = yield* WithdrawalsDB.toLedgerOutRef({
         [WithdrawalsDB.Columns.L2_OUTREF]: Buffer.from(entry.l2Outref, "hex"),
       });
@@ -366,6 +349,23 @@ export const foreignBlockReplayer = (deps: {
         view,
         inWindow,
       );
+      // Read after the facts: a prune since only moves it later, and a
+      // reset since changes the generation.
+      const cursor = yield* Effect.promise(() =>
+        deps.store.cursor().catch(() => null),
+      );
+      const absent = absentWhere(
+        userEventCoverage(
+          cursor,
+          {
+            startTime: header.startTime,
+            enteredSlot: input.enteredSlot,
+            generation: view.generation,
+          },
+          (ms) =>
+            unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
+        ),
+      );
       const { payload, acquired, bound, served } = yield* payloadOf(
         fetchDa,
         refetching,
@@ -377,12 +377,19 @@ export const foreignBlockReplayer = (deps: {
       held = { bound, served };
       const body = payload.block_body;
       const mismatch =
-        exact(new Set(deposits.keys()), seen, body.deposits, "deposit") ??
+        exact(
+          new Set(deposits.keys()),
+          seen,
+          body.deposits,
+          "deposit",
+          absent,
+        ) ??
         exact(
           new Set(withdrawals.keys()),
           seen,
           body.withdrawals,
           "withdrawal",
+          absent,
         ) ??
         exact(
           new Set(forced.keys()),
@@ -393,7 +400,13 @@ export const foreignBlockReplayer = (deps: {
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];
       const imported = yield* verifyAndImportBlock({
-        ...foreignReplayMaterial(deposits, withdrawals, forced, memberships),
+        ...foreignReplayMaterial(
+          deposits,
+          withdrawals,
+          forced,
+          memberships,
+          absent,
+        ),
         header,
         headerHash,
         parentHeaderHash: input.parentHeaderHash,
