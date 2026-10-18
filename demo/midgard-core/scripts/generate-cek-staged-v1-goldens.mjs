@@ -218,6 +218,8 @@ const integerCases = [
   ["minus_two_to_512", negate(power(512))],
   ["counting_64", counting(64)],
   ["minus_counting_65", negate(counting(65))],
+  ["counting_1100", counting(1_100)],
+  ["minus_counting_1100", negate(counting(1_100))],
   ["ff_128", repeated(128, 0xff)],
   ["minus_ff_129_minus_one", plus(negate(repeated(129, 0xff)), -1n)],
   ["minus_two_to_4096", negate(power(4_096))],

@@ -856,6 +856,36 @@ test integer_minus_counting_65() {
   }
 }
 
+test integer_counting_1100() {
+  let encoded = cbor.serialise(counting(1100))
+  let parsed = parse_canonical_integer_cbor_v1(encoded)
+  let root = #"afa61eedd71152ea6035d9ca397443d89cd3b150952e460830a136cf9e74ee07"
+  and {
+    flat_root_v1(encoded) == root,
+    builtin.length_of_bytearray(encoded) == 1138,
+    magnitude_words_v1(parsed) == 138,
+    integer_leaf_from_cbor_v1(root, 1138, 138).root == #"de6724f54121960e2144c716c7d7ed2768a84e50e394051973aa061d8058c5a5",
+    encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
+  }
+}
+
+test integer_minus_counting_1100() {
+  let encoded = cbor.serialise(-counting(1100))
+  let parsed = parse_canonical_integer_cbor_v1(encoded)
+  let root = #"5e65a050361e461535f2731d1f2cc0252a3b5dfeb3f3c0b2ce7c397dc016777b"
+  and {
+    flat_root_v1(encoded) == root,
+    builtin.length_of_bytearray(encoded) == 1138,
+    magnitude_words_v1(parsed) == 138,
+    integer_leaf_from_cbor_v1(root, 1138, 138).root == #"8a5d6f89d008701bd2da79275c441cac67820a87ece62104823ef871adf30363",
+    encode_canonical_integer_cbor_v1(parsed) == encoded,
+    parse_integer_cbor_bulk_v1(encoded) == parsed,
+    encode_integer_cbor_bulk_v1(parsed) == encoded,
+  }
+}
+
 test integer_ff_128() {
   let encoded = cbor.serialise(repeated(128, 0xff))
   let parsed = parse_canonical_integer_cbor_v1(encoded)
