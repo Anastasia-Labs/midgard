@@ -10,6 +10,7 @@ import {
 import { createOutputReferenceScriptDecodingRawL1StageResolver } from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
 import {
   deriveOutputReferenceScriptDecodingAuthenticatedSource,
+  deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock,
   outputReferenceScriptDecodingStageFromL1,
   prepareOutputReferenceScriptDecodingRecoveryMaterial,
 } from "./authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
@@ -18,7 +19,6 @@ import {
   type ManifestBoundOutputReferenceScriptDecodingWorkflow,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.output-reference-script-decoding-family-definition.js";
-import { detectOutputReferenceScriptDecodingCompleteReplay } from "./output-reference-script-decoding.js";
 import {
   type OutputReferenceScriptDecodingJournal,
   type OutputReferenceScriptDecodingStage,
@@ -48,13 +48,8 @@ export const runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow =
       observation,
       sources: input.sources,
     });
-    const findings =
-      detectOutputReferenceScriptDecodingCompleteReplay(canonical);
-    if (findings.length !== 1)
-      throw new Error(
-        `outputReferenceScriptDecoding public replay yielded ${findings.length.toString()} exact findings`,
-      );
-    const evidence = findings[0]!;
+    const evidence =
+      deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock(canonical);
     const source = await deriveOutputReferenceScriptDecodingAuthenticatedSource(
       {
         block: canonical,

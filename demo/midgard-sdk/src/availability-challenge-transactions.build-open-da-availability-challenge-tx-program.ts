@@ -28,6 +28,10 @@ import {
   complete,
 } from "./availability-challenge-transactions.complete.js";
 import {
+  daAvailabilityOpeningInputRequirement,
+  describeDaAvailabilityOpeningInput,
+} from "./availability-challenge-transactions.da-availability-opening-input.js";
+import {
   assertDaAvailabilityChallengeRecordMinAda,
   assertDaAvailabilityOpenCommitment,
   assertDaAvailabilityOpenWithinChallengeWindow,
@@ -151,16 +155,22 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
       nodeBlockTime: node.block_time,
       daChallengeWindowMs: p.daChallengeWindowMs,
     });
+    const opening = daAvailabilityOpeningInputRequirement({
+      parameters: d.parameters,
+      challengerAddress: keyAddress(lucid, p.challenger),
+      feeLovelace: p.feeLovelace,
+      collateralPercentage: protocolParameters(lucid).collateralPercentage,
+      coinsPerUtxoByte: protocolParameters(lucid).coinsPerUtxoByte,
+    });
     if (
       !isPlainPositiveAdaOnlyUtxo(p.challengerFunding) ||
-      p.challengerFunding.address !== keyAddress(lucid, p.challenger) ||
-      p.challengerFunding.assets.lovelace !==
-        d.parameters.challenger_bond_lovelace +
-          d.parameters.challenge_record_lovelace +
-          p.feeLovelace
+      p.challengerFunding.address !== opening.address ||
+      p.challengerFunding.assets.lovelace !== opening.lovelace
     )
       fail(
-        "Opening requires an exact isolated challenger_bond_lovelace + challenge_record_lovelace + fee input",
+        `Opening requires an exact isolated challenger_bond_lovelace + challenge_record_lovelace + fee input: ${describeDaAvailabilityOpeningInput(opening)}. Prepare it from any wallet with buildDaAvailabilityFundingPreparationTx (CLI: availability-challenge prepare)`,
+        "challenger-funding-not-exact",
+        { opening },
       );
     const plan = Availability.buildDaAvailabilityChallengeDatumPlan({
       commitment: p.commitment,

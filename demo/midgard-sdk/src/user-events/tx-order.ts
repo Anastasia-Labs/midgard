@@ -50,6 +50,7 @@ export {
   TxOrderSpendRedeemerSchema,
   type TxOrderUTxOV1,
   utxosToTxOrderUTxOs,
+  utxoToTxOrderUTxO,
 } from "./tx-order.submit-tx-order-config.js";
 export { type TxOrderBuildMetadata } from "./tx-order.tx-order-build-metadata.js";
 export { txOrderMaterialCarriageVector } from "./tx-order.tx-order-material-carriage-vector.js";

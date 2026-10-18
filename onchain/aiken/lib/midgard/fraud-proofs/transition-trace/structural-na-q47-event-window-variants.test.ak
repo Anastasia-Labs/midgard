@@ -194,8 +194,8 @@ fn withdrawal_info(
 }
 
 /// The L1 withdrawal order always carries `WithdrawalIsValid` at mint
-/// (validators/user-events/withdrawal.ak), so the authenticated reference
-/// datum is pinned to that tag here.
+/// (`user_events/history.history` admits it through `order_facts.admit`), so
+/// the authenticated reference datum is pinned to that tag here.
 fn withdrawal_reference_input(inclusion_time: Int) -> Input {
   history.order_reference(
     h28_a,

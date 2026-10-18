@@ -27,10 +27,19 @@ import {
 import { verifyReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 
+// The fixture edits its manifests between installs, so each install has to
+// rewrite the fixture's own lockfile. pnpm freezes the lockfile by default
+// when CI is set, which would refuse the second install there and nowhere else.
 const install = (root) =>
   execFileSync(
     "corepack",
-    ["pnpm", "install", "--offline", "--ignore-scripts"],
+    [
+      "pnpm",
+      "install",
+      "--offline",
+      "--ignore-scripts",
+      "--no-frozen-lockfile",
+    ],
     { cwd: resolve(root, "demo"), stdio: "pipe" },
   );
 const fixture = (t) => {

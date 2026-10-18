@@ -345,24 +345,12 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * Retained DA reconstruction at the exact derived maximum, not just at the
    * 1,024 production-runtime witness above.
    *
-   * Two constraints shape this test, both third-party and both measured:
-   *
-   *  1. CML cannot *build* a 4,043-deep `PlutusData` in-process, so the signed
-   *     candidate comes from the raw signer, exactly as the emulator-admission
-   *     test below does.
-   *  2. Maximum-depth `CML.Transaction.from_cbor_bytes` is effectively one-shot
-   *     per process even with the patched shadow stack: the first call in a
-   *     fresh worker succeeds, and a second one — or a first one in a worker
-   *     where any earlier test already drove CML through a deep datum — fails
-   *     with `RangeError: Maximum call stack size exceeded`. That is the same
-   *     property `helpers/cml-max-depth-runner.ts` exists for, so the
-   *     signed-Cardano-hex entry `exerciseMidgardRetainedDaBoundary` cannot
-   *     be used here without making the suite order-dependent.
-   *
-   * The canonical maximum-shape transaction is therefore projected through the
-   * repo's own recursion-free codecs — the shallow candidate goes through the
-   * production Cardano bridge and the maximum-depth datum is substituted into
-   * its single output — and handed to the canonical retained-DA entry point.
+   * The signed candidate comes from the raw signer, exactly as the
+   * emulator-admission test below does. The canonical maximum-shape
+   * transaction is projected through the repo's own recursion-free codecs —
+   * the shallow candidate goes through the production Cardano bridge and the
+   * maximum-depth datum is substituted into its single output — and handed to
+   * the canonical retained-DA entry point.
    * That is the same exercise `exerciseMidgardRetainedDaBoundary` delegates
    * to (envelope, SDK decode, both DA classifications, every bounded reveal and
    * the terminal reconstruction fold); only the CML-bound conversion in front
@@ -507,7 +495,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * accepted shape at that size. Every mutation here keeps the depth-4,043
    * envelope and breaks exactly one structural property, and each must be
    * refused by both the production iterative well-formedness gate and the
-   * exact unary measurement — no CML recursion involved on either side.
+   * exact unary measurement — no CML involved on either side.
    */
   it("rejects malformed and noncanonical unary Data at the exact maximum depth", () => {
     const { acceptedDepth, acceptedDatumCborBytes } =
@@ -599,11 +587,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
   /**
    * Genuine emulator admission at the exact derived maximum.
    *
-   * This is the case C26 could not reach before: `Emulator.submitTx` parses the
-   * candidate through `CML.Transaction.from_cbor_hex`, whose stock 1 MiB wasm
-   * shadow stack traps at depth ~1,503. It runs in a child process with
-   * `--stack-size=2000` because the patched shadow stack exposes V8's separate
-   * machine-stack limit — see `helpers/cml-max-depth-runner.ts`.
+   * `Emulator.submitTx` parses the candidate through
+   * `CML.Transaction.from_cbor_hex`. The submission runs in its own
+   * short-lived child process (`helpers/cml-max-depth-runner.ts`) on Node's
+   * default machine stack, apart from the rest of this suite.
    */
   it("admits the exact maximum-depth candidate through the real emulator", () => {
     const privateKey = deterministicCardanoBoundaryPrivateKey(0);
@@ -687,23 +674,21 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * execution units, collateral input/return/total, and a script-data hash, so
    * its unary capacity has to be derived separately.
    *
-   * `buildSignedCardanoSpendRedeemersCandidate` cannot reach that maximum. It
-   * materializes the redeemer through `CML.PlutusData.from_cbor_hex` and
-   * derives the script-data hash through `CML.calc_script_data_hash`, and both
-   * recurse over the Data tree. `buildRawSignedCardanoUnaryRedeemersCandidate`
-   * assembles the identical Conway transaction byte by byte — including the
+   * `buildRawSignedCardanoUnaryRedeemersCandidate` assembles the Conway
+   * transaction byte by byte — including the
    * `blake2b-256(redeemers || language_views)` script-data hash — and keeps the
-   * redeemer Data opaque. Depth one is pinned byte-for-byte against the CML
-   * builder here, so "the same transaction, only deeper" is measured rather
-   * than assumed, and the only remaining limit is the signed byte count.
+   * redeemer Data opaque, so building it never materializes the deep Data.
+   * Depth one is pinned byte-for-byte against the CML builder
+   * `buildSignedCardanoSpendRedeemersCandidate` here, so "the same
+   * transaction, only deeper" is measured rather than assumed, and the only
+   * remaining limit is the signed byte count.
    *
    * The Midgard projection uses the same recursion-free substitution the
-   * maximum-depth datum test uses, for the same measured reason: the production
-   * bridge parses through CML. The depth-one collateral-free parallel candidate
-   * goes through the real bridge, its field-8 redeemer preimage is rebuilt with
-   * the maximum-depth Data — with the depth-one rebuild pinned byte-identical
-   * to the bridge's own output first — and the canonical transaction is handed
-   * to the canonical retained-DA entry point unchanged.
+   * maximum-depth datum test uses. The depth-one collateral-free parallel
+   * candidate goes through the real bridge, its field-8 redeemer preimage is
+   * rebuilt with the maximum-depth Data — with the depth-one rebuild pinned
+   * byte-identical to the bridge's own output first — and the canonical
+   * transaction is handed to the canonical retained-DA entry point unchanged.
    */
   it("derives the genuine field-8 unary redeemer maximum and retains it through normal and forced paths", async () => {
     const privateKey = deterministicCardanoBoundaryPrivateKey(0);

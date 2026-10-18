@@ -1,7 +1,8 @@
 /**
  * Reads of the forced-order projection at a point: each live order with its
  * row and its order output, in one transaction after checking the point is
- * canonical in the follower store.
+ * canonical in the follower store. An `unreadable` order is never a live
+ * order; the admitted orders report it as such.
  */
 import {
   changedUtxosIn,
@@ -18,8 +19,8 @@ import {
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { ForcedOrderConfig } from "./config.js";
-import { authenticOrder, lucidUtxo, outRefLabel } from "./derive.js";
-import { FORCED_ORDERS_TABLE } from "./schema.js";
+import { lucidUtxo, outRefLabel, readForcedOrder } from "./derive.js";
+import { FORCED_ORDER_UNREADABLE, FORCED_ORDERS_TABLE } from "./schema.js";
 
 export type ForcedOrderStatus = "resolved" | "carriage_pending" | "malformed";
 
@@ -61,7 +62,7 @@ const decodeReferenceInputs = (bytes: Buffer): OutRef[] => {
 
 const STATUSES = new Set<string>(["resolved", "carriage_pending", "malformed"]);
 
-/** Every live forced order at `at`. */
+/** Every live forced order at `at`, unreadable ones aside. */
 export const forcedOrdersAt = (
   store: FactStore,
   at: Point,
@@ -74,8 +75,9 @@ export const forcedOrdersAt = (
          reference_inputs, mint_redeemer, block_datums, field_preimages, detail
        FROM ${FORCED_ORDERS_TABLE}
        WHERE order_slot <= ? AND (spent_slot IS NULL OR spent_slot > ?)
+         AND status <> ?
        ORDER BY order_slot, order_tx_hash, order_output_index`,
-      [at.slot, at.slot],
+      [at.slot, at.slot, FORCED_ORDER_UNREADABLE],
     );
     const outRefs = rows.map((row) => ({
       txHash: buf(row.order_tx_hash),
@@ -124,15 +126,46 @@ export const forcedOrdersAt = (
 
 /**
  * One forced order the projection admitted at or before a point, live or
- * spent since: its inclusion time and, read from its order output, its id
- * and raw datum (null when that output cannot be read or authenticated
- * there, which a reader treats as not yet known, never as absent).
+ * spent since: its inclusion time and what its order output reads as
+ * (`readForcedOrder`): an order with its id and raw datum, or an unreadable
+ * one with its id and why. Null when that output cannot be read or
+ * authenticated there, which a reader treats as not yet known, never as
+ * absent.
  */
 export type AdmittedForcedOrder = Readonly<{
   outRef: OutRef;
   inclusionTime: bigint;
-  order: Readonly<{ idCbor: Buffer; datum: Buffer }> | null;
+  read:
+    | Readonly<{ kind: "order"; idCbor: Buffer; datum: Buffer }>
+    | Readonly<{ kind: "unreadable"; idCbor: Buffer; detail: string }>
+    | null;
 }>;
+
+const admittedRead = (
+  output: StoredOutput | undefined,
+  outRef: OutRef,
+  policyId: string,
+): AdmittedForcedOrder["read"] => {
+  const reading =
+    output === undefined
+      ? null
+      : readForcedOrder(lucidUtxo(outRef, output.output), policyId);
+  if (reading === null) return null;
+  if (reading.kind === "unreadable")
+    return {
+      kind: "unreadable",
+      idCbor: reading.idCbor,
+      detail: reading.detail,
+    };
+  const datum = reading.order.utxo.datum;
+  return datum == null
+    ? null
+    : {
+        kind: "order",
+        idCbor: Buffer.from(reading.order.idCbor),
+        datum: Buffer.from(datum, "hex"),
+      };
+};
 
 export type AdmittedForcedOrdersRead =
   | Readonly<{ kind: "ok"; orders: readonly AdmittedForcedOrder[] }>
@@ -180,21 +213,14 @@ export const forcedOrdersAdmittedAt = (
       kind: "ok",
       orders: rows.map((row, index) => {
         const outRef = outRefs[index]!;
-        const output = outputs.get(outRefLabel(outRef));
-        const order =
-          output === undefined
-            ? null
-            : authenticOrder(lucidUtxo(outRef, output.output), config.policyId);
         return {
           outRef,
           inclusionTime: BigInt(row.inclusion_time as number | string),
-          order:
-            order === null || order.utxo.datum == null
-              ? null
-              : {
-                  idCbor: Buffer.from(order.idCbor),
-                  datum: Buffer.from(order.utxo.datum, "hex"),
-                },
+          read: admittedRead(
+            outputs.get(outRefLabel(outRef)),
+            outRef,
+            config.policyId,
+          ),
         };
       }),
     };
