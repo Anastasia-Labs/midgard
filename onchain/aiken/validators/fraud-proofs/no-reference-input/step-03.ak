@@ -12,6 +12,8 @@ use midgard/fraud_proofs/input_existence_v1/types.{
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
+use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact,
+  TxCompactView} as native_types
 use midgard/fraud_proofs/no_reference_input/step_03.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
@@ -75,6 +77,45 @@ fn run_pre_state_v1(
   step: transition_trace.RootMembershipProof<Int, ledger_state.TransitionStep>,
   expected_root: ByteArray,
 ) -> Bool {
+  run_pre_state_in_v1(
+    claim,
+    event,
+    step,
+    expected_root,
+    None,
+    fn(context) { context },
+  )
+}
+
+/// The fixture body, or that body with its network id replaced.
+fn compact_v1(network_id: Option<Int>) -> TxCompactView {
+  let base = carriage_fixture.compact_view_v1(
+    fixture.challenged_block_v1().compact,
+  )
+  when network_id is {
+    None -> base
+    Some(id) ->
+      TxCompactView {
+        ..base,
+        body: NativeTxBodyCompact { ..base.body, network_id: id },
+      }
+  }
+}
+
+/// `written` maps the context derived from the input state to the one the
+/// expected output carries.
+fn run_pre_state_in_v1(
+  claim: tf.ThreadClaimFixtureV1,
+  event: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  step: transition_trace.RootMembershipProof<Int, ledger_state.TransitionStep>,
+  expected_root: ByteArray,
+  network_id: Option<Int>,
+  written: fn(order.NetworkOrderContextV1) -> order.NetworkOrderContextV1,
+) -> Bool {
+  let compact = compact_v1(network_id)
   let subject = normal_subject_v1()
   // Unit composition executes both separately merkelized crypto walks.
   expect
@@ -114,9 +155,7 @@ fn run_pre_state_v1(
   )
   let selected_input = Some(fixture.absent_midgard_tx_input())
   let input_state = SelectedInputStateV1 {
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
+    compact,
     source_kind: 1,
     input_index: 0,
     claimed_input: None,
@@ -130,10 +169,8 @@ fn run_pre_state_v1(
     input_state.header,
   )
   let expected: Data = LedgerStateV1 {
-    network_order_context: context,
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
+    network_order_context: written(context),
+    compact,
     source_kind: 1,
     input_index: 0,
     claimed_input: None,
@@ -277,4 +314,35 @@ test event_pre_state_rejects_substituted_step_pre_root() fail {
     },
     tf.h32_d,
   )
+}
+
+// The header expects network 0. Each row states the context step_03 must
+// write rather than deriving it, so a step that writes any other context fails.
+fn run_network_context_v1(network_id: Int, mismatch: Bool) -> Bool {
+  let claim = claim_v1()
+  expect claim.header.expected_network_id == 0
+  run_pre_state_in_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    Some(network_id),
+    fn(_) { order.NetworkOrderContextV1 { body_network_mismatch: mismatch } },
+  )
+}
+
+test n7_pre_state_writes_mismatch_for_a_foreign_body_network() {
+  run_network_context_v1(1, True)
+}
+
+test n7_pre_state_writes_no_mismatch_for_the_expected_body_network() {
+  run_network_context_v1(0, False)
+}
+
+test n7_pre_state_writes_no_mismatch_for_an_untagged_body() {
+  run_network_context_v1(255, False)
+}
+
+test n7_pre_state_refuses_a_cleared_mismatch_for_a_foreign_body_network() {
+  !run_network_context_v1(1, False)
 }

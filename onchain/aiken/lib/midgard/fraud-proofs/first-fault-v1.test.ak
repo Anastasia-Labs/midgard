@@ -587,3 +587,100 @@ test n7_out_of_domain_receipt_for_purpose_refuses() fail {
     order.ResolutionOutOfDomain { source_kind: 0, input_index: 0 },
   )
 }
+
+// Callers negate the result, so these rows do too. An out-ref equal to the
+// observed one at another raw position is not an earlier position: it aborts.
+test n7_equal_outref_at_another_index_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.InputNotFound { source_kind: 0, input_index: 1 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 10, order.input_absence_subcheck)),
+    order.ResolutionReopened(point(0, 1, 10, order.input_absence_subcheck)),
+  )
+}
+
+test n7_equal_outref_in_another_field_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.InputNotFound { source_kind: 1, input_index: 0 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 10, order.input_absence_subcheck)),
+    order.ResolutionReopened(point(1, 0, 10, order.input_absence_subcheck)),
+  )
+}
+
+// The reopened point must name the leaf's own sub-check, so a receipt for
+// another sub-check of the same input cannot stand in for it.
+test n7_reopened_receipt_for_another_subcheck_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.InputNotFound { source_kind: 0, input_index: 3 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionReopened(point(0, 3, 2, order.spend_signer_subcheck)),
+  )
+}
+
+fn script_item(kind: Int) -> reason.RejectionReasonV1 {
+  reason.PlutusScriptUndecodable { item_kind: kind, item_index: 0, class: 1 }
+}
+
+// A witness script item (kind 0) is decoded in phase 5 and an output reference
+// script item (kind 1) in phase 8. Read through the callers' negation, a False
+// row convicts the leaf.
+test n7_witness_script_item_follows_a_canonical_fault() {
+  !order.leaf_admits_fault_v1(
+    rejected(script_item(0)),
+    None,
+    order.CanonicalFault(order.CanonicalItem { field_index: 4, item_index: 0 }),
+    order.NotRequired,
+  )
+}
+
+test n7_witness_script_item_precedes_a_resolution_fault() {
+  order.leaf_admits_fault_v1(
+    rejected(script_item(0)),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.NotRequired,
+  )
+}
+
+test n7_output_reference_script_item_follows_a_resolution_fault() {
+  !order.leaf_admits_fault_v1(
+    rejected(script_item(1)),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.NotRequired,
+  )
+}
+
+test n7_output_reference_script_item_admits_a_purpose_fault() {
+  purpose_admits(
+    script_item(1),
+    purpose(0, 0, order.SourceRequired),
+    order.NotRequired,
+  )
+}
+
+// No other item kind exists, so it has no phase.
+test n7_script_item_of_unknown_kind_has_no_phase() fail {
+  order.phase_of_reason_v1(
+    script_item(2),
+    order.NetworkOrderContextV1 { body_network_mismatch: False },
+  ) >= 0
+}
+
+test n7_script_item_of_negative_kind_has_no_phase() fail {
+  order.phase_of_reason_v1(
+    script_item(-1),
+    order.NetworkOrderContextV1 { body_network_mismatch: False },
+  ) >= 0
+}
+
+test n7_script_item_of_unknown_kind_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(script_item(2)),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.NotRequired,
+  )
+}
