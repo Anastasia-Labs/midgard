@@ -439,7 +439,10 @@ it("continues a concurrent run of the same submission ID with the nonce that run
   const outcomes = await Promise.allSettled([first, second]);
   // The second run took the first's reservation instead of choosing again.
   // Both then build on one journal row, so whichever saves first lands; the
-  // other lands the same admission or stops on the winner's progress.
+  // other lands the same admission or stops on the winner's progress. Where
+  // the winner's admission lands decides which check stops it: before its
+  // journal save, between its nonce check and its build's read of the event,
+  // or before its nonce check. The order depends on load.
   const landed = outcomes.flatMap((outcome) =>
     outcome.status === "fulfilled" ? [outcome.value.admission.txHash] : [],
   );
@@ -448,8 +451,12 @@ it("continues a concurrent run of the same submission ID with the nonce that run
   for (const outcome of outcomes)
     if (outcome.status === "rejected")
       expect(String(outcome.reason)).toMatch(
-        /Concurrent history submission changed; reload and reconcile/u,
+        /Concurrent history submission changed; reload and reconcile|History event is already admitted|History nonce is unavailable; reconcile its spending transaction/u,
       );
+  // A stopped run wrote nothing: a plain rerun of the ID, which may not
+  // choose a nonce, finishes on the landed admission without repair.
+  const rerun = await run(() => Effect.die(new Error("A rerun chose a nonce")));
+  expect(rerun.admission.txHash).toBe(landed[0]);
   const saved = await journal(submissionId);
   if (Option.isNone(saved)) throw new Error("Missing submission journal");
   expect(saved.value.nonce_out_ref).toBe(outRefLabel(nonce!));
