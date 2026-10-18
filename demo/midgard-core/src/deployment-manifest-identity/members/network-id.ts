@@ -24,8 +24,8 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkIdForcedStep: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id forced step",
-    manifestPosition: 406,
-    publicationPosition: 312,
+    manifestPosition: 436,
+    publicationPosition: 342,
     referenceRolePosition: 142,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/forced_step.main.spend",
@@ -34,8 +34,8 @@ export const networkIdMembers = defineDeploymentFamily("networkId", {
   fraudProofNetworkIdForcedScan: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof network-id forced scan",
-    manifestPosition: 407,
-    publicationPosition: 313,
+    manifestPosition: 437,
+    publicationPosition: 343,
     referenceRolePosition: 143,
     commands: [],
     validatorTitle: "fraud_proofs/network_id/forced_scan.main.spend",

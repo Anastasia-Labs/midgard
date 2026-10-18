@@ -16,7 +16,7 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-02",
-      manifestPosition: 426,
+      manifestPosition: 456,
       publicationPosition: 94,
       referenceRolePosition: 171,
       commands: [],
@@ -26,7 +26,7 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-03",
-      manifestPosition: 427,
+      manifestPosition: 457,
       publicationPosition: 95,
       referenceRolePosition: 172,
       commands: [],
@@ -36,7 +36,7 @@ export const referenceInputNoIdxMembers = defineDeploymentFamily(
     fraudProofReferenceInputNoIdxStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof reference-input-no-idx step-04",
-      manifestPosition: 428,
+      manifestPosition: 458,
       publicationPosition: 96,
       referenceRolePosition: 173,
       commands: [],

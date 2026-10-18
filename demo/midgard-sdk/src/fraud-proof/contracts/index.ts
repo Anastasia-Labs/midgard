@@ -177,7 +177,12 @@ export {
   buildMissingRedeemerFaultProofContracts,
   type BuildMissingRedeemerFaultProofContractsParams,
   MISSING_REDEEMER_FAULT_PROOF_TITLES,
+  MISSING_REDEEMER_ROLE_ORDER,
+  type MissingRedeemerChain,
   type MissingRedeemerFaultProofContracts,
+  type MissingRedeemerRole,
+  type MissingRedeemerRoles,
+  missingRedeemerRoles,
 } from "./families/missing-redeemer.js";
 export {
   buildMissingScriptSourceChain,
@@ -378,6 +383,12 @@ export {
   ZERO_INPUT_FAULT_PROOF_TITLES,
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
+export {
+  buildMissingRedeemerClaimContracts,
+  buildMissingRedeemerFamilyEntry,
+  MISSING_REDEEMER_CLAIM_TITLES,
+  type MissingRedeemerClaimContracts,
+} from "./missing-redeemer-claim.js";
 export {
   CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,

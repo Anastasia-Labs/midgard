@@ -14,7 +14,7 @@ export const invalidRangeMembers = defineDeploymentFamily("invalidRange", {
   fraudProofInvalidRangeStep02: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof invalid-range step-02",
-    manifestPosition: 420,
+    manifestPosition: 450,
     publicationPosition: 84,
     referenceRolePosition: 161,
     commands: [],

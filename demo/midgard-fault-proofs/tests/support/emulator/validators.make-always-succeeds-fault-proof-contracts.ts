@@ -374,7 +374,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
     receivePurposeLanguage: scaffoldChain(appendedFamilyFallback, 3),
     unusedScriptWitness: scaffoldChain(appendedFamilyFallback, 6),
     missingScriptSource: scaffoldChain(appendedFamilyFallback, 6),
-    missingRedeemer: scaffoldChain(appendedFamilyFallback, 7),
+    missingRedeemer: scaffoldChain(appendedFamilyFallback, 37),
     unusedRedeemer: scaffoldChain(appendedFamilyFallback, 9),
     scriptIntegrityHashMismatch: scaffoldChain(appendedFamilyFallback, 5),
     distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 6),

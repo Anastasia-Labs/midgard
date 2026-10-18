@@ -14,7 +14,7 @@ export const zeroInputMembers = defineDeploymentFamily("zeroInput", {
   fraudProofZeroInputStep02: {
     purpose: "spend",
     referenceRole: "V1 fraud-proof zero-input step-02",
-    manifestPosition: 421,
+    manifestPosition: 451,
     publicationPosition: 86,
     referenceRolePosition: 163,
     commands: [],
