@@ -1,19 +1,17 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  calculateMinLovelaceFromUTxO,
   type LucidEvolution,
   type Script,
-  type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";
-import { tokenChangeMinLovelace } from "./operators/funding-preflight.js";
 import { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import { handleSignSubmit } from "./utils.js";
+import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
 import {
   readSelectedWalletView,
   readSelectedWalletViewInputs,
@@ -25,15 +23,6 @@ const fundingFailure = (cause: WalletViewUnavailable) =>
       "Failed to read the wallet view to fund reward-account registrations",
     cause,
   });
-
-/**
- * The history observer registration found too little to fund it once the
- * deployment's initialization nonces, its reference-script outputs and any
- * datum-bearing output are left out of the funding wallet's view.
- */
-export class EventHistoryRegistrationUnfunded extends Error {
-  override readonly name = "EventHistoryRegistrationUnfunded";
-}
 
 /** Register runtime rewarding roles after availability and PHAS initialization. */
 export const ensureRuntimeRewardAccountsRegisteredProgram = (
@@ -77,23 +66,23 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     );
     const missing = before.filter(({ registered }) => !registered);
     // Registration certificates carry no Plutus witnesses. Bounded batches
-    // amortize confirmation across independent roles;
-    // Lucid still enforces the live transaction-size and funding limits.
+    // amortize confirmation across independent roles; each batch selects its
+    // own inputs for its deposits (`buildRewardRegistrationsTx`). These
+    // registrations follow protocol initialization, which has consumed the
+    // deployment's initialization nonces, so none is reserved here.
     for (let offset = 0; offset < missing.length; offset += 32) {
       const batch = missing.slice(offset, offset + 32);
-      const presetWalletInputs = yield* readSelectedWalletViewInputs(
-        lucid,
-        "runtime reward-account registrations",
-      ).pipe(Effect.mapError(fundingFailure));
+      const view = yield* readSelectedWalletView(lucid).pipe(
+        Effect.mapError(fundingFailure),
+      );
       const tx = yield* Effect.tryPromise({
         try: () =>
-          batch
-            .reduce(
-              (builder, { rewardAddress }) =>
-                builder.register.Stake(rewardAddress),
-              lucid.newTx(),
-            )
-            .complete({ localUPLCEval: true, presetWalletInputs }),
+          buildRewardRegistrationsTx(
+            lucid,
+            view,
+            batch.map(({ rewardAddress }) => rewardAddress),
+            "the runtime reward-account registrations",
+          ),
         catch: (cause) =>
           new SDK.LucidError({
             message: "Failed to build runtime reward-account registrations",
@@ -132,9 +121,10 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
  * wallet (`initialization.fetch-protocol-deployment-status.ts`). Its view is
  * the funding, tokens included (their change keeps its minimum ADA), less
  * three kinds of output: the deployment's initialization nonces
- * (`deploymentInitializationNonceOutRefKeys`), which the init consumes; the
- * reference-script outputs, which may be the deployment's publications at
- * that same address; and datum-bearing outputs, which are not plain funds.
+ * (`deploymentInitializationNonceOutRefKeys`), which the init consumes; and,
+ * through `buildRewardRegistrationsTx`, the reference-script outputs, which
+ * may be the deployment's publications at that same address, and
+ * datum-bearing outputs, which are not plain funds.
  */
 export const ensureEventHistoryRewardAccountsRegisteredProgram = (
   lucid: LucidEvolution,
@@ -156,96 +146,18 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
     );
     const reservedNonces = deploymentInitializationNonceOutRefKeys(contracts);
     const tx = yield* Effect.tryPromise({
-      try: async () => {
-        const inputs = view.utxos.filter(
-          (utxo) =>
-            utxo.scriptRef == null &&
-            utxo.datum == null &&
-            utxo.datumHash == null &&
-            !reservedNonces.has(utxoOutRefKey(utxo)),
-        );
-        if (inputs.length === 0)
-          throw new EventHistoryRegistrationUnfunded(
-            "No funding remains after reserving the initialization nonces and the reference-script outputs",
-          );
-        // Lucid's coin selection (0.8.3) leaves certificate deposits out of
-        // what it must cover, so this path selects its inputs itself: enough
-        // for the deposits, the fee and the change, without collecting every
-        // output of a fragmented wallet. Revisit this if a later Lucid counts
-        // the deposits.
-        const parameters = lucid.config().protocolParameters;
-        if (parameters === undefined)
-          throw new Error("History registration requires protocol parameters");
-        const plainChange = calculateMinLovelaceFromUTxO(
-          parameters.coinsPerUtxoByte,
+      try: () =>
+        buildRewardRegistrationsTx(
+          lucid,
           {
-            txHash: "00".repeat(32),
-            outputIndex: 0,
             address: view.address,
-            assets: { lovelace: 0xffffffffffffffffn },
+            utxos: view.utxos.filter(
+              (utxo) => !reservedNonces.has(utxoOutRefKey(utxo)),
+            ),
           },
-        );
-        const depositsAndFee =
-          BigInt(missing.length) * parameters.keyDeposit +
-          BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
-          BigInt(parameters.minFeeB);
-        // The change returns every selected token, so it needs their
-        // minimum ADA rather than a plain output's.
-        const budgetFor = (selection: readonly UTxO[]) => {
-          const tokenChange = tokenChangeMinLovelace(
-            lucid,
-            view.address,
-            selection,
-          );
-          return (
-            depositsAndFee +
-            (tokenChange > plainChange ? tokenChange : plainChange)
-          );
-        };
-        const selected: UTxO[] = [];
-        let total = 0n;
-        for (const input of inputs.sort((left, right) => {
-          const delta =
-            (right.assets.lovelace ?? 0n) - (left.assets.lovelace ?? 0n);
-          return delta === 0n
-            ? left.txHash.localeCompare(right.txHash) ||
-                left.outputIndex - right.outputIndex
-            : delta > 0n
-              ? 1
-              : -1;
-        })) {
-          selected.push(input);
-          total += input.assets.lovelace ?? 0n;
-          if (total >= budgetFor(selected)) break;
-        }
-        if (total < budgetFor(selected))
-          throw new EventHistoryRegistrationUnfunded(
-            "Insufficient unreserved funding for history observer deposits and fees",
-          );
-        const completed = await missing
-          .reduce(
-            (builder, { rewardAddress }) =>
-              builder.register.Stake(rewardAddress),
-            lucid.newTx().collectFrom(selected),
-          )
-          .complete({
-            coinSelection: false,
-            presetWalletInputs: selected,
-            localUPLCEval: true,
-          });
-        const allowed = new Set(selected.map(utxoOutRefKey));
-        const consumed = completed.toTransaction().body().inputs();
-        for (let index = 0; index < consumed.len(); index += 1) {
-          const input = consumed.get(index);
-          if (
-            !allowed.has(`${input.transaction_id().to_hex()}#${input.index()}`)
-          )
-            throw new Error(
-              "History registration spent an input it did not select",
-            );
-        }
-        return completed;
-      },
+          missing.map(({ rewardAddress }) => rewardAddress),
+          "the history observer registrations",
+        ),
       catch: (cause) =>
         new SDK.LucidError({
           message: "Failed to build event history observer registrations",

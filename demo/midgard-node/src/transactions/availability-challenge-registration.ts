@@ -7,7 +7,8 @@ import { Data, Effect } from "effect";
 
 import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import { handleSignSubmit } from "./utils.js";
-import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
+import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
+import { readSelectedWalletView } from "./utils.wallet-view.js";
 
 /** An availability-challenge yield's reward account is not registered: a
  * deployment verdict, which reading again does not change. */
@@ -107,10 +108,9 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
       // S5: the plan opens before the registration read it is built on.
       const plan = yield* openPlan;
       if (!(yield* query()).registered) {
-        const presetWalletInputs = yield* readSelectedWalletViewInputs(
-          lucid,
-          `availability challenge ${action} reward registration`,
-        ).pipe(
+        // It follows protocol initialization, which has consumed the
+        // deployment's initialization nonces, so none is reserved here.
+        const view = yield* readSelectedWalletView(lucid).pipe(
           Effect.mapError(
             (cause) =>
               new SDK.LucidError({
@@ -121,10 +121,12 @@ export const ensureAvailabilityChallengeRewardAccountsRegisteredProgram = (
         );
         const tx = yield* Effect.tryPromise({
           try: () =>
-            lucid
-              .newTx()
-              .register.Stake(rewardAddress)
-              .complete({ localUPLCEval: true, presetWalletInputs }),
+            buildRewardRegistrationsTx(
+              lucid,
+              view,
+              [rewardAddress],
+              `the availability challenge ${action} reward registration`,
+            ),
           catch: (cause) =>
             new SDK.LucidError({
               message: `Failed to build availability challenge ${action} reward registration`,
