@@ -83,6 +83,7 @@ fn indefinite_segments(
       }
     } else {
       expect size >= 24
+      expect size < segment_bytes
       expect offset + 2 + size == break_at
       [builtin.slice_bytearray(offset + 2, size, cbor)]
     }
