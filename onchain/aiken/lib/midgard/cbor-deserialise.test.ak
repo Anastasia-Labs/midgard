@@ -260,6 +260,61 @@ test decodes_an_empty_byte_string_as_the_last_byte() {
   }
 }
 
+// An empty byte string that ends the input, against the Cardano ledger
+// (plutus-core 1.71, protocol version 11, reading each payload as a Data
+// constant): it accepts each payload below to the value given, and refuses a
+// byte string head that claims one byte more than the input holds.
+test decodes_an_empty_byte_string_ending_the_input_as_the_ledger_does() {
+  and {
+    decodes_to(#"824040", l([b(#""), b(#"")])),
+    decodes_to(#"818140", l([l([b(#"")])])),
+    decodes_to(#"d86682018140", c(1, [b(#"")])),
+    decodes_to(#"a14040", m([Pair(b(#""), b(#""))])),
+    decodes_to(#"a146c84797cfa72140", m([Pair(b(#"c84797cfa721"), b(#""))])),
+    decodes_to(
+      #"a2448d3ed5d702448d3ed5d740",
+      m([Pair(b(#"8d3ed5d7"), i(2)), Pair(b(#"8d3ed5d7"), b(#""))]),
+    ),
+  }
+}
+
+test decodes_the_item_after_an_empty_byte_string() {
+  and {
+    decodes_to(#"824000", l([b(#""), i(0)])),
+    decodes_to(#"82405fff", l([b(#""), b(#"")])),
+    decodes_to(#"9f40ff", l([b(#"")])),
+    decodes_to(#"d87a9f40ff", c(1, [b(#"")])),
+    decodes_to(#"d8799f40ff", c(0, [b(#"")])),
+  }
+}
+
+test decodes_other_empty_items_ending_the_input_as_the_ledger_does() {
+  and {
+    decodes_to(#"5fff", b(#"")),
+    decodes_to(#"815fff", l([b(#"")])),
+    decodes_to(#"c240", i(0)),
+    decodes_to(#"c340", i(-1)),
+    decodes_to(#"81c240", l([i(0)])),
+    decodes_to(#"80", l([])),
+    decodes_to(#"8180", l([l([])])),
+    decodes_to(#"819fff", l([l([])])),
+    decodes_to(#"a0", m([])),
+    decodes_to(#"81a0", l([m([])])),
+  }
+}
+
+test both_entries_refuse_a_byte_string_claiming_one_byte_past_the_end() {
+  list.all(
+    [#"41", #"8141", #"a10041", #"d87a8141", #"60", #"8160"],
+    fn(bytes) {
+      and {
+        cbor_deserialise.deserialise(bytes) == None,
+        cbor_deserialise.deserialise_envelope(bytes) == None,
+      }
+    },
+  )
+}
+
 test decodes_byte_strings_of_64_bytes_and_longer_ones_in_chunks() {
   and {
     decodes_to(bytearray.concat(#"5840", ab(64)), b(ab(64))),
@@ -306,15 +361,16 @@ const refused_by_both_entries: List<ByteArray> =
     #"c25f5f40ffff", #"c25f4101410000ff", #"d8024101", #"d8034101",
     #"d9000241ff",
     // Unknown tags, and constructor tags over anything but a list.
-    #"c000", #"c100", #"c400", #"d81800", #"d87880", #"d904ff80", #"d9057980",
-    #"d95f80", #"d9ffff00", #"da0001000000", #"dbffffffffffffffff00", #"c0c000",
-    #"d87900", #"d87940", #"d879a0", #"d879d87980", #"d8798000", #"d87981f6",
+    #"c000", #"c100", #"c400", #"d81800", #"d87880", #"d88080", #"d904ff80",
+    #"d9057980", #"d95f80", #"d9ffff00", #"da0001000000",
+    #"dbffffffffffffffff00", #"c0c000", #"d87900", #"d87940", #"d879a0",
+    #"d879d87980", #"d8798000", #"d87981f6",
     // Tag 102 that is not a two-element array of a word and a list.
     #"d8664101", #"d8668201", #"d86683000080", #"d866820180ff",
     #"d8669f008000ff", #"d8669f0080", #"d866820083", #"d866820040",
     #"d8668200bf", #"d866829f00ff80", #"d86682c2410180",
     #"d86682c24901000000000000000080", #"d866823880", #"d866990002",
-    #"d8668218668080",
+    #"d8668218668080", #"d866822080", #"d86682c280",
     // Long declared lengths.
     #"990fff", #"b9ffff", #"9affffffff", #"9bffffffffffffffff",
   ]
@@ -338,6 +394,7 @@ fn long_vectors() -> Pairs<ByteArray, Data> {
   [
     Pair(bytearray.concat(#"5841", ab(65)), b(ab(65))),
     Pair(bytearray.concat(#"59012c", ab(300)), b(ab(300))),
+    Pair(bytearray.concat(#"5a0000012c", ab(300)), b(ab(300))),
     Pair(bytearray.concat(#"5b0000000000000041", ab(65)), b(ab(65))),
     Pair(
       bytearray.concat(#"5f5841", bytearray.concat(ab(65), #"ff")),
@@ -394,8 +451,9 @@ fn filler(count: Int) -> ByteArray {
 }
 
 // Every length the on-chain envelope writer emits reads back, up to the
-// largest input the evaluator indexes (65,536 bytes: a 65,533-byte payload
-// under its three-byte head).
+// longest a script can read. From protocol version 11 the Plutus evaluator
+// refuses a byte string argument over 65536 bytes, so 65533 bytes, under a
+// three-byte head, is the longest payload whose encoding can be read.
 test the_envelope_entry_reads_back_encode_definite_bytes() {
   list.all(
     [0, 1, 23, 24, 64, 65, 255, 256, 4095, 65533],
@@ -407,6 +465,23 @@ test the_envelope_entry_reads_back_encode_definite_bytes() {
       )
     },
   )
+}
+
+// One payload byte more makes the encoding 65537 bytes, too long for the
+// evaluator to read; Cardano's refuses it the same way.
+test the_envelope_entry_cannot_read_an_encoding_over_65536_bytes() fail {
+  let payload = filler(65534)
+  cbor_deserialise.deserialise_envelope(codec.encode_definite_bytes(payload)) == Some(
+    b(payload),
+  )
+}
+
+test expect_envelope_cannot_read_an_encoding_over_65536_bytes() fail {
+  let payload = filler(65534)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    codec.encode_definite_bytes(payload),
+  )
+  data == b(payload)
 }
 
 // ## Agreement between the entries and variants on arbitrary bytes
@@ -550,6 +625,18 @@ test expect_fails_on_a_byte_string_running_past_the_end() fail {
   expect_returns(#"5801")
 }
 
+test expect_fails_on_a_byte_string_claiming_one_byte_at_the_end() fail {
+  expect_returns(#"41")
+}
+
+test expect_fails_on_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_returns(#"8141")
+}
+
+test expect_fails_on_a_map_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_returns(#"a10041")
+}
+
 test expect_fails_on_a_short_wide_argument() fail {
   expect_returns(#"1a0001")
 }
@@ -606,6 +693,10 @@ test expect_fails_on_an_unknown_tag() fail {
   expect_returns(#"d87880")
 }
 
+test expect_fails_on_tag_128() fail {
+  expect_returns(#"d88080")
+}
+
 test expect_fails_on_a_tag_above_the_constructor_range() fail {
   expect_returns(#"d9057980")
 }
@@ -628,6 +719,14 @@ test expect_fails_on_tag_102_with_a_bignum_index() fail {
 
 test expect_fails_on_tag_102_with_a_negative_index() fail {
   expect_returns(#"d866823880")
+}
+
+test expect_fails_on_tag_102_with_index_minus_one() fail {
+  expect_returns(#"d866822080")
+}
+
+test expect_fails_on_tag_102_with_a_bignum_tag_as_its_index() fail {
+  expect_returns(#"d86682c280")
 }
 
 test expect_fails_on_tag_102_over_fields_that_are_not_a_list() fail {
@@ -658,6 +757,14 @@ test expect_envelope_fails_on_a_trailing_byte() fail {
 
 test expect_envelope_fails_on_a_byte_string_running_past_the_end() fail {
   expect_envelope_returns(bytearray.concat(#"5842", ab(65)))
+}
+
+test expect_envelope_fails_on_a_byte_string_claiming_one_byte_at_the_end() fail {
+  expect_envelope_returns(#"41")
+}
+
+test expect_envelope_fails_on_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_envelope_returns(#"8141")
 }
 
 test expect_envelope_fails_on_a_nested_indefinite_chunk() fail {

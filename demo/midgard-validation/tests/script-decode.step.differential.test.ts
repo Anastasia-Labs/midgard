@@ -72,22 +72,6 @@ const PROJECTION: Readonly<
   outsideProfile: "decoded",
 };
 
-/**
- * Data constants with bytes after the first item. Cardano reads the first
- * item and steps over the rest, as the step machine does; the reader refuses
- * them.
- */
-const TRAILING_DATA = new Set([
-  "0101004c01020000000001",
-  "0101004c010200ff0001",
-]);
-
-/** Constant lists with a Data item that has bytes after its first item. */
-const TRAILING_DATA_ROWS = new Set([
-  "bulk list Data over Flat chunks",
-  "bulk nested lists of Data",
-]);
-
 const walkVerdict = (flat: Buffer) => {
   const { record } = planScriptDecodeWalk(
     SCRIPT_DECODE_LANGUAGE_PLUTUS_V3,
@@ -121,15 +105,10 @@ const RAW_ROWS: readonly (readonly [string, string])[] = [
 ];
 
 describe("the script-decode step port against the Flat reader", () => {
-  it.each(RAW_ROWS)("%s gets the reader's class", (label, raw) => {
+  it.each(RAW_ROWS)("%s gets the reader's class", (_label, raw) => {
     const flat = bytes(raw);
     const record = walkVerdict(flat);
     const reader = readerVerdict(flat);
-    if (TRAILING_DATA.has(raw) || TRAILING_DATA_ROWS.has(label)) {
-      expect(reader).toBe(ScriptDecodeClass.invalidData);
-      expect(record).toMatchObject({ k: "decoded", phase2Class: 0 });
-      return;
-    }
     if (reader === "accepted") {
       expect(record).toMatchObject({ k: "decoded", phase2Class: 0 });
     } else if (reader === "decoded") {

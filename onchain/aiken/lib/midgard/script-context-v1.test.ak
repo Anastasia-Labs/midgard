@@ -1154,3 +1154,49 @@ test valid_range_golden_absent_absent() {
     #"d8799fd8799fd87980d87a80ffd8799fd87b80d87a80ffff",
   )
 }
+
+/// An inline datum that is, or ends in, an empty byte string: the Cardano
+/// ledger reads each one to the value given. The `TxOut` and spend datum entry
+/// points reconstruct it, and the consolidated entry point gives the same
+/// three summaries.
+test datums_ending_in_an_empty_byte_string_are_materialised() {
+  let reads = fn(datum_cbor: ByteArray, datum: Data) -> Bool {
+    let output = output_with_datum(datum_cbor)
+    and {
+      reconstructed_datum(datum_cbor) == Some(builtin.constr_data(2, [datum])),
+      script_context_v1.ledger_output_summaries_v1(output) == when
+        (
+          script_context_v1.tx_out_summary_v1(output, False),
+          script_context_v1.tx_out_summary_v1(output, True),
+          script_context_v1.spend_datum_summary_v1(output),
+        )
+      is {
+        (Some(cardano), Some(midgard), Some(spend)) ->
+          Some((cardano, midgard, spend))
+        _ -> None
+      },
+      script_context_v1.ledger_output_summaries_v1(output) != None,
+    }
+  }
+  and {
+    reads(#"40", builtin.b_data(#"")),
+    reads(#"9f40ff", builtin.list_data([builtin.b_data(#"")])),
+    reads(#"d87a9f40ff", builtin.constr_data(1, [builtin.b_data(#"")])),
+    reads(
+      #"a10040",
+      builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+    ),
+  }
+}
+
+/// The ledger refuses a datum whose byte string head claims one byte more
+/// than the datum holds, and no entry point summarises an output carrying it.
+test a_datum_claiming_one_byte_past_its_end_has_no_summary() {
+  let output = output_with_datum(#"41")
+  and {
+    script_context_v1.tx_out_data_v1(output, False) == None,
+    script_context_v1.tx_out_data_v1(output, True) == None,
+    script_context_v1.spend_datum_summary_v1(output) == None,
+    script_context_v1.ledger_output_summaries_v1(output) == None,
+  }
+}

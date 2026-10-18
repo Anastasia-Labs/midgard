@@ -3035,6 +3035,220 @@ test scalar_mul_success_certifies_in_bound_scalars() {
   }
 }
 
+// Each builtin's own charge at the 64-bit and constructor-128 boundaries:
+// Cardano's PV 11 total for the program in
+// cek-program.cardano-boundaries.vectors.ts, less the 100/100 start-up and
+// its 16000/100 machine steps (five for a two-argument builtin, three for a
+// one-argument one). An integer is two 64-bit words exactly from |x| = 2^64.
+fn charges(
+  tag: Int,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  cek_builtin_v1.direct_builtin_budget_v1(tag, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+    cpu,
+    memory,
+  }
+}
+
+fn data_value(value: Data) -> cek_builtin_v1.ValueWitnessV1 {
+  constant(#"9f08ff", cbor.serialise(value))
+}
+
+test add_integer_charges_cardano_words_across_the_64_bit_boundary() {
+  and {
+    charges(
+      0,
+      [integer_value(18446744073709551615), integer_value(1)],
+      101208,
+      2,
+    ),
+    charges(
+      0,
+      [integer_value(18446744073709551615), integer_value(0)],
+      101208,
+      2,
+    ),
+    charges(
+      0,
+      [integer_value(18446744073709551616), integer_value(-1)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551616), integer_value(-1)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551616), integer_value(0)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551617), integer_value(1)],
+      101628,
+      3,
+    ),
+  }
+}
+
+test equals_data_charges_cardano_words_across_the_64_bit_boundary() {
+  and {
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(-18446744073709551616)),
+        data_value(builtin.i_data(-18446744073709551617)),
+      ],
+      1061822,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(18446744073709551616)),
+        data_value(builtin.i_data(18446744073709551616)),
+      ],
+      1061822,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(18446744073709551615)),
+        data_value(builtin.i_data(18446744073709551616)),
+      ],
+      1034543,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.constr_data(127, [])),
+        data_value(builtin.constr_data(128, [])),
+      ],
+      1007264,
+      1,
+    ),
+  }
+}
+
+test serialise_data_charges_cardano_words_at_constructor_128() {
+  and {
+    charges(51, [data_value(builtin.constr_data(128, []))], 1808754, 8),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.constr_data(128, [builtin.i_data(18446744073709551616)]),
+        ),
+      ],
+      3088626,
+      20,
+    ),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.constr_data(127, [builtin.i_data(18446744073709551615)]),
+        ),
+      ],
+      2875314,
+      18,
+    ),
+  }
+}
+
+test un_i_data_charges_a_constant_across_the_64_bit_boundary() {
+  and {
+    charges(45, [data_value(builtin.i_data(18446744073709551615))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(18446744073709551616))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(-18446744073709551616))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(-18446744073709551617))], 20744, 32),
+  }
+}
+
+// unConstrData of constructor 128 (tag 102) and of 127 (tag 1400), then
+// fstPair: Cardano returns the index. The program
+// `[(force (force (builtin fstPair))) [(builtin unConstrData) (con data _)]]`
+// costs 278583/864, of which seven machine steps and the start-up are
+// 112100/800.
+fn un_constr_data_pair(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  constant(
+    #"9f06000508ff",
+    cbor.serialise(
+      builtin.constr_data(0, [builtin.i_data(index), builtin.list_data([])]),
+    ),
+  )
+}
+
+fn un_constr_data_then_fst_pair_verifies(index: Int) -> Bool {
+  let source = [data_value(builtin.constr_data(index, []))]
+  let pair = [un_constr_data_pair(index)]
+  let unconstr = cek_builtin_v1.direct_builtin_budget_v1(42, source)
+  let fst = cek_builtin_v1.direct_builtin_budget_v1(29, pair)
+  and {
+    verify_direct_with_split_parity(
+      42,
+      builtin_root(42, source),
+      source,
+      un_constr_data_pair(index),
+    ),
+    verify_direct_with_split_parity(
+      29,
+      builtin_root(29, pair),
+      pair,
+      integer_value(index),
+    ),
+    unconstr.cpu + fst.cpu == 166483,
+    unconstr.memory + fst.memory == 64,
+  }
+}
+
+test un_constr_data_reads_constructors_127_and_128() {
+  expect cbor.serialise(builtin.constr_data(128, [])) == #"d86682188080"
+  expect cbor.serialise(builtin.i_data(128)) == #"1880"
+  and {
+    un_constr_data_then_fst_pair_verifies(127),
+    un_constr_data_then_fst_pair_verifies(128),
+  }
+}
+
+test un_constr_data_refuses_a_wrong_index_at_constructor_128() {
+  let source = [data_value(builtin.constr_data(128, []))]
+  !verify_direct_with_split_parity(
+    42,
+    builtin_root(42, source),
+    source,
+    un_constr_data_pair(127),
+  )
+}
+
+test un_constr_data_refuses_constructor_102_with_a_negative_index() fail {
+  let source = [constant(#"9f08ff", #"d866822080")]
+  verify_direct_with_split_parity(
+    42,
+    builtin_root(42, source),
+    source,
+    un_constr_data_pair(0),
+  )
+}
+
+test un_constr_data_refuses_constructor_102_with_a_bignum_index() fail {
+  let source = [constant(#"9f08ff", #"d86682c2410180")]
+  verify_direct_with_split_parity(
+    42,
+    builtin_root(42, source),
+    source,
+    un_constr_data_pair(1),
+  )
+}
+
 // mkCons over a list item presented by its semantic summary. The summary
 // memory is not in the item's value root, so the arm binds it to the item's
 // constant memory by element type; any other element type must be revealed.
@@ -3442,4 +3656,125 @@ test mk_cons_over_an_integer_list_is_proved_from_its_split_presentation() {
 
 test mk_cons_over_a_data_pair_list_is_proved_from_its_split_presentation() {
   mk_cons_from_its_split_presentation(data_pair_item_fixture())
+}
+
+// Builtin arguments and results that are, or end in, an empty byte string.
+// Each charge is Cardano's PV 11 total for the one-builtin program in
+// cek-program.data-constant-spelling.test.ts, less the 100/100 start-up and
+// its 16000/100 machine steps (five for a two-argument builtin, three for a
+// one-argument one).
+fn empty_bytes_list() -> Data {
+  builtin.list_data([builtin.b_data(#"")])
+}
+
+test data_builtins_charge_cardano_budgets_over_an_ending_empty_byte_string() {
+  and {
+    charges(46, [data_value(builtin.b_data(#""))], 20142, 32),
+    charges(41, [bytes(#"40")], 11183, 32),
+    charges(44, [data_value(empty_bytes_list())], 25933, 32),
+    charges(
+      43,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      24623,
+      32,
+    ),
+    charges(
+      42,
+      [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))],
+      24588,
+      32,
+    ),
+    charges(51, [data_value(builtin.b_data(#""))], 2022066, 10),
+    charges(51, [data_value(empty_bytes_list())], 2875314, 18),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      3941874,
+      28,
+    ),
+    charges(
+      47,
+      [data_value(builtin.b_data(#"")), data_value(builtin.b_data(#""))],
+      1034543,
+      1,
+    ),
+    charges(
+      47,
+      [data_value(empty_bytes_list()), data_value(empty_bytes_list())],
+      1143659,
+      1,
+    ),
+  }
+}
+
+test data_builtins_read_and_return_an_ending_empty_byte_string() {
+  let empty = [data_value(builtin.b_data(#""))]
+  let list = [data_value(empty_bytes_list())]
+  let constructor = [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))]
+  and {
+    verify_direct_with_split_parity(
+      41,
+      builtin_root(41, [bytes(#"40")]),
+      [bytes(#"40")],
+      constant(#"9f08ff", #"40"),
+    ),
+    verify_direct_with_split_parity(
+      46,
+      builtin_root(46, empty),
+      empty,
+      bytes(#"40"),
+    ),
+    verify_direct_with_split_parity(
+      44,
+      builtin_root(44, list),
+      list,
+      constant(#"9f0508ff", #"9f40ff"),
+    ),
+    verify_direct_with_split_parity(
+      42,
+      builtin_root(42, constructor),
+      constructor,
+      constant(#"9f06000508ff", #"d8799f019f40ffff"),
+    ),
+    verify_direct_with_split_parity(
+      51,
+      builtin_root(51, list),
+      list,
+      bytes(#"439f40ff"),
+    ),
+  }
+}
+
+test data_builtins_reveal_an_ending_empty_byte_string() {
+  and {
+    serialise_data_verifies(builtin.b_data(#""), #"40", #"40"),
+    serialise_data_verifies(empty_bytes_list(), #"9f40ff", #"9f40ff"),
+    serialise_data_split_arm(builtin.b_data(#"")),
+    serialise_data_split_arm(empty_bytes_list()),
+    equals_data_verifies(#"40", #"40", #"d87a80"),
+    equals_data_verifies(#"9f40ff", #"9f40ff", #"d87a80"),
+    equals_data_verifies(#"40", #"9f40ff", #"d87980"),
+  }
+}
+
+test un_b_data_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  let source = [constant(#"9f08ff", #"41")]
+  verify_direct_with_split_parity(
+    46,
+    builtin_root(46, source),
+    source,
+    bytes(#"40"),
+  )
+}
+
+test serialise_data_refuses_a_revealed_byte_string_claiming_one_byte_past_the_end() fail {
+  serialise_data_verifies(builtin.b_data(#""), #"41", #"40")
 }

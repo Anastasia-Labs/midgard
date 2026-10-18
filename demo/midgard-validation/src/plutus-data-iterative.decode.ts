@@ -11,11 +11,10 @@ import {
 /**
  * CBOR -> harmonic `Data` without recursion, decoding exactly as the Cardano
  * ledger decodes Plutus Data (`decodeData` in plutus-core
- * `PlutusCore/Data.hs`, over cborg's token reader), and requiring the whole
- * input to be that one item. Its own frame stack lets any byte-cap-legal
- * nesting depth decode.
+ * `PlutusCore/Data.hs`, over cborg's token reader). Its own frame stack lets
+ * any byte-cap-legal nesting depth decode.
  *
- * One reader serves two entries, which differ in one parameter only:
+ * One reader serves three entries, which differ in two parameters only:
  *
  * - `plutusDataFromCborIterative` decodes exactly the Plutus Data CBOR the
  *   Cardano ledger accepts. Use it for anything claimed to be Plutus Data:
@@ -25,10 +24,15 @@ import {
  *   indefinite one. Use it only for Midgard-internal wire (work witnesses,
  *   controls, proof carriage, discovery bitmaps), whose writers emit long
  *   byte strings definite.
+ * - `plutusDataFirstItemFromCborIterative` applies the Plutus Data rules to
+ *   the first item of its input and ignores the bytes after it, undecoded, as
+ *   Cardano reads a Data constant inside a script's Flat bytes. Use it only
+ *   there.
  *
  * The rules:
  *
- * - the input is exactly one item: trailing bytes are refused;
+ * - the input is exactly one item: trailing bytes are refused, except by
+ *   `plutusDataFirstItemFromCborIterative`;
  * - heads may be non-minimal; additional information 28-30 is refused, and
  *   31 (indefinite) is accepted only for byte strings, lists and maps;
  * - an integer is a major-0 or major-1 head (at most 64 bits), or a bignum:
@@ -134,12 +138,14 @@ const compactConstructorIndex = (tag: bigint): bigint | undefined => {
 };
 
 /**
- * The one reader behind both entries. `bytesChunkLimit` bounds a definite
+ * The one reader behind the entries. `bytesChunkLimit` bounds a definite
  * byte string and each indefinite chunk; `undefined` leaves them unbounded.
+ * `wholeInput` refuses bytes after the item; otherwise they are ignored.
  */
 const decodePlutusDataCbor = (
   bytes: Uint8Array,
   bytesChunkLimit: bigint | undefined,
+  wholeInput: boolean,
 ): Data => {
   let offset = 0;
   const byteAt = (at: number): number => {
@@ -358,7 +364,7 @@ const decodePlutusDataCbor = (
     while (item !== undefined) {
       const parent = stack.at(-1);
       if (parent === undefined) {
-        if (offset !== bytes.length) {
+        if (wholeInput && offset !== bytes.length) {
           throw new Error("trailing bytes after CBOR Plutus Data");
         }
         return item;
@@ -395,11 +401,19 @@ const decodePlutusDataCbor = (
  * for anything claimed to be Plutus Data.
  */
 export const plutusDataFromCborIterative = (bytes: Uint8Array): Data =>
-  decodePlutusDataCbor(bytes, CARDANO_PLUTUS_DATA_BYTES_CHUNK_LIMIT);
+  decodePlutusDataCbor(bytes, CARDANO_PLUTUS_DATA_BYTES_CHUNK_LIMIT, true);
+
+/**
+ * Decodes the first Plutus Data item of `bytes` as the Cardano ledger reads a
+ * Data constant in a script's Flat bytes, and ignores the bytes after it
+ * without decoding them. Use it only for that constant.
+ */
+export const plutusDataFirstItemFromCborIterative = (bytes: Uint8Array): Data =>
+  decodePlutusDataCbor(bytes, CARDANO_PLUTUS_DATA_BYTES_CHUNK_LIMIT, false);
 
 /**
  * Decodes Midgard-internal wire: the rules of `plutusDataFromCborIterative`
  * without the 64-byte bound on a byte string or chunk.
  */
 export const midgardEnvelopeDataFromCborIterative = (bytes: Uint8Array): Data =>
-  decodePlutusDataCbor(bytes, undefined);
+  decodePlutusDataCbor(bytes, undefined, true);

@@ -19,13 +19,28 @@ import {
   MidgardCekErrorCodes,
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
-import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import {
+  CardanoFlatRefusal,
+  encodeMidgardCekCardanoFlatProgram,
+} from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCanonicalScriptArtifact,
 } from "../src/cek-program.js";
-import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
-import { discard } from "./helpers/cek-uplc-terms.js";
+import {
+  midgardEnvelopeDataFromCborIterative,
+  plutusDataFromCborIterative,
+} from "../src/plutus-data-iterative.decode.js";
+import {
+  CARDANO_BOUNDARY_CONSTANTS,
+  CARDANO_BOUNDARY_REFUSED,
+  CARDANO_BOUNDARY_RUNS,
+} from "./cek-program.cardano-boundaries.vectors.js";
+import {
+  CARDANO_RUNS,
+  DATA_DECODER_ACCEPTED,
+  DATA_DECODER_REFUSED,
+} from "./cek-program.data-constant-spelling.vectors.js";
 
 /**
  * The Cardano ledger reads a Data constant inside a script's Flat bytes with
@@ -64,18 +79,13 @@ const spelledFlat = (term: UPLCTerm, spellings: readonly string[]): Buffer =>
 const canonicalFlat = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
-// Each program discards the builtin's result so it halts with Unit.
 const serialiseDataTerm = (): UPLCTerm =>
-  discard(
-    new Application(Builtin.serialiseData, UPLCConst.data(new DataI(0n))),
-  );
+  new Application(Builtin.serialiseData, UPLCConst.data(new DataI(0n)));
 
 const equalsDataTerm = (): UPLCTerm =>
-  discard(
-    new Application(
-      new Application(Builtin.equalsData, UPLCConst.data(new DataI(0n))),
-      UPLCConst.data(new DataI(0n)),
-    ),
+  new Application(
+    new Application(Builtin.equalsData, UPLCConst.data(new DataI(0n))),
+    UPLCConst.data(new DataI(0n)),
   );
 
 const programView = (flat: Buffer) => {
@@ -101,12 +111,25 @@ const programView = (flat: Buffer) => {
   };
 };
 
+/** The detail of the `invalidData` refusal building the program raises. */
+const invalidDataRefusal = (flat: Buffer): string => {
+  try {
+    buildMidgardCanonicalCekProgram(flat);
+  } catch (error) {
+    expect(error).toBeInstanceOf(CardanoFlatRefusal);
+    expect((error as CardanoFlatRefusal).refusal).toBe("invalidData");
+    return `${(error as CardanoFlatRefusal).bitOffset}: ${(error as CardanoFlatRefusal).detail}`;
+  }
+  throw new Error("the program was accepted");
+};
+
 /**
- * Runs the program in proof mode and checks every recorded step. A program
- * that halts with a value other than Unit fails as a Plutus V3 script, after
- * the same steps and budget.
+ * Runs the program in proof mode and checks every recorded step. Each program
+ * returns its builtin's result rather than unit, so the machine charges the
+ * whole run and then halts with the non-unit error a PlutusV3 script fails
+ * with; the result is read from the last builtin step.
  */
-const prove = (flat: Buffer, halt: "unit" | "nonUnit" = "unit") => {
+const prove = (flat: Buffer) => {
   const { program } = programView(flat);
   const execution = executeMidgardCekStructuralProgram({
     root: program.envelope.termRoot,
@@ -114,24 +137,22 @@ const prove = (flat: Buffer, halt: "unit" | "nonUnit" = "unit") => {
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
   });
-  if (halt === "unit") {
-    expect(execution.terminalState.mode).toBe("haltSuccess");
-  } else {
-    expect(execution.terminalState.mode).toBe("haltError");
-    expect(execution.terminalState.auxiliary).toBe(
-      MidgardCekErrorCodes.NonUnitHalt,
-    );
-  }
+  expect(execution.terminalState.mode).toBe("haltError");
+  expect(execution.terminalState.auxiliary).toBe(
+    MidgardCekErrorCodes.NonUnitHalt,
+  );
   expect(
     execution.steps.every((step) =>
       verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
     ),
   ).toBe(true);
-  const builtinStep = execution.steps.find(
-    (step) =>
-      step.witness.kind === "executeBuiltinDirect" ||
-      step.witness.kind === "executeBuiltinSemantic",
-  );
+  const builtinStep = [...execution.steps]
+    .reverse()
+    .find(
+      (step) =>
+        step.witness.kind === "executeBuiltinDirect" ||
+        step.witness.kind === "executeBuiltinSemantic",
+    );
   let result: unknown;
   if (
     builtinStep !== undefined &&
@@ -164,6 +185,10 @@ const SPELLINGS = [
     "c24a00010000000000000000",
     "c249010000000000000000",
   ],
+  ["1 followed by a 00 byte", "0100", "01"],
+  ["0 followed by an ff byte", "00ff", "00"],
+  ["0 followed by an incomplete item", "0018", "00"],
+  ["constructor 0 followed by a text string", "d879806161", "d87980"],
 ] as const;
 
 describe("Data constants spelled as the Cardano ledger accepts them", () => {
@@ -176,11 +201,9 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
       // byte string.
       expect(twin).toEqual(
         canonicalFlat(
-          discard(
-            new Application(
-              Builtin.serialiseData,
-              UPLCConst.data(plutusDataFromCborIterative(bytes(canonical))),
-            ),
+          new Application(
+            Builtin.serialiseData,
+            UPLCConst.data(plutusDataFromCborIterative(bytes(canonical))),
           ),
         ),
       );
@@ -212,33 +235,64 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     expect(run).toEqual(prove(spelledFlat(equalsDataTerm(), ["20", "20"])));
   });
 
-  it("refuses every spelling the Plutus Data decoder refuses", () => {
-    for (const refused of [
-      "6161", // a text string
-      "d80241" + "01", // tag 2 under a one-byte-extended head
-      "5841" + "00".repeat(65), // a definite byte string over 64 bytes
-      "0100", // trailing bytes
-    ]) {
-      expect(() =>
-        buildMidgardCanonicalCekProgram(
-          spelledFlat(serialiseDataTerm(), [refused]),
-        ),
-      ).toThrow();
+  it.each([
+    ["a text string", "6161", "invalid CBOR major type for Plutus Data"],
+    [
+      "tag 2 under a one-byte-extended head",
+      "d80241" + "01",
+      "unknown CBOR tag 2 in Plutus Data",
+    ],
+    [
+      "a definite byte string over 64 bytes",
+      "5841" + "00".repeat(65),
+      "CBOR Plutus Data byte string exceeds 64 bytes",
+    ],
+  ])(
+    "refuses %s as the Plutus Data decoder does",
+    (_label, refused, detail) => {
+      expect(
+        invalidDataRefusal(spelledFlat(serialiseDataTerm(), [refused])),
+      ).toBe(`49: ${detail}`);
+    },
+  );
+
+  it("reads the first CBOR item of a Data constant as its value", () => {
+    // `(con data (I 0))` spelled 00 00 and 00 ff; Cardano runs both for
+    // 16100/200 and returns (con data (I 0)).
+    const twin = programView(canonicalFlat(UPLCConst.data(new DataI(0n))));
+    for (const flat of ["0101004c01020000000001", "0101004c010200ff0001"]) {
+      const view = programView(bytes(flat));
+      expect(view.envelopeHash).toBe(twin.envelopeHash);
+      expect(view.material).toEqual(twin.material);
+      expect(view.constantWitnesses).toEqual(twin.constantWitnesses);
+      const [, witness] = [...view.program.constantWitnesses.entries()].find(
+        ([, value]) => value.kind === "constant",
+      )!;
+      if (witness.kind !== "constant") throw new Error("unreachable");
+      expect(hex(witness.witness.payloadCbor)).toBe("00");
+      const run = prove(bytes(flat));
+      expect(`${run.cpu}/${run.memory}`).toBe("16100/200");
+    }
+  });
+
+  it("keeps refusing trailing bytes outside a Flat Data constant", () => {
+    for (const cbor of ["0000", "00ff"]) {
+      expect(() => plutusDataFromCborIterative(bytes(cbor))).toThrow(
+        "trailing bytes after CBOR Plutus Data",
+      );
+      expect(() => midgardEnvelopeDataFromCborIterative(bytes(cbor))).toThrow(
+        "trailing bytes after CBOR Plutus Data",
+      );
     }
   });
 
   it("refuses a constant witness that carries a non-canonical spelling", () => {
     const spelled = programView(spelledFlat(serialiseDataTerm(), ["c24101"]));
-    // The program's one Data constant (the other is the discarding Unit).
-    const dataConstants = [
+    const [constantRoot, witness] = [
       ...spelled.program.constantWitnesses.entries(),
-    ].filter(
-      ([, value]) =>
-        value.kind === "constant" && hex(value.witness.typeCbor) === "9f08ff",
-    );
-    expect(dataConstants).toHaveLength(1);
-    const [constantRoot, witness] = dataConstants[0]!;
+    ].find(([, value]) => value.kind === "constant")!;
     if (witness.kind !== "constant") throw new Error("unreachable");
+    expect(hex(witness.witness.typeCbor)).toBe("9f08ff");
     expect(hex(witness.witness.payloadCbor)).toBe("01");
     // The on-chain witness check pins the same root
     // (cek-constant-v1.test.ak, data_one_root).
@@ -258,6 +312,22 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     }
   });
 
+  it("commits a padded 2^64 to its canonical root", () => {
+    const spelled = programView(
+      spelledFlat(serialiseDataTerm(), ["c24a00010000000000000000"]),
+    );
+    const [constantRoot, witness] = [
+      ...spelled.program.constantWitnesses.entries(),
+    ].find(([, value]) => value.kind === "constant")!;
+    if (witness.kind !== "constant") throw new Error("unreachable");
+    expect(hex(witness.witness.payloadCbor)).toBe("c249010000000000000000");
+    // The on-chain witness check pins the same root
+    // (cek-constant-v1.test.ak, data_two_pow_64_root).
+    expect(constantRoot).toBe(
+      "30f014bc9812674691ef17db74211c691c1aaa0038cda14ef8fda815a6b49a84",
+    );
+  });
+
   it("admits a constant over the 9,215-byte bound only through padding", () => {
     const count = 1_100;
     const padded = `9f${"1b0000000000000001".repeat(count)}ff`;
@@ -275,144 +345,6 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
   });
 });
 
-/**
- * Programs the Plutus V3 evaluator (plutus-core 1.71, protocol version 11) ran
- * through `deserialiseScript` on the raw Flat bytes below, with its result and
- * budget. Its budget includes the machine's 100/100 start-up charge, which the
- * executor charges too. Each program returns its builtin's result, so as a
- * script it fails at the halt.
- */
-// [label, raw Flat program, Cardano result, Cardano cpu/mem]
-const CARDANO_RUNS = [
-  [
-    "serialiseData of tag 102 index 0",
-    "0101003766980105d8668200800001",
-    "(con bytestring #d87980)",
-    "1856854/408",
-  ],
-  [
-    "serialiseData of tag 102 index 6",
-    "0101003766980105d8668206800001",
-    "(con bytestring #d87f80)",
-    "1856854/408",
-  ],
-  [
-    "serialiseData of tag 102 index 127",
-    "0101003766980106d86682187f800001",
-    "(con bytestring #d9057880)",
-    "1856854/408",
-  ],
-  [
-    "serialiseData of bignum 1",
-    "0101003766980103c241010001",
-    "(con bytestring #01)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of padded bignum 1",
-    "0101003766980104c24200010001",
-    "(con bytestring #01)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of empty bignum 0",
-    "0101003766980102c2400001",
-    "(con bytestring #00)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of negative bignum -1",
-    "0101003766980103c341000001",
-    "(con bytestring #20)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of empty negative bignum -1",
-    "0101003766980102c3400001",
-    "(con bytestring #20)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of integer 1",
-    "0101003766980101010001",
-    "(con bytestring #01)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of byte string 01",
-    "010100376698010241010001",
-    "(con bytestring #4101)",
-    "2070166/410",
-  ],
-  [
-    "serialiseData of an indefinite map",
-    "0101003766980104bf0102ff0001",
-    "(con bytestring #a10102)",
-    "3989974/428",
-  ],
-  [
-    "equalsData of bignum -1 and -1",
-    "0101003375e98103c34100004c0101200001",
-    "(con bool True)",
-    "1114643/601",
-  ],
-  [
-    "equalsData of empty bignum -1 and -1",
-    "0101003375e98102c340004c0101200001",
-    "(con bool True)",
-    "1114643/601",
-  ],
-  [
-    "equalsData of bignum -6 and -5",
-    "0101003375e98103c34105004c0101240001",
-    "(con bool False)",
-    "1114643/601",
-  ],
-  [
-    "equalsData of bignum -6 and -6",
-    "0101003375e98103c34105004c0101250001",
-    "(con bool True)",
-    "1114643/601",
-  ],
-  [
-    "equalsData of padded bignum 1 and 1",
-    "0101003375e98104c2420001004c0101010001",
-    "(con bool True)",
-    "1114643/601",
-  ],
-  [
-    "equalsData of tag 102 index 0 and tag 121",
-    "0101003375e98105d866820080004c0103d879800001",
-    "(con bool True)",
-    "1087364/601",
-  ],
-  [
-    "unIData of empty negative bignum -1",
-    "010100375a980102c3400001",
-    "(con integer -1)",
-    "68844/432",
-  ],
-] as const;
-
-// [label, raw Flat program, Cardano result]
-const CARDANO_RESULTS = [
-  [
-    "serialiseData of bignum 2^64",
-    "010100376698010bc2490100000000000000000001",
-    "(con bytestring #c249010000000000000000)",
-  ],
-  [
-    "serialiseData of padded bignum 2^64",
-    "010100376698010cc24a000100000000000000000001",
-    "(con bytestring #c249010000000000000000)",
-  ],
-  [
-    "serialiseData of bignum 2^64-1",
-    "010100376698010ac248ffffffffffffffff0001",
-    "(con bytestring #1bffffffffffffffff)",
-  ],
-] as const;
-
 const cardanoResult = (result: unknown): string => {
   if (result instanceof DataB) return `(con bytestring #${hex(result.bytes)})`;
   if (result instanceof DataI) return `(con integer ${result.int})`;
@@ -425,16 +357,57 @@ describe("raw Flat programs the Cardano evaluator accepted", () => {
   it.each(CARDANO_RUNS)(
     "%s gives Cardano's result and budget",
     (_label, flat, result, budget) => {
-      const run = prove(bytes(flat), "nonUnit");
+      const run = prove(bytes(flat));
+      expect(cardanoResult(run.result)).toBe(result);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+});
+
+describe("Data decoder boundaries the Cardano evaluator drew", () => {
+  it.each(DATA_DECODER_ACCEPTED)(
+    "%s gives Cardano's result and budget",
+    (_label, flat, result, budget) => {
+      const run = prove(bytes(flat));
       expect(cardanoResult(run.result)).toBe(result);
       expect(`${run.cpu}/${run.memory}`).toBe(budget);
     },
   );
 
-  it.each(CARDANO_RESULTS)(
-    "%s gives Cardano's result",
-    (_label, flat, result) => {
-      expect(cardanoResult(prove(bytes(flat), "nonUnit").result)).toBe(result);
+  it.each(DATA_DECODER_REFUSED)(
+    "%s is refused as Cardano refuses it",
+    (_label, flat, _cardano, bitOffset, detail) => {
+      expect(invalidDataRefusal(bytes(flat))).toBe(`${bitOffset}: ${detail}`);
+    },
+  );
+});
+
+describe("Programs at the 64-bit and constructor-128 boundaries", () => {
+  it.each(CARDANO_BOUNDARY_RUNS)(
+    "%s gives Cardano's result and budget",
+    (_label, flat, result, budget) => {
+      const run = prove(bytes(flat));
+      expect(cardanoResult(run.result)).toBe(result);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+
+  it.each(CARDANO_BOUNDARY_CONSTANTS)(
+    "the constant %s commits its canonical payload at Cardano's budget",
+    (_label, flat, payload, budget) => {
+      const { constantWitnesses } = programView(bytes(flat));
+      expect(constantWitnesses).toHaveLength(1);
+      expect(constantWitnesses[0]!.split(":")[2]).toBe(payload);
+      const run = prove(bytes(flat));
+      expect(run.result).toBeUndefined();
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+
+  it.each(CARDANO_BOUNDARY_REFUSED)(
+    "%s is refused as Cardano refuses it",
+    (_label, flat, _cardano, bitOffset, detail) => {
+      expect(invalidDataRefusal(bytes(flat))).toBe(`${bitOffset}: ${detail}`);
     },
   );
 });
