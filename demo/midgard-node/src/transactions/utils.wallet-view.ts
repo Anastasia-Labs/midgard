@@ -125,6 +125,27 @@ export const readSelectedWalletViewInputs = (
   );
 
 /**
+ * The selected wallet's address and view UTxOs, to fund `label` from inputs
+ * the caller selects among them. An empty view is refused as for
+ * `readSelectedWalletViewInputs`.
+ */
+export const readSelectedWalletFunding = (
+  lucid: LucidEvolution,
+  label: string,
+): Effect.Effect<
+  { readonly address: string; readonly utxos: UTxO[] },
+  WalletViewUnavailable,
+  IntentJournal
+> =>
+  readSelectedWalletView(lucid).pipe(
+    Effect.flatMap((view) =>
+      requireWalletViewInputs(view, label).pipe(
+        Effect.map((utxos) => ({ address: view.address, utxos })),
+      ),
+    ),
+  );
+
+/**
  * Adds the selected node wallet's witnesses to `signBuilder` for the own
  * keys the transaction needs, found from the wallet view read now (inputs
  * and collaterals among its outputs; certificates, withdrawals and required
