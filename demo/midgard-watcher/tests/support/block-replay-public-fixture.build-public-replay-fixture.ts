@@ -204,11 +204,10 @@ export const buildPublicReplayFixture = async (input: {
       SDK.ROOT_DOMAINS.eventToStep,
       eventToStepEntries,
     ),
-    validationTracesRoot: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraceEntries,
-    ),
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime: input.eventWindow?.start ?? 10n,
     endTime: input.eventWindow?.end ?? 20n,
     blockSlot: 0n,

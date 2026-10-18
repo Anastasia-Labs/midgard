@@ -7,7 +7,10 @@ import { Effect } from "effect";
 import { Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { configuredOperatorEconomicsProgram } from "./operators/exit.js";
-import { OperatorFundingShortfall } from "./operators/funding-preflight.js";
+import {
+  OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
+} from "./operators/funding-preflight.js";
 import {
   type ActivationTxHashes,
   type DeregistrationTxHashes,
@@ -28,6 +31,7 @@ export const registerAndActivateOperatorProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
@@ -60,6 +64,7 @@ export const registerOperatorProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
@@ -89,6 +94,7 @@ export const activateOperatorProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
@@ -125,6 +131,7 @@ export const activateRegisteredOperatorProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
@@ -156,6 +163,7 @@ export const deregisterOperatorProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,

@@ -22,6 +22,7 @@ import {
   type ForcedTransactionSourceMembershipProof,
   ForcedTransactionSourceMembershipProofSchema,
   type IndexedTraceProof,
+  type RawRootMembershipProof,
   type RootCountProof,
   RootCountProofSchema,
   TransitionTraceMembershipProofSchema,
@@ -45,10 +46,6 @@ import {
   WithdrawalSourceNonMembershipProof,
   WithdrawalSourceNonMembershipProofSchema,
 } from "./transition-trace.invalid-one-step-transition-witness-schema.js";
-import {
-  type ValidationClaimWitness,
-  ValidationClaimWitnessSchema,
-} from "./validation-dispute.js";
 
 export type InvalidOneStepTransitionWitness =
   | {
@@ -86,10 +83,13 @@ export type InvalidOneStepTransitionWitness =
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
         readonly source_membership: L2TransactionSourceMembershipProof;
-        readonly spend_inputs_preimage: string;
-        readonly outputs_preimage: string;
-        readonly spent_utxos: readonly LedgerDeleteWitness[];
-        readonly produced_utxos: readonly LedgerInsertWitness[];
+      };
+    }
+  | {
+      readonly ValidForcedTransactionTransition: {
+        readonly trace_proof: IndexedTraceProof;
+        readonly event_to_step: EventToStepMembershipProof;
+        readonly source_membership: RawRootMembershipProof;
       };
     };
 
@@ -267,14 +267,6 @@ export const TransitionFaultSchema = Data.Enum([
   Data.Object({
     CountFault: Data.Object({ witness: CountFaultWitnessSchema }),
   }),
-  Data.Object({
-    AcceptedTransactionTransitionMismatch: Data.Object({
-      witness: Data.Object({
-        claim: ValidationClaimWitnessSchema,
-        terminal_acceptance_witness_cbor: Data.Bytes(),
-      }),
-    }),
-  }),
 ]);
 
 export type TransitionFault =
@@ -317,15 +309,7 @@ export type TransitionFault =
         readonly witness: OutOfWindowSourceEventWitness;
       };
     }
-  | { readonly CountFault: { readonly witness: CountFaultWitness } }
-  | {
-      readonly AcceptedTransactionTransitionMismatch: {
-        readonly witness: {
-          readonly claim: ValidationClaimWitness;
-          readonly terminal_acceptance_witness_cbor: string;
-        };
-      };
-    };
+  | { readonly CountFault: { readonly witness: CountFaultWitness } };
 
 export const TransitionFault = asDataType<TransitionFault>(
   TransitionFaultSchema,

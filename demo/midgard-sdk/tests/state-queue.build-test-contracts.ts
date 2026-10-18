@@ -235,11 +235,11 @@ export const buildTransactionsRoot = async (): Promise<string> => {
 export const TWO_TRANSACTION_HEADER_COMMITMENTS = {
   transitionTraceRoot: h32(0x55),
   eventToStepRoot: h32(0x66),
-  validationTracesRoot: h32(0x77),
+  validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
   l2TransactionCount: 2n,
   totalEventCount: 2n,
   transitionStepCount: 2n,
-  validationTraceCount: 2n,
+  validationTraceCount: 0n,
 } as const;
 
 describe("state-queue header validation boundary", () => {
@@ -268,13 +268,13 @@ describe("state-queue header validation boundary", () => {
       ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
       transitionTraceRoot: h32(0x44),
       eventToStepRoot: h32(0x55),
-      validationTracesRoot: h32(0x66),
+      validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
       withdrawalCount: 1n,
       l2TransactionCount: 1n,
       depositCount: 1n,
       totalEventCount: 3n,
       transitionStepCount: 3n,
-      validationTraceCount: 1n,
+      validationTraceCount: 0n,
     };
     const updateProgram = (roots: typeof sourceRoots = sourceRoots) =>
       updateLatestBlocksDatumAndGetTheNewHeaderProgram(

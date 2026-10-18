@@ -37,6 +37,8 @@ import {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -58,6 +60,8 @@ export {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -189,6 +193,7 @@ export const validateProfile = (profile, name) => {
       "da_bond",
       "limits",
       "economics",
+      "protocol_treasury_native_script",
       "allow_lists",
       "excluded_fraud_proof_categories",
     ],
@@ -321,6 +326,11 @@ export const validateProfile = (profile, name) => {
       "DA challenge window, maximum validity range, full response window and dispute schedule must end before block maturity",
     );
   }
+  const threadBudget = maximumTransitionTraceThreadBudgetMs();
+  if (!nonInteractiveTesting && threadBudget > timing.block_maturity_ms)
+    throw new Error(
+      `Block maturity must cover the longest transition-trace thread, ${maximumTransitionTraceThreadSteps()} steps (${threadBudget} ms)`,
+    );
   // An Apply may land as late as end time plus the attestation timeout, and an
   // open must land before end time plus the challenge window. On a public
   // profile a challenger must see that latest Apply at confirmation depth and
@@ -518,8 +528,9 @@ export const generateProfiles = async (selected, check = false) => {
     `export const COMMIT_TTL_FUTURE_BUFFER_MS = ${COMMIT_TTL_FUTURE_BUFFER_MS};\n\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
+    `const freezeNativeScript = (script: object): void => {\n  for (const child of Object.values(script) as unknown[]) if (typeof child === "object" && child !== null) freezeNativeScript(child);\n  Object.freeze(script);\n};\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  freezeNativeScript(profile.protocol_treasury_native_script);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

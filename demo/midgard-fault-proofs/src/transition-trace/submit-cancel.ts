@@ -6,7 +6,10 @@ type Base = Parameters<typeof submitLinearFaultCancel>[0];
 /** Cancels route or any persisted terminal-family phase with the owner's key. */
 export const submitTransitionTraceCancel = (
   params: Omit<Base, "family" | "steps" | "computationThread"> & {
-    readonly contracts: TransitionTraceFaultProofContracts;
+    readonly contracts: Omit<
+      TransitionTraceFaultProofContracts,
+      "fieldPreimageCertificate"
+    >;
   },
 ) =>
   submitLinearFaultCancel({

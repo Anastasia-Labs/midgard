@@ -166,6 +166,14 @@ describe("SDK canonical ABI fixtures", () => {
       "source_membership",
       "projected_utxo",
     ]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
+          "ValidForcedTransactionTransition",
+        ),
+      ),
+    ).toEqual(["trace_proof", "event_to_step", "source_membership"]);
     for (const [definition, variant, sourceField] of [
       [
         "OmittedDueL1EventWitness",

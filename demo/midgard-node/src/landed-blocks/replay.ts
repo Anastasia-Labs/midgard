@@ -18,6 +18,12 @@ export type ReplayInput = Readonly<{
   header: SDK.Header;
   /** The block's commit time (its node's `block_time`). */
   blockTime: bigint;
+  /**
+   * Its node's availability status. While it is Unattested no commitment
+   * binds the payload, so a replay that refuses the payload is `missing`
+   * (another peer's copy may replay), never `invalid`.
+   */
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];
@@ -46,7 +52,8 @@ export type Replayed = Readonly<{
  *   cannot be read back from the facts at the view yet;
  * - `incomplete`: the import failed for a reason it cannot pin on the
  *   block (a local computation, or a replay failure it cannot classify);
- * - `invalid`: the block does not replay to its header.
+ * - `invalid`: the block does not replay to its header, and its node carries
+ *   the availability commitment of the payload replayed.
  */
 export type ReplayOutcome =
   | Replayed

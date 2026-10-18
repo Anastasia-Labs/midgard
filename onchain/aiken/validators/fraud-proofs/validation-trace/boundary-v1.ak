@@ -3,13 +3,15 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/validation_game_v1
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/validation_case_thread_v1.{ThreadDatum}
+use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
+use midgard/validation_thread_expiry_v1
 use midgard/validation_trace_v1
 
 pub type Datum =
-  ct.StepDatum<validation_game_v1.ValidationGameStateV1>
+  ThreadDatum
 
 pub type BoundaryActionV1 {
   PrepareResolution {
@@ -32,6 +34,7 @@ validator main(
   one_step_resolver_script_hashes: List<ScriptHash>,
   award_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
+  thread_expiry_script_hash: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -39,7 +42,12 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
+    validation_thread_expiry_v1.holder_releases_to_expiry(
+      computation_thread_token_policy_id,
+      thread_expiry_script_hash,
+      own_out_ref,
+      tx,
+    ) || when redeemer is {
       ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
         cancel(
           computation_thread_token_policy_id,
@@ -50,9 +58,8 @@ validator main(
           tx,
         )
       ct.Continue(action) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           when action is {
@@ -64,8 +71,8 @@ validator main(
             AwardTerminalPadding { output_index, .. } -> output_index
           },
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          ProverOnly,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,
@@ -82,10 +89,8 @@ validator main(
                   resolver_index,
                 )
                 let expected_resolution_state: Data = validation_resolution_v1.prepare(
-                  state.dispute,
+                  state,
                   evidence.pre_state,
-                  evidence.operator_post,
-                  evidence.challenger_post,
                 )
                 and {
                   resolver_index == validation_resolution_v1.resolver_index(
@@ -98,10 +103,10 @@ validator main(
               AwardTerminalPadding { terminal_state, .. } -> {
                 let expected_state: Data = validation_resolution_v1.winning_resolution()
                 and {
-                  validation_resolution_v1.terminal_padding_is_authenticated(
-                    state.dispute,
+                  validation_resolution_v1.terminal_fixed_point_winner(
+                    state,
                     terminal_state,
-                  ),
+                  ) == validation_dispute_v1.ChallengerWins,
                   output_script_hash == award_validator_script_hash,
                   output_state == expected_state,
                 }

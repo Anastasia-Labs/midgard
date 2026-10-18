@@ -26,7 +26,7 @@ use midgard/validation_machine/machine_types as mt
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/phase_a_native_scripts as pans
-use midgard/validation_machine_tests/constants.{h_a, test_l1_slot_config, zero}
+use midgard/validation_machine_tests/constants.{test_l1_slot_config, zero}
 use midgard/validation_machine_tests/fixtures_native_execution.{
   LateWalk, inline_one, inline_zero, late_walk, late_walk_keyed, reference,
 }
@@ -448,7 +448,7 @@ fn scan_state(
 ) -> ScanState {
   let tx = tx_with(payload)
   let item = item_of(payload)
-  let Pair(pre0, _) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre0, _) = phase_a_native_step_fixture(tx)
   let work = scan_witness(tx, item, stage, cursor, f, node_count, result)
   let pc = pre0.program_counter + pc_offset
   ScanState {

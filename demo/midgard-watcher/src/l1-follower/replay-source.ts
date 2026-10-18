@@ -36,6 +36,10 @@ export type WatcherFollowerReplaySource = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<Readonly<{ state: SDK.ConfirmedState; current(): boolean }>>;
   materialFor(payload: SDK.DaPayload): Promise<BlockReplayMaterial>;
+  /** The availability status the block's latest state-queue node carries. */
+  availabilityStatus(
+    headerHash: string,
+  ): Promise<SDK.DaAvailabilityStateQueueStatus>;
   checkpointDurable(endTime: bigint): void;
   close(): void;
 }>;
@@ -274,6 +278,30 @@ export const createWatcherFollowerReplaySource = (
           throw new FraudProofL1UnavailableError(cause.message, { cause });
         throw cause;
       }
+    },
+    availabilityStatus: async (headerHash) => {
+      if (closed)
+        throw new FraudProofL1UnavailableError(
+          "the follower replay source is closed",
+        );
+      // A node is re-created as its attestation advances: the latest row
+      // carries its current status.
+      const row = (
+        await input.store.transaction("read", (tx) =>
+          tx.query(
+            `SELECT state_queue_node_cbor FROM ${WATCHER_QUEUE_OUTPUTS_TABLE} WHERE kind = 'node' AND header_hash = ? ORDER BY from_slot DESC LIMIT 1`,
+            [Buffer.from(headerHash, "hex")],
+          ),
+        )
+      )[0];
+      if (row === undefined)
+        throw new FraudProofL1UnavailableError(
+          `header ${headerHash}'s authenticated admission is unavailable`,
+        );
+      return Data.from(
+        Buffer.from(row.state_queue_node_cbor as Uint8Array).toString("hex"),
+        SDK.StateQueueNode,
+      ).da_attestation;
     },
     checkpointDurable: input.retention.checkpointDurable,
     close: () => {

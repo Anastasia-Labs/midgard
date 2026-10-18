@@ -18,6 +18,13 @@
  * way as an undecodable event. A block that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
  * payload that is not available yet.
+ *
+ * While the block's node is Unattested its payload is unbound: no committee
+ * commitment fixes the sections its header does not commit. A replay that
+ * refuses an unbound payload is `missing`, never `invalid`: the copy is
+ * dropped and the next fetch asks the next peer. One that replays imports
+ * the block, but its copy is held apart (`replay-foreign.bind.ts`) and never
+ * retained or served until the node's commitment is checked against it.
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
@@ -31,7 +38,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { foreignDaFetchMemo } from "../da/foreign-retained-da.js";
+import {
+  type ForeignDaBinding,
+  foreignDaFetchMemo,
+} from "../da/foreign-retained-da.js";
 import {
   DaPayloadsDB,
   ForcedTransactionsDB,
@@ -56,7 +66,16 @@ import { NodeConfig } from "../services/config.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Lucid } from "../services/lucid.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
-import { payloadOf, type Refetching } from "./replay-foreign.payload.js";
+import {
+  bindRetainedForeignPayloads,
+  keepUnbound,
+  type UnboundCopies,
+} from "./replay-foreign.bind.js";
+import {
+  payloadOf,
+  type Refetching,
+  type Served,
+} from "./replay-foreign.payload.js";
 import {
   invalid,
   missing,
@@ -265,18 +284,38 @@ export const foreignReplayMaterial = (
   return { replayUserEvent, verifyForcedSource };
 };
 
-/** The replayer over the follower's event projection at the view. */
-export const replayForeignBlock = (deps: {
+/** What the replayer holds of the payload it is replaying. */
+type Held = { bound: boolean; served: Served };
+
+/**
+ * The replayer over the follower's event projection at the view, and the
+ * pass that binds the copies it imported unbound once their nodes carry a
+ * commitment. `availability` gives the deployment's commitment authority.
+ */
+export const foreignBlockReplayer = (deps: {
   readonly store: FactStore;
   readonly events: EventProjectionConfig;
   readonly forcedOrders: ForcedOrderConfig;
+  readonly availability: ForeignDaBinding["authority"];
 }) => {
   // One memo per replayer: a header whose DA fetch failed waits out its
   // backoff across driver runs.
   const fetchDa = foreignDaFetchMemo();
   const refetching: Refetching = new Map();
-  return (input: ReplayInput) =>
+  const unbound: UnboundCopies = new Map();
+  /** An unbound copy the replay refused: dropped, so another is fetched. */
+  const release = (headerHash: string, held: Held) =>
     Effect.gen(function* () {
+      unbound.delete(headerHash);
+      if ("peer" in held.served) fetchDa.refuse(headerHash, held.served.peer);
+      else
+        yield* withFollowerWrite(
+          DaPayloadsDB.removeByHeaderHash(Buffer.from(headerHash, "hex")),
+        );
+    });
+  const replay = (input: ReplayInput) => {
+    let held: Held | undefined;
+    return Effect.gen(function* () {
       const config = yield* NodeConfig;
       const lucid = yield* Lucid;
       const { header, headerHash, view } = input;
@@ -337,13 +376,15 @@ export const replayForeignBlock = (deps: {
         seen: seenForced,
         unreadable,
       } = yield* forcedInWindow(deps.store, deps.forcedOrders, view, inWindow);
-      const { payload, acquired } = yield* payloadOf(
+      const { payload, acquired, bound, served } = yield* payloadOf(
         fetchDa,
         refetching,
         headerHash,
         header,
         input.blockTime,
+        { status: input.daAvailability, authority: deps.availability },
       );
+      held = { bound, served };
       const body = payload.block_body;
       const mismatch =
         exact(
@@ -390,9 +431,12 @@ export const replayForeignBlock = (deps: {
         ),
         l1SlotConfig: canonicalSlotConfigForLucid(lucid.api),
       });
-      // Only a block that replayed keeps the payload it fetched.
-      if (acquired !== undefined)
+      // Only a block that replayed keeps the payload it fetched, and only a
+      // bound copy is retained; an unbound one waits for its commitment.
+      if (acquired !== undefined && bound)
         yield* withFollowerWrite(DaPayloadsDB.upsertAvailable(acquired));
+      else if (acquired !== undefined)
+        keepUnbound(unbound, headerHash, acquired);
       return {
         kind: "replayed",
         entries: imported.entries,
@@ -405,18 +449,34 @@ export const replayForeignBlock = (deps: {
         txIds: body.transactions.map(([key]) => Buffer.from(key, "hex")),
       } satisfies ReplayOutcome;
     }).pipe(
-      Effect.catchAll((error) =>
-        error instanceof Verdict
-          ? Effect.succeed({
-              kind: error.kind,
-              detail: error.detail,
-            } satisfies ReplayOutcome)
-          : error instanceof ForeignBlockVerificationError
-            ? Effect.succeed({
-                kind: error.reason,
-                detail: error.detail,
-              } satisfies ReplayOutcome)
-            : Effect.fail(error),
-      ),
+      Effect.catchAll((error) => {
+        const outcome =
+          error instanceof Verdict
+            ? ({ kind: error.kind, detail: error.detail } as const)
+            : error instanceof ForeignBlockVerificationError
+              ? ({ kind: error.reason, detail: error.detail } as const)
+              : undefined;
+        if (outcome === undefined) return Effect.fail(error);
+        if (outcome.kind !== "invalid" || held === undefined || held.bound)
+          return Effect.succeed(outcome satisfies ReplayOutcome);
+        return Effect.as(release(input.headerHash, held), {
+          kind: "missing",
+          detail: `the block's payload is not bound to an attested commitment yet, and this copy does not replay: ${outcome.detail}`,
+        } satisfies ReplayOutcome);
+      }),
     );
+  };
+  return {
+    replay,
+    bind: bindRetainedForeignPayloads({
+      fetchDa,
+      unbound,
+      authority: deps.availability,
+    }),
+  };
 };
+
+/** The replayer alone (`foreignBlockReplayer`'s `replay`). */
+export const replayForeignBlock = (
+  deps: Parameters<typeof foreignBlockReplayer>[0],
+) => foreignBlockReplayer(deps).replay;

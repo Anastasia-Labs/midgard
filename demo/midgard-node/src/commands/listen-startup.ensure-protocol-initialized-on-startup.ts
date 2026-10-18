@@ -1,4 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { isSpentInputSubmitRejection } from "@al-ft/midgard-core/ogmios-json-rpc-error";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect } from "effect";
 
@@ -23,6 +24,7 @@ import {
   retryStartupStep,
   REWARD_ACCOUNT_STATUS_UNAVAILABLE,
   RUNTIME_REFERENCE_SCRIPTS_FAILED,
+  RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
   startupStepFailed,
   StartupStepFailedError,
 } from "../services/startup-waiting.js";
@@ -194,6 +196,34 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
   });
 
 /**
+ * The bootstrap's node-runtime reference-script preflight. Protocol
+ * initialization runs before the follower, so its wallet reads are the
+ * provider's: after a restart they can still offer an input a previous
+ * process's transaction, in flight, spends, and the preflight's submission
+ * then loses that input. That clears once the other transaction lands, so it
+ * is waited out under `runtime_reference_scripts_input_conflict` within the
+ * deployment-status budget, each attempt built from a fresh read. Any other
+ * failure fails the step at once under `runtime_reference_scripts_failed`.
+ */
+const ensureNodeRuntimeReferenceScriptsWithStartupRetry = <E, R>(
+  preflight: Effect.Effect<unknown, E, R>,
+  options: { readonly maxAttempts: number; readonly retryDelayMs: number },
+): Effect.Effect<void, StartupStepFailedError, R> => {
+  const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
+  return retryStartupStep(Effect.asVoid(preflight), {
+    key: "runtime_reference_scripts",
+    reason: (error) =>
+      isSpentInputSubmitRejection(error)
+        ? RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT
+        : RUNTIME_REFERENCE_SCRIPTS_FAILED,
+    retryable: isSpentInputSubmitRejection,
+    budget: { maxAttempts: options.maxAttempts },
+    initialMs: retryDelayMs,
+    maxMs: retryDelayMs,
+  });
+};
+
+/**
  * Verifies the protocol deployment at startup and, where configured,
  * initializes an empty one. Only the provider reads (the deployment status,
  * the reward accounts) wait out a transient failure, each under its budget.
@@ -203,7 +233,9 @@ const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
  * the startup with its named reason (`StartupStepFailedError`): none of
  * them clears by checking again, and the process's restart runs the whole
  * check again from the deployment status, so an initialization a failed run
- * submitted is seen as present, not submitted twice.
+ * submitted is seen as present, not submitted twice. The one exception is a
+ * reference-script preflight that lost an input to a transaction in flight,
+ * which is built again (`ensureNodeRuntimeReferenceScriptsWithStartupRetry`).
  */
 export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
@@ -271,8 +303,9 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
     );
     if (shouldBootstrap) {
-      yield* ensureNodeRuntimeReferenceScriptsOnStartup(true).pipe(
-        asProtocolStartupStep(RUNTIME_REFERENCE_SCRIPTS_FAILED),
+      yield* ensureNodeRuntimeReferenceScriptsWithStartupRetry(
+        ensureNodeRuntimeReferenceScriptsOnStartup(true),
+        providerRetry,
       );
     } else {
       yield* verifyNodeRuntimeReferenceScriptsInBackground;

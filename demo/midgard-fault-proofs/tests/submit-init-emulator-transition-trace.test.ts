@@ -61,8 +61,9 @@ describe("fault-proof emulator integration", () => {
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const prover = fundedProverEmulatorAccount(20_000_000_000n);
+    const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const emulator = new Emulator(
-      [funder, prover],
+      [funder, prover, publisher],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
     alignEmulatorToWholeSecond(emulator);
@@ -79,7 +80,7 @@ describe("fault-proof emulator integration", () => {
 
     await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
     const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-      await createReferenceScriptPublisher(funderLucid, emulator.now());
+      await createReferenceScriptPublisher(funderLucid, publisher, emulator);
     const baseContracts = {
       ...(await buildMinimalFaultProofContracts(
         realBlueprint,

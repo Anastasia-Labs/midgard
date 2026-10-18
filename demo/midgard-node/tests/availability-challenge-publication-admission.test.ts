@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
   CML,
   Emulator,
@@ -55,7 +56,7 @@ describe("availability-challenge publication admission", () => {
     const walletAddress = await lucid.wallet().address();
     const measured = [];
     for (const target of targets) {
-      const selectedFundingInputs = SDK.selectReferenceScriptFundingUtxos(
+      const selectedFundingInputs = selectPlainFundingUtxos(
         await lucid.wallet().getUtxos(),
         SDK.referenceScriptPublicationFundingTarget(1),
       );

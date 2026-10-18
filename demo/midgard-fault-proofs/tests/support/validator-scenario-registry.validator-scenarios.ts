@@ -1,9 +1,24 @@
+import { VALIDATION_TRACE_SCENARIOS } from "./validator-scenario-registry.validation-trace-scenarios.js";
+
 export type ValidatorScenario = Readonly<{ file: string; test: string }>;
 
 export type ValidatorScenarioPair = Readonly<{
   passing: readonly ValidatorScenario[];
   failing: readonly ValidatorScenario[];
 }>;
+
+const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
+  passing: [
+    {
+      file: STREAMED_REPLAY_FILE,
+      test: "convicts a wrong transition root with every streamed step honest",
+    },
+  ],
+  failing: [{ file: STREAMED_REPLAY_FILE, test: failing }],
+});
+
+const STREAMED_REPLAY_FILE =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-forged-steps.test.ts";
 
 export const VALIDATOR_SCENARIOS: Readonly<
   Record<string, ValidatorScenarioPair>
@@ -277,30 +292,14 @@ export const VALIDATOR_SCENARIOS: Readonly<
   "fraud_proofs/transition_trace/source_v1.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves missing validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves foreign validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves malformed validation run and removes the block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "proves an L2 transaction stepped under the forced phase and removes the block",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses missing validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses foreign validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses malformed validation-run claim against the honest block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "refuses the same source-phase witness against an honest step",
       },
     ],
   },
@@ -330,4 +329,23 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  ...VALIDATION_TRACE_SCENARIOS,
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
+    streamedReplayStep(
+      "refuses an input delete step claiming a post-root its witness does not give",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_outputs":
+    streamedReplayStep(
+      "refuses an outputs certification step claiming one output more than the field holds",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_output_step":
+    streamedReplayStep(
+      "refuses an output step claiming a post-root its insert does not give",
+    ),
+  "fraud_proofs/transition_trace/output_step.descriptor": streamedReplayStep(
+    "refuses an output step inserting a descriptor its output does not derive",
+  ),
+  "fraud_proofs/transition_trace/output_step.summary": streamedReplayStep(
+    "refuses an output step whose summaries and descriptor are forged together",
+  ),
 };

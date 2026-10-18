@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use aiken/math
 use aiken/primitive/bytearray
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address, Script, VerificationKey}
@@ -567,6 +568,102 @@ pub fn continue(
   ) ->
     Bool,
 ) -> Bool {
+  continue_with_value_rule(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+    preserve,
+    validation_fn,
+  )
+}
+
+/// Who may submit a validation-trace move.
+pub type Mover {
+  /// Any party: the move's outcome is fixed by the thread state and the
+  /// evidence, so whoever submits it cannot change what it produces.
+  Anyone
+  /// Only the thread's `fraud_prover`, whose key must sign the transaction.
+  /// Read from the spent input's `StepDatum`.
+  ProverOnly
+}
+
+/// The only way a validation-trace step continues its computation thread.
+///
+/// Identical to [`continue`](#continue) except for two things:
+/// - The thread may pay its own transaction fee. When `tx.inputs` is exactly
+///   the thread input, the successor may hold up to
+///   `min(tx.fee, env.max_dispute_move_fee_lovelace)` less lovelace than the
+///   input. With any other input present the successor must hold at least the
+///   input's lovelace.
+/// - `ProverOnly` moves also require the `fraud_prover` signature.
+///
+/// The successor is located only by the redeemer's `output_index`.
+pub fn continue_validation_trace(
+  computation_thread_token_policy_id: PolicyId,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+  mover: Mover,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+  ) ->
+    Bool,
+) -> Bool {
+  expect mover_is_authorized(mover, step_datum, tx.extra_signatories)
+  continue_with_value_rule(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    tx.inputs,
+    tx.outputs,
+    thread_fee(env.max_dispute_move_fee_lovelace, tx.fee, tx.inputs),
+    validation_fn,
+  )
+}
+
+fn mover_is_authorized(
+  mover: Mover,
+  step_datum: ct.StepDatum<a>,
+  extra_signatories: List<VerificationKeyHash>,
+) -> Bool {
+  when mover is {
+    Anyone -> True
+    ProverOnly -> step_datum.fraud_prover |> has_signed(extra_signatories)
+  }
+}
+
+fn continue_with_value_rule(
+  computation_thread_token_policy_id: PolicyId,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  own_out_ref: OutputReference,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  value_rule: ValueRule,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+  ) ->
+    Bool,
+) -> Bool {
   let
       input_script_hash,
       computation_thread_token_asset_name,
@@ -581,6 +678,7 @@ pub fn continue(
     own_out_ref,
     inputs,
     outputs,
+    value_rule,
   )
 
   // 1. Output UTxO must:
@@ -647,6 +745,97 @@ pub fn finalize(
   ) ->
     Bool,
 ) -> Bool {
+  finalize_with_value_rule(
+    computation_thread_token_policy_id,
+    fraud_proof_token_policy_id,
+    fraud_proof_address,
+    step_datum,
+    input_index,
+    output_index,
+    fraud_proof_mint_redeemer_index,
+    own_out_ref,
+    inputs,
+    outputs,
+    redeemers,
+    preserve,
+    validation_fn,
+  )
+}
+
+/// The only way a validation-trace thread finalizes. Permissionless.
+///
+/// Identical to [`finalize`](#finalize) except for the value rule. The
+/// fraud-proof output at `output_index` must hold between
+/// `env.fraud_proof_output_lovelace` and that plus
+/// `env.max_dispute_move_fee_lovelace`. The rest of the thread's lovelace goes
+/// to the `fraud_prover` enterprise key address, in an output tagged with
+/// `InlineDatum(own_out_ref)`:
+/// - when `tx.inputs` is exactly the thread input, at least
+///   `in - fp - min(tx.fee, env.max_dispute_move_fee_lovelace)`;
+/// - otherwise at least `in - fp`.
+pub fn finalize_validation_trace(
+  computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_address: Address,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+  ) ->
+    Bool,
+) -> Bool {
+  finalize_with_value_rule(
+    computation_thread_token_policy_id,
+    fraud_proof_token_policy_id,
+    fraud_proof_address,
+    step_datum,
+    input_index,
+    output_index,
+    fraud_proof_mint_redeemer_index,
+    own_out_ref,
+    tx.inputs,
+    tx.outputs,
+    tx.redeemers,
+    thread_finalize(
+      env.max_dispute_move_fee_lovelace,
+      env.fraud_proof_output_lovelace,
+      tx.fee,
+      tx.inputs,
+      tx.outputs,
+      own_out_ref,
+    ),
+    validation_fn,
+  )
+}
+
+fn finalize_with_value_rule(
+  computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_address: Address,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
+  own_out_ref: OutputReference,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  value_rule: ValueRule,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+  ) ->
+    Bool,
+) -> Bool {
   let
       input_script_hash,
       computation_thread_token_asset_name,
@@ -661,6 +850,7 @@ pub fn finalize(
     own_out_ref,
     inputs,
     outputs,
+    value_rule,
   )
 
   // 1. Output UTxO must:
@@ -933,8 +1123,7 @@ pub fn validate_output_to_fraud_prover(
 /// - Verification key hash of the fraud prover.
 /// - The `data` field of the spending `StepDatum` (which is of type
 ///   `Option<a>`). `Option` so that first steps can also be covered.
-/// - The output at `output_index`, preserving all input ADA. Additional
-///   funding is allowed when the successor requires a higher ledger minimum.
+/// - The output at `output_index`, whose lovelace satisfies `value_rule`.
 fn validate_input_and_provide_output(
   computation_thread_token_policy_id: PolicyId,
   step_datum: ct.StepDatum<a>,
@@ -943,6 +1132,7 @@ fn validate_input_and_provide_output(
   own_out_ref: OutputReference,
   inputs: List<Input>,
   outputs: List<Output>,
+  value_rule: ValueRule,
   validation_fn: fn(
     ScriptHash,
     AssetName,
@@ -981,12 +1171,14 @@ fn validate_input_and_provide_output(
   expect input_nft_policy_id == computation_thread_token_policy_id
   expect input_nft_qty == 1
 
-  // Continuations and finalization are permissionless. They cannot spend the
-  // prover's thread funding on fees or redirect it to another output. A higher
-  // successor minimum may be funded separately, so top-ups remain valid.
-  expect lovelace_of(output.value) >= lovelace_of(input_value)
-
   let ct.StepDatum { data: m_input_state_data, fraud_prover } = step_datum
+
+  expect
+    value_rule(
+      lovelace_of(input_value),
+      lovelace_of(output.value),
+      fraud_prover,
+    )
 
   validation_fn(
     input_script_hash,
@@ -995,4 +1187,73 @@ fn validate_input_and_provide_output(
     m_input_state_data,
     output,
   )
+}
+
+/// How the indexed output's lovelace may relate to the spent thread input's:
+/// `(input lovelace, output lovelace, fraud prover) -> Bool`.
+///
+/// A function rather than a sum type, so a family that only ever preserves
+/// value compiles only that comparison (a sum type put every rule into every
+/// family's scripts, about 360 bytes each).
+type ValueRule =
+  fn(Int, Int, VerificationKeyHash) -> Bool
+
+/// `out >= in`. Continuations and finalization of every other family are
+/// permissionless, so they cannot spend the prover's thread funding on fees or
+/// redirect it. A higher successor minimum may be funded separately, so top-ups
+/// remain valid.
+fn preserve(input_lovelace: Int, output_lovelace: Int, _: VerificationKeyHash) {
+  output_lovelace >= input_lovelace
+}
+
+/// A validation-trace move. When `inputs` is exactly the thread input (the
+/// index check in `one_to_one` has already placed it at `input_index`), the
+/// successor may hold up to `min(fee, cap)` less. Otherwise `out >= in`.
+fn thread_fee(cap: Int, fee: Int, inputs: List<Input>) -> ValueRule {
+  fn(input_lovelace, output_lovelace, _) {
+    when inputs is {
+      [_] -> input_lovelace - output_lovelace <= math.min(fee, cap)
+      _ -> output_lovelace >= input_lovelace
+    }
+  }
+}
+
+/// A validation-trace finalize. The fraud-proof output holds between
+/// `fraud_proof_output_lovelace` and that plus `cap`, and an output to the
+/// prover's enterprise key address tagged `InlineDatum(own_out_ref)` returns
+/// the rest: less at most `min(fee, cap)` when `inputs` is exactly the thread
+/// input, and nothing less otherwise.
+fn thread_finalize(
+  cap: Int,
+  fraud_proof_output_lovelace: Int,
+  fee: Int,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  own_out_ref: OutputReference,
+) -> ValueRule {
+  fn(input_lovelace, output_lovelace, fraud_prover) {
+    let remainder_floor = when inputs is {
+      [_] -> input_lovelace - output_lovelace - math.min(fee, cap)
+      _ -> input_lovelace - output_lovelace
+    }
+    let prover_address = Address {
+      payment_credential: VerificationKey(fraud_prover),
+      stake_credential: None,
+    }
+    let tag: Data = own_out_ref
+    and {
+      output_lovelace >= fraud_proof_output_lovelace,
+      output_lovelace <= fraud_proof_output_lovelace + cap,
+      list.any(
+        outputs,
+        fn(remainder) {
+          and {
+            remainder.address == prover_address,
+            remainder.datum == InlineDatum(tag),
+            lovelace_of(remainder.value) >= remainder_floor,
+          }
+        },
+      ),
+    }
+  }
 }

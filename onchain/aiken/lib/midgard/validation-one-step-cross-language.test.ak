@@ -4,21 +4,21 @@
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
-use midgard/validation_dispute_v1
+use midgard/validation_case_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
-const dispute_cbor =
-  #"d8799f01d8799f01015820c3126eabfc530130de7dae00ee0a6ebcbd047ae5141903838e8705267b29675b184f5820c886015ba7e97620a47cc7e03ec96b76bcc53e87e22454de009f07836e648df95820b3a525d049ede229da91ac879ef47131b76d382ec2317a1e20ea4c1fc71f86e1d87a8058200000000000000000000000000000000000000000000000000000000000000000ffd8799f010158200d8442b7839e5cb383c7610e2c8598d464b04cbda8189257373bf325c067dd0c184f5820c886015ba7e97620a47cc7e03ec96b76bcc53e87e22454de009f07836e648df95820358f58a84bc9fce36fdcbc47c8e1ce882e1da5c05378e357bc10d58502a1b8cfd87a8058200000000000000000000000000000000000000000000000000000000000000000ff0102582044043d7008debef45fe0a32db9a9574cc8682a20dd650c2fa69c65df7bbff645582048dd7a2f99b7e4223d24472125a4ff92df9ce44bf25aa588b591cbdcc098924a58201229ad6a510206233f5610682453346e4e37eeecf177a98b292ef9214ef9155d011b000001a3185c5000d87b80ff"
+const thread_cbor =
+  #"d8799fd8799f0040ff01404040184601025820ec1eba30737e2e8800844e5c790fc5886f1a13e127d30e5924d854049a7160755820174321a9ae258ed8cff531245659e74dcd7e6640c8c370bce4e81f9e80745c3e5820d133be28ba9e29289962188e1d55b8839022bf28eb2e8e8f4f81f4c31e2f4eed011b000001a3185c50001a05265c001a05265c00d87b80ff"
 
 const boundary_evidence_cbor =
-  #"d8799fd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde58205ea059f3ddb9a90a2bc8aecf85d11bcf574b9a188c0d4b5396acc7693f8928555820d8d3658d01106e2daeee4fb1e2d94e86f5f734587592097018a587fdea2d45f55820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a805820ef4d38fa44ac6a13f6ad544def9130ce98bc3750c269e81ece64a4904451126dd879800158200330c6f23ddf4aaea597ddcbb13492908018910ee9cca49801a738c98611ca5a0000d8798058200000000000000000000000000000000000000000000000000000000000000000582046def353dc28d38c9fac5288ee4d15774f91cc728f57dc72f7afeda86c772824ffd8799f02582048dd7a2f99b7e4223d24472125a4ff92df9ce44bf25aa588b591cbdcc098924a9f5820c2ce74cb58153b9f53dac75fc32f2dcea04406f0ea5a45227edf411ce5c043dd5820dbdc70be6350bd22d2cbe20e1832c57ce5f4255ea58524e81b7159a9196fd9eb58207f798acee880a7942ff7c5178e546013b3d7c9d307c350e7370422aa71b7556e5820fb851884dee6bed6786d042eed713763647fdf433953103762cb7c9a5dd3fbd85820d902e126e54db8da61d1b218b3d0cf8824f1d67ccd3c86df47ad319b5c179dde5820180368a3a0da391ccdd554dbde405bc96675695286543b798d92545e0ead9c6b5820cab16218e4e5fd6901738df0b0162f472bef0fffa55b430d162bf291d70cdd5dffffd8799f0258201229ad6a510206233f5610682453346e4e37eeecf177a98b292ef9214ef9155d9f5820c2ce74cb58153b9f53dac75fc32f2dcea04406f0ea5a45227edf411ce5c043dd5820dbdc70be6350bd22d2cbe20e1832c57ce5f4255ea58524e81b7159a9196fd9eb58207f798acee880a7942ff7c5178e546013b3d7c9d307c350e7370422aa71b7556e5820fb851884dee6bed6786d042eed713763647fdf433953103762cb7c9a5dd3fbd85820d902e126e54db8da61d1b218b3d0cf8824f1d67ccd3c86df47ad319b5c179dde5820180368a3a0da391ccdd554dbde405bc96675695286543b798d92545e0ead9c6b58207f14ceb3c4dfad8282abd027f19d63c10fc609d711b21a7f411b5466079a2c56ffffff"
+  #"d8799fd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde58205ea059f3ddb9a90a2bc8aecf85d11bcf574b9a188c0d4b5396acc7693f8928555820d8d3658d01106e2daeee4fb1e2d94e86f5f734587592097018a587fdea2d45f55820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a8058208883cceaca129472e612ed8f60313f50deb6e85428e71c8e46f5ab65d8f2e9bed879800158200330c6f23ddf4aaea597ddcbb13492908018910ee9cca49801a738c98611ca5a0000d8798058200000000000000000000000000000000000000000000000000000000000000000ffff"
 
 const transition_cbor =
-  #"d8799f5f58408959013a83018c5820214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e88584015729ce75f9c0ab0e4c1c058204683fd510ea45c1b9385acd0d7064e312104154a4b4e8d82a6473df53b9479ee002020582045b0cfc220ceec5b7c1c62c4d41958403d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c584062c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d58404f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820b6d0fb209ae8e513921408ceba48f9698039117163c15f817662ae4de1c2e29b5867584083582051064584f909aaac825209a2467523ea147d6b6db3eb6b2368ff95cd8913e7db582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c58400ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c04d89182901182c0101010118680158269f01546d69646761725822642d636f6e73656e7375732d76311b000001977420dc000000001864ff0100002000ffd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde58205ea059f3ddb9a90a2bc8aecf85d11bcf574b9a188c0d4b5396acc7693f8928555820d8d3658d01106e2daeee4fb1e2d94e86f5f734587592097018a587fdea2d45f55820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a805820ef4d38fa44ac6a13f6ad544def9130ce98bc3750c269e81ece64a4904451126dd879800258200cc6da237f169d1433da9878daa34b0e5c64a48addf1e8969847bc80b697ee350000d8798058200000000000000000000000000000000000000000000000000000000000000000582046def353dc28d38c9fac5288ee4d15774f91cc728f57dc72f7afeda86c772824ffff"
+  #"d8799f5f58408959013a83018c5820214c88efa8d641e100907432a62d5a6090c840f5c845f4d97785e72842df9795582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e88584015729ce75f9c0ab0e4c1c058204683fd510ea45c1b9385acd0d7064e312104154a4b4e8d82a6473df53b9479ee002020582045b0cfc220ceec5b7c1c62c4d41958403d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c584062c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d58404f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820b6d0fb209ae8e513921408ceba48f9698039117163c15f817662ae4de1c2e29b5867584083582051064584f909aaac825209a2467523ea147d6b6db3eb6b2368ff95cd8913e7db582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c58400ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c04d89182901182c0101010118680158269f01546d69646761725822642d636f6e73656e7375732d76311b000001977420dc000000001864ff0100002000ffd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde58205ea059f3ddb9a90a2bc8aecf85d11bcf574b9a188c0d4b5396acc7693f8928555820d8d3658d01106e2daeee4fb1e2d94e86f5f734587592097018a587fdea2d45f55820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a8058208883cceaca129472e612ed8f60313f50deb6e85428e71c8e46f5ab65d8f2e9bed879800258200cc6da237f169d1433da9878daa34b0e5c64a48addf1e8969847bc80b697ee350000d8798058200000000000000000000000000000000000000000000000000000000000000000ffff"
 
 const auxiliary_cbor = #"d87980"
 
@@ -28,37 +28,35 @@ const field_chunk_auxiliary_cbor =
 const field_chunk_preimage =
   #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 
-const raw_utxo_auxiliary_cbor = #"d87a9f0200d87a9f01ffff"
+const raw_utxo_auxiliary_cbor = #"d87a9f0600d87a9f01ffff"
 
-const certified_auxiliary_cbor = #"d87a9f0200d87b9f039f0102ffffff"
+const certified_auxiliary_cbor = #"d87a9f0600d87b9f039f0102ffffff"
 
 const evidence_hash =
-  #"f3524eb09ccaa6c8a05879a7286fed60d9ef9afa2ef5c5969f2c8b6208304436"
+  #"8181f9d92e24d9d17a81b37fab9ecfd2096f5323d4dee83cf1cc8f0d80bd80e8"
 
 const item_auxiliary_cbor =
-  #"d905179fd8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
+  #"d905159fd8799f58298158268258201111111111111111111111111111111111111111111111111111111111111111190000ffff"
 
 const retired_item_evidence_hash =
-  #"0b69cdf9cda736c811042c1b84aad6c112904a78094b14dd94478f906607947b"
+  #"43ae8060a54a0fbde5bb22f04d1eca0f59d469a6fdbe9064023987351004a15b"
 
 const script_discovery_control_cbor =
   #"8f010203000441aa41bb050341cc4106410741dd0881820941ee"
 
 test typescript_generated_one_step_boundary_is_authenticated() {
-  expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
-  expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
+  expect Some(thread_data) = cbor.deserialise(thread_cbor)
+  expect thread: validation_case_v1.CaseThreadV1 = thread_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
       boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
     = boundary_evidence_data
   and {
-    bytearray.length(boundary_evidence_cbor) == 851,
+    bytearray.length(boundary_evidence_cbor) == 259,
     bytearray.length(boundary_evidence_cbor) < 16_384,
     validation_resolution_v1.one_step_boundary_is_authenticated(
-      dispute,
+      thread,
       boundary_evidence.pre_state,
-      boundary_evidence.operator_post,
-      boundary_evidence.challenger_post,
     ),
   }
 }
@@ -73,7 +71,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(auxiliary_cbor)
   expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
   and {
-    bytearray.length(transition_cbor) == 793,
+    bytearray.length(transition_cbor) == 759,
     bytearray.length(auxiliary_cbor) == 3,
     bytearray.length(transition_cbor) < 16_384,
     bytearray.length(auxiliary_cbor) < 16_384,
@@ -126,13 +124,13 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 }
 
 /// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
-/// 14778-byte field-2 preimage.
+/// 14778-byte field-6 preimage.
 ///
 /// This is the vector the trace producer could not build before: the tier is
 /// resolved at evidence commitment against a concrete transaction's
 /// canonically-sorted reference-input set, so the auxiliary names a **positional
 /// reference-input index** and carries no preimage at all. That is what makes
-/// stage-4 evidence O(1) in output size — the property
+/// stage-4 evidence O(1) in field size — the property
 /// `validation_machine_v1.ak:9189-9192` states and C21-STAGE4 protects — and it
 /// is checked here as a byte length rather than asserted: 11 bytes for a
 /// field of 14778.
@@ -154,14 +152,14 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   and {
     // O(1) in field size: a tier-2 carriage is one integer.
     bytearray.length(raw_utxo_auxiliary_cbor) == 11,
-    field_index == 2,
+    field_index == 6,
     item_index == 0,
     carriage == RawUtxo { ref_input_index: 1 },
   }
 }
 
 /// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
-/// 16388-byte field-2 preimage — above `chunk_bytes_k`, so the preimage is
+/// 16388-byte field-6 preimage — above `chunk_bytes_k`, so the preimage is
 /// split into 2 deterministic chunks with one §8.6 digest manifest.
 ///
 /// `chunk_ref_input_indices` is all-chunks-positional and its **order** is the
@@ -184,7 +182,7 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
     // O(1) in field size at the top of the ladder too: at most three indices
     // plus the manifest's, whatever the preimage weighs.
     bytearray.length(certified_auxiliary_cbor) == 15,
-    field_index == 2,
+    field_index == 6,
     item_index == 0,
     carriage == Certified {
       cert_ref_input_index: 3,

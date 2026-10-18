@@ -1152,7 +1152,7 @@ test phase_a_payload_binding_matches_full_binding(
       ],
     },
   }
-  let Pair(pre, _) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, _) = phase_a_native_step_fixture(tx)
   let work_witness_cbor = phase_a_native_scan_witness(
     tx,
     stage,
@@ -1262,7 +1262,7 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let next_work = phase_a_native_scan_witness(
     tx,
@@ -1340,7 +1340,6 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
 test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
   let Pair(base, work_witness_cbor) = phase_a_native_step_fixture(
     empty_v1_transaction(),
-    h_a,
   )
   let Pair(before, after) = when choice is {
     0 -> Pair(validation_trace_v1.InputSets, validation_trace_v1.InputSets)

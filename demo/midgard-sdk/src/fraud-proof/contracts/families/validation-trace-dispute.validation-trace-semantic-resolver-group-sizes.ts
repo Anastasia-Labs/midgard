@@ -22,5 +22,4 @@ export const VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES = {
   scriptIntegrity: 4,
   cek: 4,
   valueAndMint: 11,
-  ledgerDelta: 8,
 } as const;

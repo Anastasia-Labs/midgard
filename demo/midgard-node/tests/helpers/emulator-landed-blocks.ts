@@ -32,6 +32,7 @@ import type { NodeConfigDep } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
 import type { Globals } from "../../src/services/globals.js";
+import { availabilityParametersFromExplicitEnvironment } from "../../src/services/midgard-contracts.js";
 import type { EmulatorLandedBlocks } from "./emulator-l1-follower.driver.js";
 
 export const openLandedBlocks = async (args: {
@@ -86,6 +87,12 @@ export const openLandedBlocks = async (args: {
     store,
     { projection: events, forcedOrders, stateQueue },
     args.rebase,
+    // As the node takes it for a derived (manifest-less) bundle.
+    () => ({
+      deploymentIdentity: contracts.hubOracle.policyId,
+      responseGeometry:
+        availabilityParametersFromExplicitEnvironment().response_geometry,
+    }),
   );
   const hook: EmulatorLandedBlocks = (change) =>
     landedBlockHook({

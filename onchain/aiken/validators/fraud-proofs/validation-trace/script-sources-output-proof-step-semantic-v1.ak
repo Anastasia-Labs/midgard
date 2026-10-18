@@ -106,7 +106,7 @@ validator main(
           input_index,
           output_index,
           transition,
-          builtin.constr_data(32, [proof_witness]),
+          builtin.constr_data(30, [proof_witness]),
           output_proof_step_dispatch(
             datum |> semantic_pre_state,
             transition,

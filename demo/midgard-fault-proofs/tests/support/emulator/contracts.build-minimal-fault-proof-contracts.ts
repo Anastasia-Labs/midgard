@@ -45,6 +45,7 @@ import {
   buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildTxOrderValidators,
+  buildValidationCaseContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
   buildWithdrawalMistagFaultProofContracts,
@@ -314,11 +315,33 @@ export const buildMinimalFaultProofContracts = async (
     fraudProofCatalogue,
   };
 
+  const doubleSpendContracts = await Effect.runPromise(
+    buildDoubleSpendFaultProofContracts({
+      blueprint: parseFaultProofBlueprint(realBlueprint),
+      network,
+      hubOraclePolicyId: hubOracle.policyId,
+      fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+    }),
+  );
+  // The operator directories slash for a lost validation-case defense on the
+  // award's receipt policy, which the case contracts fix from the deployment
+  // nonce and the shared computation-thread policy alone.
+  const disputeBondLovelace = 10_000_000_000n;
+  const caseContracts = buildValidationCaseContracts({
+    blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+    network,
+    hubOraclePolicyId: hubOracle.policyId,
+    computationThreadPolicyId: doubleSpendContracts.computationThread.policyId,
+    disputeBondLovelace,
+    caseConfigInitializationNonce: nonceUtxo,
+  });
+  const lostDefenseReceiptPolicyId = caseContracts.award.policyId;
+
   const retiredOperatorsMinting = makeMintingValidator(
     applyCompiledScript(
       realBlueprint,
       "operator_directory/retired_operators.mint.mint",
-      [hubOracle.policyId],
+      [hubOracle.policyId, lostDefenseReceiptPolicyId],
     ),
   );
   const retiredOperators: AuthenticatedValidator = {
@@ -366,6 +389,7 @@ export const buildMinimalFaultProofContracts = async (
         hubOracle.policyId,
         registeredOperators.policyId,
         retiredOperators.policyId,
+        lostDefenseReceiptPolicyId,
       ],
     ),
   );
@@ -384,14 +408,6 @@ export const buildMinimalFaultProofContracts = async (
     activeOperators,
   };
 
-  const doubleSpendContracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(realBlueprint),
-      network,
-      hubOraclePolicyId: hubOracle.policyId,
-      fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
-    }),
-  );
   // Every real family must share the double-spend family's fraud-proof policy:
   // the catalogue, the computation-thread mints, and removal all key on that
   // one policy, so a family compiling to a different policy id is a
@@ -413,6 +429,8 @@ export const buildMinimalFaultProofContracts = async (
         maxPayloadNodes: bigint;
       };
       readonly l1SlotConfig: typeof NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+      readonly disputeBondLovelace: bigint;
+      readonly caseConfigInitializationNonce: UTxO;
     }) => Effect.Effect<T, E>,
   ): Promise<T | undefined> => {
     if (!enabled) {
@@ -422,6 +440,8 @@ export const buildMinimalFaultProofContracts = async (
       build({
         eventHistoryBounds,
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace,
+        caseConfigInitializationNonce: nonceUtxo,
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: hubOracle.policyId,
@@ -451,6 +471,11 @@ export const buildMinimalFaultProofContracts = async (
     realValidationTraceDispute,
     buildValidationTraceDisputeFaultProofContracts,
   );
+  if (validationTraceDisputeContracts !== undefined) {
+    expect(
+      validationTraceDisputeContracts.validationTraceDispute.award.policyId,
+    ).toBe(lostDefenseReceiptPolicyId);
+  }
   const zeroInputContracts = await buildFamilyContracts(
     realZeroInput,
     buildZeroInputFaultProofContracts,

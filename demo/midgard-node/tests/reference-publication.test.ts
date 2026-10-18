@@ -82,7 +82,16 @@ it("chains by default from exact accepted parent change before any reference is 
     return hash;
   };
   const result = await runWithoutFollower(
-    ensureReferenceScriptTargetsProgram(lucid, "test", targets, authPolicy),
+    ensureReferenceScriptTargetsProgram(
+      lucid,
+      "test",
+      targets,
+      authPolicy,
+      lucid,
+      undefined,
+      SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+      new Set(),
+    ),
   );
   expect(result.map(({ name }) => name)).toEqual(
     targets.map(({ name }) => name),
@@ -493,6 +502,10 @@ it.each([200, 1000])(
         "fragmented",
         targets,
         authPolicy,
+        lucid,
+        undefined,
+        SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+        new Set(),
       ),
     );
     expect(result.map(({ name }) => name)).toEqual(

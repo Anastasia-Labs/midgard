@@ -31,20 +31,27 @@ export const transitionTraceRecipes = {
   fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw: withdraw(
     (c) => c.fraudProofContracts.transitionTrace.yields.l2Open,
   ),
+  fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw: withdraw(
+    (c) => c.fraudProofContracts.transitionTrace.yields.l2Delete,
+  ),
+  fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw: withdraw(
+    (c) => c.fraudProofContracts.transitionTrace.yields.l2Outputs,
+  ),
+  fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw: withdraw(
+    (c) => c.fraudProofContracts.transitionTrace.yields.l2OutputStep,
+  ),
+  fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw:
+    withdraw(
+      (c) => c.fraudProofContracts.transitionTrace.yields.l2OutputDescriptor,
+    ),
+  fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw: withdraw(
+    (c) => c.fraudProofContracts.transitionTrace.yields.l2OutputSummary,
+  ),
   fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw: withdraw(
     (c) => c.fraudProofContracts.transitionTrace.yields.l2Summaries,
   ),
   fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw: withdraw(
     (c) => c.fraudProofContracts.transitionTrace.yields.l2Replay,
-  ),
-  fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw: withdraw(
-    (c) => c.fraudProofContracts.transitionTrace.yields.claimStructure,
-  ),
-  fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw: withdraw(
-    (c) => c.fraudProofContracts.transitionTrace.yields.claimSource,
-  ),
-  fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw: withdraw(
-    (c) => c.fraudProofContracts.transitionTrace.yields.claimEndpoints,
   ),
   fraudProofTransitionTraceDepositProjectionWithdraw: withdraw(
     (c) => c.fraudProofContracts.transitionTrace.yields.depositProjection,

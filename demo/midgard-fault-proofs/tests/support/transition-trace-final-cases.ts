@@ -21,8 +21,13 @@ import "./submit-init-emulator-fixtures.js";
 import "./submit-init-emulator-shared.js";
 import "./transition-trace-final-fixtures.js";
 import "./transition-trace-yields.js";
+import "./transition-trace-final-cases.forged-step.js";
 import "./transition-trace-final-cases.forged-walk.js";
+import "./transition-trace-final-cases.honest-terminal.js";
 import "./transition-trace-final-cases.types.js";
 import "./transition-trace-final-cases.register-transition-trace-final-cases.js";
-export { registerTransitionTraceFinalCases } from "./transition-trace-final-cases.register-transition-trace-final-cases.js";
+export {
+  registerTransitionTraceFinalCases,
+  transitionTraceFinalCaseRunner,
+} from "./transition-trace-final-cases.register-transition-trace-final-cases.js";
 export { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";

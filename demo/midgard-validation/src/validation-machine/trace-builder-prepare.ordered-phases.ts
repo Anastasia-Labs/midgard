@@ -67,7 +67,6 @@ export const orderedPhases: readonly MidgardValidationPhaseName[] = [
   "scriptIntegrity",
   "cek",
   "valueAndMint",
-  "ledgerDelta",
 ];
 
 export const safeBlockTime = (value: number): bigint => {

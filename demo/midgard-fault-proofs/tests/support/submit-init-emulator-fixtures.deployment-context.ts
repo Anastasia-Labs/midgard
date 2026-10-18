@@ -55,14 +55,22 @@ import {
 export const buildProvedFixtureDeploymentContext = async (
   headerMinimumFee: bigint,
   coherentCanonicalEvidence = false,
-  seeds: { readonly funder?: string; readonly prover?: string } = {},
+  seeds: {
+    readonly funder?: string;
+    readonly prover?: string;
+    readonly publisher?: string;
+  } = {},
 ) => {
   if (coherentCanonicalEvidence) return buildCanonicalDeploymentContext();
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const funder = emulatorAccountFromSeed(40_000_000_000n, seeds.funder);
   const prover = fundedProverEmulatorAccount(20_000_000_000n, seeds.prover);
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
+  const publisher = emulatorAccountFromSeed(40_000_000_000n, seeds.publisher);
+  const emulator = new Emulator(
+    [funder, prover, publisher],
+    EMULATOR_PROTOCOL_PARAMETERS,
+  );
   alignEmulatorToWholeSecond(emulator);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
@@ -76,7 +84,7 @@ export const buildProvedFixtureDeploymentContext = async (
   proverSigner.selectWallet(proverLucid);
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(funderLucid, emulator.now());
+    await createReferenceScriptPublisher(funderLucid, publisher, emulator);
   const l1SlotConfig = EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG;
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(

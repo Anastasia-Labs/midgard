@@ -34,12 +34,34 @@ export type DaPayloadVerificationTimingOptions = {
 };
 
 export type DaPayloadRootSet = PayloadRootSet & {
+  /**
+   * Built from the body's members: derived data, not header-committed. The
+   * header pins it to the empty tree; compare through headerCommittedRoots.
+   */
   readonly validationTracesRoot: string;
 };
 
 export type DaPayloadCountSet = PayloadCountSet & {
+  /**
+   * The body's member count: derived data, not header-committed. The header
+   * pins it to 0; compare through headerCommittedCounts.
+   */
   readonly validationTraceCount: bigint;
 };
+
+// A header commits the body's roots and counts except the validation-trace
+// pair, which it pins to the empty tree while the body keeps the built members.
+export const headerCommittedRoots = <
+  Roots extends { readonly validationTracesRoot: string },
+>(
+  roots: Roots,
+): Roots => ({ ...roots, validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT });
+
+export const headerCommittedCounts = <
+  Counts extends { readonly validationTraceCount: bigint },
+>(
+  counts: Counts,
+): Counts => ({ ...counts, validationTraceCount: 0n });
 
 export type VerifiedDaPayload = {
   readonly payload: SDK.DaPayload;

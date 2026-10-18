@@ -1,10 +1,4 @@
-import type {
-  MidgardMpfProofDescriptor,
-  MidgardMpfProofFrame,
-  MidgardMpfProofStep,
-  MidgardValidationMerkleFrontier,
-  MidgardValidationMerkleMembership,
-} from "@al-ft/midgard-core";
+import type { MidgardValidationMerkleFrontier } from "@al-ft/midgard-core";
 import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   type MidgardFieldCarriage,
@@ -46,56 +40,6 @@ export const frontierPeaksData = (
   frontier: MidgardValidationMerkleFrontier,
 ): readonly ConstructorData[] =>
   frontier.peaks.map((peak) => record([int(peak.height), bytes(peak.hash)]));
-
-const mpfProofStepData = (step: MidgardMpfProofStep): ConstructorData => {
-  if (step.kind === "branch") {
-    return new Constr(0, [int(step.skip), bytes(step.neighbors)]);
-  }
-  if (step.kind === "fork") {
-    return new Constr(1, [
-      int(step.skip),
-      record([
-        int(step.neighbor.nibble),
-        bytes(step.neighbor.prefix),
-        bytes(step.neighbor.root),
-      ]),
-    ]);
-  }
-  return new Constr(2, [int(step.skip), bytes(step.key), bytes(step.value)]);
-};
-
-export const mpfProofFrameData = (
-  frame: MidgardMpfProofFrame,
-): ConstructorData =>
-  record([
-    int(frame.version),
-    int(frame.frameIndex),
-    int(frame.cursor),
-    int(frame.nextCursor),
-    mpfProofStepData(frame.step),
-  ]);
-
-const mpfProofDescriptorData = (
-  descriptor: MidgardMpfProofDescriptor,
-): ConstructorData =>
-  record([
-    int(descriptor.version),
-    int(descriptor.frameCount),
-    int(descriptor.terminalCursor),
-    frontierPeaksData(descriptor.frontier),
-  ]);
-
-export const ledgerDeltaOperationProofData = (
-  descriptor: MidgardMpfProofDescriptor,
-  membership: MidgardValidationMerkleMembership,
-): ConstructorData =>
-  record([
-    mpfProofDescriptorData(descriptor),
-    int(membership.frontier.count),
-    frontierPeaksData(membership.frontier),
-    int(membership.leafIndex),
-    byteList(membership.siblings),
-  ]);
 
 /**
  * §8.8 `FieldCarriageV1` — how a field's preimage bytes reach the consuming
