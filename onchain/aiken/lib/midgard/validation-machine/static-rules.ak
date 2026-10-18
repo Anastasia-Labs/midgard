@@ -46,7 +46,9 @@ pub fn verify_static_rules(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    witness.work_witness_cbor,
+  )
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,

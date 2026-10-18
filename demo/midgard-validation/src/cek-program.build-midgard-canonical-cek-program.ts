@@ -25,7 +25,6 @@ import {
   Force,
   getNRequiredForces,
   Lambda,
-  parseUPLC,
   UPLCConst,
   type UPLCTerm,
   UPLCVar,
@@ -38,7 +37,7 @@ import {
   midgardCekConstantMemorySize,
 } from "./cek-constant.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
-import { encodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
+import { decodeMidgardCekCardanoFlatProgram } from "./cek-program.cardano-flat.js";
 import {
   canonicalFlatProgramBytes,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
@@ -104,11 +103,12 @@ export const buildMidgardCanonicalCekProgram = (
   }
 
   const flat = canonicalFlatProgramBytes(raw);
-  const program = parseUPLC(flat, "flat");
-  const reencoded = encodeMidgardCekCardanoFlatProgram(program);
-  if (!flat.equals(reencoded) || !hasExactBuiltinForces(program.body)) {
+  // Data constants may be spelled in any form the Cardano ledger's Data
+  // decoder accepts; the envelope is built from their values.
+  const program = decodeMidgardCekCardanoFlatProgram(flat);
+  if (!hasExactBuiltinForces(program.body)) {
     throw new Error(
-      "V1 requires canonical Flat bytes with exactly the builtin forces implied by UPLC 1.1.0",
+      "V1 requires exactly the builtin forces implied by UPLC 1.1.0",
     );
   }
   if (

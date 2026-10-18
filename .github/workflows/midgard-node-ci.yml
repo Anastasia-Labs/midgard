@@ -470,6 +470,11 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The Plutus Data CBOR decoding channel: both entries of the on-chain
+      # decoder are held to the TypeScript decoder's outcome on every row.
+      - name: Check Plutus Data CBOR decoding golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:plutus-data-cbor-decoding-v1
       # The ledger output proof replay channel: outputs holding an empty field
       # or a large chunked datum scalar, the witness list the TypeScript trace
       # builder emits for each and the hash of its terminal control. The

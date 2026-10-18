@@ -522,6 +522,38 @@
       }
     },
     {
+      "id": "plutus-data-cbor-decoding-v1",
+      "kind": "golden",
+      "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:sync",
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json",
+        "onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check Plutus Data CBOR decoding golden vectors"
+      }
+    },
+    {
       "id": "ledger-output-proof-replay",
       "kind": "golden",
       "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",
@@ -1020,6 +1052,35 @@
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Build, typecheck, and test Midgard validation",
         "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      }
+    },
+    {
+      "id": "cek-executor-differential-v1",
+      "kind": "fixture",
+      "summary": "Proof- and verdict-mode outcomes of the structural executor differential corpus, written by its test under MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 and asserted by the same test without it.",
+      "generators": [
+        "demo/midgard-validation/tests/cek-executor.differential.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "demo/midgard-validation/tests/helpers/cek-differential-*.ts",
+        "demo/midgard-validation/tests/helpers/cek-adversarial-shapes.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-executor-differential-v1.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/cek-executor.differential.test.ts"
       }
     },
     {

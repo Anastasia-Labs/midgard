@@ -6,7 +6,6 @@ export * from "./cek-constant.js";
 export * from "./cek-context.js";
 export { computeMidgardCekBuiltinBudget } from "./cek-cost.js";
 export * from "./cek-data.js";
-export * from "./cek-data-scan.js";
 export * from "./cek-data-tree.js";
 export * from "./cek-executor.js";
 export * from "./cek-machine.js";

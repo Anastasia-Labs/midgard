@@ -261,10 +261,13 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputScanControlV1 {
 /// its checks: for bytes that a computation thread carries between its own
 /// steps, the writing step's `encode_control_v1` already proved the control
 /// well formed and its bytes canonical, and the thread admits no other writer.
+///
+/// The bytes are Midgard wire that `encode_control_v1` writes by hand, not a
+/// Plutus Data value, so they are read through the envelope entry.
 pub fn decode_written_control_v1(
   control_cbor: ByteArray,
 ) -> LedgerOutputScanControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(control_cbor)
   control_fields_v1(data)
 }
 
