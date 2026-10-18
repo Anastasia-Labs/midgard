@@ -6,8 +6,33 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 
-const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+/**
+ * A payload served as a zstd envelope: the same body under the same header,
+ * in bytes that differ from the identity envelope. The header commits the
+ * body, not the envelope's encoding, so only the availability commitment
+ * tells the two copies apart.
+ */
+export type RecompressedDaPayload = Readonly<{ recompressed: SDK.DaPayload }>;
+
+/** A copy of a block's payload: as itself (identity envelope) or recompressed. */
+export type DaCopy = SDK.DaPayload | RecompressedDaPayload;
+
+/** `payload` in a zstd envelope. */
+export const recompressed = (
+  payload: SDK.DaPayload,
+): RecompressedDaPayload => ({
+  recompressed: payload,
+});
+
+/** The payload a copy carries. */
+export const payloadOf = (copy: DaCopy): SDK.DaPayload =>
+  "recompressed" in copy ? copy.recompressed : copy;
+
+/** The envelope bytes a copy is served and retained as. */
+export const envelope = (copy: DaCopy) =>
+  wrapDaPayload(SDK.encodeDaPayload(payloadOf(copy)), {
+    mode: "recompressed" in copy ? "zstd" : "identity",
+  });
 
 /** The commitment authority the replayer checks payloads with. */
 export const AVAILABILITY: SDK.DaPayloadAvailabilityAuthority = {
@@ -19,32 +44,30 @@ export const AVAILABILITY: SDK.DaPayloadAvailabilityAuthority = {
   }),
 };
 
-/** The commitment the committee would attest for `payload`'s envelope. */
-export const commitmentOf = async (payload: SDK.DaPayload) =>
+/** The commitment the committee would attest for `copy`'s envelope. */
+export const commitmentOf = async (copy: DaCopy) =>
   SDK.buildDaAvailabilityCommitment({
     ...AVAILABILITY,
-    headerHash: payload.block_body.header_hash,
-    payload: await envelope(payload),
+    headerHash: payloadOf(copy).block_body.header_hash,
+    payload: await envelope(copy),
   });
 
 /** `payload`'s node status once the committee attested its envelope. */
 export const attested = async (
-  payload: SDK.DaPayload,
+  copy: DaCopy,
 ): Promise<SDK.DaAvailabilityStateQueueStatus> => ({
   Attested: {
-    commitment_hash: SDK.daAvailabilityCommitmentHash(
-      await commitmentOf(payload),
-    ),
+    commitment_hash: SDK.daAvailabilityCommitmentHash(await commitmentOf(copy)),
   },
 });
 
 /** `payload`'s node status once its availability was published. */
 export const published = async (
-  payload: SDK.DaPayload,
+  copy: DaCopy,
 ): Promise<SDK.DaAvailabilityStateQueueStatus> => ({
   Published: {
     terminal_commitment: SDK.daAvailabilityPublishedTerminalCommitment(
-      await commitmentOf(payload),
+      await commitmentOf(copy),
     ),
   },
 });

@@ -7,7 +7,6 @@
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type {
   FactStore,
@@ -65,6 +64,9 @@ import { ChainDriver } from "./helpers/l1-events-store.js";
 import {
   attested,
   AVAILABILITY,
+  type DaCopy,
+  envelope,
+  payloadOf,
 } from "./landed-blocks-replay-foreign.availability.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -158,10 +160,6 @@ export const forcedAndL2Block = async () => {
       header: { ...normal.header, ...counts },
       forced_transactions: forced.forced_transactions,
       forced_transaction_preimages: forced.forced_transaction_preimages,
-      cek_program_material: [
-        ...forced.cek_program_material,
-        ...normal.cek_program_material,
-      ],
       transition_trace: [
         step(0n, forcedEvent, "ForcedTransaction", prior),
         step(1n, l2Event, "L2Transaction", normal.header.utxosRoot),
@@ -240,7 +238,6 @@ const emptyBody = (): SDK.DaPayload["block_body"] => ({
   withdrawals: [],
   transactions: [],
   transaction_preimages: [],
-  cek_program_material: [],
   forced_transactions: [],
   forced_transaction_preimages: [],
   transition_trace: [],
@@ -346,21 +343,21 @@ export const depositBlock = async (entry: {
   });
 };
 
-export const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+export { envelope };
 
-/** The DA row the node retains for `payload`, optionally altered. */
+/** The DA row the node retains for `copy`, optionally altered. */
 export const retainedRow = async (
-  payload: SDK.DaPayload,
+  copy: DaCopy,
   alter: (row: DaPayloadsDB.InsertInput) => DaPayloadsDB.InsertInput = (row) =>
     row,
-) =>
-  alter(
+) => {
+  const payload = payloadOf(copy);
+  return alter(
     foreignRetainedDaInsert(
       payload.block_body.header_hash,
       payload.block_body.header,
       payload.block_body.header.endTime,
-      await envelope(payload),
+      await envelope(copy),
       // The body's validation-trace pair, as the fetch path verifies it; a
       // body that repeats an event list still has one.
       {
@@ -377,6 +374,7 @@ export const retainedRow = async (
       payload.block_body.counts,
     ),
   );
+};
 
 export const MANIFEST_ID = "de".repeat(32);
 

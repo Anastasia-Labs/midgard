@@ -1,11 +1,4 @@
 import {
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-  type MidgardCekProgramEnvelope,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   midgardAddressFromText,
@@ -59,57 +52,3 @@ export const EXTRA_BASE = [0x14, 0x15, 0x16, 0x17].map((byte) =>
 export const EXTRA_TXS = EXTRA_BASE.map((spent, index) =>
   tx(0x01 + index, 0.2 * (index + 1), spent),
 );
-/** A chain of `nodeCount` lambda nodes over `leaf`; a longer chain over the
- * same leaf shares its material. */
-export const lambdaChain = (
-  nodeCount: number,
-  leaf: Parameters<typeof encodeMidgardCekTermNode>[0] = { kind: "error" },
-) => {
-  const material: MidgardCekProgramMaterialEntry[] = [];
-  const envelopes: MidgardCekProgramEnvelope[] = [];
-  let node = leaf;
-  let bytes = 0n;
-  for (let count = 1; count <= nodeCount; count += 1) {
-    const preimage = encodeMidgardCekTermNode(node);
-    const root = hashMidgardCekTermNode(node);
-    material.push({ kind: "term", root, preimage });
-    bytes += BigInt(preimage.length);
-    envelopes.push({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: root,
-      nodeCount: BigInt(count),
-      materialByteLength: bytes,
-    });
-    node = { kind: "lambda", body: root };
-  }
-  return { material, envelopes };
-};
-
-/** Two variants of one program, each within its own limits; together they
- * declare more node visits than one block's material may. Built once. */
-export const programVariants = (() => {
-  let variants:
-    | {
-        readonly variantA: MidgardCekProgramEnvelope;
-        readonly variantB: MidgardCekProgramEnvelope;
-        readonly material: readonly MidgardCekProgramMaterialEntry[];
-        readonly sidecarA: Buffer;
-        readonly sidecarB: Buffer;
-      }
-    | undefined;
-  return () => {
-    if (variants !== undefined) return variants;
-    const visits = 800_000;
-    const chain = lambdaChain(visits + 1);
-    variants = {
-      variantA: chain.envelopes[visits - 1]!,
-      variantB: chain.envelopes[visits]!,
-      material: chain.material,
-      sidecarA: encodeMidgardCekProgramMaterialSidecar(
-        chain.material.slice(0, visits),
-      ),
-      sidecarB: encodeMidgardCekProgramMaterialSidecar(chain.material),
-    };
-    return variants;
-  };
-})();

@@ -5,7 +5,6 @@ import { Duration, Effect, Option } from "effect";
 import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
 import {
   BlocksDB,
-  CekProgramMaterialDB,
   DaPayloadsDB,
   ImmutableDB,
   MempoolInclusionsDB,
@@ -24,9 +23,7 @@ import {
   withFollowerWrite,
 } from "../../services/follower-write-gate.js";
 import { type Database } from "../../services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
-import { pinFinalizedStateScriptRefs } from "../commit-block-header/da-payload.pin-finalized-state.js";
 import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
@@ -123,9 +120,6 @@ export const finalizeCommittedBlockLocally = (
       processedMempoolTxs,
       Math.floor(BATCH_SIZE / 2),
     );
-    const finalizedTxHashes = uniqueBuffersByHex(
-      batches.flatMap((batch) => batch.blockTxHashes),
-    );
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
     const daPayloadBuildStartedAt = Date.now();
     const persistedDaPayload =
@@ -133,11 +127,9 @@ export const finalizeCommittedBlockLocally = (
         ? undefined
         : yield* Effect.gen(function* () {
             const record = options.daPayloadRecord!;
-            const snapshot = yield* materializeConfirmedLedgerSnapshot(record);
             const insert = yield* buildDaPayloadInsert({ record });
             return {
               insert,
-              outputs: snapshot.entries.map((entry) => entry.output),
             };
           });
     if (persistedDaPayload !== undefined) {
@@ -210,14 +202,7 @@ export const finalizeCommittedBlockLocally = (
             );
           if (persistedDaPayload !== undefined) {
             yield* DaPayloadsDB.upsertAvailable(persistedDaPayload.insert);
-            yield* pinFinalizedStateScriptRefs(
-              options.daPayloadRecord!,
-              persistedDaPayload.outputs,
-            );
           }
-          yield* CekProgramMaterialDB.releaseAdmissionOwnership(
-            finalizedTxHashes,
-          );
           return deletedOutRefHexes;
         }),
       )

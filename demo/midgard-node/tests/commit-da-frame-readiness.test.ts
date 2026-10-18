@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -64,14 +63,6 @@ vi.mock("../src/database/index.js", async () => {
     },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
-      retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-        Effect.succeed(
-          txIds.map((txId) => ({
-            txId,
-            sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-          })),
-        ),
-      ),
     },
   };
 });

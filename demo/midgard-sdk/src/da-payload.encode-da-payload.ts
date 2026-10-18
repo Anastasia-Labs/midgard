@@ -92,7 +92,6 @@ export type DaPayloadEntryField =
   | "transactions"
   | "transaction_preimages"
   | "forced_transaction_preimages"
-  | "cek_program_material"
   | "deposits"
   | "transition_trace"
   | "event_to_step"
@@ -150,7 +149,6 @@ const encodedPayloadSize = (
     entryListSize("transactions"),
     entryListSize("transaction_preimages"),
     entryListSize("forced_transaction_preimages"),
-    entryListSize("cek_program_material"),
     entryListSize("deposits"),
     entryListSize("transition_trace"),
     entryListSize("event_to_step"),
@@ -243,7 +241,6 @@ export const encodeDaPayload = (payload: DaPayload): Buffer => {
   writeList(writer, body.transactions);
   writeList(writer, body.transaction_preimages);
   writeList(writer, body.forced_transaction_preimages);
-  writeList(writer, body.cek_program_material);
   writeList(writer, body.deposits);
   writeList(writer, body.transition_trace);
   writeList(writer, body.event_to_step);

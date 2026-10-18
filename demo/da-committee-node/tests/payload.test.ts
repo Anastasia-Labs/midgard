@@ -7,12 +7,9 @@ import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/da/payload.js";
 import "./helpers.js";
-import "./payload.payload-with-program-material.js";
+import "./payload.payload-with-script-witnesses.js";
 
-import {
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeCbor } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -28,25 +25,16 @@ import {
   withBuiltValidationTracePair,
   withHeaderFields,
 } from "./helpers.js";
-import { payloadWithProgramMaterial } from "./payload.payload-with-program-material.js";
+import { payloadWithScriptWitnesses } from "./payload.payload-with-script-witnesses.js";
 
 describe("canonical V1 DA payload verification", () => {
   it("attests a block of script transactions whose retained-witness section is empty", async () => {
-    const terminal = { kind: "error" } as const;
-    const preimage = encodeMidgardCekTermNode(terminal);
-    const root = hashMidgardCekTermNode(terminal);
-    const unhashed = await payloadWithProgramMaterial(
-      [
-        {
-          uplcVersion: [1n, 1n, 0n] as const,
-          termRoot: root,
-          nodeCount: 1n,
-          materialByteLength: BigInt(preimage.length),
-        },
-      ],
-      [{ kind: "term", root, preimage }],
-    );
-    expect(unhashed.block_body.cek_program_material).toHaveLength(1);
+    const unhashed = await payloadWithScriptWitnesses([
+      {
+        language: "PlutusV3",
+        scriptBytes: encodeCbor(Buffer.from("010100200101", "hex")),
+      },
+    ]);
     expect(unhashed.block_body.validation_trace_witnesses).toEqual([]);
     const roots = await computeDaPayloadRoots(unhashed);
     const header = {

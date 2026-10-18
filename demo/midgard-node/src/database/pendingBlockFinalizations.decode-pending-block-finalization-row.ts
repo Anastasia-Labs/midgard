@@ -44,22 +44,12 @@ export const forcedTransactionMemberEntry = (
     );
     const canonicalTransactionCbor =
       entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
-    const programMaterialSidecarCbor =
-      entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR];
-    const programMaterialSidecarSha256 =
-      entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256];
-    if (
-      sourceValueCbor.length === 0 ||
-      canonicalTransactionCbor.length === 0 ||
-      programMaterialSidecarCbor.length === 0 ||
-      programMaterialSidecarSha256.length !== 32 ||
-      !sha256(programMaterialSidecarCbor).equals(programMaterialSidecarSha256)
-    ) {
+    if (sourceValueCbor.length === 0 || canonicalTransactionCbor.length === 0) {
       return yield* Effect.fail(
         new DatabaseError({
           table: ForcedTransactionsDB.tableName,
           message:
-            "Refusing to journal a V1 forced transaction without its exact source value, canonical transaction preimage, and authenticated CEK material sidecar",
+            "Refusing to journal a V1 forced transaction without its exact source value and canonical transaction preimage",
           cause: `tx_order_id=${entry[
             ForcedTransactionsDB.Columns.TX_ORDER_ID
           ].toString("hex")}`,
@@ -69,7 +59,6 @@ export const forcedTransactionMemberEntry = (
     const payload = ForcedTransactionsDB.encodeForcedTransactionJournalMember({
       sourceValueCbor,
       canonicalTransactionCbor,
-      programMaterialSidecarCbor,
     });
     const memberId = Buffer.from(
       entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],

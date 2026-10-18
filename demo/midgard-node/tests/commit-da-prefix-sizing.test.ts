@@ -1,10 +1,3 @@
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-  mergeMidgardCekProgramMaterialSidecars,
-} from "@al-ft/midgard-core/cek-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -38,13 +31,6 @@ import {
   traceFor,
 } from "./helpers/commit-da-frame-fixtures.js";
 
-const emptySidecar = encodeMidgardCekProgramMaterialSidecar([]);
-const term = {
-  kind: "term",
-  root: hashMidgardCekTermNode({ kind: "error" }),
-  preimage: encodeMidgardCekTermNode({ kind: "error" }),
-} as const;
-const sharedSidecar = encodeMidgardCekProgramMaterialSidecar([term]);
 const tuple = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
   value.toString("hex"),
@@ -92,7 +78,6 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
     [ForcedDB.Columns.TX_ORDER_ID]: Buffer.from("fa", "hex"),
     [ForcedDB.Columns.FORCED_INCLUSION_VALUE]: Buffer.from("fb", "hex"),
     [ForcedDB.Columns.NATIVE_TX_CBOR]: Buffer.from("fc", "hex"),
-    [ForcedDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: sharedSidecar,
   } as unknown as ForcedDB.Entry;
   const transitionTraceMembers = [
     source(forcedKey, "ForcedTransaction", 0),
@@ -154,26 +139,20 @@ const payloadAt = (content: DaPayloadBlockContent) =>
       ...content,
       headerHash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
       header: DA_PAYLOAD_UPPER_BOUND_HEADER,
-      cekProgramMaterial: [],
     }),
   );
 const measuredAt = async (prefix: number) => {
   const content = contentAt(prefix);
-  const ordinarySidecars = Array.from({ length: prefix }, (_, index) =>
-    index % 2 === 0 ? sharedSidecar : emptySidecar,
-  );
   return measureDaPayloadPrefixes({
     payload: await payloadAt(content),
     content,
-    ordinarySidecars,
-    forcedSidecars: [sharedSidecar],
     identityContext: Buffer.from("fixed-base-and-window"),
     rejectedTxIds: [],
   });
 };
 
 describe("complete DA prefix canonical sizing", () => {
-  it("matches actual canonical encoding across all prefixes, shifted mandatory deposits, count-width boundaries and deduplicated material", async () => {
+  it("matches actual canonical encoding across all prefixes, shifted mandatory deposits, count-width boundaries and carried transaction bytes", async () => {
     // Only accounting is tested: trace values/sources are codec fixtures, not
     // claims that these transactions passed production validation or native MPF.
     const n = 270;
@@ -206,17 +185,12 @@ describe("complete DA prefix canonical sizing", () => {
         transitionStepCount: BigInt(prefix + 4),
         validationTraceCount: BigInt(prefix + 1),
       };
-      const cek = mergeMidgardCekProgramMaterialSidecars([sharedSidecar]).map(
-        (entry) =>
-          tuple(entry.root, encodeMidgardCekProgramMaterialDaValue(entry)),
-      );
       const canonical = {
         ...payload,
         block_body: {
           ...payload.block_body,
           header: { ...payload.block_body.header, ...counts },
           counts,
-          cek_program_material: cek,
         },
       };
       expect(measured.prefixes[prefix]!.innerBytesUpperBound).toBe(
@@ -254,8 +228,6 @@ describe("complete DA prefix canonical sizing", () => {
       measureDaPayloadPrefixes({
         payload,
         content: changed,
-        ordinarySidecars: [sharedSidecar, emptySidecar],
-        forcedSidecars: [sharedSidecar],
         identityContext: Buffer.alloc(0),
         rejectedTxIds: [],
       });
@@ -274,10 +246,6 @@ it("rebuilds the global minimum for final-header admission when every upper boun
     measureDaPayloadPrefixes({
       payload: await payloadAt(built),
       content: built,
-      ordinarySidecars: built.processedMempoolTxs.map((_, index) =>
-        index % 2 === 0 ? sharedSidecar : emptySidecar,
-      ),
-      forcedSidecars: [sharedSidecar],
       identityContext: Buffer.from("fixed-window"),
       rejectedTxIds: [],
     });
@@ -324,9 +292,6 @@ it("rebuilds the global minimum for final-header admission when every upper boun
       header_hash: "33".repeat(28),
       header: { ...header, ...counts },
       counts,
-      cek_program_material: [
-        tuple(term.root, encodeMidgardCekProgramMaterialDaValue(term)),
-      ],
     },
   });
   expect(exact.length).toBeLessThanOrEqual(limit);

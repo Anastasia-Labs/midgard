@@ -1,16 +1,11 @@
 import {
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialDaValue,
-  type MidgardCekProgramEnvelope,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSource,
   encodeMidgardNativeTxCanonical,
   encodeMidgardVersionedScriptListPreimage,
   materializeMidgardNativeTxFromCanonical,
+  type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -37,17 +32,11 @@ const rewriteL2EventTxId = (
   };
 };
 
-export const payloadWithProgramMaterial = async (
-  envelopes: readonly MidgardCekProgramEnvelope[],
-  material: readonly MidgardCekProgramMaterialEntry[],
+export const payloadWithScriptWitnesses = async (
+  scripts: readonly MidgardVersionedScript[],
 ): Promise<SDK.DaPayload> => {
   const fixture = await makePayloadFixture();
-  const scriptWitnesses = encodeMidgardVersionedScriptListPreimage(
-    envelopes.map((envelope) => ({
-      language: "MidgardV1" as const,
-      scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
-    })),
-  );
+  const scriptWitnesses = encodeMidgardVersionedScriptListPreimage(scripts);
   const rewrittenTransactions = fixture.payload.block_body.transaction_preimages
     .map(([oldTxId, txCborHex]) => {
       const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
@@ -124,15 +113,6 @@ export const payloadWithProgramMaterial = async (
         txId,
         txCbor,
       ]),
-      cek_program_material: sortedEntries(
-        material.map(
-          (entry) =>
-            [
-              Buffer.from(entry.root).toString("hex"),
-              encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-            ] satisfies SDK.DaPayloadEntry,
-        ),
-      ),
       transition_trace: transitionTrace,
       event_to_step: sortedEntries(
         fixture.payload.block_body.event_to_step.map(([key, value]) => [

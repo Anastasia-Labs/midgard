@@ -1,11 +1,8 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   processMpfs,
@@ -13,15 +10,9 @@ import {
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
-  Lucid,
   NodeConfig,
 } from "../src/services/index.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
-import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
-import {
-  submitDepositOnlyCommit,
-  submitTxBackedCommit,
-} from "../src/workers/commit-block-header/submission.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
@@ -88,14 +79,6 @@ vi.mock("../src/database/index.js", async () => {
     },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
-      retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-        Effect.succeed(
-          txIds.map((txId) => ({
-            txId,
-            sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-          })),
-        ),
-      ),
     },
     WithdrawalsDB: {
       ...actual.WithdrawalsDB,
@@ -230,22 +213,11 @@ vi.mock("../src/services/mpf-native-owner/client.js", () => ({
   },
 }));
 
-const HEADER_HASH = "11".repeat(28);
 const forcedValidationSlotConfig = {
   zeroTime: Date.parse("2026-01-01T00:06:50.999Z"),
   zeroSlot: 100,
   slotLength: 1_000,
 } as const;
-const latestBlock = {
-  utxo: {
-    txHash: "22".repeat(32),
-    outputIndex: 0,
-    address: "addr_test1statequeue",
-    assets: {},
-    datum: "datum",
-  },
-  datum: { key: "Empty" },
-} as never;
 const workerInput = {
   data: {
     availableConfirmedBlock: "",
@@ -260,12 +232,6 @@ const workerInput = {
     stateQueueHasUnmergedTail: false,
   },
 } as unknown as WorkerInput;
-const contracts = {
-  stateQueue: {
-    spendingScriptAddress: "addr_test1statequeue",
-    policyId: "aa".repeat(28),
-  },
-} as never;
 const deploymentMarker = {
   schemaVersion: "midgard-deployment-marker-v1",
   manifestId: "test-manifest",
@@ -293,134 +259,7 @@ const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
     ) as Effect.Effect<A, unknown, never>,
   );
 
-const forcedEntryMissingMaterial = {
-  tx_order_id: Buffer.from("01", "hex"),
-  cek_program_material_sidecar_cbor: Buffer.alloc(0),
-} as never;
-
-/** The final recheck reads the commit-event depth (a fixture has no permit). */
-const depthConfig = { COMMIT_EVENT_DEPTH: 0 } as never;
-
-const baseCommitArgs = {
-  contracts,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  deploymentMarker,
-  latestBlock,
-  endTime: new Date("2026-01-01T00:07:00.999Z"),
-  includedDepositEntries: [],
-  includedDepositEventIds: [],
-  includedForcedTransactionEntries: [],
-  includedForcedTransactionEventIds: [Buffer.from("01", "hex")],
-  includedWithdrawalEntries: [],
-  includedWithdrawalEventIds: [],
-  workerInput,
-  blockEndTimeCapMs: undefined,
-  utxoRoot: "33".repeat(32),
-  txRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-  transitionTraceRoot: "44".repeat(32),
-  eventToStepRoot: "55".repeat(32),
-  validationTracesRoot: "66".repeat(32),
-  transitionTraceMembers: [],
-  eventToStepMembers: [],
-  validationTraceMembers: [],
-  transitionStepCount: 0,
-  validationTraceCount: 0,
-  ledgerDelta: { spent: [], produced: [] },
-  selectedBaseUtxosRoot: "33".repeat(32),
-  implicitGenesisEntries: [],
-  nativeMpfReplay: undefined,
-} as const;
-
 describe("canonical V1 commit profile", () => {
-  it("fails closed on missing forced program material before journal preparation", async () => {
-    vi.mocked(buildUnsignedCommitTx).mockReturnValue(
-      Effect.succeed({
-        preparedTxHash: "22".repeat(32),
-        newHeaderHash: HEADER_HASH,
-        newHeader: {} as never,
-        newHeaderCbor: Buffer.from("header"),
-        blockEndTimeMs: baseCommitArgs.endTime.getTime(),
-        blockTimeMs: baseCommitArgs.endTime.getTime(),
-        txValidFromMs: 0,
-        txValidToMs: 1,
-        signAndSubmitProgram: Effect.succeed("22".repeat(32)),
-        txSize: 1,
-      }),
-    );
-
-    const outcome = await runEffect(
-      Effect.either(
-        submitDepositOnlyCommit({
-          ...baseCommitArgs,
-          includedForcedTransactionEntries: [forcedEntryMissingMaterial],
-        } as unknown as Parameters<typeof submitDepositOnlyCommit>[0]),
-      ).pipe(
-        Effect.provideService(Lucid, fakeLucid),
-        Effect.provideService(NodeConfig, depthConfig),
-      ),
-    );
-
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") return;
-    expect(outcome.left).toMatchObject({
-      message:
-        "Cannot build V1 DA from missing or conflicting forced-transaction program material",
-    });
-  });
-
-  it("fails closed when a normal transaction has no durable material sidecar", async () => {
-    vi.mocked(TxAdmissionsDB.retrieveProgramMaterialSidecars).mockReturnValue(
-      Effect.succeed([]),
-    );
-    vi.mocked(buildUnsignedCommitTx).mockReturnValue(
-      Effect.succeed({
-        preparedTxHash: "22".repeat(32),
-        newHeaderHash: HEADER_HASH,
-        newHeader: {} as never,
-        newHeaderCbor: Buffer.from("header"),
-        blockEndTimeMs: baseCommitArgs.endTime.getTime(),
-        blockTimeMs: baseCommitArgs.endTime.getTime(),
-        txValidFromMs: 0,
-        txValidToMs: 1,
-        signAndSubmitProgram: Effect.succeed("22".repeat(32)),
-        txSize: 1,
-      }),
-    );
-    const txId = Buffer.from("02", "hex");
-    const processedMempoolTxs = [
-      {
-        [TxTable.Columns.TX_ID]: txId,
-        [TxTable.Columns.TX]: Buffer.from("tx"),
-        [TxTable.Columns.TIMESTAMPTZ]: baseCommitArgs.endTime,
-      },
-    ] as never;
-
-    const outcome = await runEffect(
-      Effect.either(
-        submitTxBackedCommit({
-          ...baseCommitArgs,
-          includedForcedTransactionEntries: [],
-          includedForcedTransactionEventIds: [],
-          transactionsMpf: {} as never,
-          processedMempoolTxs,
-          mempoolTxHashes: [txId],
-          mempoolTxSourceTable: "mempool",
-          sizeOfProcessedTxs: 2,
-        } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
-      ).pipe(
-        Effect.provideService(Lucid, fakeLucid),
-        Effect.provideService(NodeConfig, depthConfig),
-      ),
-    );
-
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") return;
-    expect(outcome.left).toMatchObject({
-      message:
-        "Cannot build V1 block without one durable program-material sidecar per normal transaction",
-    });
-  });
-
   it("fails closed without worker slot mapping and passes the node mapping to processMpfs", async () => {
     const nodeConfig = {
       MPF_PAYLOAD_ROOT_CHECK: "off",
