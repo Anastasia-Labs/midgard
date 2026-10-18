@@ -108,12 +108,14 @@ export type NativeTxOptions = NonNullable<Parameters<typeof makeNativeTx>[0]>;
 /**
  * An input-resolution reason with its `input_index` left out: the arm, and the
  * source kind where the arm has one. The machine's input ordinal for these
- * arms is pending X-N2C2, so a row asserts only the rest of the reason.
+ * arms is pending X-N2C2, so a row asserts only the rest of the reason, plus
+ * the producer's subject ordinal: the input's position in its own field.
  */
 export type PendingInputIndexReason = {
   readonly pendingInputIndex:
     | { readonly InputNotFound: { readonly source_kind: bigint } }
     | { readonly SpendInputSignerMissing: Record<string, never> };
+  readonly producerInputOrdinal: bigint;
 };
 
 export type Expected = {
@@ -394,6 +396,11 @@ export const expectProducerAndTraceVerdicts = async (row: Row) => {
     expect(assertedReason(row.expected.reason, producerReason)).toStrictEqual(
       expectedReason(row.expected.reason),
     );
+    if (isPendingInputIndex(row.expected.reason)) {
+      expect(rejection?.subject).toMatchObject({
+        index: row.expected.reason.producerInputOrdinal,
+      });
+    }
   }
 
   const trace = await machineTrace(row);

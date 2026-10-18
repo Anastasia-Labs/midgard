@@ -5,8 +5,13 @@ import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-tr
 import { describe, expect, it } from "vitest";
 
 import type { DeterministicValidationMachineTrace } from "../src/index.js";
+import { FORCED_ROWS } from "./emission-order.forced.rows.js";
 import { NATIVE_ROWS } from "./emission-order.native.rows.js";
-import { FULL, PLAIN } from "./emission-order.resolve-inputs.rows.js";
+import {
+  ABSENT_KEYS,
+  FULL,
+  PLAIN,
+} from "./emission-order.resolve-inputs.rows.js";
 import { ORDER_ROWS } from "./emission-order.rows.js";
 import {
   expectTraceVerdict,
@@ -21,8 +26,9 @@ import {
  * `emission-order-rows.test.ak`, where the Aiken machine checks it through the
  * one-step dispatcher: the step verifies, it stops at the phase the trace
  * names, and its successor is the row's rejection (or acceptance). Rows run in
- * the order (b), (c), (d), (a), then (e). The bundle controls and the native
- * limit refusals have no trace, so no vector.
+ * the order (b), (c), (d), (a), (e), then the forced rows. The bundle
+ * controls, the native limit refusals, the forced wide output and the forced
+ * non-canonical output alone have no vector here.
  *
  * Set `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` to rewrite that file; otherwise
  * this suite fails when the checked-in vectors are stale.
@@ -34,7 +40,14 @@ import {
  * the row.
  */
 
-const ROWS: readonly Row[] = [...ORDER_ROWS, ...FULL, ...PLAIN, ...NATIVE_ROWS];
+const ROWS: readonly Row[] = [
+  ...ORDER_ROWS,
+  ...FULL,
+  ...PLAIN,
+  ...ABSENT_KEYS,
+  ...NATIVE_ROWS,
+  ...FORCED_ROWS,
+];
 
 const AIKEN_ROWS_PATH = fileURLToPath(
   new URL(

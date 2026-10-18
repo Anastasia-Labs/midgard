@@ -46,11 +46,17 @@ const BAD_HEADER = Buffer.from("8209", "hex");
 
 const SPEND_NOT_FOUND: Expected = {
   code: RejectCodes.InputNotFound,
-  reason: { pendingInputIndex: { InputNotFound: { source_kind: 0n } } },
+  reason: {
+    pendingInputIndex: { InputNotFound: { source_kind: 0n } },
+    producerInputOrdinal: 0n,
+  },
 };
 const SPEND_SIGNER_MISSING: Expected = {
   code: RejectCodes.MissingRequiredWitness,
-  reason: { pendingInputIndex: { SpendInputSignerMissing: {} } },
+  reason: {
+    pendingInputIndex: { SpendInputSignerMissing: {} },
+    producerInputOrdinal: 0n,
+  },
 };
 const SIGNATURE_INVALID: Expected = {
   code: RejectCodes.InvalidSignature,
