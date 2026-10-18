@@ -12,6 +12,7 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { PLUTUS_SCRIPT_REFUSED_RESULT_BASE } from "../script-decode/item-record.js";
+import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
@@ -93,6 +94,11 @@ export type ManifestBoundWitnessScriptDecodingConfig = Readonly<{
   binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
   contracts: WitnessScriptDecodingContracts;
   referenceScripts: WitnessScriptDecodingReferenceScripts;
+  /**
+   * The script-decode deployment step 02 finds a Plutus item's record in;
+   * without it a Plutus item cannot be proven.
+   */
+  scriptDecode?: ScriptDecodeDeployment;
 }>;
 
 export type LoadManifestBoundWitnessScriptDecodingConfig = Readonly<{
@@ -209,6 +215,7 @@ export const witnessScriptDecodingConfigFromBinding = (input: {
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   referenceScripts: WitnessScriptDecodingReferenceScripts;
+  scriptDecode?: ScriptDecodeDeployment;
 }): ManifestBoundWitnessScriptDecodingConfig => {
   const { binding, referenceScripts } = input;
   const chain = binding.resolvedContracts.contracts.witnessScriptDecoding;
@@ -260,6 +267,9 @@ export const witnessScriptDecodingConfigFromBinding = (input: {
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    ...(input.scriptDecode === undefined
+      ? {}
+      : { scriptDecode: input.scriptDecode }),
   });
 };
 

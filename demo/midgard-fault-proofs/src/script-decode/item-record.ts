@@ -31,15 +31,18 @@ export type PlutusItemScriptDecode = Readonly<{
   record: ScriptDecodeRecord;
 }>;
 
+/** The script a Plutus item carries, without its decode record. */
+export type PlutusItemScript = Omit<PlutusItemScriptDecode, "record">;
+
 /**
  * The script a versioned-script item carries when its language is a Plutus
- * one (3 or 128), with the record a decode walk of it ends in; undefined for
- * a native or malformed item. The script hash is the one the on-chain item
- * check (`item_record_class_v1`) requires of the record.
+ * one (3 or 128); undefined for a native or malformed item. The script hash
+ * is the one the on-chain item check (`item_record_class_v1`) requires of
+ * the record. Unlike `plutusItemScriptDecode`, it does not walk the script.
  */
-export const plutusItemScriptDecode = (
+export const plutusItemScript = (
   item: Uint8Array,
-): PlutusItemScriptDecode | undefined => {
+): PlutusItemScript | undefined => {
   const header = parseMidgardVersionedScriptHeader(item, item.length);
   if (header === null || header.languageTag === 0) return undefined;
   const scriptBytes = Buffer.from(item.subarray(header.payloadOffset));
@@ -50,7 +53,20 @@ export const plutusItemScriptDecode = (
       header.languageTag,
       scriptBytes,
     ).toString("hex"),
-    record: scriptDecodeRecordOfScript(header.languageTag, scriptBytes),
+  });
+};
+
+/**
+ * `plutusItemScript`, with the record a decode walk of the script ends in.
+ */
+export const plutusItemScriptDecode = (
+  item: Uint8Array,
+): PlutusItemScriptDecode | undefined => {
+  const script = plutusItemScript(item);
+  if (script === undefined) return undefined;
+  return Object.freeze({
+    ...script,
+    record: scriptDecodeRecordOfScript(script.language, script.scriptBytes),
   });
 };
 

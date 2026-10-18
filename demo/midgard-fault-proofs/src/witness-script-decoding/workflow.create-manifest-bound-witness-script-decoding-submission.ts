@@ -6,8 +6,10 @@ import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
+import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { submitWitnessScriptDecodingCancel } from "./submit-cancel.js";
 import { submitWitnessScriptDecodingInit } from "./submit-init.js";
 import { submitWitnessScriptDecodingStep01Accepted } from "./submit-step-01.js";
@@ -162,6 +164,12 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
           "hex",
         ),
       );
+      const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
+        lucid: config.lucid,
+        deployment: config.scriptDecode,
+        item: Buffer.from(evidence.itemHex, "hex"),
+        label: WITNESS_SCRIPT_DECODING_CATEGORY_LABEL,
+      });
       const result = await submitWitnessScriptDecodingStep02({
         lucid: config.lucid,
         network: config.binding.network,
@@ -170,6 +178,9 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         signer: config.signer,
         threadOutRef: required(stage.threadOutRef, "step02 thread out-ref"),
         evidence,
+        ...(scriptDecodeRecordUtxo === undefined
+          ? {}
+          : { scriptDecodeRecordUtxo }),
         nativeTxCompactCbor: required(
           stage.nativeTxCompactCbor,
           "native transaction compact CBOR",

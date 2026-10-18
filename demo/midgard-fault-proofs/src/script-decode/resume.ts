@@ -35,28 +35,50 @@ export type ScriptDecodeRunPosition = Readonly<{
 }>;
 
 /**
- * The staged UTxOs at the wallet's address that hold `scriptBytes`, one per
- * staging datum in order, or undefined while any is missing. Staging carries
- * no token, so any UTxO with the right datum serves: a Walk checks the
- * staged bytes against the run's script hash.
+ * For each staging datum of `scriptBytes` in order, a UTxO at the staging
+ * address holding it (the first in out-ref order), or undefined where none
+ * does. Staging carries no token, so any UTxO with the right datum serves:
+ * a Walk checks the staged bytes against the run's script hash.
  */
-export const findStagedScriptDecodeBytes = async ({
+export const findStagedScriptDecodeChunks = async ({
   lucid,
   scriptBytes,
+  address,
 }: {
   readonly lucid: LucidEvolution;
   readonly scriptBytes: Uint8Array;
-}): Promise<UTxO[] | undefined> => {
-  const held = await lucid.utxosAt(await lucid.wallet().address());
-  const staged: UTxO[] = [];
+  /** Where the bytes were staged; the wallet's address by default. */
+  readonly address?: string;
+}): Promise<(UTxO | undefined)[]> => {
+  const held = (
+    await lucid.utxosAt(address ?? (await lucid.wallet().address()))
+  ).sort((left, right) => {
+    const a = `${left.txHash}#${left.outputIndex.toString().padStart(10, "0")}`;
+    const b = `${right.txHash}#${right.outputIndex.toString().padStart(10, "0")}`;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  const staged: (UTxO | undefined)[] = [];
   for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
-    const found = held.find(
-      (utxo) => utxo.datum === datum && !staged.includes(utxo),
+    staged.push(
+      held.find((utxo) => utxo.datum === datum && !staged.includes(utxo)),
     );
-    if (found === undefined) return undefined;
-    staged.push(found);
   }
   return staged;
+};
+
+/**
+ * The staged UTxOs at the wallet's address that hold `scriptBytes`, one per
+ * staging datum in order, or undefined while any is missing.
+ */
+export const findStagedScriptDecodeBytes = async (input: {
+  readonly lucid: LucidEvolution;
+  readonly scriptBytes: Uint8Array;
+  readonly address?: string;
+}): Promise<UTxO[] | undefined> => {
+  const staged = await findStagedScriptDecodeChunks(input);
+  return staged.every((utxo) => utxo !== undefined)
+    ? (staged as UTxO[])
+    : undefined;
 };
 
 /** The machine's bit cursor a run datum carries, if it parses as a run. */
@@ -141,4 +163,28 @@ export const resumeScriptDecodeRun = async ({
     if (cursor !== undefined) return { runUtxo, cursor };
   }
   return undefined;
+};
+
+/**
+ * The walk cursor at `runUtxo`, a run of `scriptBytes`, when the honest walk
+ * writes its datum; undefined otherwise. The replay starts at `from` (an
+ * earlier cursor of the same walk) when given, else at the start.
+ */
+export const scriptDecodeRunCursorAt = ({
+  language,
+  scriptBytes,
+  runUtxo,
+  from,
+}: {
+  readonly language: number;
+  readonly scriptBytes: Uint8Array;
+  readonly runUtxo: UTxO;
+  readonly from?: ScriptDecodeWalkCursor;
+}): ScriptDecodeWalkCursor | undefined => {
+  if (typeof runUtxo.datum !== "string") return undefined;
+  const bitCursor = runBitCursor(runUtxo.datum);
+  if (bitCursor === undefined) return undefined;
+  const start = from ?? startScriptDecodeWalk(language, scriptBytes);
+  if (start.run.machine.cursor > bitCursor) return undefined;
+  return replayToRun(start, runUtxo.datum, bitCursor);
 };

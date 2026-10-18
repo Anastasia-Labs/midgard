@@ -17,6 +17,10 @@ import {
   bindManifestBoundFamilyWorkflow,
 } from "../workflow/manifest-bound-family-assembly.js";
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
+import {
+  SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeDeploymentFromReferences,
+} from "../workflow/script-decode-prerequisite.js";
 import { type WitnessScriptDecodingStage } from "./witness-script-decoding.js";
 import {
   type BoundContext,
@@ -76,6 +80,11 @@ export const createManifestBoundWitnessScriptDecodingWorkflow = async (
       fieldPreimageCertificateMint:
         deployment.references.fieldPreimageCertificateMint,
     },
+    scriptDecode: scriptDecodeDeploymentFromReferences({
+      blueprint: deployment.binding.blueprint,
+      network: deployment.binding.network,
+      references: deployment.auxiliaryReferences,
+    }),
   });
   return Object.freeze({
     deployment,
@@ -173,6 +182,9 @@ export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
     ],
     transactionPort: (context) => runFor(context).transactions,
   },
+  auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeRecord: (context, input) =>
+    runFor(context).scriptDecodeItemForAction(input),
   fieldCarriage: [
     {
       requirementForAction: (context, input) =>

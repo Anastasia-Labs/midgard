@@ -6,7 +6,10 @@
  *
  * Every transaction is funded from the wallet's plain-Ada UTxOs only, so a
  * staged chunk (which sits at the wallet address with a datum) or a token is
- * never spent by coin selection.
+ * never spent by coin selection. Each `build*Tx` signs without submitting, so
+ * a journaled caller can record the exact transaction before it is sent; an
+ * optional `validTo` (POSIX ms) makes a transaction the ledger never takes
+ * expire instead of staying pending.
  */
 import {
   requireReferenceInputIndex,
@@ -24,7 +27,9 @@ import {
   CML,
   type LucidEvolution,
   type OutRef,
+  type TxBuilder,
   type TxOutput,
+  type TxSigned,
   type UTxO,
   validatorToRewardAddress,
   validatorToScriptHash,
@@ -173,12 +178,24 @@ const stagingIndices = (
     requireReferenceInputIndex(ctx, utxo, "script decode staging"),
   );
 
-const submitAndFind = async (
+/**
+ * A signed script-decode transaction, not yet submitted, and how to find the
+ * one output of it a caller continues from.
+ */
+export type ScriptDecodeSignedTx = Readonly<{
+  signed: TxSigned;
+  address: string;
+  matches: (output: TxOutput) => boolean;
+  label: string;
+}>;
+
+const until = (tx: TxBuilder, validTo: number | undefined): TxBuilder =>
+  validTo === undefined ? tx : tx.validTo(validTo);
+
+/** Submits `built`, awaits it, and returns the output it was built for. */
+export const submitScriptDecodeTx = async (
   lucid: LucidEvolution,
-  signed: { submit: () => Promise<string> },
-  address: string,
-  matches: (output: TxOutput) => boolean,
-  label: string,
+  { signed, address, matches, label }: ScriptDecodeSignedTx,
 ): Promise<UTxO> => {
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -210,6 +227,32 @@ export const scriptDecodeStagingDatums = (
   return datums;
 };
 
+/** Builds and signs one staging transaction: `datum` paid to `address`. */
+export const buildScriptDecodeStageTx = async ({
+  lucid,
+  datum,
+  address,
+  validTo,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly datum: string;
+  readonly address: string;
+  readonly validTo?: number;
+}): Promise<ScriptDecodeSignedTx> => {
+  const unsigned = await until(
+    lucid
+      .newTx()
+      .pay.ToAddressWithData(address, { kind: "inline", value: datum }, {}),
+    validTo,
+  ).complete({ presetWalletInputs: await plainAdaWalletUtxos(lucid) });
+  return {
+    signed: await unsigned.sign.withWallet().complete(),
+    address,
+    matches: (output) => output.datum === datum,
+    label: "staging",
+  };
+};
+
 /**
  * Stages `scriptBytes` in order across UTxOs at `address` (the wallet's own by
  * default, so their Ada stays reclaimable), one transaction each.
@@ -226,40 +269,37 @@ export const stageScriptDecodeBytes = async ({
   const target = address ?? (await lucid.wallet().address());
   const staged: UTxO[] = [];
   for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
-    const unsigned = await lucid
-      .newTx()
-      .pay.ToAddressWithData(target, { kind: "inline", value: datum }, {})
-      .complete({ presetWalletInputs: await plainAdaWalletUtxos(lucid) });
-    const signed = await unsigned.sign.withWallet().complete();
     staged.push(
-      await submitAndFind(
+      await submitScriptDecodeTx(
         lucid,
-        signed,
-        target,
-        (output) => output.datum === datum,
-        "staging",
+        await buildScriptDecodeStageTx({ lucid, datum, address: target }),
       ),
     );
   }
   return staged;
 };
 
-/** Opens the run for the staged bytes; returns the run UTxO. */
-export const bindScriptDecodeRun = async ({
-  lucid,
-  deployment,
-  language,
-  scriptHashHex,
-  initialRun,
-  staging,
-}: {
+type BindInput = {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
   readonly language: number;
   readonly scriptHashHex: string;
   readonly initialRun: ScriptDecodeRun;
   readonly staging: readonly UTxO[];
-}): Promise<UTxO> => {
+};
+
+/** Builds and signs the Bind that opens a run for the staged bytes. */
+export const buildScriptDecodeBindTx = async ({
+  lucid,
+  deployment,
+  language,
+  scriptHashHex,
+  initialRun,
+  staging,
+  validTo,
+}: BindInput & {
+  readonly validTo?: number;
+}): Promise<ScriptDecodeSignedTx> => {
   const { policyId, spendingScriptAddress } = deployment.validator;
   const runUnit = `${policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const matches = ownTokenOutput(spendingScriptAddress, runUnit);
@@ -269,22 +309,32 @@ export const bindScriptDecodeRun = async ({
       staging: stagingIndices(ctx, staging),
       runOutput: requireOutputIndex(ctx.outputs, matches, "run"),
     })) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
-    .newTx()
-    .mintAssets({ [runUnit]: 1n }, redeemer)
-    .readFrom([...staging, requireScriptReference(deployment)])
-    .pay.ToContract(
-      spendingScriptAddress,
-      { kind: "inline", value: scriptDecodeRunDatum(initialRun) },
-      { [runUnit]: 1n },
-    )
-    .complete({
-      localUPLCEval: true,
-      presetWalletInputs: await plainAdaWalletUtxos(lucid),
-    });
-  const signed = await unsigned.sign.withWallet().complete();
-  return submitAndFind(lucid, signed, spendingScriptAddress, matches, "run");
+  const unsigned = await until(
+    lucid
+      .newTx()
+      .mintAssets({ [runUnit]: 1n }, redeemer)
+      .readFrom([...staging, requireScriptReference(deployment)])
+      .pay.ToContract(
+        spendingScriptAddress,
+        { kind: "inline", value: scriptDecodeRunDatum(initialRun) },
+        { [runUnit]: 1n },
+      ),
+    validTo,
+  ).complete({
+    localUPLCEval: true,
+    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+  });
+  return {
+    signed: await unsigned.sign.withWallet().complete(),
+    address: spendingScriptAddress,
+    matches,
+    label: "run",
+  };
 };
+
+/** Opens the run for the staged bytes; returns the run UTxO. */
+export const bindScriptDecodeRun = async (input: BindInput): Promise<UTxO> =>
+  submitScriptDecodeTx(input.lucid, await buildScriptDecodeBindTx(input));
 
 /**
  * Builds and signs one Walk of `runUtxo` to `after` along `stakes`. Throws
@@ -301,6 +351,7 @@ export const buildScriptDecodeWalkTx = async ({
   after,
   stakes,
   inputs = [],
+  validTo,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
@@ -310,6 +361,7 @@ export const buildScriptDecodeWalkTx = async ({
   readonly after: ScriptDecodeRun;
   readonly stakes: readonly ScriptDecodeStake[];
   readonly inputs?: readonly UTxO[];
+  readonly validTo?: number;
 }) => {
   const { policyId, spendingScriptAddress } = deployment.validator;
   const runUnit = `${policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
@@ -341,23 +393,30 @@ export const buildScriptDecodeWalkTx = async ({
         })) satisfies BuildTxWithRedeemer,
     );
   }
-  const unsigned = await tx.pay
-    .ToContract(
+  const unsigned = await until(
+    tx.pay.ToContract(
       spendingScriptAddress,
       { kind: "inline", value: scriptDecodeRunDatum(after) },
       { [runUnit]: 1n },
-    )
-    .complete({
-      localUPLCEval: true,
-      presetWalletInputs: await plainAdaWalletUtxos(lucid),
-    });
+    ),
+    validTo,
+  ).complete({
+    localUPLCEval: true,
+    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+  });
   const signed = await unsigned.sign.withWallet().complete();
   const cbor = signed.toCBOR();
+  const built: ScriptDecodeSignedTx = {
+    signed,
+    address: spendingScriptAddress,
+    matches,
+    label: "run",
+  };
   return {
     exUnits: transactionExUnits(cbor),
     txBytes: cbor.length / 2,
-    submit: () =>
-      submitAndFind(lucid, signed, spendingScriptAddress, matches, "run"),
+    tx: built,
+    submit: () => submitScriptDecodeTx(lucid, built),
   };
 };
 
@@ -372,6 +431,7 @@ export const buildScriptDecodeWalk = ({
   readonly runUtxo: UTxO;
   readonly staging: readonly UTxO[];
   readonly walk: ScriptDecodeChainedWalk;
+  readonly validTo?: number;
 }) =>
   buildScriptDecodeWalkTx({
     ...rest,
@@ -379,20 +439,25 @@ export const buildScriptDecodeWalk = ({
     stakes: scriptDecodeWalkStakes(rest.deployment, rest.runUtxo, walk),
   });
 
-/** Burns the finished run's token and mints its record; returns the record. */
-export const finishScriptDecodeRun = async ({
-  lucid,
-  deployment,
-  scriptHashHex,
-  runUtxo,
-  record,
-}: {
+type FinishInput = {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
   readonly scriptHashHex: string;
   readonly runUtxo: UTxO;
   readonly record: ScriptDecodeRecord;
-}): Promise<UTxO> => {
+};
+
+/** Builds and signs the Finish: burns the run's token, mints its record. */
+export const buildScriptDecodeFinishTx = async ({
+  lucid,
+  deployment,
+  scriptHashHex,
+  runUtxo,
+  record,
+  validTo,
+}: FinishInput & {
+  readonly validTo?: number;
+}): Promise<ScriptDecodeSignedTx> => {
   const { policyId, spendingScriptAddress } = deployment.validator;
   const runUnit = `${policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const recordUnit = `${policyId}${scriptHashHex}`;
@@ -401,20 +466,32 @@ export const finishScriptDecodeRun = async ({
     scriptDecodeFinishRedeemer(
       requireOutputIndex(ctx.outputs, matches, "record"),
     )) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([runUtxo], SCRIPT_DECODE_CLOSE_REDEEMER)
-    .mintAssets({ [recordUnit]: 1n, [runUnit]: -1n }, redeemer)
-    .readFrom([requireScriptReference(deployment)])
-    .pay.ToContract(
-      spendingScriptAddress,
-      { kind: "inline", value: scriptDecodeRecordDatum(record) },
-      { [recordUnit]: 1n },
-    )
-    .complete({
-      localUPLCEval: true,
-      presetWalletInputs: await plainAdaWalletUtxos(lucid),
-    });
-  const signed = await unsigned.sign.withWallet().complete();
-  return submitAndFind(lucid, signed, spendingScriptAddress, matches, "record");
+  const unsigned = await until(
+    lucid
+      .newTx()
+      .collectFrom([runUtxo], SCRIPT_DECODE_CLOSE_REDEEMER)
+      .mintAssets({ [recordUnit]: 1n, [runUnit]: -1n }, redeemer)
+      .readFrom([requireScriptReference(deployment)])
+      .pay.ToContract(
+        spendingScriptAddress,
+        { kind: "inline", value: scriptDecodeRecordDatum(record) },
+        { [recordUnit]: 1n },
+      ),
+    validTo,
+  ).complete({
+    localUPLCEval: true,
+    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+  });
+  return {
+    signed: await unsigned.sign.withWallet().complete(),
+    address: spendingScriptAddress,
+    matches,
+    label: "record",
+  };
 };
+
+/** Burns the finished run's token and mints its record; returns the record. */
+export const finishScriptDecodeRun = async (
+  input: FinishInput,
+): Promise<UTxO> =>
+  submitScriptDecodeTx(input.lucid, await buildScriptDecodeFinishTx(input));

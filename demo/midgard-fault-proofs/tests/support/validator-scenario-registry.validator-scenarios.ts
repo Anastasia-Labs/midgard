@@ -409,7 +409,7 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
       {
         file: "demo/midgard-fault-proofs/tests/output-reference-script-decoding-plutus-max-shape.test.ts",
-        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance through removal",
+        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance, the producer's phase-8 first fault, through removal",
       },
     ],
     failing: [

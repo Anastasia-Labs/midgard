@@ -128,7 +128,8 @@ const authenticatedCertificateStepConfigKeys = (
  * roles and the certificate the definition binds. `bindConfig` lays those
  * same roles into the family's config under the keys its manifest-contracts
  * map declares, so a script cannot be in the roster and absent from the
- * config or the reverse.
+ * config or the reverse. Auxiliary reference scripts the definition declares
+ * go to `auxiliaryReferenceScripts`, keyed by role.
  */
 export const authenticatedCertificateFamilyApplicationRecord = <
   Category extends FamilyCategory,
@@ -155,19 +156,15 @@ export const authenticatedCertificateFamilyApplicationRecord = <
       `${category} is on the authenticated certificate shape but its definition does not bind the certificate`,
     );
   }
-  if (definition.auxiliaryReferenceScripts !== undefined) {
-    throw new Error(
-      `${category} declares auxiliary reference scripts, which the authenticated certificate shape has no place for`,
-    );
-  }
   const roster = familyDefinitionRoster(definition);
   assertFamilyDefinitionRoster(definition, roster);
   const stepConfigKeys = authenticatedCertificateStepConfigKeys(
     category,
     roster,
     familyStepContractNames(definition),
-    family.contracts,
+    { ...family.contracts, ...(definition.auxiliaryReferenceScripts ?? {}) },
   );
+  const auxiliary = definition.auxiliaryReferenceScripts !== undefined;
   return defineFamilyApplication<Category, Config, Workflow>({
     category,
     roster,
@@ -183,6 +180,14 @@ export const authenticatedCertificateFamilyApplicationRecord = <
           stepConfigKeys,
           witnessRoles: definition.witnessRoles,
         }),
+        ...(auxiliary
+          ? {
+              auxiliaryReferenceScripts: resolveRosterParts(
+                definition,
+                references,
+              ).auxiliary,
+            }
+          : {}),
         ...infrastructureFields(infrastructure),
       }) as Config,
     constructWorkflow: family.constructWorkflow,

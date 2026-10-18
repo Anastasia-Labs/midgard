@@ -15,6 +15,7 @@ import {
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import { plutusItemScript } from "./item-record.js";
 import {
   findStagedScriptDecodeBytes,
   resumeScriptDecodeRun,
@@ -60,13 +61,14 @@ export class ScriptDecodeWalkRejectedError extends Error {
 }
 
 /** Re-reads the ledger parameters and cost models from the Lucid provider. */
-const refreshFromProvider = (lucid: LucidEvolution) => async () => {
-  const { provider } = lucid.config();
-  if (provider === undefined) {
-    throw new Error("script decode: no provider to refresh the parameters");
-  }
-  await lucid.switchProvider(provider);
-};
+export const refreshScriptDecodeLedgerParameters =
+  (lucid: LucidEvolution) => async () => {
+    const { provider } = lucid.config();
+    if (provider === undefined) {
+      throw new Error("script decode: no provider to refresh the parameters");
+    }
+    await lucid.switchProvider(provider);
+  };
 
 /** One submitted Walk. */
 export type ScriptDecodeWalkReport = Readonly<{
@@ -95,7 +97,44 @@ export const findScriptDecodeRecord = async ({
   return records[0];
 };
 
-const ledgerLimits = (lucid: LucidEvolution) => {
+/**
+ * The record UTxO of the script in a script-decoding `item`, which the proof
+ * step that reads it must reference: undefined for a native or malformed
+ * item, which takes none. A Plutus item whose script is not recorded yet (or
+ * with no `deployment` to look in) throws, so the step is never submitted
+ * without its record.
+ */
+export const requireScriptDecodeRecordForItem = async ({
+  lucid,
+  deployment,
+  item,
+  label,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deployment: ScriptDecodeDeployment | undefined;
+  readonly item: Uint8Array;
+  readonly label: string;
+}): Promise<UTxO | undefined> => {
+  const script = plutusItemScript(item);
+  if (script === undefined) return undefined;
+  const record =
+    deployment === undefined
+      ? undefined
+      : await findScriptDecodeRecord({
+          lucid,
+          deployment,
+          scriptHashHex: script.scriptHashHex,
+        });
+  if (record === undefined) {
+    throw new Error(
+      `${label}: the item's Plutus script has no completed decode record`,
+    );
+  }
+  return record;
+};
+
+/** The ledger's per-transaction execution and size limits. */
+export const scriptDecodeLedgerLimits = (lucid: LucidEvolution) => {
   const protocol = lucid.config().protocolParameters;
   if (protocol === undefined) {
     throw new Error("script decode: the walk needs ledger parameters");
@@ -107,7 +146,7 @@ const ledgerLimits = (lucid: LucidEvolution) => {
   };
 };
 
-type Limits = ReturnType<typeof ledgerLimits>;
+type Limits = ReturnType<typeof scriptDecodeLedgerLimits>;
 
 /** The larger share of a transaction's budget a Walk used. */
 const budgetShare = (used: ScriptDecodeExUnits, limits: Limits): number =>
@@ -118,7 +157,8 @@ const budgetShare = (used: ScriptDecodeExUnits, limits: Limits): number =>
 
 type Built = Awaited<ReturnType<typeof buildScriptDecodeWalk>>;
 
-type Fitted = Readonly<{
+/** The Walk `fitScriptDecodeWalk` settled on, built and signed. */
+export type ScriptDecodeFittedWalk = Readonly<{
   fuel: number;
   walk: ScriptDecodeChainedWalk;
   next: ScriptDecodeWalkCursor;
@@ -132,13 +172,13 @@ type Fitted = Readonly<{
  * built Walk used, and halves the gap after a Walk that does not build.
  * Throws the last build error when not even one tick builds.
  */
-const fitWalk = async (
+export const fitScriptDecodeWalk = async (
   cursor: ScriptDecodeWalkCursor,
   guess: number,
   limits: Limits,
   build: (walk: ScriptDecodeChainedWalk) => Promise<Built>,
-): Promise<Fitted> => {
-  let best: Fitted | undefined;
+): Promise<ScriptDecodeFittedWalk> => {
+  let best: ScriptDecodeFittedWalk | undefined;
   let failed = Number.POSITIVE_INFINITY;
   let lastError: unknown;
   let fuel = Math.max(1, guess);
@@ -184,7 +224,7 @@ const fitWalk = async (
  * yet. An open run of the script (an interrupted earlier record) is resumed
  * from its on-chain cursor; staged bytes already at the wallet are reused.
  * Each Walk takes the most ticks that build within the ledger's limits
- * (`fitWalk`). A Walk the ledger rejects is refitted after
+ * (`fitScriptDecodeWalk`). A Walk the ledger rejects is refitted after
  * `refreshLedgerParameters` (by default, re-reading them from the provider),
  * from the run then on chain, at most `maxSubmitAttempts` times in all before
  * `ScriptDecodeWalkRejectedError`. With `maxWalks`, a walk that needs more
@@ -198,7 +238,7 @@ export const recordScriptDecode = async ({
   initialFuel = SCRIPT_DECODE_INITIAL_FUEL,
   maxWalks = Number.POSITIVE_INFINITY,
   maxSubmitAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
-  refreshLedgerParameters = refreshFromProvider(lucid),
+  refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
@@ -230,7 +270,7 @@ export const recordScriptDecode = async ({
       scriptBytes,
       scriptHashHex,
     });
-  let limits = ledgerLimits(lucid);
+  let limits = scriptDecodeLedgerLimits(lucid);
   const staging =
     (await findStagedScriptDecodeBytes({ lucid, scriptBytes })) ??
     (await stageScriptDecodeBytes({ lucid, scriptBytes }));
@@ -258,7 +298,7 @@ export const recordScriptDecode = async ({
       );
     }
     const spent = runUtxo;
-    const fitted = await fitWalk(cursor, fuel, limits, (walk) =>
+    const fitted = await fitScriptDecodeWalk(cursor, fuel, limits, (walk) =>
       buildScriptDecodeWalk({
         lucid,
         deployment,
@@ -276,7 +316,7 @@ export const recordScriptDecode = async ({
         throw new ScriptDecodeWalkRejectedError(rejections);
       }
       await refreshLedgerParameters();
-      limits = ledgerLimits(lucid);
+      limits = scriptDecodeLedgerLimits(lucid);
       // The rejected Walk may yet have landed, or another prover may have
       // walked the run: refit from whatever run is on chain now.
       const recorded = await findRecord();

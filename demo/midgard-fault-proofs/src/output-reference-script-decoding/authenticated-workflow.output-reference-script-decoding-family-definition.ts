@@ -3,6 +3,7 @@ import {
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
@@ -24,6 +25,10 @@ import {
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
+import {
+  SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeDeploymentFromReferences,
+} from "../workflow/script-decode-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -142,6 +147,8 @@ export const createManifestBoundOutputReferenceScriptDecodingRuntime = ({
 export type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig =
   LoadManifestBoundOutputReferenceScriptDecodingConfig &
     Readonly<{
+      /** The script-decode references, by `SCRIPT_DECODE_REFERENCE_SCRIPTS` role. */
+      auxiliaryReferenceScripts: Readonly<Record<string, UTxO>>;
       l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -188,6 +195,11 @@ export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
   const config = createOutputReferenceScriptDecodingBoundConfig(
     input,
     deployment.binding,
+    scriptDecodeDeploymentFromReferences({
+      blueprint: deployment.binding.blueprint,
+      network: deployment.binding.network,
+      references: deployment.auxiliaryReferences,
+    }),
   );
   const l1 = deployment.l1;
   return Object.freeze({
@@ -201,6 +213,14 @@ export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
     decisionDigest: input.decisionDigest,
   });
 };
+
+const SCRIPT_DECODE_RECORDED_BEFORE: ReadonlySet<string> = new Set([
+  "init",
+  "step_01",
+  "step_02",
+  "step_03",
+  "step_04",
+]);
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   "outputReferenceScriptDecoding",
@@ -224,6 +244,18 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
     "phasMembershipWithdraw",
   ],
   fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  // The record is made before Init, so no thread deadline runs meanwhile;
+  // past step 04 the proof no longer reads it.
+  scriptDecodeRecord: (context, { action, artifact }) =>
+    typeof action.input.stage === "string" &&
+    SCRIPT_DECODE_RECORDED_BEFORE.has(action.input.stage)
+      ? Buffer.from(
+          context.runtime.material.require(artifact).evidence
+            .referenceScriptItemHex,
+          "hex",
+        )
+      : null,
   replayer: () => OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

@@ -109,6 +109,22 @@ export type FamilyDefinition<
     StepCount,
     Runtime
   >[];
+  /**
+   * The script-decoding item whose Plutus script must be recorded before an
+   * action, or null for none. The record runs first, as journaled actions of
+   * the workflow; it needs `SCRIPT_DECODE_REFERENCE_SCRIPTS` among the
+   * auxiliary reference scripts.
+   */
+  scriptDecodeRecord?: (
+    context: FamilyAssemblyContext<
+      Category,
+      Witness,
+      Certificate,
+      StepCount,
+      Runtime
+    >,
+    input: LinearFamilyPrerequisiteInput,
+  ) => Uint8Array | null | Promise<Uint8Array | null>;
   /** Proof CBOR an action publishes as chunks, or null for none. */
   proofChunk?: (
     context: FamilyAssemblyContext<
