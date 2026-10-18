@@ -4,7 +4,9 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_material_traversal as material
 use midgard/cek_selection_yield as selection
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{
+  Anyone, ProverOnly, cancel, continue_validation_trace,
+}
 use midgard/state_queue_yield.{require_authenticated_zero_yield}
 use midgard/validation_machine/witness.{
   cek_control_is_execution_selection_v1, cek_witness_control_v1,
@@ -109,14 +111,18 @@ validator main(
         let cek = cek_witness_control_v1(action.transition)
         expect Some(step_datum) = datum
         let transition_data: Data = action.transition
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          if action.begin_traversal {
+            ProverOnly
+          } else {
+            Anyone
+          },
           fn(_, _, _, _, output_hash, output_state) {
             and {
               resolution.prepared_resolution_is_well_formed(state),

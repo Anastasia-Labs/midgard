@@ -121,3 +121,37 @@ export const withRetiredBondRole = <T extends string | null>(
     ...names.slice(mint + 1),
   ];
 };
+
+// The validation case, its one-shot configuration mint (which protocol
+// initialization runs), its thread expiry, the award's mint (the lost-defense
+// receipt policy) and the dispute bond spend.
+const CASE_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeAwardMint",
+    role: "V1 validation-trace award minting",
+  },
+  { contract: "validationTraceDisputeCase", role: "V1 validation-trace case" },
+  {
+    contract: "validationTraceDisputeCaseMint",
+    role: "V1 validation-trace case minting",
+  },
+  {
+    contract: "validationTraceDisputeCaseConfigMint",
+    role: "V1 validation-trace case configuration minting",
+  },
+  {
+    contract: "validationTraceDisputeThreadExpiryWithdraw",
+    role: "V1 validation-trace thread expiry",
+  },
+  {
+    contract: "validationTraceDisputeBond",
+    role: "V1 validation-trace dispute bond",
+  },
+] as const;
+
+export const caseContracts = new Set<string>(
+  CASE_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const caseRoles = new Set<string>(
+  CASE_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

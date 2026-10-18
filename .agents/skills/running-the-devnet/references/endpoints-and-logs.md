@@ -166,6 +166,10 @@ deadline:
 - `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime
   reference-script preflight failed. Publish the reference scripts it
   names.
+- `runtime_reference_scripts_input_conflict`: the node-runtime
+  reference-script preflight lost an input to a transaction still in flight
+  (typically the previous process's, after a restart). It is built again once
+  that transaction lands; no action unless it outlives the budget.
 - `protocol_initialization_failed`: the startup's protocol initialization
   (its transaction, the reference scripts after it, or the deployment-info
   write) failed; startup ends with it as `failedReason`. Read the log.
@@ -257,6 +261,11 @@ Commitment and liveness (raised by fibers, cleared by them):
   hash. Wait.
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
+- `commit_worker_verifier_unavailable`: the commit worker's runs since the
+  last successful commit kept failing on this node's Ed25519 verifier, up to
+  the local-fault run limit. A local fault: the node exits non-zero for its
+  supervisor to restart it. If it repeats after a restart, check the node's
+  libsodium install and read the detail.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the
@@ -451,6 +460,13 @@ first hold by priority is the reason, the rest are in its detail):
   does not know at the view. Wait; it is re-read every run.
 - `landed_block_forced_order_pending`: a forced order in a foreign block's
   window cannot be read back yet. Wait.
+- `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
+  a foreign block failed in this node's own computation (hashing, the payload
+  roots, a library the replay runs), or its Ed25519 verifier could not
+  answer. Never attributed to the block. Retried on the driver's backoff;
+  after a fixed number of runs with no progress past that block the node
+  exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it

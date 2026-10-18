@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Network, type TxBuilder } from "@lucid-evolution/lucid";
 import { type Effect } from "effect";
@@ -227,6 +228,8 @@ export const daBondAssembleCommand = async (
       `Refusing to assemble: the file is for deployment ${unsigned.manifestId}, not ${ctx.manifestId}`,
     );
   }
+  // The witness checks run the ledger's Ed25519 check.
+  await ledgerEd25519SignatureReady();
   const witnessSetCbors: string[] = [];
   for (const path of witnessPaths) {
     const witness = await readDaBondWitnessFile(path);

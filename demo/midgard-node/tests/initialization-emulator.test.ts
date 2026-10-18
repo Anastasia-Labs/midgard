@@ -15,7 +15,7 @@ import "./helpers/mainnet-protocol-parameters.js";
 import "./helpers/real-midgard-contracts.js";
 import "./initialization-emulator.init-emulator-lucid.js";
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -24,6 +24,7 @@ import {
   CML,
   Data,
   paymentCredentialOf,
+  Script,
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -51,6 +52,7 @@ import {
   EMULATOR_REQUIRED_BOND_LOVELACE,
   initEmulatorLucid,
   loadContracts,
+  signAtomicInitialization,
   TEST_DA_PARAMS,
 } from "./initialization-emulator.init-emulator-lucid.js";
 
@@ -152,6 +154,45 @@ describe("initialization emulator", () => {
       wallet,
     } as unknown as typeof lucid;
 
+    // Every minting script is read from a reference script carrying it.
+    const reference = (outputIndex: number, scriptRef: Script): UTxO => ({
+      ...nonceUtxo,
+      outputIndex,
+      assets: { lovelace: 1n },
+      scriptRef,
+    });
+    const referenceScripts: SDK.AtomicProtocolInitReferenceScripts = {
+      depositHistory: reference(90, contracts.deposit.mintingScript),
+      withdrawalHistory: reference(91, contracts.withdrawal.mintingScript),
+      hubOracleMinting: reference(92, contracts.hubOracle.mintingScript),
+      daParamsGovernorMinting: reference(
+        93,
+        contracts.daParamsGovernor.mintingScript,
+      ),
+      schedulerMinting: reference(94, contracts.scheduler.mintingScript),
+      stateQueueMinting: reference(95, contracts.stateQueue.mintingScript),
+      registeredOperatorsMinting: reference(
+        96,
+        contracts.registeredOperators.mintingScript,
+      ),
+      activeOperatorsMinting: reference(
+        97,
+        contracts.activeOperators.mintingScript,
+      ),
+      retiredOperatorsMinting: reference(
+        98,
+        contracts.retiredOperators.mintingScript,
+      ),
+      fraudProofCatalogueMinting: reference(
+        99,
+        contracts.fraudProofCatalogue.mintingScript,
+      ),
+      validationCaseConfigMinting: reference(
+        100,
+        contracts.fraudProofContracts.validationTraceDispute.caseConfig
+          .mintingScript,
+      ),
+    };
     const dateNowSpy = vi
       .spyOn(Date, "now")
       .mockReturnValue(Number(validTo) + 123_456_789);
@@ -165,6 +206,7 @@ describe("initialization emulator", () => {
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
           validityRange: { validFrom, validTo },
+          referenceScripts,
         }),
       );
 
@@ -181,9 +223,10 @@ describe("initialization emulator", () => {
       expect(outputAssets[8]?.lovelace).toBeGreaterThan(0n);
       for (const { assets } of mintCalls)
         expect(assets).not.toHaveProperty("lovelace");
-      // Nine protocol outputs, two history roots, then the DA pool with one
-      // bond above its floor to back the first attestation.
-      expect(outputAssets).toHaveLength(12);
+      // Nine protocol outputs, two history roots, the DA pool with one bond
+      // above its floor to back the first attestation, then the case
+      // configuration token.
+      expect(outputAssets).toHaveLength(13);
       expect(
         outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),
       ).toBe(true);
@@ -192,6 +235,13 @@ describe("initialization emulator", () => {
           SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace +
           SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace,
         [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+      });
+      expect(outputAssets[12]).toEqual({
+        [toUnit(
+          contracts.fraudProofContracts.validationTraceDispute.caseConfig
+            .policyId,
+          SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+        )]: 1n,
       });
       const hubOracleUnit = toUnit(
         contracts.hubOracle.policyId,
@@ -227,15 +277,29 @@ describe("initialization emulator", () => {
             daParams: TEST_DA_PARAMS,
             oneShotNonceUTxO: nonceUtxo,
             validityRange: { validFrom, validTo },
+            referenceScripts,
             daBondPoolLovelace,
           }),
         );
       };
       await withPoolLovelace(daBondPoolFloorLovelace);
-      expect(outputAssets.at(-1)?.lovelace).toBe(daBondPoolFloorLovelace);
+      expect(outputAssets[11]?.lovelace).toBe(daBondPoolFloorLovelace);
       await expect(
         withPoolLovelace(daBondPoolFloorLovelace - 1n),
       ).rejects.toThrow(/below the pool floor/u);
+      // The case configuration mint has no inline fallback.
+      await expect(
+        Effect.runPromise(
+          SDK.incompleteInitializationTxProgram(fakeLucid, {
+            midgardValidators: contracts,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+            daParams: TEST_DA_PARAMS,
+            oneShotNonceUTxO: nonceUtxo,
+            validityRange: { validFrom, validTo },
+          }),
+        ),
+      ).rejects.toThrow(/published reference script/u);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -243,42 +307,14 @@ describe("initialization emulator", () => {
 
   it("deploys the canonical real protocol roots atomically", async () => {
     const {
-      emulator,
       lucid,
       referenceScriptsLucid,
       nonceUtxo,
-      operatorSeedPhrase,
-      referenceScriptAuth,
-    } = await initEmulatorLucid();
-    const acceptedFrames = new Map<string, string>();
-    const submit = emulator.submitTx.bind(emulator);
-    const capture = vi
-      .spyOn(emulator, "submitTx")
-      .mockImplementation(async (cbor) => {
-        const hash = await submit(cbor);
-        acceptedFrames.set(hash, cbor);
-        return hash;
-      });
-    const contracts = await loadContracts(
-      {
-        txHash: nonceUtxo.txHash,
-        outputIndex: nonceUtxo.outputIndex,
-      },
-      referenceScriptAuth,
-    );
-
-    emulator.awaitSlot(120);
-    const initTx = await buildAtomicInitializationTx(
-      lucid,
-      referenceScriptsLucid,
       contracts,
-      nonceUtxo,
-      operatorSeedPhrase,
-    );
+      signed,
+      acceptedFrames,
+    } = await signAtomicInitialization();
     expect(await lucid.utxosByOutRef([nonceUtxo])).toHaveLength(1);
-    const signed = await (await initTx.complete({ localUPLCEval: true })).sign
-      .withWallet()
-      .complete();
     const body = CML.Transaction.from_cbor_hex(signed.toCBOR()).body();
     const validFrom = body.validity_interval_start()!;
     expect(validFrom).toBeLessThanOrEqual(BigInt(lucid.currentSlot() - 60));
@@ -351,6 +387,21 @@ describe("initialization emulator", () => {
     expect(runtimeReferenceScriptNames).toEqual(
       expect.arrayContaining(["da-bond-pool spending", "da-bond-pool minting"]),
     );
+    // The case configuration token sits beside the hand-off hashes of this
+    // deployment's validation-trace chain.
+    const caseChain = contracts.fraudProofContracts.validationTraceDispute;
+    const caseConfigUtxos = await lucid.utxosAtWithUnit(
+      SDK.validationCaseConfigAddress("Preprod", caseChain.caseConfig),
+      toUnit(
+        caseChain.caseConfig.policyId,
+        SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+      ),
+    );
+    expect(caseConfigUtxos).toHaveLength(1);
+    expect(caseConfigUtxos[0]!.txHash).toBe(txHash);
+    expect(Data.from(caseConfigUtxos[0]!.datum!, SDK.CaseConfig)).toEqual(
+      SDK.validationCaseConfigFromContracts(caseChain),
+    );
     expect(status.daBondPoolInitialized).toBe(true);
     expect(status.complete).toBe(true);
     expect(status.depositHistoryInitialized).toBe(true);
@@ -415,7 +466,6 @@ describe("initialization emulator", () => {
     expect(runtimeReferenceScriptNames).toContain(
       "membership proof withdrawal",
     );
-    capture.mockRestore();
     const blueprintSha256 = await Effect.runPromise(loadRealBlueprintSha256());
     const evidenceDirectory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
     if (evidenceDirectory !== undefined) {
@@ -443,52 +493,6 @@ describe("initialization emulator", () => {
         ),
       );
     }
-    const watcherFixture = new URL(
-      "../../midgard-watcher/tests/fixtures/user-event-initialization.json",
-      import.meta.url,
-    );
-    if (process.env.MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE === "1") {
-      const references = body.reference_inputs();
-      const creatingIds = new Set<string>();
-      for (let index = 0; index < (references?.len() ?? 0); index += 1)
-        creatingIds.add(references!.get(index).transaction_id().to_hex());
-      const creatingTransactions = [...creatingIds].map((transactionId) => {
-        const transactionCbor = acceptedFrames.get(transactionId);
-        if (transactionCbor === undefined)
-          throw new Error(
-            `Initialization reference ${transactionId} was not submitted in this emulator`,
-          );
-        return { transactionId, transactionCbor };
-      });
-      await mkdir(new URL(".", watcherFixture), { recursive: true });
-      await writeFile(
-        watcherFixture,
-        JSON.stringify(
-          {
-            schemaVersion: "midgard-watcher-emulator-initialization-frame-v1",
-            provenance:
-              "Generated by the real node initialization emulator; all captured transactions were accepted. No public-chain inclusion is asserted.",
-            blueprintSha256,
-            network: "Preprod",
-            canonicalOneShotOutRef: `${nonceUtxo.txHash}#${nonceUtxo.outputIndex}`,
-            transactionId: txHash,
-            transactionCbor: signed.toCBOR(),
-            creatingTransactions,
-          },
-          null,
-          2,
-        ) + "\n",
-      );
-    }
-    // The watcher tests replay this capture, so it goes stale whenever the
-    // blueprint moves.
-    const captured = JSON.parse(await readFile(watcherFixture, "utf8")) as {
-      blueprintSha256: string;
-    };
-    expect(
-      captured.blueprintSha256,
-      "the watcher's initialization capture predates this blueprint; regenerate it with node scripts/contrib.mjs artifacts sync --channel watcher-initialization-fixture",
-    ).toBe(blueprintSha256);
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {

@@ -526,7 +526,6 @@ fn stage_nine_state(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
 }
 

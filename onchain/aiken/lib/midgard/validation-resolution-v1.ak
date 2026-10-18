@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/validation_case_v1.{CaseThreadV1, thread_version}
 use midgard/validation_dispute_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/shared as vm_shared
@@ -22,10 +23,10 @@ pub type ValidationResolutionStateV1 {
   challenger_successor_hash: ByteArray,
 }
 
+/// The state both sides agree on at `low_index`. The two successor hashes are
+/// not evidence: the game already holds them as the dispute's high hashes.
 pub type ValidationBoundaryEvidenceV1 {
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 }
 
 pub type PreparedValidationResolutionStateV1 {
@@ -62,79 +63,67 @@ pub fn resolver_index(phase: validation_trace_v1.ValidationPhase) -> Int {
     validation_trace_v1.ScriptIntegrity -> 10
     validation_trace_v1.Cek -> 11
     validation_trace_v1.ValueAndMint -> 12
-    validation_trace_v1.LedgerDelta -> 13
     validation_trace_v1.Terminal -> -1
   }
 }
 
-pub const resolver_count: Int = 14
+pub const resolver_count: Int = 13
 
+/// The one-step boundary: the game is at ReadyForOneStep and `pre_state` is
+/// the agreed state at `low_index`. The bisection already authenticated both
+/// high hashes against their descriptors, so no trace proof is re-checked.
 pub fn one_step_boundary_is_authenticated(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 ) -> Bool {
   and {
-    dispute.version == validation_dispute_v1.dispute_version,
+    dispute.version == thread_version,
     dispute.turn == validation_dispute_v1.ReadyForOneStep,
     dispute.high_index == dispute.low_index + 1,
     resolver_index(pre_state.phase) >= 0,
     validation_trace_v1.machine_state_is_well_formed(pre_state),
     validation_trace_v1.hash_machine_state(pre_state) == dispute.agreed_low_hash,
-    operator_post.state_index == dispute.high_index,
-    challenger_post.state_index == dispute.high_index,
-    validation_trace_v1.verify_trace_proof(
-      dispute.operator_descriptor,
-      operator_post,
-    ),
-    validation_trace_v1.verify_trace_proof(
-      dispute.challenger_descriptor,
-      challenger_post,
-    ),
-    operator_post.state_hash == dispute.operator_high_hash,
-    challenger_post.state_hash == dispute.challenger_high_hash,
   }
 }
 
-/// The operator trace has a Terminal state before its committed last state.
-/// The agreed low hash was authenticated by the opener or by both midpoint
-/// proofs. No operator-provided intermediate transition is trusted here: any
-/// committed Terminal below step_count is itself forbidden padding.
-pub fn terminal_padding_is_authenticated(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+/// The terminal fixed point: a Terminal state's true successor is itself.
+/// At a Terminal agreed state, the side whose high hash repeats it took the
+/// true step, and the rule reads both sides the same way. The defender's
+/// claim is checked first, so a step both sides got right is the defender's.
+/// Hashing the given state also checks its shape: `hash_machine_state` refuses
+/// a malformed state.
+pub fn terminal_fixed_point_winner(
+  dispute: CaseThreadV1,
   terminal_state: validation_trace_v1.ValidationMachineStateV1,
-) -> Bool {
-  and {
-    dispute.version == validation_dispute_v1.dispute_version,
-    dispute.turn == validation_dispute_v1.ReadyForOneStep,
-    dispute.low_index >= 0,
-    dispute.high_index == dispute.low_index + 1,
-    dispute.low_index < dispute.operator_descriptor.step_count,
-    validation_trace_v1.machine_state_is_well_formed(terminal_state),
-    terminal_state.phase == validation_trace_v1.Terminal,
-    validation_trace_v1.hash_machine_state(terminal_state) == dispute.agreed_low_hash,
+) -> validation_dispute_v1.DisputeWinner {
+  expect and {
+      dispute.version == thread_version,
+      dispute.turn == validation_dispute_v1.ReadyForOneStep,
+      dispute.high_index == dispute.low_index + 1,
+      terminal_state.phase == validation_trace_v1.Terminal,
+      validation_trace_v1.hash_machine_state(terminal_state) == dispute.agreed_low_hash,
+    }
+  if dispute.defender_high_hash == dispute.agreed_low_hash {
+    validation_dispute_v1.DefenderWins
+  } else if dispute.challenger_high_hash == dispute.agreed_low_hash {
+    validation_dispute_v1.ChallengerWins
+  } else {
+    validation_dispute_v1.NeitherClaimValid
   }
 }
 
+/// The resolver's state: the agreed pre-state and the two successor hashes,
+/// taken from the dispute datum only.
 pub fn prepare(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 ) -> ValidationResolutionStateV1 {
-  expect
-    one_step_boundary_is_authenticated(
-      dispute,
-      pre_state,
-      operator_post,
-      challenger_post,
-    )
+  expect one_step_boundary_is_authenticated(dispute, pre_state)
   ValidationResolutionStateV1 {
     version: resolution_version,
     pre_state,
-    operator_successor_hash: operator_post.state_hash,
-    challenger_successor_hash: challenger_post.state_hash,
+    operator_successor_hash: dispute.defender_high_hash,
+    challenger_successor_hash: dispute.challenger_high_hash,
   }
 }
 
@@ -146,22 +135,6 @@ pub fn state_is_well_formed(state: ValidationResolutionStateV1) -> Bool {
     bytearray.length(state.operator_successor_hash) == 32,
     bytearray.length(state.challenger_successor_hash) == 32,
     state.operator_successor_hash != state.challenger_successor_hash,
-  }
-}
-
-pub fn challenger_uniquely_wins(
-  state: ValidationResolutionStateV1,
-  operator_successor: validation_trace_v1.ValidationMachineStateV1,
-  challenger_successor: validation_trace_v1.ValidationMachineStateV1,
-  operator_transition_is_valid: Bool,
-  challenger_transition_is_valid: Bool,
-) -> Bool {
-  and {
-    state_is_well_formed(state),
-    validation_trace_v1.hash_machine_state(operator_successor) == state.operator_successor_hash,
-    validation_trace_v1.hash_machine_state(challenger_successor) == state.challenger_successor_hash,
-    !operator_transition_is_valid,
-    challenger_transition_is_valid,
   }
 }
 

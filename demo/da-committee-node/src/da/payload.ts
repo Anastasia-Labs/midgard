@@ -30,6 +30,8 @@ export {
   DaPayloadValidationError,
   type DaPayloadVerificationTimingOptions,
   type DaPayloadVerificationTimingStage,
+  headerCommittedCounts,
+  headerCommittedRoots,
   type PayloadVerificationOptions,
   type VerifiedDaPayload,
 } from "./payload.da-payload-validation-error.js";

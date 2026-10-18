@@ -6,7 +6,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { transitionTraceError } from "./errors.js";
-import { buildCountedRoot, commitCountedRoot } from "./phas.js";
+import { buildCountedRoot } from "./phas.js";
 import {
   authenticateForcedTransactionPreimages,
   buildSourceEvents,
@@ -113,17 +113,15 @@ export const reconstructDaPayload = async ({
       rawEntries("validation_traces", body.validation_traces),
     ),
   };
-  // N2 authenticates the trie using the committed count label. Key-set
-  // equality is adjudicated by missing/foreign-run proofs, never assumed here.
-  rootData.validationTraces = {
-    ...rootData.validationTraces,
-    count: header.validationTraceCount,
-    root: await commitCountedRoot({
-      domain: SDK.ROOT_DOMAINS.validationTraces,
-      phasRoot: rootData.validationTraces.phasRoot,
-      count: header.validationTraceCount,
-    }),
-  };
+  // The header pins the validation-trace pair to the empty tree, so it
+  // commits none of the body's members. The body trie is checked only against
+  // the body's own declared count; its members stay derived body data.
+  if (body.counts.validationTraceCount !== rootData.validationTraces.count) {
+    throw transitionTraceError(
+      "countMismatch",
+      `Payload declares ${body.counts.validationTraceCount.toString()} validation traces but carries ${rootData.validationTraces.count.toString()}.`,
+    );
+  }
   const roots: PayloadRootSet = {
     withdrawalsRoot: rootData.withdrawals.root,
     forcedTransactionsRoot: rootData.forcedTransactions.root,
@@ -131,7 +129,7 @@ export const reconstructDaPayload = async ({
     depositsRoot: rootData.deposits.root,
     transitionTraceRoot: rootData.transitionTrace.root,
     eventToStepRoot: rootData.eventToStep.root,
-    validationTracesRoot: rootData.validationTraces.root,
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
   const mismatchedRoots = rootMismatches(headerRoots(header), roots);
   if (mismatchedRoots.length > 0) {
@@ -140,6 +138,12 @@ export const reconstructDaPayload = async ({
       `Payload roots do not match committed header: ${mismatchedRoots.join(
         ",",
       )}.`,
+    );
+  }
+  if (header.validationTraceCount !== 0n) {
+    throw transitionTraceError(
+      "countMismatch",
+      "Committed header validation_trace_count must be 0.",
     );
   }
   const counts = headerCounts(header);

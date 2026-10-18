@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type {
@@ -109,6 +110,7 @@ export class SubmitterReconciler {
     expectedAvailabilityCommitmentCbor: string,
     expectedAvailabilityCommitmentDigest: string,
   ): Promise<readonly string[]> {
+    await ledgerEd25519SignatureReady();
     const selected = new Map<number, string>();
     for (const signature of await this.deps.store.listDaSignatures(
       headerHash,
@@ -191,6 +193,10 @@ const validationSummaryFromHeader = (
   },
 });
 
+/**
+ * The validation-trace pair comes from the header, so it is the pinned empty
+ * root and zero count, not the body-built pair a locally verified record holds.
+ */
 const rootSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary?: PayloadRootSet,

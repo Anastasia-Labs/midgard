@@ -27,7 +27,6 @@ import {
   ROOT_DOMAINS,
   type RootMembershipProof,
   TransitionStepSchema,
-  ValidationTraceDescriptorSchema,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -159,23 +158,6 @@ export const buildFieldPreimageLengthForcedFixture = async ({
       valueSchema: EventToStepValueSchema,
     }),
   ];
-  const validationEntries = [
-    transitionTraceDaEntry({
-      key: eventKey,
-      keySchema: EventKeySchema,
-      value: {
-        schema_version: 1n,
-        machine_version: 1n,
-        trace_root: h32("c1"),
-        step_count: 1n,
-        initial_state_hash: h32("c2"),
-        terminal_state_hash: h32("c3"),
-        verdict: "Rejected",
-        rejection_code_hash: h32("c4"),
-      },
-      valueSchema: ValidationTraceDescriptorSchema,
-    }),
-  ];
   const counted = async (
     domain: Parameters<typeof buildCountedRoot>[0],
     entries: readonly (readonly [string, string])[],
@@ -187,13 +169,11 @@ export const buildFieldPreimageLengthForcedFixture = async ({
         value: Buffer.from(value, "hex"),
       })),
     );
-  const [forcedRoot, transitionRoot, eventRoot, validationRoot] =
-    await Promise.all([
-      counted(ROOT_DOMAINS.forcedTransactionsV1, forcedEntries),
-      counted(ROOT_DOMAINS.transitionTrace, transitionEntries),
-      counted(ROOT_DOMAINS.eventToStep, eventEntries),
-      counted(ROOT_DOMAINS.validationTraces, validationEntries),
-    ]);
+  const [forcedRoot, transitionRoot, eventRoot] = await Promise.all([
+    counted(ROOT_DOMAINS.forcedTransactionsV1, forcedEntries),
+    counted(ROOT_DOMAINS.transitionTrace, transitionEntries),
+    counted(ROOT_DOMAINS.eventToStep, eventEntries),
+  ]);
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
@@ -209,8 +189,10 @@ export const buildFieldPreimageLengthForcedFixture = async ({
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: transitionRoot.root,
     eventToStepRoot: eventRoot.root,
-    validationTracesRoot: validationRoot.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
   };
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const [keyHex, valueHex] = forcedEntries[0]!;

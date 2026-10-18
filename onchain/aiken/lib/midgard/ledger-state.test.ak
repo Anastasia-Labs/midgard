@@ -21,14 +21,14 @@ fn sample_header_v1() -> ledger_state.HeaderV1 {
     deposits_root: ledger_state.genesis_utxo_root,
     transition_trace_root: #"0404040404040404040404040404040404040404040404040404040404040404",
     event_to_step_root: #"0505050505050505050505050505050505050505050505050505050505050505",
-    validation_traces_root: #"0808080808080808080808080808080808080808080808080808080808080808",
+    validation_traces_root: ledger_state.genesis_utxo_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
     l2_transaction_count: 1,
     deposit_count: 0,
     total_event_count: 1,
     transition_step_count: 1,
-    validation_trace_count: 1,
+    validation_trace_count: 0,
     start_time: 1,
     end_time: 2,
     block_slot: 0,
@@ -44,8 +44,8 @@ fn sample_header_v1() -> ledger_state.HeaderV1 {
 test l01_header_v1_aiken_cbor_and_hash_vector_is_exact() {
   let encoded = cbor.serialise(sample_header_v1())
   and {
-    encoded == #"d8799f582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a85820030303030303030303030303030303030303030303030303030303030303030358200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200404040404040404040404040404040404040404040404040404040404040404582005050505050505050505050505050505050505050505050505050505050505055820080808080808080808080808080808080808080808080808080808080808080800000100010101010200000000581c06060606060606060606060606060606060606060606060606060606581c0707070707070707070707070707070707070707070707070707070701ff",
-    crypto.blake2b_224(encoded) == #"68e507eaad2278934d696204c01ffa64ca7381e989823e5aed19afbc",
+    encoded == #"d8799f582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a85820030303030303030303030303030303030303030303030303030303030303030358200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8582004040404040404040404040404040404040404040404040404040404040404045820050505050505050505050505050505050505050505050505050505050505050558200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a800000100010100010200000000581c06060606060606060606060606060606060606060606060606060606581c0707070707070707070707070707070707070707070707070707070701ff",
+    crypto.blake2b_224(encoded) == #"301691e40a826a8e3137c82143db177f6e61c2ecb559adae804415d9",
     ledger_state.header_v1_is_valid(sample_header_v1()),
   }
 }
@@ -55,7 +55,7 @@ test l02_header_transition_commitments_v1_are_complete_and_exact() {
     sample_header_v1(),
   )
   and {
-    cbor.serialise(commitments) == #"d8799f58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200404040404040404040404040404040404040404040404040404040404040404582005050505050505050505050505050505050505050505050505050505050505055820080808080808080808080808080808080808080808080808080808080808080800000100010101ff",
+    cbor.serialise(commitments) == #"d8799f58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8582004040404040404040404040404040404040404040404040404040404040404045820050505050505050505050505050505050505050505050505050505050505050558200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a800000100010100ff",
     ledger_state.header_transition_commitments_v1_are_valid(commitments),
     !ledger_state.header_transition_commitments_v1_are_valid(
       ledger_state.HeaderTransitionCommitmentsV1 {
@@ -84,7 +84,7 @@ test l03_state_queue_node_v1_aiken_topology_and_datum_vector_is_exact() {
       commitment_hash: #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     },
   }
-  cbor.serialise(node) == #"d8799fd8799f582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a85820030303030303030303030303030303030303030303030303030303030303030358200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200404040404040404040404040404040404040404040404040404040404040404582005050505050505050505050505050505050505050505050505050505050505055820080808080808080808080808080808080808080808080808080808080808080800000100010101010200000000581c06060606060606060606060606060606060606060606060606060606581c0707070707070707070707070707070707070707070707070707070701ff02d87a9f5820ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffd87a80ff"
+  cbor.serialise(node) == #"d8799fd8799f582001010101010101010101010101010101010101010101010101010101010101015820020202020202020202020202020202020202020202020202020202020202020258200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a85820030303030303030303030303030303030303030303030303030303030303030358200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8582004040404040404040404040404040404040404040404040404040404040404045820050505050505050505050505050505050505050505050505050505050505050558200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a800000100010100010200000000581c06060606060606060606060606060606060606060606060606060606581c0707070707070707070707070707070707070707070707070707070701ff02d87a9f5820ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccffd87a80ff"
 }
 
 test l04_init_v1_and_merge_to_confirmed_state_v1_aiken_vectors_are_exact() {
@@ -243,26 +243,24 @@ test l05_header_v1_counted_roots_require_canonical_hash_length() {
     transactions_root: ledger_state.genesis_utxo_root,
     transition_trace_root: ledger_state.genesis_utxo_root,
     event_to_step_root: ledger_state.genesis_utxo_root,
-    validation_traces_root: ledger_state.genesis_utxo_root,
     l2_transaction_count: 0,
     total_event_count: 0,
     transition_step_count: 0,
-    validation_trace_count: 0,
   }
   and {
     !ledger_state.header_v1_is_valid(
-      ledger_state.HeaderV1 { ..valid_header, validation_traces_root: #"aa" },
+      ledger_state.HeaderV1 { ..valid_header, transition_trace_root: #"aa" },
     ),
     !ledger_state.header_v1_is_valid(
       ledger_state.HeaderV1 {
         ..valid_header,
-        validation_traces_root: #"0808080808080808080808080808080808080808080808080808080808080808aa",
+        transition_trace_root: #"0404040404040404040404040404040404040404040404040404040404040404aa",
       },
     ),
     !ledger_state.header_v1_is_valid(
       ledger_state.HeaderV1 {
         ..valid_header,
-        validation_traces_root: ledger_state.genesis_utxo_root,
+        transition_trace_root: ledger_state.genesis_utxo_root,
       },
     ),
     ledger_state.header_v1_is_valid(valid_header),
@@ -270,8 +268,48 @@ test l05_header_v1_counted_roots_require_canonical_hash_length() {
     !ledger_state.header_v1_is_valid(
       ledger_state.HeaderV1 {
         ..zero_header,
-        validation_traces_root: valid_header.validation_traces_root,
+        transition_trace_root: valid_header.transition_trace_root,
       },
+    ),
+  }
+}
+
+// The block commits no validation-trace descriptor, so the validation-trace
+// pair is the empty tree with count zero whatever the block carries.
+test l06_header_v1_validation_trace_pair_is_the_empty_tree() {
+  let pinned = sample_header_v1()
+  let busy = ledger_state.HeaderV1 {
+    ..pinned,
+    forced_transactions_root: #"0909090909090909090909090909090909090909090909090909090909090909",
+    forced_transaction_count: 1,
+    total_event_count: 2,
+    transition_step_count: 2,
+  }
+  let descriptor_root = #"0808080808080808080808080808080808080808080808080808080808080808"
+  and {
+    ledger_state.header_v1_is_valid(pinned),
+    ledger_state.header_v1_is_valid(busy),
+    ledger_state.header_transition_commitments_v1_are_valid(
+      ledger_state.header_transition_commitments_v1(busy),
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 { ..busy, validation_traces_root: descriptor_root },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 { ..busy, validation_trace_count: 1 },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 { ..busy, validation_trace_count: 2 },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 {
+        ..busy,
+        validation_traces_root: descriptor_root,
+        validation_trace_count: 2,
+      },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 { ..busy, validation_trace_count: -1 },
     ),
   }
 }

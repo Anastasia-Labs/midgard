@@ -10,10 +10,7 @@ import type {
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
-import type {
-  MidgardLedgerTx,
-  MidgardLedgerVKeyWitness,
-} from "./ledger-tx/types.js";
+import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
 
@@ -202,20 +199,6 @@ export type PhaseAConfig = {
   readonly consensusProfile?: MidgardConsensusProfile;
 };
 
-/**
- * Process-local Phase-A extension points.
- *
- * This context is deliberately separate from {@link PhaseAConfig}: functions
- * must never enter the serializable worker configuration or wire protocol.
- * Browser and inline callers omit it and retain the CML reference verifier.
- */
-export type PhaseALocalContext = {
-  readonly verifyVKeyWitnessSignature?: (
-    txBodyHash: Buffer,
-    witness: MidgardLedgerVKeyWitness,
-  ) => boolean;
-};
-
 /** Process-local evidence from the single script evaluation used for its verdict. */
 export type LocalScriptEvaluation = {
   readonly scriptBytes: Buffer;
@@ -238,7 +221,17 @@ export type LocalScriptEvalResult =
         readonly memory: bigint;
       };
     }
-  | { readonly kind: "script_invalid"; readonly detail: string };
+  | { readonly kind: "script_invalid"; readonly detail: string }
+  /**
+   * The evaluator itself failed: a throw, one of its own bounds, or a
+   * self-check. Not a verdict: Phase B fails with
+   * `ScriptEvaluationIndeterminateError` carrying `cause`.
+   */
+  | {
+      readonly kind: "indeterminate";
+      readonly detail: string;
+      readonly cause?: unknown;
+    };
 
 /**
  * Configuration knobs for phase-B validation.
@@ -282,7 +275,21 @@ export type PhaseBConfig = {
   readonly evaluateCekVerdict?: (
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  /**
+   * Applies the transaction by its committed Accepted verdict: each
+   * non-native script run is handed here instead of running, without its
+   * script context being built, and counts as accepted within its declared
+   * budget. Takes precedence over every evaluation hook.
+   */
+  readonly committedScriptRun?: (run: MidgardCommittedScriptRun) => void;
 };
+
+/** A script run a committed-verdict replay hands on: the run without its
+ * script context, which a later check rebuilds. */
+export type MidgardCommittedScriptRun = Omit<
+  MidgardCekVerdictRequest,
+  "contextCbor"
+>;
 
 /**
  * Serializable subset of queued-transaction metadata used at process

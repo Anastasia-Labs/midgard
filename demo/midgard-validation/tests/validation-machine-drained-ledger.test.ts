@@ -5,10 +5,8 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerMutationSteps,
-} from "../src/index.js";
+import { buildValidationMachineLedgerMutationSteps } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   makeNativeTx,

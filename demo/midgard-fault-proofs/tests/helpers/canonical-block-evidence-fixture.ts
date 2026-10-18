@@ -271,10 +271,6 @@ export const buildCanonicalBlockFixture = async ({
     SDK.ROOT_DOMAINS.eventToStep,
     bufferEntries(eventToStepEntries),
   );
-  const validationTracesRoot = await buildCountedRoot(
-    SDK.ROOT_DOMAINS.validationTraces,
-    bufferEntries(validationTraceEntries),
-  );
   const utxosRoot = await keyValuePhasRootWithCount(
     utxos.map(({ key, value }) => ({
       key: Buffer.from(key),
@@ -306,8 +302,10 @@ export const buildCanonicalBlockFixture = async ({
     depositsRoot: depositsRoot.root,
     transitionTraceRoot: transitionTraceRoot.root,
     eventToStepRoot: eventToStepRoot.root,
-    validationTracesRoot: validationTracesRoot.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime,
     endTime,
     blockSlot: fixtureBlockSlot(endTime),

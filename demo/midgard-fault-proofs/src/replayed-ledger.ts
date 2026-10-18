@@ -18,12 +18,15 @@
  * A block whose replay is refused, or whose replayed ledger does not open its
  * `utxos_root`, is reported through `onRefusal`. Its own header still gets the
  * replayed entries on a root mismatch, unchecked, so a classifier records the
- * post-ledger mismatch; nothing above it is derived from them.
+ * post-ledger mismatch; nothing above it is derived from them. A payload no
+ * attested availability commitment binds yet (`ReplayedLedgerSource.binding`)
+ * is not refused that way: its copy is released and the read waits.
  */
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
+import { isReplayLocalFault } from "./block-replay.faults.js";
 import { type BlockReplayContext, replayBlockEvents } from "./block-replay.js";
 import {
   type CheckedLedger,
@@ -33,6 +36,7 @@ import {
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "./ledger-at.js";
+import { RetainedDaPayloadUnavailableError } from "./transition-trace/fetch.js";
 
 /** The L1 facts a block's user events and forced orders replay against. */
 export type BlockReplayMaterial = Pick<
@@ -54,6 +58,17 @@ export type ReplayedLedgerSource = {
     payload: SDK.DaPayload,
   ) => Promise<BlockReplayMaterial>;
   readonly l1SlotConfig: L1SlotConfig;
+  /**
+   * Which served payloads no attested availability commitment binds yet (the
+   * block's node is Unattested), and their release. Such a payload's replay
+   * refusal or root mismatch is not the block's: the copy is released and
+   * the read waits (`RetainedDaPayloadUnavailableError`). Without it every
+   * payload is taken as bound.
+   */
+  readonly binding?: Readonly<{
+    unbound: (headerHash: string) => boolean;
+    release: (headerHash: string) => void;
+  }>;
 };
 
 /** The ledger after the block `headerHash`. */
@@ -104,6 +119,24 @@ type Replayed =
   | { readonly kind: "refused" };
 
 const label = (headerHash: string) => `replayed ledger after ${headerHash}`;
+
+/**
+ * A payload no commitment binds yet that does not replay says nothing of
+ * its block: the copy is released and the read waits for another.
+ */
+const unboundWait = (
+  source: ReplayedLedgerSource,
+  headerHash: string,
+  detail: string,
+) => {
+  if (source.binding?.unbound(headerHash) !== true) return;
+  source.binding.release(headerHash);
+  throw new RetainedDaPayloadUnavailableError(
+    headerHash,
+    `the payload of ${headerHash} is not bound to an attested commitment yet, and this copy does not replay: ${detail}`,
+    "unreachable",
+  );
+};
 
 export const createReplayedLedger = ({
   checkpoints,
@@ -195,11 +228,16 @@ export const createReplayedLedger = ({
       }),
     );
     if (Exit.isFailure(exit)) {
-      refuse({
-        headerHash,
-        kind: "replay-refused",
-        detail: String(exit.cause),
-      });
+      // A local fault says nothing about the block: it is raised, so the
+      // block is replayed again, never refused.
+      const local = [
+        ...Cause.defects(exit.cause),
+        ...Cause.failures(exit.cause),
+      ].find(isReplayLocalFault);
+      if (local !== undefined) throw local;
+      const detail = String(exit.cause);
+      unboundWait(source, headerHash, detail);
+      refuse({ headerHash, kind: "replay-refused", detail });
       return { kind: "refused" };
     }
     try {
@@ -213,6 +251,7 @@ export const createReplayedLedger = ({
       };
     } catch (error) {
       if (!(error instanceof LedgerRootMismatchError)) throw error;
+      unboundWait(source, headerHash, error.message);
       refuse({ headerHash, kind: "root-mismatch", detail: error.message });
       return { kind: "mismatch", entries: exit.value };
     }

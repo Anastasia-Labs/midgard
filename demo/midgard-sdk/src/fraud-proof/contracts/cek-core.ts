@@ -2,7 +2,7 @@ import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/d
 import { type Data, type Network } from "@lucid-evolution/lucid";
 
 import {
-  applyBlueprintParams,
+  applyThreadHolderParams,
   type FaultProofBlueprint,
   makeSpendingValidator,
 } from "./blueprint.js";
@@ -91,11 +91,17 @@ export const buildCekCoreStages = (
   network: Network,
   awardHash: string,
   ctPolicy: string,
+  threadExpiryHash: string,
 ) => {
   const build = (key: keyof typeof CEK_CORE_STAGE_TITLES, params: Data[]) =>
     makeSpendingValidator(
       network,
-      applyBlueprintParams(blueprint, CEK_CORE_STAGE_TITLES[key], params),
+      applyThreadHolderParams(
+        blueprint,
+        CEK_CORE_STAGE_TITLES[key],
+        params,
+        threadExpiryHash,
+      ),
     );
   const settle = build("settle", [
     awardHash,

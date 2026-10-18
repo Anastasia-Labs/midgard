@@ -1,6 +1,4 @@
-use aiken/builtin
 use aiken/cbor
-use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/address.{
@@ -11,7 +9,6 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use env
-use midgard/canonical_cbor_scan_v1 as key_cbor
 use midgard/cbor_deserialise
 use midgard/common/types.{Proof}
 use midgard/common/utils
@@ -19,11 +16,6 @@ use midgard/event_history/horizon
 use midgard/event_history/order_facts
 use midgard/event_history/proof_evidence
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/field_opening_v1.{
-  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, anchored_field_walk,
-  anchored_native_tx, anchored_native_tx_version, fold_opened_field,
-  outputs_field_index, spend_inputs_field_index, unanchored_validity_code_of,
-}
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/timed_history
@@ -32,13 +24,10 @@ use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/mpf_prefix_fixture as prefix_fixture
 use midgard/mpf_proof_v1 as canonical_mpf
-use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/validation_claim_v1
-use midgard/validation_trace_v1
 
 pub type TransitionFaultProof {
   challenged_header_hash: ledger_state.HeaderHash,
@@ -70,9 +59,6 @@ pub type TransitionFault {
   }
   OutOfWindowSourceEvent { witness: OutOfWindowSourceEventWitness }
   CountFault { witness: CountFaultWitness }
-  AcceptedTransactionTransitionMismatch {
-    witness: AcceptedTransactionTransitionMismatchWitness,
-  }
 }
 
 /// Tag-3 source membership opens only the key and its value digest. The
@@ -144,25 +130,6 @@ pub type SourceMembershipMismatchWitness {
     trace_proof: transition_trace.IndexedTraceProof,
     source_membership: SourceKeyOpening,
   }
-  SourceEventMissingValidationRun {
-    source: SourceKeyOpening,
-    run_phas_root: ByteArray,
-    run_absence_proof: Proof,
-  }
-  ForeignValidationRun {
-    event_key: ByteArray,
-    value_hash: ByteArray,
-    run_phas_root: ByteArray,
-    run_proof: Proof,
-    source_phas_root: ByteArray,
-    source_absence_proof: Proof,
-  }
-  MalformedValidationRun {
-    event_key: ledger_state.EventKey,
-    value: ByteArray,
-    run_phas_root: ByteArray,
-    run_proof: Proof,
-  }
 }
 
 /// `delete_proof` authenticates `(key, value)` against the pre-root and derives
@@ -176,10 +143,12 @@ pub type LedgerDeleteWitness {
   delete_proof: Proof,
 }
 
+/// One ledger insert: the key and value it adds and the single proof whose
+/// paired fold authenticates the key's absence from the predecessor root and
+/// derives the successor root.
 pub type LedgerInsertWitness {
   key: ByteArray,
   value: ByteArray,
-  non_membership_proof: Proof,
   insert_proof: Proof,
 }
 
@@ -240,16 +209,21 @@ pub type InvalidOneStepTransitionWitness {
       ByteArray,
       ByteArray,
     >,
-    spend_inputs_preimage: ByteArray,
-    outputs_preimage: ByteArray,
-    spent_utxos: List<LedgerDeleteWitness>,
-    produced_utxos: List<LedgerInsertWitness>,
   }
-}
-
-pub type AcceptedTransactionTransitionMismatchWitness {
-  claim: validation_claim_v1.ValidationClaimWitnessV1,
-  terminal_acceptance_witness_cbor: ByteArray,
+  /// An accepted forced transaction, replayed by the streamed
+  /// accepted-transaction final exactly as `L2TransactionTransition` is. The
+  /// forced leaf is opened over its raw key and value bytes.
+  ValidForcedTransactionTransition {
+    trace_proof: transition_trace.IndexedTraceProof,
+    event_to_step: transition_trace.RootMembershipProof<
+      ledger_state.EventKey,
+      ledger_state.EventToStepValue,
+    >,
+    source_membership: transition_trace.RootMembershipProof<
+      ByteArray,
+      ByteArray,
+    >,
+  }
 }
 
 pub type OmittedDueL1EventWitness {
@@ -638,151 +612,6 @@ fn validate_event_to_step_mismatch(
   }
 }
 
-fn verify_source_absence(
-  domain: transition_trace.RootDomain,
-  root: ByteArray,
-  count: Int,
-  phas_root: ByteArray,
-  key: ByteArray,
-  proof: Proof,
-) -> Bool {
-  expect root == transition_trace.commit_counted_root(domain, phas_root, count)
-  // The count is a committed label, not an authenticated leaf count. An empty
-  // trie with a positive run label is precisely an all-runs-missing fault.
-  expect canonical_mpf.does_not_have(phas_root, key, proof)
-  True
-}
-
-fn verify_run_absence(
-  header: ledger_state.HeaderV1,
-  phas_root: ByteArray,
-  event_key: ledger_state.EventKey,
-  proof: Proof,
-) -> Bool {
-  verify_source_absence(
-    transition_trace.ValidationTracesRootDomain,
-    header.validation_traces_root,
-    header.validation_trace_count,
-    phas_root,
-    cbor.serialise(event_key),
-    proof,
-  )
-}
-
-/// A run's key is raw committed bytes. Invalid and non-canonical keys are
-/// foreign too; decoding them must never prevent adjudication of the leaf.
-fn validation_key_bytes(
-  bytes: ByteArray,
-  offset: Int,
-) -> Option<key_cbor.CborBytesV1> {
-  if builtin.slice_bytearray(offset, 1, bytes) == #"5f" {
-    validation_key_chunks(bytes, offset + 1, 0, #"")
-  } else {
-    when key_cbor.bytes_at_v1(bytes, offset) is {
-      Some(item) ->
-        if builtin.length_of_bytearray(item.value) <= 64 {
-          Some(item)
-        } else {
-          None
-        }
-      None -> None
-    }
-  }
-}
-
-fn validation_key_chunks(
-  bytes: ByteArray,
-  offset: Int,
-  seen: Int,
-  value: ByteArray,
-) -> Option<key_cbor.CborBytesV1> {
-  if builtin.slice_bytearray(offset, 1, bytes) == #"ff" {
-    if seen >= 2 {
-      Some(key_cbor.CborBytesV1 { next_offset: offset + 1, value })
-    } else {
-      None
-    }
-  } else {
-    when key_cbor.bytes_at_v1(bytes, offset) is {
-      None -> None
-      Some(item) -> {
-        let length = builtin.length_of_bytearray(item.value)
-        let next_value = builtin.append_bytearray(value, item.value)
-        if length == 64 {
-          validation_key_chunks(bytes, item.next_offset, seen + 1, next_value)
-        } else if and {
-          seen >= 1,
-          length > 0,
-          length < 64,
-          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
-        } {
-          Some(
-            key_cbor.CborBytesV1 {
-              next_offset: item.next_offset + 1,
-              value: next_value,
-            },
-          )
-        } else {
-          None
-        }
-      }
-    }
-  }
-}
-
-/// Only the two transaction EventKey shapes name a validation source. Read
-/// their canonical wire grammar directly rather than recursively decoding any
-/// Data an adversary puts in a trie key. All other bytes stay foreign, including
-/// bignums and generic constructors which the general decoder cannot safely
-/// materialise. Byte-string chunking and integer widths keep the same domain as
-/// the previous canonicality screen followed by the typed-field checks.
-pub fn validation_run_source_key(bytes: ByteArray) -> Pair<Int, ByteArray> {
-  let length = builtin.length_of_bytearray(bytes)
-  if builtin.slice_bytearray(0, 3, bytes) == #"d87b9f" {
-    when validation_key_bytes(bytes, 3) is {
-      Some(item) ->
-        if and {
-          item.next_offset + 1 == length,
-          builtin.slice_bytearray(item.next_offset, 1, bytes) == #"ff",
-        } {
-          Pair(2, item.value)
-        } else {
-          Pair(0, #"")
-        }
-      None -> Pair(0, #"")
-    }
-  } else if builtin.slice_bytearray(0, 6, bytes) == #"d87a9fd8799f" {
-    when validation_key_bytes(bytes, 6) is {
-      None -> Pair(0, #"")
-      Some(item) -> {
-        let major = if item.next_offset < length {
-          builtin.index_bytearray(bytes, item.next_offset) / 32
-        } else {
-          2
-        }
-        if major == 0 || major == 1 {
-          when key_cbor.head_at_v1(bytes, item.next_offset, major) is {
-            Some(index) ->
-              if and {
-                index.next_offset + 2 == length,
-                builtin.slice_bytearray(index.next_offset, 2, bytes) == #"ffff",
-              } {
-                Pair(1, builtin.slice_bytearray(3, length - 4, bytes))
-              } else {
-                Pair(0, #"")
-              }
-            None -> Pair(0, #"")
-          }
-        } else {
-          Pair(0, #"")
-        }
-      }
-    }
-  } else {
-    Pair(0, #"")
-  }
-}
-
 fn validate_source_membership_mismatch(
   header: ledger_state.HeaderV1,
   witness: SourceMembershipMismatchWitness,
@@ -824,80 +653,6 @@ fn validate_source_membership_mismatch(
         trace_proof.value.event_key == event_key,
         trace_proof.value.phase != source_membership_phase(source_membership),
       }
-    }
-    SourceEventMissingValidationRun { source, run_phas_root, run_absence_proof } ->
-      and {
-        when source is {
-          ForcedKeyOpening { .. } -> True
-          L2KeyOpening { .. } -> True
-          _ -> False
-        },
-        verify_source_membership(header, source),
-        verify_run_absence(
-          header,
-          run_phas_root,
-          event_key_from_source_membership(source),
-          run_absence_proof,
-        ),
-      }
-    ForeignValidationRun {
-      event_key,
-      value_hash,
-      run_phas_root,
-      run_proof,
-      source_phas_root,
-      source_absence_proof,
-    } -> and {
-        verify_key_opening(
-          transition_trace.ValidationTracesRootDomain,
-          header.validation_traces_root,
-          header.validation_trace_count,
-          run_phas_root,
-          event_key,
-          value_hash,
-          run_proof,
-        ),
-        when validation_run_source_key(event_key) is {
-          Pair(source_kind, source_key) ->
-            if source_kind == 0 {
-              True
-            } else {
-              verify_source_absence(
-                if source_kind == 1 {
-                  transition_trace.ForcedTransactionsV1RootDomain
-                } else {
-                  transition_trace.TransactionsV1RootDomain
-                },
-                if source_kind == 1 {
-                  header.forced_transactions_root
-                } else {
-                  header.transactions_root
-                },
-                if source_kind == 1 {
-                  header.forced_transaction_count
-                } else {
-                  header.l2_transaction_count
-                },
-                source_phas_root,
-                source_key,
-                source_absence_proof,
-              )
-            }
-        },
-      }
-    MalformedValidationRun { event_key, value, run_phas_root, run_proof } -> {
-      expect
-        verify_key_opening(
-          transition_trace.ValidationTracesRootDomain,
-          header.validation_traces_root,
-          header.validation_trace_count,
-          run_phas_root,
-          cbor.serialise(event_key),
-          builtin.blake2b_256(value),
-          run_proof,
-        )
-      expect !validation_trace_v1.descriptor_bytes_are_well_formed(value)
-      True
     }
   }
 }
@@ -947,15 +702,6 @@ pub fn verify_ledger_membership(
   mpf.has(ledger_trie(root), key, value, proof)
 }
 
-fn verify_ledger_non_membership(
-  root: ByteArray,
-  key: ByteArray,
-  proof: Proof,
-) -> Bool {
-  expect canonical_mpf.does_not_have(mpf.root(ledger_trie(root)), key, proof)
-  True
-}
-
 /// The paired fold in `delete_root` proves `(key, value)` is in `root` (its
 /// including root must equal `root`) and derives the successor, so no
 /// separate membership proof is taken.
@@ -972,16 +718,13 @@ pub fn apply_delete_witness(
   )
 }
 
+/// The paired fold in `insert_root` proves `key` is absent from `root` (its
+/// predecessor root must equal `root`) and derives the successor, so no
+/// separate non-membership proof is taken.
 pub fn apply_insert_witness(
   root: ByteArray,
   witness: LedgerInsertWitness,
 ) -> ByteArray {
-  expect
-    verify_ledger_non_membership(
-      root,
-      witness.key,
-      witness.non_membership_proof,
-    )
   insert_root(root, witness.key, witness.value, witness.insert_proof)
 }
 
@@ -1195,76 +938,47 @@ pub fn validate_l2_one_step_binding(
   }
 }
 
-fn apply_l2_spends(
-  root: ByteArray,
-  spend_inputs: List<native_types.MidgardTxInput>,
-  witnesses: List<LedgerDeleteWitness>,
-) -> ByteArray {
-  when spend_inputs is {
-    [] -> {
-      expect witnesses == []
-      root
-    }
-    [spend_input, ..rest] -> {
-      expect [witness, ..remaining_witnesses] = witnesses
-      let expected_key = native_components.encode_midgard_tx_input(spend_input)
-      expect witness.key == expected_key
-      apply_l2_spends(
-        apply_delete_witness(root, witness),
-        rest,
-        remaining_witnesses,
-      )
-    }
+/// The accepted forced transaction's binding: its step is the forced phase
+/// under its own event key, and the raw leaf is committed under the counted
+/// forced-transactions root at that key. The leaf's verdict is read by phase 0
+/// of the replay, through `accepted_forced_leaf`.
+pub fn validate_forced_valid_one_step_binding(
+  header: ledger_state.HeaderV1,
+  trace_proof: transition_trace.IndexedTraceProof,
+  event_to_step: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+) -> Bool {
+  expect ledger_state.ForcedTransactionEventKey { tx_order_id } = trace_proof.value.event_key
+  and {
+    verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      header.forced_transaction_count,
+      source_membership.key,
+      source_membership.value,
+    ),
+    source_membership.key == cbor.serialise(tx_order_id),
+    trace_proof.value.phase == ledger_state.ForcedTransaction,
   }
 }
 
-/// Replays the inserts one L2 transaction makes into `utxos_root`.
-///
-/// The inserted value is the output's `LedgerOutputCommitmentV1` descriptor,
-/// never the full output bytes. Spec section 5.3 fixes the descriptor as the
-/// MPT value ("recomputed with that descriptor as the MPT value, not with the
-/// full output bytes") and every other producer of the ledger trie -- the node,
-/// the validation machine, the watcher's block replay and DA reconstruction --
-/// commits the descriptor. Replaying the full output bytes here would recompute
-/// a root that an honest descriptor-built block can never equal, and the fault
-/// condition is a root mismatch, so the arm would mint against honest blocks
-/// and could never prove a real one.
-///
-/// The descriptor is derived from the output rather than taken from the
-/// witness. A challenger who could name the inserted value could name the post
-/// root, which is the whole fault.
-fn apply_l2_outputs(
-  root: ByteArray,
-  tx_id: ByteArray,
-  output_index: Int,
-  outputs: List<native_types.MidgardTxOutput>,
-  witnesses: List<LedgerInsertWitness>,
-) -> ByteArray {
-  when outputs is {
-    [] -> {
-      expect witnesses == []
-      root
-    }
-    [output, ..rest] -> {
-      expect [witness, ..remaining_witnesses] = witnesses
-      let expected_key = native_components.encode_midgard_tx_input(
-        native_types.MidgardTxInput { tx_id, output_index },
-      )
-      expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
-        output_index,
-        native_components.encode_midgard_tx_output(output),
-      )
-      expect witness.key == expected_key
-      expect witness.value == expected_value
-      apply_l2_outputs(
-        apply_insert_witness(root, witness),
-        tx_id,
-        output_index + 1,
-        rest,
-        remaining_witnesses,
-      )
-    }
-  }
+/// Decode a committed forced leaf that the operator accepted. Fails unless the
+/// bytes are the leaf's exact serialisation and its verdict is `ForcedTxValid`:
+/// a forced transaction the operator rejected is a no-op, and its step is
+/// checked by `InvalidForcedTransactionNoOpTransition` instead.
+pub fn accepted_forced_leaf(
+  value: ByteArray,
+) -> ledger_state.ForcedInclusionTxV1 {
+  let data <- cbor_deserialise.expect_deserialise(value)
+  expect leaf: ledger_state.ForcedInclusionTxV1 = data
+  expect rejection_reason_v1.ForcedTxValid = leaf.verdict
+  expect cbor.serialise(leaf) == value
+  leaf
 }
 
 fn validate_valid_withdrawal_transition(
@@ -1391,7 +1105,6 @@ pub fn validate_valid_deposit_transition(
   let checked_projected_utxo = LedgerInsertWitness {
     key: expected_key,
     value: expected_value,
-    non_membership_proof: projected_utxo.non_membership_proof,
     insert_proof: projected_utxo.insert_proof,
   }
   let expected_post_root = apply_insert_witness(
@@ -1409,163 +1122,6 @@ pub fn validate_valid_deposit_transition(
     cbor.serialise(event.info) == source_membership.value,
     projected_utxo.key == expected_key,
     projected_utxo.value == expected_value,
-    expected_post_root != trace_proof.value.post_utxos_root,
-  }
-}
-
-/// Authenticate one **body** field of the disputed transaction through the §8.8
-/// door and walk it into a decoded item list, in order, exactly once.
-///
-/// This replaces the retired pair of `decode_<field>_preimage_cbor` followed by
-/// a `field_commitment_from_items` re-hash of the reproduced item list. Where
-/// that idiom re-encoded every item to re-derive a commitment it then compared
-/// against a free-standing hash, the door hashes the preimage **once** (§7.1
-/// authenticate-once) against the commitment it extracts positionally from the
-/// tx-id-verified compact structures (§4), and the items fall out of a single
-/// §10 walk over the bytes that hash already authenticated.
-///
-/// Not an equivalent rewrite, and the difference is the point of §4. The old
-/// check was against the canonical *re-encoding* of whatever the prover's bytes
-/// decoded to; this one is against the prover's bytes themselves. So the door is
-/// narrower where the retired decoder was lax — a non-minimal item wrapper the
-/// old path silently canonicalised is refused by `item_header_at`, and the §5.4
-/// aggregate length cap now applies — and wider in the one case where the block
-/// committed a non-canonically spelled preimage, which the re-hash could never
-/// match and exact bytes do. That widening cannot frame an honest operator: the
-/// commitment still pins the bytes, and an honest operator commits canonical
-/// ones. It is the direction §4 chose deliberately — the commitment is over raw
-/// bytes, so raw bytes are what a dispute must be held to.
-///
-/// It goes through `midgard/fraud_proofs/field_opening_v1` rather than reaching
-/// `authenticated_field_view` directly, and the reason is the part that is easy
-/// to skip: that module owns the §2.5 body/witness pairing. Building the
-/// door's arguments here instead would mean spelling the unread witness set
-/// out locally — a second copy of the one value #575 deliberately made
-/// unreachable from a redeemer. Both fields this family opens are body fields,
-/// so the guard has nothing to refuse today; routing through the bridge is
-/// what keeps that true of a later edit to this file rather than a property of
-/// the two call sites below. (Until #606 the bridge also carried the
-/// fields-6–8 tier-3 refusal, `carriage_reaches_the_anchor`; the repair's
-/// welded-hash equality lives behind the door itself, so every entry point
-/// inherits it.)
-///
-/// The anchor arrives **already paid for**, as an `AnchoredNativeTxV1` the
-/// caller built once from `BodyAnchor { tx_id }` over the MPF-committed
-/// `source_membership.key` — never a redeemer value. Taking the handle rather
-/// than the id and the bytes is what makes this family's two openings cost one
-/// transaction-id derivation instead of two: the bridge still re-runs the §2.5
-/// pairing and the tier check for each field, and only the anchor is shared.
-/// `field_index` remains a literal at each call site (§4 removed field-index
-/// domain separation, so the index is the only thing distinguishing field 0's
-/// commitment from field 1's).
-///
-/// The carriage is likewise a literal: this family carries its preimages inline
-/// in the fault witness (§8.1 tier 1), so tiers 2 and 3 are unreachable from
-/// here and the two arguments only those tiers consult — the reference-input
-/// list and the §8.6 certificate policy id — are provably never read. They are
-/// passed empty rather than plumbed through, which is also why this rebind adds
-/// no validator parameter and leaves the family's applied hashes to #579.
-pub fn door_body_field_items(
-  anchored: AnchoredNativeTxV1,
-  field_index: Int,
-  preimage: ByteArray,
-  decode_item: fn(ByteArray) -> a,
-) -> List<a> {
-  let reversed_items = fold_opened_field(
-    anchored_field_walk(
-      anchored,
-      field_index,
-      native_tx_field_access_v1.Inline { preimage },
-      [],
-      #"",
-    ),
-    [],
-    fn(acc, _index, item) { [decode_item(item), ..acc] },
-  )
-  list.reverse(reversed_items)
-}
-
-pub fn validate_l2_transaction_transition(
-  header: ledger_state.HeaderV1,
-  trace_proof: transition_trace.IndexedTraceProof,
-  event_to_step: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    ledger_state.EventToStepValue,
-  >,
-  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
-  spend_inputs_preimage: ByteArray,
-  outputs_preimage: ByteArray,
-  spent_utxos: List<LedgerDeleteWitness>,
-  produced_utxos: List<LedgerInsertWitness>,
-) -> Bool {
-  // 1. The committed source leaf must be well-formed CBOR.
-  let source_data <- cbor_deserialise.expect_deserialise(
-    source_membership.value,
-  )
-  // 2. Those bytes must decode as an `L2TransactionSourceV1`.
-  expect source: ledger_state.L2TransactionSourceV1 = source_data
-  // §4/§8.8: the transaction id is the anchor and the compact bytes re-derive
-  // to it. This replaces the retired `verify_native_tx_proof_source_v1` over the
-  // proof-source triple; the witness-set-compact and field-preimage-lengths
-  // members that triple carried are not consulted for a body-field dispute.
-  //
-  // Derived **once** for the whole step. This rule reads three things off the
-  // one transaction — its scalar `validity_code`, field 0 and field 2 — and
-  // re-deriving the id for each cost ~211k memory units apiece; the anchored
-  // handle pays it once without giving up the §2.5 pairing or the tier check,
-  // both of which the bridge re-runs per field opened.
-  let anchored = anchored_native_tx(
-    BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
-    BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
-  )
-  // 3. The transaction's §2.5 `validity_code` must be `TxIsValid` (0), because
-  //    this rule is about a transaction the block declared valid. The accessor is
-  //    named `unanchored_` because the *handle* cannot vouch for that value —
-  //    §3's id preimage is the body alone — and at this call site it does not
-  //    have to. `source.source.compact_cbor` is not the prover's own bytes: it
-  //    comes out of the `transactions_root` leaf, and the exact leaf bytes are
-  //    re-checked below (`cbor.serialise(source) == source_membership.value`,
-  //    over the membership `validate_l2_one_step_binding` verifies), so the code
-  //    read here is the one the block committed.
-  expect unanchored_validity_code_of(anchored) == 0
-  // §8.8 door: field 0 (spend inputs) and field 2 (outputs) are authenticated
-  // once against their flat commitments and walked into item lists. The field
-  // indices are literals here, not witness values, so no prover can steer a
-  // field-0 read onto field 1's identically-shaped commitment (§4).
-  let spend_inputs = door_body_field_items(
-    anchored,
-    spend_inputs_field_index,
-    spend_inputs_preimage,
-    native_components.decode_midgard_tx_input_cbor,
-  )
-  let outputs = door_body_field_items(
-    anchored,
-    outputs_field_index,
-    outputs_preimage,
-    native_components.decode_midgard_tx_output_cbor,
-  )
-  let after_spends = apply_l2_spends(
-    trace_proof.value.pre_utxos_root,
-    spend_inputs,
-    spent_utxos,
-  )
-  let expected_post_root = apply_l2_outputs(
-    after_spends,
-    source_membership.key,
-    0,
-    outputs,
-    produced_utxos,
-  )
-  and {
-    validate_l2_one_step_binding(
-      header,
-      trace_proof,
-      event_to_step,
-      source_membership,
-    ),
-    cbor.serialise(source) == source_membership.value,
-    source.tx_id == source_membership.key,
-    anchored_native_tx_version(anchored) == 1,
     expected_post_root != trace_proof.value.post_utxos_root,
   }
 }
@@ -1631,58 +1187,10 @@ fn validate_invalid_one_step_transition(
         projected_utxo,
       )
     }
-    L2TransactionTransition {
-      trace_proof,
-      event_to_step,
-      source_membership,
-      spend_inputs_preimage,
-      outputs_preimage,
-      spent_utxos,
-      produced_utxos,
-    } ->
-      validate_l2_transaction_transition(
-        header,
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      )
-  }
-}
-
-pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
-  expect [version_data,
-        tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
-  expect builtin.un_i_data(version_data) == 1
-  expect builtin.un_b_data(tag_data) == #""
-  let root = builtin.un_b_data(root_data)
-  expect bytearray.length(root) == 32
-  root
-}
-
-pub fn validate_accepted_transaction_transition_mismatch(
-  header: ledger_state.HeaderV1,
-  witness: AcceptedTransactionTransitionMismatchWitness,
-) -> Bool {
-  let claim = witness.claim
-  let descriptor = claim.descriptor_membership.value
-  let terminal = claim.terminal_state
-  let post_root = terminal_acceptance_post_root(
-    witness.terminal_acceptance_witness_cbor,
-  )
-  and {
-    validation_claim_v1.committed_claim_is_valid(header, claim),
-    descriptor.verdict == validation_trace_v1.Accepted,
-    terminal.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      terminal.program_counter,
-      witness.terminal_acceptance_witness_cbor,
-    ),
-    post_root != claim.transition_step_membership.value.post_utxos_root,
+    // Replayed only by the streamed accepted-transaction final, whose ledger
+    // witnesses arrive one step at a time and are never part of the proof.
+    L2TransactionTransition { .. } -> False
+    ValidForcedTransactionTransition { .. } -> False
   }
 }
 
@@ -1903,8 +1411,6 @@ fn validate_transition_fault(
       validate_l1_event_fault(header, fault, hub_datum, evidence)
     }
     CountFault { witness } -> validate_count_fault(header, witness)
-    AcceptedTransactionTransitionMismatch { witness } ->
-      validate_accepted_transaction_transition_mismatch(header, witness)
   }
 }
 
@@ -2055,42 +1561,6 @@ pub fn validate_forced_fault_proof(
   }
 }
 
-pub fn validate_accepted_transaction_fault_proof(
-  proof: TransitionFaultProof,
-  computation_thread_token_asset_name: AssetName,
-) -> Bool {
-  and {
-    validate_transition_fault_proof_envelope(
-      proof,
-      computation_thread_token_asset_name,
-    ),
-    when proof.fault is {
-      AcceptedTransactionTransitionMismatch { witness } ->
-        validate_accepted_transaction_transition_mismatch(proof.header, witness)
-      InvalidOneStepTransition{witness: L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      }} ->
-        validate_l2_transaction_transition(
-          proof.header,
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage,
-          outputs_preimage,
-          spent_utxos,
-          produced_utxos,
-        )
-      _ -> False
-    },
-  }
-}
-
 pub fn validate_deposit_fault_proof(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,
@@ -2228,11 +1698,6 @@ pub fn delete_root(
   canonical_mpf.committed_root(next_root)
 }
 
-test canonical_fork_exclusion() {
-  let v = prefix_fixture.fork()
-  verify_ledger_non_membership(v.after, v.key, v.proof)
-}
-
 test canonical_fork_insertion() {
   let v = prefix_fixture.fork()
   insert_root(v.after, v.key, v.value, v.proof) == v.before
@@ -2253,11 +1718,6 @@ test canonical_fork_membership() {
   )
 }
 
-test canonical_leaf_exclusion() {
-  let v = prefix_fixture.leaf()
-  verify_ledger_non_membership(v.after, v.key, v.proof)
-}
-
 test canonical_leaf_insertion() {
   let v = prefix_fixture.leaf()
   insert_root(v.after, v.key, v.value, v.proof) == v.before
@@ -2274,15 +1734,6 @@ test canonical_leaf_membership() {
     v.after,
     v.key,
     v.value,
-    v.proof,
-  )
-}
-
-test canonical_fork_rejects_dropped_prefix_root() fail {
-  let v = prefix_fixture.fork()
-  verify_ledger_non_membership(
-    prefix_fixture.dropped_fork_prefix_root,
-    v.key,
     v.proof,
   )
 }

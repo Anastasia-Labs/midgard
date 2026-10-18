@@ -8,7 +8,7 @@ use cardano/transaction.{
 }
 use midgard/cek_proof_v1
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
 use midgard/native_script_scan_v1
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -346,16 +346,15 @@ pub fn prepare(
         tx,
       )
     ct.Continue(Prepare { input_index, output_index, transition, auxiliary }) -> {
-      let Transaction { inputs, outputs, .. } = tx
       expect Some(step_datum) = datum
-      continue(
+      continue_validation_trace(
         computation_thread_token_policy_id,
         step_datum,
         input_index,
         output_index,
         own_out_ref,
-        inputs,
-        outputs,
+        tx,
+        ProverOnly,
         fn(
           _input_script_hash,
           _computation_thread_token_asset_name,
@@ -413,21 +412,20 @@ pub fn prepare_selected(
       transition,
       auxiliary,
     }) -> {
-      let Transaction { inputs, outputs, .. } = tx
       expect Some(step_datum) = datum
       expect Some(semantic_resolver_script_hash) = select_semantic_resolver(
         semantic_resolver_script_hashes,
         expected_semantic_resolver_count,
         semantic_resolver_index,
       )
-      continue(
+      continue_validation_trace(
         computation_thread_token_policy_id,
         step_datum,
         input_index,
         output_index,
         own_out_ref,
-        inputs,
-        outputs,
+        tx,
+        ProverOnly,
         fn(
           _input_script_hash,
           _computation_thread_token_asset_name,

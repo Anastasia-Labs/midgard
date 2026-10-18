@@ -293,8 +293,14 @@ describe("operator lifecycle emulator", () => {
     const referenceScripts = generateEmulatorAccount({
       lovelace: 0n,
     });
+    // The deployment reserves the one-shot nonce, so the operator also holds
+    // a plain UTxO to fund the reference-script wallet from.
     const emulator = new Emulator(
-      [operator, referenceScripts],
+      [
+        operator,
+        { ...operator, assets: { lovelace: 200_000_000n } },
+        referenceScripts,
+      ],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
     const fundingLucid = await Lucid(emulator, "Custom");

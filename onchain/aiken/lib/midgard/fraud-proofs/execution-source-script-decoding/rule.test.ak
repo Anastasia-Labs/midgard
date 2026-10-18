@@ -186,7 +186,6 @@ fn authenticated_source_for(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)

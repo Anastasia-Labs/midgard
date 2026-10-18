@@ -1,16 +1,15 @@
-import { readFile } from "node:fs/promises";
+import { deriveDaDeploymentInfo } from "midgard-node/tests/helpers/derived-da-deployment-info";
 
 import {
   type MidgardNodeDeployment,
   parseMidgardNodeDeploymentInfo,
 } from "../../src/l1/deployment.js";
-import { FIXTURE_URL } from "./deployment-fixture.build-canonical-fraud-proof-catalogue-fixture.js";
 import { buildDaDeploymentFixture } from "./deployment-fixture.build-da-deployment-fixture.js";
 
 export const readDaDeploymentFixture = async (): Promise<
   Record<string, unknown>
 > => {
-  const fixture = JSON.parse(await readFile(FIXTURE_URL, "utf8")) as Record<
+  const fixture = (await deriveDaDeploymentInfo()) as unknown as Record<
     string,
     unknown
   >;

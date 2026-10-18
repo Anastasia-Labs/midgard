@@ -7,7 +7,6 @@ import {
   buildMidgardMpfDeletionOpening,
   buildMidgardMpfProofFoldTrace,
   computeHash32,
-  type MidgardMpfProofFoldStep,
   type MidgardMpfProofFoldTrace,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
@@ -177,20 +176,3 @@ export const applyValidationMachineLedgerMutationStep = async (
     deletionOpening,
   };
 };
-
-/** The `ledgerDeltaProofFrame` auxiliary for one fold step of `step`: a
- * deletion's terminal frame carries the group opening, every other frame an
- * empty one. */
-export const ledgerDeltaProofFrameAuxiliary = (
-  step: ValidationMachineLedgerMutationStep,
-  foldStep: MidgardMpfProofFoldStep,
-) => ({
-  kind: "ledgerDeltaProofFrame" as const,
-  frame: foldStep.frame,
-  siblings: foldStep.membership.siblings,
-  opening:
-    step.operation.type === "delete" &&
-    foldStep.frame.frameIndex === step.proofFoldTrace.frames.length - 1
-      ? step.deletionOpening
-      : Buffer.alloc(0),
-});

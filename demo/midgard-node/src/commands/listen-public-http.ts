@@ -347,12 +347,6 @@ export const publicHttpTransport = (
     env.L1_USER_SEED_PHRASE !== undefined
   )
     return fail("the public operator cannot hold a user wallet seed");
-  if (
-    config.L1_REFERENCE_SCRIPT_SEED_PHRASE === config.L1_OPERATOR_SEED_PHRASE ||
-    config.L1_REFERENCE_SCRIPT_SEED_PHRASE ===
-      config.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX
-  )
-    return fail("reference publisher and operator wallets must be separate");
   for (const name of [
     "L1_OPERATOR_SEED_PHRASE",
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",

@@ -79,7 +79,9 @@ export const createSyntheticStateQueueObservationFixture = async (
   const headerHash = computeHash28(Buffer.from(headerCborHex, "hex")).toString(
     "hex",
   );
-  const deployment = followerUserEventsDeployment(input.ruleBundleCommitment);
+  const deployment = await followerUserEventsDeployment(
+    input.ruleBundleCommitment,
+  );
   const { authority } = deployment;
   const initializationTransactionCbor = initializationTransaction(authority);
   const commitTransactionCbor = commitTransaction(

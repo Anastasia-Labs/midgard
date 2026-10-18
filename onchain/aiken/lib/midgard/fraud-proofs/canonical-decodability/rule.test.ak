@@ -14,8 +14,8 @@
 ////    door's grammar restated as a decision, and if the two ever disagreed the
 ////    family would either convict a field the machine can read or fail to
 ////    convict one it cannot.
-//// 3. **The cost claim** §12.7 publishes, as the rows
-////    `scripts/canonical-decodability-exec-ledger-v1.json` pins.
+//// 3. **The cost claim** §12.7 publishes, as the rows whose ceilings
+////    `demo/midgard-core/src/script-budgets.json` holds.
 
 use aiken/collection/list
 use aiken/primitive/bytearray
@@ -364,8 +364,8 @@ test canonical_decodability_residue_is_convicted_by_the_sibling_family() {
 }
 
 // ---------------------------------------------------------------------------
-// Cost claim — the rows `scripts/canonical-decodability-exec-ledger-v1.json`
-// pins (§12.7)
+// Cost claim — the rows `demo/midgard-core/src/script-budgets.json` holds to
+// ceilings (§12.7)
 // ---------------------------------------------------------------------------
 
 /// §5.4's per-field byte bound, which is also `whole_view`'s per-opening bound

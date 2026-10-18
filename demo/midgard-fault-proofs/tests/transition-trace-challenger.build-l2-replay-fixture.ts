@@ -23,16 +23,7 @@ import {
   spendInputItem,
 } from "./transition-trace-challenger.native-material.js";
 
-export const buildL2ReplayFixture = async ({
-  matchingCommittedRoot,
-  withBranchProof = false,
-  survivorCount = withBranchProof ? 16 : 0,
-  spendInputCbor,
-  outputCbor,
-  replayedOutputCbor,
-  includeProducedPayloadUtxo = true,
-  producedWitnessValue = "descriptor",
-}: {
+type L2ReplayFixtureOptions = {
   readonly matchingCommittedRoot: boolean;
   readonly withBranchProof?: boolean;
   /** Ledger entries besides the spent one; 16 with `withBranchProof`. */
@@ -42,7 +33,19 @@ export const buildL2ReplayFixture = async ({
   readonly replayedOutputCbor?: Buffer;
   readonly includeProducedPayloadUtxo?: boolean;
   readonly producedWitnessValue?: "descriptor" | "fullOutputBytes";
-}): Promise<L2ReplayFixture> => {
+};
+
+/** The block before reconstruction, with the ledger its pre-root commits. */
+export const buildL2ReplayBlock = async ({
+  matchingCommittedRoot,
+  withBranchProof = false,
+  survivorCount = withBranchProof ? 16 : 0,
+  spendInputCbor,
+  outputCbor,
+  replayedOutputCbor,
+  includeProducedPayloadUtxo = true,
+  producedWitnessValue = "descriptor",
+}: L2ReplayFixtureOptions) => {
   const spentKey = spendInputCbor ?? spendInputItem(h32(81), 0);
   const spentOutputCbor = Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
   const spentValue = ledgerTrieValue(spentKey, spentOutputCbor);
@@ -132,7 +135,14 @@ export const buildL2ReplayFixture = async ({
   const encodedDeleteProof = sdkProof(deleteProof);
   const encodedInsertProof = sdkProof(insertProof);
   return {
-    reconstruction: await reconstruct(fixture),
+    block: fixture,
+    predecessorEntries: [
+      { outRef: spentKey, output: spentOutputCbor },
+      ...survivors.map(({ key, outputCbor: survivorOutputCbor }) => ({
+        outRef: key,
+        output: survivorOutputCbor,
+      })),
+    ],
     evidence: {
       stepIndex: 0n,
       spentUtxos: [
@@ -147,11 +157,22 @@ export const buildL2ReplayFixture = async ({
         {
           key: producedKey.toString("hex"),
           value: producedWitnessBytes.toString("hex"),
-          non_membership_proof: encodedInsertProof,
           insert_proof: encodedInsertProof,
         },
       ],
     },
+    replayedPostRoot,
+  };
+};
+
+export const buildL2ReplayFixture = async (
+  options: L2ReplayFixtureOptions,
+): Promise<L2ReplayFixture> => {
+  const { block, evidence, replayedPostRoot } =
+    await buildL2ReplayBlock(options);
+  return {
+    reconstruction: await reconstruct(block),
+    evidence,
     replayedPostRoot,
   };
 };

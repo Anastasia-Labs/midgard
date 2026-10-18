@@ -209,6 +209,7 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
       proof: makeTransitionProofMaterial(
         evidence.reconstruction,
         detection.proof,
+        detection.l2Replay,
       ),
       events: replay.referencesByEvent,
     });

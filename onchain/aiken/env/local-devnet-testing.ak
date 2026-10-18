@@ -40,6 +40,12 @@ pub const block_maturity_duration_v1: Int = 900_000
 
 pub const response_window_milliseconds: Int = 60_000
 
+pub const dispute_side_clock_milliseconds: Int = 3_600_000
+
+pub const dispute_max_validity_range_milliseconds: Int = 20_000
+
+pub const dispute_resolution_allowance_milliseconds: Int = 900_000
+
 pub const shift_duration: Int = 1_800_000
 
 pub const registration_duration: Int = 30_000
@@ -82,6 +88,10 @@ pub const max_inactivity_strikes: Int = 5
 
 pub const coins_per_utxo_byte: Int = 4_310
 
+pub const max_dispute_move_fee_lovelace: Int = 1_200_000
+
+pub const fraud_proof_output_lovelace: Int = 2_000_000
+
 pub const required_bond: Int = 900_000_000
 
 pub const slashing_penalty: Int = 500_000_000
@@ -97,3 +107,13 @@ pub const operator_allow_list: Option<List<ByteArray>> = None
 pub const fraud_prover_allow_list: Option<List<ByteArray>> = None
 
 pub const da_challenger_allow_list: Option<List<ByteArray>> = None
+
+pub const protocol_treasury_native_script_cbor: ByteArray =
+  #"830302838200581c706c616365686f6c6465723a747265730000000000000000000000018200581c706c616365686f6c6465723a747265730000000000000000000000028200581c706c616365686f6c6465723a74726573000000000000000000000003"
+
+/// The forfeit destination of the validation-dispute bond: the hash of
+/// `protocol_treasury_native_script_cbor`, never passed.
+pub const protocol_treasury_script_hash: ScriptHash =
+  builtin.blake2b_224(
+    builtin.cons_bytearray(0, protocol_treasury_native_script_cbor),
+  )

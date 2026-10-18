@@ -94,10 +94,6 @@ export const assertExactCommitRescueDaFrame = (input: {
           depositCount: BigInt(built.includedDepositEntries.length),
           transitionStepCount: BigInt(built.transitionStepCount),
         },
-        {
-          validationTracesRoot: built.validationTracesRoot,
-          validationTraceCount: BigInt(built.validationTraceCount),
-        },
       ),
     );
     yield* input.lucid.switchToOperatorsMainWallet;

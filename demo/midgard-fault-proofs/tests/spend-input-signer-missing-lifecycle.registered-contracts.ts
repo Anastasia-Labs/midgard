@@ -1,7 +1,10 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxWitnessSetCompact,
@@ -25,7 +28,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { type VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   applySpendInputSignerMissingScripts,
   prepareSpendInputSignerMissingEvidence as prepareSpendEvidence,
@@ -67,9 +69,6 @@ export const FAMILY = "spend-input-signer-missing" as const;
 export const REASON = "SpendInputSignerMissing" as const;
 
 export const MAXIMUM_WITNESSES = 318;
-
-export const MAXIMUM_SHAPE =
-  "318 address witnesses; 32,757-byte Certified field; 16-witness scan batches";
 
 /**
  * The smallest witness field the honest refusal run needs so that field 7
@@ -125,35 +124,19 @@ export const expectRefusedOnChain = async (
 
 export const coverage = createLifecycleCoverageRecorder();
 
-/** Every submitted transaction of the maximum and adjacent runs, by name. */
-export const measurements: VanRossemFitMeasurement[] = [];
-
 export type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
 export type Captured = Awaited<ReturnType<typeof captureEmulatorSubmission>>;
 
 export type Family = Awaited<ReturnType<typeof registeredContracts>>;
 
-export const recordMeasurements = (
-  name: string,
-  kind: VanRossemFitMeasurement["kind"],
-  maximumShape: string,
-  captured: Captured,
-): void => {
+export const recordMeasurements = (name: string, captured: Captured): void => {
   captured.measurements.forEach((measurement, index) => {
     const measurementName =
       captured.measurements.length === 1
         ? name
         : `${name}-${index.toString().padStart(2, "0")}`;
     expect(measurement.l1ByteMargin, measurementName).toBeGreaterThan(0);
-    measurements.push({
-      name: measurementName,
-      kind,
-      maximumShape,
-      signedBytes: measurement.completeSignedBytes,
-      memoryUnits: measurement.executionMemory,
-      cpuUnits: measurement.executionSteps,
-    });
   });
 };
 
@@ -261,6 +244,9 @@ export const witnessSetCompactHex = (nativeTx: MidgardNativeTxFull): string =>
  * step for step before the suite drives it.
  */
 export const registeredContracts = async (harness: Harness) => {
+  // Evidence preparation checks witnesses with the ledger's Ed25519 verifier,
+  // which answers only once libsodium has initialised.
+  await ledgerEd25519SignatureReady();
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,

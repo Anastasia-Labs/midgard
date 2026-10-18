@@ -1,5 +1,6 @@
 import { midgardFieldCommitmentFromItems } from "@al-ft/midgard-core";
 import {
+  decodeMidgardForcedTxCompact,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core/codec";
@@ -121,6 +122,51 @@ export const authenticatedL2TransactionSource = (
     throw transitionTraceError(
       "missingWitnessData",
       "L2 transaction source membership does not contain an authenticated canonical native transaction compact.",
+      cause,
+    );
+  }
+};
+
+/**
+ * Open an accepted forced leaf the way `proof.accepted_forced_leaf` does: the
+ * value is the canonical `ForcedInclusionTxV1` encoding, its verdict is
+ * `ForcedTxValid`, and its submitted compact is a canonical forced compact.
+ */
+export const authenticatedForcedTransactionSource = (
+  sourceMembership: SDK.RawRootMembershipProof,
+): {
+  readonly transactionBody: ReturnType<
+    typeof decodeMidgardForcedTxCompact
+  >["transactionBody"];
+  readonly txId: Buffer;
+} => {
+  try {
+    const value = exactHexBytes(
+      sourceMembership.value,
+      "Forced transaction source value",
+    );
+    const leaf = Data.from(value.toString("hex"), SDK.ForcedInclusionTxV1);
+    if (leaf.verdict !== "ForcedTxValid") {
+      throw new Error("forced leaf is not classified as ForcedTxValid");
+    }
+    if (Data.to(leaf, SDK.ForcedInclusionTxV1) !== value.toString("hex")) {
+      throw new Error("forced leaf bytes are not its canonical encoding");
+    }
+    const txId = exactHexBytes(leaf.tx_id, "Forced transaction leaf tx_id");
+    const compact = decodeMidgardForcedTxCompact(
+      exactHexBytes(
+        leaf.submitted_source.compact_cbor,
+        "Forced transaction submitted compact",
+      ),
+    );
+    return { transactionBody: compact.transactionBody, txId };
+  } catch (cause) {
+    if (cause instanceof TransitionTraceChallengerError) {
+      throw cause;
+    }
+    throw transitionTraceError(
+      "missingWitnessData",
+      "Forced transaction source membership does not contain an accepted canonical forced leaf.",
       cause,
     );
   }

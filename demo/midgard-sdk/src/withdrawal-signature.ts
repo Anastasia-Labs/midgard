@@ -1,4 +1,9 @@
+import {
+  ledgerSignatureVerifierUnavailable,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -24,23 +29,37 @@ const isHex = (value: string): boolean => /^[0-9a-fA-F]*$/.test(value);
 export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array =>
   withdrawalSigningMessageCbor(LucidData.to(body, WithdrawalBody));
 
-export const withdrawalSigningMessageCbor = (
-  rawBodyCbor: string,
-): Uint8Array => {
-  // Validate the structure without re-encoding the opaque destination datum.
-  LucidData.from(rawBodyCbor, WithdrawalBody);
-  // The signed preimage is the body exactly as `cbor.serialise` renders it
-  // on-chain (`withdrawal_signature_is_valid_v1`): definite asset maps, which
-  // Lucid's own encoder does not emit.
-  const bodyCbor = Buffer.from(
+/**
+ * The message `withdrawal_signature_is_valid_v1` checks, built from the body's
+ * own bytes: the body exactly as `cbor.serialise` renders it on-chain (definite
+ * asset maps, which Lucid's own encoder does not emit). The reader is
+ * iterative, so a datum nested as deep as a transaction allows still reads.
+ */
+const withdrawalSignedMessageCbor = (rawBodyCbor: string): Uint8Array =>
+  withdrawalSignedMessageOfBody(onChainBodyBytes(rawBodyCbor));
+
+/** The body's bytes as `cbor.serialise` renders them; raises on non-Data. */
+const onChainBodyBytes = (rawBodyCbor: string): Buffer =>
+  Buffer.from(
     aikenSerialisedPlutusDataCborPreservingMapOrder(rawBodyCbor),
     "hex",
   );
+
+/** The domain-separated hash of the body's on-chain bytes. */
+const withdrawalSignedMessageOfBody = (bodyCbor: Buffer): Uint8Array => {
   const preimage = Buffer.concat([
     Buffer.from(WITHDRAWAL_SIGNATURE_DOMAIN, "utf8"),
     bodyCbor,
   ]);
   return blake2b(preimage, { dkLen: 32 });
+};
+
+export const withdrawalSigningMessageCbor = (
+  rawBodyCbor: string,
+): Uint8Array => {
+  // Validate the structure without re-encoding the opaque destination datum.
+  LucidData.from(rawBodyCbor, WithdrawalBody);
+  return withdrawalSignedMessageCbor(rawBodyCbor);
 };
 
 export const signWithdrawalBody = (
@@ -73,9 +92,11 @@ export const publicKeyHashFromWithdrawalSignature = (
   ) {
     throw new Error("Withdrawal signature public key must be 32-byte hex.");
   }
-  return CML.PublicKey.from_bytes(Buffer.from(publicKeyHex, "hex"))
-    .hash()
-    .to_hex();
+  // `blake2b_224(verification_key)` over the raw key bytes, as the chain
+  // hashes it: any 32 bytes hash, curve point or not.
+  return Buffer.from(
+    blake2b(Buffer.from(publicKeyHex, "hex"), { dkLen: 28 }),
+  ).toString("hex");
 };
 
 export const verifyWithdrawalSignature = (
@@ -116,33 +137,47 @@ export const verifyWithdrawalSignatureCbor = (
     };
   }
 
+  const publicKeyHash = publicKeyHashFromWithdrawalSignature(signature);
+  if (publicKeyHash.toLowerCase() !== expectedOwnerHash.toLowerCase()) {
+    return {
+      valid: false,
+      reason: "owner_hash_mismatch",
+      publicKeyHash,
+    };
+  }
+  let body: Buffer;
   try {
-    const publicKey = CML.PublicKey.from_bytes(
-      Buffer.from(publicKeyHex, "hex"),
-    );
-    const publicKeyHash = publicKey.hash().to_hex();
-    if (publicKeyHash.toLowerCase() !== expectedOwnerHash.toLowerCase()) {
-      return {
-        valid: false,
-        reason: "owner_hash_mismatch",
-        publicKeyHash,
-      };
-    }
-    const verified = publicKey.verify(
-      withdrawalSigningMessageCbor(bodyCbor),
-      CML.Ed25519Signature.from_hex(signatureHex),
-    );
-    return verified
-      ? { valid: true, publicKeyHash }
-      : {
-          valid: false,
-          reason: "invalid_signature",
-          publicKeyHash,
-        };
+    // A withdrawal body, or no signature check: Data of another shape is
+    // refused as the body's, however it is signed. Read without recursion
+    // (as `LucidData.from` reads it), so a deeply nested datum still reads.
+    LucidData.castFrom(lucidDataFromCborIterative(bodyCbor), WithdrawalBody);
+    body = onChainBodyBytes(bodyCbor);
   } catch (cause) {
+    // Only the read is refused here: bytes that are not a withdrawal body
+    // are the body's fault. Nothing after it depends on the body's content.
     return {
       valid: false,
       reason: cause instanceof Error ? cause.message : String(cause),
     };
   }
+  // The ledger's own check, as `withdrawal_signature_is_valid_v1` runs it.
+  // A failure from here on (the preimage, its hash, the check itself) is a
+  // fault of this process: raised, never read as an invalid signature.
+  let verified: boolean;
+  try {
+    verified = verifyLedgerEd25519Signature(
+      Buffer.from(publicKeyHex, "hex"),
+      withdrawalSignedMessageOfBody(body),
+      Buffer.from(signatureHex, "hex"),
+    );
+  } catch (cause) {
+    throw ledgerSignatureVerifierUnavailable(cause);
+  }
+  return verified
+    ? { valid: true, publicKeyHash }
+    : {
+        valid: false,
+        reason: "invalid_signature",
+        publicKeyHash,
+      };
 };

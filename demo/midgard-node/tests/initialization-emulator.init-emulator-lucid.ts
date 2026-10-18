@@ -2,8 +2,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
   Emulator,
-  generateEmulatorAccount,
+  type EmulatorAccount,
   UTxO,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -108,15 +109,40 @@ export const buildAtomicInitializationTx = async (
 };
 
 /**
+ * Fixed wallets, so that under a fixed clock every transaction this emulator
+ * builds is the same bytes on every run and a value derived from it (the
+ * watcher's initialization frame) depends only on the blueprint. The clock
+ * stays the caller's: the node's reference-script publication compares the
+ * auth policy's deadline with `Date.now()`.
+ */
+const OPERATOR_SEED_PHRASE =
+  "you scissors negative normal letter vibrant baby museum limit lawn enhance surprise general leisure differ satoshi random scare cabin concert dentist ostrich satoshi ill";
+const REFERENCE_SCRIPTS_SEED_PHRASE =
+  "exercise segment hair weird float indoor drum pet symptom card aim weasel final mobile injury hollow cake garbage female column mountain bracket blind screen";
+
+const fixedEmulatorAccount = (
+  seedPhrase: string,
+  lovelace: bigint,
+): EmulatorAccount => ({
+  seedPhrase,
+  address: walletFromSeed(seedPhrase, {
+    addressType: "Base",
+    accountIndex: 0,
+    network: "Custom",
+  }).address,
+  assets: { lovelace },
+  privateKey: "",
+});
+
+/**
  * Builds a Lucid emulator instance for initialization tests.
  */
 export const initEmulatorLucid = async () => {
-  const operator = generateEmulatorAccount({
-    lovelace: 30_000_000_000n,
-  });
-  const referenceScripts = generateEmulatorAccount({
-    lovelace: 40_000_000_000n,
-  });
+  const operator = fixedEmulatorAccount(OPERATOR_SEED_PHRASE, 30_000_000_000n);
+  const referenceScripts = fixedEmulatorAccount(
+    REFERENCE_SCRIPTS_SEED_PHRASE,
+    40_000_000_000n,
+  );
   const emulator = new Emulator(
     [operator, referenceScripts],
     EMULATOR_PROTOCOL_PARAMETERS,
@@ -157,4 +183,49 @@ export const initEmulatorLucid = async () => {
     operatorSeedPhrase: operator.seedPhrase,
     referenceScriptAuth,
   };
+};
+
+/**
+ * The real atomic initialization in a fresh emulator, built and signed but
+ * not submitted. `acceptedFrames` maps the hash of every transaction the
+ * emulator accepted, from the reference-script publications on, to its CBOR;
+ * submitting `signed` adds it.
+ */
+export const signAtomicInitialization = async () => {
+  const setup = await initEmulatorLucid();
+  const {
+    emulator,
+    lucid,
+    referenceScriptsLucid,
+    nonceUtxo,
+    operatorSeedPhrase,
+    referenceScriptAuth,
+  } = setup;
+  const acceptedFrames = new Map<string, string>();
+  const submit = emulator.submitTx.bind(emulator);
+  emulator.submitTx = async (cbor) => {
+    const hash = await submit(cbor);
+    acceptedFrames.set(hash, cbor);
+    return hash;
+  };
+  const contracts = await loadContracts(
+    {
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    },
+    referenceScriptAuth,
+  );
+
+  emulator.awaitSlot(120);
+  const initTx = await buildAtomicInitializationTx(
+    lucid,
+    referenceScriptsLucid,
+    contracts,
+    nonceUtxo,
+    operatorSeedPhrase,
+  );
+  const signed = await (await initTx.complete({ localUPLCEval: true })).sign
+    .withWallet()
+    .complete();
+  return { ...setup, contracts, signed, acceptedFrames };
 };

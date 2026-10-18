@@ -86,7 +86,6 @@ export const createTransitionTraceLedgerReplay = async ({
       return {
         key: key.toString("hex"),
         value: value.toString("hex"),
-        non_membership_proof: proof,
         insert_proof: proof,
       };
     },

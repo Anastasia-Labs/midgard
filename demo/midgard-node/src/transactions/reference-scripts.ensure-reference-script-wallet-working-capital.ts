@@ -29,14 +29,12 @@ import {
   REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE,
   type ReferenceScriptResolved,
   type ReferenceScriptTarget,
-  SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
-  selectWalletFundingUtxos,
   sumWalletLovelace,
+  utxoOutRefKey,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import {
   awaitWalletViewUtxos,
   resolveLiveWalletUtxo,
-  resolveSpendableWalletUtxos,
 } from "./reference-scripts.wallet-view-utxos.js";
 import {
   handleSignSubmit,
@@ -44,6 +42,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
+import { readSelectedWalletView } from "./utils.wallet-view.js";
 
 export const resolveExistingReferenceScriptPublication = (
   lucid: LucidEvolution,
@@ -81,7 +80,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
   requiredPlainBalance: bigint,
-  reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  reservedFundingOutRefKeys: ReadonlySet<string>,
   preparationFeeAllowance: (plainFundingCount: number) => bigint = () => 0n,
 ): Effect.Effect<
   void,
@@ -147,11 +146,23 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     }
 
     const topUpAmount = targetPlainBalance - currentPlainBalance;
-    const fundingInputs = yield* resolveSpendableWalletUtxos(
+    // Coin selection funds the top-up from the funding wallet's whole view
+    // (§8.5), tokens and script-reference outputs included, less only the
+    // deployment's reserved initialization nonces.
+    const fundingWalletInputs = (yield* readSelectedWalletView(
       fundingLucid,
-      reservedFundingOutRefKeys,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: `Failed to read the funding wallet view while preparing ${scopeName} reference scripts: ${cause.message}`,
+            cause,
+          }),
+      ),
+    )).utxos.filter(
+      (utxo) => !reservedFundingOutRefKeys.has(utxoOutRefKey(utxo)),
     );
-    if (fundingInputs.length === 0) {
+    if (fundingWalletInputs.length === 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message: `No operator wallet funding UTxOs available to replenish ${scopeName} reference scripts`,
@@ -163,23 +174,6 @@ export const ensureReferenceScriptWalletWorkingCapital = (
         }),
       );
     }
-    const selectedFundingInputs = selectWalletFundingUtxos(
-      fundingInputs,
-      topUpAmount + SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
-    );
-    if (selectedFundingInputs.length === 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: `Failed to select operator wallet funding UTxOs to replenish ${scopeName} reference scripts`,
-          cause: `reference_script_wallet=${referenceScriptAddress},required_top_up=${topUpAmount.toString()},reserved_funding_outrefs=[${[
-            ...reservedFundingOutRefKeys,
-          ].join(
-            ",",
-          )}],${formatReferenceScriptWalletStatusCause(walletStatus)}`,
-        }),
-      );
-    }
-
     yield* Effect.logInfo(
       `Replenishing reference-script wallet for ${scopeName}: current_plain_balance=${currentPlainBalance.toString()},target_plain_balance=${targetPlainBalance.toString()},top_up_amount=${topUpAmount.toString()},reserved_funding_outrefs=[${[
         ...reservedFundingOutRefKeys,
@@ -188,7 +182,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
     const unsigned =
       yield* SDK.completeReferenceScriptWalletReplenishmentTxProgram({
         lucid: fundingLucid,
-        selectedFundingInputs,
+        fundingWalletInputs,
         referenceScriptAddress,
         topUpAmount,
       });

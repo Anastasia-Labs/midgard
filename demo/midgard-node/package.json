@@ -29,6 +29,7 @@
     "submit:l2-transfer": "pnpm run build && node dist/index.js submit-l2-transfer",
     "audit:blocks-immutable": "pnpm run build && node dist/index.js audit-blocks-immutable",
     "sweep-reference-script-wallet": "pnpm run build && node dist/index.js sweep-reference-script-wallet",
+    "strip-operator-wallet-script-refs": "pnpm run build && node dist/index.js strip-operator-wallet-script-refs",
     "db:migrate": "pnpm run build && node dist/index.js db:migrate",
     "db:status": "pnpm run build && node dist/index.js db:status",
     "db:verify": "pnpm run build && node dist/index.js db:verify",

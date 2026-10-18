@@ -12,6 +12,28 @@ export const TRANSITION_TRACE_YIELD_REFERENCES = {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 open yield",
   },
+  l2Delete: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 delete yield",
+  },
+  l2Outputs: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
+  },
+  l2OutputStep: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output step yield",
+  },
+  l2OutputDescriptor: {
+    entry:
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output descriptor yield",
+  },
+  l2OutputSummary: {
+    entry:
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 output summary yield",
+  },
   l2Summaries: {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 summaries yield",
@@ -19,18 +41,6 @@ export const TRANSITION_TRACE_YIELD_REFERENCES = {
   l2Replay: {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 replay yield",
-  },
-  claimStructure: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim structure yield",
-  },
-  claimSource: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim source yield",
-  },
-  claimEndpoints: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim endpoints yield",
   },
   depositProjection: {
     entry: "fraudProofTransitionTraceDepositProjectionWithdraw",

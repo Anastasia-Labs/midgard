@@ -44,7 +44,6 @@ export { main } from "./affected-channels.main.mjs";
 export {
   createTree,
   globToRegExp,
-  ledgerModules,
   loadTable,
   matchesGlob,
   parseArguments,

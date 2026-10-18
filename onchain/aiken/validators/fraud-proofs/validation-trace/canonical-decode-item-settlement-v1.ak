@@ -3,7 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/validation_machine/canonical_decode.{
   verify_canonical_decode_item_successor_v1,
 }
@@ -40,16 +40,15 @@ validator main(
           tx,
         )
       ct.Continue(Settle { input_index, output_index }) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          Anyone,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,

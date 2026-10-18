@@ -3,11 +3,14 @@
  * makes a landed row processed marks the rows it includes in its own
  * transaction (the processing insert, a reland, and the rebase that applies
  * the row), and a rollback that takes the block off the landed chain clears
- * them (`mempoolInclusions.ts`).
+ * them (`mempoolInclusions.ts`). A block's import checks leave with its
+ * row (`importChecks.ts`).
  */
 import { Effect } from "effect";
 
+import * as ImportChecksDB from "../database/importChecks.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
+import type { ImportChecks } from "../import-check/deadline.js";
 import {
   deleteRows,
   insertRow,
@@ -25,12 +28,18 @@ export const markRows = (
     { discard: true },
   );
 
-/** Processes a landed block: inserts its row and marks the pending-table
- * rows it includes. */
-export const processRow = (row: LandedBlockRow) =>
+/** Processes a landed block: inserts its row, marks the pending-table rows
+ * it includes, and records the import checks it leaves. */
+export const processRow = (row: LandedBlockRow, checks?: ImportChecks) =>
   Effect.gen(function* () {
     yield* insertRow(row);
     yield* markRows([row]);
+    if (checks !== undefined)
+      yield* ImportChecksDB.recordChecks(
+        row.headerHash,
+        checks.deadlineMs,
+        checks.checks,
+      );
   });
 
 /**
@@ -50,9 +59,11 @@ export const rollBackRows = (
       left.filter((row) => row.applied).map((row) => row.headerHash),
       "removed",
     );
-    yield* deleteRows(
-      left.filter((row) => !row.applied).map((row) => row.headerHash),
-    );
+    const deleted = left
+      .filter((row) => !row.applied)
+      .map((row) => row.headerHash);
+    yield* deleteRows(deleted);
+    yield* ImportChecksDB.deleteChecksOfBlocks(deleted);
     yield* MempoolInclusionsDB.clearMarks(left.map((row) => row.headerHash));
     yield* setState(
       relands.map((row) => row.headerHash),

@@ -7,19 +7,12 @@ import {
   applyMintDeclaredAssetLimitScripts,
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
 } from "../src/mint-declared-asset-limit/contracts.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "mint-declared-asset-limit",
-  "publication",
-  "fully applied testnet physical validator",
-);
 
 const blueprint = readBlueprint(realBlueprintPath);
 const missingTitles = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.filter(
@@ -65,11 +58,6 @@ describe("mintDeclaredAssetLimit signed publication fit", () => {
         script: step.spendingScript,
         label: `mint declared asset limit step ${index + 1}`,
       });
-      measuredFit.record(
-        `step-${index + 1}`,
-        published.publicationMeasurement,
-        "publication",
-      );
       console.info(
         `[mint-declared-asset-limit-publication] ${JSON.stringify({ step: index + 1, bytes: published.publicationMeasurement.completeSignedBytes, memory: published.publicationMeasurement.executionMemory.toString(), cpu: published.publicationMeasurement.executionSteps.toString() })}`,
       );

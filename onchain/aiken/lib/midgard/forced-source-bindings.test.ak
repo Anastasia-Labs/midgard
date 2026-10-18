@@ -142,7 +142,7 @@ test forced_source_kind_is_authenticated() fail {
   expect _view = codec.decode_tx_compact_view_v1(vt.Normal, compact)
 }
 
-test forced_source_rejection_preserves_claimed_delta() {
+test forced_source_rejection_preserves_the_immutable_context() {
   let pre = vt.ValidationMachineStateV1 {
     machine_version: 1,
     event_key_hash: tx_id,
@@ -158,7 +158,6 @@ test forced_source_rejection_preserves_claimed_delta() {
     execution_memory: 0,
     verdict: vt.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: commitment,
   }
   let post = vt.ValidationMachineStateV1 {
     ..pre,
@@ -188,7 +187,7 @@ test forced_source_rejection_preserves_claimed_delta() {
         ..witness,
         claimed_successor: vt.ValidationMachineStateV1 {
           ..post,
-          ledger_delta_root: tx_id,
+          prior_ledger_root: commitment,
         },
       },
     ),

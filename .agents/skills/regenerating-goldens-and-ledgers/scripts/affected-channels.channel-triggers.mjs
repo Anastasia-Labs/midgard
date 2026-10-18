@@ -7,7 +7,6 @@ import {
   directAikenImports,
   expandSets,
   isGlob,
-  ledgerModules,
   matchesGlob,
   producerClosure,
   run,
@@ -50,13 +49,6 @@ export const channelTriggers = (tree, table, channel) => {
       );
     }
   }
-  if (channel.ledger) {
-    const modules = ledgerModules(tree, channel.ledger);
-    const roots = modules.map((m) => m.file).filter(Boolean);
-    for (const file of aikenClosure(tree, roots)) {
-      addFile(file, "in the import closure of a measured module");
-    }
-  }
   const exclude = expandSets(channel.exclude, table);
   return { globs, outputGlobs, files, exclude };
 };
@@ -87,12 +79,12 @@ const generatorPatterns = [
   "**/scripts/generate-*",
   "**/scripts/sync-*",
   "**/scripts/write-*",
-  "onchain/aiken/scripts/verify-*-exec-ledger-*.mjs",
 ];
 
+// Both kinds are gone; a new file of either shape is flagged as unclaimed.
 const ledgerPatterns = [
-  "onchain/aiken/scripts/*-exec-ledger-*.json",
   "docs/fault-proofs/size-plans/*-fit-ledger.json",
+  "onchain/aiken/scripts/*-exec-ledger-*.json",
 ];
 
 const generatedNamePatterns = [
@@ -154,13 +146,11 @@ const carriesMarker = (tree, file) =>
 export const claims = (table) => {
   const generators = new Set();
   const outputs = [];
-  const ledgers = new Set();
   const packageScripts = new Set();
   const writerEnv = new Set();
   for (const channel of table.channels) {
     for (const generator of channel.generators ?? []) generators.add(generator);
     for (const output of channel.outputs ?? []) outputs.push(output);
-    if (channel.ledger) ledgers.add(channel.ledger);
     for (const script of channel.packageScripts ?? [])
       packageScripts.add(script);
     for (const name of channel.writerEnv ?? []) writerEnv.add(name);
@@ -170,7 +160,7 @@ export const claims = (table) => {
     if (entry.packageScript) packageScripts.add(entry.packageScript);
   }
   const isOutput = (file) => outputs.some((glob) => matchesGlob(file, glob));
-  return { generators, outputs, isOutput, ledgers, packageScripts, writerEnv };
+  return { generators, outputs, isOutput, packageScripts, writerEnv };
 };
 
 // A changed or tracked file that looks generated or generating but that the
@@ -186,11 +176,7 @@ export const unclaimed = (tree, table, files) => {
       problems.push(
         `${file} looks like a generator but no channel claims it (add it to channels.json)`,
       );
-    } else if (
-      looksLikeLedger(file) &&
-      !claimed.ledgers.has(file) &&
-      !claimed.isOutput(file)
-    ) {
+    } else if (looksLikeLedger(file) && !claimed.isOutput(file)) {
       problems.push(
         `${file} looks like a ledger but no channel claims it (add it to channels.json)`,
       );

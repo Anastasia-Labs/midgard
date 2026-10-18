@@ -277,6 +277,13 @@ test canonical_operator_directory_v1_typescript_abi_vectors() {
         hub_oracle_ref_input_index: 5,
       },
     ) == #"d87c9f0102581c11111111111111111111111111111111111111111111111111111111d8799f41aaff030405ff",
+    cbor.serialise(
+      active.UpdateBondHoldNewDefense {
+        active_operator: h28_a,
+        active_node_input_index: 1,
+        active_node_output_index: 2,
+      },
+    ) == #"d87d9f581c111111111111111111111111111111111111111111111111111111110102ff",
     cbor.serialise(active.Init { output_index: 1 }) == #"d8799f01ff",
     cbor.serialise(active.Deinit) == #"d87a80",
     cbor.serialise(

@@ -313,7 +313,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        { config: phaseAConfig, signatureVerifier: "node" },
+        { config: phaseAConfig },
       );
       const lag = monitorEventLoopDelay({ resolution: 1 });
       let accepted = 0;
@@ -367,7 +367,6 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         batchSize,
         poolSize,
         chunkSize,
-        signatureVerifier: "node",
         gateMode: assertChunk128CandidateGate
           ? "chunk128_candidate"
           : "production_default_chunk64",

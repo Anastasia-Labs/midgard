@@ -93,7 +93,15 @@ export type NothingToCommitOutput = {
 export type FailureOutput = {
   type: "FailureOutput";
   error: string;
+  /** Set when the failure is this process's Ed25519 verifier fault
+   * (`LedgerSignatureVerifierUnavailableError`): a local fault the parent
+   * retries for a bounded number of attempts without a successful commit
+   * before the node exits. */
+  localFault?: typeof VERIFIER_UNAVAILABLE_FAULT;
 };
+
+/** `FailureOutput.localFault` of an Ed25519 verifier fault. */
+export const VERIFIER_UNAVAILABLE_FAULT = "verifier_unavailable";
 
 export type RegisteredDueWorkOutput = {
   type: "RegisteredDueWorkOutput";

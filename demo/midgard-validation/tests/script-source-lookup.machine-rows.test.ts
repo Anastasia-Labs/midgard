@@ -1,39 +1,33 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   decodeSingleCbor,
-  encodeCbor,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { CML, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
-  runPhaseBValidationWithPatch,
 } from "../src/index.js";
 import {
-  buildValidationOneStepArgument,
-  validationMachineStateData,
-} from "../src/validation-machine-data.js";
+  AIKEN_ROWS_PATH,
+  executionScanVectors,
+  KEY,
+  machineTrace,
+  oneStepVector,
+  phaseB,
+  renderAikenRows,
+  type TraceCase,
+} from "./script-source-lookup.machine-rows.support.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
-  makeNativeTx,
   makeOutput,
-  makePhaseBCandidate,
   nativeScriptWitness,
   outRefFromByte,
-  outRefFromTxId,
 } from "./validation-fixtures.js";
 
 /**
@@ -47,13 +41,14 @@ import {
  * Every script-source step of stages 3, 9 and 11 of each row's trace is
  * exported to `script-source-lookup-rows.test.ak`, where the Aiken machine
  * checks it through the one-step dispatcher and the deployed split verifiers.
+ * The native rows export every execution scan step of a native spend, of a
+ * native mint, and of a native mint whose script evaluates false, which the
+ * Aiken machine checks through the one-step dispatcher: such a step binds its
+ * NativeScripts continuation by that continuation's hash.
  * Set `MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1` to rewrite that file;
  * otherwise this suite fails when the checked-in vectors are stale.
  */
 
-// A fixed key: the shared fixtures' key is fresh on every run, and these rows
-// are exported as checked-in vectors.
-const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x5a));
 const ADDRESS = Buffer.from(
   CML.EnterpriseAddress.new(
     0,
@@ -78,18 +73,6 @@ const minted = makeOutput(
   new Map([[policy.toString("hex"), new Map([[name.toString("hex"), 5n]])]]),
 );
 const mint = makeMintPreimageCbor(new Map([[policy, new Map([[name, 5n]])]]));
-
-/** The block an event's trace is built in. */
-const context = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
-  sourceKind: "normal" as const,
-  blockTimeMs: 1_750_000_000_000,
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  blockSlot: 100n,
-};
 
 const [spentA, refA, refB] = [0x71, 0x73, 0x74].map((byte) =>
   outRefFromByte(byte),
@@ -220,74 +203,112 @@ const ROWS: readonly Row[] = [
   },
 ];
 
-const txOptions = (row: Row) => ({
-  privateKey: KEY,
-  outputs: [minted],
-  mintPreimageCbor: mint,
-  referenceInputs: [...row.referenceInputs],
-  ...(row.inline ? { scriptWitnesses: [script] } : {}),
+const lookupCase = (row: Row): TraceCase => ({
+  spent: row.spent,
+  state: row.state,
+  options: {
+    outputs: [minted],
+    mintPreimageCbor: mint,
+    referenceInputs: row.referenceInputs,
+    ...(row.inline ? { scriptWitnesses: [script] } : {}),
+  },
+  rejectionCode: row.rejection?.code ?? null,
 });
 
-const phaseB = async (row: Row) => {
-  const result = await Effect.runPromise(
-    runPhaseBValidationWithPatch(
-      [makePhaseBCandidate({ spent: [...row.spent], ...txOptions(row) })],
-      new Map(row.state.map(([key, output]) => [key.toString("hex"), output])),
-      {
-        nowCardanoSlotNo: 100n,
-        bucketConcurrency: 1,
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      },
-    ),
-  );
-  return result.rejected.length === 0
-    ? { accepted: result.accepted.length, rejected: null }
-    : { accepted: result.accepted.length, rejected: result.rejected[0]! };
+const scriptLocked = makeOutput(
+  FUNDED_OUTPUT_LOVELACE,
+  Buffer.from(
+    CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_script(CML.ScriptHash.from_raw_bytes(policy)),
+    )
+      .to_address()
+      .to_raw_bytes(),
+  ),
+);
+const spentLocked = outRefFromByte(0x75);
+
+/** A native script no signer set satisfies, sourced from a reference input. */
+const unsatisfied = nativeScriptWitness({ type: "any", scripts: [] });
+const unsatisfiedPolicy = Buffer.from(hashScriptWitness(unsatisfied), "hex");
+const carryingUnsatisfied = encodeMidgardTxOutput({
+  address: ADDRESS,
+  value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
+  script_ref: unsatisfied,
+});
+
+/**
+ * A native script runs for one purpose, so its execution scan steps carry
+ * that purpose. `purposeKind` is the purpose's kind (0 spend, 1 mint); a row
+ * whose script evaluates false ends in the machine's rejection for that
+ * purpose.
+ */
+type NativeRow = {
+  readonly name: string;
+  readonly purposeKind: bigint;
+  readonly traceCase: TraceCase;
+  readonly falseAtIndex: bigint | null;
 };
 
-const machineTrace = async (row: Row) => {
-  const transaction = makeNativeTx({
-    spendInputs: [...row.spent],
-    ...txOptions(row),
-  });
-  const entries = row.state.map(([outRef, output]) => ({ outRef, output }));
-  const accepted = row.rejection === null;
-  const expectedLedgerOps = accepted
-    ? [
-        ...row.spent.map((key) => ({ type: "delete" as const, key })),
-        buildValidationMachineLedgerInsertOp({
-          key: outRefFromTxId(transaction.txId),
-          outputCbor: minted,
-        }),
-      ]
-    : [];
-  const ledgerMutationSteps = accepted
-    ? await buildValidationMachineLedgerMutationSteps({
-        initialEntries: entries,
-        operations: expectedLedgerOps,
-      })
-    : [];
-  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
-  return await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      ...context,
-      transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
-      priorUtxosRoot: accepted
-        ? ledgerMutationSteps[0]!.preRoot.toString("hex")
-        : unchangedRoot,
-      postUtxosRoot: accepted
-        ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
-        : unchangedRoot,
-      ledgerWitnessEntries: entries,
-      expectedLedgerOps,
-      ledgerMutationSteps,
-      expectedVerdict: accepted ? "accepted" : "rejected",
-      expectedRejectionCode: row.rejection?.code ?? null,
-    }),
-  );
-};
+const NATIVE_ROWS: readonly NativeRow[] = [
+  {
+    name: "native_spend_execution_scan",
+    purposeKind: 0n,
+    traceCase: {
+      spent: [spentLocked],
+      state: [[spentLocked, scriptLocked]],
+      options: { outputs: [funded], scriptWitnesses: [script] },
+      rejectionCode: null,
+    },
+    falseAtIndex: null,
+  },
+  {
+    name: "native_mint_execution_scan",
+    purposeKind: 1n,
+    traceCase: {
+      spent: [spentA],
+      state: [[spentA, funded]],
+      options: {
+        outputs: [minted],
+        mintPreimageCbor: mint,
+        scriptWitnesses: [script],
+      },
+      rejectionCode: null,
+    },
+    falseAtIndex: null,
+  },
+  {
+    name: "native_mint_false_execution_scan",
+    purposeKind: 1n,
+    traceCase: {
+      spent: [spentA],
+      state: [
+        [spentA, funded],
+        [refA, carryingUnsatisfied],
+      ],
+      options: {
+        outputs: [
+          makeOutput(
+            FUNDED_OUTPUT_LOVELACE,
+            ADDRESS,
+            new Map([
+              [
+                unsatisfiedPolicy.toString("hex"),
+                new Map([[name.toString("hex"), 5n]]),
+              ],
+            ]),
+          ),
+        ],
+        mintPreimageCbor: makeMintPreimageCbor(
+          new Map([[unsatisfiedPolicy, new Map([[name, 5n]])]]),
+        ),
+        referenceInputs: [refA],
+      },
+      rejectionCode: RejectCodes.NativeScriptInvalid,
+    },
+    falseAtIndex: 0n,
+  },
+];
 
 /** The script-sources control stage a witness carries (control item 9). */
 const scriptSourcesStage = (cbor: Buffer): number =>
@@ -315,112 +336,19 @@ const oneStepVectors = (trace: DeterministicValidationMachineTrace) =>
   trace.witnesses.flatMap((witness, stateIndex) => {
     if (witness.phase !== "scriptSources") return [];
     const stage = scriptSourcesStage(witness.cbor);
-    if (!ONE_STEP_STAGES.has(stage)) return [];
-    const argument = buildValidationOneStepArgument({ trace, stateIndex });
-    return [
-      {
-        stage,
-        pre: Data.to(
-          validationMachineStateData(trace.states[stateIndex]!) as never,
-        ),
-        transition: argument.transitionCbor.toString("hex"),
-        auxiliary: argument.auxiliaryCbor.toString("hex"),
-      },
-    ];
+    return ONE_STEP_STAGES.has(stage)
+      ? [oneStepVector(trace, stateIndex, stage)]
+      : [];
   });
-
-const AIKEN_ROWS_PATH = fileURLToPath(
-  new URL(
-    "../../../onchain/aiken/lib/midgard/validation-machine-tests/script-source-lookup-rows.test.ak",
-    import.meta.url,
-  ),
-);
-
-/**
- * Rows whose stage-9 match step is also checked against the skip that moves
- * past the matching source; the skip must be refused.
- */
-const SKIP_THE_MATCH_ROWS = new Set(["first_of_two_references"]);
-
-const renderAikenRows = (
-  rows: readonly {
-    readonly name: string;
-    readonly rejection: Row["rejection"];
-    readonly vectors: ReturnType<typeof oneStepVectors>;
-  }[],
-) => {
-  const lines = [
-    "// Generated by demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts",
-    "// (MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1). Do not edit by hand.",
-    "",
-    "use midgard/rejection_reason_v1",
-    "use midgard/validation_machine_tests/script_source_lookup_rows_support.{",
-    "  OneStepVector, refuses_skipping_the_match, rejects_with, verifies_every_step,",
-    "}",
-    "",
-  ];
-  for (const row of rows) {
-    lines.push(`const ${row.name}_steps: List<OneStepVector> =`);
-    lines.push("  [");
-    for (const vector of row.vectors)
-      lines.push(
-        "    OneStepVector {",
-        `      stage: ${vector.stage},`,
-        `      pre: #"${vector.pre}",`,
-        `      transition: #"${vector.transition}",`,
-        `      auxiliary: #"${vector.auxiliary}",`,
-        "    },",
-      );
-    lines.push("  ]", "");
-    lines.push(`test ${row.name}_steps_verify_on_chain() {`);
-    const reason = row.rejection?.reason as
-      | { UnusedScriptWitness: { script_index: bigint } }
-      | { ScriptSourceMissing: { purpose_kind: bigint; purpose_index: bigint } }
-      | undefined;
-    if (reason === undefined) {
-      lines.push(`  verifies_every_step(${row.name}_steps)`);
-    } else {
-      // Laid out as `aiken fmt` lays it out.
-      const aikenReason =
-        "UnusedScriptWitness" in reason
-          ? [
-              `      rejection_reason_v1.UnusedScriptWitness { script_index: ${reason.UnusedScriptWitness.script_index} },`,
-            ]
-          : [
-              "      rejection_reason_v1.ScriptSourceMissing {",
-              `        purpose_kind: ${reason.ScriptSourceMissing.purpose_kind},`,
-              `        purpose_index: ${reason.ScriptSourceMissing.purpose_index},`,
-              "      },",
-            ];
-      lines.push(
-        "  and {",
-        `    verifies_every_step(${row.name}_steps),`,
-        "    rejects_with(",
-        `      ${row.name}_steps,`,
-        ...aikenReason,
-        "    ),",
-        "  }",
-      );
-    }
-    lines.push("}", "");
-    if (SKIP_THE_MATCH_ROWS.has(row.name))
-      lines.push(
-        `test ${row.name}_refuses_skipping_the_match() {`,
-        `  refuses_skipping_the_match(${row.name}_steps)`,
-        "}",
-        "",
-      );
-  }
-  return lines.join("\n");
-};
 
 describe("script-source lookup: Phase B, trace builder and on-chain one-step agree", () => {
   const exported: Parameters<typeof renderAikenRows>[0][number][] = [];
+  const exportedNative: Parameters<typeof renderAikenRows>[1][number][] = [];
 
   it.each(ROWS)(
     "$name",
     async (row) => {
-      const verdict = await phaseB(row);
+      const verdict = await phaseB(lookupCase(row));
       if (row.rejection === null) {
         expect(verdict).toStrictEqual({ accepted: 1, rejected: null });
       } else {
@@ -429,7 +357,7 @@ describe("script-source lookup: Phase B, trace builder and on-chain one-step agr
         expect(verdict.rejected?.subject).toStrictEqual(row.rejection.subject);
       }
 
-      const trace = await machineTrace(row);
+      const trace = await machineTrace(lookupCase(row));
       expect(trace.verdict).toBe(
         row.rejection === null ? "accepted" : "rejected",
       );
@@ -446,11 +374,48 @@ describe("script-source lookup: Phase B, trace builder and on-chain one-step agr
     120_000,
   );
 
+  it.each(NATIVE_ROWS)(
+    "$name: every execution scan step is exported",
+    async (row) => {
+      const verdict = await phaseB(row.traceCase);
+      if (row.falseAtIndex === null) {
+        expect(verdict).toStrictEqual({ accepted: 1, rejected: null });
+      } else {
+        expect(verdict.accepted).toBe(0);
+        expect(verdict.rejected?.code).toBe(RejectCodes.NativeScriptInvalid);
+        expect(verdict.rejected?.subject).toStrictEqual({
+          arm: "ExecutionNativeScriptFalse",
+          purposeKind: row.purposeKind,
+          purposeIndex: row.falseAtIndex,
+        });
+      }
+      const trace = await machineTrace(row.traceCase);
+      expect(trace.verdict).toBe(
+        row.falseAtIndex === null ? "accepted" : "rejected",
+      );
+      const vectors = executionScanVectors(trace);
+      expect(vectors.length).toBeGreaterThan(0);
+      expect(
+        new Set(vectors.map(({ purposeKind }) => purposeKind)),
+      ).toStrictEqual(new Set([row.purposeKind]));
+      exportedNative.push({
+        name: row.name,
+        purposeKind: row.purposeKind,
+        falseAtIndex: row.falseAtIndex,
+        vectors,
+      });
+    },
+    120_000,
+  );
+
   it("the on-chain one-step vectors are the ones this table produces", () => {
     expect(exported.map(({ name }) => name)).toStrictEqual(
       ROWS.map(({ name }) => name),
     );
-    const rendered = renderAikenRows(exported);
+    expect(exportedNative.map(({ name }) => name)).toStrictEqual(
+      NATIVE_ROWS.map(({ name }) => name),
+    );
+    const rendered = renderAikenRows(exported, exportedNative);
     if (process.env.MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS === "1")
       writeFileSync(AIKEN_ROWS_PATH, rendered);
     expect(readFileSync(AIKEN_ROWS_PATH, "utf8")).toBe(rendered);

@@ -19,8 +19,9 @@
 //// puts every selector it is handed into ONE `aiken check` invocation and
 //// Aiken evaluates a module's selected tests in PARALLEL.
 ////
-//// The reading is pinned in `scripts/native-script-scan-exec-ledger-v1.json`
-//// and judged by `scripts/verify-native-script-scan-exec-ledger-v1.mjs`.
+//// The reading is held to a ceiling in
+//// `demo/midgard-core/src/script-budgets.json` and judged by
+//// `scripts/script-budgets.mjs`.
 
 use aiken/primitive/bytearray
 use midgard/native_script_payload_vectors_v1 as vectors

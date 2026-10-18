@@ -63,6 +63,39 @@ fn output_parts(
   }
 }
 
+/// The three summaries of the output whose committed bytes are `bytes`, from
+/// its terminal scan facts, its Value summary and, when it has an inline
+/// datum, that datum's summary.
+pub fn summary_of(
+  facts: scan.LedgerOutputScanControlV1,
+  bytes: ByteArray,
+  value: DataSummaryV1,
+  datum: Option<DataSummaryV1>,
+) -> (DataSummaryV1, DataSummaryV1, DataSummaryV1) {
+  script_context_v1.ledger_output_summaries_of_authenticated_parts_v1(
+    output_parts(facts, bytes),
+    value,
+    datum,
+  )
+}
+
+/// One transaction of the inline-datum walk, from `checkpoint`.
+pub fn resume_datum(
+  facts: scan.LedgerOutputScanControlV1,
+  bytes: ByteArray,
+  checkpoint: Walk,
+  witness: WalkWitness,
+) -> walk.Outcome {
+  walk.resume(
+    checkpoint,
+    bytes,
+    facts.datum_offset + facts.datum_length,
+    witness.restore,
+    witness.base,
+    witness.steps,
+  )
+}
+
 fn summarised(
   state: State,
   facts: scan.LedgerOutputScanControlV1,
@@ -70,15 +103,12 @@ fn summarised(
   datum: Option<DataSummaryV1>,
 ) -> State {
   expect Some(value) = state.value_summary
-  let summary = script_context_v1.ledger_output_summaries_of_authenticated_parts_v1(
-    output_parts(facts, bytes),
-    value,
-    datum,
-  )
   State {
     ..state,
     phase: 3,
-    summaries: OutputSummaries { summaries: [summary] },
+    summaries: OutputSummaries {
+      summaries: [summary_of(facts, bytes, value, datum)],
+    },
     datum_walk: None,
   }
 }
@@ -99,16 +129,7 @@ pub fn step(state: State, bytes: ByteArray, witness: WalkWitness) -> State {
         checkpoint
       }
     }
-    when
-      walk.resume(
-        checkpoint,
-        bytes,
-        facts.datum_offset + facts.datum_length,
-        witness.restore,
-        witness.base,
-        witness.steps,
-      )
-    is {
+    when resume_datum(facts, bytes, checkpoint, witness) is {
       Walking(next) -> {
         let raw: Data = next
         State { ..state, datum_walk: Some(raw) }

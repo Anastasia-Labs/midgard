@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 
+import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import {
   type LocalScriptEvalResult,
   type MidgardCekVerdictRequest,
@@ -12,6 +13,7 @@ import { Context, Data, Effect, Metric } from "effect";
 import {
   type ValidationJobRequest,
   type ValidationWorkerResponse,
+  type WorkerFailure,
 } from "../workers/utils/validation-pool.js";
 
 export class ValidationWorkerError extends Data.TaggedError(
@@ -19,7 +21,60 @@ export class ValidationWorkerError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly cause?: unknown;
+  /** An import-check job cancelled before it started (its `startBy`). */
+  readonly notStarted?: true;
 }> {}
+
+/** The failure a worker's `job_failed` response stands for: its Ed25519
+ * verifier's fault when the worker marks one (`localFault`), otherwise an
+ * error with the worker's text. */
+export const jobFailedError = (
+  slotIndex: number,
+  response: WorkerFailure,
+): Error => {
+  const error = new Error(response.error);
+  return response.localFault === undefined
+    ? error
+    : new LedgerSignatureVerifierUnavailableError(
+        `validation worker ${slotIndex}: Ed25519 verification is unavailable`,
+        { cause: error },
+      );
+};
+
+/** A validation job its worker did not answer within the pool's job
+ * timeout. */
+export class ValidationJobTimeoutError extends Error {
+  constructor(
+    readonly jobId: number,
+    readonly timeoutMs: number,
+  ) {
+    super(`validation job ${jobId} timed out after ${timeoutMs}ms`);
+    this.name = "ValidationJobTimeoutError";
+  }
+}
+
+/**
+ * A validation worker stopped: it raised an error it did not handle (Node's
+ * `error` event, `cause` the worker's error: an uncaught exception, a heap
+ * limit reached, or a module that did not load), or it exited with
+ * `exitCode`.
+ */
+export class ValidationWorkerStoppedError extends Error {
+  readonly exitCode: number | undefined;
+  constructor(
+    readonly workerIndex: number,
+    stop: { readonly error: unknown } | { readonly exitCode: number },
+  ) {
+    super(
+      "error" in stop
+        ? `validation worker ${workerIndex} stopped on an error it did not handle: ${stop.error instanceof Error ? stop.error.message : String(stop.error)}`
+        : `validation worker exited with code ${stop.exitCode}`,
+      "error" in stop ? { cause: stop.error } : undefined,
+    );
+    this.name = "ValidationWorkerStoppedError";
+    this.exitCode = "exitCode" in stop ? stop.exitCode : undefined;
+  }
+}
 
 export type ValidationPoolService = {
   readonly poolSize: number;
@@ -31,6 +86,35 @@ export type ValidationPoolService = {
   readonly evaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
+  /**
+   * Runs one verdict-mode script for the import checker, in `lane`. Both
+   * lanes together hold at most `size - 1` workers, so admission always
+   * keeps one:
+   * - `import`: below every other job. It starts only when no other job
+   *   waits and a worker is idle;
+   * - `backlog`: on the pool's reserved backlog share
+   *   (`importCheckBacklogShare`) ahead of every other job, so admission
+   *   load cannot starve it; past the share, as an `import` job.
+   * On a single-worker pool nothing is reserved: both lanes run only when
+   * admission is idle, on its one worker.
+   * The worker is started first if it has not, and is terminated `killMs`
+   * after the job starts; with `fresh`, an idle worker is replaced and
+   * started before the job runs. A kill, crash or worker error fails the
+   * effect; a job not started by `startBy` (epoch ms) is cancelled and
+   * fails with `notStarted`. Absent when the pool is disabled.
+   */
+  readonly evaluateImportCheck?: (
+    request: MidgardCekVerdictRequest,
+    options: {
+      readonly killMs: number;
+      readonly fresh: boolean;
+      readonly lane: ImportCheckLane;
+      readonly startBy?: number;
+    },
+  ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
+  /** The workers reserved for the backlog lane: 0 on a single-worker
+   * pool, else from 1 to `size - 1`. */
+  readonly importCheckBacklogShare?: number;
   /** HTTP advisory evaluation refuses when no reserved idle worker is available. */
   readonly tryEvaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
@@ -57,6 +141,20 @@ export type PendingJob = {
   readonly reject: (error: ValidationWorkerError) => void;
 };
 
+/** The import checker's lanes on the pool (`evaluateImportCheck`). */
+export type ImportCheckLane = "import" | "backlog";
+
+/** An import-check job, with its own kill. */
+export type BackgroundJob = PendingJob & {
+  readonly killMs: number;
+  readonly fresh: boolean;
+  readonly lane: ImportCheckLane;
+  /** Cancelled when not started by this time (epoch ms). */
+  readonly startBy?: number;
+  /** The timer that cancels it, while it waits. */
+  cancel?: NodeJS.Timeout;
+};
+
 export type WorkerSlot = {
   readonly index: number;
   worker: Worker;
@@ -65,6 +163,15 @@ export type WorkerSlot = {
   restartAttempt: number;
   restarting: boolean;
   inFlightStartedAt: number;
+  /** The worker answered a job, so it has started. */
+  started: boolean;
+  /** The lane of the in-flight import-check job; null for any other job. */
+  lane: ImportCheckLane | null;
+  /** The import-check job this slot was replaced for, run once it starts. */
+  reservedFor: BackgroundJob | null;
+  /** The lane of the import-check job this failed slot ran: it stays held
+   * by that lane until its replacement is up. */
+  heldLane: ImportCheckLane | null;
 };
 
 export const poolSizeGauge = Metric.gauge("validation_pool_size", {

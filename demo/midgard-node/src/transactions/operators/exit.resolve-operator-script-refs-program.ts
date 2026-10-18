@@ -25,7 +25,10 @@ import {
   type TxSignError,
   type TxSubmitError,
 } from "../utils.js";
-import { OperatorFundingShortfall } from "./funding-preflight.js";
+import {
+  OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
+} from "./funding-preflight.js";
 
 // ---------------------------------------------------------------------------
 // Economics
@@ -85,6 +88,7 @@ export type OperatorExitError =
   | SDK.StateQueueError
   | SDK.OperatorExitError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | OperatorExitRefusal
   | TxSignError
   | TxSubmitError
