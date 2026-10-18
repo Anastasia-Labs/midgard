@@ -27,86 +27,89 @@ const undecodableReason = (cls: bigint): SDK.RejectionReason =>
   }) as SDK.RejectionReason;
 
 describe("witnessScriptDecoding Plutus items", () => {
-  // Held until the program-bytes migration: the workflow derives no evidence
-  // for the item, while the chain still convicts it by its record. Lifting the
-  // hold makes the workflow derive this evidence again.
-  it("holds an accepted undecodable Plutus item from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing, foreign or misplaced record first", async () => {
-    const h = await makeHarness();
-    const shape = undecodablePlutusShape();
-    const { block, setup, inclusionOf } = await h.acceptedBlock(shape);
-    const evidence = acceptedEvidence(shape);
-    expect(evidence.resultClass).toBe(101);
-    expectReplayHeld(block, [shape], ["witness-plutus-script-undecodable"]);
-    const emulator = h.harness.emulator;
-    const record = await recordPlutusItem(emulator, h.lucid, shape.items[0]!);
-    const foreign = await recordPlutusItem(
-      emulator,
-      h.lucid,
-      plutusShape().items[0]!,
-    );
-    if (record === undefined || foreign === undefined)
-      throw new Error("Plutus items take a record");
-    const published = await h.publishField(shape, null);
+  // Temporary: while the hold applies, the workflow derives no evidence for
+  // this item. When the hold helper's set
+  // (src/workflow/plutus-script-item-hold.ts) is emptied, this row flips back
+  // to deriving the evidence.
+  describe("while Plutus script items are held (inverts when the hold lifts)", () => {
+    it("holds an accepted undecodable Plutus item from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing, foreign or misplaced record first", async () => {
+      const h = await makeHarness();
+      const shape = undecodablePlutusShape();
+      const { block, setup, inclusionOf } = await h.acceptedBlock(shape);
+      const evidence = acceptedEvidence(shape);
+      expect(evidence.resultClass).toBe(101);
+      expectReplayHeld(block, [shape], ["witness-plutus-script-undecodable"]);
+      const emulator = h.harness.emulator;
+      const record = await recordPlutusItem(emulator, h.lucid, shape.items[0]!);
+      const foreign = await recordPlutusItem(
+        emulator,
+        h.lucid,
+        plutusShape().items[0]!,
+      );
+      if (record === undefined || foreign === undefined)
+        throw new Error("Plutus items take a record");
+      const published = await h.publishField(shape, null);
 
-    const bound = await h.step01Accepted(
-      await h.init(setup.fraudulentBlockOutRef, null),
-      inclusionOf(shape),
-      setup.fraudulentBlockOutRef,
-      0n,
-    );
-    await expectOnchainRefusal(() =>
-      h.step02Raw(bound, shape, evidence, published),
-    );
-    await expectOnchainRefusal(() =>
-      h.step02Raw(bound, shape, evidence, published, {
-        scriptDecodeRecordUtxo: foreign,
-      }),
-    );
-    const sorted = [...published.carriageUtxos, h.ref(1), record].sort(
-      compareOutRefs,
-    );
-    await expectOnchainRefusal(() =>
-      h.step02Raw(bound, shape, evidence, published, {
-        scriptDecodeRecordUtxo: record,
-        recordReferenceInputIndex: BigInt(sorted.indexOf(h.ref(1))),
-      }),
-    );
-    // The same opening with the record in place is accepted.
-    const control = await h.step02Raw(bound, shape, evidence, published, {
-      scriptDecodeRecordUtxo: record,
-    });
-    await h.cancel(control.nextThreadOutRef, 2);
-
-    const init = await h.init(
-      setup.fraudulentBlockOutRef,
-      "accepted-plutus-init",
-    );
-    const opened = await h.step02(
-      await h.step01Accepted(
-        init,
+      const bound = await h.step01Accepted(
+        await h.init(setup.fraudulentBlockOutRef, null),
         inclusionOf(shape),
         setup.fraudulentBlockOutRef,
         0n,
-        "accepted-plutus-step01",
-      ),
-      shape,
-      evidence,
-      "accepted-plutus-step02",
-    );
-    expect(opened.scanState.result_class).toBe(101n);
-    const closed = await h.scanToClose(
-      opened.nextThreadOutRef,
-      evidence,
-      "accepted-plutus",
-    );
-    await h.step04(
-      closed.threadOutRef,
-      evidence,
-      "accepted-plutus-step04-proof-mint",
-    );
-    await h.expectThreadsGone(setup.headerHash);
-    await h.remove(setup.headerHash, "accepted-plutus-remove");
-  }, 900_000);
+      );
+      await expectOnchainRefusal(() =>
+        h.step02Raw(bound, shape, evidence, published),
+      );
+      await expectOnchainRefusal(() =>
+        h.step02Raw(bound, shape, evidence, published, {
+          scriptDecodeRecordUtxo: foreign,
+        }),
+      );
+      const sorted = [...published.carriageUtxos, h.ref(1), record].sort(
+        compareOutRefs,
+      );
+      await expectOnchainRefusal(() =>
+        h.step02Raw(bound, shape, evidence, published, {
+          scriptDecodeRecordUtxo: record,
+          recordReferenceInputIndex: BigInt(sorted.indexOf(h.ref(1))),
+        }),
+      );
+      // The same opening with the record in place is accepted.
+      const control = await h.step02Raw(bound, shape, evidence, published, {
+        scriptDecodeRecordUtxo: record,
+      });
+      await h.cancel(control.nextThreadOutRef, 2);
+
+      const init = await h.init(
+        setup.fraudulentBlockOutRef,
+        "accepted-plutus-init",
+      );
+      const opened = await h.step02(
+        await h.step01Accepted(
+          init,
+          inclusionOf(shape),
+          setup.fraudulentBlockOutRef,
+          0n,
+          "accepted-plutus-step01",
+        ),
+        shape,
+        evidence,
+        "accepted-plutus-step02",
+      );
+      expect(opened.scanState.result_class).toBe(101n);
+      const closed = await h.scanToClose(
+        opened.nextThreadOutRef,
+        evidence,
+        "accepted-plutus",
+      );
+      await h.step04(
+        closed.threadOutRef,
+        evidence,
+        "accepted-plutus-step04-proof-mint",
+      );
+      await h.expectThreadsGone(setup.headerHash);
+      await h.remove(setup.headerHash, "accepted-plutus-remove");
+    }, 900_000);
+  });
 
   it("contradicts a wrongful undecodable rejection of a decodable Plutus item", async () => {
     const h = await makeHarness();

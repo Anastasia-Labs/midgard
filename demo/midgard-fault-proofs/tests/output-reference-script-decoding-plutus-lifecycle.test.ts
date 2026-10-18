@@ -76,93 +76,96 @@ const itemOf = (evidence: OutputReferenceScriptDecodingEvidence) =>
   Buffer.from(evidence.referenceScriptItemHex, "hex");
 
 describe("outputReferenceScriptDecoding Plutus reference scripts", () => {
-  // Held until the program-bytes migration: the workflow derives no evidence
-  // for the script, while the chain still convicts it by its record. Lifting
-  // the hold makes the workflow derive this evidence again.
-  it("holds an accepted undecodable Plutus reference script from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing or foreign record first", async () => {
-    const context = await makeOutputReferenceHarness();
-    const block = await commitAcceptedBlock(context, [
-      subjectTransaction([outputWithPlutusScript(UNDECODABLE)], 7n),
-    ]);
-    const [subject] = block.subjects;
-    if (subject === undefined) throw new Error("accepted subject absent");
-    expect(() =>
-      deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock({
-        headerHash: block.setup.headerHash,
-        transactions: [
-          {
-            nodeTxId: subject.nativeTxId,
-            txCbor: subject.canonicalCbor.toString("hex"),
-          },
-        ],
-        reconstruction: { forcedTransactions: [] },
-      } as never),
-    ).toThrow(/yielded no exact finding/u);
-    const stages = makeOutputReferenceStages({
-      context,
-      fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
-      ...(await publishFamilyReferences(
+  // Temporary: while the hold applies, the workflow derives no evidence for
+  // this reference script. When the hold helper's set
+  // (src/workflow/plutus-script-item-hold.ts) is emptied, this row flips back
+  // to deriving the evidence.
+  describe("while Plutus script items are held (inverts when the hold lifts)", () => {
+    it("holds an accepted undecodable Plutus reference script from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing or foreign record first", async () => {
+      const context = await makeOutputReferenceHarness();
+      const block = await commitAcceptedBlock(context, [
+        subjectTransaction([outputWithPlutusScript(UNDECODABLE)], 7n),
+      ]);
+      const [subject] = block.subjects;
+      if (subject === undefined) throw new Error("accepted subject absent");
+      expect(() =>
+        deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock({
+          headerHash: block.setup.headerHash,
+          transactions: [
+            {
+              nodeTxId: subject.nativeTxId,
+              txCbor: subject.canonicalCbor.toString("hex"),
+            },
+          ],
+          reconstruction: { forcedTransactions: [] },
+        } as never),
+      ).toThrow(/yielded no exact finding/u);
+      const stages = makeOutputReferenceStages({
         context,
-        createMeasurementRecorder(),
-        "output-reference-plutus",
-      )),
-    });
-    const evidence = prepareOutputReferenceScriptDecodingEvidence({
-      subject: acceptedVerdictSubject(subject.nativeTxId),
-      outputIndex: 0,
-      canonicalTransactionCbor: subject.canonicalCbor,
-    });
-    expect(evidence.resultClass).toBe(REFUSED_CLASS_3);
-    const { emulator, proverLucid } = context.harness;
-    const record = await recordPlutusItem(
-      emulator,
-      proverLucid,
-      itemOf(evidence),
-    );
-    const foreign = await recordPlutusItem(
-      emulator,
-      proverLucid,
-      DECODABLE_ITEM,
-    );
-    if (record === undefined || foreign === undefined)
-      throw new Error("Plutus items take a record");
-
-    const s1 = await stages.step01Accepted(
-      (await stages.init()).result,
-      evidence,
-      subject.txInclusion,
-    );
-    const s2 = await stages.step02(
-      s1.result.nextThreadOutRef,
-      evidence,
-      subject,
-    );
-    const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
-    for (const wrong of [null, foreign])
-      await expectOnchainRefusal(() =>
-        stages.step04(
-          s3.threadOutRef,
-          evidence,
-          subject.compactCborHex,
-          s2.result,
-          wrong,
-        ),
+        fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
+        ...(await publishFamilyReferences(
+          context,
+          createMeasurementRecorder(),
+          "output-reference-plutus",
+        )),
+      });
+      const evidence = prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject(subject.nativeTxId),
+        outputIndex: 0,
+        canonicalTransactionCbor: subject.canonicalCbor,
+      });
+      expect(evidence.resultClass).toBe(REFUSED_CLASS_3);
+      const { emulator, proverLucid } = context.harness;
+      const record = await recordPlutusItem(
+        emulator,
+        proverLucid,
+        itemOf(evidence),
       );
-    const s4 = await stages.step04(
-      s3.threadOutRef,
-      evidence,
-      subject.compactCborHex,
-      s2.result,
-      record,
-    );
-    expect(await resultClassOf(context, s4.result.nextThreadOutRef)).toBe(
-      BigInt(REFUSED_CLASS_3),
-    );
-    const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
-    expect(s5.result.closed).toBe(true);
-    const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
-    expect(s6.result.fraudProofUnit).toBeTruthy();
-  }, 900_000);
+      const foreign = await recordPlutusItem(
+        emulator,
+        proverLucid,
+        DECODABLE_ITEM,
+      );
+      if (record === undefined || foreign === undefined)
+        throw new Error("Plutus items take a record");
+
+      const s1 = await stages.step01Accepted(
+        (await stages.init()).result,
+        evidence,
+        subject.txInclusion,
+      );
+      const s2 = await stages.step02(
+        s1.result.nextThreadOutRef,
+        evidence,
+        subject,
+      );
+      const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
+      for (const wrong of [null, foreign])
+        await expectOnchainRefusal(() =>
+          stages.step04(
+            s3.threadOutRef,
+            evidence,
+            subject.compactCborHex,
+            s2.result,
+            wrong,
+          ),
+        );
+      const s4 = await stages.step04(
+        s3.threadOutRef,
+        evidence,
+        subject.compactCborHex,
+        s2.result,
+        record,
+      );
+      expect(await resultClassOf(context, s4.result.nextThreadOutRef)).toBe(
+        BigInt(REFUSED_CLASS_3),
+      );
+      const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
+      expect(s5.result.closed).toBe(true);
+      const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
+      expect(s6.result.fraudProofUnit).toBeTruthy();
+    }, 900_000);
+  });
 
   it("contradicts a wrongful undecodable rejection of a decodable Plutus reference script, and refuses to contradict an honest one", async () => {
     const context = await makeOutputReferenceHarness();
