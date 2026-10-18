@@ -442,6 +442,21 @@ describe("--verify-table", () => {
     );
   });
 
+  test("a generator naming an Aiken path among its declared inputs passes", () => {
+    const table = structuredClone(fixtureTable);
+    table.channels[0].inputs.push("onchain/aiken/lib/m/helper.ak");
+    const root = makeRepository("verify-generator-input", { table });
+    write(
+      root,
+      "demo/pkg-a/scripts/generate-x.mjs",
+      'const a = "onchain/aiken/lib/m/x-golden.test.ak";\nconst b = "onchain/aiken/lib/m/helper.ak";\n',
+    );
+    git(root, "add", "-A");
+    const result = invoke(withRoot(root, "--verify-table"));
+    assert.equal(result.code, 0, result.out);
+    assert.match(result.out, /verify-table: ok/u);
+  });
+
   test("a CI step that runs something else fails", () => {
     const root = makeRepository("verify-ci-token");
     write(
