@@ -135,6 +135,9 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
     OutputReferenceScriptMalformed: { output_index: 0n },
   },
   redeemerCanonicity: { RedeemerMalformed: { redeemer_index: 0n } },
+  missingRedeemer: {
+    RedeemerMissing: { purpose_kind: 2n, purpose_index: 0n },
+  },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

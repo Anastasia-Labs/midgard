@@ -14,6 +14,7 @@ export * from "./min-ada/index.js";
 export * from "./min-fee-contracts.js";
 export * from "./min-fee-submit-common.js";
 export * from "./mint-authorization/index.js";
+export * from "./missing-redeemer/index.js";
 export * from "./missing-signature/index.js";
 export * from "./native-script-decoding/index.js";
 export * from "./native-script-invalid/index.js";
