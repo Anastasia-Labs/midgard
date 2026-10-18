@@ -1080,11 +1080,6 @@
     "reason": "The first-fault traversal twin keeps its phase table, comparators and leafAdmitsFault declaration for declaration beside first_fault_v1, so the two read side by side. Reducing it is a separately proved pure-move split, not part of a phase-table change."
   },
   {
-    "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
-    "max": 761,
-    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
-  },
-  {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
     "max": 562,
     "reason": "buildHistoryRetirementProgram is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Passes the node's explicit wallet-view inputs to fee-input selection and completion."
