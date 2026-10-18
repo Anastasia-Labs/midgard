@@ -181,4 +181,11 @@ export const CARDANO_BOUNDARY_REFUSED = [
     49,
     "unknown CBOR tag 3 in Plutus Data",
   ],
+  [
+    "serialiseData of constructor 2^64 over [I 2], past the word64 index",
+    "0101003766980111d86682c2490100000000000000009f02ff0001",
+    "expected word",
+    49,
+    "CBOR tag 102 Plutus Data index is not a word64",
+  ],
 ] as const;
