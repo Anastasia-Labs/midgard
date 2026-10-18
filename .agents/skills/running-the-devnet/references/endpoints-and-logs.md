@@ -403,6 +403,13 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   Inspect the named event's rows.
 - `l1_event_undecodable:<count>` (a detail): that many projected events do
   not decode into the node's rows and are left out; `refused` names them.
+- `landed_frontier_prune_floor:<slots>` (a detail): the landed frontier's
+  prune floor holds the follower's prune boundary that many slots back, so
+  the store keeps the facts unprocessed landed blocks are judged on. In
+  normal operation it holds the boundary back by about the event wait plus
+  the event validity range plus the unmerged span after the frontier; a lag
+  of that size is expected and the node stays ready. Look into a lag that
+  keeps growing past it.
 - `l1_own_block_forced_order_orphaned:<count>` (a detail): that many forced
   rows of landed own blocks have an order that left the chain. The node
   follows the block and stays ready; the forced-order hook logs a warning
@@ -465,8 +472,18 @@ reason=landed_block_event_unknown`); a restart meets the same bound again.
   Reset the follower store (`midgard-l1-follower reset --to-origin`, with
   `l1Origin` early enough for the detail's slot) or resync the node, then
   restart.
-- `landed_block_forced_order_pending`: a forced order in a foreign block's
-  window cannot be read back yet. Wait.
+- `landed_block_forced_order_pending`: a forced order admitted in a foreign
+  block's window cannot be read back from the follower's facts at the view
+  (its output is absent, not authentic, or has no datum there). The landed
+  frontier's prune floor keeps every order and output the window of a block
+  after the frontier can admit, so this arises only from a store pruned
+  while the floor did not apply or from inconsistent facts, never from the
+  block. A local fault on the block: it is read again every run, and after
+  eight runs in a row end on it with no progress past it the node exits
+  non-zero (`node_transient_budget_exhausted source=driver
+reason=landed_block_forced_order_pending`); a restart meets the same bound
+  again. Reset the follower store (`midgard-l1-follower reset --to-origin`)
+  or resync the node, then restart.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it

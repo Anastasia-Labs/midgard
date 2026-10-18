@@ -1,7 +1,8 @@
 /**
  * The coalesced runner's bound on a local fault: a run that ends with a
- * block held on `landed_block_verifier_unavailable`, `landed_block_local_fault`
- * or `landed_block_replay_incomplete` is retried on the capped backoff, and
+ * block held on `landed_block_verifier_unavailable`, `landed_block_local_fault`,
+ * `landed_block_replay_incomplete` or `landed_block_forced_order_pending` is
+ * retried on the capped backoff, and
  * once a fixed number of runs ended on a local fault, of any of these kinds,
  * with no progress past the faulted blocks the runner stops and reports it;
  * the node exits non-zero on that report for its supervisor to restart it.
@@ -24,6 +25,7 @@ import {
 } from "../src/l1-events/driver.js";
 import {
   combineHolds,
+  LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
 } from "../src/landed-blocks/holds.js";
@@ -56,7 +58,7 @@ const faulted = (block: string): readonly DriverHold[] => [
 /** The held run processing ends on when replaying `block` fails locally as
  * `kind`. */
 const failedLocally =
-  (kind: "local_fault" | "incomplete") =>
+  (kind: "local_fault" | "incomplete" | "forced_order_pending") =>
   (block: string): readonly DriverHold[] => [
     combineHolds([
       replayOutcomeHold(kind, `block ${block}: ${kind}: injected`, block),
@@ -64,6 +66,7 @@ const failedLocally =
   ];
 const computeFault = failedLocally("local_fault");
 const incomplete = failedLocally("incomplete");
+const forcedOrderPending = failedLocally("forced_order_pending");
 
 /** A run free of the fault, still held (a wait) so the runner retries it. */
 const waiting = (block: string): readonly DriverHold[] => [
@@ -282,6 +285,11 @@ describe("coalescedRunner's local-fault bound", () => {
   it.each([
     ["local_fault", computeFault, LANDED_BLOCK_LOCAL_FAULT],
     ["incomplete", incomplete, LANDED_BLOCK_REPLAY_INCOMPLETE],
+    [
+      "forced_order_pending",
+      forcedOrderPending,
+      LANDED_BLOCK_FORCED_ORDER_PENDING,
+    ],
   ] as const)(
     "retries the %s hold on the backoff within the same bound, then stops and reports it",
     async (_kind, fail, reason) => {

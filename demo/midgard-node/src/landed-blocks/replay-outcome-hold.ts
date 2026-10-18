@@ -40,9 +40,12 @@ export type ReplayHoldKind = keyof typeof HOLD_OF;
  * local failure (`local_fault`, `incomplete`, `verifier_unavailable`: this
  * node's own computation, or its verifier, failed), and an event the facts
  * lack where they do not cover the block's range (`event_unknown`: a gap in
- * this node's facts), is a `localFault` on block `headerHash`, the block it
- * stopped at, whatever the failure's text: retried within the runner's
- * bound.
+ * this node's facts), or an admitted forced order the facts cannot read back
+ * (`forced_order_pending`: the landed frontier's prune floor keeps every
+ * order a replayed block's window can admit, so only a store pruned while
+ * the floor did not apply or inconsistent facts leave one unread), is a
+ * `localFault` on block `headerHash`, the block it stopped at, whatever the
+ * failure's text: retried within the runner's bound.
  */
 export const replayOutcomeHold = (
   kind: ReplayHoldKind,
@@ -55,7 +58,8 @@ export const replayOutcomeHold = (
     : kind === "local_fault" ||
         kind === "incomplete" ||
         kind === "verifier_unavailable" ||
-        kind === "event_unknown"
+        kind === "event_unknown" ||
+        kind === "forced_order_pending"
       ? localFault(hold, headerHash)
       : hold;
 };

@@ -65,7 +65,16 @@ export const LANDED_BLOCK_DA_REFETCH_PENDING =
  * inclusion time is outside the block's window.
  */
 export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
-/** A forced order admitted in a foreign block's window cannot be read back from the facts yet. */
+/**
+ * A forced order admitted in a foreign block's window cannot be read back
+ * from the facts at the view: its output is absent, not authentic, or has no
+ * datum there. The landed frontier's prune floor keeps the orders and
+ * outputs the window of every block after the frontier can admit, so this
+ * arises only from a store pruned while the floor did not apply or from
+ * inconsistent facts, never from the block. It is a local fault on the
+ * block, retried within the runner's bound, after which the node exits (a
+ * follower store reset or resync restores the facts).
+ */
 export const LANDED_BLOCK_FORCED_ORDER_PENDING =
   "landed_block_forced_order_pending";
 /**

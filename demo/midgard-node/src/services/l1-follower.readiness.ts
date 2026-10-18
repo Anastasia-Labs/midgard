@@ -47,6 +47,10 @@
  * `intent_journal_replay_prune_floor` for the intent journal's replay,
  * `operator_activity_record_prune_floor` for the operator-activity record).
  * The facts the floor still needs are kept; the store grows until it moves.
+ * In normal operation the landed-frontier floor holds the boundary back by
+ * about the event wait plus the event validity range plus the unmerged span
+ * after the frontier: a lag of that size is expected and the node stays
+ * ready; a lag that keeps growing past it is worth looking into.
  *
  * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
  * the slot of its merge and that merge's level (`landed`, `safe`, `final`).

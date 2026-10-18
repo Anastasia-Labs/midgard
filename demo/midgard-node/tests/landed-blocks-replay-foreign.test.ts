@@ -294,7 +294,7 @@ describe("foreign replay: forced orders read from the follower facts", () => {
     });
   });
 
-  it("an admitted in-window order whose output cannot be read back is a wait", async () => {
+  it("an admitted in-window order whose output cannot be read back is pending, not invalid", async () => {
     const { store, chain } = await follow();
     const order = await fixtureOrderTx(chain, FIXTURE_ORDER_ID);
     const [hash] = await chain.forward([order]);

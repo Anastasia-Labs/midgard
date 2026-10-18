@@ -61,7 +61,8 @@ export type Replayed = Readonly<{
  *   could fall in (a known one outside the window, or an unknown one where
  *   they do, is `invalid`);
  * - `forced_order_pending`: a forced order admitted in the block's window
- *   cannot be read back from the facts at the view yet;
+ *   cannot be read back from the facts at the view (a gap in this node's
+ *   facts, bounded as a local fault; see `holds.ts`);
  * - `local_fault`: this node's own computation failed where the block's
  *   input cannot make it fail;
  * - `incomplete`: the import failed for a reason it cannot pin on the
