@@ -1,18 +1,19 @@
 /**
- * The production foreign replayer on a real follower store: a deposit or
- * withdrawal a block names and the view does not know is the block's fault
- * (`invalid`) once the facts cover the block's range, and a bounded wait
- * (`event_unknown`) while they do not. The facts cover it when the
- * follower store is still in the view's generation, its origin is at or
- * before the earliest slot the block's events can be admitted at (`T(B)`:
- * the window's start less the event wait and the longest event validity
- * range) and the prune is still below the slot the block's node output
- * entered the facts at.
+ * The production foreign replayer on a real follower store: a deposit,
+ * withdrawal or forced order a block names and the view does not know is the
+ * block's fault (`invalid`) once the facts cover the block's range, and a
+ * bounded wait (`event_unknown`) while they do not. The facts cover it when
+ * the follower store is still in the view's generation, its origin is at or
+ * before `T(B)` (the window's start less the event wait and the longest
+ * event validity range, as a slot: the block's events are admitted after
+ * it), and the prune is still below the slot the block's node output
+ * entered the facts at (for a forced order, at or before `T(B)`).
  *
  * The bench's slot configuration maps slot `s` to `s * 1000` ms; the view's
  * clock is moved forward so the view's horizon reaches each block's end.
  */
-import type { FactStore } from "@al-ft/midgard-l1-follower";
+import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
+import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,7 @@ import { rebind } from "./foreign-block-import.fixture.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import {
   admissionTx,
+  ELSEWHERE,
   eventOrder,
   retirementTx,
 } from "./helpers/l1-events-chain.js";
@@ -30,7 +32,10 @@ import {
   depositBlock,
   depositsAt,
   emptyBlock,
+  FIXTURE_ORDER_ID,
+  fixtureOrderTx,
   followChain,
+  forcedBlock,
   idKey,
   inNode,
   inputFor,
@@ -67,8 +72,8 @@ const startFor = (slot: number) =>
   BigInt(SDK.EVENT_WAIT_DURATION_MS) +
   SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS;
 
-/** `payload` over the window `(start, start + 1 s]`, committed at its end. */
-const windowed = (payload: SDK.DaPayload, start: bigint) =>
+/** `payload` over the window `(start, start + span]`, committed at its end. */
+const windowed = (payload: SDK.DaPayload, start: bigint, span = SLOT_MS) =>
   rebind({
     ...payload,
     block_body: {
@@ -76,8 +81,8 @@ const windowed = (payload: SDK.DaPayload, start: bigint) =>
       header: {
         ...payload.block_body.header,
         startTime: start,
-        endTime: start + SLOT_MS,
-        blockSlot: (start + SLOT_MS) / SLOT_MS,
+        endTime: start + span,
+        blockSlot: (start + span) / SLOT_MS,
       },
     },
   });
@@ -275,6 +280,176 @@ describe("the follower store's generation against the view's", () => {
       kind: "event_unknown",
       detail: expect.stringContaining(
         "the follower store changed generation since the view",
+      ),
+    });
+  });
+});
+
+/** A block over the window starting at `start` naming a forced order no one admitted. */
+const strangerOrderBlock = async (start: bigint) =>
+  windowed(
+    await naming(await emptyBlock(), {
+      forced_transactions: [[idKey(nonceRef()), "00"]],
+    }),
+    start,
+  );
+
+/** The tx that spends the order output at `outRef`. */
+const spendTx = (outRef: OutRef, nonce: number): SimTx => ({
+  inputs: [outRef],
+  outputs: [{ address: ELSEWHERE, lovelace: 3_000_000n }],
+  nonce,
+});
+
+describe("an absent forced order against T(B)", () => {
+  it("is invalid for a forced order, the origin and the prune at T(B)", async () => {
+    const { store, chain } = await follow();
+    await chain.forward([]);
+    const block = await strangerOrderBlock(startFor(await originSlot(store)));
+    await reach(store, block);
+    expect(await replayAt(store, block)).toMatchObject({
+      kind: "invalid",
+      detail: expect.stringMatching(
+        /^forced order .* is not admitted at the view/,
+      ),
+    });
+  });
+
+  it("waits on an absent forced order when the origin is one slot after T(B)", async () => {
+    const { store, chain } = await follow();
+    await chain.forward([]);
+    const origin = await originSlot(store);
+    const block = await strangerOrderBlock(startFor(origin - 1));
+    await reach(store, block);
+    expect(await replayAt(store, block)).toMatchObject({
+      kind: "event_unknown",
+      detail: expect.stringContaining(
+        `the follower's origin at slot ${origin.toString()} is after slot ${(origin - 1).toString()}`,
+      ),
+    });
+  });
+});
+
+describe("a spent forced order and the prune at T(B)", () => {
+  /**
+   * The forced fixture's order, included at `inclusionTime(admittedAt)`,
+   * admitted at `admittedAt` and spent in the same block (`sameBlock`) or the
+   * next, then `K + 3` more blocks.
+   */
+  const spentOrder = async (
+    inclusionTime: (admittedAt: number) => bigint,
+    sameBlock = false,
+  ) => {
+    const floor: { slot: number | null } = { slot: null };
+    const { store, chain } = await follow({
+      pruneFloors: [{ name: "test", floor: () => Promise.resolve(floor.slot) }],
+    });
+    await chain.forward([]);
+    const origin = await originSlot(store);
+    const admittedAt = chain.chain.nextSlot();
+    const order = await fixtureOrderTx(
+      chain,
+      FIXTURE_ORDER_ID,
+      inclusionTime(admittedAt),
+    );
+    const spend = () =>
+      spendTx({ txHash: simTxHash(order), index: 0 }, chain.chain.nonce());
+    if (sameBlock) await chain.forward([order, spend()]);
+    else {
+      await chain.forward([order]);
+      await chain.forward([spend()]);
+    }
+    const spentAt = chain.tip.point.slot;
+    for (let block = 0; block < K + 3; block++) await chain.forward([]);
+    /** Prunes through `slot` and replays `block` at the view. */
+    const prunedThrough = async (
+      slot: number,
+      block: SDK.DaPayload,
+      enteredSlot?: number,
+    ) => {
+      floor.slot = slot;
+      await store.prune();
+      expect((await store.cursor())!.prunedThroughSlot).toBe(slot);
+      await reach(store, block);
+      return replayAt(store, block, enteredSlot);
+    };
+    return { store, origin, admittedAt, spentAt, prunedThrough };
+  };
+
+  /**
+   * An order spent one slot after `T(B)`: the window starts at `T(B)`, the
+   * spend's slot less one, and spans 3 s, since the spend lands one or two
+   * slots after the admission; the order's inclusion time is in the window
+   * either way.
+   */
+  const spentAfterTB = async () => {
+    const spent = await spentOrder(
+      (admittedAt) => startFor(admittedAt + 1) + SLOT_MS,
+    );
+    const tb = spent.spentAt - 1;
+    expect(tb).toBeGreaterThanOrEqual(spent.admittedAt);
+    const block = await windowed(
+      await forcedBlock(),
+      startFor(tb),
+      3n * SLOT_MS,
+    );
+    return { ...spent, tb, block };
+  };
+
+  it("finds an order spent one slot after T(B) with the prune at T(B)", async () => {
+    const { tb, block, prunedThrough } = await spentAfterTB();
+    expect(await prunedThrough(tb, block)).toMatchObject({
+      kind: "replayed",
+      forcedIds: [Buffer.from(idKey(FIXTURE_ORDER_ID), "hex")],
+    });
+  });
+
+  it("waits, not invalid, once the prune passed T(B) and the order is gone", async () => {
+    const { tb, block, prunedThrough } = await spentAfterTB();
+    expect(await prunedThrough(tb + 1, block)).toMatchObject({
+      kind: "event_unknown",
+      detail: expect.stringContaining(
+        `the facts are pruned through slot ${(tb + 1).toString()}, past slot ${tb.toString()}`,
+      ),
+    });
+  });
+
+  it("waits, not invalid, on an order spent before the block's entry once the prune passed its spend", async () => {
+    const { store, origin, spentAt, prunedThrough } = await spentOrder(
+      (admittedAt) => startFor(admittedAt) + SLOT_MS,
+    );
+    const block = await windowed(
+      await forcedBlock(),
+      startFor(origin),
+      3n * SLOT_MS,
+    );
+    const entered = (await store.currentView())!.point.slot;
+    expect(spentAt).toBeLessThan(entered);
+    expect(await prunedThrough(spentAt, block, entered)).toMatchObject({
+      kind: "event_unknown",
+      detail: expect.stringContaining(
+        `the facts are pruned through slot ${spentAt.toString()}, past slot ${origin.toString()}`,
+      ),
+    });
+  });
+
+  it("finds an order admitted and spent at the first slot after T(B), the window starting inside a slot, while the prune is at T(B)", async () => {
+    const offset = SLOT_MS / 2n;
+    const { admittedAt, spentAt, prunedThrough } = await spentOrder(
+      (admittedAt) => startFor(admittedAt - 1) + offset + SLOT_MS,
+      true,
+    );
+    expect(spentAt).toBe(admittedAt);
+    const tb = admittedAt - 1;
+    const block = await windowed(await forcedBlock(), startFor(tb) + offset);
+    expect(await prunedThrough(tb, block)).toMatchObject({
+      kind: "replayed",
+      forcedIds: [Buffer.from(idKey(FIXTURE_ORDER_ID), "hex")],
+    });
+    expect(await prunedThrough(tb + 1, block)).toMatchObject({
+      kind: "event_unknown",
+      detail: expect.stringContaining(
+        `the facts are pruned through slot ${(tb + 1).toString()}, past slot ${tb.toString()}`,
       ),
     });
   });

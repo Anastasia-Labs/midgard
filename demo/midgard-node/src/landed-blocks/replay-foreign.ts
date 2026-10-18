@@ -7,11 +7,10 @@
  * admitted order, live or spent since, whatever its resolution status: the
  * facts at the view, never the node's ingested rows). The block's event
  * sets must be exactly the in-window events known there
- * (`start < inclusion <= end`): a deposit or withdrawal id the payload
- * names that is not known there at all is `invalid` where the facts cover
- * the block's range (`replay-foreign.complete.ts`), else `event_unknown`
- * (see `holds.ts`), as an unknown order id is; a
- * known id outside the window, a known in-window id it leaves out, or one
+ * (`start < inclusion <= end`): a deposit, withdrawal or order id the
+ * payload names that is not known there at all is `invalid` where the facts
+ * cover the block's range for its kind (`replay-foreign.complete.ts`), else
+ * `event_unknown` (see `holds.ts`); a known id outside the window, a known in-window id it leaves out, or one
  * it names twice, is `invalid`; an in-window order whose output cannot be read
  * back at the view is `forced_order_pending`. A block that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
@@ -75,9 +74,9 @@ import {
 import {
   type Absent,
   absentWhere,
+  eventCoverage,
   exact,
   unknownAt,
-  userEventCoverage,
 } from "./replay-foreign.complete.js";
 import {
   payloadOf,
@@ -354,18 +353,17 @@ export const foreignBlockReplayer = (deps: {
       const cursor = yield* Effect.promise(() =>
         deps.store.cursor().catch(() => null),
       );
-      const absent = absentWhere(
-        userEventCoverage(
-          cursor,
-          {
-            startTime: header.startTime,
-            enteredSlot: input.enteredSlot,
-            generation: view.generation,
-          },
-          (ms) =>
-            unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
-        ),
+      const coverage = eventCoverage(
+        cursor,
+        {
+          startTime: header.startTime,
+          enteredSlot: input.enteredSlot,
+          generation: view.generation,
+        },
+        (ms) =>
+          unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
       );
+      const absent = absentWhere(coverage.user);
       const { payload, acquired, bound, served } = yield* payloadOf(
         fetchDa,
         refetching,
@@ -396,6 +394,7 @@ export const foreignBlockReplayer = (deps: {
           seenForced,
           body.forced_transactions,
           "forced order",
+          absentWhere(coverage.txOrder),
         );
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];

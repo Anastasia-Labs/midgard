@@ -280,7 +280,9 @@ describe("foreign replay: forced orders read from the follower facts", () => {
     const block = await forcedBlock();
     expect(await replayed(store, block)).toMatchObject({
       kind: "event_unknown",
-      detail: `forced order ${idKey(FIXTURE_ORDER_ID)} is not known at the view`,
+      detail: expect.stringContaining(
+        `forced order ${idKey(FIXTURE_ORDER_ID)} is not known at the view`,
+      ),
     });
     await chain.forward([await fixtureOrderTx(chain, FIXTURE_ORDER_ID)]);
     await forget(block);

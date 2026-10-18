@@ -53,17 +53,16 @@ export const LANDED_BLOCK_DA_REFETCH_PENDING =
 /**
  * A foreign block names an event the follower does not know at all at the
  * view, and the facts there do not cover the range the event's admission
- * could fall in: the follower's origin is after the earliest admission the
- * block's window allows, the prune reached the block's entry (a retired
- * event may be gone), or the store changed generation since the view.
- * Absence there does not prove the block wrong, and a
- * gap local to this node is never blamed on the block, so it is not
- * `landed_block_invalid`; it is a local fault on the block, retried within
- * the runner's bound, after which the node exits (a follower store reset or
- * resync restores the facts). Where the facts cover the range, an absent
- * deposit or withdrawal is the block's fault: `invalid`, as is an event the
- * view knows whose inclusion time is outside the block's window. An unknown
- * forced order is this hold.
+ * could fall in: the follower's origin is after the slot the block's events
+ * are admitted after (`T(B)`), the prune reached the block's entry (for a
+ * forced order, passed `T(B)`: a spent event may be gone), or the store
+ * changed generation since the view. Absence there does not prove the
+ * block wrong, and a gap local to this node is never blamed on the block, so
+ * it is not `landed_block_invalid`; it is a local fault on the block,
+ * retried within the runner's bound, after which the node exits (a follower
+ * store reset or resync restores the facts). Where the facts cover the range, an absent
+ * event is the block's fault: `invalid`, as is an event the view knows whose
+ * inclusion time is outside the block's window.
  */
 export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
 /** A forced order admitted in a foreign block's window cannot be read back from the facts yet. */
