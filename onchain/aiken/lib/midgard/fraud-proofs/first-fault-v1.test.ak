@@ -174,6 +174,77 @@ test resolve_later_phase_does_not_admit_earlier_input_fault() {
   )
 }
 
+fn no_network_mismatch() -> Option<order.NetworkOrderContextV1> {
+  Some(order.NetworkOrderContextV1 { body_network_mismatch: False })
+}
+
+// Callers negate the result, so these rows do too: evidence that is missing,
+// unused or for another coordinate must abort rather than return False.
+test n7_resolution_leaf_without_claimed_receipt_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.InputNotFound { source_kind: 0, input_index: 0 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.NotRequired,
+  )
+}
+
+test n7_unused_resolution_receipt_on_earlier_phase_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.RequiredSignerUnsigned { signer_index: 0 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionReopened(point(0, 0, 1, order.input_absence_subcheck)),
+  )
+}
+
+test n7_out_of_domain_receipt_does_not_admit() {
+  !order.leaf_admits_fault_v1(
+    rejected(
+      reason.ResolvedReferenceScriptNodeLimit { source_kind: 1, input_index: 5 },
+    ),
+    no_network_mismatch(),
+    order.ResolutionFault(point(1, 0, 9, order.spend_signer_subcheck)),
+    order.ResolutionOutOfDomain { source_kind: 1, input_index: 5 },
+  )
+}
+
+test n7_out_of_domain_receipt_for_other_coordinate_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.InputNotFound { source_kind: 1, input_index: 5 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionOutOfDomain { source_kind: 1, input_index: 4 },
+  )
+}
+
+test n7_out_of_domain_receipt_for_other_field_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.SpendInputSignerMissing { input_index: 5 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionOutOfDomain { source_kind: 1, input_index: 5 },
+  )
+}
+
+test n7_out_of_domain_receipt_on_validity_leaf_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.ValidityIntervalExcludesBlockSlot),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionOutOfDomain { source_kind: 0, input_index: 0 },
+  )
+}
+
+test n7_out_of_domain_receipt_on_later_phase_refuses() fail {
+  !order.leaf_admits_fault_v1(
+    rejected(reason.OutputNonCanonical { output_index: 0 }),
+    no_network_mismatch(),
+    order.ResolutionFault(point(0, 0, 1, order.input_absence_subcheck)),
+    order.ResolutionOutOfDomain { source_kind: 0, input_index: 0 },
+  )
+}
+
 fn purpose(
   kind: Int,
   index: Int,
@@ -507,4 +578,12 @@ test purpose_coordinate_encodes_as_off_chain() {
 
 test network_order_context_encodes_as_off_chain() {
   cbor.serialise(order.NetworkOrderContextV1 { body_network_mismatch: True }) == #"d8799fd87a80ff"
+}
+
+test n7_out_of_domain_receipt_for_purpose_refuses() fail {
+  !purpose_admits(
+    reason.RedeemerMissing { purpose_kind: 0, purpose_index: 0 },
+    purpose(0, 0, order.SourceRequired),
+    order.ResolutionOutOfDomain { source_kind: 0, input_index: 0 },
+  )
 }

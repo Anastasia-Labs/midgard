@@ -62,6 +62,10 @@ pub type ClaimedFaultOrderV1 {
   NotRequired
   ResolutionReopened(ResolutionPositionV1)
   PurposeReopened(ClaimedPurposeOrderV1)
+  /// The source-opening consumer established that the leaf's own resolution
+  /// coordinate names no input: a field other than 0 or 1, a negative index,
+  /// or an index at or past that field's authenticated item count.
+  ResolutionOutOfDomain { source_kind: Int, input_index: Int }
 }
 
 pub type FaultPositionV1 {
@@ -291,14 +295,24 @@ fn leaf_admits_resolution_fault_v1(
         expect claimed == NotRequired
         True
       } else {
-        expect ResolutionReopened(point) = claimed
         expect Some(Pair(kind, index)) = resolution_coordinate_of_reason_v1(r)
-        expect and {
-            point.source_kind == kind,
-            point.input_index == index,
-            point.subcheck == resolution_subcheck_of_reason_v1(r),
+        when claimed is {
+          // The machine never names an input outside the transaction, so such
+          // a leaf admits no fault, and no position is compared.
+          ResolutionOutOfDomain { source_kind, input_index } -> {
+            expect source_kind == kind && input_index == index
+            False
           }
-        resolution_position_precedes_or_equals_v1(point, observed)
+          ResolutionReopened(point) -> {
+            expect and {
+                point.source_kind == kind,
+                point.input_index == index,
+                point.subcheck == resolution_subcheck_of_reason_v1(r),
+              }
+            resolution_position_precedes_or_equals_v1(point, observed)
+          }
+          _ -> fail
+        }
       }
     }
   }

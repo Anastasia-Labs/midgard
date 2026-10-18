@@ -164,7 +164,14 @@ export type PurposeFaultPosition = Readonly<{
 export type ClaimedFaultOrder =
   | "NotRequired"
   | Readonly<{ ResolutionReopened: ResolutionFaultPosition }>
-  | Readonly<{ PurposeReopened: ClaimedPurposeOrder }>;
+  | Readonly<{ PurposeReopened: ClaimedPurposeOrder }>
+  /** The opened source shows the leaf's own coordinate names no input. */
+  | Readonly<{
+      ResolutionOutOfDomain: Readonly<{
+        sourceKind: bigint;
+        inputIndex: bigint;
+      }>;
+    }>;
 
 export const purposeCoordinateOfReason = (
   reason: RejectionReason,
@@ -394,6 +401,22 @@ export const leafAdmitsFault = (
         phase !== null &&
         (phase < 7 || reason === "ValidityIntervalExcludesBlockSlot")
       );
+    }
+    if (
+      hasExactKeys(claimed, ["ResolutionOutOfDomain"]) &&
+      typeof claimed !== "string" &&
+      "ResolutionOutOfDomain" in claimed
+    ) {
+      const receipt = claimed.ResolutionOutOfDomain;
+      if (
+        !hasExactKeys(receipt, ["sourceKind", "inputIndex"]) ||
+        receipt.sourceKind !== coordinate.sourceKind ||
+        receipt.inputIndex !== coordinate.inputIndex
+      )
+        throw new Error(
+          "first-fault: out-of-domain receipt differs from reason",
+        );
+      return false;
     }
     if (
       !hasExactKeys(claimed, ["ResolutionReopened"]) ||
