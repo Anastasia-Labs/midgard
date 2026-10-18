@@ -2,9 +2,9 @@
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
  * (`missing`, `da_refetch_pending`, `event_unknown`, `forced_order_pending`,
- * `local_fault`, `incomplete`, `verifier_unavailable`) or
- * ever (`invalid`:
- * the block does not replay to its header). A replayer throws
+ * `local_fault`, `incomplete`, `verifier_unavailable`), ever (`invalid`:
+ * the block does not replay to its header), or on this node's follower
+ * store (`origin_after_frontier`). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
@@ -70,7 +70,10 @@ export type Replayed = Readonly<{
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
  *   during the replay, a local fault and never the block's;
  * - `invalid`: the block does not replay to its header, and its node carries
- *   the availability commitment of the payload replayed.
+ *   the availability commitment of the payload replayed;
+ * - `origin_after_frontier`: the block names an event the view does not
+ *   know, and the follower store's origin is too late to judge it (see
+ *   `holds.ts`): a configuration error of this node, never the block's.
  */
 export type ReplayOutcome =
   | Replayed
@@ -83,6 +86,7 @@ export type ReplayOutcome =
         | "local_fault"
         | "incomplete"
         | "verifier_unavailable"
-        | "invalid";
+        | "invalid"
+        | "origin_after_frontier";
       detail: string;
     }>;

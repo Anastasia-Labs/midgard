@@ -7,7 +7,10 @@
  * before `T(B)` (the window's start less the event wait and the longest
  * event validity range, as a slot: the block's events are admitted after
  * it), and the prune is still below the slot the block's node output
- * entered the facts at (for a forced order, at or before `T(B)`).
+ * entered the facts at (for a forced order, at or before `T(B)`). An origin
+ * after `T(B)`, or a node output seeded at the origin, is a store whose
+ * origin is too late for the blocks after the landed frontier
+ * (`origin_after_frontier`), never the block's fault.
  *
  * The bench's slot configuration maps slot `s` to `s * 1000` ms; the view's
  * clock is moved forward so the view's horizon reaches each block's end.
@@ -183,14 +186,14 @@ describe("a retired deposit and the prune at the block's entry", () => {
 });
 
 describe("the follower's origin against T(B)", () => {
-  it("waits on an absent deposit when the origin is one slot after T(B)", async () => {
+  it("refuses to judge an absent deposit as a late-origin store when the origin is one slot after T(B)", async () => {
     const { store, chain } = await follow();
     await chain.forward([]);
     const origin = await originSlot(store);
     const block = await strangerDepositBlock(startFor(origin - 1));
     await reach(store, block);
     expect(await replayAt(store, block)).toMatchObject({
-      kind: "event_unknown",
+      kind: "origin_after_frontier",
       detail: expect.stringContaining(
         `the follower's origin at slot ${origin.toString()} is after slot ${(origin - 1).toString()}`,
       ),
@@ -206,13 +209,13 @@ describe("the follower's origin against T(B)", () => {
     expect(await replayAt(store, block)).toMatchObject({ kind: "replayed" });
   });
 
-  it("waits on an absent deposit when the block's node output was seeded", async () => {
+  it("refuses to judge an absent deposit as a late-origin store when the block's node output was seeded", async () => {
     const { store, chain } = await follow();
     await chain.forward([]);
     const block = await strangerDepositBlock(startFor(await originSlot(store)));
     await reach(store, block);
     expect(await replayAt(store, block, null)).toMatchObject({
-      kind: "event_unknown",
+      kind: "origin_after_frontier",
       detail: expect.stringContaining(
         "the block's node output predates the follower's origin",
       ),
@@ -254,14 +257,14 @@ describe("an absent forced order against T(B)", () => {
     });
   });
 
-  it("waits on an absent forced order when the origin is one slot after T(B)", async () => {
+  it("refuses to judge an absent forced order as a late-origin store when the origin is one slot after T(B)", async () => {
     const { store, chain } = await follow();
     await chain.forward([]);
     const origin = await originSlot(store);
     const block = await strangerOrderBlock(startFor(origin - 1));
     await reach(store, block);
     expect(await replayAt(store, block)).toMatchObject({
-      kind: "event_unknown",
+      kind: "origin_after_frontier",
       detail: expect.stringContaining(
         `the follower's origin at slot ${origin.toString()} is after slot ${(origin - 1).toString()}`,
       ),

@@ -3,7 +3,8 @@
  * (`exact`), and whether those facts hold every event the block's window
  * could name, so that an event the block names and the view lacks is the
  * block's fault (`invalid`) and not a gap in this node's facts (a bounded
- * `event_unknown`).
+ * `event_unknown`, or `origin_after_frontier` when the follower store's
+ * origin is too late for the block).
  *
  * The facts hold every event admitted at or after the follower's origin, and
  * keep a retired one until the prune passes its retirement
@@ -15,12 +16,15 @@
  *   slot's start time, after `B.start - event wait - max event validity
  *   range`, and was admitted after
  *   `T(B) = slotOf(max(0, B.start - event wait - max event validity range))`
- *   (`slotOf` floors). The origin must be at or before `T(B)`.
+ *   (`slotOf` floors). The origin must be at or before `T(B)`; a later one
+ *   is a store whose origin is too late for the block
+ *   (`origin_after_frontier`).
  * - A deposit or withdrawal in the block's window is retired only once the
  *   confirmed state passed its inclusion time: once the block, or one in its
  *   place, merged, after the block's node output entered the facts at
  *   `entry(B)`. So the prune must still be below `entry(B)`. A seeded node
- *   output has no known entry: never complete.
+ *   output has no known entry, and the origin is after it: never complete,
+ *   and the store's origin too late for the block.
  * - A forced order's spend is not bound to the block's entry, so the prune
  *   must be at or before `T(B)`: every order admitted in the window, spent or
  *   not, is then still in the facts.
@@ -29,6 +33,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import {
   invalid,
+  originAfterFrontier,
   unknownEvent,
   type Verdict,
 } from "./replay-foreign.verdict.js";
@@ -40,10 +45,14 @@ export type CoverageCursor = Readonly<{
   prunedThroughSlot: number;
 }>;
 
-/** Complete, or why not. */
+/**
+ * Complete, or why not: `lateOrigin` when the follower store's origin is too
+ * late for the block (after `T(B)`, or the block's node output seeded at
+ * it), which no later read of the same store covers.
+ */
 export type Coverage =
   | Readonly<{ complete: true }>
-  | Readonly<{ complete: false; detail: string }>;
+  | Readonly<{ complete: false; detail: string; lateOrigin?: true }>;
 
 /** `T(B)` for a window starting at `startTime`, if it maps to a slot: the block's events are admitted after it. */
 export const earliestAdmissionSlot = (
@@ -72,11 +81,17 @@ export type CoverageInput = Readonly<{
 export type EventCoverage = Readonly<{ user: Coverage; txOrder: Coverage }>;
 
 const short = (detail: string): Coverage => ({ complete: false, detail });
+const late = (detail: string): Coverage => ({
+  complete: false,
+  detail,
+  lateOrigin: true,
+});
 
 /**
  * Whether the facts cover a block's events. For every kind: the cursor in
  * the view's store generation (a reset since the facts were read leaves the
- * cursor describing other facts) and the origin at or before `T(B)`. For
+ * cursor describing other facts) and the origin at or before `T(B)` (else
+ * `lateOrigin`, as is a seeded node output for deposits and withdrawals). For
  * deposits and withdrawals, the prune below the block's entry; for forced
  * orders, at or before `T(B)`: an order's spend is not bound to the block's
  * entry, so one admitted in the window may be spent before it.
@@ -95,15 +110,17 @@ export const eventCoverage = (
     return both("the follower store changed generation since the view");
   const earliest = earliestAdmissionSlot(input.startTime, slotOf);
   if (earliest === null) return both("the block's start maps to no slot");
-  if (cursor.origin.slot > earliest)
-    return both(
+  if (cursor.origin.slot > earliest) {
+    const after = late(
       `the follower's origin at slot ${cursor.origin.slot.toString()} is after slot ${earliest.toString()}, after which the block's events are admitted`,
     );
+    return { user: after, txOrder: after };
+  }
   const pruned = cursor.prunedThroughSlot.toString();
   return {
     user:
       input.enteredSlot === null
-        ? short("the block's node output predates the follower's origin")
+        ? late("the block's node output predates the follower's origin")
         : cursor.prunedThroughSlot >= input.enteredSlot
           ? short(
               `the facts are pruned through slot ${pruned}, not below the block's entry at slot ${input.enteredSlot.toString()}`,
@@ -126,7 +143,9 @@ export const unknownAt: Absent = (kind, id) =>
 
 /**
  * An absent event: the block's fault where the facts cover the block's
- * range for its kind (`eventCoverage`), else a gap in this node's facts.
+ * range for its kind (`eventCoverage`), else a gap in this node's facts: a
+ * follower store whose origin is too late for the block
+ * (`origin_after_frontier`), or a bounded `event_unknown`.
  */
 export const absentWhere =
   (coverage: Coverage): Absent =>
@@ -135,7 +154,7 @@ export const absentWhere =
       ? invalid(
           `${kind} ${id} is not admitted at the view, whose facts cover the block's range`,
         )
-      : unknownEvent(
+      : (coverage.lateOrigin === true ? originAfterFrontier : unknownEvent)(
           `${kind} ${id} is not known at the view: ${coverage.detail}`,
         );
 

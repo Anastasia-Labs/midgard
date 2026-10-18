@@ -484,6 +484,19 @@ reason=landed_block_event_unknown`); a restart meets the same bound again.
 reason=landed_block_forced_order_pending`); a restart meets the same bound
   again. Reset the follower store (`midgard-l1-follower reset --to-origin`)
   or resync the node, then restart.
+- `landed_block_origin_after_frontier`: the follower store's origin is too
+  late for the blocks after the landed frontier. A foreign block names an
+  event the follower does not know at the view, and the origin is after
+  the slot that block's events could first be admitted at (the detail names
+  both slots), or the block's node output was seeded at the origin. The
+  facts cannot judge the block, and the block is never blamed for it. A
+  configuration error: not retried, and the node exits non-zero at once
+  (`node_transient_budget_exhausted source=driver
+reason=landed_block_origin_after_frontier`); a restart on the same store
+  exits again. Reset the follower store with an earlier `l1Origin` (at or
+  before the earlier slot the detail names, where it names two;
+  `midgard-l1-follower reset --to-origin`), or resync the node, then
+  restart.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it

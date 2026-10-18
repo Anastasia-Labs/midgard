@@ -106,6 +106,23 @@ export const localFault = (hold: DriverHold, subject: string): DriverHold => {
 export const localFaultSubject = (hold: DriverHold): string | undefined =>
   LOCAL_FAULT.get(hold);
 
+/** Holds that stop the node at once (`fatal`). */
+const FATAL = new WeakSet<DriverHold>();
+
+/**
+ * Marks `hold` as fatal, and `notRetried`: a configuration error of this
+ * node that no retry, chain change or restart on the same configuration
+ * clears. The coalesced runner stops on the first run that ends on one,
+ * without retrying it, and the node exits non-zero naming it.
+ */
+export const fatal = (hold: DriverHold): DriverHold => {
+  FATAL.add(hold);
+  return notRetried(hold);
+};
+
+/** Whether `hold` stops the node at once (`fatal`). */
+export const isFatalHold = (hold: DriverHold): boolean => FATAL.has(hold);
+
 /**
  * Builds the hold for a failure: retried without bound, retried for a
  * bounded time (`transientFailure`) or `notRetried`. The effectful caller

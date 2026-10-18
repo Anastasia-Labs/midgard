@@ -10,6 +10,8 @@
  */
 import {
   type DriverHold,
+  fatal,
+  isFatalHold,
   isRetriedHold,
   isTransientFailureHold,
   localFault,
@@ -65,6 +67,18 @@ export const LANDED_BLOCK_DA_REFETCH_PENDING =
  * inclusion time is outside the block's window.
  */
 export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
+/**
+ * The follower store's origin is too late for the blocks after the landed
+ * frontier: a foreign block names an event the view does not know, and the
+ * origin is after the slot the block's events are admitted after (`T(B)`),
+ * or the block's node output was seeded at the origin. The facts cannot
+ * judge the block, and a later origin never covers it: a configuration
+ * error, never the block's fault. Fatal: not retried, and the node exits
+ * non-zero at once. Reset the follower store to an origin early enough, or
+ * resync the node.
+ */
+export const LANDED_BLOCK_ORIGIN_AFTER_FRONTIER =
+  "landed_block_origin_after_frontier";
 /**
  * A forced order admitted in a foreign block's window cannot be read back
  * from the facts at the view: its output is absent, not authentic, or has no
@@ -146,6 +160,7 @@ export const LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING =
 export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
 
 const PRIORITY = [
+  LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
@@ -180,8 +195,8 @@ const cut = (detail: string) =>
  * Only each reason's own detail is truncated, so every reason stays named.
  * The combined hold is retried on the driver's backoff when any hold in it
  * is, and is `notRetried` when none is; it is a `transientFailure` when any
- * hold in it is, and a `localFault` on the first local fault's subject when
- * any hold in it is one.
+ * hold in it is, a `localFault` on the first local fault's subject when any
+ * hold in it is one, and `fatal` (so `notRetried`) when any hold in it is.
  */
 export const combineHolds = (
   holds: readonly DriverHold[],
@@ -205,5 +220,6 @@ export const combineHolds = (
     .map(localFaultSubject)
     .find((faulted) => faulted !== undefined);
   if (subject !== undefined) localFault(combined, subject);
+  if (holds.some(isFatalHold)) return fatal(combined);
   return holds.some(isRetriedHold) ? combined : notRetried(combined);
 };
