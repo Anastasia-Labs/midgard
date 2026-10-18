@@ -52,6 +52,7 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
       contracts.chunkedVerify,
       contracts.pexcludes,
       contracts.reserve,
+      ...Object.values(contracts.scriptDecode.stakers),
       ...Object.values(SDK.requireEventHistoryContracts(contracts)).flatMap(
         ({ list, retirement }) => [list, retirement],
       ),

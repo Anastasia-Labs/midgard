@@ -529,15 +529,31 @@ pub fn decode_env_v1(
   script_bytes: ByteArray,
   run: ScriptDecodeRunV1,
 ) -> DecodeEnv {
+  decode_env_at_v1(
+    script_bytes,
+    run.flat_start,
+    run.flat_length,
+    run.byte_length,
+  )
+}
+
+/// The decode environment of `script_bytes` whose Flat bytes run from
+/// `flat_start` for `flat_length` bytes, out of `byte_length`.
+pub fn decode_env_at_v1(
+  script_bytes: ByteArray,
+  flat_start: Int,
+  flat_length: Int,
+  byte_length: Int,
+) -> DecodeEnv {
   DecodeEnv {
     window: bytearray.concat(
-      builtin.slice_bytearray(run.flat_start, run.flat_length, script_bytes),
+      builtin.slice_bytearray(flat_start, flat_length, script_bytes),
       #"00",
     ),
-    flat_length: run.flat_length,
-    flat_bits: 8 * run.flat_length,
-    base_bits: 8 * run.flat_start,
-    trailing: run.flat_start + run.flat_length < run.byte_length,
+    flat_length,
+    flat_bits: 8 * flat_length,
+    base_bits: 8 * flat_start,
+    trailing: flat_start + flat_length < byte_length,
   }
 }
 
@@ -634,6 +650,24 @@ pub fn step_with_frames_v1(
   )
 }
 
+/// The prover's view of `step_v1` over a stack kept with its roots: also
+/// returns the frames above `base` after the step, top first.
+pub fn step_revealing_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> (Machine, List<Frame>) {
+  let (revealed, root) = open_reveals(reveals, base)
+  expect root == machine.stack_root
+  let done = run_ticks(env, start_exec(machine, revealed), fuel)
+  (
+    machine_of(done, stack_root_of(done.mem, done.hashed)),
+    list.concat(done.mem, list.map(done.revealed, fn(pair) { pair.1st })),
+  )
+}
+
 fn start_exec(machine: Machine, revealed: List<Pair<Frame, ByteArray>>) -> Exec {
   Exec {
     cursor: machine.cursor,
@@ -664,336 +698,243 @@ fn machine_of(done: Exec, stack_root: ByteArray) -> Machine {
 /// element type once, the first time a tick needs them, and keeps them for
 /// its later ticks.
 fn run_ticks(env: DecodeEnv, ex: Exec, fuel: Int) -> Exec {
-  run_compiled(env, ex, fuel, fn(_element, _found, missing) { missing() }, [])
+  run_compiled(env, ex, fuel, empty_cache, empty_cache, [])
 }
 
-/// The bulk decoders a Walk has compiled: gives `found` the scan and fold
-/// decoders of list element type `element`, or calls `missing` when it has
-/// none. The Walk also keeps the shapes it built them from, so that a type
-/// within one it has compiled is not built again.
-type Compiled =
-  fn(ConstantTypeV1, fn(ScanDecoder, FoldDecoder) -> Exec, fn() -> Exec) -> Exec
+/// The bulk decoders of one kind a Walk has compiled: gives `found` the
+/// decoder of list element type `element`, or calls `missing` when it has
+/// none.
+type Cache<d> =
+  fn(ConstantTypeV1, fn(d) -> Exec, fn() -> Exec) -> Exec
+
+fn empty_cache(
+  _element: ConstantTypeV1,
+  _found: fn(d) -> Exec,
+  missing: fn() -> Exec,
+) -> Exec {
+  missing()
+}
 
 /// Runs ticks while `fuel` lasts, one dispatch on the control each: a tick
-/// that decodes a list gets the bulk decoders of its element type, compiled
-/// the first time the Walk needs them.
+/// that decodes a list gets the bulk decoder of its element type, compiled
+/// the first time the Walk needs it. The Walk also keeps the shapes it built
+/// them from, so that a type within one it has compiled is not built again.
 fn run_compiled(
   env: DecodeEnv,
   ex: Exec,
   fuel: Int,
-  compiled: Compiled,
+  scans: Cache<ScanDecoder>,
+  folds: Cache<FoldDecoder>,
   shapes: bulk.Shapes,
 ) -> Exec {
   if fuel <= 0 {
     ex
   } else {
+    let go = fn(ticked: Option<Exec>, scans, folds, shapes) {
+      when ticked is {
+        None -> ex
+        Some(next) -> run_compiled(env, next, fuel - 1, scans, folds, shapes)
+      }
+    }
     when ex.control is {
-      CTerm -> advance(env, ex, fuel, compiled, shapes, tick_term(env, ex))
-      CReturn { hash } ->
-        advance(env, ex, fuel, compiled, shapes, tick_return(ex, hash))
-      CConsBit ->
-        advance(env, ex, fuel, compiled, shapes, tick_cons_bit(env, ex))
-      CConstrFold { tag, remaining, root, length } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          if remaining == 0 {
-            to(
-              Exec { ..ex, depth: ex.depth - 1 },
-              CReturn {
-                hash: cek_proof_v1.hash_constr_term_v1(tag, length, root),
-              },
-            )
-          } else {
-            when pop(ex) is {
-              None -> None
-              Some((frame, popped)) -> {
-                expect FTermChild { hash } = frame
-                to(
-                  popped,
-                  CConstrFold {
-                    tag,
-                    remaining: remaining - 1,
-                    root: cek_proof_v1.hash_sequence_node_v1(
-                      hash,
-                      root,
-                      length + 1,
-                    ),
-                    length: length + 1,
-                  },
-                )
-              }
-            }
-          },
-        )
-      CCaseFold { scrutinee, remaining, root, length } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          if remaining == 0 {
-            to(
-              Exec { ..ex, depth: ex.depth - 1 },
-              CReturn {
-                hash: cek_proof_v1.hash_case_term_v1(scrutinee, length, root),
-              },
-            )
-          } else {
-            when pop(ex) is {
-              None -> None
-              Some((frame, popped)) -> {
-                expect FTermChild { hash } = frame
-                to(
-                  popped,
-                  CCaseFold {
-                    scrutinee,
-                    remaining: remaining - 1,
-                    root: cek_proof_v1.hash_sequence_node_v1(
-                      hash,
-                      root,
-                      length + 1,
-                    ),
-                    length: length + 1,
-                  },
-                )
-              }
-            }
-          },
-        )
-      CNat { purpose, start, groups, acc, scale, big } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_nat(env, ex, purpose, start, groups, acc, scale, big),
-        )
-      CMagnitude { start, groups, emitted, magnitude } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_magnitude(env, ex, start, groups, emitted, magnitude),
-        )
-      CTypes { count, pending, top, bad, tags } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_types(env, ex, count, pending, top, bad, tags),
-        )
-      CValue { ty } ->
-        advance(env, ex, fuel, compiled, shapes, tick_value(env, ex, ty))
-      CValueReturn { summary, memory } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_value_return(env, ex, summary, memory),
-        )
       CListBit { element } ->
-        decoders(
+        scan_decoder_in(
           env,
-          compiled,
+          scans,
           shapes,
           element,
-          fn(compiled, shapes, scan, fold) {
-            advance(
-              env,
-              ex,
-              fuel,
-              compiled,
-              shapes,
-              tick_list_bit(env, ex, element, scan, fold),
-            )
+          fn(scans, shapes, scan) {
+            go(tick_list_bit(env, ex, element, scan), scans, folds, shapes)
           },
         )
-      CAssetOuterBit ->
-        advance(env, ex, fuel, compiled, shapes, tick_asset_outer_bit(env, ex))
-      CAssetInnerBit ->
-        advance(env, ex, fuel, compiled, shapes, tick_asset_inner_bit(env, ex))
-      CFiller { purpose } ->
-        advance(env, ex, fuel, compiled, shapes, tick_filler(env, ex, purpose))
-      CBytes { purpose, acc } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_bytes(env, ex, purpose, acc),
-        )
-      CConstFold { fold: folding, next } ->
+      CConstFold { fold, next } ->
         when next is {
           NextList { element, .. } ->
-            decoders(
+            fold_decoder_in(
               env,
-              compiled,
+              folds,
               shapes,
               element,
-              fn(compiled, shapes, _scan, fold) {
-                advance(
-                  env,
-                  ex,
-                  fuel,
-                  compiled,
+              fn(folds, shapes, folder) {
+                go(
+                  tick_const_fold(env, ex, fold, next, folder),
+                  scans,
+                  folds,
                   shapes,
-                  tick_const_fold(env, ex, folding, next, fold),
                 )
               },
             )
-          _ ->
-            advance(
-              env,
-              ex,
-              fuel,
-              compiled,
-              shapes,
-              tick_const_fold(env, ex, folding, next, no_decoder),
-            )
+          _ -> go(tick_uncompiled(env, ex), scans, folds, shapes)
         }
-      CData { source, mode } ->
-        advance(
-          env,
-          ex,
-          fuel,
-          compiled,
-          shapes,
-          tick_data(env, ex, source, mode),
-        )
-      CFinal { term_root } ->
-        advance(env, ex, fuel, compiled, shapes, tick_final(env, ex, term_root))
-      _ -> ex
+      _ -> go(tick_uncompiled(env, ex), scans, folds, shapes)
     }
   }
 }
 
-/// Gives `found` the scan and fold decoders of `element` with the decoders
-/// and shapes the Walk keeps. Those it has none of yet it compiles and keeps:
-/// a list or array type's on its element type's, so that the decoders of the
-/// list types nested in a type are compiled once, together.
-fn decoders(
+/// One tick of a control that compiles no bulk decoder: every control but
+/// a list's cons bit and the fold of a list.
+fn tick_uncompiled(env: DecodeEnv, ex: Exec) -> Option<Exec> {
+  when ex.control is {
+    CTerm -> tick_term(env, ex)
+    CReturn { hash } -> tick_return(ex, hash)
+    CConsBit -> tick_cons_bit(env, ex)
+    CConstrFold { tag, remaining, root, length } ->
+      tick_constr_fold(ex, tag, remaining, root, length)
+    CCaseFold { scrutinee, remaining, root, length } ->
+      tick_case_fold(ex, scrutinee, remaining, root, length)
+    CNat { purpose, start, groups, acc, scale, big } ->
+      tick_nat(env, ex, purpose, start, groups, acc, scale, big)
+    CMagnitude { start, groups, emitted, magnitude } ->
+      tick_magnitude(env, ex, start, groups, emitted, magnitude)
+    CTypes { count, pending, top, bad, tags } ->
+      tick_types(env, ex, count, pending, top, bad, tags)
+    CValue { ty } -> tick_value(env, ex, ty)
+    CValueReturn { summary, memory } ->
+      tick_value_return(env, ex, summary, memory)
+    CAssetOuterBit -> tick_asset_outer_bit(env, ex)
+    CAssetInnerBit -> tick_asset_inner_bit(env, ex)
+    CFiller { purpose } -> tick_filler(env, ex, purpose)
+    CBytes { purpose, acc } -> tick_bytes(env, ex, purpose, acc)
+    CConstFold { fold, next } ->
+      tick_const_fold(env, ex, fold, next, no_decoder)
+    CData { source, mode } -> tick_data(env, ex, source, mode)
+    CFinal { term_root } -> tick_final(env, ex, term_root)
+    _ -> None
+  }
+}
+
+/// Gives `found` the scan decoder of `element` with the cache and shapes the
+/// Walk keeps, compiling and keeping it when the cache has none.
+fn scan_decoder_in(
   env: DecodeEnv,
-  compiled: Compiled,
+  scans: Cache<ScanDecoder>,
   shapes: bulk.Shapes,
   element: ConstantTypeV1,
-  found: fn(Compiled, bulk.Shapes, ScanDecoder, FoldDecoder) -> Exec,
+  found: fn(Cache<ScanDecoder>, bulk.Shapes, ScanDecoder) -> Exec,
 ) -> Exec {
-  compiled(
+  decoder_in(
+    scans,
+    shapes,
     element,
-    fn(scan, fold) { found(compiled, shapes, scan, fold) },
+    fn(shape) { bulk.scan_decoder_v1(env.window, env.flat_bits, shape) },
+    fn(inner, array) {
+      bulk.scan_list_decoder_v1(env.window, env.flat_bits, inner, array)
+    },
+    found,
+  )
+}
+
+/// `scan_decoder_in` for the fold decoder.
+fn fold_decoder_in(
+  env: DecodeEnv,
+  folds: Cache<FoldDecoder>,
+  shapes: bulk.Shapes,
+  element: ConstantTypeV1,
+  found: fn(Cache<FoldDecoder>, bulk.Shapes, FoldDecoder) -> Exec,
+) -> Exec {
+  decoder_in(
+    folds,
+    shapes,
+    element,
+    fn(shape) { bulk.fold_decoder_v1(env.window, env.flat_bits, shape) },
+    fn(inner, array) {
+      bulk.fold_list_decoder_v1(env.window, env.flat_bits, inner, array)
+    },
+    found,
+  )
+}
+
+/// Gives `found` the decoder of `element` the cache keeps. One it has none
+/// of it compiles and keeps: a list or array type's on its element type's,
+/// so that the decoders of the list types nested in a type are compiled
+/// once, together.
+fn decoder_in(
+  cache: Cache<d>,
+  shapes: bulk.Shapes,
+  element: ConstantTypeV1,
+  of_shape: fn(bulk.Shape) -> d,
+  of_list: fn(d, Bool) -> d,
+  found: fn(Cache<d>, bulk.Shapes, d) -> Exec,
+) -> Exec {
+  cache(
+    element,
+    fn(decoder) { found(cache, shapes, decoder) },
     fn() {
       when element is {
         ListConstant { element: inner } ->
-          list_decoders(env, compiled, shapes, element, inner, False, found)
-        ArrayConstant { element: inner } ->
-          list_decoders(env, compiled, shapes, element, inner, True, found)
-        _ -> {
-          let (shape, shapes) = bulk.shape_in_v1(element, shapes)
-          keep_decoders(
-            compiled,
+          list_decoder_in(
+            cache,
             shapes,
             element,
-            bulk.scan_decoder_v1(env.window, env.flat_bits, shape),
-            bulk.fold_decoder_v1(env.window, env.flat_bits, shape),
+            inner,
+            False,
+            of_shape,
+            of_list,
             found,
           )
+        ArrayConstant { element: inner } ->
+          list_decoder_in(
+            cache,
+            shapes,
+            element,
+            inner,
+            True,
+            of_shape,
+            of_list,
+            found,
+          )
+        _ -> {
+          let (shape, shapes) = bulk.shape_in_v1(element, shapes)
+          keep(cache, shapes, element, of_shape(shape), found)
         }
       }
     },
   )
 }
 
-fn list_decoders(
-  env: DecodeEnv,
-  compiled: Compiled,
+fn list_decoder_in(
+  cache: Cache<d>,
   shapes: bulk.Shapes,
   list: ConstantTypeV1,
   element: ConstantTypeV1,
   array: Bool,
-  found: fn(Compiled, bulk.Shapes, ScanDecoder, FoldDecoder) -> Exec,
+  of_shape: fn(bulk.Shape) -> d,
+  of_list: fn(d, Bool) -> d,
+  found: fn(Cache<d>, bulk.Shapes, d) -> Exec,
 ) -> Exec {
-  decoders(
-    env,
-    compiled,
+  decoder_in(
+    cache,
     shapes,
     element,
-    fn(compiled, shapes, scan, fold) {
-      keep_decoders(
-        compiled,
-        shapes,
-        list,
-        bulk.list_decoder_v1(
-          env.window,
-          env.flat_bits,
-          scan,
-          array,
-          False,
-          True,
-        ),
-        bulk.list_decoder_v1(
-          env.window,
-          env.flat_bits,
-          fold,
-          array,
-          True,
-          False,
-        ),
-        found,
-      )
+    of_shape,
+    of_list,
+    fn(cache, shapes, inner) {
+      keep(cache, shapes, list, of_list(inner, array), found)
     },
   )
 }
 
-/// Keeps the decoders just compiled for `element`. They arrive as arguments
-/// so that they are compiled here, once, and not again inside the closure
-/// that keeps them.
-fn keep_decoders(
-  compiled: Compiled,
+/// Keeps the decoder just compiled for `element`. It arrives as an argument
+/// so that it is compiled here, once, and not again inside the closure that
+/// keeps it.
+fn keep(
+  cache: Cache<d>,
   shapes: bulk.Shapes,
   element: ConstantTypeV1,
-  scan: ScanDecoder,
-  fold: FoldDecoder,
-  found: fn(Compiled, bulk.Shapes, ScanDecoder, FoldDecoder) -> Exec,
+  decoder: d,
+  found: fn(Cache<d>, bulk.Shapes, d) -> Exec,
 ) -> Exec {
   found(
     fn(ty, found, missing) {
       if ty == element {
-        found(scan, fold)
+        found(decoder)
       } else {
-        compiled(ty, found, missing)
+        cache(ty, found, missing)
       }
     },
     shapes,
-    scan,
-    fold,
+    decoder,
   )
-}
-
-fn advance(
-  env: DecodeEnv,
-  ex: Exec,
-  fuel: Int,
-  compiled: Compiled,
-  shapes: bulk.Shapes,
-  ticked: Option<Exec>,
-) -> Exec {
-  when ticked is {
-    None -> ex
-    Some(next) -> run_compiled(env, next, fuel - 1, compiled, shapes)
-  }
 }
 
 /// The decoder ticks get when their control decodes no list.
@@ -1005,6 +946,340 @@ fn no_decoder(
   _stop: fn(List<Within>) -> r,
 ) -> r {
   fail @"a list decoder outside a list"
+}
+
+// ## Segments
+//
+// A Walk transaction is split into segments, each stepped by the
+// withdraw-zero staker of one class of controls. A class runner takes the
+// ticks of its own controls only and stops at the first control outside its
+// class, so a segment is a run of ticks that ends at a class boundary, a
+// missing frame or its fuel. Every tick is the one `step_v1` takes.
+
+/// The hash that links segments: blake2b-256 of the machine's Data.
+pub fn machine_hash_v1(machine: Machine) -> ByteArray {
+  let data: Data = machine
+  blake2b_256(builtin.serialise_data(data))
+}
+
+/// Opens `reveals` over `base` against the machine's stack root, runs `run`
+/// and commits the frames it leaves.
+fn segment(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+  run: fn(DecodeEnv, Exec, Int) -> Exec,
+) -> Machine {
+  let (revealed, root) = open_reveals(reveals, base)
+  expect root == machine.stack_root
+  let done = run(env, start_exec(machine, revealed), fuel)
+  machine_of(done, stack_root_of(done.mem, done.hashed))
+}
+
+/// Runs the ticks `tick` takes while `fuel` lasts; `tick` gives None on a
+/// control outside its class.
+fn run_class(
+  env: DecodeEnv,
+  ex: Exec,
+  fuel: Int,
+  tick: fn(DecodeEnv, Exec) -> Option<Exec>,
+) -> Exec {
+  if fuel <= 0 {
+    ex
+  } else {
+    when tick(env, ex) is {
+      None -> ex
+      Some(next) -> run_class(env, next, fuel - 1, tick)
+    }
+  }
+}
+
+/// The term class: terms, their folds and naturals, constant types and the
+/// final padding.
+pub fn is_term_control_v1(control: Control) -> Bool {
+  when control is {
+    CTerm -> True
+    CReturn { .. } -> True
+    CConsBit -> True
+    CConstrFold { .. } -> True
+    CCaseFold { .. } -> True
+    CNat { .. } -> True
+    CMagnitude { .. } -> True
+    CTypes { .. } -> True
+    CFinal { .. } -> True
+    _ -> False
+  }
+}
+
+fn tick_term_class(env: DecodeEnv, ex: Exec) -> Option<Exec> {
+  when ex.control is {
+    CTerm -> tick_term(env, ex)
+    CReturn { hash } -> tick_return(ex, hash)
+    CConsBit -> tick_cons_bit(env, ex)
+    CConstrFold { tag, remaining, root, length } ->
+      tick_constr_fold(ex, tag, remaining, root, length)
+    CCaseFold { scrutinee, remaining, root, length } ->
+      tick_case_fold(ex, scrutinee, remaining, root, length)
+    CNat { purpose, start, groups, acc, scale, big } ->
+      tick_nat(env, ex, purpose, start, groups, acc, scale, big)
+    CMagnitude { start, groups, emitted, magnitude } ->
+      tick_magnitude(env, ex, start, groups, emitted, magnitude)
+    CTypes { count, pending, top, bad, tags } ->
+      tick_types(env, ex, count, pending, top, bad, tags)
+    CFinal { term_root } -> tick_final(env, ex, term_root)
+    _ -> None
+  }
+}
+
+/// A segment of the term class.
+pub fn step_term_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_class(env, ex, fuel, tick_term_class) },
+  )
+}
+
+/// The value class: a constant value decoded in bulk where its bits allow,
+/// and returned to the frames above it.
+pub fn is_value_control_v1(control: Control) -> Bool {
+  when control is {
+    CValue { .. } -> True
+    CValueReturn { .. } -> True
+    _ -> False
+  }
+}
+
+fn tick_value_class(env: DecodeEnv, ex: Exec) -> Option<Exec> {
+  when ex.control is {
+    CValue { ty } -> tick_value(env, ex, ty)
+    CValueReturn { summary, memory } ->
+      tick_value_return(env, ex, summary, memory)
+    _ -> None
+  }
+}
+
+/// A segment of the value class.
+pub fn step_value_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_class(env, ex, fuel, tick_value_class) },
+  )
+}
+
+/// The list class: the cons bits of constant lists, scanned in bulk, and of
+/// Values.
+pub fn is_list_control_v1(control: Control) -> Bool {
+  when control is {
+    CListBit { .. } -> True
+    CAssetOuterBit -> True
+    CAssetInnerBit -> True
+    _ -> False
+  }
+}
+
+fn run_list(
+  env: DecodeEnv,
+  ex: Exec,
+  fuel: Int,
+  scans: Cache<ScanDecoder>,
+  shapes: bulk.Shapes,
+) -> Exec {
+  if fuel <= 0 {
+    ex
+  } else {
+    let go = fn(ticked: Option<Exec>, scans, shapes) {
+      when ticked is {
+        None -> ex
+        Some(next) -> run_list(env, next, fuel - 1, scans, shapes)
+      }
+    }
+    when ex.control is {
+      CListBit { element } ->
+        scan_decoder_in(
+          env,
+          scans,
+          shapes,
+          element,
+          fn(scans, shapes, scan) {
+            go(tick_list_bit(env, ex, element, scan), scans, shapes)
+          },
+        )
+      CAssetOuterBit -> go(tick_asset_outer_bit(env, ex), scans, shapes)
+      CAssetInnerBit -> go(tick_asset_inner_bit(env, ex), scans, shapes)
+      _ -> ex
+    }
+  }
+}
+
+/// A segment of the list class.
+pub fn step_list_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_list(env, ex, fuel, empty_cache, []) },
+  )
+}
+
+/// The fold class: the folds of constant lists and Values.
+pub fn is_fold_control_v1(control: Control) -> Bool {
+  when control is {
+    CConstFold { .. } -> True
+    _ -> False
+  }
+}
+
+fn run_fold(
+  env: DecodeEnv,
+  ex: Exec,
+  fuel: Int,
+  folds: Cache<FoldDecoder>,
+  shapes: bulk.Shapes,
+) -> Exec {
+  if fuel <= 0 {
+    ex
+  } else {
+    let go = fn(ticked: Option<Exec>, folds, shapes) {
+      when ticked is {
+        None -> ex
+        Some(next) -> run_fold(env, next, fuel - 1, folds, shapes)
+      }
+    }
+    when ex.control is {
+      CConstFold { fold, next } ->
+        when next is {
+          NextList { element, .. } ->
+            fold_decoder_in(
+              env,
+              folds,
+              shapes,
+              element,
+              fn(folds, shapes, folder) {
+                go(tick_const_fold(env, ex, fold, next, folder), folds, shapes)
+              },
+            )
+          _ ->
+            go(tick_const_fold(env, ex, fold, next, no_decoder), folds, shapes)
+        }
+      _ -> ex
+    }
+  }
+}
+
+/// A segment of the fold class.
+pub fn step_fold_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_fold(env, ex, fuel, empty_cache, []) },
+  )
+}
+
+/// The byte-string class: a Flat byte string's filler and chunks.
+pub fn is_bytes_control_v1(control: Control) -> Bool {
+  when control is {
+    CFiller { .. } -> True
+    CBytes { .. } -> True
+    _ -> False
+  }
+}
+
+fn tick_bytes_class(env: DecodeEnv, ex: Exec) -> Option<Exec> {
+  when ex.control is {
+    CFiller { purpose } -> tick_filler(env, ex, purpose)
+    CBytes { purpose, acc } -> tick_bytes(env, ex, purpose, acc)
+    _ -> None
+  }
+}
+
+/// A segment of the byte-string class.
+pub fn step_bytes_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_class(env, ex, fuel, tick_bytes_class) },
+  )
+}
+
+/// The Data class: the CBOR of a Data constant.
+pub fn is_data_control_v1(control: Control) -> Bool {
+  when control is {
+    CData { .. } -> True
+    _ -> False
+  }
+}
+
+fn tick_data_class(env: DecodeEnv, ex: Exec) -> Option<Exec> {
+  when ex.control is {
+    CData { source, mode } -> tick_data(env, ex, source, mode)
+    _ -> None
+  }
+}
+
+/// A segment of the Data class.
+pub fn step_data_v1(
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  segment(
+    env,
+    machine,
+    reveals,
+    base,
+    fuel,
+    fn(env, ex, fuel) { run_class(env, ex, fuel, tick_data_class) },
+  )
 }
 
 type ScanDecoder =
@@ -1129,6 +1404,68 @@ fn tick_term(env: DecodeEnv, ex: Exec) -> Option<Exec> {
       }
     } else {
       refuse(env, ex, class_unknown_term_tag, c)
+    }
+  }
+}
+
+fn tick_constr_fold(
+  ex: Exec,
+  tag: Int,
+  remaining: Int,
+  root: ByteArray,
+  length: Int,
+) -> Option<Exec> {
+  if remaining == 0 {
+    to(
+      Exec { ..ex, depth: ex.depth - 1 },
+      CReturn { hash: cek_proof_v1.hash_constr_term_v1(tag, length, root) },
+    )
+  } else {
+    when pop(ex) is {
+      None -> None
+      Some((frame, popped)) -> {
+        expect FTermChild { hash } = frame
+        to(
+          popped,
+          CConstrFold {
+            tag,
+            remaining: remaining - 1,
+            root: cek_proof_v1.hash_sequence_node_v1(hash, root, length + 1),
+            length: length + 1,
+          },
+        )
+      }
+    }
+  }
+}
+
+fn tick_case_fold(
+  ex: Exec,
+  scrutinee: ByteArray,
+  remaining: Int,
+  root: ByteArray,
+  length: Int,
+) -> Option<Exec> {
+  if remaining == 0 {
+    to(
+      Exec { ..ex, depth: ex.depth - 1 },
+      CReturn { hash: cek_proof_v1.hash_case_term_v1(scrutinee, length, root) },
+    )
+  } else {
+    when pop(ex) is {
+      None -> None
+      Some((frame, popped)) -> {
+        expect FTermChild { hash } = frame
+        to(
+          popped,
+          CCaseFold {
+            scrutinee,
+            remaining: remaining - 1,
+            root: cek_proof_v1.hash_sequence_node_v1(hash, root, length + 1),
+            length: length + 1,
+          },
+        )
+      }
     }
   }
 }
@@ -1858,7 +2195,7 @@ fn tick_value_return(
   when pop(ex) is {
     None -> None
     Some((frame, popped)) ->
-      ascend(env, popped, frame, summary, memory, bulk.units_per_tick, True)
+      ascend(env, popped, frame, summary, memory, bulk.units_per_tick)
   }
 }
 
@@ -1878,23 +2215,15 @@ fn climb(
     when pop(ex) is {
       None -> held
       Some((frame, popped)) -> {
-        expect Some(next) = ascend(
-          env,
-          popped,
-          frame,
-          summary,
-          memory,
-          units,
-          False,
-        )
+        expect Some(next) = ascend(env, popped, frame, summary, memory, units)
         next
       }
     }
   }
 }
 
-/// Returns a decoded value to `frame`, with `units` left, all of a tick's
-/// when `full`.
+/// Returns a decoded value to `frame`, with `units` left. A pair's second
+/// component is decoded in a tick of its own.
 fn ascend(
   env: DecodeEnv,
   ex: Exec,
@@ -1902,7 +2231,6 @@ fn ascend(
   summary: DataSummaryV1,
   memory: Int,
   units: Int,
-  full: Bool,
 ) -> Option<Exec> {
   when frame is {
     FConstant { type_hash } ->
@@ -1976,29 +2304,9 @@ fn ascend(
       }
     }
     FValuePairFirst { second } ->
-      piece(
-        env,
-        ex,
-        ex.cursor,
-        second,
-        bulk.shape_v1(second, True),
-        units,
-        full,
-        fn(held) { push(held, FValuePairSecond { first: summary, memory }) },
-        fn(after, entry, cbor, data, second_memory, left) {
-          Some(
-            climb(
-              env,
-              Exec { ..ex, cursor: after },
-              bulk.pair_summary_v1(
-                summary,
-                bulk.summary_of_v1(entry, cbor, data),
-              ),
-              memory + second_memory,
-              left - bulk.pair_units,
-            ),
-          )
-        },
+      to(
+        push(ex, FValuePairSecond { first: summary, memory }),
+        CValue { ty: second },
       )
     FValuePairSecond { first, memory: first_memory } ->
       Some(
@@ -2015,13 +2323,13 @@ fn ascend(
 }
 
 /// At a cons bit, decodes the run of elements that decode in bulk, or else
-/// the next element as a value.
+/// the next element as a value. At the nil bit the list's fold is a tick of
+/// its own.
 fn tick_list_bit(
   env: DecodeEnv,
   ex: Exec,
   element: ConstantTypeV1,
   scan: ScanDecoder,
-  folder: FoldDecoder,
 ) -> Option<Exec> {
   let cursor = ex.cursor
   if !have(env, cursor, 1) {
@@ -2064,19 +2372,17 @@ fn tick_list_bit(
       None -> None
       Some((frame, popped)) -> {
         expect FValueList { array, count, memory, .. } = frame
-        Some(
-          fold_more(
-            env,
-            Exec { ..popped, cursor: cursor + 1 },
-            Fold {
+        at(
+          popped,
+          cursor + 1,
+          CConstFold {
+            fold: Fold {
               pairs: False,
               remaining: count,
               sequence: cek_data_v1.empty_data_list_summary_v1(),
             },
-            NextList { element, array, count, memory },
-            bulk.units_per_tick,
-            folder,
-          ),
+            next: NextList { element, array, count, memory },
+          },
         )
       }
     }
@@ -2120,40 +2426,10 @@ fn descend(
                     first,
                     rest,
                   )
-                [WSecond { middle, memory }, ..rest] -> {
-                  let decoder = bulk.compile_v1(
-                    env.window,
-                    env.flat_bits,
-                    bulk.shape_v1(first, True),
-                    True,
-                    False,
-                  )
-                  decoder(
-                    ex.cursor,
-                    ex.cursor,
-                    bulk.unmetered,
-                    fn(_after, entry, cbor, data, _memory, _left) {
-                      descend(
-                        env,
-                        Exec {
-                          ..push(
-                            ex,
-                            FValuePairSecond {
-                              first: bulk.summary_of_v1(entry, cbor, data),
-                              memory,
-                            },
-                          ),
-                          cursor: middle,
-                        },
-                        second,
-                        rest,
-                      )
-                    },
-                    fn(_path) {
-                      fail @"a scanned pair component no longer decodes"
-                    },
-                  )
-                }
+                // The first component decoded in the scan; it is decoded
+                // again in a tick of its own and the second after it.
+                [WSecond { .. }, ..] ->
+                  to(push(ex, FValuePairFirst { second }), CValue { ty: first })
                 _ -> node_value(env, ex, ty)
               }
           }

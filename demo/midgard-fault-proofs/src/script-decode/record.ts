@@ -3,12 +3,13 @@
  * stages the bytes, binds a run, walks it to a verdict, and mints the record.
  */
 import {
-  nextScriptDecodeWalkStep,
+  nextScriptDecodeChainedWalk,
+  type ScriptDecodeChainedWalk,
   type ScriptDecodeRecord,
   scriptDecodeScriptHash,
+  type ScriptDecodeStakerClass,
   type ScriptDecodeWalkCursor,
   scriptDecodeWalkRecord,
-  type ScriptDecodeWalkStep,
   startScriptDecodeWalk,
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -31,6 +32,8 @@ const MAX_FUEL_TRIES = 16;
 /** One submitted Walk. */
 export type ScriptDecodeWalkReport = Readonly<{
   fuel: number;
+  /** The class of each of its segments, in chain order. */
+  segments: readonly ScriptDecodeStakerClass[];
   exUnits: ScriptDecodeExUnits;
   txBytes: number;
 }>;
@@ -78,6 +81,7 @@ type Built = Awaited<ReturnType<typeof buildScriptDecodeWalk>>;
 
 type Fitted = Readonly<{
   fuel: number;
+  walk: ScriptDecodeChainedWalk;
   next: ScriptDecodeWalkCursor;
   built: Built;
 }>;
@@ -93,17 +97,17 @@ const fitWalk = async (
   cursor: ScriptDecodeWalkCursor,
   guess: number,
   limits: Limits,
-  build: (step: ScriptDecodeWalkStep) => Promise<Built>,
+  build: (walk: ScriptDecodeChainedWalk) => Promise<Built>,
 ): Promise<Fitted> => {
   let best: Fitted | undefined;
   let failed = Number.POSITIVE_INFINITY;
   let lastError: unknown;
   let fuel = Math.max(1, guess);
   for (let tries = 0; tries < MAX_FUEL_TRIES; tries += 1) {
-    const { step, next } = nextScriptDecodeWalkStep(cursor, fuel);
+    const { walk, next } = nextScriptDecodeChainedWalk(cursor, fuel);
     let built: Built | undefined;
     try {
-      built = await build(step);
+      built = await build(walk);
       if (BigInt(built.txBytes) > BigInt(limits.bytes)) {
         throw new Error("script decode: the Walk exceeds the size limit");
       }
@@ -114,7 +118,7 @@ const fitWalk = async (
     if (built === undefined) {
       failed = fuel;
     } else {
-      best = { fuel, next, built };
+      best = { fuel: walk.fuel, walk, next, built };
       // A finished walk takes no more ticks, whatever the fuel.
       if (scriptDecodeWalkRecord(next) !== undefined) break;
     }
@@ -193,19 +197,20 @@ export const recordScriptDecode = async ({
       );
     }
     const spent = runUtxo;
-    const fitted = await fitWalk(cursor, fuel, limits, (step) =>
+    const fitted = await fitWalk(cursor, fuel, limits, (walk) =>
       buildScriptDecodeWalk({
         lucid,
         deployment,
         scriptHashHex,
         runUtxo: spent,
         staging,
-        step,
+        walk,
       }),
     );
     runUtxo = await fitted.built.submit();
     walks.push({
       fuel: fitted.fuel,
+      segments: fitted.walk.segments.map(({ within }) => within),
       exUnits: fitted.built.exUnits,
       txBytes: fitted.built.txBytes,
     });

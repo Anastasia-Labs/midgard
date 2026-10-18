@@ -21,22 +21,10 @@ export const manifestDeployableScripts = (
   return scripts;
 };
 
-/**
- * Scripts larger than one L1 transaction. The manifest records their roles,
- * but initialization cannot publish them as reference scripts yet. Delete each
- * entry in the change that makes that script fit.
- */
-export const NOT_YET_PUBLISHABLE_CONTRACTS: ReadonlySet<string> = new Set([
-  "scriptDecodeSpend",
-  "scriptDecodeMint",
-]);
-
 /** The same members projected into the historical reference publication order. */
 export const publishedDeployableScripts = (
   contracts: SDK.MidgardValidators,
 ): readonly SDK.PublishedDeploymentScript[] => {
   manifestDeployableScripts(contracts);
-  return SDK.publishedDeploymentScripts(contracts, recipeContext).filter(
-    ({ contract }) => !NOT_YET_PUBLISHABLE_CONTRACTS.has(contract),
-  );
+  return SDK.publishedDeploymentScripts(contracts, recipeContext);
 };

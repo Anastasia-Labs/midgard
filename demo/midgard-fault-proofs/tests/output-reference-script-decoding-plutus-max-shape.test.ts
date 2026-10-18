@@ -8,8 +8,8 @@
  *   its last bit. Recording it walks every node, and step 04 convicts its
  *   acceptance.
  * - The shape whose record takes the most Walk transactions: constant lists
- *   nested 4 deep, each level holding a one-path list ahead of the deeper
- *   list, the innermost holding 26 unit pair chains of depth 5 over `[()]`.
+ *   nested 6 deep, each level holding an empty list ahead of the deeper list,
+ *   the innermost holding 31 unit pair chains of depth 4 over `[()]`.
  *   It decodes, and step 04 convicts a rejection that called it undecodable,
  *   reading the `Decoded` record.
  *
@@ -75,11 +75,11 @@ const delayChainOutputOfLength = (length: number) => {
 };
 
 /** The chains in each innermost list of the most Walk-heavy shape. */
-const MAX_WALK_INNER = 26;
+const MAX_WALK_INNER = 31;
 
 /**
  * The output of exactly `length` canonical bytes holding the most Walk-heavy
- * shape (see `script-decode-walk-gate.test.ts`), and its script: as many
+ * shape (see `support/script-decode-walk-gate.ts`), and its script: as many
  * whole elements as fit, then a last element trimmed to the length.
  */
 const maxWalkOutputOfLength = (length: number) => {
@@ -104,7 +104,7 @@ const maxWalkOutputOfLength = (length: number) => {
 
 const MAX_TX_BYTES = 16_384;
 
-/** The most Walks a record may take (`script-decode-walk-gate.test.ts`). */
+/** The most Walks a record may take (`support/script-decode-walk-gate.ts`). */
 const WALK_CEILING = 1_500;
 
 const PLUTUS_V3 = 3;
@@ -252,7 +252,7 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     expectWalksFit(recorded.walks, proverLucid.config().protocolParameters!);
     console.info(
       `[script-decode-max-shape] ${JSON.stringify({
-        shape: "lists 4 deep, a one-path list ahead of each deeper list",
+        shape: "lists 6 deep, [] ahead of each deeper list",
         scriptBytes: script.length,
         ...walkSummary(recorded.walks),
         recordVirtualMs: recordedAt - recordedFrom,

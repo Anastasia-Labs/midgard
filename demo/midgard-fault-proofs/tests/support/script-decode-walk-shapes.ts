@@ -1,8 +1,9 @@
 /**
  * PlutusV3 scripts of exactly the 16,384-byte bound whose Flat is one shape
- * repeated: a term chain, a Data constant, or a constant list of one element
- * type. Each holds as many repetitions as fit, so recording it is the longest
- * decode walk of that shape.
+ * repeated: a term chain, a Data constant, a constant list of one element
+ * type, or an application chain over small constants. Each holds as many
+ * repetitions as fit, so recording it is the longest decode walk of that
+ * shape.
  */
 
 const SCRIPT_BOUND = 16_384;
@@ -216,17 +217,58 @@ const onePathBefore = (bits: FlatBits, levels: number): void => {
 };
 
 /**
- * The costliest nested-list shape found (the walk gate's "lists 4 deep, a
- * one-path list ahead of each deeper list" row), with `count` elements, the
- * last holding `last` of the 26 chains: its scripts reach every length the
- * row's scripts fall between.
+ * The costliest nested-list shape found (the walk gate's "lists 6 deep, []
+ * ahead of each deeper list" row), with `count` elements, the last holding
+ * `last` of the 31 chains: its scripts reach every length the row's scripts
+ * fall between.
  */
-export const costliestNestedLists = nestedListsEndingIn(
-  4,
-  5,
-  26,
-  onePathBefore,
-);
+export const costliestNestedLists = nestedListsEndingIn(6, 4, 31, emptyBefore);
+
+type Leaf = (bits: FlatBits, index: number) => void;
+
+/**
+ * `[[[error c0] c1] ... c(n-1)]`: an application chain over `count` small
+ * constants, so decoding passes between the term and constant controls at
+ * every constant.
+ */
+const applyChain =
+  (leaf: Leaf) =>
+  (count: number): Buffer =>
+    program((bits) => {
+      for (let index = 0; index < count; index += 1) bits.put(3, 4);
+      bits.put(6, 4);
+      for (let index = 0; index < count; index += 1) leaf(bits, index);
+    });
+
+const unitLeaf: Leaf = (bits) => bits.constant([3]);
+const emptyValueLeaf: Leaf = (bits) => {
+  bits.constant([13]);
+  bits.put(0, 1);
+};
+const integerZeroLeaf: Leaf = (bits) => {
+  bits.constant([0]);
+  bits.natural(0);
+};
+const dataLeaf: Leaf = (bits) => {
+  bits.constant([8]);
+  bits.chunks(Uint8Array.from([0x00]));
+};
+const listUnitLeaf: Leaf = (bits) => {
+  bits.constant([7, 5, 3]);
+  bits.put(1, 1);
+  bits.put(0, 1);
+};
+/** A 200-bit integer: 29 groups of 7 bits. */
+const wideIntegerLeaf: Leaf = (bits) => {
+  bits.constant([0]);
+  for (let group = 0; group < 29; group += 1) {
+    bits.put(group < 28 ? 129 : 1, 8);
+  }
+};
+const alternating =
+  (leaves: readonly Leaf[]): Leaf =>
+  (bits, index) =>
+    leaves[index % leaves.length]!(bits, index);
 
 /** Each shape, as a function from repetitions to script bytes. */
 export const WALK_SHAPES = {
@@ -330,11 +372,22 @@ export const WALK_SHAPES = {
     23,
   ),
   "lists 6 deep, [] ahead of each deeper list, over 31 unit pair chains of depth 4 over [()]":
-    nestedLists(6, 4, 31, emptyBefore),
+    (count: number) => costliestNestedLists(count, 31),
   "lists 4 deep, [] ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]":
     nestedLists(4, 5, 26, emptyBefore),
   "lists 4 deep, a one-path list ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]":
-    (count: number) => costliestNestedLists(count, 26),
+    nestedLists(4, 5, 26, onePathBefore),
+  "apply chain of unit": applyChain(unitLeaf),
+  "apply chain of empty value": applyChain(emptyValueLeaf),
+  "apply chain of integer 0": applyChain(integerZeroLeaf),
+  "apply chain of Data I 0 and list unit [()], alternating": applyChain(
+    alternating([dataLeaf, listUnitLeaf]),
+  ),
+  "apply chain of 200-bit integer": applyChain(wideIntegerLeaf),
+  "apply chain of integer 0 and empty value, alternating": applyChain(
+    alternating([integerZeroLeaf, emptyValueLeaf]),
+  ),
+  "apply chain of list unit [()]": applyChain(listUnitLeaf),
 } as const satisfies Record<string, (count: number) => Buffer>;
 
 export type WalkShape = keyof typeof WALK_SHAPES;

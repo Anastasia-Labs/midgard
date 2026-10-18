@@ -378,7 +378,14 @@ export {
   ZERO_INPUT_FAULT_PROOF_TITLES,
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
-export { buildScriptDecodeValidator } from "./script-decode.js";
+export {
+  buildScriptDecodeValidator,
+  SCRIPT_DECODE_STAKER_CLASS_NAMES,
+  SCRIPT_DECODE_STAKER_MEMBERS,
+  type ScriptDecodeStakerClassName,
+  type ScriptDecodeStakerValidators,
+  type ScriptDecodeValidator,
+} from "./script-decode.js";
 export {
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
