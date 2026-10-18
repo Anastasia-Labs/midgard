@@ -32,8 +32,41 @@ import {
 /** Ticks the first Walk tries before the budget it uses is measured. */
 export const SCRIPT_DECODE_INITIAL_FUEL = 32;
 
+/** Submissions of one Walk tried before its rejection is final. */
+export const SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS = 3;
+
 /** The most builds tried for one Walk while searching its fuel. */
 const MAX_FUEL_TRIES = 16;
+
+/**
+ * The ledger rejected one Walk on every attempt, each refitted from the run's
+ * cursor after the ledger parameters were refreshed.
+ */
+export class ScriptDecodeWalkRejectedError extends Error {
+  readonly attempts: number;
+  readonly rejections: readonly unknown[];
+
+  constructor(rejections: readonly unknown[]) {
+    const last = rejections.at(-1);
+    super(
+      `script decode: the ledger rejected a Walk on all ${rejections.length.toString()} attempts; the last: ${
+        last instanceof Error ? last.message : String(last)
+      }`,
+    );
+    this.name = "ScriptDecodeWalkRejectedError";
+    this.attempts = rejections.length;
+    this.rejections = rejections;
+  }
+}
+
+/** Re-reads the ledger parameters and cost models from the Lucid provider. */
+const refreshFromProvider = (lucid: LucidEvolution) => async () => {
+  const { provider } = lucid.config();
+  if (provider === undefined) {
+    throw new Error("script decode: no provider to refresh the parameters");
+  }
+  await lucid.switchProvider(provider);
+};
 
 /** One submitted Walk. */
 export type ScriptDecodeWalkReport = Readonly<{
@@ -151,8 +184,11 @@ const fitWalk = async (
  * yet. An open run of the script (an interrupted earlier record) is resumed
  * from its on-chain cursor; staged bytes already at the wallet are reused.
  * Each Walk takes the most ticks that build within the ledger's limits
- * (`fitWalk`). With `maxWalks`, a walk that needs more Walks than that throws
- * instead of submitting the next one.
+ * (`fitWalk`). A Walk the ledger rejects is refitted after
+ * `refreshLedgerParameters` (by default, re-reading them from the provider),
+ * from the run then on chain, at most `maxSubmitAttempts` times in all before
+ * `ScriptDecodeWalkRejectedError`. With `maxWalks`, a walk that needs more
+ * Walks than that throws instead of submitting the next one.
  */
 export const recordScriptDecode = async ({
   lucid,
@@ -161,6 +197,8 @@ export const recordScriptDecode = async ({
   scriptBytes,
   initialFuel = SCRIPT_DECODE_INITIAL_FUEL,
   maxWalks = Number.POSITIVE_INFINITY,
+  maxSubmitAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
+  refreshLedgerParameters = refreshFromProvider(lucid),
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
@@ -168,6 +206,8 @@ export const recordScriptDecode = async ({
   readonly scriptBytes: Uint8Array;
   readonly initialFuel?: number;
   readonly maxWalks?: number;
+  readonly maxSubmitAttempts?: number;
+  readonly refreshLedgerParameters?: () => Promise<void>;
 }): Promise<{
   readonly recordUtxo: UTxO;
   readonly record: ScriptDecodeRecord | undefined;
@@ -190,7 +230,7 @@ export const recordScriptDecode = async ({
       scriptBytes,
       scriptHashHex,
     });
-  const limits = ledgerLimits(lucid);
+  let limits = ledgerLimits(lucid);
   const staging =
     (await findStagedScriptDecodeBytes({ lucid, scriptBytes })) ??
     (await stageScriptDecodeBytes({ lucid, scriptBytes }));
@@ -209,6 +249,7 @@ export const recordScriptDecode = async ({
   let { runUtxo, cursor } = (await resume()) ?? (await bind());
   const walks: ScriptDecodeWalkReport[] = [];
   let fuel = initialFuel;
+  let rejections: unknown[] = [];
   let record = scriptDecodeWalkRecord(cursor);
   while (record === undefined) {
     if (walks.length >= maxWalks) {
@@ -227,7 +268,32 @@ export const recordScriptDecode = async ({
         walk,
       }),
     );
-    runUtxo = await fitted.built.submit();
+    try {
+      runUtxo = await fitted.built.submit();
+    } catch (rejection) {
+      rejections.push(rejection);
+      if (rejections.length >= maxSubmitAttempts) {
+        throw new ScriptDecodeWalkRejectedError(rejections);
+      }
+      await refreshLedgerParameters();
+      limits = ledgerLimits(lucid);
+      // The rejected Walk may yet have landed, or another prover may have
+      // walked the run: refit from whatever run is on chain now.
+      const recorded = await findRecord();
+      if (recorded !== undefined) {
+        return { recordUtxo: recorded, record: undefined, walks };
+      }
+      const position = await resume();
+      if (position === undefined) {
+        throw new Error("script decode: no open run after a rejected Walk", {
+          cause: rejection,
+        });
+      }
+      ({ runUtxo, cursor } = position);
+      record = scriptDecodeWalkRecord(cursor);
+      continue;
+    }
+    rejections = [];
     walks.push({
       fuel: fitted.fuel,
       segments: fitted.walk.segments.map(({ within }) => within),
