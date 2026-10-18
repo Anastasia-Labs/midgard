@@ -31,7 +31,7 @@ import {
   attributeWithdrawalClassificationFault,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
-import type { FactStore, View } from "@al-ft/midgard-l1-follower";
+import type { FactStore, OutRef, View } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -74,7 +74,7 @@ import {
 import {
   type Absent,
   absentWhere,
-  eventCoverage,
+  coverageAt,
   exact,
   unknownAt,
 } from "./replay-foreign.complete.js";
@@ -267,13 +267,16 @@ type Held = { bound: boolean; served: Served };
 /**
  * The replayer over the follower's event projection at the view, and the
  * pass that binds the copies it imported unbound once their nodes carry a
- * commitment. `availability` gives the deployment's commitment authority.
+ * commitment. `availability` gives the deployment's commitment authority;
+ * `hubOracleOneShot` is the outref the protocol-init tx spends (without it,
+ * no store's coverage starts at that spend).
  */
 export const foreignBlockReplayer = (deps: {
   readonly store: FactStore;
   readonly events: EventProjectionConfig;
   readonly forcedOrders: ForcedOrderConfig;
   readonly availability: ForeignDaBinding["authority"];
+  readonly hubOracleOneShot?: OutRef;
 }) => {
   // One memo per replayer: a header whose DA fetch failed waits out its
   // backoff across driver runs.
@@ -348,20 +351,19 @@ export const foreignBlockReplayer = (deps: {
         view,
         inWindow,
       );
-      // Read after the facts: a prune since only moves it later, and a
-      // reset since changes the generation.
-      const cursor = yield* Effect.promise(() =>
-        deps.store.cursor().catch(() => null),
-      );
-      const coverage = eventCoverage(
-        cursor,
-        {
-          startTime: header.startTime,
-          enteredSlot: input.enteredSlot,
-          generation: view.generation,
-        },
-        (ms) =>
-          unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
+      const coverage = yield* Effect.promise(() =>
+        coverageAt(
+          deps.store,
+          deps.hubOracleOneShot,
+          view,
+          {
+            startTime: header.startTime,
+            enteredSlot: input.enteredSlot,
+            generation: view.generation,
+          },
+          (ms) =>
+            unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid.api)),
+        ),
       );
       const absent = absentWhere(coverage.user);
       const { payload, acquired, bound, served } = yield* payloadOf(

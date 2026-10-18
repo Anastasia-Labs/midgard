@@ -73,9 +73,10 @@ export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
  * origin is after the slot the block's events are admitted after (`T(B)`),
  * or the block's node output was seeded at the origin. The facts cannot
  * judge the block, and a later origin never covers it: a configuration
- * error, never the block's fault. Fatal: not retried, and the node exits
- * non-zero at once. Reset the follower store to an origin early enough, or
- * resync the node.
+ * error, never the block's fault. A store that holds the protocol-init
+ * spend at the view started early enough for every block, so it never
+ * raises this. Fatal: not retried, and the node exits non-zero at once.
+ * Reset the follower store to an origin early enough, or resync the node.
  */
 export const LANDED_BLOCK_ORIGIN_AFTER_FRONTIER =
   "landed_block_origin_after_frontier";

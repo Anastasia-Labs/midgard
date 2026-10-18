@@ -28,7 +28,14 @@
  * - A forced order's spend is not bound to the block's entry, so the prune
  *   must be at or before `T(B)`: every order admitted in the window, spent or
  *   not, is then still in the facts.
+ * - No event is admitted before the protocol-init spend (the valid tx that
+ *   spends the deployment's `hubOracleOneShot`); one in that spend's block
+ *   is admitted at its slot. A store holding that spend at the view saw
+ *   every event ever admitted, so the block's events are admitted after
+ *   `max(T(B), the spend's slot - 1)`, which is at or after the store's
+ *   origin.
  */
+import type { FactStore, OutRef, View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -75,6 +82,8 @@ export type CoverageInput = Readonly<{
   startTime: bigint;
   enteredSlot: number | null;
   generation: number;
+  /** The protocol-init spend's slot, where the view's facts hold it. */
+  initSlot?: number;
 }>;
 
 /** The block's deposits and withdrawals, and its forced orders. */
@@ -88,13 +97,15 @@ const late = (detail: string): Coverage => ({
 });
 
 /**
- * Whether the facts cover a block's events. For every kind: the cursor in
- * the view's store generation (a reset since the facts were read leaves the
- * cursor describing other facts) and the origin at or before `T(B)` (else
- * `lateOrigin`, as is a seeded node output for deposits and withdrawals). For
- * deposits and withdrawals, the prune below the block's entry; for forced
- * orders, at or before `T(B)`: an order's spend is not bound to the block's
- * entry, so one admitted in the window may be spent before it.
+ * Whether the facts cover a block's events, admitted after `T(B)` (or after
+ * `max(T(B), initSlot - 1)` where the facts hold the protocol-init spend).
+ * For every kind: the cursor in the view's store generation (a reset since
+ * the facts were read leaves the cursor describing other facts) and the
+ * origin at or before that slot (else `lateOrigin`, as is a seeded node
+ * output for deposits and withdrawals). For deposits and withdrawals, the
+ * prune below the block's entry; for forced orders, at or before that slot:
+ * an order's spend is not bound to the block's entry, so one admitted in the
+ * window may be spent before it.
  */
 export const eventCoverage = (
   cursor: CoverageCursor | null,
@@ -108,8 +119,10 @@ export const eventCoverage = (
   if (cursor === null) return both("the follower cursor is unreadable");
   if (cursor.generation !== input.generation)
     return both("the follower store changed generation since the view");
-  const earliest = earliestAdmissionSlot(input.startTime, slotOf);
-  if (earliest === null) return both("the block's start maps to no slot");
+  const tb = earliestAdmissionSlot(input.startTime, slotOf);
+  if (tb === null) return both("the block's start maps to no slot");
+  const earliest =
+    input.initSlot === undefined ? tb : Math.max(tb, input.initSlot - 1);
   if (cursor.origin.slot > earliest) {
     const after = late(
       `the follower's origin at slot ${cursor.origin.slot.toString()} is after slot ${earliest.toString()}, after which the block's events are admitted`,
@@ -133,6 +146,48 @@ export const eventCoverage = (
           )
         : { complete: true },
   };
+};
+
+/**
+ * The coverage at `view`, from the follower cursor read after the facts (a
+ * prune since only moves it later, and a reset since changes the
+ * generation). Only where it falls short, and `oneShot` is known, is the
+ * protocol-init fact read (one keyed row), then the cursor again, so a reset
+ * since is still seen; the spend counts where it is at or before the view.
+ * A read that fails leaves a late origin a bounded wait.
+ */
+export const coverageAt = async (
+  store: Pick<FactStore, "cursor" | "protocolInit">,
+  oneShot: OutRef | undefined,
+  view: View,
+  input: CoverageInput,
+  slotOf: (unixTimeMs: number) => number,
+): Promise<EventCoverage> => {
+  const cursor = () => store.cursor().catch(() => null);
+  const coverage = eventCoverage(await cursor(), input, slotOf);
+  if (
+    oneShot === undefined ||
+    (coverage.user.complete && coverage.txOrder.complete)
+  )
+    return coverage;
+  const spend = await store.protocolInit(oneShot).then(
+    (found) => ({ found }),
+    () => undefined,
+  );
+  // Unread, a late origin may yet be covered: a bounded wait, not the hold.
+  const unread = (kind: Coverage): Coverage =>
+    kind.complete || kind.lateOrigin !== true
+      ? kind
+      : short(`the protocol-init fact is unreadable; ${kind.detail}`);
+  if (spend === undefined)
+    return { user: unread(coverage.user), txOrder: unread(coverage.txOrder) };
+  if (spend.found === null || spend.found.slot > view.point.slot)
+    return coverage;
+  return eventCoverage(
+    await cursor(),
+    { ...input, initSlot: spend.found.slot },
+    slotOf,
+  );
 };
 
 /** The verdict on an event `kind` `id` a block names and the view does not know. */

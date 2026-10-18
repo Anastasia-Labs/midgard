@@ -11,9 +11,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { unixTimeToSlotForConfig } from "../src/lucid-time.js";
 import { rebind } from "./foreign-block-import.fixture.js";
-import { ELSEWHERE } from "./helpers/l1-events-chain.js";
+import {
+  admissionTx,
+  ELSEWHERE,
+  eventOrder,
+} from "./helpers/l1-events-chain.js";
+import type { ChainDriver } from "./helpers/l1-events-store.js";
 import {
   clock,
+  depositsAt,
   emptyBlock,
   idKey,
   inNode,
@@ -92,6 +98,28 @@ export const replayAt = async (
     ),
   );
 };
+
+/** Admits a deposit included at `inclusionTime`; returns it with its order. */
+export const admitDeposit = async (
+  chain: ChainDriver,
+  inclusionTime: bigint,
+) => {
+  const order = eventOrder("deposit", nonceRef(), { inclusionTime });
+  const [hash] = await chain.forward([admissionTx(order, chain.chain.nonce())]);
+  const [known] = (await depositsAt(chain.store)).filter(
+    ({ event }) => event.inclusionTime === inclusionTime,
+  );
+  return { order, outRef: { txHash: hash!, index: 0 }, entry: known!.entry };
+};
+
+/** A block over the window starting at `start` naming a deposit no one admitted. */
+export const strangerDepositBlock = async (start: bigint) =>
+  windowed(
+    await naming(await emptyBlock(), {
+      deposits: [[idKey(nonceRef()), "00"]],
+    }),
+    start,
+  );
 
 /** A block over the window starting at `start` naming a forced order no one admitted. */
 export const strangerOrderBlock = async (start: bigint) =>

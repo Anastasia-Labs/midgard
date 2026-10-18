@@ -21,16 +21,10 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "./helpers/forced-orders-node-store.js";
-import {
-  admissionTx,
-  eventOrder,
-  retirementTx,
-} from "./helpers/l1-events-chain.js";
-import type { ChainDriver } from "./helpers/l1-events-store.js";
+import { retirementTx } from "./helpers/l1-events-chain.js";
 import {
   clock,
   depositBlock,
-  depositsAt,
   emptyBlock,
   FIXTURE_ORDER_ID,
   fixtureOrderTx,
@@ -47,12 +41,14 @@ import {
   retainedRow,
 } from "./landed-blocks-replay-foreign.fixture.js";
 import {
+  admitDeposit,
   originSlot,
   reach,
   replayAt,
   SLOT_MS,
   spendTx,
   startFor,
+  strangerDepositBlock,
   strangerOrderBlock,
   windowed,
 } from "./landed-blocks-replay-foreign.window.js";
@@ -73,25 +69,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(opened.splice(0).map((store) => store.close()));
 });
-
-/** Admits a deposit included at `inclusionTime`; returns it with its order. */
-const admitDeposit = async (chain: ChainDriver, inclusionTime: bigint) => {
-  const order = eventOrder("deposit", nonceRef(), { inclusionTime });
-  const [hash] = await chain.forward([admissionTx(order, chain.chain.nonce())]);
-  const [known] = (await depositsAt(chain.store)).filter(
-    ({ event }) => event.inclusionTime === inclusionTime,
-  );
-  return { order, outRef: { txHash: hash!, index: 0 }, entry: known!.entry };
-};
-
-/** A block over the window starting at `start` naming a deposit no one admitted. */
-const strangerDepositBlock = async (start: bigint) =>
-  windowed(
-    await naming(await emptyBlock(), {
-      deposits: [[idKey(nonceRef()), "00"]],
-    }),
-    start,
-  );
 
 describe("an absent deposit or withdrawal where the facts cover the block's range", () => {
   it("is invalid for a deposit, the origin at T(B) and the prune below the block's entry", async () => {

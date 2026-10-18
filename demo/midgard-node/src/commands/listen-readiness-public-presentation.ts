@@ -176,6 +176,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "landed_block_forced_order_pending",
   "landed_block_invalid",
   "landed_block_local_fault",
+  "landed_block_origin_after_frontier",
   "landed_block_own_journal_mismatch",
   "landed_block_own_revival_pending",
   "landed_block_rebase_failed",
