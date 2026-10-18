@@ -11,12 +11,14 @@ import {
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxFaultEvidenceMaterial,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
@@ -82,7 +84,7 @@ export const widthNativeTx = ({
 export type WidthShape = {
   readonly label: string;
   readonly nativeTx: MidgardNativeTxFull;
-  readonly fieldIndex: 2 | 5;
+  readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly fieldPreimage: Buffer;
   /** What the canonical rule says about the selected item. */
@@ -209,7 +211,10 @@ export const witnessSetCompactCborHex = (
 // ---------------------------------------------------------------------------
 
 export const buildAcceptedWidthInclusions = async (
-  transactions: readonly MidgardNativeTxFull[],
+  transactions: readonly (
+    | MidgardNativeTxFull
+    | MidgardNativeTxFaultEvidenceMaterial
+  )[],
 ): Promise<{
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -219,12 +224,22 @@ export const buildAcceptedWidthInclusions = async (
   await store.ready();
   const trie = new Trie(store);
   const ids = transactions.map((nativeTx) =>
-    computeMidgardNativeTxId(nativeTx).toString("hex"),
+    "proofSource" in nativeTx
+      ? nativeTx.transactionId.toString("hex")
+      : computeMidgardNativeTxId(nativeTx).toString("hex"),
   );
-  for (const [index, nativeTx] of transactions.entries()) {
+  const sources = transactions.map((nativeTx, index) =>
+    "proofSource" in nativeTx
+      ? encodeL2TransactionSourceValue({
+          txId: ids[index]!,
+          proofSource: nativeTx.proofSource,
+        })
+      : l2TransactionSourceCbor(nativeTx),
+  );
+  for (const index of transactions.keys()) {
     await trie.insert(
       Buffer.from(ids[index]!, "hex"),
-      Buffer.from(l2TransactionSourceCbor(nativeTx), "hex"),
+      Buffer.from(sources[index]!, "hex"),
     );
   }
   const transactionsRoot = Buffer.from(trie.hash).toString("hex");
@@ -234,8 +249,11 @@ export const buildAcceptedWidthInclusions = async (
     inclusions.push({
       nativeTxId: ids[index]!,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-      nativeTxCompactCbor: compactCborHex(nativeTx, 0n),
-      l2TransactionSourceCbor: l2TransactionSourceCbor(nativeTx),
+      nativeTxCompactCbor:
+        "proofSource" in nativeTx
+          ? nativeTx.proofSource.compactCbor.toString("hex")
+          : compactCborHex(nativeTx, 0n),
+      l2TransactionSourceCbor: sources[index]!,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),

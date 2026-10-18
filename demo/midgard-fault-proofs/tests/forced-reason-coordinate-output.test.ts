@@ -136,7 +136,10 @@ const setupScenario = async (offset: bigint) => {
     ...step,
     threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
     finding: evidence,
-    forcedSource: { header: forced.header, membership, direction: 1n },
+    forcedSource: {
+      header: forced.header,
+      membership,
+    },
     referenceScriptUtxo: references[0]!,
   });
   const authenticated = await submitTransactionOutputNonCanonicalStep02({

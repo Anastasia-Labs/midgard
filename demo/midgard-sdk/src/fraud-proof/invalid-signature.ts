@@ -20,7 +20,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { OutputReferenceSchema } from "../common.js";
 import { H32Schema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
@@ -33,6 +32,8 @@ import {
   NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   acceptedVerdictSubject,
   type VerdictSubject,
@@ -270,38 +271,15 @@ export const InvalidSignatureStep01Datum =
  * Any additional wrapper fields change the positional PlutusData shape and are
  * therefore outside this ABI.
  */
-export const InvalidSignatureVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const InvalidSignatureStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const InvalidSignatureVerdictSubjectSchema = VerdictSubjectSchema;
+export const InvalidSignatureStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const InvalidSignatureForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const InvalidSignatureStep01ArgsSchema = Data.Object({

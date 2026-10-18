@@ -8,7 +8,11 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { EventKey } from "@al-ft/midgard-sdk";
+import {
+  EventKey,
+  type RejectionReason,
+  rejectionReasonPhase,
+} from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -38,7 +42,7 @@ beforeAll(() => ledgerEd25519SignatureReady());
  * transaction's fault at that field-6 item, at the witness-script phase, in
  * item order with the native witnesses. Each row asks the producer (Phase A),
  * the trace builder and the one-step machine for the same first fault, and
- * that fault's first-fault phase must be the witness-script phase.
+ * that fault's first-fault phase must be the witness-script phase (5).
  */
 
 /** `[0, h'820700']`: a native payload whose constructor tag does not exist. */
@@ -53,11 +57,6 @@ const HONEST_PLUTUS = encodeCbor([
   3,
   buildCekProgramFromRawFlat(Buffer.from("010100200101", "hex")).scriptBytes,
 ]).toString("hex");
-
-/** first-fault-v1 `phase_of_reason_v1` rank of the machine phase. */
-const FIRST_FAULT_PHASE_RANK: Readonly<Record<string, number>> = {
-  phaseANativeScripts: 5,
-};
 
 const context = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -143,7 +142,12 @@ describe.each(["normal", "forced"] as const)(
       const producedReason = resolveRejectionReason(produced, "machine");
       expect(producedReason.kind).toBe("reason");
       if (producedReason.kind !== "reason") return;
-      expect(FIRST_FAULT_PHASE_RANK[produced.consensusPhase!]).toBe(5);
+      // first-fault-v1 places a witness-script fault in phase 5.
+      expect(
+        rejectionReasonPhase(producedReason.reason as RejectionReason, {
+          body_network_mismatch: false,
+        }),
+      ).toBe(5);
 
       const exit = await Effect.runPromiseExit(
         replayValidationMachineEvent({

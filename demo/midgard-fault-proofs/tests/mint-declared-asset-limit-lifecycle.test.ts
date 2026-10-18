@@ -142,6 +142,23 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
+const measureSubmissions =
+  (
+    emulator: Parameters<typeof captureEmulatorSubmission>[0],
+    rows: (readonly [string, Measurement])[],
+  ) =>
+  async <Result>(label: string, action: () => Promise<Result>) => {
+    progress(label);
+    const captured = await captureEmulatorSubmission(emulator, action);
+    rows.push([label, captured.measurement]);
+    return captured.result;
+  };
+
+const refused = async (label: string, action: () => Promise<unknown>) => {
+  progress(`refusal: ${label}`);
+  await expectOnchainRefusal(action);
+};
+
 describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
   it("proves the maximum accepted crossing, refuses every honest and substituted accepted shape, and removes the block", async () => {
     const harness = await makeFaultProofEmulatorHarness({
@@ -153,22 +170,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     const registered = await registeredContracts(harness);
     const { applied, contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
-    const measured = async <Result>(
-      label: string,
-      action: () => Promise<Result>,
-    ): Promise<Result> => {
-      progress(label);
-      const captured = await captureEmulatorSubmission(
-        harness.emulator,
-        action,
-      );
-      rows.push([label, captured.measurement]);
-      return captured.result;
-    };
-    const refused = async (label: string, action: () => Promise<unknown>) => {
-      progress(`refusal: ${label}`);
-      await expectOnchainRefusal(action);
-    };
+    const measured = measureSubmissions(harness.emulator, rows);
 
     // --- The three accepted transactions of one fraudulent block ---------
     // X: the maximum frontier. A 1,000-asset first policy (consumed across
@@ -979,22 +981,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     const registered = await registeredContracts(harness);
     const { contracts, catalogue, category } = registered;
     const rows: (readonly [string, Measurement])[] = [];
-    const measured = async <Result>(
-      label: string,
-      action: () => Promise<Result>,
-    ): Promise<Result> => {
-      progress(label);
-      const captured = await captureEmulatorSubmission(
-        harness.emulator,
-        action,
-      );
-      rows.push([label, captured.measurement]);
-      return captured.result;
-    };
-    const refused = async (label: string, action: () => Promise<unknown>) => {
-      progress(`refusal: ${label}`);
-      await expectOnchainRefusal(action);
-    };
+    const measured = measureSubmissions(harness.emulator, rows);
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
@@ -1195,7 +1182,10 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         ...common,
         threadOutRef,
         finding: evidence,
-        forcedSource: { header, membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership,
+        },
         referenceScriptUtxo: references[0],
       });
     const decode = (
@@ -1297,7 +1287,10 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         subject: aEvidence.subject,
         datumPolicyIndex: 0,
         redeemerPolicyIndex: 0,
-        forcedSource: { header, membership: membershipA, direction: 1n },
+        forcedSource: {
+          header,
+          membership: membershipA,
+        },
         referenceScriptUtxo: references[0],
         ...input,
       });
@@ -1322,12 +1315,20 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       "subject coordinate: datum policy 1 against redeemer policy 0",
       () => rawBind({ datumPolicyIndex: 1 }),
     );
-    await refused(
-      "direction: a rejection leaf bound as wrongful acceptance",
+    progress("refusal: a rejection leaf bound as wrongful acceptance");
+    await expectOnchainRefusal(
       () =>
         rawBind({
-          forcedSource: { header, membership: membershipA, direction: 0n },
+          subject: forcedVerdictSubject({
+            transactionId: a.id,
+            sourceKey: keyA,
+            rejectionReason: null,
+          }),
         }),
+      {
+        refusedBy: "fraud_proofs/mint_declared_asset_limit/step_01",
+        check: /^Validator returned false$/u,
+      },
     );
     coverage.scenario("reason_or_subject_coordinate_mutation");
     await refused(
@@ -1350,7 +1351,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
                 },
               },
             },
-            direction: 1n,
           },
         }),
     );
@@ -1359,7 +1359,6 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         forcedSource: {
           header,
           membership: { ...membershipA, proof: membershipB.proof },
-          direction: 1n,
         },
       }),
     );

@@ -36,7 +36,17 @@ validator main(
           tx,
         )
       ct.Continue(Args{source: AcceptedSource { inclusion }}) -> {
-        let _, _, _, _, output_hash, output_state, header, _, verified <- pass_native_tx_to_next_step_carried(
+        let
+            _,
+            subject_thread_name,
+            _,
+            _,
+            output_hash,
+            output_state,
+            header,
+            _,
+            verified
+          <- pass_native_tx_to_next_step_carried(
           thread_policy,
           hub_oracle,
           datum,
@@ -45,7 +55,10 @@ validator main(
           tx,
         )
         let expected: Data = bind_integrity_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource { header, tx_inclusion: verified },
+          ),
           header.validation_traces_root,
           header.validation_trace_count,
           verified.tx_compact.body.script_integrity_hash,
@@ -60,7 +73,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -73,11 +85,9 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(

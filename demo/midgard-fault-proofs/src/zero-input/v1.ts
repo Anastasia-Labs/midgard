@@ -43,7 +43,6 @@ export const prepareZeroInputForcedPlan = async ({
     forcedSource: Object.freeze({
       header: block.header,
       membership,
-      direction: 1n,
     }),
   });
 };

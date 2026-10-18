@@ -40,7 +40,6 @@ export type PreparedNetworkIdAcceptedForced = Readonly<{
   forcedSource: Readonly<{
     header: PreparedNetworkIdWrongfulRejection["forcedSource"]["header"];
     membership: PreparedNetworkIdWrongfulRejection["forcedSource"]["membership"];
-    direction: 0n;
   }>;
 }>;
 
@@ -152,7 +151,6 @@ export const prepareNetworkIdAcceptedForced = async ({
     forcedSource: Object.freeze({
       header: block.header,
       membership,
-      direction: 0n as const,
     }),
   });
 };

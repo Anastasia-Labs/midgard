@@ -15,10 +15,13 @@ use midgard/fraud_proofs/missing_signature/forced_step.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
+use midgard/fraud_proofs/native_tx/compact.{
+  decode_forced_tx_compact_v1, verify_forced_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{
   FeeBelowMinimum, ForcedTxInvalid, ForcedTxValid, RequiredSignerUnsigned,
@@ -45,13 +48,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        header,
-        membership,
-        direction,
-      }) -> {
+      ct.Continue(Args { input_index, output_index, header, membership }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let _, thread_name, _, input_state, output_hash, output_state <- continue(
@@ -64,35 +61,19 @@ validator main(
           outputs,
         )
         expect Some(1) = input_state
-        let leaf = membership.value
-        let header_data: Data = header
-        expect and {
-            direction == 1,
-            utils.serialise_and_hash_28(header_data) == bytearray.drop(
-              thread_name,
-              fraud_proof_catalogue.id_byte_count,
-            ),
-            transition_trace.verify_root_membership_with_bytes(
-              membership,
-              transition_trace.ForcedTransactionsV1RootDomain,
-              header.forced_transactions_root,
-              header.forced_transaction_count,
-              cbor.serialise(membership.key),
-              cbor.serialise(leaf),
-            ),
-          }
-        expect ForcedTxInvalid{reason: RequiredSignerUnsigned { signer_index }}
-          = leaf.verdict
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
+        let subject = substrate.open_subject_v1(
+          thread_name,
+          substrate.ForcedSource { header, membership },
+        )
+        expect Some(RequiredSignerUnsigned { signer_index }) = subject.rejection_reason
+        // The opener authenticated this compact source against the leaf tx id.
+        let compact = decode_forced_tx_compact_v1(
+          membership.value.submitted_source.compact_cbor,
         )
         let expected: Data = State {
-          verified_tx_id: leaf.tx_id,
-          verified_witness_set_hash: verified.tx_compact.witness_set_hash,
-          forced_source_key: cbor.serialise(membership.key),
+          verified_tx_id: subject.transaction_id,
+          verified_witness_set_hash: compact.witness_set_hash,
+          forced_source_key: subject.source_key,
           signer_index,
         }
         and {
@@ -234,7 +215,7 @@ fn run_forced_step(
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
+  _direction: Int,
   input_index: Int,
   output_index: Int,
   output_state: Data,
@@ -248,9 +229,7 @@ fn run_forced_step(
         data: input_state,
       },
     ),
-    ct.Continue(
-      Args { input_index, output_index, header, membership, direction },
-    ),
+    ct.Continue(Args { input_index, output_index, header, membership }),
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(thread_name, output_state),
   )
@@ -286,7 +265,7 @@ test missing_signature_forced_step_binds_a_rejected_forced_leaf() {
   run_canonical_forced_bind(0)
 }
 
-test missing_signature_forced_step_rejects_direction_zero() fail {
+test missing_signature_forced_step_derives_direction_without_the_obsolete_zero_input() {
   let tx = rejected_forced_tx(0)
   let key = forced_order_key()
   let leaf = forced_leaf(
@@ -309,7 +288,7 @@ test missing_signature_forced_step_rejects_direction_zero() fail {
   )
 }
 
-test missing_signature_forced_step_rejects_direction_two() fail {
+test missing_signature_forced_step_derives_direction_without_the_obsolete_two_input() {
   let tx = rejected_forced_tx(0)
   let key = forced_order_key()
   let leaf = forced_leaf(

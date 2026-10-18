@@ -590,7 +590,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         submitFieldPreimageLengthForcedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
-          direction: 1n,
         }),
     );
     emitFit("forced-dispatch", dispatch.measurement);
@@ -703,7 +702,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 180_000);
 
-  it("refuses direction 0 against a rejected leaf before construction and cancels the forced authenticator", async () => {
+  it("refuses an acceptance finding against a rejected leaf before construction and cancels the forced authenticator", async () => {
     const fixture = await setup({ forced: true });
     if (fixture.forcedFixture === undefined)
       throw new Error("missing forced fixture");
@@ -714,7 +713,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const dispatch = await submitFieldPreimageLengthForcedDispatch({
       config: fixture.config,
       threadOutRef: init.nextThreadOutRef,
-      direction: 0n,
     });
     const honestMembership = await buildForcedTransactionLeafMembershipProof({
       reconstruction: fixture.forcedFixture.reconstruction,
@@ -769,7 +767,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const dispatch = await submitFieldPreimageLengthForcedDispatch({
       config: fixture.config,
       threadOutRef: init.nextThreadOutRef,
-      direction: 1n,
     });
     const authentication = await submitFieldPreimageLengthForcedAuthentication({
       config: fixture.config,
@@ -825,7 +822,6 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
         submitFieldPreimageLengthForcedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
-          direction: 0n,
         }),
     );
     emitFit("forced-accepted-dispatch", dispatch.measurement);

@@ -7,12 +7,17 @@ import {
 
 import { submitNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../step-support.js";
+import {
+  nativeTxFromCoreCompact,
+  requireNativeTxMatchesCompactCbor,
+  type SubmitStep01TxInclusion,
+} from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
   classifyFieldItemWidthFinding,
+  fieldItemWidthBoundCoordinate,
   type FieldItemWidthFinding,
 } from "./field-item-width-illegal.js";
 import {
@@ -55,14 +60,13 @@ export const submitFieldItemWidthIllegalStep01Accepted = async ({
   readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyFieldItemWidthFinding(finding);
+  const compact = nativeTxFromCoreCompact(
+    requireNativeTxMatchesCompactCbor(txInclusion),
+  );
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: exact.subject,
-        field_index: BigInt(exact.fieldIndex),
-        item_index: BigInt(exact.itemIndex),
-      },
+      data: fieldItemWidthBoundCoordinate(exact, compact),
     } as never,
     FieldItemWidthStep02DatumSchema as never,
   );

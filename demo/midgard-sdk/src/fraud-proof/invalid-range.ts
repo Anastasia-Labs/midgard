@@ -4,7 +4,6 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
@@ -15,8 +14,9 @@ import {
   type NativeTxBodyCompact as NativeTxBodyCompactData,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
-  NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),
@@ -28,38 +28,14 @@ export const InvalidRangeStep01Datum = asDataType<InvalidRangeStep01Datum>(
   InvalidRangeStep01DatumSchema,
 );
 
-export const InvalidRangeVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const InvalidRangeStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const InvalidRangeVerdictSubjectSchema = VerdictSubjectSchema;
+export const InvalidRangeStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const InvalidRangeForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 export const InvalidRangeStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(

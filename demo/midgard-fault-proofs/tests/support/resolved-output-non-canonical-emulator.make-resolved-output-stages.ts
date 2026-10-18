@@ -238,7 +238,6 @@ export const makeResolvedOutputStages = async (
             output_index,
             header,
             membership,
-            direction,
           },
         },
         source_kind: BigInt(coordinate.sourceKind),

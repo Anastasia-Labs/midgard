@@ -107,7 +107,6 @@ export type FieldPreimageLengthStage = Readonly<{
   acceptedClaim?: CommittedFieldClaim;
   acceptedClaimResolver?: FieldPreimageLengthClaimResolver;
   acceptedCarriageReferenceInputs?: readonly UTxO[];
-  forcedDirection?: 0n | 1n;
   forcedHeader?: Header;
   forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
   forcedClaim?: CommittedFieldClaim;
@@ -205,7 +204,6 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
             resolved.threadOutRef,
             "dispatch thread out-ref",
           ),
-          direction: required(resolved.forcedDirection, "forced direction"),
           preSubmitBoundary: boundary?.("dispatch", context.prepared),
         })
       ).txHash;

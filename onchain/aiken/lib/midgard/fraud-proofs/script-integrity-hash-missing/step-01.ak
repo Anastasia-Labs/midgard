@@ -7,7 +7,7 @@ pub type Datum =
 
 pub type Args {
   BindAccepted { carriage: NativeTxInclusionCarriage }
-  RecordForced { direction: Int, input_index: Int, output_index: Int }
+  RecordForced { input_index: Int, output_index: Int }
 }
 
 pub type SpendRedeemer =

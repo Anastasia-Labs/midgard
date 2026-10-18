@@ -115,11 +115,24 @@ export const buildFixtureTransaction = ({
     },
   };
   const full = materializeMidgardNativeTxFromCanonical(canonical);
-  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
+  return fixtureTransactionFromCanonicalCbor({
+    txId: computeMidgardNativeTxId(full).toString("hex"),
+    canonicalCbor: encodeMidgardNativeTxCanonical(full),
+  });
+};
+
+/** Carry an already-encoded canonical transaction into the DA fixture. */
+export const fixtureTransactionFromCanonicalCbor = ({
+  txId,
+  canonicalCbor,
+}: {
+  readonly txId: string;
+  readonly canonicalCbor: Buffer;
+}): FixtureTransaction => {
   const proofSource =
     deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
   const source: SDK.L2TransactionSource = {
-    tx_id: computeMidgardNativeTxId(full).toString("hex"),
+    tx_id: txId,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:

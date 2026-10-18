@@ -1,4 +1,6 @@
-use aiken/builtin.{blake2b_256, index_bytearray, slice_bytearray}
+use aiken/builtin.{
+  and_bytearray, blake2b_256, index_bytearray, replicate_byte, slice_bytearray,
+}
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
@@ -18,14 +20,31 @@ const path_nibble_count: Int = 64
 /// number of steps any single proof may contain, however it is carried.
 pub const maximum_proof_step_count: Int = 64
 
-// The prefix length is not bounded here: the neighbour's hash fixes it, and a
-// terminal Fork bounds where the prefix ends
-// (`terminal_fork_prefix_ends_inside_the_path`).
-fn neighbor_is_well_formed(neighbor: mpf.Neighbor) -> Bool {
+// A byte is a nibble exactly when its four high bits are zero. The contextual
+// Fork bound below caps this allocation at62 bytes on every admitted route.
+// Bulk builtins preserve the same predicate without one CEK closure per byte.
+fn prefix_is_nibbles(prefix: ByteArray) -> Bool {
+  let length = bytearray.length(prefix)
+  and_bytearray(False, prefix, replicate_byte(length, 240)) == replicate_byte(
+    length,
+    0,
+  )
+}
+
+/// The pinned Trie codec emits Fork only for a branch neighbor and writes one
+/// byte per prefix nibble. The neighbor's own branching nibble must still fit
+/// after that prefix. Leaf neighbors retain their distinct packed Leaf encoding.
+pub fn fork_neighbor_is_well_formed(
+  next_cursor: Int,
+  neighbor: mpf.Neighbor,
+) -> Bool {
   and {
+    next_cursor >= 1,
+    next_cursor + bytearray.length(neighbor.prefix) < path_nibble_count,
     neighbor.nibble >= 0,
     neighbor.nibble < 16,
     bytearray.length(neighbor.root) == digest_byte_count,
+    prefix_is_nibbles(neighbor.prefix),
   }
 }
 
@@ -255,7 +274,7 @@ fn membership_proof_is_well_formed(
       let next_cursor = cursor + 1 + skip
       and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         membership_proof_is_well_formed(
           path,
@@ -311,7 +330,7 @@ fn non_membership_proof_is_well_formed(
       let next_cursor = cursor + 1 + skip
       and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       }
@@ -320,7 +339,7 @@ fn non_membership_proof_is_well_formed(
       let next_cursor = cursor + 1 + skip
       and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         non_membership_proof_is_well_formed(
           path,
@@ -465,7 +484,7 @@ fn do_excluding_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       } {
@@ -478,7 +497,7 @@ fn do_excluding_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
         when
@@ -587,7 +606,7 @@ fn do_including_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
         when
@@ -695,7 +714,7 @@ fn do_insert_pair_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         terminal_fork_prefix_ends_inside_the_path(next_cursor, neighbor),
       } {
@@ -712,7 +731,7 @@ fn do_insert_pair_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
         when
@@ -872,7 +891,7 @@ fn do_update_pair_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
         when
@@ -1007,7 +1026,7 @@ fn do_delete_pair_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
         terminal_fork_neighbor_is_canonical(next_cursor, neighbor),
       } {
@@ -1026,7 +1045,7 @@ fn do_delete_pair_strict(
       let next_cursor = cursor + 1 + skip
       if and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
-        neighbor_is_well_formed(neighbor),
+        fork_neighbor_is_well_formed(next_cursor, neighbor),
         nibble(path, next_cursor - 1) != neighbor.nibble,
       } {
         when

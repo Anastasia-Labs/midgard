@@ -23,7 +23,6 @@
  * every script evaluation and vitest isolates per FILE; that leak is fixed
  * upstream, and the split is kept so each file runs in its own fresh process.
  */
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -43,6 +42,7 @@ import {
 } from "../src/index.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
+import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
@@ -133,7 +133,6 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       const harness = await makeEmulatorHarness("realNoReferenceInput");
       const {
         realBlueprint,
-        emulator,
         funderLucid,
         proverLucid,
         proverSigner,
@@ -146,20 +145,18 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         fee: 9n,
         referenceByte: "22",
       });
-      const fixture = await buildSingleTxBlockFixture(badTx);
-      const setup = await setupFraudulentBlock({
-        funderLucid,
-        emulator,
-        contracts,
-        catalogue,
-        fixture,
+      const context = await inputExistenceExecutionContext({
+        harness,
+        nativeTx: badTx,
+        field: 1,
+        inputIndex: 0n,
       });
+      const { setup, deploymentInfo } = context;
       await expectStateQueueHeaderOrder({
         lucid: funderLucid,
         contracts,
         expectedHeaderHashes: [setup.headerHash],
       });
-      const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
       const initResult = await submitInit({
         lucid: proverLucid,
@@ -191,24 +188,16 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       );
 
       const step01Result = await submitNoReferenceInputStep01({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
+        ...context.arguments,
         threadOutRef: outRefLabel(firstStepUtxo),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.inclusion,
-        referenceScriptUtxo:
-          harness.faultProofReferenceScripts.fraudProofNoReferenceInput.utxo,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        awaitConfirmation: true,
       });
       expect(step01Result.txHash).toHaveLength(64);
       // #604: the thread carries the §2.5 anchor. The field-1 commitment it
       // used to forward is still in the compact structure step-02 opens, and is
       // checked there against the slot rather than carried loose.
-      expect(step01Result.badTxId).toBe(fixture.nativeTxId);
+      expect(step01Result.sourceEventKey).toEqual(
+        context.prepared.source.eventKey,
+      );
       await expect(
         proverLucid.utxosAtWithUnit(
           initResult.firstStepAddress,
@@ -217,7 +206,8 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       ).resolves.toHaveLength(0);
       await expectSingleUtxoWithUnit(
         proverLucid,
-        step01Result.secondStepAddress,
+        contracts.fraudProofContracts.noReferenceInput.steps[1]!
+          .spendingScriptAddress,
         initResult.computationThreadUnit,
       );
     },

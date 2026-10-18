@@ -626,7 +626,14 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     coverage.scenario("reason_or_subject_coordinate_mutation");
     // Direction: a rejecting leaf cannot open a wrongful-acceptance thread.
     await expectOnchainRefusal(() =>
-      s.forced01(thread, evidence, { direction: 0n }),
+      s.forced01(thread, {
+        ...evidence,
+        subject: forcedVerdictSubject({
+          transactionId: evidence.subject.transaction_id,
+          sourceKey: FORCED_ORDER_KEY,
+          rejectionReason: null,
+        }),
+      }),
     );
     // Forced leaf: a leaf carrying another verdict is not in the forced root.
     await expectOnchainRefusal(() =>

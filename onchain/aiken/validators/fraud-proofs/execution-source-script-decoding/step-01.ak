@@ -38,7 +38,17 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, execution_index }) -> {
-        let _, _, _, _, next_script_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
+        let
+            _,
+            subject_thread_name,
+            _,
+            _,
+            next_script_hash,
+            next_state,
+            header,
+            _,
+            verified
+          <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -47,7 +57,10 @@ validator main(
           tx,
         )
         let expected: Data = bind_execution_v1(
-          substrate.bind_accepted_subject_v1(verified),
+          substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource { header, tx_inclusion: verified },
+          ),
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
@@ -58,13 +71,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         execution_index,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
@@ -78,11 +85,9 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_asset_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(

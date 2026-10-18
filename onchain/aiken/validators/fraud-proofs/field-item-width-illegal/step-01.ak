@@ -11,6 +11,8 @@ use midgard/fraud_proofs/field_item_width_illegal/rule.{
 use midgard/fraud_proofs/field_item_width_illegal/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
+use midgard/fraud_proofs/native_tx/compact.{decode_forced_tx_compact_v1}
+use midgard/fraud_proofs/native_tx/types.{TxCompactView}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 fn output_state(bound: BoundCoordinateV1) -> Data {
@@ -46,12 +48,12 @@ validator main(
       }) -> {
         let
             _own_script_hash,
-            _thread_asset_name,
+            subject_thread_name,
             _fraud_prover,
             _input_state,
             next_script_hash,
             next_state,
-            _header,
+            subject_header,
             _tx_id,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -62,21 +64,26 @@ validator main(
           own_out_ref,
           tx,
         )
-        let subject = substrate.bind_accepted_subject_v1(verified)
-        let bound = bind_coordinate_v1(subject, field_index, item_index)
+        let subject = substrate.open_subject_v1(
+          subject_thread_name,
+          substrate.AcceptedSource {
+            header: subject_header,
+            tx_inclusion: verified,
+          },
+        )
+        let bound = bind_coordinate_v1(
+          subject,
+          field_index,
+          item_index,
+          verified.tx_compact,
+        )
         and {
           next_script_hash == step_02_validator_script_hash,
           next_state == output_state(bound),
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         field_index,
         item_index,
       }) -> {
@@ -98,13 +105,25 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_asset_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
-        let bound = bind_coordinate_v1(subject, field_index, item_index)
+        // open_subject_v1 authenticated these exact compact bytes in the
+        // forced leaf; this decode only projects its already-bound hash.
+        let compact = decode_forced_tx_compact_v1(
+          membership.value.submitted_source.compact_cbor,
+        )
+        let bound = bind_coordinate_v1(
+          subject,
+          field_index,
+          item_index,
+          TxCompactView {
+            body: compact.body,
+            witness_set_hash: compact.witness_set_hash,
+            validity_code: None,
+          },
+        )
         and {
           next_script_hash == step_02_validator_script_hash,
           next_state == output_state(bound),

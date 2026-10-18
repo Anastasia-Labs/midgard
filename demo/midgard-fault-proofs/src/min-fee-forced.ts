@@ -115,6 +115,9 @@ export const prepareMinFeeForcedPlan = async ({
   });
   return Object.freeze({
     ...detection,
-    forcedSource: { header: block.header, membership, direction: 1n },
+    forcedSource: {
+      header: block.header,
+      membership,
+    },
   });
 };

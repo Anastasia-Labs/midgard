@@ -39,12 +39,12 @@ validator main(
       ct.Continue(BindAccepted { carriage }) -> {
         let
             _,
-            _,
+            subject_thread_name,
             _,
             input_state,
             output_script_hash,
             output_state_data,
-            _,
+            subject_header,
             _,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -57,7 +57,13 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == step_02_validator_script_hash
-        let subject = substrate.bind_accepted_subject_v1(verified)
+        let subject = substrate.open_subject_v1(
+          subject_thread_name,
+          substrate.AcceptedSource {
+            header: subject_header,
+            tx_inclusion: verified,
+          },
+        )
         let expected: Data = BoundAccepted {
           subject,
           witness_set_hash: verified.tx_compact.witness_set_hash,
@@ -65,11 +71,7 @@ validator main(
         expect output_state_data == expected
         True
       }
-      ct.Continue(RecordForced { direction, input_index, output_index }) -> {
-        expect or {
-            direction == substrate.direction_wrongful_acceptance,
-            direction == substrate.direction_wrongful_rejection,
-          }
+      ct.Continue(RecordForced { input_index, output_index }) -> {
         expect Some(step_datum) = datum
         let Transaction { inputs, outputs, .. } = tx
         let _, _, _, input_state, output_script_hash, output_state_data <- continue(
@@ -83,7 +85,7 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == step_02_validator_script_hash
-        let expected: Data = PendingForced { direction }
+        let expected: Data = PendingForced
         expect output_state_data == expected
         True
       }

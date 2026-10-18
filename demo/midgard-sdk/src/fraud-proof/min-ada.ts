@@ -30,7 +30,6 @@ export const MinAdaForcedSourcePayloadSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
@@ -44,7 +43,6 @@ export const MinAdaStep01ArgsSchema = Data.Object({
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   ),
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),

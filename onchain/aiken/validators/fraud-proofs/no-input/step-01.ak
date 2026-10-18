@@ -1,28 +1,19 @@
-//// ## Non-Existent Input UTxO Fraud Proof (Section 5.1.1)
-////
-//// Proves a given transaction spends an input that does not exist in the
-//// initial ledger (i.e. `prev_utxos_root`) of its containing block, and that
-//// it wasn't produced by any of the block's transactions.
-
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/merkle_patricia_forestry as mpf
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  cancel, carriage_transactions_phas_root, continue,
-  pass_native_tx_to_next_step_carried,
-}
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
+use midgard/fraud_proofs/input_existence_v1/bind
+use midgard/fraud_proofs/input_existence_v1/source.{AcceptedSource, Args}
+use midgard/fraud_proofs/input_existence_v1/types
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/types as native_types
-use midgard/fraud_proofs/no_input/step_01.{
-  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
-}
-use midgard/fraud_proofs/no_input/step_02
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_types
+use midgard/fraud_proofs/no_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/ledger_state
-use midgard/rejection_reason_v1.{InputNotFound}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -35,109 +26,15 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-        cancel(
-          computation_thread_token_policy_id,
-          datum,
-          input_index,
-          own_out_ref,
-          computation_thread_mint_redeemer_index,
-          tx,
-        )
-      ct.Continue(Args{source: AcceptedSource { inclusion: tx_inclusion_args }}) -> {
-        // 1. Generic validations for passing the provided bad tx to the next
-        //    step must pass.
-        let
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            _m_input_state_data,
-            output_script_hash,
-            output_state_data,
-            header,
-            bad_tx_id,
-            bad_tx_view
-          <- pass_native_tx_to_next_step_carried(
-          computation_thread_token_policy_id,
-          hub_oracle,
-          datum,
-          tx_inclusion_args,
-          own_out_ref,
-          tx,
-        )
-
-        expect bad_tx_view.tx_compact.validity_code == Some(0)
-
-        let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
-
-        // 2. The UTxO must be produced at next step's script hash with the
-        //    verified id of the bad transaction, and relevant block roots.
-        //    Step-02 re-opens field 0 from that id through the §8.8 door, so
-        //    what travels forward is the transaction's identity rather than one
-        //    of its nine commitments — under §4's plain hashing a field hash
-        //    names no slot, and a slice-only read needs the compact structures
-        //    anyway. The authenticated raw transactions phas root (verified
-        //    against the header's counted `transactions_root` inside
-        //    `pass_native_tx_to_next_step`) is threaded forward so step-04's
-        //    non-membership check runs against a real MPF root.
-        expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = step_02.State {
-          bad_tx_id,
-          blocks_prev_utxos_root: prev_utxos_root,
-          blocks_transactions_root: carriage_transactions_phas_root(
-            tx_inclusion_args,
-          ),
-        }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
-      }
-      ct.Continue(Args{source: ForcedSource {
-        input_index,
-        output_index,
-        header,
-        membership,
-        direction,
-      }}) -> {
-        expect Some(step_datum) = datum
-        let _, thread_name, _, input_state, output_hash, output_state <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          tx.inputs,
-          tx.outputs,
-        )
-        expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
-          thread_name,
-          header,
-          membership,
-          direction,
-        )
-        expect InputNotFound { source_kind, .. } = substrate.rejection_reason_of_v1(
-          subject,
-        )
-        expect source_kind == 0
-        let expected: Data = step_02.ForcedState {
-          subject,
-          event_key: ledger_state.ForcedTransactionEventKey {
-            tx_order_id: membership.key,
-          },
-          event_root: header.event_to_step_root,
-          event_count: header.total_event_count,
-          trace_root: header.transition_trace_root,
-          trace_count: header.transition_step_count,
-        }
-        and {
-          output_hash == step_02_validator_script_hash,
-          output_state == expected,
-        }
-      }
-    }
+    bind.bind_source_v1(
+      step_02_validator_script_hash,
+      computation_thread_token_policy_id,
+      hub_oracle,
+      datum,
+      redeemer,
+      own_out_ref,
+      tx,
+    )
   }
 
   else(_) {
@@ -148,10 +45,17 @@ validator main(
 // ## Family selectors (GOAL_SPEC.md §9.1 output 4)
 
 fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
-  let expected_output_state: Data = step_02.State {
-    bad_tx_id: claimed.tx_id,
-    blocks_prev_utxos_root: claimed.header.prev_utxos_root,
-    blocks_transactions_root: claimed.transactions_phas_root,
+  let expected_output_state: Data = types.SourceStateV1 {
+    compact: carriage_fixture.compact_view_v1(claimed.compact),
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: claimed.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: claimed.header,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     claimed,
@@ -179,8 +83,6 @@ fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
 
 /// Positive selector: the challenged transaction is genuinely committed under
 /// the block's counted `transactions_root`, so step-01 forwards its canonical
-/// spend-inputs commitment together with the header's `prev_utxos_root` and the
-/// authenticated raw transactions root the later non-membership checks need.
 test no_input_step_01_binds_native_v1_block_fixture() {
   run_step_01(fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()))
 }
@@ -209,10 +111,17 @@ fn run_step_01_published(
   claim_chunk_count: Int,
   steps: mpf.Proof,
 ) -> Bool {
-  let expected_output_state: Data = step_02.State {
-    bad_tx_id: block.tx_id,
-    blocks_prev_utxos_root: block.header.prev_utxos_root,
-    blocks_transactions_root: carriage_block.transactions_phas_root,
+  let expected_output_state: Data = types.SourceStateV1 {
+    compact: carriage_fixture.compact_view_v1(block.compact),
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: block.header,
   }
   main.spend(
     fixture.next_step_script_hash,
@@ -281,7 +190,6 @@ test no_input_step_01_rejects_a_claim_the_redeemer_did_not_name() fail {
   run_step_01_published(block, block, adversarial_chunk_count, 1, steps)
 }
 
-/// Valid-block negative selector: a raw transactions root that is not the one
 /// committed by the header's counted `transactions_root` cannot bind, so a
 /// transaction fabricated against a valid block's header is rejected before any
 /// non-existence claim can be made.

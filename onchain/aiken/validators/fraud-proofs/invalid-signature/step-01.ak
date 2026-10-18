@@ -41,12 +41,12 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            subject_thread_name,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            _header,
+            subject_header,
             _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -72,7 +72,13 @@ validator main(
         //    authenticated rather than asserted.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
+          subject: substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource {
+              header: subject_header,
+              tx_inclusion: bad_tx_view,
+            },
+          ),
           bad_tx_witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
         }
         expect output_state_data == expected_output_state
@@ -85,7 +91,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -99,11 +104,9 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(

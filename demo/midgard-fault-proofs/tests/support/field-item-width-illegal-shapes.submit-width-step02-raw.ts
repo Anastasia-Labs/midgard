@@ -1,6 +1,7 @@
-import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
   type FieldOpening,
+  isMidgardWitnessSetField,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,7 +14,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { FieldItemWidthIllegalContracts } from "../../src/field-item-width-illegal/contracts.js";
-import type { FieldItemWidthEvidence } from "../../src/field-item-width-illegal/field-item-width-illegal.js";
+import {
+  type FieldItemWidthBoundCoordinate,
+  type FieldItemWidthEvidence,
+  prepareFieldItemWidthEvidence,
+} from "../../src/field-item-width-illegal/field-item-width-illegal.js";
 import {
   FieldItemWidthStep02DatumSchema,
   FieldItemWidthStep02RedeemerSchema,
@@ -91,26 +96,41 @@ export const submitWidthStep02Raw = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepState<{
-    subject: unknown;
-    field_index: bigint;
-    item_index: bigint;
-  }>({
+  const state = requireLinearFaultStepState<FieldItemWidthBoundCoordinate>({
     threadUtxo,
     signer,
     schema: FieldItemWidthStep02DatumSchema as never,
     family: "field-item-width-illegal",
     stepIndex,
   });
-  const items = decodeMidgardFieldPreimage(
-    Buffer.from(evidence.fieldPreimageHex, "hex"),
+  if (evidence.kind !== "Field")
+    throw new Error("raw field mutation requires field evidence");
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
+    Buffer.from(witnessSetCompactCbor, "hex"),
   );
   const planned = planFaultProofFieldOpening({
-    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-    fieldIndex: evidence.fieldIndex,
-    anchorTxId: evidence.subject.transaction_id,
+    anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
+    fieldIndex: Number(evidence.fieldIndex),
+    anchorTxId: state.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: items,
+    fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+    // Only a witness-set field carries the witness set and its anchor.
+    ...(isMidgardWitnessSetField(Number(evidence.fieldIndex))
+      ? {
+          witnessSet: {
+            addr_tx_wits_hash: Buffer.from(witnessSet.addrTxWitsHash).toString(
+              "hex",
+            ),
+            script_tx_wits_hash: Buffer.from(
+              witnessSet.scriptTxWitsHash,
+            ).toString("hex"),
+            redeemer_tx_wits_hash: Buffer.from(
+              witnessSet.redeemerTxWitsHash,
+            ).toString("hex"),
+          },
+          anchorWitnessSetHash: state.compact.witness_set_hash,
+        }
+      : {}),
     owner: signer.paymentKeyHash,
     publish: false,
     label: "field-item-width-illegal raw field opening",
@@ -173,15 +193,23 @@ export const submitWidthStep02Raw = async ({
   // The successor datum carries what the thread bound, not what the evidence
   // says: a coordinate mutation is bound at step 01 and must be refused here
   // by the door, not masked by an off-chain equality check.
-  const item = items[Number(state.item_index)];
+  const observed = prepareFieldItemWidthEvidence({
+    finding: {
+      subject: state.subject,
+      fieldIndex: state.field_index,
+      itemIndex: state.item_index,
+    },
+    fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+    committedFieldHashHex: evidence.fieldCommitmentHex,
+  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        subject: evidence.subject,
+        subject: state.subject,
         field_index: state.field_index,
         item_index: state.item_index,
-        item_width: BigInt(item?.length ?? 0),
+        observation: observed.observation,
       },
     } as never,
     FieldItemWidthStep03DatumSchema as never,

@@ -7,7 +7,7 @@ pub type Args {
     inclusion: NativeTxInclusionCarriage,
     claim: CommittedFieldClaimV1,
   }
-  RecordForced { direction: Int, input_index: Int, output_index: Int }
+  RecordForced { input_index: Int, output_index: Int }
 }
 
 pub type Datum =

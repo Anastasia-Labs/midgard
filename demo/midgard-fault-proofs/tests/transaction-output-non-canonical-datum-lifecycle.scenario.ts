@@ -148,7 +148,10 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
       ...stepCommon(registered),
       threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
       finding: evidence,
-      forcedSource: { header: forced.header, membership, direction: 1n },
+      forcedSource: {
+        header: forced.header,
+        membership,
+      },
       referenceScriptUtxo: registered.references[0]!,
     });
     const authenticated = await submitTransactionOutputNonCanonicalStep02({

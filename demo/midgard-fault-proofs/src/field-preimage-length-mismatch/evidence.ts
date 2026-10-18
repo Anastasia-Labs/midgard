@@ -217,7 +217,6 @@ export const fieldPreimageLengthEvidenceFromCanonicalBlock = async (
             material.proofSource.witnessSetCompactCbor.toString("hex"),
         }),
         stageEvidence: Object.freeze({
-          forcedDirection: 1n,
           forcedHeader: block.header,
           forcedMembership: membership,
           ...(prepared.carriage === "Inline"

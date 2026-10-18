@@ -234,7 +234,6 @@ const forcedPrepared = async ({
         value: leaf,
         proof: Data.from(proof.toCBOR().toString("hex"), Proof),
       } as PreparedNetworkIdWrongfulRejection["forcedSource"]["membership"],
-      direction: 1n,
     },
     evidence: detection.evidence,
   };

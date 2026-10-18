@@ -265,7 +265,10 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       inputFieldPreimageCbor: evidence.inputFieldPreimageCbor,
       inputFieldCommitment: evidence.inputFieldCommitment,
       forcedSourceCbor: Data.to(
-        { header, membership, direction: 1n } as never,
+        {
+          header,
+          membership,
+        } as never,
         ZeroInputForcedSourcePayloadSchema as never,
       ),
     } as const;
@@ -297,7 +300,6 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
     ) as {
       membership: typeof membership;
       header: typeof header;
-      direction: bigint;
     };
     expect(() =>
       admitNativeInclusionTwoStepArtifact({

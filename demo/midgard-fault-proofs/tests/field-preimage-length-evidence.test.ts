@@ -50,7 +50,6 @@ it("routes a committed forced wrong acceptance after full reconstruction refuses
     evidence.prepared.actualLength + 1,
   );
   expect(evidence.stageEvidence).toMatchObject({
-    forcedDirection: 0n,
     forcedHeader: fixture.header,
     forcedMembership: {
       root: fixture.header.forcedTransactionsRoot,

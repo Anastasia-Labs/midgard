@@ -110,9 +110,7 @@ export const submitScriptIntegrityHashMissingStep01Forced = async (
   const nextDatum = Data.to(
     {
       fraud_prover: args.signer.paymentKeyHash,
-      data: {
-        PendingForced: { direction: args.direction },
-      },
+      data: "PendingForced",
     } as never,
     ScriptIntegrityStep02DatumSchema as never,
   );
@@ -120,7 +118,10 @@ export const submitScriptIntegrityHashMissingStep01Forced = async (
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
-      RecordForced: { direction: args.direction, input_index, output_index },
+      RecordForced: {
+        input_index,
+        output_index,
+      },
     }),
   });
 };

@@ -19,6 +19,74 @@ const absent_key = #"070809"
 
 const absent_value = #"0a0b0c"
 
+fn neighbor(prefix: ByteArray) -> mpf.Neighbor {
+  mpf.Neighbor { nibble: 1, prefix, root: blake2b_256(value) }
+}
+
+test mpf_source_fork_accepts_the_maximum_remaining_prefix() {
+  mpf_proof_v1.fork_neighbor_is_well_formed(
+    1,
+    neighbor(builtin.replicate_byte(62, 15)),
+  )
+}
+
+test mpf_source_fork_refuses_the_adjacent_overlong_prefix() {
+  !mpf_proof_v1.fork_neighbor_is_well_formed(
+    1,
+    neighbor(builtin.replicate_byte(63, 15)),
+  )
+}
+
+test mpf_source_fork_accepts_the_deepest_neighbor_branch() {
+  mpf_proof_v1.fork_neighbor_is_well_formed(63, neighbor(#""))
+}
+
+test mpf_source_fork_refuses_a_neighbor_branch_after_key_end() {
+  !mpf_proof_v1.fork_neighbor_is_well_formed(64, neighbor(#""))
+}
+
+test mpf_source_fork_refuses_a_nonnibble_after_a_valid_prefix_byte() {
+  !mpf_proof_v1.fork_neighbor_is_well_formed(1, neighbor(#"0010"))
+}
+
+test mpf_source_fork_refuses_an_out_of_range_neighbor_nibble() {
+  !mpf_proof_v1.fork_neighbor_is_well_formed(
+    1,
+    mpf.Neighbor { ..neighbor(#""), nibble: 16 },
+  )
+}
+
+// Exhaust the byte alphabet at three locations in the supported 62-nibble
+// maximum. A bulk mask must agree with the independent numeric predicate.
+fn fork_prefix_alphabet_at(position: Int, value: Int) -> Bool {
+  if value == 256 {
+    True
+  } else {
+    let prefix = bytearray.concat(
+      builtin.replicate_byte(position, 0),
+      bytearray.concat(
+        builtin.replicate_byte(1, value),
+        builtin.replicate_byte(61 - position, 15),
+      ),
+    )
+    mpf_proof_v1.fork_neighbor_is_well_formed(1, neighbor(prefix)) == (
+      value < 16
+    ) && fork_prefix_alphabet_at(position, value + 1)
+  }
+}
+
+test mpf_source_fork_bulk_guard_matches_every_byte_at_start() {
+  fork_prefix_alphabet_at(0, 0)
+}
+
+test mpf_source_fork_bulk_guard_matches_every_byte_in_middle() {
+  fork_prefix_alphabet_at(31, 0)
+}
+
+test mpf_source_fork_bulk_guard_matches_every_byte_at_end() {
+  fork_prefix_alphabet_at(61, 0)
+}
+
 fn singleton_root() -> ByteArray {
   combine(suffix(blake2b_256(key), 0), blake2b_256(value))
 }

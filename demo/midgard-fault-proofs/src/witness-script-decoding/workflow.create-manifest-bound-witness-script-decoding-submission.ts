@@ -142,7 +142,6 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step01 thread out-ref"),
         header: required(stage.forcedHeader, "forced header"),
         membership: required(stage.forcedMembership, "forced membership"),
-        direction: required(stage.forcedDirection, "forced direction"),
         witnessSetHash: evidence.finding.witnessSetHash,
         scriptIndex: BigInt(evidence.finding.scriptIndex),
         referenceScriptUtxo: config.referenceScripts.step01,

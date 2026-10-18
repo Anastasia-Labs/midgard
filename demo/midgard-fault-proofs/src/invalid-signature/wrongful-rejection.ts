@@ -125,7 +125,6 @@ export const prepareInvalidSignatureWrongfulRejection = async ({
     forcedSource: Object.freeze({
       header: block.header,
       membership,
-      direction: 1n,
     }),
   });
 };

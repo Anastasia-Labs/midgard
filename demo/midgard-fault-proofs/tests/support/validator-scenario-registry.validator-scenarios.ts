@@ -7,6 +7,25 @@ export type ValidatorScenarioPair = Readonly<{
   failing: readonly ValidatorScenario[];
 }>;
 
+/** One emulator test both executes the honest transition and refuses an
+ * altered one at the same validator. */
+const directScriptDerivationScenario = (
+  test: string,
+): ValidatorScenarioPair => {
+  const scenario = [
+    {
+      file: "demo/midgard-fault-proofs/tests/direct-script-derivation-emulator.test.ts",
+      test,
+    },
+  ];
+  return { passing: scenario, failing: scenario };
+};
+const DIRECT_BINDING =
+  "executes separate direct event and pre-state custody steps for %s";
+const DIRECT_SOURCE =
+  "executes source field-authentication-map custody in ordinary eight-item batches";
+const DIRECT_RECEIVE =
+  "executes bounded receive batches and sorted ordinal custody without trace states";
 const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
   passing: [
     {
@@ -348,6 +367,36 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/direct_script_derivation/bind_event.main":
+    directScriptDerivationScenario(DIRECT_BINDING),
+  "fraud_proofs/direct_script_derivation/bind_pre_state.main":
+    directScriptDerivationScenario(DIRECT_BINDING),
+  "fraud_proofs/direct_script_derivation/source_start.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_resolved.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_authenticate.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_map.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_input_finish.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_grammar.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_witnesses.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/source_finish.main":
+    directScriptDerivationScenario(DIRECT_SOURCE),
+  "fraud_proofs/direct_script_derivation/receive_start.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_grammar.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_outputs.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_finish.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/receive_declaration.main":
+    directScriptDerivationScenario(DIRECT_RECEIVE),
   "script_decode_v1.script_decode_v1": {
     passing: [
       {

@@ -216,7 +216,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
     schemaVersion: INVALID_SIGNATURE_FORCED_ARTIFACT,
     headerHash: setup.headerHash,
     forcedSourceCbor: Data.to(
-      { header, membership, direction: 1n } as never,
+      {
+        header,
+        membership,
+      } as never,
       SDK.InvalidSignatureForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor: encodeMidgardForcedTxCanonical(
@@ -292,7 +295,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
       admitInvalidSignatureForcedArtifact({
         ...artifact,
         forcedSourceCbor: Data.to(
-          { header, membership: changedMembership, direction: 1n } as never,
+          {
+            header,
+            membership: changedMembership,
+          } as never,
           SDK.InvalidSignatureForcedSourcePayloadSchema as never,
         ),
       }),
@@ -328,7 +334,10 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        forcedSource: { header, membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership,
+        },
         referenceScriptUtxo: references[0],
       }),
     );
@@ -398,7 +407,6 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
           forcedSource: {
             header,
             membership: changedMembership,
-            direction: 1n,
           },
           referenceScriptUtxo: references[0],
         }),

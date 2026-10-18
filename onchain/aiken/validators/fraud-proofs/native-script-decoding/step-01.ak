@@ -26,6 +26,7 @@ use midgard/fraud_proofs/native_script_decoding/step_01.{
   BindNormalTransaction, Datum, RecordForcedSource, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -53,12 +54,12 @@ validator main(
         //    next step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            subject_thread_name,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            _header,
+            subject_header,
             bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -80,16 +81,20 @@ validator main(
 
         // 3. The thread advances to step-02 carrying the bound subject.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = engine.BindStateV1 {
-          direction: engine.direction_wrongful_acceptance,
-          source_kind: engine.source_kind_normal,
-          verified_tx_id: bad_tx_id,
+        let expected_output_state: Data = engine.BoundAccepted {
+          subject: substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource {
+              header: subject_header,
+              tx_inclusion: bad_tx_view,
+            },
+          ),
         }
         expect output_state_data == expected_output_state
 
         True
       }
-      ct.Continue(RecordForcedSource { direction, input_index, output_index }) -> {
+      ct.Continue(RecordForcedSource { input_index, output_index }) -> {
         let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
@@ -117,18 +122,9 @@ validator main(
         // 2. The direction is fixed for the thread's whole life here; the
         //    forced leaf itself — with the verdict this direction disputes —
         //    is opened at step-02 under the thread NFT's header.
-        expect or {
-            direction == engine.direction_wrongful_acceptance,
-            direction == engine.direction_wrongful_rejection,
-          }
-
         // 3. The thread advances to step-02 with the sentinel subject id.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = engine.BindStateV1 {
-          direction,
-          source_kind: engine.source_kind_forced,
-          verified_tx_id: #"",
-        }
+        let expected_output_state: Data = engine.PendingForced
         expect output_state_data == expected_output_state
 
         True
@@ -152,10 +148,15 @@ fn first_step_datum() -> Datum {
 }
 
 fn run_step_01_normal(claimed: fixture.NativeBlockFixtureV1) -> Bool {
-  let expected_output_state: Data = engine.BindStateV1 {
-    direction: engine.direction_wrongful_acceptance,
-    source_kind: engine.source_kind_normal,
-    verified_tx_id: claimed.tx_id,
+  let expected_output_state: Data = engine.BoundAccepted {
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: claimed.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
     claimed,
@@ -179,24 +180,17 @@ fn run_step_01_normal(claimed: fixture.NativeBlockFixtureV1) -> Bool {
   )
 }
 
-fn run_step_01_forced(direction: Int) -> Bool {
+fn run_step_01_forced(output_state: Data) -> Bool {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let asset_name = fixture.ct_token_asset_name(block)
-  let expected_output_state: Data = engine.BindStateV1 {
-    direction,
-    source_kind: engine.source_kind_forced,
-    verified_tx_id: #"",
-  }
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(first_step_datum()),
-    ct.Continue(
-      RecordForcedSource { direction, input_index: 0, output_index: 0 },
-    ),
+    ct.Continue(RecordForcedSource { input_index: 0, output_index: 0 }),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
   )
 }
 
@@ -209,18 +203,17 @@ test decoding_step_01_binds_an_accepted_normal_transaction() {
   )
 }
 
-/// Positive selector: the forced arm records either direction and forwards
-/// the sentinel subject for step-02 to bind the leaf.
-test decoding_step_01_records_a_forced_source_for_either_direction() {
-  and {
-    run_step_01_forced(engine.direction_wrongful_acceptance),
-    run_step_01_forced(engine.direction_wrongful_rejection),
-  }
+/// The source leaf determines polarity at step 02. Step 01 records only the
+/// pending forced-source state, and its actual output must contain that state.
+test decoding_step_01_records_a_pending_forced_source() {
+  let output_state: Data = engine.PendingForced
+  run_step_01_forced(output_state)
 }
 
-/// A direction outside {0, 1} never enters the thread.
-test decoding_step_01_rejects_an_unknown_direction() fail {
-  run_step_01_forced(2)
+test decoding_step_01_rejects_a_substituted_pending_state() fail {
+  let wrong_state: Data = 0
+  expect _ = run_step_01_forced(wrong_state)
+  True
 }
 
 /// §2.4.3(d) edge: a committed leaf whose own validity scalar claims
@@ -262,10 +255,15 @@ test decoding_step_01_binds_a_published_chunk_membership_proof() {
     fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
     1_000_000,
   )
-  let expected_output_state: Data = engine.BindStateV1 {
-    direction: engine.direction_wrongful_acceptance,
-    source_kind: engine.source_kind_normal,
-    verified_tx_id: block.tx_id,
+  let expected_output_state: Data = engine.BoundAccepted {
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
   }
   main.spend(
     fixture.next_step_script_hash,

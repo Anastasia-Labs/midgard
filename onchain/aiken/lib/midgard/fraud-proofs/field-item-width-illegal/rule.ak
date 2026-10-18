@@ -1,106 +1,165 @@
-//// Narrow semantic engine for `fieldItemWidthIllegal`.
-////
-//// This is the direct twin of
-//// `validation-machine-v1.transaction_field_item_encoded_length`'s `None`
-//// arms.  The selected bytes must already have been authenticated through the
-//// native field door; this module decides only whether their payload width is
-//// illegal for the named field.
+//// Source-bound item legality, first-fault and in-family domain refutation.
 
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/fixed_item_legality_v1
+use midgard/fraud_proofs/first_fault_v1
+use midgard/fraud_proofs/native_tx/types.{TxCompactView}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/native_tx_field_access_v1.{
+  FieldViewV1, field_fixed_encoded_item_at, field_item_at, field_item_count,
+}
 use midgard/rejection_reason_v1.{FieldItemWidthIllegal}
 
-pub const outputs_field_index: Int = 2
-
-pub const mint_field_index: Int = 5
-
-pub const max_serialized_output_preimage_bytes: Int = 16384
+pub const max_serialized_output_preimage_bytes: Int =
+  fixed_item_legality_v1.max_serialized_output_preimage_bytes
 
 pub type BoundCoordinateV1 {
   subject: substrate.VerdictSubjectV1,
   field_index: Int,
   item_index: Int,
+  compact: TxCompactView,
 }
 
-pub type AuthenticatedWidthV1 {
+pub type ItemObservationV1 {
+  ItemOutOfDomain
+  ItemLegality { item_is_legal: Bool }
+}
+
+pub type AuthenticatedItemV1 {
   subject: substrate.VerdictSubjectV1,
   field_index: Int,
   item_index: Int,
-  item_width: Int,
+  observation: ItemObservationV1,
 }
 
 pub fn coordinate_is_supported_v1(field_index: Int, item_index: Int) -> Bool {
   and {
     item_index >= 0,
     or {
-      field_index == outputs_field_index,
-      field_index == mint_field_index,
+      fixed_item_legality_v1.is_fixed_field_v1(field_index),
+      field_index == 2,
+      field_index == 5,
     },
   }
 }
 
-/// Bind the family's exact typed forced reason and coordinate.  On the
-/// accepted direction there is no operator-supplied reason, but the same
-/// coordinate is still carried canonically to the field-opening step.
+fn names_observed_item(state: AuthenticatedItemV1) -> Bool {
+  state.subject.rejection_reason == Some(
+    FieldItemWidthIllegal {
+      field_index: state.field_index,
+      item_index: state.item_index,
+    },
+  )
+}
+
+/// An observed fault coordinate may differ from the leaf's claimed coordinate.
+/// Only an exact named FIWI coordinate may use the no-field domain branch.
+/// `compact` comes from the step-01 authenticated accepted/forced source.
 pub fn bind_coordinate_v1(
   subject: substrate.VerdictSubjectV1,
   field_index: Int,
   item_index: Int,
+  compact: TxCompactView,
 ) -> BoundCoordinateV1 {
   expect substrate.subject_is_canonical_v1(subject)
-  expect coordinate_is_supported_v1(field_index, item_index)
-  expect _bound_reason = if subject.direction == substrate.direction_wrongful_rejection {
-    let expected = FieldItemWidthIllegal { field_index, item_index }
-    Some(substrate.bind_exact_rejection_reason_v1(subject, expected))
-  } else {
-    None
-  }
-  BoundCoordinateV1 { subject, field_index, item_index }
+  expect bytearray.length(compact.witness_set_hash) == 32
+  expect
+    if coordinate_is_supported_v1(field_index, item_index) {
+      True
+    } else {
+      and {
+        subject.direction == substrate.direction_wrongful_rejection,
+        subject.rejection_reason == Some(
+          FieldItemWidthIllegal { field_index, item_index },
+        ),
+      }
+    }
+  BoundCoordinateV1 { subject, field_index, item_index, compact }
 }
 
-/// Derive the state that crosses from the authenticating step to the terminal
-/// step. `item` is the exact payload returned by `field_item_at`; no item bytes
-/// cross the boundary.
-pub fn authenticate_item_width_v1(
+/// Unsupported field or negative item is statically outside this arm's
+/// coordinate domain. No proof or synthetic empty-field sentinel is consumed.
+pub fn authenticate_static_domain_v1(
   bound: BoundCoordinateV1,
-  item: ByteArray,
-) -> AuthenticatedWidthV1 {
-  AuthenticatedWidthV1 {
+) -> AuthenticatedItemV1 {
+  expect !coordinate_is_supported_v1(bound.field_index, bound.item_index)
+  AuthenticatedItemV1 {
     subject: bound.subject,
     field_index: bound.field_index,
     item_index: bound.item_index,
-    item_width: bytearray.length(item),
+    observation: ItemOutOfDomain,
   }
 }
 
-/// Exact V1 predicate. Field 2's output item is illegal only above the
-/// serialized-output cap. Field 5's mint-policy item is illegal only when
-/// empty. Other fields are outside this reason family and are refused rather
-/// than interpreted using an unrelated adapter.
-pub fn item_width_is_illegal_v1(field_index: Int, item_width: Int) -> Bool {
-  expect item_width >= 0
-  if field_index == outputs_field_index {
-    item_width > max_serialized_output_preimage_bytes
+/// `view` is the exact whole field opened under the source's tx-id and, for
+/// field 7, authenticated compact witness hash. Its count is authenticated by
+/// the same complete envelope walk as CanonicalDecode, also under Certified.
+pub fn authenticate_item_legality_v1(
+  bound: BoundCoordinateV1,
+  view: FieldViewV1,
+) -> AuthenticatedItemV1 {
+  expect coordinate_is_supported_v1(bound.field_index, bound.item_index)
+  let observation = if bound.item_index >= field_item_count(view) {
+    ItemOutOfDomain
   } else {
-    expect field_index == mint_field_index
-    item_width == 0
+    let legal = if fixed_item_legality_v1.is_fixed_field_v1(bound.field_index) {
+      let previous = if bound.item_index == 0 {
+        None
+      } else {
+        Some(field_fixed_encoded_item_at(view, bound.item_index - 1))
+      }
+      fixed_item_legality_v1.fixed_item_is_legal_v1(
+        bound.field_index,
+        previous,
+        field_fixed_encoded_item_at(view, bound.item_index),
+      )
+    } else {
+      fixed_item_legality_v1.item_width_is_legal_v1(
+        bound.field_index,
+        bytearray.length(field_item_at(view, bound.item_index)),
+      )
+    }
+    ItemLegality { item_is_legal: legal }
+  }
+  AuthenticatedItemV1 {
+    subject: bound.subject,
+    field_index: bound.field_index,
+    item_index: bound.item_index,
+    observation,
   }
 }
 
-pub fn terminal_contradiction_v1(state: AuthenticatedWidthV1) -> Bool {
-  expect coordinate_is_supported_v1(state.field_index, state.item_index)
-  substrate.terminal_contradiction_v1(
-    state.subject,
-    item_width_is_illegal_v1(state.field_index, state.item_width),
-  )
+pub fn terminal_contradiction_v1(state: AuthenticatedItemV1) -> Bool {
+  expect substrate.subject_is_canonical_v1(state.subject)
+  when state.observation is {
+    ItemOutOfDomain -> and {
+        state.subject.direction == substrate.direction_wrongful_rejection,
+        names_observed_item(state),
+      }
+    ItemLegality { item_is_legal: True } -> and {
+        state.subject.direction == substrate.direction_wrongful_rejection,
+        names_observed_item(state),
+      }
+    ItemLegality { item_is_legal: False } ->
+      !first_fault_v1.leaf_admits_fault_v1(
+        state.subject,
+        None,
+        first_fault_v1.CanonicalFault(
+          first_fault_v1.CanonicalItem {
+            field_index: state.field_index,
+            item_index: state.item_index,
+          },
+        ),
+        first_fault_v1.NotRequired,
+      )
+  }
 }
 
-/// Stable Plutus-Data ABI used for the TypeScript parity vectors.
 pub fn encode_bound_coordinate_v1(bound: BoundCoordinateV1) -> ByteArray {
   cbor.serialise(bound)
 }
 
-pub fn encode_authenticated_width_v1(state: AuthenticatedWidthV1) -> ByteArray {
+pub fn encode_authenticated_item_v1(state: AuthenticatedItemV1) -> ByteArray {
   cbor.serialise(state)
 }

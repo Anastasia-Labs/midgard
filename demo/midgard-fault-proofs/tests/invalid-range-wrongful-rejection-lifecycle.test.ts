@@ -182,7 +182,10 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       inputFieldPreimageCbor: "",
       inputFieldCommitment: "00".repeat(32),
       forcedSourceCbor: Data.to(
-        { header, membership, direction: 1n } as never,
+        {
+          header,
+          membership,
+        } as never,
         SDK.InvalidRangeForcedSourcePayloadSchema as never,
       ),
     });
@@ -218,7 +221,10 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
           signer: harness.proverSigner,
           threadOutRef,
           evidence,
-          forcedSource: { header, membership, direction: 1n },
+          forcedSource: {
+            header,
+            membership,
+          },
           referenceScriptUtxo: references[0],
         }),
       );

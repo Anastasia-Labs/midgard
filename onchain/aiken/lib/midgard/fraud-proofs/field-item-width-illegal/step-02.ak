@@ -8,7 +8,7 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  opening: FieldOpeningV1,
+  opening: Option<FieldOpeningV1>,
 }
 
 pub type SpendRedeemer =
