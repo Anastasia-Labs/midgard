@@ -11,10 +11,7 @@ import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
-import {
-  detectOutputReferenceScriptDecodingCanonicalViolations,
-  OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID,
-} from "../output-reference-script-decoding/output-reference-script-decoding.js";
+import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
 import {
@@ -26,11 +23,7 @@ import { detectScriptIntegrityHashMissingFromCanonicalEvidence } from "../script
 import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-signer-missing/spend-input-signer-missing.js";
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
-import {
-  detectWitnessScriptDecodingCompleteReplay,
-  WITNESS_SCRIPT_DECODING_VIOLATION_IDS,
-} from "../witness-script-decoding/workflow.js";
-import { type CanonicalViolationDetection } from "./classification.js";
+import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
 import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   detectL2TxMistags,
@@ -58,6 +51,7 @@ import {
   type FabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalEvidenceAuthority,
 } from "./fabricated-withdrawal-evidence.js";
+import { withoutHeldPlutusScriptItems } from "./plutus-script-item-hold.js";
 
 /** Complete Ed25519 verification of every committed address witness. */
 export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
@@ -189,19 +183,6 @@ export const FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
 export const FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["fieldItemWidthIllegal"], async (evidence) =>
     detectFieldItemWidthIllegalCompleteReplay(evidence),
-  );
-
-/** Held until the program-bytes migration: Plutus-language script items. */
-const PLUTUS_SCRIPT_ITEM_HELD_VIOLATION_IDS: ReadonlySet<string> = new Set([
-  WITNESS_SCRIPT_DECODING_VIOLATION_IDS.PlutusScriptUndecodable,
-  OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID,
-]);
-const withoutHeldPlutusScriptItems = (
-  detections: readonly CanonicalViolationDetection[],
-): readonly CanonicalViolationDetection[] =>
-  detections.filter(
-    ({ violationId }) =>
-      !PLUTUS_SCRIPT_ITEM_HELD_VIOLATION_IDS.has(violationId),
   );
 
 /** Complete accepted and forced scan for malformed field-6 native scripts. */

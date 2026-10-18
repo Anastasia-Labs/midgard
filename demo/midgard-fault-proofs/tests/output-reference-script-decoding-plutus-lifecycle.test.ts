@@ -11,6 +11,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 import {
   type OutputReferenceScriptDecodingEvidence,
   OutputReferenceScriptResultClasses,
@@ -75,13 +76,28 @@ const itemOf = (evidence: OutputReferenceScriptDecodingEvidence) =>
   Buffer.from(evidence.referenceScriptItemHex, "hex");
 
 describe("outputReferenceScriptDecoding Plutus reference scripts", () => {
-  it("convicts an accepted undecodable Plutus reference script by its record, refusing a missing or foreign record first", async () => {
+  // Held until the program-bytes migration: the workflow derives no evidence
+  // for the script, while the chain still convicts it by its record. Lifting
+  // the hold makes the workflow derive this evidence again.
+  it("holds an accepted undecodable Plutus reference script from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing or foreign record first", async () => {
     const context = await makeOutputReferenceHarness();
     const block = await commitAcceptedBlock(context, [
       subjectTransaction([outputWithPlutusScript(UNDECODABLE)], 7n),
     ]);
     const [subject] = block.subjects;
     if (subject === undefined) throw new Error("accepted subject absent");
+    expect(() =>
+      deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock({
+        headerHash: block.setup.headerHash,
+        transactions: [
+          {
+            nodeTxId: subject.nativeTxId,
+            txCbor: subject.canonicalCbor.toString("hex"),
+          },
+        ],
+        reconstruction: { forcedTransactions: [] },
+      } as never),
+    ).toThrow(/yielded no exact finding/u);
     const stages = makeOutputReferenceStages({
       context,
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,

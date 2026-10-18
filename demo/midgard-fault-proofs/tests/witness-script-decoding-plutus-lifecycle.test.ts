@@ -8,7 +8,7 @@ import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   acceptedEvidence,
-  expectReplayDetection,
+  expectReplayHeld,
   forcedEvidence,
   plutusShape,
   undecodablePlutusShape,
@@ -27,15 +27,16 @@ const undecodableReason = (cls: bigint): SDK.RejectionReason =>
   }) as SDK.RejectionReason;
 
 describe("witnessScriptDecoding Plutus items", () => {
-  it("convicts an accepted undecodable Plutus item, refusing a missing, foreign or misplaced record first", async () => {
+  // Held until the program-bytes migration: the workflow derives no evidence
+  // for the item, while the chain still convicts it by its record. Lifting the
+  // hold makes the workflow derive this evidence again.
+  it("holds an accepted undecodable Plutus item from the workflow until the program-bytes migration, while the chain convicts it by its record, refusing a missing, foreign or misplaced record first", async () => {
     const h = await makeHarness();
     const shape = undecodablePlutusShape();
     const { block, setup, inclusionOf } = await h.acceptedBlock(shape);
     const evidence = acceptedEvidence(shape);
     expect(evidence.resultClass).toBe(101);
-    expectReplayDetection(block, [shape], evidence, [
-      "witness-plutus-script-undecodable",
-    ]);
+    expectReplayHeld(block, [shape], ["witness-plutus-script-undecodable"]);
     const emulator = h.harness.emulator;
     const record = await recordPlutusItem(emulator, h.lucid, shape.items[0]!);
     const foreign = await recordPlutusItem(
