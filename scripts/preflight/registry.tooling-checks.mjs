@@ -263,6 +263,24 @@ export const toolingChecks = (root) => [
     plan: () => [step(node("scripts/ci/check-registry-paths.mjs"))],
   },
   {
+    id: "toolchain-pins",
+    title: "Docker, compose and CI version pins match demo/toolchain.json",
+    // A superset of the files toolchain.mjs enrolls, kept out of the runner's
+    // import closure.
+    triggers: [
+      "demo/toolchain.json",
+      "demo/.nvmrc",
+      "demo/*/Dockerfile",
+      "demo/**/docker-compose*.yaml",
+      "demo/midgard-node-tools/devnet/phase4-process/**",
+      ".github/workflows/**",
+      "scripts/release/toolchain.mjs",
+    ],
+    prePush: true,
+    display: "node scripts/release/toolchain.mjs",
+    plan: () => [step(node("scripts/release/toolchain.mjs"))],
+  },
+  {
     id: "repo-tooling-tests",
     title:
       "Repository tooling self-tests (the checks that prove the other checks can fail)",

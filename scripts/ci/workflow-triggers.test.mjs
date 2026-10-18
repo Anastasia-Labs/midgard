@@ -124,6 +124,7 @@ const scenarios = {
     runs: [
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
     ],
@@ -228,6 +229,7 @@ const scenarios = {
     runs: [
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
       "docs-site-ci:build",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
@@ -240,6 +242,7 @@ const scenarios = {
     runs: [
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
       "docs-site-ci:build",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",
@@ -283,6 +286,7 @@ const scenarios = {
       "latex-ci:generate_pdf",
       "midgard-node-ci:*",
       "midgard-watcher-ci:watcher",
+      "nix-ci:nix",
       "onchain-review-surface:review-surface",
       "repo-tools-ci:repo-tools",
       "agent-skills-ci:skills",

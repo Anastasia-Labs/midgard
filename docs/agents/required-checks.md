@@ -241,6 +241,21 @@ Registries name only files that exist.
 - Runs on: every change
 - Mode: runs in the pre-push hook
 
+### `toolchain-pins`
+
+Docker, compose and CI version pins match demo/toolchain.json.
+
+- Command: `node scripts/release/toolchain.mjs`
+- Runs on:
+  - `demo/toolchain.json`
+  - `demo/.nvmrc`
+  - `demo/*/Dockerfile`
+  - `demo/**/docker-compose*.yaml`
+  - `demo/midgard-node-tools/devnet/phase4-process/**`
+  - `.github/workflows/**`
+  - `scripts/release/toolchain.mjs`
+- Mode: runs in the pre-push hook
+
 ### `repo-tooling-tests`
 
 Repository tooling self-tests (the checks that prove the other checks can fail).

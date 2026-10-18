@@ -1,0 +1,67 @@
+name: Nix CI
+
+# The Nix route (demo/flake.nix, docs/toolchain.md) builds everything the
+# Docker route does. Its pnpm and Go dependency hashes follow the lockfiles,
+# so any change to a lockfile or a flake input rebuilds every package here.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "demo/flake.nix"
+      - "demo/flake.lock"
+      - "demo/nix/**"
+      - "demo/toolchain.json"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/patches/**"
+      - "demo/vendor/**"
+      - "demo/l1-node-transport/native/**"
+      - "demo/midgard-node/native/mpf-event-flat-wasm/**"
+      - ".github/workflows/nix-ci.yml"
+  pull_request:
+    paths:
+      - "demo/flake.nix"
+      - "demo/flake.lock"
+      - "demo/nix/**"
+      - "demo/toolchain.json"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/patches/**"
+      - "demo/vendor/**"
+      - "demo/l1-node-transport/native/**"
+      - "demo/midgard-node/native/mpf-event-flat-wasm/**"
+      - ".github/workflows/nix-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  nix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          github_access_token: ${{ github.token }}
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('demo/flake.lock', 'demo/pnpm-lock.yaml', 'demo/l1-node-transport/native/go.sum', 'demo/midgard-node/native/mpf-event-flat-wasm/Cargo.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+      - name: Build every package
+        working-directory: demo
+        run: >-
+          nix build --print-build-logs
+          .#midgard-node .#midgard-watcher .#da-committee-node
+          .#midgard-l1-node-transport .#architecture-g-owner
+          .#postgresql .#cardano-node .#ogmios .#kupo .#mithril-client
+      - name: Enter the development shell
+        working-directory: demo
+        run: nix develop --command true
