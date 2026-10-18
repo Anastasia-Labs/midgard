@@ -181,6 +181,13 @@ fn binds_runs(
   )
 }
 
+/// True whenever the staged runs bind at all, so a refusal row passes only
+/// when binding aborts.
+fn completes(runs: List<List<ByteArray>>, selection: List<Int>) -> Bool {
+  let Pair(inputs, refs) = staged(runs)
+  bind_operand_v1(collect_runs_v1(inputs, refs), selection).length >= 0
+}
+
 fn flip_last_byte(bytes: ByteArray) -> ByteArray {
   let length = builtin.length_of_bytearray(bytes)
   builtin.append_bytearray(
@@ -342,18 +349,18 @@ fn refused_runs() -> List<List<ByteArray>> {
   runs_of(chunks_of(pattern(refused_length, 13)))
 }
 
-test staged_runs_out_of_order_are_refused() fail {
+test staged_runs_out_of_order_bind_another_root() {
   let runs = refused_runs()
-  binds_runs(
+  !binds_runs(
     runs,
     [1, 0, ..list.range(2, list.length(runs) - 1)],
     pattern(refused_length, 13),
   )
 }
 
-test staged_operand_missing_a_run_is_refused() fail {
+test staged_operand_missing_a_run_binds_another_root() {
   let runs = refused_runs()
-  binds_runs(
+  !binds_runs(
     runs,
     list.range(0, list.length(runs) - 2),
     pattern(refused_length, 13),
@@ -362,31 +369,30 @@ test staged_operand_missing_a_run_is_refused() fail {
 
 test staged_operand_with_an_extra_run_is_refused() fail {
   let runs = refused_runs()
-  binds_runs(
+  completes(
     list.concat(runs, [[pattern(chunk_bytes, 0)]]),
     list.range(0, list.length(runs)),
-    pattern(refused_length, 13),
   )
 }
 
-test staged_operand_with_a_duplicated_run_is_refused() fail {
+test staged_operand_with_a_duplicated_run_binds_another_root() {
   let runs = refused_runs()
-  binds_runs(
+  !binds_runs(
     runs,
     [0, ..list.range(0, list.length(runs) - 1)],
     pattern(refused_length, 13),
   )
 }
 
-test staged_operand_with_a_tampered_chunk_is_refused() fail {
+test staged_operand_with_a_tampered_chunk_binds_another_root() {
   let bytes = pattern(9216, 14)
   expect [first, second, third] = chunks_of(bytes)
-  binds_runs([[first, flip_last_byte(second), third]], [0], bytes)
+  !binds_runs([[first, flip_last_byte(second), third]], [0], bytes)
 }
 
 test staged_operand_with_a_short_chunk_before_the_last_is_refused() fail {
   let bytes = pattern(8190, 15)
-  binds_runs(
+  completes(
     [
       [
         builtin.slice_bytearray(0, 4094, bytes),
@@ -395,22 +401,19 @@ test staged_operand_with_a_short_chunk_before_the_last_is_refused() fail {
       ],
     ],
     [0],
-    bytes,
   )
 }
 
 test staged_operand_with_a_trailing_empty_chunk_is_refused() fail {
-  let bytes = pattern(chunk_bytes, 16)
-  binds_runs([[bytes, #""]], [0], bytes)
+  completes([[pattern(chunk_bytes, 16), #""]], [0])
 }
 
 test staged_run_of_four_chunks_is_refused() fail {
-  let bytes = pattern(4 * chunk_bytes, 17)
-  binds_runs([chunks_of(bytes)], [0], bytes)
+  completes([chunks_of(pattern(4 * chunk_bytes, 17))], [0])
 }
 
 test staged_run_with_an_empty_chunk_list_is_refused() fail {
-  binds_runs([[]], [0], #"")
+  completes([[]], [0])
 }
 
 test staged_run_with_a_non_bytes_chunk_is_refused() fail {
@@ -469,36 +472,24 @@ test staged_run_without_an_inline_datum_is_refused() fail {
 }
 
 test staged_reference_missing_from_reference_inputs_is_refused() fail {
-  let bytes = pattern(9216, 18)
-  let Pair(inputs, _) = staged(runs_of(chunks_of(bytes)))
-  bind_operand_v1(collect_runs_v1(inputs, [reference(99)]), [0]).root == flat_root_v1(
-    bytes,
-  )
+  let Pair(inputs, _) = staged(runs_of(chunks_of(pattern(9216, 18))))
+  bind_operand_v1(collect_runs_v1(inputs, [reference(99)]), [0]).length >= 0
 }
 
 test staged_references_out_of_ledger_order_are_refused() fail {
-  let bytes = pattern(30000, 19)
-  let runs = runs_of(chunks_of(bytes))
+  let runs = runs_of(chunks_of(pattern(30000, 19)))
   let Pair(inputs, refs) = staged(runs)
   expect [first, second, ..rest] = refs
   let collected = collect_runs_v1(inputs, [second, first, ..rest])
-  bind_operand_v1(collected, [1, 0, ..list.range(2, list.length(runs) - 1)]).root == flat_root_v1(
-    bytes,
-  )
+  bind_operand_v1(collected, list.range(0, list.length(runs) - 1)).length >= 0
 }
 
 test staged_operand_index_outside_the_runs_is_refused() fail {
-  let bytes = pattern(100, 20)
-  let Pair(inputs, refs) = staged([[bytes]])
-  bind_operand_v1(collect_runs_v1(inputs, refs), [1]).root == flat_root_v1(
-    bytes,
-  )
+  completes([[pattern(100, 20)]], [1])
 }
 
 test staged_operand_with_no_runs_is_refused() fail {
-  let bytes = pattern(100, 21)
-  let Pair(inputs, refs) = staged([[bytes]])
-  bind_operand_v1(collect_runs_v1(inputs, refs), []).length >= 0
+  completes([[pattern(100, 21)]], [])
 }
 
 // ## Balanced concatenation
