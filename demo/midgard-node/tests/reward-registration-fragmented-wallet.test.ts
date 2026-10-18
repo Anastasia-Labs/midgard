@@ -15,12 +15,16 @@ import {
   generateEmulatorAccount,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
+  scriptFromNative,
 } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { expect, it } from "vitest";
 
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../src/transactions/availability-challenge-registration.js";
-import { ensureRuntimeRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import {
+  ensureRuntimeRewardAccountsRegisteredProgram,
+  ensureScriptRewardAccountRegisteredProgram,
+} from "../src/transactions/script-reward-registration.js";
 import { RewardRegistrationUnfunded } from "../src/transactions/utils.reward-registration-funding.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -151,4 +155,38 @@ it("refuses by name a runtime batch its coins cannot cover, spending none", asyn
   expectRefusedByName(result);
   expect(submitted).toHaveLength(0);
   expect(await balance()).toBe(20n * COIN);
+});
+
+/** A script whose reward account only the single-account rows register. */
+const singleScript = scriptFromNative({ type: "all", scripts: [] });
+
+it("registers a single script reward account from a wallet of coins smaller than one deposit", async () => {
+  const { lucid, submitted, balance } = await smallCoinWallet(10);
+  const registered = await runWithoutFollower(
+    ensureScriptRewardAccountRegisteredProgram(lucid, singleScript).pipe(
+      Effect.mapError(inspected),
+    ),
+  );
+  expect(registered.txHash).not.toBeNull();
+  expect(
+    (await lucid.rewardAccountAt(registered.rewardAddress)).registered,
+  ).toBe(true);
+  expect(submitted).toHaveLength(1);
+  expect(certificatesOf(submitted[0]!)).toBe(1);
+  expect(returnsItsChange(submitted[0]!)).toBe(true);
+  expect(10n * COIN - (await balance())).toBe(
+    PROTOCOL_PARAMETERS_DEFAULT.keyDeposit + feeOf(submitted[0]!),
+  );
+});
+
+it("refuses by name a single script reward registration its coins cannot cover, spending none", async () => {
+  const { lucid, submitted, balance } = await smallCoinWallet(1);
+  const result = await runWithoutFollower(
+    ensureScriptRewardAccountRegisteredProgram(lucid, singleScript).pipe(
+      Effect.either,
+    ),
+  );
+  expectRefusedByName(result);
+  expect(submitted).toHaveLength(0);
+  expect(await balance()).toBe(COIN);
 });

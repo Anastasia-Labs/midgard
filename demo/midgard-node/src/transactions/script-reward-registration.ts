@@ -14,7 +14,7 @@ import { handleSignSubmit } from "./utils.js";
 import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
 import {
   readSelectedWalletView,
-  readSelectedWalletViewInputs,
+  requireWalletViewInputs,
 } from "./utils.wallet-view.js";
 
 const fundingFailure = (cause: WalletViewUnavailable) =>
@@ -226,19 +226,34 @@ export const ensureScriptRewardAccountRegisteredProgram = (
     const plan = yield* openPlan;
     const before = yield* queryScriptRewardRegistrationProgram(lucid, script);
     if (before.registered) return { ...before, txHash: null };
-    const built = yield* SDK.buildScriptRewardRegistrationTxProgram(
-      lucid,
-      script,
-      {
-        walletInputs: yield* readSelectedWalletViewInputs(
-          lucid,
+    // The registration selects its own inputs for its deposit
+    // (`buildRewardRegistrationsTx`); an empty view is refused by name first.
+    const funding = yield* readSelectedWalletView(lucid).pipe(
+      Effect.flatMap((view) =>
+        requireWalletViewInputs(
+          view,
           "the script reward-account registration",
-        ).pipe(Effect.mapError(fundingFailure)),
-      },
+        ).pipe(Effect.map((utxos) => ({ address: view.address, utxos }))),
+      ),
+      Effect.mapError(fundingFailure),
     );
+    const tx = yield* Effect.tryPromise({
+      try: () =>
+        buildRewardRegistrationsTx(
+          lucid,
+          funding,
+          [before.rewardAddress],
+          "the script reward-account registration",
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to complete script reward-account registration",
+          cause,
+        }),
+    });
     const txHash = yield* handleSignSubmit(
       lucid,
-      built.tx,
+      tx,
       journaledIntent(
         "script_reward_registration",
         `script_reward_registration:${before.scriptHash}`,
