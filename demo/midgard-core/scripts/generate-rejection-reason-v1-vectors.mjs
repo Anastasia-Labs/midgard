@@ -37,8 +37,10 @@ const vectorsPath = join(
   packageRoot,
   "tests/fixtures/rejection-reason-v1.vectors.json",
 );
-const aikenLibrary = join(repositoryRoot, "onchain/aiken/lib/midgard");
-const aikenPath = join(aikenLibrary, "rejection-reason-v1.ak");
+const aikenPath = join(
+  repositoryRoot,
+  "onchain/aiken/lib/midgard/rejection-reason-v1.ak",
+);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-rejection-reason-v1-vectors.mjs [--check]",

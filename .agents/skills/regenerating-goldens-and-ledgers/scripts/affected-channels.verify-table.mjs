@@ -145,8 +145,10 @@ export const verifyTable = (tree, table) => {
       if (!table.channels.some((c) => c.id === id))
         problem(channel, `then names unknown channel ${id}`);
     }
-    // Every Aiken path a generator names must be one of its outputs, so a
-    // generator that starts writing a new module cannot drift out of the table.
+    // Every Aiken path a generator names must be one of its outputs or
+    // declared inputs, so a generator that starts writing a new module cannot
+    // drift out of the table.
+    const declared = [...(channel.outputs ?? []), ...(channel.inputs ?? [])];
     for (const generator of channel.generators ?? []) {
       const source = tree.read(generator);
       if (source === undefined) continue;
@@ -156,12 +158,10 @@ export const verifyTable = (tree, table) => {
       for (const match of code.matchAll(
         /["'`](onchain\/aiken\/[^"'`]+\.ak)["'`]/gu,
       )) {
-        if (
-          !(channel.outputs ?? []).some((glob) => matchesGlob(match[1], glob))
-        ) {
+        if (!declared.some((glob) => matchesGlob(match[1], glob))) {
           problem(
             channel,
-            `generator ${generator} names ${match[1]}, which is not among the channel's outputs`,
+            `generator ${generator} names ${match[1]}, which is not among the channel's outputs or inputs`,
           );
         }
       }

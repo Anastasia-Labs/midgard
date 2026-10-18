@@ -407,6 +407,10 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
 
   it.each([
     { name: "a malformed info", info: (cbor: string) => cbor.slice(0, -2) },
+    {
+      name: "an info with a trailing byte",
+      info: (cbor: string) => cbor + "00",
+    },
     { name: "an info whose fields do not read", info: () => "d87980" },
   ])(
     "keeps the input's verdict on $name, whether or not the classifier throws",

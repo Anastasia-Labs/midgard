@@ -7,11 +7,12 @@ import {
 } from "./availability-challenge.plan-availability-command-action.js";
 
 /**
- * `prepare`: pays the actor, from any of its coins (token-bearing ones
- * included), the ADA-only coins one challenge of `snapshot`'s header needs:
- * output 0 the exact opening input for `open --funding-out-ref`, output 1
- * the collateral for every step's `--collateral-out-ref`, output 2 the
- * working capital the removal path draws on. Spent tokens return as change.
+ * `prepare`: pays the actor, from any of its coins without a datum or
+ * reference script (token-bearing ones included), the ADA-only coins one
+ * challenge of `snapshot`'s header needs: output 0 the exact opening input
+ * for `open --funding-out-ref`, output 1 the collateral for every step's
+ * `--collateral-out-ref`, output 2 the working capital the removal path
+ * draws on. Spent tokens return as change.
  * Coins the journal still reserves are never spent.
  */
 export const prepareAvailabilityOpeningInput = async (input: {
