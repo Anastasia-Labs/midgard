@@ -1,6 +1,7 @@
 /**
  * Records how Cardano decodes one script: finds the record for its hash, or
- * stages the bytes, binds a run, walks it to a verdict, and mints the record.
+ * stages the bytes, binds a run (or resumes an open one), walks it to a
+ * verdict, and mints the record.
  */
 import {
   nextScriptDecodeChainedWalk,
@@ -14,6 +15,11 @@ import {
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import {
+  findStagedScriptDecodeBytes,
+  resumeScriptDecodeRun,
+  type ScriptDecodeRunPosition,
+} from "./resume.js";
 import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
@@ -142,7 +148,9 @@ const fitWalk = async (
 
 /**
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
- * yet. Each Walk takes the most ticks that build within the ledger's limits
+ * yet. An open run of the script (an interrupted earlier record) is resumed
+ * from its on-chain cursor; staged bytes already at the wallet are reused.
+ * Each Walk takes the most ticks that build within the ledger's limits
  * (`fitWalk`). With `maxWalks`, a walk that needs more Walks than that throws
  * instead of submitting the next one.
  */
@@ -168,25 +176,37 @@ export const recordScriptDecode = async ({
   const scriptHashHex = scriptDecodeScriptHash(language, scriptBytes).toString(
     "hex",
   );
-  const existing = await findScriptDecodeRecord({
-    lucid,
-    deployment,
-    scriptHashHex,
-  });
+  const findRecord = () =>
+    findScriptDecodeRecord({ lucid, deployment, scriptHashHex });
+  const existing = await findRecord();
   if (existing !== undefined) {
     return { recordUtxo: existing, record: undefined, walks: [] };
   }
+  const resume = () =>
+    resumeScriptDecodeRun({
+      lucid,
+      deployment,
+      language,
+      scriptBytes,
+      scriptHashHex,
+    });
   const limits = ledgerLimits(lucid);
-  const staging = await stageScriptDecodeBytes({ lucid, scriptBytes });
-  let cursor = startScriptDecodeWalk(language, scriptBytes);
-  let runUtxo = await bindScriptDecodeRun({
-    lucid,
-    deployment,
-    language,
-    scriptHashHex,
-    initialRun: cursor.run,
-    staging,
-  });
+  const staging =
+    (await findStagedScriptDecodeBytes({ lucid, scriptBytes })) ??
+    (await stageScriptDecodeBytes({ lucid, scriptBytes }));
+  const bind = async (): Promise<ScriptDecodeRunPosition> => {
+    const cursor = startScriptDecodeWalk(language, scriptBytes);
+    const runUtxo = await bindScriptDecodeRun({
+      lucid,
+      deployment,
+      language,
+      scriptHashHex,
+      initialRun: cursor.run,
+      staging,
+    });
+    return { runUtxo, cursor };
+  };
+  let { runUtxo, cursor } = (await resume()) ?? (await bind());
   const walks: ScriptDecodeWalkReport[] = [];
   let fuel = initialFuel;
   let record = scriptDecodeWalkRecord(cursor);

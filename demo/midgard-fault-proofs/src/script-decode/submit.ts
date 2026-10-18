@@ -191,6 +191,25 @@ const submitAndFind = async (
   return found[0]!;
 };
 
+/** The staging datums of `scriptBytes`, in order: one per staged UTxO. */
+export const scriptDecodeStagingDatums = (
+  scriptBytes: Uint8Array,
+): string[] => {
+  const datums: string[] = [];
+  for (
+    let offset = 0;
+    offset < scriptBytes.length || datums.length === 0;
+    offset += SCRIPT_DECODE_STAGING_UTXO_BYTES
+  ) {
+    datums.push(
+      scriptDecodeStagingDatum(
+        scriptBytes.subarray(offset, offset + SCRIPT_DECODE_STAGING_UTXO_BYTES),
+      ),
+    );
+  }
+  return datums;
+};
+
 /**
  * Stages `scriptBytes` in order across UTxOs at `address` (the wallet's own by
  * default, so their Ada stays reclaimable), one transaction each.
@@ -206,14 +225,7 @@ export const stageScriptDecodeBytes = async ({
 }): Promise<UTxO[]> => {
   const target = address ?? (await lucid.wallet().address());
   const staged: UTxO[] = [];
-  for (
-    let offset = 0;
-    offset < scriptBytes.length || staged.length === 0;
-    offset += SCRIPT_DECODE_STAGING_UTXO_BYTES
-  ) {
-    const datum = scriptDecodeStagingDatum(
-      scriptBytes.subarray(offset, offset + SCRIPT_DECODE_STAGING_UTXO_BYTES),
-    );
+  for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
     const unsigned = await lucid
       .newTx()
       .pay.ToAddressWithData(target, { kind: "inline", value: datum }, {})
