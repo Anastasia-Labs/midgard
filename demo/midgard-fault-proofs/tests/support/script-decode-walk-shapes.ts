@@ -8,7 +8,7 @@
 
 const SCRIPT_BOUND = 16_384;
 
-class FlatBits {
+export class FlatBits {
   readonly bits: number[] = [];
 
   put(value: number, width: number): void {
@@ -67,7 +67,7 @@ class FlatBits {
 }
 
 /** Program 1.1.0 around `term`, padded and wrapped as one CBOR byte string. */
-const program = (term: (bits: FlatBits) => void): Buffer => {
+export const program = (term: (bits: FlatBits) => void): Buffer => {
   const bits = new FlatBits();
   bits.natural(1);
   bits.natural(1);

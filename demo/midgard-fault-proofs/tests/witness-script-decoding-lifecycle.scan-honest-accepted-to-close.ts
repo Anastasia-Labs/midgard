@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
   encodeMidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
@@ -40,8 +41,15 @@ export const shapeOf = (
   label: string,
   items: readonly Buffer[],
   fee: bigint,
+): Shape =>
+  shapeOfNativeTx(label, items, nativeTxWithScriptWitnesses(items, fee));
+
+/** The shape of `nativeTx`, whose field 6 is `items`. */
+export const shapeOfNativeTx = (
+  label: string,
+  items: readonly Buffer[],
+  nativeTx: MidgardNativeTxFull,
 ): Shape => {
-  const nativeTx = nativeTxWithScriptWitnesses(items, fee);
   const fieldBytes = scriptWitnessField(items).length;
   return {
     label,
