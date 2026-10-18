@@ -408,7 +408,6 @@ fn script_sources_stage_seven_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -996,7 +995,6 @@ fn script_sources_stage_eight_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1252,7 +1250,6 @@ fn script_sources_stage_nine_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1729,7 +1726,6 @@ fn script_sources_stage_ten_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -1887,7 +1883,6 @@ fn script_sources_stage_eleven_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,
@@ -2152,7 +2147,6 @@ fn script_sources_stage_twelve_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
       control.source_peaks,

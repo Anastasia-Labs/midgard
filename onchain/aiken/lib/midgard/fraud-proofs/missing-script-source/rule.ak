@@ -55,7 +55,6 @@ pub type AuthenticatedTransactionSourcesV1 {
 pub type AuthenticatedResolvedSourcesV1 {
   purpose: AuthenticatedPurposeV1,
   transaction_source_count: Int,
-  resolved_reference_source_count: Int,
   source_identity_hash: ByteArray,
 }
 
@@ -241,7 +240,6 @@ pub fn authenticate_purpose_control_v1(
       ),
       bytearray.length(required_script_hash) == 28,
       control.stage == 9,
-      control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
       validation_merkle_v1.frontier_is_well_formed(
         control.source_count,
         control.source_peaks,
@@ -305,21 +303,35 @@ pub fn authenticate_purpose_frontier_v1(
       )
 }
 
+/// Step 03: the authenticated purpose, and the boundary of the source
+/// frontier's witness-located prefix. The machine appends the inline witnesses
+/// to the frontier first and the resolved reference scripts after them, so the
+/// prefix is exactly the authenticated control's `inline_source_count`; no
+/// part of it is the prover's. A wrongful-rejection prefix may end inside it.
 pub fn authenticate_transaction_sources_v1(
-  purpose: AuthenticatedPurposeV1,
-  transaction_source_count: Int,
+  authenticated_trace: AuthenticatedTraceStateV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
+  absolute_purpose_index: Int,
+  required_script_hash: ByteArray,
+  purpose_subject: ByteArray,
+  purpose_siblings: List<ByteArray>,
 ) -> AuthenticatedTransactionSourcesV1 {
-  expect and {
-      transaction_source_count >= 0,
-      transaction_source_count <= purpose.scan_limit,
-    }
-  AuthenticatedTransactionSourcesV1 { purpose, transaction_source_count }
+  AuthenticatedTransactionSourcesV1 {
+    purpose: authenticate_purpose_control_v1(
+      authenticated_trace,
+      control,
+      absolute_purpose_index,
+      required_script_hash,
+      purpose_subject,
+      purpose_siblings,
+    ),
+    transaction_source_count: control.inline_source_count,
+  }
 }
 
 pub fn source_identity_hash_v1(
   purpose: AuthenticatedPurposeV1,
   transaction_source_count: Int,
-  resolved_reference_source_count: Int,
 ) -> ByteArray {
   checkpoint_domain
     |> bytearray.concat(purpose.prior_ledger_root)
@@ -327,26 +339,18 @@ pub fn source_identity_hash_v1(
     |> bytearray.concat(cbor.serialise(purpose.scan_limit))
     |> bytearray.concat(cbor.serialise(purpose.source_peaks))
     |> bytearray.concat(cbor.serialise(transaction_source_count))
-    |> bytearray.concat(cbor.serialise(resolved_reference_source_count))
     |> blake2b_256
 }
 
 pub fn authenticate_resolved_sources_v1(
   staged: AuthenticatedTransactionSourcesV1,
-  resolved_reference_source_count: Int,
 ) -> AuthenticatedResolvedSourcesV1 {
-  expect and {
-      resolved_reference_source_count >= 0,
-      staged.transaction_source_count + resolved_reference_source_count == staged.purpose.scan_limit,
-    }
   AuthenticatedResolvedSourcesV1 {
     purpose: staged.purpose,
     transaction_source_count: staged.transaction_source_count,
-    resolved_reference_source_count,
     source_identity_hash: source_identity_hash_v1(
       staged.purpose,
       staged.transaction_source_count,
-      resolved_reference_source_count,
     ),
   }
 }
@@ -408,11 +412,16 @@ pub fn state_is_authentic_v1(state: SourceScanStateV1) -> Bool {
   }
 }
 
-/// Advances the scan over one batch in frontier order. The hash the state
-/// expects next is the finalizer's exactly when the batch reaches the
-/// authenticated scan limit. A wrongful-rejection prefix ends at the matching
-/// source, before the complete frontier, so the limit and never the frontier
-/// count decides the successor.
+/// Advances the scan over one batch in physical frontier order, over
+/// `[0, scan_limit)`. The hash the state expects next is the finalizer's
+/// exactly when the batch reaches the authenticated scan limit, so the limit
+/// and never the frontier count decides the successor. A wrongful-rejection
+/// limit is the reference-first lookup cursor plus one, a physical prefix that
+/// need not hold the source the lookup missed: lookup cursor 0 of a frontier
+/// of one inline witness and resolved sources addresses physical index 1,
+/// outside `[0, 1)`. Any match the scan finds is a real source, and the stage-9
+/// state at lookup cursor `source_count - 1` limits the scan to the whole
+/// frontier; a prover takes a state whose prefix holds the source.
 ///
 /// Each source must be the one at the cursor, at its frontier position's
 /// location, and a member of the authenticated source frontier. Only the input

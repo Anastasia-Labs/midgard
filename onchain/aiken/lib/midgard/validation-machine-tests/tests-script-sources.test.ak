@@ -2511,6 +2511,78 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
   }
 }
 
+/// The stage-9 mismatch verifier on the one-source frontier, for the step that
+/// stays at stage 9 and moves the lookup cursor past source 0 while the
+/// lookup wants `wanted_hash`.
+fn stage_nine_skip_of_source_zero_verifies(wanted_hash: ByteArray) -> Bool {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_plutus_script(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, wanted_hash, #"0102")],
+  )
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: wanted_hash,
+    current_subject: #"0102",
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    discovery,
+    24,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    vm_machine_types.ScriptDiscoveryControlV1 { ..discovery, source_cursor: 1 },
+    25,
+  )
+  vm_script_sources_late_stages.verify_script_sources_stage_nine_mismatch_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    0,
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+    [],
+  )
+}
+
+test script_sources_stage_nine_refuses_skipping_a_matching_source() {
+  let script_hash = script_proof_v1.versioned_script_hash(
+    MidgardVersionedScript {
+      language: PlutusV3Script,
+      script_bytes: v1_plutus_script(),
+    },
+  )
+  and {
+    // The same skip, while the lookup wants another script, verifies.
+    stage_nine_skip_of_source_zero_verifies(h_28_a),
+    !stage_nine_skip_of_source_zero_verifies(script_hash),
+  }
+}
+
 test script_sources_stage_nine_accepts_an_exact_effectful_match() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,

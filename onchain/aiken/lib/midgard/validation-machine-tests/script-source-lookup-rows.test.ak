@@ -3,7 +3,8 @@
 
 use midgard/rejection_reason_v1
 use midgard/validation_machine_tests/script_source_lookup_rows_support.{
-  OneStepVector, every_step_dispatches, rejects_with, verifies_every_step,
+  OneStepVector, every_step_dispatches, refuses_skipping_the_match, rejects_with,
+  verifies_every_step,
 }
 
 const spent_only_source_steps: List<OneStepVector> =
@@ -180,6 +181,10 @@ const first_of_two_references_steps: List<OneStepVector> =
 
 test first_of_two_references_steps_verify_on_chain() {
   verifies_every_step(first_of_two_references_steps)
+}
+
+test first_of_two_references_refuses_skipping_the_match() {
+  refuses_skipping_the_match(first_of_two_references_steps)
 }
 
 const missing_source_steps: List<OneStepVector> =
