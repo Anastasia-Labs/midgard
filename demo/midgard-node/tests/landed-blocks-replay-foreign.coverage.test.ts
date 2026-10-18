@@ -12,17 +12,14 @@
  * The bench's slot configuration maps slot `s` to `s * 1000` ms; the view's
  * clock is moved forward so the view's horizon reaches each block's end.
  */
-import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
-import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
+import { simTxHash } from "@al-ft/midgard-l1-follower/testing";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ReplayInput } from "../src/landed-blocks/replay.js";
-import { rebind } from "./foreign-block-import.fixture.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import {
   admissionTx,
-  ELSEWHERE,
   eventOrder,
   retirementTx,
 } from "./helpers/l1-events-chain.js";
@@ -46,6 +43,16 @@ import {
   retain,
   retainedRow,
 } from "./landed-blocks-replay-foreign.fixture.js";
+import {
+  originSlot,
+  reach,
+  replayAt,
+  SLOT_MS,
+  spendTx,
+  startFor,
+  strangerOrderBlock,
+  windowed,
+} from "./landed-blocks-replay-foreign.window.js";
 import { resetApplicationTables } from "./utils.js";
 
 const opened: FactStore[] = [];
@@ -63,58 +70,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(opened.splice(0).map((store) => store.close()));
 });
-
-const SLOT_MS = 1_000n;
-
-/** The window start whose earliest admission slot `T(B)` is `slot`. */
-const startFor = (slot: number) =>
-  BigInt(slot) * SLOT_MS +
-  BigInt(SDK.EVENT_WAIT_DURATION_MS) +
-  SDK.MAX_EVENT_VALIDITY_RANGE_LENGTH_MS;
-
-/** `payload` over the window `(start, start + span]`, committed at its end. */
-const windowed = (payload: SDK.DaPayload, start: bigint, span = SLOT_MS) =>
-  rebind({
-    ...payload,
-    block_body: {
-      ...payload.block_body,
-      header: {
-        ...payload.block_body.header,
-        startTime: start,
-        endTime: start + span,
-        blockSlot: (start + span) / SLOT_MS,
-      },
-    },
-  });
-
-/** Sets the view's clock so its horizon is `by` ms past the block's end. */
-const reach = async (store: FactStore, payload: SDK.DaPayload, by = 0) => {
-  const view = (await store.currentView())!;
-  clock.offsetMs =
-    Number(payload.block_body.header.endTime) -
-    view.point.slot * 1_000 -
-    SDK.EVENT_WAIT_DURATION_MS +
-    1 +
-    by;
-};
-
-const originSlot = async (store: FactStore) =>
-  (await store.cursor())!.origin.slot;
-
-/** Retains `payload` and replays it at the view, its node output entered at `enteredSlot` (default: the view's slot). */
-const replayAt = async (
-  store: FactStore,
-  payload: SDK.DaPayload,
-  enteredSlot?: number | null,
-) => {
-  await retain(await retainedRow(payload));
-  const input: ReplayInput = await inputFor(store, payload);
-  return inNode(
-    replayerFor(store)(
-      enteredSlot === undefined ? input : { ...input, enteredSlot },
-    ),
-  );
-};
 
 /** Admits a deposit included at `inclusionTime`; returns it with its order. */
 const admitDeposit = async (chain: ChainDriver, inclusionTime: bigint) => {
@@ -283,22 +238,6 @@ describe("the follower store's generation against the view's", () => {
       ),
     });
   });
-});
-
-/** A block over the window starting at `start` naming a forced order no one admitted. */
-const strangerOrderBlock = async (start: bigint) =>
-  windowed(
-    await naming(await emptyBlock(), {
-      forced_transactions: [[idKey(nonceRef()), "00"]],
-    }),
-    start,
-  );
-
-/** The tx that spends the order output at `outRef`. */
-const spendTx = (outRef: OutRef, nonce: number): SimTx => ({
-  inputs: [outRef],
-  outputs: [{ address: ELSEWHERE, lovelace: 3_000_000n }],
-  nonce,
 });
 
 describe("an absent forced order against T(B)", () => {

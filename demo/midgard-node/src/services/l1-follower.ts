@@ -79,6 +79,10 @@ import {
   landedBlockHook,
   nodeLandedBlockPorts,
 } from "../landed-blocks/index.js";
+import {
+  canonicalSlotConfigForLucid,
+  unixTimeToSlotForConfig,
+} from "../lucid-time.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import { withDriverView } from "./follower-write-gate.driver.js";
@@ -150,9 +154,11 @@ const followL1 = <R>(
     const dbRuntime = yield* Effect.runtime<
       Database | NodeConfig | Globals | Lucid | ContractDeploymentIdentity
     >();
+    const lucid = (yield* Lucid).api;
     const projections = nodeFollowerProjections(
       plan,
       Runtime.runPromise(dbRuntime),
+      (ms) => unixTimeToSlotForConfig(ms, canonicalSlotConfigForLucid(lucid)),
     );
     const opened = yield* Effect.acquireRelease(
       Effect.try(() => {

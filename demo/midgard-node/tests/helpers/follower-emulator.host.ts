@@ -138,8 +138,13 @@ export const bindNodeFollower = (
   if (plan.kind !== "run")
     throw new Error(`the node's follower does not run: ${plan.detail}`);
   // The host never prunes, so the landed frontier's prune floor never runs.
-  const { projections } = nodeFollowerProjections(plan, () =>
-    Promise.reject(new Error("the emulator follower host never prunes")),
+  const neverPrunes = () => {
+    throw new Error("the emulator follower host never prunes");
+  };
+  const { projections } = nodeFollowerProjections(
+    plan,
+    () => Promise.reject(new Error("the emulator follower host never prunes")),
+    neverPrunes,
   );
   const trackedSet = nodeIntentTrackedSet({
     protocolPaymentCredentials: protocolPaymentCredentials(input.contracts),

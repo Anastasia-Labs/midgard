@@ -12,6 +12,7 @@ import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-id
 import type {
   FactStore,
   FactStoreOptions,
+  FollowerProjection,
   OutRef,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
@@ -79,16 +80,27 @@ const union = (...sets: TrackedSet[]): TrackedSet => ({
   policies: new Set(sets.flatMap((set) => [...set.policies])),
 });
 
-/** A follower store in the node database with both projections, and its chain. */
-export const followChain = async (extra: Partial<FactStoreOptions> = {}) => {
+/** A follower store in the node database with both projections (and `more`), and its chain. */
+export const followChain = async (
+  extra: Partial<FactStoreOptions> = {},
+  more: readonly FollowerProjection[] = [],
+) => {
   const store = await openNodeFollowerStore(
-    [eventProjection(EVENTS_CONFIG), forcedOrderProjection(FORCED_CONFIG)],
+    [
+      eventProjection(EVENTS_CONFIG),
+      forcedOrderProjection(FORCED_CONFIG),
+      ...more,
+    ],
     K,
     extra,
   );
   const chain = new ChainDriver(
     store,
-    union(eventTrackedSet(EVENTS_CONFIG), forcedOrderTrackedSet(FORCED_CONFIG)),
+    union(
+      eventTrackedSet(EVENTS_CONFIG),
+      forcedOrderTrackedSet(FORCED_CONFIG),
+      ...more.flatMap((projection) => projection.trackedSet ?? []),
+    ),
   );
   await chain.init();
   return { store, chain };
