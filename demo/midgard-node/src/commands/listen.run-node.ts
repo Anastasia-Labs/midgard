@@ -57,6 +57,7 @@ import type { StartupHttp } from "./listen.startup-http.js";
 import { buildListenRouter } from "./listen-router.js";
 import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
 import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
+import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-ledger-signature-verifier.js";
 import { ensureProtocolInitializedOnStartup } from "./listen-startup.js";
 import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
@@ -125,6 +126,14 @@ export const runNode = (
               ],
             ],
           }),
+      ),
+    );
+    // Every Ed25519 verdict waits on the ledger signature verifier: refuse
+    // to start, before any durable work or the L1 follower, until it can
+    // answer. A failure exits the process for its supervisor to restart.
+    yield* awaitLedgerSignatureVerifierOnStartup().pipe(
+      Effect.tapError(
+        logStartupFailure("Startup ledger signature verifier failed"),
       ),
     );
     // The single-process exclusion: every startup step after this one, the

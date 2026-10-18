@@ -1,5 +1,8 @@
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
-import { describe, expect, it } from "vitest";
+import {
+  encodeMidgardForcedTxCanonical,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import {
@@ -7,6 +10,10 @@ import {
   missingSignatureWrongfulRejectionCloses,
 } from "../src/missing-signature/wrongful-rejection.js";
 import { buildMissingSignatureForcedTransaction } from "./support/missing-signature-forced-shapes.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const forcedBlock = (forged = false) => {
   const tx = buildMissingSignatureForcedTransaction({ forged });

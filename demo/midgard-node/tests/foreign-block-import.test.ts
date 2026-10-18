@@ -24,6 +24,11 @@ describe("complete foreign block import", () => {
         headerHash: payload.block_body.header_hash,
         root: SDK.EMPTY_MERKLE_TREE_ROOT,
         entries: [],
+        // A forced transaction is replayed in full: it leaves no check.
+        scriptChecks: expect.objectContaining({
+          checks: [],
+          outputs: new Map(),
+        }),
       });
   });
   it.each(MINT_ADMITTED_UNDECODABLE)(
@@ -41,6 +46,11 @@ describe("complete foreign block import", () => {
         headerHash: payload.block_body.header_hash,
         root: SDK.EMPTY_MERKLE_TREE_ROOT,
         entries: [],
+        // A forced transaction is replayed in full: it leaves no check.
+        scriptChecks: expect.objectContaining({
+          checks: [],
+          outputs: new Map(),
+        }),
       });
     },
   );

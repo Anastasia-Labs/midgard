@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
@@ -11,7 +12,7 @@ import {
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { evaluateWatcherBlockReplay } from "../../src/verification/block-replay.js";
 import {
@@ -29,6 +30,10 @@ import {
 import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
 import { fixtureForcedOrderEvent } from "../support/user-event-authority-fixture.js";
 import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
 const address = Buffer.from(

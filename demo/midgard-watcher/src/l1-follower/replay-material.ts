@@ -12,6 +12,7 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  attributeWithdrawalClassificationFault,
   type BlockReplayMaterial,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
@@ -93,13 +94,19 @@ export const watcherReplayMaterial = (
         const infoCbor = canonicalField(read.eventCborHex, [1]);
         const { body } = Data.from(infoCbor, SDK.WithdrawalInfo);
         const outRef = keyOf(Data.to(body.l2_outref, SDK.OutputReference));
-        const classification = yield* SDK.classifyWithdrawalFromLedger({
+        const classified = {
           l2Owner: body.l2_owner,
           l2ValueCbor: plutusConstrFieldCbor(infoCbor, [0, 2]),
           eventInfoCbor: infoCbor,
           ledgerOutRef: outRef,
           ledgerOutput: ledger.get(outRef.toString("hex")) ?? null,
-        });
+        };
+        // A runtime fault of the classifier is this watcher's own: the
+        // replay is retried, and no claim is made on it.
+        const classification = yield* attributeWithdrawalClassificationFault(
+          classified,
+          SDK.classifyWithdrawalFromLedger(classified),
+        );
         if (classification.settlementEventInfo.toString("hex") !== source[1])
           throw new Error(
             "withdrawal verdict differs from its canonical replay",

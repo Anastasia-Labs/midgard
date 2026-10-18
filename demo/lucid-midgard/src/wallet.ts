@@ -1,4 +1,8 @@
 import {
+  ledgerEd25519SignatureReady,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
+import {
   decodeMidgardAddressBytes,
   ensureHash32,
   type Hash32,
@@ -122,13 +126,21 @@ const normalizePrivateKey = (privateKey: PrivateKey): PrivateKey => {
   return CML.PrivateKey.from_bech32(candidate.to_bech32());
 };
 
+/**
+ * True exactly when the ledger's Ed25519 verifier accepts the witness's
+ * signature over the body hash. Throws the verifier-unavailable error when the
+ * verifier is not ready; the async signing APIs and `LucidMidgard.new` await
+ * `ledgerEd25519SignatureReady` first.
+ */
 export const verifyVKeyWitness = (
   bodyHash: Uint8Array,
   witness: VKeyWitness,
 ): boolean =>
-  witness
-    .vkey()
-    .verify(normalizeBodyHash(bodyHash), witness.ed25519_signature());
+  verifyLedgerEd25519Signature(
+    witness.vkey().to_raw_bytes(),
+    normalizeBodyHash(bodyHash),
+    witness.ed25519_signature().to_raw_bytes(),
+  );
 
 export const assertVKeyWitness = (
   bodyHash: Uint8Array,
@@ -205,8 +217,10 @@ export const walletFromPrivateKey = (
   return {
     address: async () => address,
     keyHash: async () => keyHash,
-    signBodyHash: async (bodyHash) =>
-      makeVKeyWitness(bodyHash, parsedPrivateKey),
+    signBodyHash: async (bodyHash) => {
+      await ledgerEd25519SignatureReady();
+      return makeVKeyWitness(bodyHash, parsedPrivateKey);
+    },
   };
 };
 
@@ -233,7 +247,10 @@ export const walletFromSeedPhrase = (
       ? {}
       : { rewardAddress: async () => wallet.rewardAddress as Address }),
     keyHash: async () => keyHash,
-    signBodyHash: async (bodyHash) => makeVKeyWitness(bodyHash, privateKey),
+    signBodyHash: async (bodyHash) => {
+      await ledgerEd25519SignatureReady();
+      return makeVKeyWitness(bodyHash, privateKey);
+    },
   };
 };
 
@@ -297,6 +314,7 @@ export const walletFromExternalSigner = (
   signBodyHash: async (bodyHash) => {
     const normalizedBodyHash = normalizeBodyHash(bodyHash);
     const expectedKeyHash = await resolveExternalIdentity(signer, options);
+    await ledgerEd25519SignatureReady();
     const witness = assertVKeyWitness(
       normalizedBodyHash,
       await signer.signBodyHash(normalizedBodyHash),

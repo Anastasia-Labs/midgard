@@ -6,6 +6,7 @@ import {
   encodeMidgardAddressWitnessItem,
   encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
+  ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
@@ -14,7 +15,7 @@ import {
   forcedVerdictSubject,
   missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   applyProtectedOutputSignerMissingScripts,
@@ -29,6 +30,10 @@ import {
 } from "../src/protected-output-signer-missing/index.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const txId = "11".repeat(32);
 const seed = Buffer.alloc(32, 11);

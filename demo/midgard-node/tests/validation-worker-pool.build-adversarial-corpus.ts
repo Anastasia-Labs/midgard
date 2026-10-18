@@ -37,11 +37,6 @@ export const init = {
   },
 } as const;
 
-export const nodeVerifierInit = {
-  ...init,
-  signatureVerifier: "node",
-} as const;
-
 const alwaysSucceedsBlueprint = JSON.parse(
   readFileSync(resolve("blueprints/always-succeeds/plutus.json"), "utf8"),
 ) as {

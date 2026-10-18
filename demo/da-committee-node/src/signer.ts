@@ -3,10 +3,10 @@ import {
   createPublicKey,
   type KeyObject,
   sign,
-  verify,
 } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import {
   daAvailabilityAttestationMessage,
   type DaAvailabilityCommitment,
@@ -133,6 +133,14 @@ export const signDaAttestation = ({
   return Buffer.concat([Buffer.from([signerIndex]), signature]).toString("hex");
 };
 
+/**
+ * Whether a DA attestation witness (signer index byte, then the signature)
+ * verifies under the committee key, answered exactly as the on-chain
+ * attestation check answers it: `verify_ed25519_signature` over the
+ * attestation message, the key and the 64 bytes after the index
+ * (onchain/aiken/validators/da-attestation.ak). Before libsodium has
+ * initialised, or on a libsodium failure, this raises rather than answering.
+ */
 export const verifyDaSignatureWitness = ({
   publicKeyHex,
   availabilityCommitment,
@@ -143,18 +151,9 @@ export const verifyDaSignatureWitness = ({
   readonly witnessHex: string;
 }): boolean => {
   const witness = hexToBytes(witnessHex, "signature witness", 65);
-  const publicKey = createPublicKey({
-    key: Buffer.concat([
-      ED25519_SPKI_PUBLIC_PREFIX,
-      hexToBytes(publicKeyHex, "public key", 32),
-    ]),
-    format: "der",
-    type: "spki",
-  });
-  return verify(
-    null,
+  return verifyLedgerEd25519Signature(
+    hexToBytes(publicKeyHex, "public key", 32),
     Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
-    publicKey,
     witness.subarray(1),
   );
 };
