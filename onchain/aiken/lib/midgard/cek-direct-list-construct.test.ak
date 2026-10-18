@@ -21,6 +21,7 @@ use midgard/cek_builtin_v1.{ValueWitnessV1}
 use midgard/cek_cost_v1
 use midgard/cek_machine_v1.{
   CoreStepEvidenceV1, ExecuteBuiltinDirect, ExecuteBuiltinSemantic,
+  MachineStateV1,
 }
 use midgard/cek_proof_v1
 
@@ -151,6 +152,56 @@ test mk_cons_integer_proves() {
 
 test mk_cons_integer_proves_on_the_split_chain() {
   semantic_split_proves(mk_cons_integer())
+}
+
+// The same mkCons over an integer list as the direct witness, 296 bytes of
+// evidence: the revealed arguments and the result, with the semantic
+// witness's states. The step verifier accepts either witness kind for the
+// step.
+const mk_cons_integer_direct_evidence =
+  #"d8799fd8799f03005820d433acb064802aec28c2b2f217008d3ca2b6d817cbe4eb4edbcc51e8ab746db258200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582054e25d93eed4bc75270f532273ce9f0b351568d5112669c39459309cb680f94b001a0001f464190384ffd8799f010058200eeb46231c978c5a829515e61d6f09d906a969048429429ec3802290c2d0562c58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582054e25d93eed4bc75270f532273ce9f0b351568d5112669c39459309cb680f94b001a00030f0e1903a4ffd905179f18209fd8799fd8799f439f00ff4101ffffd8799fd8799f449f0500ff439f04ffffffffd8799fd8799f449f0500ff449f0104ffffffffff"
+
+fn mk_cons_integer_direct() -> CoreStepEvidenceV1 {
+  decode(mk_cons_integer_direct_evidence)
+}
+
+fn with_another_post_state(evidence: CoreStepEvidenceV1) -> CoreStepEvidenceV1 {
+  CoreStepEvidenceV1 {
+    ..evidence,
+    post: MachineStateV1 { ..evidence.post, cpu: evidence.post.cpu + 1 },
+  }
+}
+
+test mk_cons_integer_direct_witness_has_the_semantic_witness_states() {
+  let semantic = mk_cons_integer()
+  let direct = mk_cons_integer_direct()
+  and {
+    is_direct(direct),
+    direct.pre == semantic.pre,
+    direct.post == semantic.post,
+  }
+}
+
+test mk_cons_integer_semantic_witness_is_accepted_where_the_direct_witness_fits() {
+  and {
+    proves(mk_cons_integer()),
+    semantic_split_proves(mk_cons_integer()),
+  }
+}
+
+test mk_cons_integer_direct_witness_of_the_same_step_is_accepted() {
+  and {
+    proves(mk_cons_integer_direct()),
+    direct_split_proves(mk_cons_integer_direct()),
+  }
+}
+
+test mk_cons_integer_semantic_witness_with_another_post_state_is_refused() fail {
+  proves(with_another_post_state(mk_cons_integer()))
+}
+
+test mk_cons_integer_semantic_witness_with_another_post_state_is_refused_on_the_split_chain() fail {
+  semantic_split_proves(with_another_post_state(mk_cons_integer()))
 }
 
 // mkCons over a bytestring list: the semantic witness, 490 bytes of evidence.

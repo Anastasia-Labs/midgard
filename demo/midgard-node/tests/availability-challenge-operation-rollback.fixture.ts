@@ -84,7 +84,7 @@ export const fixture = async () => {
       build: async () => {
         build(headerHash);
         return buildDaAvailabilityFundingPreparationTx(lucid, {
-          fundingInput,
+          walletInputs: [fundingInput],
           outputLovelace,
           feeLovelace: 1_000_000n,
           validFrom: BigInt(emulator.now() - 60_000),

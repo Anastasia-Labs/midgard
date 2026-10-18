@@ -8,12 +8,12 @@ import {
   referenceScriptAuthUnit,
   type ReferenceScriptPublication,
   referenceScriptPublicationFundingTarget,
-  selectReferenceScriptFundingUtxos,
 } from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem-fit-ledger.js";
+import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem.js";
 import {
   type CompleteSignedTransactionMeasurement,
   measureCompleteSignedTransaction,
@@ -47,11 +47,8 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   // A deployment supplies its funding authority explicitly. Standalone
   // publication tests use their caller wallet; neither path changes a wallet.
   const publicationLucid = publisher?.lucid ?? lucid;
-  const reserved = new Set(publisher?.reservedInputs.map(outRefLabel));
-  const selectedFundingInputs = selectReferenceScriptFundingUtxos(
-    (await publicationLucid.wallet().getUtxos()).filter(
-      (utxo) => !reserved.has(outRefLabel(utxo)),
-    ),
+  const selectedFundingInputs = selectPlainFundingUtxos(
+    await publicationLucid.wallet().getUtxos(),
     referenceScriptPublicationFundingTarget(1),
   );
   if (selectedFundingInputs.length === 0) {

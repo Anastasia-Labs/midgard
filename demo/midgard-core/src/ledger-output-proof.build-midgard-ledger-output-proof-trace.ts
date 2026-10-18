@@ -219,8 +219,11 @@ export const buildMidgardLedgerOutputProofTrace = ({
     });
     for (const datumStep of datumTrace.steps) {
       const span = nextMidgardCekDataTraverseSpan(datumStep.control);
+      // An empty span reads no output bytes: it takes no window.
       const window =
-        span === null ? null : windowBytesFor(span.absoluteStart, span.length);
+        span === null || span.length === 0
+          ? null
+          : windowBytesFor(span.absoluteStart, span.length);
       append({
         kind: "datum",
         action: datumStep.action,

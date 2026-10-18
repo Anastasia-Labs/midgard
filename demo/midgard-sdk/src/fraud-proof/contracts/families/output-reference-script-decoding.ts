@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -5,7 +6,7 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type { ScriptDecodeFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -16,18 +17,19 @@ import {
 } from "../types.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/output_reference_script_decoding/step_01.main.spend",
-  step02: "fraud_proofs/output_reference_script_decoding/step_02.main.spend",
-  step03: "fraud_proofs/output_reference_script_decoding/step_03.main.spend",
-  step04: "fraud_proofs/output_reference_script_decoding/step_04.main.spend",
-  step05: "fraud_proofs/output_reference_script_decoding/step_05.main.spend",
-  step06: "fraud_proofs/output_reference_script_decoding/step_06.main.spend",
+  step01: deployedTitle("fraudProofOutputReferenceScriptDecoding"),
+  step02: deployedTitle("fraudProofOutputReferenceScriptDecodingStep02"),
+  step03: deployedTitle("fraudProofOutputReferenceScriptDecodingStep03"),
+  step04: deployedTitle("fraudProofOutputReferenceScriptDecodingStep04"),
+  step05: deployedTitle("fraudProofOutputReferenceScriptDecodingStep05"),
+  step06: deployedTitle("fraudProofOutputReferenceScriptDecodingStep06"),
 } as const;
 
 export type OutputReferenceScriptDecodingFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptDecode: AuthenticatedValidator;
   readonly outputReferenceScriptDecoding: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -51,7 +53,8 @@ export const buildOutputReferenceScriptDecodingChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  scriptDecodePolicyId,
+}: ScriptDecodeFaultProofChainInputs): Effect.Effect<
   OutputReferenceScriptDecodingFaultProofContracts["outputReferenceScriptDecoding"],
   Error
 > =>
@@ -80,6 +83,7 @@ export const buildOutputReferenceScriptDecodingChain = ({
         step05.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        scriptDecodePolicyId,
       ],
       "Failed to build output-reference-script-decoding step 04",
     );

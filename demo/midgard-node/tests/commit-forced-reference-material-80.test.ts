@@ -208,10 +208,6 @@ it("admits a native-only order referencing a verified CEK supplier and emits no 
           depositCount: 0n,
           transitionStepCount: 1n,
         },
-        {
-          validationTracesRoot: processed.validationTracesRoot,
-          validationTraceCount: 1n,
-        },
       ),
     );
     const { header } = await Effect.runPromise(

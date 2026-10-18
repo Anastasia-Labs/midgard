@@ -56,7 +56,6 @@ export const makeGenuineFundingInitCaptureForTest = async () => {
     blueprintBytes: bytes,
     deploymentParameterRegistry: retained,
     buildRecord: record,
-    expectedCompilerVersion: record.compiler,
     // The fixture recipe identity is deliberately test-scoped; contributor
     // receipts separately retain the full actual source and compiled pins.
     sourceSnapshotSha256: createHash("sha256")

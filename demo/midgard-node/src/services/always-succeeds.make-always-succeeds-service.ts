@@ -98,7 +98,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       mintingScript: txOrder.mintingScript,
       policyId: txOrder.policyId,
     };
-    const cekProgramMaterial = alwaysSucceedsSpend;
+    const scriptDecode: SDK.AuthenticatedValidator = fieldPreimageCertificate;
     const settlement = yield* mkAuthVal("settlement");
 
     // Reserve
@@ -149,12 +149,20 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const referenceInputNoIdx = nonExistentInputNoIndex;
     const invalidSignature = invalidRange;
 
+    // The case and the award mint as well as spend. The compact blueprint has
+    // no dedicated stub for either, so each pairs the `transition_trace`
+    // spend stub with the always-succeeds fraud-proof mint.
+    const validationTraceAuthenticated: SDK.AuthenticatedValidator = {
+      ...fraudProof,
+      ...transitionTrace,
+    };
+
     const validationTraceSemanticResolvers = Array.from(
-      { length: 91 },
+      { length: 83 },
       () => transitionTrace,
     );
     const validationTracePrepareResolvers = Array.from(
-      { length: 14 },
+      { length: 13 },
       () => transitionTrace,
     );
     const validationTraceCanonicalDecodeItemStages = {
@@ -267,13 +275,16 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         typeFailureKinds: transitionTrace,
         typeFailureRoots: transitionTrace,
       },
-      cekProgramMaterial,
       opener: validationTraceDispute,
       source: validationTraceDispute.source,
       game: validationTraceDispute.game,
       boundary: validationTraceDispute.boundary,
       timeout: validationTraceDispute.timeout,
-      award: validationTraceDispute.award,
+      award: validationTraceAuthenticated,
+      disputeBond: transitionTrace,
+      case: validationTraceAuthenticated,
+      caseConfig: fraudProof,
+      threadExpiry: stateQueueYield,
       proofItem: transitionTrace,
       canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages:
@@ -281,15 +292,10 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       canonicalDecodePrepare: validationTracePrepareResolvers[0],
       prepareResolvers: validationTracePrepareResolvers,
       semanticResolvers: validationTraceSemanticResolvers,
-      cekMaterialTraversal: transitionTrace,
       yields: {
         valueAndMintAssetFold: stateQueueYield,
-        cekMaterialProgramTask: stateQueueYield,
-        cekMaterialDataTask: stateQueueYield,
         cekSelectionAuthenticate: stateQueueYield,
         cekSelectionSuccessor: stateQueueYield,
-        cekSelectionMaterialProgram: stateQueueYield,
-        cekSelectionMaterialData: stateQueueYield,
         scriptSourcesStageTwoAdvance: stateQueueYield,
         scriptSourcesStageThreeReplay: stateQueueYield,
         scriptSourcesStageThreeFinish: stateQueueYield,
@@ -370,11 +376,13 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         steps: [transitionTrace, ...transitionTraceFinals],
         yields: {
           l2Open: stateQueueYield,
+          l2Delete: stateQueueYield,
+          l2Outputs: stateQueueYield,
+          l2OutputStep: stateQueueYield,
+          l2OutputDescriptor: stateQueueYield,
+          l2OutputSummary: stateQueueYield,
           l2Summaries: stateQueueYield,
           l2Replay: stateQueueYield,
-          claimStructure: stateQueueYield,
-          claimSource: stateQueueYield,
-          claimEndpoints: stateQueueYield,
           depositProjection: stateQueueYield,
           l1Event: stateQueueYield,
           forcedTiming: stateQueueYield,
@@ -527,7 +535,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       withdrawal,
       txOrder,
       fieldPreimageCertificate,
-      cekProgramMaterial,
+      scriptDecode,
       settlement,
       reserve,
       payout,

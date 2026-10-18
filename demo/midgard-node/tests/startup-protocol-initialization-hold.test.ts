@@ -7,7 +7,14 @@
  * reward-account read that stays unavailable past the budget fails it under
  * `reward_account_status_unavailable`. A Lucid slot mapping other than the
  * deployment's fails it at once under `l1_slot_config_mismatch`, before any
- * read. The deployment's reads are stubbed; the check's own logic runs.
+ * read. A bootstrap's node-runtime reference-script preflight whose
+ * submission lost an input to a transaction in flight (a previous process's,
+ * after a restart) is built again under
+ * `runtime_reference_scripts_input_conflict` and the startup completes, or,
+ * past the same budget, fails under that reason; any
+ * other preflight failure fails it at once under
+ * `runtime_reference_scripts_failed`. The deployment's reads and the
+ * preflight are stubbed; the check's own logic runs.
  */
 import {
   type L1SlotConfig,
@@ -29,6 +36,8 @@ import {
   findStartupStepFailure,
   L1_SLOT_CONFIG_MISMATCH,
   REWARD_ACCOUNT_STATUS_UNAVAILABLE,
+  RUNTIME_REFERENCE_SCRIPTS_FAILED,
+  RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
   StartupWaitingReporter,
 } from "../src/services/startup-waiting.js";
 
@@ -38,6 +47,10 @@ const stub = vi.hoisted(() => ({
   /** How many registration reads fail, and with what. */
   failures: 0,
   failure: "unregistered" as "unregistered" | "unreachable",
+  preflightRuns: 0,
+  /** How many bootstrap preflights fail, and with what. */
+  preflightFailures: 0,
+  preflightFailure: "input_spent" as "input_spent" | "other",
 }));
 
 vi.mock("../src/commands/contract-deployment-info.js", async (original) => {
@@ -113,11 +126,34 @@ vi.mock(
 );
 vi.mock("../src/transactions/reference-scripts.js", async (original) => {
   const { Effect: E } = await import("effect");
+  const { TxSubmitError } = await import(
+    "../src/transactions/utils.await-required-output-visibility.js"
+  );
   return {
     ...(await original<
       typeof import("../src/transactions/reference-scripts.js")
     >()),
     verifyNodeRuntimeReferenceScriptsProgram: () => E.succeed([]),
+    ensureNodeRuntimeReferenceScriptsProgram: () =>
+      E.suspend(() => {
+        stub.preflightRuns += 1;
+        if (stub.preflightRuns > stub.preflightFailures) return E.succeed([]);
+        // The submission's refusal as the submit seam surfaces it: the
+        // ledger's spent-input answer (here the Lucid emulator's text) as
+        // the cause of the submit error.
+        return E.fail(
+          new TxSubmitError({
+            message: "Failed to submit the reference-script wallet top-up",
+            txHash: "ab".repeat(32),
+            cause:
+              stub.preflightFailure === "input_spent"
+                ? new Error(
+                    `Could not read UTxO: ${"cd".repeat(32)}#0\nIt does not exist or was already spent.`,
+                  )
+                : new Error("Reference-script auth policy expires too soon"),
+          }),
+        );
+      }),
   };
 });
 
@@ -133,6 +169,9 @@ const runCheck = async (
     /** The manifest's mapping; absent selects a derived bundle built with
      * Preprod's. */
     readonly manifest?: L1SlotConfig;
+    /** Whether the node bootstraps (`RUN_GENESIS_ON_STARTUP`), which runs
+     * the reference-script preflight rather than its verification. */
+    readonly bootstrap?: boolean;
   } = { lucid: PREPROD, manifest: PREPROD },
 ) => {
   const reported: [string, readonly string[]][] = [];
@@ -141,13 +180,15 @@ const runCheck = async (
       Effect.provide(IntentJournalWithoutFollower),
       Effect.provideService(NodeConfig, {
         NETWORK: "Preprod",
-        RUN_GENESIS_ON_STARTUP: false,
+        RUN_GENESIS_ON_STARTUP: slots.bootstrap ?? false,
         STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: MAX_ATTEMPTS,
         STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: 0,
       } as unknown as NodeConfig["Type"]),
       Effect.provideService(Lucid, {
         api: { config: () => ({ slotConfig: slots.lucid ?? PREPROD }) },
+        referenceScriptsApi: {},
         referenceScriptsAddress: "addr_test",
+        switchToOperatorsMainWallet: Effect.void,
       } as unknown as Lucid),
       Effect.provideService(
         ContractDeploymentIdentity,
@@ -181,6 +222,8 @@ const runCheck = async (
 beforeEach(() => {
   stub.statusReads = 0;
   stub.registrationChecks = 0;
+  stub.preflightRuns = 0;
+  stub.preflightFailures = 0;
 });
 
 describe("the startup protocol check", () => {
@@ -260,5 +303,58 @@ describe("the startup protocol check", () => {
     });
     expect(stub.registrationChecks).toBe(MAX_ATTEMPTS);
     expect(stub.statusReads).toBe(1);
+  });
+
+  it("builds the bootstrap's reference-script preflight again after it lost an input to a transaction in flight, and completes", async () => {
+    stub.failures = 0;
+    stub.preflightFailure = "input_spent";
+    stub.preflightFailures = 2;
+    const { exit, reported } = await runCheck({
+      lucid: PREPROD,
+      manifest: PREPROD,
+      bootstrap: true,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(stub.preflightRuns).toBe(3);
+    expect(stub.statusReads).toBe(1);
+    expect(reported).toEqual([
+      ["runtime_reference_scripts", [RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT]],
+      ["runtime_reference_scripts", [RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT]],
+      ["runtime_reference_scripts", []],
+    ]);
+  });
+
+  it("fails the startup under runtime_reference_scripts_input_conflict once the lost-input preflight outlives its budget", async () => {
+    stub.failures = 0;
+    stub.preflightFailure = "input_spent";
+    stub.preflightFailures = MAX_ATTEMPTS + 1;
+    const { failure } = await runCheck({
+      lucid: PREPROD,
+      manifest: PREPROD,
+      bootstrap: true,
+    });
+    expect(failure).toMatchObject({
+      step: "runtime_reference_scripts",
+      reason: RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
+      exhausted: true,
+      attempts: MAX_ATTEMPTS,
+    });
+    expect(stub.preflightRuns).toBe(MAX_ATTEMPTS);
+  });
+
+  it("fails the startup at once on any other reference-script preflight failure", async () => {
+    stub.failures = 0;
+    stub.preflightFailure = "other";
+    stub.preflightFailures = 1;
+    const { failure } = await runCheck({
+      lucid: PREPROD,
+      manifest: PREPROD,
+      bootstrap: true,
+    });
+    expect(failure).toMatchObject({
+      reason: RUNTIME_REFERENCE_SCRIPTS_FAILED,
+      exhausted: false,
+    });
+    expect(stub.preflightRuns).toBe(1);
   });
 });

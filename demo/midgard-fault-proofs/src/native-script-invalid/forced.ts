@@ -5,6 +5,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
@@ -12,6 +13,16 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
+
+/** The witness item's script, or undefined when the item does not decode. */
+const decodedWitnessScript = (item: Uint8Array) => {
+  try {
+    return decodeMidgardVersionedScript(item);
+  } catch (cause) {
+    if (cause instanceof MidgardTxCodecError) return undefined;
+    throw cause;
+  }
+};
 
 export const detectNativeScriptInvalidForcedReplay = (
   block: CanonicalBlockEvidence,
@@ -49,8 +60,10 @@ export const detectNativeScriptInvalidForcedReplay = (
           ? scripts[Number(scriptIndex)]
           : undefined;
       if (item === undefined) return [];
-      const script = decodeMidgardVersionedScript(item);
-      if (script.language !== "NativeCardano") return [];
+      const script = decodedWitnessScript(item);
+      // An item that does not decode is witnessScriptDecoding's to prove.
+      if (script === undefined || script.language !== "NativeCardano")
+        return [];
       const witnesses = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
       const signers = nativeScriptInvalidSignerSet(
         witnesses,

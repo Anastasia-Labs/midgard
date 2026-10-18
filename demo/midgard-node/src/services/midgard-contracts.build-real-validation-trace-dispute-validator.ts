@@ -1,4 +1,5 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -49,12 +50,19 @@ export const buildRealFaultProofContracts = (
   fraudProof: SDK.AuthenticatedValidator,
   eventHistoryBounds: SDK.EventHistoryPayloadBounds,
   l1SlotConfig: L1SlotConfig,
-): Effect.Effect<SDK.FaultProofContractChains, Error> =>
+  disputeBondLovelace: bigint,
+  caseConfigInitializationNonce: OutRefLike,
+): Effect.Effect<
+  SDK.FaultProofContractChains & Pick<SDK.FaultProofContracts, "scriptDecode">,
+  Error
+> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({
       eventHistoryBounds,
       l1SlotConfig,
+      disputeBondLovelace,
+      caseConfigInitializationNonce,
       blueprint,
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,

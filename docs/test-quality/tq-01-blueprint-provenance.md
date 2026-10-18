@@ -12,13 +12,12 @@ value can detect artifact substitution. It does not establish freshness against
 the current build. These are different contracts; such a comparison is not a
 literal self-comparison merely because the two values were recorded together.
 
-The working-tree review found 43 fit-ledger JSON files, 29 distinct recorded
-blueprint digests, and one match to the present blueprint. Its SHA-256 was
-`5602f4a9449e39291b17ca393e25b943f8d6d7624e4215f964ad845560671ad0`.
-This is a dated observation of the existing file, not a fresh compilation.
-The previous 58/37/4 inventory and different digest were stale. A mismatch does
-not by itself invalidate a historical artifact's consistency check; it prevents
-using that measurement as current-build fit evidence without revalidation.
+The fit ledger JSON files this card first inventoried have been removed; fit is
+now measured on the current build at every emulator submission (TQ-15). For any
+other saved artifact, a recorded digest that does not match the present
+blueprint does not by itself invalidate the artifact's consistency check; it
+prevents using that measurement as current-build evidence without
+revalidation.
 
 Current consumers include live measurement producers, saved-ledger checks, the
 CG1 publication verifier, and machine-readable necessity pins parsed by

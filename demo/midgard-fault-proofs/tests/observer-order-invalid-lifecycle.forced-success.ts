@@ -267,23 +267,22 @@ export const forcedSuccess = async (
     setup.fraudulentBlockOutRef,
     setup.headerHash,
   );
-  record(`${prefix}-init`, shape.label, initialized.measurement);
+  record(`${prefix}-init`, initialized.measurement);
   const bound = await h.step01Forced(
     h.threadOf(initialized.result),
     finding,
     source,
   );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
+  record(`${prefix}-step01`, bound.measurement);
   const published = await h.publishField(shape);
-  if (published.tier === "Certified")
-    h.recordCarriage(prefix, shape, published);
+  if (published.tier === "Certified") h.recordCarriage(prefix, published);
   const opened = await h.step02(
     bound.result.nextThreadOutRef,
     evidence,
     shape,
     staged,
   );
-  record(`${prefix}-step02`, shape.label, opened.measurement);
+  record(`${prefix}-step02`, opened.measurement);
   const decided = await h.scanAll(
     opened.result.nextThreadOutRef,
     evidence,
@@ -293,13 +292,9 @@ export const forcedSuccess = async (
   );
   const proven = await h.step04(decided, evidence);
   expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step04-proof-mint`, shape.label, proven.measurement);
+  record(`${prefix}-step04-proof-mint`, proven.measurement);
   coverage.reason(REASON_ARM, "forced_rejection_wrong");
   coverage.scenario("wrongful_forced_rejection_success");
   await beforeRemoval({ ...h, ...block, shape, evidence, staged });
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
+  record(`${prefix}-remove`, (await h.removal(setup.headerHash)).measurement);
 };

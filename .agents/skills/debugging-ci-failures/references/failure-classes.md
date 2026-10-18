@@ -42,7 +42,7 @@ naive `mismatch|drift|error` greps.
 
 | Class               | Runs | Dates                    | Example run   |
 | ------------------- | ---: | ------------------------ | ------------- |
-| Exec-ledger drift   |   33 | 2026-08-23 to 2026-09-04 | `33875522276` |
+| Execution cost      |   33 | 2026-08-23 to 2026-09-04 | `33875522276` |
 | Formatter drift     |   17 | 2026-08-12 to 2026-08-16 | `31948084630` |
 | Aiken test failure  |    7 | 2026-08-10 to 2026-09-01 | `33542590564` |
 | Silent compile exit |    3 | 2026-08-17 to 2026-08-31 | `33393576516` |
@@ -50,24 +50,24 @@ naive `mismatch|drift|error` greps.
 Over the last 200 completed runs (2026-08-04 to 2026-09-04), 74 failed and 126
 passed. The last green run was 2026-08-22.
 
-**Exec-ledger drift.** Steps named `Pin the … execution ledger`. The Q1x
-ledger failed 20 times, Q21 7 and §8.10 6. Signal:
+**Execution cost.** These 33 runs failed the per-lane `Pin the … execution
+ledger` steps, which compared exact readings: the Q1x ledger failed 20 times,
+Q21 7 and §8.10 6. Those steps are gone. Every execution cost is now a ceiling
+in `demo/midgard-core/src/script-budgets.json`, judged `measured <= ceiling` by
+`onchain/aiken/scripts/script-budgets.mjs` in the shard-collector job's step
+`Hold every script budget to its ceiling`, so a cost that drops no longer fails.
+Signal:
 
 ```text
-midgard/native-tx-carriage-v1.test: 'tier3_corner_open_only' drifted — ledger mem=640875 cpu=299825903, measured mem=642673 cpu=300391006
-§8.10 carriage execution ledger: 9 drift(s). If the re-take is legitimate, re-run with --update and move docs/spec/midgard-tx.md §8.10 in the same commit.
+over         midgard/user_events/tx_order_v1.test/<test> - <control>  read 5340508 mem / 1580803513 cpu  ceiling 5340507 mem / 1580803513 cpu  above its ceiling on mem
+A script budget failed. Shrink the script, or if the cost is accepted run `node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why>`.
 ```
 
-Q21 produced a different shape, which is not a re-takeable number:
-
-```text
-... 'accepts_valid_l2_transaction_no_op_transition_fault' is recorded 'within' but measured mem=N cpu=N exceeds the basis mem=N cpu=N
-Q21 transition-trace execution ledger: 1 structural failure(s). These are not re-takeable numbers; resolve them in the source or in the ledger.
-```
-
-The messages come from `onchain/aiken/scripts/verify-*-exec-ledger-v1.mjs` and
-`onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs:275`. "If the re-take is
-legitimate" is the question the verdict must answer, not an instruction.
+`missing` means a budgeted test or its control no longer ran (renamed or
+deleted). `now-fits` means an `aboveBasis` entry's reading fits the basis, so
+its infeasibility claim is stale. `out-of-band` means a growth claim's two
+budgets moved apart. "If the cost is accepted" is the question the verdict must
+answer, not an instruction.
 
 **Formatter drift.** Step `Run normalized Aiken auto-formatter check`
 (`.github/workflows/aiken-ci.yml:177`). The log is the output of

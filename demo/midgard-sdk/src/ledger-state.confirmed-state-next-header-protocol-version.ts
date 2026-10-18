@@ -234,26 +234,12 @@ export const BoundedItemChunkProof = asDataType<BoundedItemChunkProof>(
 // collection — so it is a different artifact, not a renamed one, and nothing here
 // forwards to it.
 
-export const CekProgramMaterialDatumSchema = Data.Object({
-  kind: Data.Integer(),
-  root: H32Schema,
-  preimage: Data.Bytes(),
-});
-
-export type CekProgramMaterialDatum = Data.Static<
-  typeof CekProgramMaterialDatumSchema
->;
-
-export const CekProgramMaterialDatum = asDataType<CekProgramMaterialDatum>(
-  CekProgramMaterialDatumSchema,
-);
-
 /**
  * Twin of `midgard/ledger_state.TxOrderPayload`.
  *
  * **No `terminal_receipt_reference`.** It named the last link of the counted
- * publication receipt chain, which retired in #587 — see the note above
- * `CekProgramMaterialDatumSchema`. The §8 re-expression of the availability
+ * publication receipt chain, which retired in #587 — see the note above this
+ * comment. The §8 re-expression of the availability
  * role it served is not in this datum; `verify_order_material` on the Aiken side
  * carries the `field_carriage_availability` note that says what the mint checks
  * today and which issue owns the rest.

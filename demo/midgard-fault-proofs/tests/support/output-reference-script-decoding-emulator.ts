@@ -2,8 +2,7 @@
  * Emulator fixtures and stage drivers for the `outputReferenceScriptDecoding`
  * lifecycle suite: canonical accepted and forced blocks whose subject outputs
  * carry a versioned reference script, the registered six-step chain, and one
- * recorder for every complete signed measurement the Van Rossem fit ledger
- * keeps.
+ * recorder that checks every complete signed measurement.
  */
 
 import "@aiken-lang/merkle-patricia-forestry";
@@ -41,7 +40,6 @@ export {
   type ForcedLeafSpec,
   type Harness,
   makeOutputReferenceHarness,
-  MAXIMUM_SHAPE,
   maximumWideScriptOutput,
   type Measurement,
   type MeasurementRecorder,
@@ -52,6 +50,7 @@ export {
   OUTPUT_REFERENCE_REASON_ARMS,
   type OutputReferenceContext,
   outputWithNativeScript,
+  outputWithPlutusScript,
   outputWithRawNativePayload,
   rawNativeOutputOfLength,
   registeredContracts,

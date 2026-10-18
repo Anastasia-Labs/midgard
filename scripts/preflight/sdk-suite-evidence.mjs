@@ -9,6 +9,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
+import { packageTestTask } from "../../demo/scripts/package-tasks.mjs";
 import {
   filesUnder,
   hashFiles,
@@ -25,6 +26,15 @@ const SDK_SCRIPT =
   "pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test";
 const json = (root, path) =>
   JSON.parse(readFileSync(resolve(root, path), "utf8"));
+export const sdkFullSuite = (root, name) => {
+  if (!Object.hasOwn(SDK_SUITES, name)) return false;
+  const manifest = json(root, `${SDK_SUITES[name]}/package.json`);
+  return (
+    manifest.name === name &&
+    JSON.stringify(packageTestTask(manifest)?.command) ===
+      JSON.stringify(["vitest", "run"])
+  );
+};
 export const sdkSuiteStep = (step) =>
   Object.hasOwn(SDK_SUITES, step.sdkSuite ?? "") &&
   step.cwd === "demo" &&
@@ -112,12 +122,11 @@ export const sdkContext = (root, env) => {
       directory: `demo/${entry.name}`,
       name: json(root, `demo/${entry.name}/package.json`).name,
     }));
-  if (env.MIDGARD_REAL_BLUEPRINT_PATH || env.MIDGARD_BLUEPRINT_STAMP === "warn")
+  if (env.MIDGARD_REAL_BLUEPRINT_PATH)
     throw new Error("unsupported SDK blueprint profile");
   const inputs = [inputIdentity(root, "@repository").sha256];
-  for (const [name, directory] of Object.entries(SDK_SUITES)) {
-    const manifest = json(root, `${directory}/package.json`);
-    if (manifest.name !== name || manifest.scripts?.test !== "vitest run")
+  for (const name of Object.keys(SDK_SUITES)) {
+    if (!sdkFullSuite(root, name))
       throw new Error("SDK full-suite recipe missing or changed");
     if (closure.filter((pkg) => pkg.name === name).length !== 1)
       throw new Error("ambiguous SDK package inventory");

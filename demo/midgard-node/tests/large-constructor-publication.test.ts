@@ -1,3 +1,4 @@
+import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it } from "vitest";
 
 import {
@@ -33,6 +34,10 @@ it("publishes large constructor via actual production authenticated publisher", 
       "large constructor fit",
       targets,
       referenceScriptAuth,
+      referenceScriptsLucid,
+      undefined,
+      SDK.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
+      new Set(),
     ),
   );
   expect(published).toHaveLength(1);

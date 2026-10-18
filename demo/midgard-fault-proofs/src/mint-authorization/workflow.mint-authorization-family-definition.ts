@@ -29,6 +29,7 @@ import {
   type ManifestBoundMintAuthorizationWorkflowConfig,
 } from "./workflow.create-mint-authorization-transaction-port.js";
 import {
+  mintAuthorizationRefineAction,
   mintAuthorizationWorkflowFieldRequirement,
   mintAuthorizationWorkflowRawRequirement,
 } from "./workflow.mint-authorization-workflow-raw-requirement.js";
@@ -56,6 +57,7 @@ export const MINT_AUTHORIZATION_FAMILY_DEFINITION = defineFamily({
   adapter: {
     kind: "cursor",
     spec: MINT_AUTHORIZATION_CURSOR_SPEC,
+    createRefineAction: mintAuthorizationRefineAction,
     stepContractNames: [
       "fraudProofMintAuthorization",
       "fraudProofMintAuthorizationStep02",
@@ -120,7 +122,7 @@ export const MINT_AUTHORIZATION_FAMILY_DEFINITION = defineFamily({
         return mintAuthorizationWorkflowFieldRequirement(
           admitted,
           context.signer.paymentKeyHash,
-          input.stage,
+          input,
           {
             policyId: certificate.policyId,
             mintingScript: certificate.mintingScript,

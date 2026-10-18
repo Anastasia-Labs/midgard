@@ -367,7 +367,9 @@ const deriveItemPlan = ({
   ]);
   const span = nextMidgardRedeemerItemProofSpan(plan.control);
   let source: Data = none;
-  if (span !== null) {
+  // An empty span takes no chunk proof; its window is the empty bytes.
+  if (span !== null && span.length === 0) source = some("");
+  else if (span !== null) {
     const first = coreWitness.chunkProof;
     if (first === null)
       throw new Error("shared item source witness is missing");

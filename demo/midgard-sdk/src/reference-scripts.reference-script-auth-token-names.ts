@@ -254,13 +254,20 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   // divergence.
   "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
   "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
-  "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
+  "V1 script decode": "V1ScriptDecodeSpend",
+  "V1 script decode minting": "V1ScriptDecodeMint",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
   "V1 validation-trace source": "V1ValidationTraceSource",
   "V1 validation-trace game": "V1ValidationTraceGame",
   "V1 validation-trace boundary": "V1ValidationTraceBoundary",
   "V1 validation-trace timeout": "V1ValidationTraceTimeout",
   "V1 validation-trace award": "V1ValidationTraceAward",
+  "V1 validation-trace award minting": "V1ValidationTraceAwardMint",
+  "V1 validation-trace case": "V1ValidationTraceCase",
+  "V1 validation-trace case minting": "V1ValidationTraceCaseMint",
+  "V1 validation-trace case configuration minting": "V1VtdCaseConfigMint",
+  "V1 validation-trace thread expiry": "V1VtdThreadExpiry",
+  "V1 validation-trace dispute bond": "V1VtdDisputeBond",
   "V1 validation-trace canonical-decode prepare": "V1VtdCanonicalPrepare",
   "V1 validation-trace canonical-decode empty semantic": "V1VtdCanonicalEmpty",
   "V1 validation-trace canonical-decode item semantic": "V1VtdCanonicalItem",
@@ -417,7 +424,6 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtPhaseANativeItemNativeYield",
   "V1 validation-trace phase-A native item foreign yield":
     "V1VtPhaseANativeItemForeignYield",
-  "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
   "V1 validation-trace CEK context settle": "V1VtCekCtxSet",
   "V1 validation-trace CEK context control": "V1VtCekCtxCon",
   "V1 validation-trace CEK context reference": "V1VtCekCtxRef",
@@ -500,15 +506,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace CEK core type failure kinds": "V1VtCekCoreTypFaiKin",
   "V1 validation-trace CEK core type failure roots": "V1VtCekCoreTypFaiRoo",
 
-  "V1 validation-trace CEK material program task yield":
-    "V1VtCekMatProgramTask",
-  "V1 validation-trace CEK material Data task yield": "V1VtCekMatDataTask",
   "V1 validation-trace CEK selection authenticate yield": "V1VtCekSelAuthYield",
   "V1 validation-trace CEK selection successor yield": "V1VtCekSelSuccYield",
-  "V1 validation-trace CEK selection material program yield":
-    "V1VtCekSelMatProgYield",
-  "V1 validation-trace CEK selection material data yield":
-    "V1VtCekSelMatDataYield",
 
   "V1 fraud-proof transition-trace final-5 replay yield": "V1FpTtF5ReplayYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
@@ -524,16 +523,20 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
 
   "V1 fraud-proof transition-trace final-4 L2 open yield":
     "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 delete yield":
+    "V1FpTtF4L2DeleteYield",
+  "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+    "V1FpTtF4L2OutputsYield",
+  "V1 fraud-proof transition-trace final-4 L2 output step yield":
+    "V1FpTtF4L2OutputStepYield",
+  "V1 fraud-proof transition-trace final-4 L2 output descriptor yield":
+    "V1FpTtF4OutputDescriptorYield",
+  "V1 fraud-proof transition-trace final-4 L2 output summary yield":
+    "V1FpTtF4OutputSummaryYield",
   "V1 fraud-proof transition-trace final-4 L2 summaries yield":
     "V1FpTtF4L2SummariesYield",
   "V1 fraud-proof transition-trace final-4 L2 replay yield":
     "V1FpTtF4L2ReplayYield",
-  "V1 fraud-proof transition-trace final-4 claim structure yield":
-    "V1FpTtF4ClaimStructYield",
-  "V1 fraud-proof transition-trace final-4 claim source yield":
-    "V1FpTtF4ClaimSourceYield",
-  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-    "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
   "V1 fraud-proof transition-trace final-6 L1 event yield":

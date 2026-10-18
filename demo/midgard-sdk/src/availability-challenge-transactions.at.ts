@@ -205,13 +205,60 @@ export type DaAvailabilityTransactionErrorReason =
   /** The Apply transaction does not yield the attested commitment. */
   | "apply-commitment-unrecoverable"
   /** The challenger's key is not on the deployment's DA challenger allow-list. */
-  | "challenger-not-allow-listed";
+  | "challenger-not-allow-listed"
+  /** The Open's challenger input is not the exact ADA-only opening coin. */
+  | "challenger-funding-not-exact"
+  /** A preparation amount or validity interval is malformed. */
+  | "preparation-invalid-request"
+  /** The preparing wallet is not a payment-key wallet. */
+  | "preparation-wallet-not-key"
+  /** Lucid has no live protocol parameters to size outputs and collateral. */
+  | "protocol-parameters-unavailable"
+  /** A prepared ADA-only output is below the live ledger minimum ADA. */
+  | "preparation-below-min-ada"
+  /** The wallet offers no input the preparation could spend. */
+  | "preparation-no-wallet-inputs"
+  /** The wallet's lovelace cannot cover the prepared outputs, fee and change. */
+  | "preparation-insufficient-lovelace"
+  /** The completed preparation does not have the requested layout. */
+  | "preparation-layout-mismatch"
+  /** A selected preparation input is no longer unspent as observed. */
+  | "preparation-input-stale";
+
+/**
+ * What a refusal needs from the wallet, in lovelace: the exact opening input
+ * and its collateral, or the shortfall a preparation hit.
+ */
+export type DaAvailabilityTransactionErrorDetail = Readonly<{
+  opening?: DaAvailabilityOpeningInputRequirement;
+  requiredLovelace?: bigint;
+  availableLovelace?: bigint;
+}>;
+
+/**
+ * The one input an Open spends from the challenger: a coin of exactly
+ * `challenger_bond_lovelace + challenge_record_lovelace + fee`, holding only
+ * ADA, with no datum and no reference script, at the challenger's enterprise
+ * key address. The Open also posts separate plain-ADA collateral: in at most
+ * three coins, exactly `collateralLovelace` or at least
+ * `collateralLovelace + collateralReturnLovelace`.
+ */
+export type DaAvailabilityOpeningInputRequirement = Readonly<{
+  address: string;
+  lovelace: bigint;
+  bondLovelace: bigint;
+  recordLovelace: bigint;
+  feeLovelace: bigint;
+  collateralLovelace: bigint;
+  collateralReturnLovelace: bigint;
+}>;
 
 export class DaAvailabilityTransactionError extends Error {
   readonly name = "DaAvailabilityTransactionError";
   constructor(
     message: string,
     readonly reason?: DaAvailabilityTransactionErrorReason,
+    readonly detail?: DaAvailabilityTransactionErrorDetail,
   ) {
     super(message);
   }
@@ -220,8 +267,9 @@ export class DaAvailabilityTransactionError extends Error {
 export const fail = (
   message: string,
   reason?: DaAvailabilityTransactionErrorReason,
+  detail?: DaAvailabilityTransactionErrorDetail,
 ): never => {
-  throw new DaAvailabilityTransactionError(message, reason);
+  throw new DaAvailabilityTransactionError(message, reason, detail);
 };
 
 export const effect = <A>(

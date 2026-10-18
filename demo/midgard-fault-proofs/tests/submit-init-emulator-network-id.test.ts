@@ -11,7 +11,6 @@ import {
   submitNetworkIdStep02,
 } from "../src/network-id/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import {
   buildNetworkIdFixture,
   makeNetworkIdEmulatorHarness,
@@ -26,12 +25,6 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "network-id-wrongful-rejection",
-  "accepted",
-  "accepted-invalid network nibble, correction",
-);
 
 describe("Q35 network-id real-fault lifecycle", () => {
   it.each([
@@ -49,20 +42,10 @@ describe("Q35 network-id real-fault lifecycle", () => {
     "mints permanent evidence and removes $label",
     async ({ outputNetworkId, protectedAddress }) => {
       const harness = await makeNetworkIdEmulatorHarness();
-      const submitMeasured = async <T>(
-        stage: string,
-        operation: () => Promise<T>,
-      ) => {
+      const submitMeasured = async <T>(operation: () => Promise<T>) => {
         const captured = await captureEmulatorSubmission(
           harness.emulator,
           operation,
-        );
-        captured.measurements.forEach((measurement, index) =>
-          measuredFit.record(
-            `${outputNetworkId}-${protectedAddress}/${stage}-${index}`,
-            measurement,
-            measurement.executionMemory === 0n ? "publication" : "lifecycle",
-          ),
         );
         return captured.result;
       };
@@ -97,7 +80,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         fixture,
       });
       const prepared = { ...fixture.prepared, headerHash: setup.headerHash };
-      const init = await submitMeasured("init", () =>
+      const init = await submitMeasured(() =>
         submitNetworkIdInit({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
@@ -123,7 +106,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         init.firstStepAddress,
         init.computationThreadUnit,
       );
-      const step01 = await submitMeasured("step01", () =>
+      const step01 = await submitMeasured(() =>
         submitNetworkIdStep01({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
@@ -153,7 +136,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         prepared,
         owner: harness.proverSigner.paymentKeyHash,
       });
-      const step02 = await submitMeasured("step02", () =>
+      const step02 = await submitMeasured(() =>
         submitNetworkIdStep02({
           lucid: harness.proverLucid,
           contracts: harness.networkId,
@@ -207,7 +190,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         },
       };
       const removeNow = BigInt(harness.emulator.now());
-      const removal = await submitMeasured("removal", () =>
+      const removal = await submitMeasured(() =>
         submitRemoveFraudulentBlock({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,

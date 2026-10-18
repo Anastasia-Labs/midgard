@@ -2,7 +2,6 @@ use aiken/builtin
 use aiken/cbor
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -628,7 +627,7 @@ fn wide_bytes() -> ByteArray {
 fn wide_bytes_summary() -> cek_data_v1.DataSummaryV1 {
   cek_data_v1.bytes_data_summary_v1(
     9000,
-    cek_data_scan_v1.bounded_blob_root_v1(wide_bytes()),
+    cek_proof_v1.bounded_blob_root_v1(wide_bytes()),
   )
 }
 
@@ -668,7 +667,7 @@ type WideList {
 /// `[B <9000 bytes>]` as a list of data, with its head node.
 fn wide_list() -> WideList {
   let bytes = wide_bytes()
-  let blob = cek_data_scan_v1.bounded_blob_root_v1(bytes)
+  let blob = cek_proof_v1.bounded_blob_root_v1(bytes)
   let head = cek_data_v1.bytes_data_summary_v1(9000, blob)
   let head_node = cek_data_v1.BytesData {
     bytes_root: blob,
@@ -905,7 +904,7 @@ type WidePair {
 /// `(B <9000 bytes>, I 0)` as a pair of data, with both component nodes.
 fn wide_pair() -> WidePair {
   let bytes = wide_bytes()
-  let blob = cek_data_scan_v1.bounded_blob_root_v1(bytes)
+  let blob = cek_proof_v1.bounded_blob_root_v1(bytes)
   let first = cek_data_v1.bytes_data_summary_v1(9000, blob)
   let first_node = cek_data_v1.BytesData {
     bytes_root: blob,
@@ -914,7 +913,7 @@ fn wide_pair() -> WidePair {
     memory: first.memory,
   }
   let zero_cbor = cbor.serialise(builtin.i_data(0))
-  let zero_root = cek_data_scan_v1.bounded_blob_root_v1(zero_cbor)
+  let zero_root = cek_proof_v1.bounded_blob_root_v1(zero_cbor)
   let second = cek_data_v1.integer_data_summary_v1(0, zero_root)
   let second_node = cek_data_v1.IntegerData {
     cbor_root: zero_root,

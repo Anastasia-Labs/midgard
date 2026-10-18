@@ -273,10 +273,13 @@ fn written_optional_summary(data: Data) -> Option<cek_data_v1.DataSummaryV1> {
 /// its checks: for bytes that a computation thread carries between its own
 /// steps, the writing step's `encode_control_v1` already proved the control
 /// well formed and its bytes canonical, and the thread admits no other writer.
+///
+/// The bytes are Midgard wire that `encode_control_v1` writes by hand, not a
+/// Plutus Data value, so they are read through the envelope entry.
 pub fn decode_written_control_v1(
   control_cbor: ByteArray,
 ) -> LedgerOutputValueControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(control_cbor)
   expect
       [
         version_data, stage_data, asset_remaining_data, current_policy_data,

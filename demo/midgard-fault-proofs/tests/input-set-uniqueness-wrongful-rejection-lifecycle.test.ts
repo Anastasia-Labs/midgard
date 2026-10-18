@@ -1,4 +1,3 @@
-import "./input-set-uniqueness-wrongful-rejection-lifecycle.measured-fit.js";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
@@ -13,10 +12,8 @@ import "./support/emulator/reference-scripts.js";
 import "./support/emulator/removal-deployment.js";
 import "./support/emulator/setup-tx.js";
 import "./support/input-set-uniqueness-emulator.js";
-import "./support/measured-fit-ledger.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
-import "./input-set-uniqueness-wrongful-rejection-lifecycle.measured-fit.js";
 import "./input-set-uniqueness-wrongful-rejection-lifecycle.exercise-forced-lifecycle.js";
 
 import { describe, it } from "vitest";

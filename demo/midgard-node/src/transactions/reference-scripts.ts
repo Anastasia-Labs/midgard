@@ -17,6 +17,7 @@ import {
   REFERENCE_SCRIPT_COMMAND_NAMES,
   type ReferenceScriptCommandName,
 } from "../deployable-scripts.js";
+export { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 export {
   deployReferenceScriptCommandProgram,
   ensureNodeRuntimeReferenceScriptsProgram,
@@ -45,13 +46,9 @@ export {
   type ReferenceScriptWalletBucketSummary,
   type ReferenceScriptWalletStatusSummary,
   resolveReferenceScriptUtxo,
-  selectWalletFundingUtxos,
   utxoOutRefKey,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 export { verifyNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.verify-node-runtime-reference-scripts-program.js";
-export {
-  buildReferenceScriptDeploymentPlan,
-  resolveSpendableWalletUtxos,
-} from "./reference-scripts.wallet-view-utxos.js";
+export { buildReferenceScriptDeploymentPlan } from "./reference-scripts.wallet-view-utxos.js";
 
 export { REFERENCE_SCRIPT_COMMAND_NAMES, type ReferenceScriptCommandName };

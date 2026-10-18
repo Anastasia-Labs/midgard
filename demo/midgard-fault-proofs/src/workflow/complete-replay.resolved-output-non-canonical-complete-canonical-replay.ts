@@ -11,7 +11,7 @@ import { detectMintDeclaredAssetLimitForcedReplay } from "../mint-declared-asset
 import { detectNativeScriptDecodingReplay } from "../native-script-decoding/replay.js";
 import { detectNativeScriptInvalidForcedReplay } from "../native-script-invalid/forced.js";
 import { detectObserversForbiddenForcedReplay } from "../observers-forbidden-on-untagged-network/replay.js";
-import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.js";
+import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import { detectProtectedOutputSignerMissingCompleteReplay } from "../protected-output-signer-missing/protected-output-signer-missing.js";
 import { protectedOutputSignerEvidenceIdentity } from "../protected-output-signer-missing/workflow.js";
 import {
@@ -51,6 +51,7 @@ import {
   type FabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalEvidenceAuthority,
 } from "./fabricated-withdrawal-evidence.js";
+import { withoutHeldPlutusScriptItems } from "./plutus-script-item-hold.js";
 
 /** Complete Ed25519 verification of every committed address witness. */
 export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
@@ -187,7 +188,9 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY =
 /** Complete accepted and forced scan for malformed field-6 native scripts. */
 export const WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["witnessScriptDecoding"], async (evidence) =>
-    detectWitnessScriptDecodingCompleteReplay(evidence),
+    withoutHeldPlutusScriptItems(
+      detectWitnessScriptDecodingCompleteReplay(evidence),
+    ),
   );
 
 /** Complete accepted and forced scan for missing required integrity hashes. */
@@ -306,5 +309,7 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY =
 /** Complete accepted and forced scan for malformed output reference scripts. */
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["outputReferenceScriptDecoding"], async (evidence) =>
-    detectOutputReferenceScriptDecodingCanonicalViolations(evidence),
+    withoutHeldPlutusScriptItems(
+      detectOutputReferenceScriptDecodingCanonicalViolations(evidence),
+    ),
   );

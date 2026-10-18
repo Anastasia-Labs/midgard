@@ -25,7 +25,7 @@
  *   header is assigned), up to the caller's cutoff.
  * - The ingestion point is recorded for the commit horizon.
  *
- * Decoding (`userEventEntry`) runs only for events the node has no row for.
+ * Decoding (`readUserEvent`) runs only for events the node has no row for.
  */
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import { SqlClient, type Statement } from "@effect/sql";
@@ -38,6 +38,7 @@ import {
   type EventRefusal,
   type IngestionPlan,
 } from "../l1-events/driver.js";
+import { readUserEvent } from "../l1-events/entries.js";
 import * as Deposits from "./deposits.js";
 import { identityOf, rowOf } from "./follower-events.row-of.js";
 import { countOrphansAwaitingRecovery } from "./follower-orphan-repair.js";
@@ -151,17 +152,12 @@ const ingestKind = (
             retiredUnseen += 1;
             continue;
           }
-          let payload: Readonly<Record<string, Statement.Argument>>;
-          try {
-            payload = rowOf(event, network);
-          } catch (cause) {
-            refuse(
-              event,
-              EVENT_UNDECODABLE,
-              cause instanceof Error ? cause.message : String(cause),
-            );
+          const read = readUserEvent(event, network);
+          if (read.kind === "undecodable") {
+            refuse(event, EVENT_UNDECODABLE, read.detail);
             continue;
           }
+          const payload = rowOf(event, read.entry);
           inserts.push(
             kind === "withdrawal"
               ? {

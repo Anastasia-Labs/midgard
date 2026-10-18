@@ -64,6 +64,11 @@ import {
 import { type OneCategoryFaultProofContracts } from "./runtime.category-label.js";
 import { type SupportedFaultProofCategoryName } from "./runtime.require-fault-proof-step-reference-script.js";
 
+type CaseConfigInitializationNonce = {
+  readonly txHash: string;
+  readonly outputIndex: number;
+};
+
 const requireL1SlotConfig = (
   l1SlotConfig: L1SlotConfig | undefined,
 ): L1SlotConfig => {
@@ -72,6 +77,26 @@ const requireL1SlotConfig = (
       "The validation-trace dispute chain requires the deployment's l1SlotConfig.",
     );
   return l1SlotConfig;
+};
+
+const requireDisputeBondLovelace = (
+  disputeBondLovelace: bigint | undefined,
+): bigint => {
+  if (disputeBondLovelace === undefined)
+    throw new Error(
+      "The validation-trace dispute chain requires the deployment's dispute bond.",
+    );
+  return disputeBondLovelace;
+};
+
+const requireCaseConfigInitializationNonce = (
+  nonce: CaseConfigInitializationNonce | undefined,
+): CaseConfigInitializationNonce => {
+  if (nonce === undefined)
+    throw new Error(
+      "The validation-trace dispute chain requires the deployment's case configuration nonce.",
+    );
+  return nonce;
 };
 
 export const buildOneCategoryFaultProofContracts = async ({
@@ -83,6 +108,8 @@ export const buildOneCategoryFaultProofContracts = async ({
   categoryName,
   deploymentInfo,
   l1SlotConfig,
+  disputeBondLovelace,
+  caseConfigInitializationNonce,
 }: {
   readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
   readonly network: Network;
@@ -93,6 +120,10 @@ export const buildOneCategoryFaultProofContracts = async ({
   readonly categoryName: SupportedFaultProofCategoryName;
   /** Required to derive the validation-trace dispute chain. */
   readonly l1SlotConfig?: L1SlotConfig;
+  /** Required to derive the validation-trace dispute chain. */
+  readonly disputeBondLovelace?: bigint;
+  /** Required to derive the validation-trace dispute chain. */
+  readonly caseConfigInitializationNonce?: CaseConfigInitializationNonce;
 }): Promise<OneCategoryFaultProofContracts> => {
   const params = {
     blueprint,
@@ -135,6 +166,10 @@ export const buildOneCategoryFaultProofContracts = async ({
         buildValidationTraceDisputeFaultProofContracts({
           ...params,
           l1SlotConfig: requireL1SlotConfig(l1SlotConfig),
+          disputeBondLovelace: requireDisputeBondLovelace(disputeBondLovelace),
+          caseConfigInitializationNonce: requireCaseConfigInitializationNonce(
+            caseConfigInitializationNonce,
+          ),
         }),
       );
     case "daHashPreimage":

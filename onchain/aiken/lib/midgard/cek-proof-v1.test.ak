@@ -1,7 +1,5 @@
 use aiken/builtin
-use aiken/primitive/bytearray
 use midgard/cek_proof_v1
-use midgard/ledger_state.{CekProgramMaterialDatumV1}
 
 const h_01 = #"0101010101010101010101010101010101010101010101010101010101010101"
 
@@ -74,7 +72,6 @@ test cross_language_cek_commitment_vectors() {
       4,
       5,
     ) == #"9d83a7edc397becce073970978dff4d6bae2c0334f0dc7c3525e35d901f47a13",
-    cek_proof_v1.hash_program_envelope_v1(1, 1, 0, term, 3, 144) == #"e9d2696eff22d8078ae7bd71c83f6058e0db4d938a016314a2cd35feaccfdefa",
     cek_proof_v1.hash_blob_chunk_v1(#"010203") == #"0bb4f6f24cd0080e59e98d57a13c6453e07991452b80f14ff1d9791c02db1fc9",
     cek_proof_v1.hash_bls_miller_loop_expression_v1(h_01, h_02) == #"6bd7d80222a87e5a09102534274099c501f82c5d898fe75f24fdc951c2fb3cc0",
     cek_proof_v1.hash_bls_multiply_expression_v1(h_01, h_02) == #"be5de65e45ff867ca8394e227ee30e4f8cfaee0d4cb1d2834fe1af943b806082",
@@ -94,213 +91,27 @@ test oversized_blob_chunk_fails_closed() fail {
   ) == #""
 }
 
-test canonical_program_envelope_decodes_with_exact_bounds() {
-  let envelope = cek_proof_v1.encode_program_envelope_v1(
-    1,
-    1,
-    0,
-    h_01,
-    cek_proof_v1.max_program_node_count,
-    cek_proof_v1.max_program_material_byte_length,
+test builtin_term_hash_takes_tag_100() {
+  cek_proof_v1.hash_builtin_term_v1(100) != cek_proof_v1.hash_builtin_term_v1(
+    86,
   )
-  expect Some(decoded) = cek_proof_v1.inspect_program_envelope_v1(envelope)
-  and {
-    bytearray.length(envelope) == cek_proof_v1.max_program_envelope_cbor_bytes,
-    decoded.term_root == h_01,
-    decoded.node_count == cek_proof_v1.max_program_node_count,
-    decoded.material_byte_length == cek_proof_v1.max_program_material_byte_length,
-    cek_proof_v1.hash_program_envelope_v1(
-      1,
-      1,
-      0,
-      h_01,
-      cek_proof_v1.max_program_node_count,
-      cek_proof_v1.max_program_material_byte_length,
-    ) == #"bb37134727abbc3462385a48497eca4d0090b8cda1d291f028cc864716ba0a15",
-  }
 }
 
-test small_canonical_program_envelope_decodes() {
-  cek_proof_v1.inspect_program_envelope_v1(
-    cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_01, 3, 144),
-  ) != None
+test builtin_term_hash_refuses_tag_101() fail {
+  cek_proof_v1.hash_builtin_term_v1(101) != #""
 }
 
-test program_envelope_rejects_noncanonical_and_out_of_bounds_claims() {
-  let noncanonical = #"8501830101005820"
-    |> bytearray.concat(h_01)
-    |> bytearray.concat(#"18031890")
-  let unsupported_version = #"8502830101005820"
-    |> bytearray.concat(h_01)
-    |> bytearray.concat(#"031890")
-  let trailing = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_01, 3, 144)
-    |> bytearray.concat(#"00")
-  and {
-    cek_proof_v1.inspect_program_envelope_v1(noncanonical) == None,
-    cek_proof_v1.inspect_program_envelope_v1(unsupported_version) == None,
-    cek_proof_v1.inspect_program_envelope_v1(trailing) == None,
-    cek_proof_v1.inspect_program_envelope_v1(
-      cek_proof_v1.encode_program_envelope_v1(1, 0, 0, h_01, 3, 144),
-    ) == None,
-    cek_proof_v1.inspect_program_envelope_v1(
-      cek_proof_v1.encode_program_envelope_v1(
-        1,
-        1,
-        0,
-        h_01,
-        cek_proof_v1.max_program_node_count + 1,
-        144,
-      ),
-    ) == None,
-    cek_proof_v1.inspect_program_envelope_v1(
-      cek_proof_v1.encode_program_envelope_v1(
-        1,
-        1,
-        0,
-        h_01,
-        3,
-        cek_proof_v1.max_program_material_byte_length + 1,
-      ),
-    ) == None,
-  }
+test builtin_value_hash_refuses_an_unresolved_tag() fail {
+  cek_proof_v1.hash_builtin_value_v1(
+    87,
+    0,
+    0,
+    cek_proof_v1.empty_sequence_root_v1,
+  ) != #""
 }
 
-test complete_program_material_entries_bind_root_counts_and_no_extras() {
-  let preimage = #"8106"
-  let root = cek_proof_v1.hash_error_term_v1()
-  let value_preimage = #"86"
-    |> bytearray.concat(#"00")
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_01)
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_02)
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_03)
-    |> bytearray.concat(#"00")
-  let sequence_preimage = #"84"
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_01)
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(cek_proof_v1.empty_sequence_root_v1)
-    |> bytearray.concat(#"01")
-  let blob_chunk_preimage = #"42cafe"
-  let blob_branch_preimage = #"83"
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_01)
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(h_02)
-    |> bytearray.concat(#"02")
-  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
-  let sidecar = #"82"
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"81")
-    |> bytearray.concat(#"82")
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(root)
-    |> bytearray.concat(#"4683")
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"00")
-    |> bytearray.concat(#"42")
-    |> bytearray.concat(preimage)
-  let material_entry = sidecar
-    |> bytearray.slice(3, bytearray.length(sidecar) - 1)
-  let duplicate_sidecar = #"82"
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"82")
-    |> bytearray.concat(material_entry)
-    |> bytearray.concat(material_entry)
-  let substituted_sidecar = #"82"
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"81")
-    |> bytearray.concat(#"82")
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(root)
-    |> bytearray.concat(#"83")
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"00")
-    |> bytearray.concat(#"43")
-    |> bytearray.concat(#"820000")
-  let noncanonical_sidecar = #"82"
-    |> bytearray.concat(#"1801")
-    |> bytearray.concat(
-        sidecar |> bytearray.slice(2, bytearray.length(sidecar) - 1),
-      )
-  let entry = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
-  let extra = CekProgramMaterialDatumV1 {
-    kind: 0,
-    root: cek_proof_v1.hash_variable_term_v1(0),
-    preimage: #"820000",
-  }
-  let extra_entry = #"82"
-    |> bytearray.concat(#"5820")
-    |> bytearray.concat(extra.root)
-    |> bytearray.concat(#"83")
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"00")
-    |> bytearray.concat(#"43")
-    |> bytearray.concat(extra.preimage)
-  let reordered_sidecar = #"82"
-    |> bytearray.concat(#"01")
-    |> bytearray.concat(#"82")
-    |> bytearray.concat(
-        if bytearray.compare(root, extra.root) == Less {
-          extra_entry |> bytearray.concat(material_entry)
-        } else {
-          material_entry |> bytearray.concat(extra_entry)
-        },
-      )
-  and {
-    cek_proof_v1.inspect_program_envelope_v1(envelope) != None,
-    cek_proof_v1.inspect_program_term_material_v1(preimage) == Some(
-      cek_proof_v1.ErrorTerm,
-    ),
-    cek_proof_v1.inspect_program_value_material_v1(value_preimage) != None,
-    cek_proof_v1.inspect_program_value_material_v1(
-      value_preimage |> bytearray.concat(#"00"),
-    ) == None,
-    cek_proof_v1.inspect_program_sequence_material_v1(sequence_preimage) != None,
-    cek_proof_v1.inspect_program_sequence_material_v1(
-      sequence_preimage |> bytearray.concat(#"00"),
-    ) == None,
-    cek_proof_v1.inspect_program_blob_material_v1(3, blob_chunk_preimage) != None,
-    cek_proof_v1.inspect_program_blob_material_v1(
-      3,
-      blob_chunk_preimage |> bytearray.concat(#"00"),
-    ) == None,
-    cek_proof_v1.inspect_program_blob_material_v1(4, blob_branch_preimage) != None,
-    cek_proof_v1.inspect_program_blob_material_v1(
-      4,
-      blob_branch_preimage |> bytearray.concat(#"00"),
-    ) == None,
-    cek_proof_v1.verify_complete_program_material_entries_v1(envelope, [entry]),
-    cek_proof_v1.verify_complete_program_material_v1(envelope, sidecar),
-    !cek_proof_v1.verify_complete_program_material_v1(
-      envelope,
-      sidecar |> bytearray.concat(#"00"),
-    ),
-    !cek_proof_v1.verify_complete_program_material_v1(envelope, #"820180"),
-    !cek_proof_v1.verify_complete_program_material_v1(
-      envelope,
-      duplicate_sidecar,
-    ),
-    !cek_proof_v1.verify_complete_program_material_v1(
-      envelope,
-      substituted_sidecar,
-    ),
-    !cek_proof_v1.verify_complete_program_material_v1(
-      envelope,
-      noncanonical_sidecar,
-    ),
-    !cek_proof_v1.verify_complete_program_material_v1(
-      envelope,
-      reordered_sidecar,
-    ),
-    !cek_proof_v1.verify_complete_program_material_entries_v1(envelope, []),
-    !cek_proof_v1.verify_complete_program_material_entries_v1(
-      envelope,
-      [entry, extra],
-    ),
-  }
+// The empty blob commits as a single chunk whose preimage is `40`, the
+// canonical encoding of the empty byte string.
+test the_empty_blob_root_is_one_chunk() {
+  cek_proof_v1.bounded_blob_root_v1(#"") == cek_proof_v1.hash_blob_chunk_v1(#"")
 }

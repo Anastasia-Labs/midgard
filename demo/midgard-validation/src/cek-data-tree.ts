@@ -105,6 +105,145 @@ type DataWork =
 export const encodeMidgardCekDataTreeInteger = (value: bigint): Buffer =>
   encodeMidgardCekPlutusData(new DataI(value));
 
+/** Commits leaf or constructor-index bytes as a blob and returns its root. */
+export type MidgardCekDataBlobSink = (bytes: Uint8Array) => Uint8Array;
+
+/** The summary a parent node records for one child Data node. */
+export type MidgardCekDataNodeSummary = DataSummary;
+
+/** The summary a parent node records for its list or map entry sequence. */
+export type MidgardCekDataLinkSummary = ListSummary;
+
+/** List link `head :: tail`. */
+export const buildMidgardCekDataListLink = (
+  head: DataSummary,
+  tail: ListSummary,
+): MidgardCekDataListNode => ({
+  head: head.root,
+  headCborLength: head.cborLength,
+  headMemory: head.memory,
+  tail: tail.root,
+  length: tail.length + 1n,
+  payloadCborLength: head.cborLength + tail.payloadCborLength,
+  memory: head.memory + tail.memory,
+});
+
+/** Map entry link `(key, value) :: tail`. */
+export const buildMidgardCekDataPairLink = (
+  key: DataSummary,
+  value: DataSummary,
+  tail: ListSummary,
+): MidgardCekDataPairNode => ({
+  key: key.root,
+  keyCborLength: key.cborLength,
+  keyMemory: key.memory,
+  value: value.root,
+  valueCborLength: value.cborLength,
+  valueMemory: value.memory,
+  tail: tail.root,
+  length: tail.length + 1n,
+  payloadCborLength: key.cborLength + value.cborLength + tail.payloadCborLength,
+  memory: key.memory + value.memory + tail.memory,
+});
+
+/** The sequence summary a list or pair link stands for. */
+export const midgardCekDataSequenceSummary = (
+  root: Uint8Array,
+  link: MidgardCekDataListNode | MidgardCekDataPairNode,
+): ListSummary => ({
+  root,
+  length: link.length,
+  payloadCborLength: link.payloadCborLength,
+  memory: link.memory,
+});
+
+/** Constructor node over an already committed fields sequence. */
+export const buildMidgardCekDataConstrNode = (
+  constructor: bigint,
+  fields: ListSummary,
+  addBlob: MidgardCekDataBlobSink,
+): MidgardCekDataNode => {
+  const cborLength = midgardCekDataConstrCborLength(
+    constructor,
+    fields.length,
+    fields.payloadCborLength,
+  );
+  const memory = 4n + fields.memory;
+  if (constructor <= 127n) {
+    return {
+      kind: "constrSmall",
+      constructor,
+      fieldsCount: fields.length,
+      fieldsRoot: fields.root,
+      cborLength,
+      memory,
+    };
+  }
+  const constructorCbor = encodeMidgardCekDataTreeInteger(constructor);
+  return {
+    kind: "constrLarge",
+    constructorCborRoot: addBlob(constructorCbor),
+    constructorCborLength: BigInt(constructorCbor.length),
+    constructorMemory: 4n + midgardCekIntegerMemorySize(constructor),
+    fieldsCount: fields.length,
+    fieldsRoot: fields.root,
+    cborLength,
+    memory,
+  };
+};
+
+/** Map node over an already committed entry sequence. */
+export const buildMidgardCekDataMapNode = (
+  entries: ListSummary,
+): MidgardCekDataNode => ({
+  kind: "map",
+  entriesCount: entries.length,
+  entriesRoot: entries.root,
+  cborLength: midgardCekDataMapCborLength(
+    entries.length,
+    entries.payloadCborLength,
+  ),
+  memory: 4n + entries.memory,
+});
+
+/** List node over an already committed item sequence. */
+export const buildMidgardCekDataListNode = (
+  items: ListSummary,
+): MidgardCekDataNode => ({
+  kind: "list",
+  itemsCount: items.length,
+  itemsRoot: items.root,
+  cborLength: midgardCekDataListCborLength(
+    items.length,
+    items.payloadCborLength,
+  ),
+  memory: 4n + items.memory,
+});
+
+export const buildMidgardCekDataIntegerNode = (
+  value: bigint,
+  addBlob: MidgardCekDataBlobSink,
+): MidgardCekDataNode => {
+  const cbor = encodeMidgardCekDataTreeInteger(value);
+  return {
+    kind: "integer",
+    cborRoot: addBlob(cbor),
+    cborLength: BigInt(cbor.length),
+    memory: 4n + midgardCekIntegerMemorySize(value),
+  };
+};
+
+export const buildMidgardCekDataBytesNode = (
+  bytes: Uint8Array,
+  addBlob: MidgardCekDataBlobSink,
+): MidgardCekDataNode => ({
+  kind: "bytes",
+  bytesRoot: addBlob(bytes),
+  bytesLength: BigInt(bytes.length),
+  cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
+  memory: midgardCekDataBytesMemory(BigInt(bytes.length)),
+});
+
 const rootKey = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const addExact = <Node>(
@@ -173,25 +312,11 @@ export const commitMidgardCekDataTree = (
     if (head === undefined) {
       throw new Error("V1 semantic tree lost a list child summary");
     }
-    const tail = list.summary;
-    const node: MidgardCekDataListNode = {
-      head: head.root,
-      headCborLength: head.cborLength,
-      headMemory: head.memory,
-      tail: tail.root,
-      length: tail.length + 1n,
-      payloadCborLength: head.cborLength + tail.payloadCborLength,
-      memory: head.memory + tail.memory,
-    };
+    const node = buildMidgardCekDataListLink(head, list.summary);
     const preimage = encodeMidgardCekDataListNode(node);
     const root = hashMidgardCekDataListNode(node);
     addExact(listNodes, root, { node, preimage });
-    list.summary = {
-      root,
-      length: node.length,
-      payloadCborLength: node.payloadCborLength,
-      memory: node.memory,
-    };
+    list.summary = midgardCekDataSequenceSummary(root, node);
   };
 
   const finishPairItem = (
@@ -204,85 +329,22 @@ export const commitMidgardCekDataTree = (
     if (key === undefined || mapped === undefined) {
       throw new Error("V1 semantic tree lost a pair child summary");
     }
-    const tail = list.summary;
-    const node: MidgardCekDataPairNode = {
-      key: key.root,
-      keyCborLength: key.cborLength,
-      keyMemory: key.memory,
-      value: mapped.root,
-      valueCborLength: mapped.cborLength,
-      valueMemory: mapped.memory,
-      tail: tail.root,
-      length: tail.length + 1n,
-      payloadCborLength:
-        key.cborLength + mapped.cborLength + tail.payloadCborLength,
-      memory: key.memory + mapped.memory + tail.memory,
-    };
+    const node = buildMidgardCekDataPairLink(key, mapped, list.summary);
     const preimage = encodeMidgardCekDataPairNode(node);
     const root = hashMidgardCekDataPairNode(node);
     addExact(pairNodes, root, { node, preimage });
-    list.summary = {
-      root,
-      length: node.length,
-      payloadCborLength: node.payloadCborLength,
-      memory: node.memory,
-    };
+    list.summary = midgardCekDataSequenceSummary(root, node);
   };
 
   const finishData = (data: Data, children: ListWork): void => {
     const sequence = children.summary;
     let node: MidgardCekDataNode;
     if (data instanceof DataConstr) {
-      const cborLength = midgardCekDataConstrCborLength(
-        data.constr,
-        sequence.length,
-        sequence.payloadCborLength,
-      );
-      const memory = 4n + sequence.memory;
-      if (data.constr <= 127n) {
-        node = {
-          kind: "constrSmall",
-          constructor: data.constr,
-          fieldsCount: sequence.length,
-          fieldsRoot: sequence.root,
-          cborLength,
-          memory,
-        };
-      } else {
-        const constructorCbor = encodeMidgardCekDataTreeInteger(data.constr);
-        node = {
-          kind: "constrLarge",
-          constructorCborRoot: addBlob(constructorCbor),
-          constructorCborLength: BigInt(constructorCbor.length),
-          constructorMemory: 4n + midgardCekIntegerMemorySize(data.constr),
-          fieldsCount: sequence.length,
-          fieldsRoot: sequence.root,
-          cborLength,
-          memory,
-        };
-      }
+      node = buildMidgardCekDataConstrNode(data.constr, sequence, addBlob);
     } else if (isPlutusDataMap(data)) {
-      node = {
-        kind: "map",
-        entriesCount: sequence.length,
-        entriesRoot: sequence.root,
-        cborLength: midgardCekDataMapCborLength(
-          sequence.length,
-          sequence.payloadCborLength,
-        ),
-        memory: 4n + sequence.memory,
-      };
+      node = buildMidgardCekDataMapNode(sequence);
     } else if (data instanceof DataList) {
-      node = {
-        kind: "list",
-        itemsCount: sequence.length,
-        itemsRoot: sequence.root,
-        cborLength: midgardCekDataListCborLength(
-          sequence.length,
-          sequence.payloadCborLength,
-        ),
-        memory: 4n + sequence.memory,
-      };
+      node = buildMidgardCekDataListNode(sequence);
     } else {
       throw new Error("V1 semantic tree contains unknown Plutus Data");
     }
@@ -368,22 +430,9 @@ export const commitMidgardCekDataTree = (
 
       let node: MidgardCekDataNode;
       if (operation.data instanceof DataI) {
-        const cbor = encodeMidgardCekDataTreeInteger(operation.data.int);
-        node = {
-          kind: "integer",
-          cborRoot: addBlob(cbor),
-          cborLength: BigInt(cbor.length),
-          memory: 4n + midgardCekIntegerMemorySize(operation.data.int),
-        };
+        node = buildMidgardCekDataIntegerNode(operation.data.int, addBlob);
       } else if (operation.data instanceof DataB) {
-        const bytes = operation.data.bytes;
-        node = {
-          kind: "bytes",
-          bytesRoot: addBlob(bytes),
-          bytesLength: BigInt(bytes.length),
-          cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-          memory: midgardCekDataBytesMemory(BigInt(bytes.length)),
-        };
+        node = buildMidgardCekDataBytesNode(operation.data.bytes, addBlob);
       } else {
         throw new Error("V1 semantic tree contains unknown Plutus Data");
       }

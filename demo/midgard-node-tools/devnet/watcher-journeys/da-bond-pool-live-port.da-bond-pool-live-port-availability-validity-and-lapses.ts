@@ -559,7 +559,7 @@ describe("DA bond pool live port: availability validity and lapses", () => {
         headerHash,
         build: async () =>
           SDK.buildDaAvailabilityFundingPreparationTx(lucid, {
-            fundingInput: (await lucid.wallet().getUtxos())[0]!,
+            walletInputs: [(await lucid.wallet().getUtxos())[0]!],
             outputLovelace: 50_000_000n,
             feeLovelace: 1_000_000n,
             validFrom: BigInt(emulator.now() - 60_000),

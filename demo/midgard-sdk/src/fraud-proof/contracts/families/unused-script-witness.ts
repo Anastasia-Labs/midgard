@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,12 +17,12 @@ import {
 } from "../types.js";
 
 export const UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/unused_script_witness/step_01.main.spend",
-  step02: "fraud_proofs/unused_script_witness/step_02.main.spend",
-  step03: "fraud_proofs/unused_script_witness/step_03.main.spend",
-  step04: "fraud_proofs/unused_script_witness/step_04.main.spend",
-  step05: "fraud_proofs/unused_script_witness/step_05.main.spend",
-  step06: "fraud_proofs/unused_script_witness/step_06.main.spend",
+  step01: deployedTitle("fraudProofUnusedScriptWitness"),
+  step02: deployedTitle("fraudProofUnusedScriptWitnessStep02"),
+  step03: deployedTitle("fraudProofUnusedScriptWitnessStep03"),
+  step04: deployedTitle("fraudProofUnusedScriptWitnessStep04"),
+  step05: deployedTitle("fraudProofUnusedScriptWitnessStep05"),
+  step06: deployedTitle("fraudProofUnusedScriptWitnessStep06"),
 } as const;
 
 export type UnusedScriptWitnessFaultProofContracts = {

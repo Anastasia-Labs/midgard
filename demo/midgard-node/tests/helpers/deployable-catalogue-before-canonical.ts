@@ -8,11 +8,26 @@ import {
 // newly recorded canonical roles, the already-reviewed Data30 executor and the
 // case-constant CEK core arm. The production-bound publication test
 // independently acquires and checks each of those scripts.
+// The accepted-transaction stream's field-walk and output-step yields are
+// projected out the same way; the role-by-contract map pins each of them.
+const STREAM_YIELD_ROLES = new Set(
+  [
+    "delete",
+    "outputs",
+    "output step",
+    "output descriptor",
+    "output summary",
+  ].map(
+    (yieldName) =>
+      `V1 fraud-proof transition-trace final-4 L2 ${yieldName} yield`,
+  ),
+);
 const canonicalRole = (role: string | undefined) =>
   role?.startsWith("V1 validation-trace canonical-decode ") === true ||
   role === "V1 validation-trace proof-item publication" ||
   role === "V1 validation-trace redeemer item invalid data executor" ||
-  role === "V1 validation-trace CEK core case constant";
+  role === "V1 validation-trace CEK core case constant" ||
+  (role !== undefined && STREAM_YIELD_ROLES.has(role));
 export const manifestDeployableScripts: typeof allManifestScripts = (
   contracts,
 ) => allManifestScripts(contracts).filter(({ role }) => !canonicalRole(role));

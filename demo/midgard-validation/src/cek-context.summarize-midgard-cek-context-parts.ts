@@ -12,7 +12,7 @@ import {
   encodeMidgardCekDataSummary,
   type MidgardCekContextControl,
   type MidgardCekFinalContextControl,
-  requiredHash32,
+  requiredScriptHash,
   summarizeMidgardCekData,
   summarizeMidgardCekDataList,
   summarizeMidgardCekDataPairs,
@@ -36,7 +36,6 @@ import {
 export const initialMidgardCekContextControl = (input: {
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Uint8Array;
-  readonly programEnvelopeHash: Uint8Array;
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Uint8Array;
@@ -46,10 +45,6 @@ export const initialMidgardCekContextControl = (input: {
   stage: 0,
   languageTag: input.languageTag,
   programTermRoot: bytes(input.programTermRoot),
-  programEnvelopeHash: requiredHash32(
-    "CEK program envelope hash",
-    input.programEnvelopeHash,
-  ),
   purposeKind: input.purposeKind,
   purposeIndex: input.purposeIndex,
   scriptHash: bytes(input.scriptHash),
@@ -83,7 +78,6 @@ export const encodeMidgardCekContextControl = (
     BigInt(control.stage),
     BigInt(control.languageTag),
     control.programTermRoot,
-    control.programEnvelopeHash,
     BigInt(control.purposeKind),
     control.purposeIndex,
     control.scriptHash,
@@ -116,7 +110,8 @@ export const encodeMidgardCekValidationWitness = (input: {
   readonly activeStateHash: Uint8Array | null;
   readonly executionCpuLimit: bigint;
   readonly executionMemoryLimit: bigint;
-  readonly programEnvelopeHash: Uint8Array | null;
+  /** Script hash of the running program; null before program selection. */
+  readonly programScriptHash: Uint8Array | null;
   /**
    * Purpose key of the running execution: the context control's key on a
    * core step, `-1, -1` on selection, context and finish steps.
@@ -126,7 +121,7 @@ export const encodeMidgardCekValidationWitness = (input: {
 }): Buffer =>
   // The witness must never end with a possibly-empty bytestring: the Aiken
   // `cbor.deserialise` consumer rejects a zero-length final item at an
-  // exhausted cursor, so the possibly-empty program envelope hash sits
+  // exhausted cursor, so the possibly-empty program script hash sits
   // before the two integer limits.
   encodeCbor([
     bytes(input.nativeControlCbor),
@@ -139,9 +134,9 @@ export const encodeMidgardCekValidationWitness = (input: {
     input.activeStateHash === null
       ? Buffer.alloc(0)
       : bytes(input.activeStateHash),
-    input.programEnvelopeHash === null
+    input.programScriptHash === null
       ? Buffer.alloc(0)
-      : bytes(input.programEnvelopeHash),
+      : requiredScriptHash(input.programScriptHash),
     input.executionCpuLimit,
     input.executionMemoryLimit,
     input.purposeKind,

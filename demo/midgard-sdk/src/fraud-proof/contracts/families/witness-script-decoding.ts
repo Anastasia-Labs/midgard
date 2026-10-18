@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -5,7 +6,7 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type { ScriptDecodeFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -16,16 +17,17 @@ import {
 } from "../types.js";
 
 export const WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/witness_script_decoding/step_01.main.spend",
-  step02: "fraud_proofs/witness_script_decoding/step_02.main.spend",
-  step03: "fraud_proofs/witness_script_decoding/step_03.main.spend",
-  step04: "fraud_proofs/witness_script_decoding/step_04.main.spend",
+  step01: deployedTitle("fraudProofWitnessScriptDecoding"),
+  step02: deployedTitle("fraudProofWitnessScriptDecodingStep02"),
+  step03: deployedTitle("fraudProofWitnessScriptDecodingStep03"),
+  step04: deployedTitle("fraudProofWitnessScriptDecodingStep04"),
 } as const;
 
 export type WitnessScriptDecodingFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptDecode: AuthenticatedValidator;
   readonly witnessScriptDecoding: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -47,7 +49,8 @@ export const buildWitnessScriptDecodingChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  scriptDecodePolicyId,
+}: ScriptDecodeFaultProofChainInputs): Effect.Effect<
   WitnessScriptDecodingFaultProofContracts["witnessScriptDecoding"],
   Error
 > =>
@@ -76,6 +79,7 @@ export const buildWitnessScriptDecodingChain = ({
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        scriptDecodePolicyId,
       ],
       "Failed to build witness-script-decoding step 02",
     );

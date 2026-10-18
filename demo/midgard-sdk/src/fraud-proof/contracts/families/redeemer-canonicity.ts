@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,10 +17,10 @@ import {
 } from "../types.js";
 
 export const REDEEMER_CANONICITY_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/redeemer_canonicity/step_01.main.spend",
-  step02: "fraud_proofs/redeemer_canonicity/step_02.main.spend",
-  step02Data: "fraud_proofs/redeemer_canonicity/step_02_data.main.spend",
-  step03: "fraud_proofs/redeemer_canonicity/step_03.main.spend",
+  step01: deployedTitle("fraudProofRedeemerCanonicity"),
+  step02: deployedTitle("fraudProofRedeemerCanonicityStep02"),
+  step02Data: deployedTitle("fraudProofRedeemerCanonicityStep02Data"),
+  step03: deployedTitle("fraudProofRedeemerCanonicityStep03"),
 } as const;
 
 export type RedeemerCanonicityFaultProofContracts = {

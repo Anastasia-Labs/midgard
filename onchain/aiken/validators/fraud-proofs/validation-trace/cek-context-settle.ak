@@ -5,7 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_machine_v1
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{CekWitnessControlV1}
 use midgard/validation_machine/witness as witness
 use midgard/validation_resolution_v1 as resolution
@@ -59,7 +59,7 @@ validator main(
                 #"",
                 0,
                 0,
-                next.program_envelope_hash,
+                next.script_hash,
                 -1,
                 -1,
               ),
@@ -83,7 +83,7 @@ validator main(
                 initial_state_hash,
                 execution_cpu_limit,
                 execution_memory_limit,
-                cek.program_envelope_hash,
+                cek.program_script_hash,
                 purpose_kind,
                 purpose_index,
               ),
@@ -104,14 +104,14 @@ validator main(
             ),
           }
         let award: Data = resolution.winning_resolution()
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          Anyone,
           fn(_, _, _, _, hash, state) {
             hash == award_script_hash && state == award
           },

@@ -2,7 +2,10 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardCekProgramMaterialSidecar,
+  findLedgerSignatureVerifierUnavailable,
   isMidgardConsensusProfile,
+  ledgerEd25519SignatureReady,
+  ledgerSignatureVerifierUnavailable,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
@@ -11,7 +14,7 @@ import {
   type L1SlotConfig,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
 import {
@@ -20,6 +23,7 @@ import {
 } from "../phase-b.js";
 import {
   type LocalScriptEvaluation,
+  type MidgardCommittedScriptRun,
   type PhaseBConfig,
   type QueuedTx,
   type RejectedTx,
@@ -35,8 +39,8 @@ export type ValidationVerdictEventInput = Readonly<{
   /**
    * The block's clock for validity: its state-queue node's authenticated
    * `block_time`. The trace context's third element also carries this value,
-   * but the on-chain validation claim (`validation_context_is_exact`) requires
-   * that element to equal `header.end_time`. The validation-trace family
+   * but the on-chain validation claim derives that element from `header.end_time`
+   * (`validation_claim_v1.derive_validation_context_cbor`). The validation-trace family
    * (00000006) is excluded in P1; P2 reconciles the context element.
    */
   blockTimeMs: number;
@@ -50,6 +54,21 @@ export type ValidationVerdictEventInput = Readonly<{
   /** "proof" captures every CEK step for a validation-machine trace;
    * verdict-only callers leave the default. */
   cekExecutionMode?: PhaseBConfig["cekExecutionMode"];
+  /**
+   * Replays the transaction by its committed Accepted verdict: no script is
+   * run and no script context is built. Each script run is handed here
+   * instead, without its context (a later check rebuilds it), and counts as
+   * accepted within its declared budget. Every other check runs as in a
+   * full replay. Only for verdict mode.
+   */
+  committedScriptRun?: (run: MidgardCommittedScriptRun) => void;
+  /**
+   * Runs each script run through this hook instead of the in-process
+   * executor; a failure of the hook fails the replay. Every other check runs
+   * as in a full replay. Only for verdict mode, and not with
+   * `committedScriptRun`.
+   */
+  evaluateScriptRun?: NonNullable<PhaseBConfig["evaluateCekVerdict"]>;
 }>;
 
 export type ValidationVerdictEvent = Readonly<{
@@ -63,11 +82,19 @@ export type ValidationVerdictEvent = Readonly<{
 /**
  * Derives one event's canonical verdict and ledger patch with the shared
  * Phase A/B pipeline, without building a validation-machine trace.
+ *
+ * It waits for the ledger's Ed25519 verifier first. A fault of the verifier
+ * fails with `LedgerSignatureVerifierUnavailableError` (the original error
+ * its cause), a fault of this process and never a verdict on the event.
  */
 export const replayValidationVerdictEvent = (
   input: ValidationVerdictEventInput,
 ): Effect.Effect<ValidationVerdictEvent, Error> =>
   Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () => ledgerEd25519SignatureReady(),
+      catch: ledgerSignatureVerifierUnavailable,
+    });
     const snapshot = yield* Effect.try(() => {
       if (!isMidgardConsensusProfile(input.consensusProfile)) {
         throw new Error("event replay requires the compiled consensus profile");
@@ -107,17 +134,36 @@ export const replayValidationVerdictEvent = (
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };
-    const phaseA = yield* Effect.try(() =>
-      validatePhaseASingle(queued, {
-        consensusProfile: snapshot.consensusProfile,
-        expectedNetworkId: input.expectedNetworkId,
-        minFeeA: input.minFeeA,
-        minFeeB: input.minFeeB,
-        concurrency: 1,
-        strictnessProfile: "phase1_midgard",
-      }),
-    );
+    const phaseA = yield* Effect.try({
+      try: () =>
+        validatePhaseASingle(queued, {
+          consensusProfile: snapshot.consensusProfile,
+          expectedNetworkId: input.expectedNetworkId,
+          minFeeA: input.minFeeA,
+          minFeeB: input.minFeeB,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+        }),
+      catch: (cause) =>
+        findLedgerSignatureVerifierUnavailable(cause) ??
+        new Cause.UnknownException(cause),
+    });
     const scriptEvaluations: LocalScriptEvaluation[] = [];
+    const committedScriptRun = input.committedScriptRun;
+    const evaluateScriptRun = input.evaluateScriptRun;
+    if (committedScriptRun !== undefined && evaluateScriptRun !== undefined) {
+      return yield* Effect.fail(
+        new Error("a replay takes one script-run hook at most"),
+      );
+    }
+    if (
+      (committedScriptRun !== undefined || evaluateScriptRun !== undefined) &&
+      (input.cekExecutionMode ?? "verdict") !== "verdict"
+    ) {
+      return yield* Effect.fail(
+        new Error("a script-run hook runs in verdict mode only"),
+      );
+    }
     if ("code" in phaseA) {
       return {
         transactionId: snapshot.transactionId,
@@ -145,8 +191,14 @@ export const replayValidationVerdictEvent = (
           : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-        onScriptEvaluated: (_txId, evaluation) =>
-          scriptEvaluations.push(evaluation),
+        ...(committedScriptRun !== undefined
+          ? { committedScriptRun }
+          : evaluateScriptRun === undefined
+            ? {
+                onScriptEvaluated: (_txId, evaluation) =>
+                  scriptEvaluations.push(evaluation),
+              }
+            : { evaluateCekVerdict: evaluateScriptRun }),
       },
     );
     if (phaseB.accepted.length + phaseB.rejected.length !== 1) {

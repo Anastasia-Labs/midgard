@@ -6,7 +6,6 @@ use midgard/fraud_proofs/missing_script_source/rule.{
 pub type Args {
   input_index: Int,
   output_index: Int,
-  resolved_reference_source_count: Int,
 }
 
 pub type Datum =

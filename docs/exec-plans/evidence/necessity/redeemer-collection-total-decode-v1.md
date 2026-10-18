@@ -4,11 +4,9 @@ Status: Measurement binding requires current-build revalidation.
 
 Documentation reduced: 2026-09-07. No measurements were rerun or re-pinned.
 
-This file remains because `demo/midgard-validation/tests/validation-machine.test.ts`
-parses its JSON fence and checks the listed scanner consumers, blueprint,
-compiler, validator identities, and fit arithmetic. The preserved pin is an input
-to that check, not a claim of current deployment acceptance. A mismatch must
-remain a failure until the producing measurements are repeated; editing the
+No test or script reads this file. Its JSON fence is a historical pin: nothing
+compares it with the current build, and it is not a claim of current deployment
+acceptance. Re-pinning it needs the producing measurements repeated; editing the
 identity alone cannot establish fit.
 
 ## Purpose and reproduction
@@ -26,13 +24,19 @@ introduce an additional partial-byte publication protocol.
 
 The preserved pin binds the three current consumers and measured lifecycle rows.
 Its reproduction inputs are the missing-redeemer, redeemer-canonicity, and
-unused-redeemer family emulator suites and fit ledgers under
-`docs/fault-proofs/size-plans/`. Current coverage is in
+unused-redeemer family emulator suites. Current coverage is in
 [the family reference](../../../fault-proofs/family-reference.md); the
 [narrow proof-thread decision](../../../fault-proofs/decisions/0002-bounded-proof-threads.md)
 explains the exhaustive-walk requirement.
 
-## Machine-readable pin
+## Historical pin
+
+Recorded at blueprint
+`caaf9849fe9d66b1bba2a2ba082c18857e9c16059351e70fcdc6f61781191652` with Aiken
+v1.1.23. The four batched-pointer-walk rows (missing-redeemer and
+redeemer-canonicity memory and CPU) were copied from those families' fit
+ledgers, which have since been deleted because no test regenerated them;
+nothing re-measures these rows.
 
 ```json
 {

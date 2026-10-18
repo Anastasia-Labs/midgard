@@ -11,8 +11,6 @@ import "./emulator/header-fixtures.js";
 import "./emulator/native-tx.js";
 import "./synthetic-deep-proof.js";
 import "./transition-trace-final-fixtures.build-accepted-transition-fixture.js";
-import "./transition-trace-final-fixtures.build-accepted-claim-transition-fixture.js";
-export { buildAcceptedClaimTransitionFixture } from "./transition-trace-final-fixtures.build-accepted-claim-transition-fixture.js";
 export {
   buildAcceptedTransitionFixture,
   buildDepositTransitionFixture,

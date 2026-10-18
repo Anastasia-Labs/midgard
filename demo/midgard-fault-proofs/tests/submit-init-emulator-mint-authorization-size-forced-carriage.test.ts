@@ -145,16 +145,21 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
       referenceScriptUtxo: step03Ref,
     });
-    const step04 = await submitMintAuthorizationStep04AdvanceComplete({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
-      referenceScriptUtxo: step04Ref,
-    });
+    const advance = (threadOutRef: string) =>
+      submitMintAuthorizationStep04AdvanceComplete({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        referenceInputsItemCbors: subject.referenceInputItemCbors,
+        spendInputsItemCbors: subject.spendInputItemCbors,
+        referenceScriptUtxo: step04Ref,
+      });
+    const step04 = await advance(
+      (await advance(step03.nextThreadOutRef)).nextThreadOutRef,
+    );
     const step05 = await submitMintAuthorizationStep05({
       lucid: proverLucid,
       contracts: family,

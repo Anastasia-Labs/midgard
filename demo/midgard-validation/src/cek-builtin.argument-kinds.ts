@@ -154,9 +154,16 @@ const sameConstantType = (
   return true;
 };
 
-const constantType = (
+/**
+ * The constant type a witness presents. The default reads a revealed
+ * constant through its full exact decoding; a caller that holds only
+ * authenticated witnesses may pass a reader of the type CBOR alone.
+ */
+export type MidgardCekConstantTypeReader = (
   value: MidgardCekRuntimeValueWitness,
-): MidgardCekConstantType | null =>
+) => MidgardCekConstantType | null;
+
+const constantType: MidgardCekConstantTypeReader = (value) =>
   value.kind === "constant"
     ? decodeMidgardCekConstantWitness(value.witness).type
     : value.kind === "semanticConstant"
@@ -166,12 +173,13 @@ const constantType = (
 export const matchesKind = (
   value: MidgardCekRuntimeValueWitness,
   kind: RuntimeValueKind,
+  typeOf: MidgardCekConstantTypeReader = constantType,
 ): boolean => {
   if (kind === "any") return true;
   if (kind === "blsMillerLoop") {
     return value.kind === "blsMillerLoop";
   }
-  const type = constantType(value);
+  const type = typeOf(value);
   if (type === null) return false;
   switch (kind) {
     case "integer":
@@ -263,10 +271,11 @@ export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
 
 export const mkConsIsWellTyped = (
   arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf: MidgardCekConstantTypeReader = constantType,
 ): boolean => {
   if (arguments_.length !== 2) return false;
-  const elementType = constantType(arguments_[0]);
-  const listType = constantType(arguments_[1]);
+  const elementType = typeOf(arguments_[0]);
+  const listType = typeOf(arguments_[1]);
   return (
     elementType !== null &&
     listType?.kind === "list" &&
@@ -329,20 +338,18 @@ export const directWitnessPayloadBytes = (
 const PASS_THROUGH_TAGS = new Set([26n, 27n, 28n, 31n, 36n]);
 
 /**
- * The direct presentation of a builtin argument: a revealed or semantic
- * constant and a Miller-loop value as themselves, a pass-through branch and
- * any other value by its value root.
+ * The direct presentation of a builtin argument whose value root is `root`:
+ * a revealed or semantic constant and a Miller-loop value as themselves, a
+ * pass-through branch and any other value by its value root.
  */
 export const presentMidgardCekDirectArgument = (
   tag: bigint,
   index: number,
   argument: MidgardCekRuntimeValueWitness,
+  root: Bytes,
 ): MidgardCekDirectValueWitness => {
   if (index > 0 && PASS_THROUGH_TAGS.has(tag)) {
-    return {
-      kind: "opaque",
-      root: hashMidgardCekRuntimeValueWitness(argument),
-    };
+    return { kind: "opaque", root };
   }
   if (argument.kind === "constant") {
     return { kind: "constant", witness: argument.witness };
@@ -353,5 +360,5 @@ export const presentMidgardCekDirectArgument = (
   if (argument.kind === "blsMillerLoop") {
     return { kind: "blsMillerLoop", expressionRoot: argument.expressionRoot };
   }
-  return { kind: "opaque", root: hashMidgardCekRuntimeValueWitness(argument) };
+  return { kind: "opaque", root };
 };

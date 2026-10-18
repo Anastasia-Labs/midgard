@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -24,10 +25,10 @@ import {
 export const SUPPORTED_NETWORK_IDS: ReadonlySet<bigint> = new Set([0n, 1n]);
 
 export const NETWORK_ID_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/network_id/step_01.main.spend",
-  forcedStep: "fraud_proofs/network_id/forced_step.main.spend",
-  forcedScan: "fraud_proofs/network_id/forced_scan.main.spend",
-  step02: "fraud_proofs/network_id/step_02.main.spend",
+  step01: deployedTitle("fraudProofNetworkId"),
+  forcedStep: deployedTitle("fraudProofNetworkIdForcedStep"),
+  forcedScan: deployedTitle("fraudProofNetworkIdForcedScan"),
+  step02: deployedTitle("fraudProofNetworkIdStep02"),
 } as const;
 
 export type NetworkIdFaultProofContracts = {

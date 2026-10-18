@@ -55,6 +55,9 @@ test("a workspace package a build keeps external must be a runtime dependency", 
       JSON.stringify({
         name: "tools",
         scripts: { build: "tsup" },
+        midgardTasks: {
+          build: { steps: [{ command: ["tsup"] }], outputs: ["dist"] },
+        },
         ...dependencies,
       }),
     );

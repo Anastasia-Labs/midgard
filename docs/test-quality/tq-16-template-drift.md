@@ -5,8 +5,8 @@ Last reviewed: 2026-09-07 (semantic source review)
 
 - **Audit section**: §7
 - **Rules**: R8, R9 in [principles](principles.md)
-- **Coordination**: TQ-15 may share setup work; it does not authorize deleting
-  live measurements or require this task to wait for every fit-ledger change.
+- **Coordination**: TQ-15 (done) does not authorize deleting live
+  measurements.
 
 ## Problem and boundary
 

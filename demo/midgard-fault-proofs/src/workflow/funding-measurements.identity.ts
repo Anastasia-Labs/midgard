@@ -28,7 +28,6 @@ export type WorkflowFundingMeasurementIdentity = Readonly<{
   manifestId: string;
   blueprintSha256: string;
   aikenSourceSha256: string;
-  compilerVersion: string;
   sourceSnapshotSha256: string;
   deploymentProfileDigest: string;
   protocolParametersDigest: string;
@@ -62,11 +61,9 @@ export const createWorkflowFundingMeasurementContext = (input: {
   readonly buildRecord: Readonly<{
     blueprintHash: string;
     sourceHash: string;
-    compiler: string;
     profile: Readonly<{ name: string }>;
     profileDigest: string;
   }>;
-  readonly expectedCompilerVersion: string;
   readonly sourceSnapshotSha256: string;
   readonly fundingPaymentKeyHash: string;
 }): WorkflowFundingMeasurementContext => {
@@ -131,13 +128,6 @@ export const createWorkflowFundingMeasurementContext = (input: {
       "funding measurement parameter registry differs from deployed programs",
     );
   if (
-    record.compiler !== input.expectedCompilerVersion ||
-    !/^aiken v[0-9]+\.[0-9]+\.[0-9]+\+[0-9a-f]+$/u.test(record.compiler)
-  )
-    throw new Error(
-      "funding measurement compiler differs from the pinned build",
-    );
-  if (
     record.profile.name !== manifest.deploymentProfile.name ||
     record.profileDigest !== manifest.deploymentProfileDigest
   )
@@ -164,7 +154,6 @@ export const createWorkflowFundingMeasurementContext = (input: {
       record.sourceHash,
       "funding measurement Aiken sources",
     ),
-    compilerVersion: record.compiler,
     sourceSnapshotSha256: digestField(
       input.sourceSnapshotSha256,
       "funding measurement source snapshot",

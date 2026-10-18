@@ -220,6 +220,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       never,
       TransientBudgetExhaustedError
     >();
+    // Commit-worker attempts since the last successful commit that failed on
+    // a local fault (this process's Ed25519 verifier fault, or a withdrawal
+    // row it cannot classify), whichever row each named; only a successful
+    // commit resets it. `row` is the latest such row, kept for the exit's
+    // detail. Bounded by `LOCAL_FAULT_RUN_LIMIT`
+    // (`block-commitment.worker-readiness.ts`).
+    const COMMIT_WORKER_LOCAL_FAULT_RUNS = yield* Ref.make<{
+      readonly runs: number;
+      readonly row: string | undefined;
+    }>({ runs: 0, row: undefined });
     // Set by the commitment fiber each tick: true while it found no pending
     // tx or user-event work, so the confirmation fiber may back off.
     const COMMIT_PIPELINE_IDLE = yield* Ref.make<boolean>(false);
@@ -286,6 +296,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       L1_CONTROL_PLANE_ACTIVITY,
       LIVENESS_REASONS,
       TRANSIENT_EXHAUSTION,
+      COMMIT_WORKER_LOCAL_FAULT_RUNS,
       COMMIT_PIPELINE_IDLE,
       COMMIT_PIPELINE_BACKLOG,
       IDLE_BACKOFF,

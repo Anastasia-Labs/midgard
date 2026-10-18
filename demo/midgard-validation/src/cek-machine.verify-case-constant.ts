@@ -159,6 +159,8 @@ const directSelection = (
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       return select(UNSUPPORTED);
   }
 };
@@ -228,6 +230,8 @@ const semanticSelection = (
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       return { root, selection: UNSUPPORTED };
   }
 };

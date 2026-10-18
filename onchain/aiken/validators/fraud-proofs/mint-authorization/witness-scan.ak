@@ -3,6 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/field_opening_v1.{reference_inputs_field_index}
 use midgard/fraud_proofs/mint_authorization/evaluate
 use midgard/fraud_proofs/mint_authorization/step_04
 use midgard/fraud_proofs/mint_authorization/witness_scan as scan
@@ -63,7 +64,8 @@ validator main(
               policy_id: state.policy_id,
               bad_tx_id: state.bad_tx_id,
               prior_ledger_root: state.prior_ledger_root,
-              ref_cursor: 0,
+              field_index: reference_inputs_field_index,
+              cursor: 0,
             }
             output_state == expected
           }

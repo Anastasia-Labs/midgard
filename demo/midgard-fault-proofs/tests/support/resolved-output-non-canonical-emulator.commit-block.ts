@@ -22,7 +22,6 @@ import {
   ROOT_DOMAINS,
   type RootMembershipProof,
   TransitionStepSchema,
-  ValidationTraceDescriptorSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -39,7 +38,6 @@ import {
   submitSuccessorBlockTx,
 } from "./submit-init-emulator-fixtures.js";
 import {
-  h32,
   makeHeader,
   transitionTraceDaEntry,
   transitionTraceOutRef,
@@ -219,7 +217,7 @@ export const commitBlock = async ({
           value: Buffer.from(entryValue, "hex"),
         })),
       );
-    const [transitionRoot, eventRoot, validationRoot] = await Promise.all([
+    const [transitionRoot, eventRoot] = await Promise.all([
       countedEntries(ROOT_DOMAINS.transitionTrace, [
         transitionTraceDaEntry({
           key: 0n,
@@ -243,23 +241,6 @@ export const commitBlock = async ({
           valueSchema: EventToStepValueSchema,
         }),
       ]),
-      countedEntries(ROOT_DOMAINS.validationTraces, [
-        transitionTraceDaEntry({
-          key: eventKey,
-          keySchema: EventKeySchema,
-          value: {
-            schema_version: 1n,
-            machine_version: 1n,
-            trace_root: h32("c1"),
-            step_count: 1n,
-            initial_state_hash: h32("c2"),
-            terminal_state_hash: h32("c3"),
-            verdict: "Rejected",
-            rejection_code_hash: h32("c4"),
-          },
-          valueSchema: ValidationTraceDescriptorSchema,
-        }),
-      ]),
     ]);
     header = {
       ...makeHeader(predecessor.header.operatorVkey, targetStart),
@@ -269,11 +250,9 @@ export const commitBlock = async ({
       forcedTransactionsRoot: counted.root,
       transitionTraceRoot: transitionRoot.root,
       eventToStepRoot: eventRoot.root,
-      validationTracesRoot: validationRoot.root,
       forcedTransactionCount: 1n,
       totalEventCount: 1n,
       transitionStepCount: 1n,
-      validationTraceCount: 1n,
     };
   }
   const target = await submitSuccessorBlockTx({

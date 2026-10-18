@@ -8,7 +8,6 @@ import {
 import {
   expandSets,
   isGlob,
-  ledgerModules,
   matchesGlob,
   workspace,
 } from "./affected-channels.parse-arguments.mjs";
@@ -76,17 +75,6 @@ export const verifyTable = (tree, table) => {
     for (const root of channel.aikenClosure ?? []) {
       if (!trackedSet.has(root))
         problem(channel, `Aiken closure root ${root} is not tracked`);
-    }
-    if (channel.ledger) {
-      if (!trackedSet.has(channel.ledger))
-        problem(channel, `ledger ${channel.ledger} is not tracked`);
-      const modules = ledgerModules(tree, channel.ledger);
-      if (!modules.length)
-        problem(channel, `ledger ${channel.ledger} lists no measured modules`);
-      for (const { name, file } of modules) {
-        if (!file)
-          problem(channel, `measured module ${name} resolves to no .ak file`);
-      }
     }
     for (const reference of channel.packageScripts ?? []) {
       const { directory, script } = parsePackageScript(reference);
@@ -157,8 +145,10 @@ export const verifyTable = (tree, table) => {
       if (!table.channels.some((c) => c.id === id))
         problem(channel, `then names unknown channel ${id}`);
     }
-    // Every Aiken path a generator names must be one of its outputs, so a
-    // generator that starts writing a new module cannot drift out of the table.
+    // Every Aiken path a generator names must be one of its outputs or
+    // declared inputs, so a generator that starts writing a new module cannot
+    // drift out of the table.
+    const declared = [...(channel.outputs ?? []), ...(channel.inputs ?? [])];
     for (const generator of channel.generators ?? []) {
       const source = tree.read(generator);
       if (source === undefined) continue;
@@ -168,12 +158,10 @@ export const verifyTable = (tree, table) => {
       for (const match of code.matchAll(
         /["'`](onchain\/aiken\/[^"'`]+\.ak)["'`]/gu,
       )) {
-        if (
-          !(channel.outputs ?? []).some((glob) => matchesGlob(match[1], glob))
-        ) {
+        if (!declared.some((glob) => matchesGlob(match[1], glob))) {
           problem(
             channel,
-            `generator ${generator} names ${match[1]}, which is not among the channel's outputs`,
+            `generator ${generator} names ${match[1]}, which is not among the channel's outputs or inputs`,
           );
         }
       }

@@ -14,9 +14,10 @@ import {
   discoverLocalScriptExecutions,
   PURPOSE_KIND,
 } from "./phase-b.discover-local-script-executions.js";
+import { ScriptEvaluationIndeterminateError } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
-  collectInlineScriptSources,
+  collectScriptSources,
   type LocalScriptValidationResult,
   requiredScriptLanguages,
   type ResolvedReferenceInputs,
@@ -37,11 +38,14 @@ export const runLocalScriptEvaluation = (
   Effect.gen(function* () {
     const candidate = node.candidate;
     const { ledgerTx } = candidate;
-    const inlineSources = collectInlineScriptSources(ledgerTx);
-    const sources = [
-      ...inlineSources,
-      ...resolvedReferenceInputs.scriptSources,
-    ];
+    const sources = collectScriptSources(
+      node,
+      stateValue,
+      resolvedReferenceInputs,
+    );
+    const inlineSources = sources.filter(
+      (source) => source.origin === "inline",
+    );
     const discovered = discoverLocalScriptExecutions(
       node,
       stateValue,
@@ -178,11 +182,6 @@ export const runLocalScriptEvaluation = (
         };
       }
 
-      const contextCbor = scriptExecutionContextCbor(
-        discovered.contextView,
-        execution,
-        redeemer,
-      );
       const executionBudget =
         config.enforceScriptBudget === false
           ? undefined
@@ -191,6 +190,25 @@ export const runLocalScriptEvaluation = (
               memory: redeemer.exUnits.memory,
             };
       const executionIndex = executionIndexOf.get(execution)!;
+      const maxSteps =
+        config.maxScriptExecutionSteps ??
+        MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount;
+      if (config.committedScriptRun !== undefined) {
+        config.committedScriptRun({
+          scriptBytes: execution.resolved.source.scriptBytes,
+          executionBudget,
+          executionIndex,
+          maxSteps,
+          programMaterialSidecarCbor:
+            candidate.submission.programMaterialSidecarCbor,
+        });
+        continue;
+      }
+      const contextCbor = scriptExecutionContextCbor(
+        discovered.contextView,
+        execution,
+        redeemer,
+      );
       const {
         result,
         graph,
@@ -201,9 +219,7 @@ export const runLocalScriptEvaluation = (
           contextCbor,
           executionBudget,
           executionIndex,
-          maxSteps:
-            config.maxScriptExecutionSteps ??
-            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+          maxSteps,
         },
         candidate.submission.programMaterialSidecarCbor,
         proofProgramMaterial,
@@ -218,6 +234,15 @@ export const runLocalScriptEvaluation = (
         graph,
         execution: cek,
       });
+      if (result.kind === "indeterminate") {
+        return yield* Effect.fail(
+          new ScriptEvaluationIndeterminateError(
+            candidate.ledgerTx.txId,
+            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+            { cause: result.cause },
+          ),
+        );
+      }
       if (result.kind === "script_invalid") {
         return {
           kind: "rejected",

@@ -13,6 +13,14 @@ pub const max_direct_payload_bytes = 9215
 
 const max_type_cbor_bytes = 64
 
+/// Cardano's bound on a Value's currency symbols and token names.
+pub const max_value_key_bytes = 32
+
+/// Cardano's Value quantities are signed 128-bit integers.
+pub const min_value_quantity = -170141183460469231731687303715884105728
+
+pub const max_value_quantity = 170141183460469231731687303715884105727
+
 pub type ConstantTypeV1 {
   IntegerConstant
   ByteStringConstant
@@ -25,6 +33,8 @@ pub type ConstantTypeV1 {
   BlsG1Constant
   BlsG2Constant
   BlsMillerLoopResultConstant
+  ArrayConstant { element: ConstantTypeV1 }
+  ValueConstant
 }
 
 pub type ConstantWitnessV1 {
@@ -58,9 +68,14 @@ fn decode_type_items(items: List<Data>) -> Pair<ConstantTypeV1, List<Data>> {
     Pair(BlsG1Constant, rest)
   } else if tag == 10 {
     Pair(BlsG2Constant, rest)
-  } else {
-    expect tag == 11
+  } else if tag == 11 {
     Pair(BlsMillerLoopResultConstant, rest)
+  } else if tag == 12 {
+    let Pair(element, remaining) = decode_type_items(rest)
+    Pair(ArrayConstant { element }, remaining)
+  } else {
+    expect tag == 13
+    Pair(ValueConstant, rest)
   }
 }
 
@@ -95,6 +110,9 @@ fn constant_type_tags_v1(constant_type: ConstantTypeV1) -> ByteArray {
     BlsG1Constant -> #[9]
     BlsG2Constant -> #[10]
     BlsMillerLoopResultConstant -> #[11]
+    ArrayConstant { element } ->
+      bytearray.push(constant_type_tags_v1(element), 12)
+    ValueConstant -> #[13]
   }
 }
 
@@ -120,21 +138,70 @@ pub fn constant_type_is_known_v1(type_cbor: ByteArray) -> Bool {
     BlsG1Constant -> True
     BlsG2Constant -> True
     BlsMillerLoopResultConstant -> True
+    ArrayConstant { .. } -> True
+    ValueConstant -> True
+  }
+}
+
+/// The number of type tags Cardano's flat spends on a constant type, where a
+/// list, an array and a pair each carry their type-application tags.
+pub fn constant_type_flat_size_v1(constant_type: ConstantTypeV1) -> Int {
+  when constant_type is {
+    ListConstant { element } -> 2 + constant_type_flat_size_v1(element)
+    ArrayConstant { element } -> 2 + constant_type_flat_size_v1(element)
+    PairConstant { first, second } ->
+      3 + constant_type_flat_size_v1(first) + constant_type_flat_size_v1(second)
+    _ -> 1
+  }
+}
+
+/// Cardano's PV 11 bound on a constant type's flat size (`mbHeader`).
+pub const max_constant_type_flat_size = 32
+
+/// True when a program constant holds a BLS value that Cardano's flat decoder
+/// would have to read: a BLS constant, a BLS pair component, or an element of
+/// a non-empty list or array, at any nesting. An empty BLS-typed list holds
+/// none, because the decoder never reads its element type's values.
+pub fn constant_holds_bls_value_v1(
+  constant_type: ConstantTypeV1,
+  payload: Data,
+) -> Bool {
+  when constant_type is {
+    BlsG1Constant -> True
+    BlsG2Constant -> True
+    BlsMillerLoopResultConstant -> True
+    ListConstant { element } -> items_hold_bls_value(element, payload)
+    ArrayConstant { element } -> items_hold_bls_value(element, payload)
+    PairConstant { first, second } ->
+      if is_data_constr(payload) {
+        when builtin.un_constr_data(payload).2nd is {
+          [first_value, second_value] -> or {
+              constant_holds_bls_value_v1(first, first_value),
+              constant_holds_bls_value_v1(second, second_value),
+            }
+          _ -> False
+        }
+      } else {
+        False
+      }
+    _ -> False
+  }
+}
+
+fn items_hold_bls_value(element: ConstantTypeV1, payload: Data) -> Bool {
+  if is_data_list(payload) {
+    builtin.un_list_data(payload)
+      |> list.any(fn(item) { constant_holds_bls_value_v1(element, item) })
+  } else {
+    False
   }
 }
 
 pub fn decode_constant_payload_v1(payload_cbor: ByteArray) -> Data {
   expect bytearray.length(payload_cbor) <= max_direct_payload_bytes
-  // stdlib's streaming CBOR decoder rejects a top-level zero-length byte
-  // string because no cursor remains after its header. Preserve the canonical
-  // ledger encoding explicitly instead of excluding valid empty constants.
-  if payload_cbor == #"40" {
-    builtin.b_data(#"")
-  } else {
-    let payload <- cbor_deserialise.expect_deserialise(payload_cbor)
-    expect cbor.serialise(payload) == payload_cbor
-    payload
-  }
+  let payload <- cbor_deserialise.expect_deserialise(payload_cbor)
+  expect cbor.serialise(payload) == payload_cbor
+  payload
 }
 
 fn is_data_constr(data: Data) -> Bool {
@@ -145,12 +212,92 @@ fn is_data_list(data: Data) -> Bool {
   builtin.choose_data(data, False, False, True, False, False)
 }
 
+fn is_data_map(data: Data) -> Bool {
+  builtin.choose_data(data, False, True, False, False, False)
+}
+
 fn is_data_integer(data: Data) -> Bool {
   builtin.choose_data(data, False, False, False, True, False)
 }
 
 fn is_data_bytes(data: Data) -> Bool {
   builtin.choose_data(data, False, False, False, False, True)
+}
+
+fn value_key_follows(key: Data, previous: Option<ByteArray>) -> Bool {
+  if is_data_bytes(key) {
+    let bytes = builtin.un_b_data(key)
+    and {
+      bytearray.length(bytes) <= max_value_key_bytes,
+      when previous is {
+        Some(prior) -> builtin.less_than_bytearray(prior, bytes)
+        None -> True
+      },
+    }
+  } else {
+    False
+  }
+}
+
+fn value_tokens_are_canonical(
+  tokens: List<Pair<Data, Data>>,
+  previous: Option<ByteArray>,
+) -> Bool {
+  when tokens is {
+    [] -> True
+    [Pair(token, quantity), ..rest] ->
+      if value_key_follows(token, previous) && is_data_integer(quantity) {
+        let amount = builtin.un_i_data(quantity)
+        and {
+          amount != 0,
+          amount >= min_value_quantity,
+          amount <= max_value_quantity,
+          value_tokens_are_canonical(rest, Some(builtin.un_b_data(token))),
+        }
+      } else {
+        False
+      }
+  }
+}
+
+fn value_policies_are_canonical(
+  policies: List<Pair<Data, Data>>,
+  previous: Option<ByteArray>,
+) -> Bool {
+  when policies is {
+    [] -> True
+    [Pair(policy, tokens), ..rest] ->
+      if value_key_follows(policy, previous) && is_data_map(tokens) {
+        let entries = builtin.un_map_data(tokens)
+        and {
+          !list.is_empty(entries),
+          value_tokens_are_canonical(entries, None),
+          value_policies_are_canonical(rest, Some(builtin.un_b_data(policy))),
+        }
+      } else {
+        False
+      }
+  }
+}
+
+/// A Value constant's payload is its `valueData` map, which Cardano's decoder
+/// admits only in canonical form: currency symbols and token names strictly
+/// ascending and at most 32 bytes, no empty token map, and every quantity a
+/// non-zero signed 128-bit integer.
+pub fn value_data_is_canonical_v1(payload: Data) -> Bool {
+  if is_data_map(payload) {
+    value_policies_are_canonical(builtin.un_map_data(payload), None)
+  } else {
+    False
+  }
+}
+
+fn value_entry_count(policies: List<Pair<Data, Data>>) -> Int {
+  when policies is {
+    [] -> 0
+    [Pair(_, tokens), ..rest] ->
+      list.length(builtin.un_map_data(tokens)) + value_entry_count(rest)
+  }
 }
 
 fn payload_matches_type(constant_type: ConstantTypeV1, payload: Data) -> Bool {
@@ -223,6 +370,14 @@ fn payload_matches_type(constant_type: ConstantTypeV1, payload: Data) -> Bool {
       }
     // Miller-loop results are opaque UPLC values and never decode from Data.
     BlsMillerLoopResultConstant -> False
+    ArrayConstant { element } ->
+      if is_data_list(payload) {
+        builtin.un_list_data(payload)
+          |> list.all(fn(item) { payload_matches_type(element, item) })
+      } else {
+        False
+      }
+    ValueConstant -> value_data_is_canonical_v1(payload)
   }
 }
 
@@ -403,6 +558,9 @@ pub fn semantic_memory_size_v1(
     BlsG1Constant -> 18
     BlsG2Constant -> 36
     BlsMillerLoopResultConstant -> 72
+    // Cardano sizes an array by its length and a Value by its entry count.
+    ArrayConstant { .. } -> list.length(builtin.un_list_data(payload))
+    ValueConstant -> value_entry_count(builtin.un_map_data(payload))
   }
 }
 

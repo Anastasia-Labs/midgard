@@ -40,7 +40,7 @@ import {
   initializationTransaction,
 } from "../support/state-queue-observation-fixture.commit-transaction.js";
 
-const deployment = followerUserEventsDeployment();
+const deployment = await followerUserEventsDeployment();
 const K = RELEASE_FINALITY_DEPTH + 2;
 
 const opened: FollowerUserEvents[] = [];

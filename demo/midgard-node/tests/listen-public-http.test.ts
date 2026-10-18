@@ -149,11 +149,12 @@ describe("public HTTP local preflight and TLS", () => {
       "E_PUBLIC_HTTP_CONFIG",
     );
   });
-  it("refuses blank keys, same publisher/operator and user custody", () => {
+  // A publisher on an operator wallet is refused earlier, at config load
+  // (operational-wallet-config.test.ts).
+  it("refuses blank keys, weak credentials and user custody", () => {
     for (const invalid of [
       { ...config, ADMIN_API_KEY: "" },
       { ...config, POSTGRES_PASSWORD: "postgres" },
-      { ...config, L1_REFERENCE_SCRIPT_SEED_PHRASE: operator },
       { ...config, VALIDATION_WORKER_POOL_SIZE: 1 },
     ]) {
       mount(invalid);

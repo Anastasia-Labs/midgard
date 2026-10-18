@@ -7,7 +7,7 @@
  * payload bytes) and a field-5 mint item is illegal only when empty. The
  * shapes below pin both rules at both boundaries in both directions, and pin
  * the field-2 shapes at the §5.4 aggregate ceiling (a 32,768-byte field opened
- * through three certified chunks) so the fit ledger measures the most
+ * through three certified chunks) so the lifecycle suite submits the most
  * expensive carriage the family can be asked to open.
  *
  * The raw submitters exist so a negative reaches local UPLC evaluation. The

@@ -2,11 +2,11 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/fuzz
+use aiken/math
 use aiken/primitive/bytearray
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -492,6 +492,29 @@ test miller_loop_expression_and_final_verify_are_authenticated() {
   }
 }
 
+/// The bls12_381_finalVerify budget does not depend on the roots of its two
+/// Miller-loop results, so a step may take it as one value computed for any
+/// two roots.
+test final_verify_budget_is_the_same_for_every_pair_of_roots(
+  roots via fuzz.both(fuzz.bytearray_fixed(32), fuzz.bytearray_fixed(32)),
+) {
+  let (left, right) = roots
+  let zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+  cek_builtin_v1.direct_builtin_budget_v1(
+    70,
+    [
+      cek_builtin_v1.BlsMillerLoopValue(left),
+      cek_builtin_v1.BlsMillerLoopValue(right),
+    ],
+  ) == cek_builtin_v1.direct_builtin_budget_v1(
+    70,
+    [
+      cek_builtin_v1.BlsMillerLoopValue(zero),
+      cek_builtin_v1.BlsMillerLoopValue(zero),
+    ],
+  )
+}
+
 test six_leaf_miller_loop_proof_fits_the_l1_execution_reserve() {
   let expression = triple_miller_loop_expression()
   let leaf_root = cek_proof_v1.hash_bls_miller_loop_expression_v1(
@@ -646,10 +669,10 @@ fn large_semantic_constructor_fixture() -> LargeSemanticConstructorFixture {
   )
   let child = cek_data_v1.bytes_data_summary_v1(
     9000,
-    cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    cek_proof_v1.bounded_blob_root_v1(bytes),
   )
   let child_node = cek_data_v1.BytesData {
-    bytes_root: cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    bytes_root: cek_proof_v1.bounded_blob_root_v1(bytes),
     bytes_length: 9000,
     cbor_length: child.cbor_length,
     memory: child.memory,
@@ -717,7 +740,7 @@ test semantic_unconstr_data_returns_the_exact_large_typed_pair() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let fields = cek_data_v1.list_data_summary_v1(fixture.fields)
   let result_payload = cek_data_v1.small_constr_data_summary_v1(
@@ -754,10 +777,10 @@ test semantic_fst_pair_extracts_the_constructor_without_the_large_field() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let constructor_node = cek_data_v1.IntegerData {
-    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
     cbor_length: constructor.cbor_length,
     memory: constructor.memory,
   }
@@ -916,7 +939,7 @@ fn direct_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
 fn semantic_integer_node(value: Int) -> cek_data_v1.DataNodeV1 {
   let raw = cbor.serialise(builtin.i_data(value))
   cek_data_v1.IntegerData {
-    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(raw),
     cbor_length: bytearray.length(raw),
     memory: 4 + cek_data_v1.integer_memory_size_v1(value),
   }
@@ -926,7 +949,7 @@ fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
   let raw = cbor.serialise(builtin.i_data(value))
   let summary = cek_data_v1.integer_data_summary_v1(
     value,
-    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cek_proof_v1.bounded_blob_root_v1(raw),
   )
   cek_builtin_v1.SemanticConstantValue {
     type_cbor: #"9f00ff",
@@ -938,7 +961,7 @@ fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
 fn constr_data_result(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
   let raw = cbor.serialise(builtin.i_data(index))
   let summary = cek_data_v1.large_constr_data_summary_from_cbor_v1(
-    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cek_proof_v1.bounded_blob_root_v1(raw),
     bytearray.length(raw),
     4 + cek_data_v1.integer_memory_size_v1(index),
     cek_data_v1.empty_data_list_summary_v1(),
@@ -1964,6 +1987,359 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
   }
 }
 
+// serialiseData over Data holding a constructor index of 128 or more and
+// integers outside 64 bits: the semantic arm decodes the argument constant and
+// the revealed serialisation with the Cardano Data decoder.
+fn wide_data() -> Data {
+  builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(128, [builtin.i_data(1)]),
+      builtin.constr_data(18446744073709551615, []),
+      builtin.i_data(18446744073709551616),
+      builtin.i_data(-18446744073709551617),
+    ],
+  )
+}
+
+fn serialise_data_verifies(
+  source: Data,
+  revealed: ByteArray,
+  serialised: ByteArray,
+) -> Bool {
+  let arguments = [constant(#"9f08ff", cbor.serialise(source))]
+  verify_semantic_with_split_parity(
+    51,
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(serialised))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [revealed],
+    },
+  )
+}
+
+test semantic_serialise_data_handles_wide_constructors_and_integers() {
+  let raw = cbor.serialise(wide_data())
+  serialise_data_verifies(wide_data(), raw, raw)
+}
+
+test semantic_serialise_data_refuses_a_different_result() {
+  let raw = cbor.serialise(wide_data())
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  !serialise_data_verifies(wide_data(), raw, other)
+}
+
+test semantic_serialise_data_refuses_a_revealed_serialisation_of_other_data() fail {
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  serialise_data_verifies(wide_data(), other, other)
+}
+
+fn serialise_data_split_arm(source: Data) -> Bool {
+  let raw = cbor.serialise(source)
+  cek_builtin_v1.verify_semantic_data_misc(
+    51,
+    [constant(#"9f08ff", raw)],
+    bytes(cbor.serialise(builtin.b_data(raw))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [raw],
+    },
+  )
+}
+
+// The production split arm alone, on the wide Data above.
+test semantic_data_misc_serialises_wide_data() {
+  serialise_data_split_arm(wide_data())
+}
+
+// The production split arm alone, on Data of the same shape within 64 bits.
+test semantic_data_misc_serialises_data_within_64_bits() {
+  serialise_data_split_arm(
+    builtin.constr_data(
+      0,
+      [
+        builtin.constr_data(127, [builtin.i_data(1)]),
+        builtin.constr_data(6, []),
+        builtin.i_data(18446744073709551615),
+        builtin.i_data(-18446744073709551616),
+      ],
+    ),
+  )
+}
+
+// Integer constants on both sides of the 64-bit head boundary, read by the
+// direct addInteger arm. Each sum crosses from a major-type head to a bignum.
+fn add_integer_verifies(left: Int, right: Int, sum: Int) -> Bool {
+  let arguments = [integer_value(left), integer_value(right)]
+  verify_direct_with_split_parity(0, arguments, integer_value(sum))
+}
+
+test add_integer_reads_constants_across_the_64_bit_boundary() {
+  expect
+    cbor.serialise(builtin.i_data(18446744073709551615)) == #"1bffffffffffffffff"
+  expect
+    cbor.serialise(builtin.i_data(18446744073709551616)) == #"c249010000000000000000"
+  expect
+    cbor.serialise(builtin.i_data(-18446744073709551616)) == #"3bffffffffffffffff"
+  expect
+    cbor.serialise(builtin.i_data(-18446744073709551617)) == #"c349010000000000000000"
+  and {
+    add_integer_verifies(18446744073709551615, 1, 18446744073709551616),
+    add_integer_verifies(18446744073709551616, -1, 18446744073709551615),
+    add_integer_verifies(-18446744073709551616, -1, -18446744073709551617),
+    add_integer_verifies(-18446744073709551617, 1, -18446744073709551616),
+  }
+}
+
+// No claimed sum pairs -2^64 with -2^64 - 1: the pinned evaluator's Data
+// equality does not separate them.
+test add_integer_refuses_a_wrong_sum_across_the_64_bit_boundary() {
+  and {
+    !add_integer_verifies(18446744073709551615, 1, 18446744073709551615),
+    !add_integer_verifies(18446744073709551616, -1, 18446744073709551616),
+    !add_integer_verifies(-18446744073709551616, -1, -18446744073709551618),
+    !add_integer_verifies(-18446744073709551617, 1, -18446744073709551615),
+  }
+}
+
+// An IntegerData leaf revealed by its raw CBOR.
+fn integer_leaf_node(memory: Int, raw: ByteArray) -> cek_data_v1.DataNodeV1 {
+  cek_data_v1.IntegerData {
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(raw),
+    cbor_length: bytearray.length(raw),
+    memory,
+  }
+}
+
+fn node_summary(node: cek_data_v1.DataNodeV1) -> cek_data_v1.DataSummaryV1 {
+  cek_data_v1.DataSummaryV1 {
+    root: cek_data_v1.hash_data_node_v1(node),
+    cbor_length: cek_data_v1.data_node_cbor_length_v1(node),
+    memory: cek_data_v1.data_node_memory_v1(node),
+  }
+}
+
+fn leaf_witness(
+  node: cek_data_v1.DataNodeV1,
+  raw: ByteArray,
+) -> cek_builtin_v1.SemanticBuiltinWitnessV1 {
+  cek_builtin_v1.SemanticBuiltinWitnessV1 {
+    data_nodes: [node],
+    list_nodes: [],
+    pair_nodes: [],
+    scalar_preimages: [raw],
+  }
+}
+
+// unIData over a semantic Data value whose only node is the leaf.
+fn un_i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  un_i_data_leaf_with_memory_verifies(
+    4 + cek_constant_v1.integer_memory_size_v1(value),
+    raw,
+  )
+}
+
+fn un_i_data_leaf_with_memory_verifies(memory: Int, raw: ByteArray) -> Bool {
+  let node = integer_leaf_node(memory, raw)
+  let summary = node_summary(node)
+  let source = cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f08ff",
+    payload: summary,
+    memory: summary.memory,
+  }
+  let result = cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f00ff",
+    payload: summary,
+    memory: summary.memory - 4,
+  }
+  verify_semantic_with_split_parity(
+    45,
+    [source],
+    result,
+    leaf_witness(node, raw),
+  )
+}
+
+// iData from an integer constant: the leaf must reveal that integer.
+fn i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  let argument = integer_value(value)
+  let payload = cek_data_v1.integer_data_summary_v1(
+    value,
+    cek_proof_v1.bounded_blob_root_v1(raw),
+  )
+  let node = integer_leaf_node(
+    4 + cek_constant_v1.integer_memory_size_v1(value),
+    raw,
+  )
+  verify_semantic_with_split_parity(
+    40,
+    [argument],
+    cek_builtin_v1.SemanticConstantValue {
+      type_cbor: #"9f08ff",
+      payload,
+      memory: payload.memory,
+    },
+    leaf_witness(node, raw),
+  )
+}
+
+fn integer_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  expect cbor.serialise(builtin.i_data(value)) == raw
+  and {
+    un_i_data_leaf_verifies(value, raw),
+    i_data_leaf_verifies(value, raw),
+  }
+}
+
+test integer_leaf_with_largest_unsigned_head_verifies() {
+  integer_leaf_verifies(18446744073709551615, #"1bffffffffffffffff")
+}
+
+test integer_leaf_with_smallest_positive_bignum_verifies() {
+  integer_leaf_verifies(18446744073709551616, #"c249010000000000000000")
+}
+
+test integer_leaf_with_largest_negative_head_verifies() {
+  integer_leaf_verifies(-18446744073709551616, #"3bffffffffffffffff")
+}
+
+test integer_leaf_with_smallest_negative_bignum_verifies() {
+  integer_leaf_verifies(-18446744073709551617, #"c349010000000000000000")
+}
+
+// The revealed leaf must be the integer constant's own serialisation.
+test integer_leaf_for_a_different_integer_fails_closed() fail {
+  i_data_leaf_verifies(18446744073709551616, #"c349010000000000000000")
+}
+
+test integer_leaf_behind_a_long_tag_2_head_fails_closed() fail {
+  un_i_data_leaf_verifies(18446744073709551616, #"d80249010000000000000000")
+}
+
+test integer_leaf_behind_a_long_tag_3_head_fails_closed() fail {
+  un_i_data_leaf_verifies(-18446744073709551617, #"d80349010000000000000000")
+}
+
+// serialiseData over constructor 127 (tag 1400) and 128 (tag 102), through the
+// production split arm.
+test semantic_data_misc_serialises_constructor_127() {
+  expect cbor.serialise(builtin.constr_data(127, [])) == #"d9057880"
+  serialise_data_split_arm(builtin.constr_data(127, []))
+}
+
+test semantic_data_misc_serialises_constructor_128() {
+  expect cbor.serialise(builtin.constr_data(128, [])) == #"d86682188080"
+  serialise_data_split_arm(builtin.constr_data(128, []))
+}
+
+fn serialise_data_split_arm_reveals(source: Data, revealed: ByteArray) -> Bool {
+  cek_builtin_v1.verify_semantic_data_misc(
+    51,
+    [constant(#"9f08ff", cbor.serialise(source))],
+    bytes(cbor.serialise(builtin.b_data(revealed))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [revealed],
+    },
+  )
+}
+
+test semantic_data_misc_refuses_a_long_tag_2_head() fail {
+  serialise_data_split_arm_reveals(
+    builtin.i_data(18446744073709551616),
+    #"d80249010000000000000000",
+  )
+}
+
+test semantic_data_misc_refuses_constructor_102_with_a_negative_index() fail {
+  serialise_data_split_arm_reveals(builtin.constr_data(0, []), #"d866822080")
+}
+
+test semantic_data_misc_refuses_constructor_102_with_a_bignum_index() fail {
+  serialise_data_split_arm_reveals(
+    builtin.constr_data(1, []),
+    #"d86682c2410180",
+  )
+}
+
+// The revealed-leaf bound (9,215 bytes) admits the same integers as the
+// direct payload bound: up to 8,932 magnitude bytes (memory 4 + 8,933).
+test integer_leaf_at_the_revealed_leaf_bound_verifies() {
+  let largest = math.pow2(71456) - 1
+  let positive = cbor.serialise(builtin.i_data(largest))
+  let negative = cbor.serialise(builtin.i_data(-largest - 1))
+  expect bytearray.length(positive) == 9215
+  expect bytearray.length(negative) == 9215
+  and {
+    un_i_data_leaf_with_memory_verifies(8937, positive),
+    un_i_data_leaf_with_memory_verifies(8937, negative),
+  }
+}
+
+// One magnitude byte more cannot be committed as a bounded leaf at all.
+test integer_leaf_beyond_the_revealed_leaf_bound_has_no_leaf_root() fail {
+  let raw = cbor.serialise(builtin.i_data(math.pow2(71456)))
+  bytearray.length(cek_proof_v1.bounded_blob_root_v1(raw)) == 32
+}
+
+// equalsData compares Data by value. -6 is 25 and -5 is 24.
+fn equals_data_verifies(
+  left: ByteArray,
+  right: ByteArray,
+  claimed: ByteArray,
+) -> Bool {
+  let arguments = [constant(#"9f08ff", left), constant(#"9f08ff", right)]
+  verify_semantic_with_split_parity(
+    47,
+    arguments,
+    boolean(claimed),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  )
+}
+
+test equals_data_matches_an_integer_with_itself() {
+  equals_data_verifies(#"25", #"25", #"d87a80")
+}
+
+test equals_data_separates_minus_six_from_minus_five() {
+  equals_data_verifies(#"25", #"24", #"d87980")
+}
+
+test equals_data_refuses_a_wrong_verdict() {
+  and {
+    !equals_data_verifies(#"25", #"25", #"d87980"),
+    !equals_data_verifies(#"25", #"24", #"d87a80"),
+  }
+}
+
+// The step compares Data by value on both sides of the 64-bit head boundary.
+test equals_data_separates_minus_two_to_the_64_from_its_predecessor() {
+  and {
+    equals_data_verifies(
+      #"3bffffffffffffffff",
+      #"c349010000000000000000",
+      #"d87980",
+    ),
+    !equals_data_verifies(
+      #"3bffffffffffffffff",
+      #"c349010000000000000000",
+      #"d87a80",
+    ),
+  }
+}
+
 // SH-2: the BLS builtins carry Cardano's flat tags (Plutus `Builtins.hs`):
 // 58/65 compress, 59/66 uncompress, 60/67 hashToGroup. The hashToGroup
 // points are RFC 9380 hash_to_curve of "midgard" under the BLS signature
@@ -2552,6 +2928,195 @@ test scalar_mul_success_certifies_in_bound_scalars() {
   }
 }
 
+// Each builtin's own charge at the 64-bit and constructor-128 boundaries:
+// Cardano's PV 11 total for the program in
+// cek-program.cardano-boundaries.vectors.ts, less the 100/100 start-up and
+// its 16000/100 machine steps (five for a two-argument builtin, three for a
+// one-argument one). An integer is two 64-bit words exactly from |x| = 2^64.
+fn charges(
+  tag: Int,
+  arguments: List<cek_builtin_v1.ValueWitnessV1>,
+  cpu: Int,
+  memory: Int,
+) -> Bool {
+  cek_builtin_v1.direct_builtin_budget_v1(tag, arguments) == cek_cost_v1.BuiltinBudgetV1 {
+    cpu,
+    memory,
+  }
+}
+
+fn data_value(value: Data) -> cek_builtin_v1.ValueWitnessV1 {
+  constant(#"9f08ff", cbor.serialise(value))
+}
+
+test add_integer_charges_cardano_words_across_the_64_bit_boundary() {
+  and {
+    charges(
+      0,
+      [integer_value(18446744073709551615), integer_value(1)],
+      101208,
+      2,
+    ),
+    charges(
+      0,
+      [integer_value(18446744073709551615), integer_value(0)],
+      101208,
+      2,
+    ),
+    charges(
+      0,
+      [integer_value(18446744073709551616), integer_value(-1)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551616), integer_value(-1)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551616), integer_value(0)],
+      101628,
+      3,
+    ),
+    charges(
+      0,
+      [integer_value(-18446744073709551617), integer_value(1)],
+      101628,
+      3,
+    ),
+  }
+}
+
+test equals_data_charges_cardano_words_across_the_64_bit_boundary() {
+  and {
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(-18446744073709551616)),
+        data_value(builtin.i_data(-18446744073709551617)),
+      ],
+      1061822,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(18446744073709551616)),
+        data_value(builtin.i_data(18446744073709551616)),
+      ],
+      1061822,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.i_data(18446744073709551615)),
+        data_value(builtin.i_data(18446744073709551616)),
+      ],
+      1034543,
+      1,
+    ),
+    charges(
+      47,
+      [
+        data_value(builtin.constr_data(127, [])),
+        data_value(builtin.constr_data(128, [])),
+      ],
+      1007264,
+      1,
+    ),
+  }
+}
+
+test serialise_data_charges_cardano_words_at_constructor_128() {
+  and {
+    charges(51, [data_value(builtin.constr_data(128, []))], 1808754, 8),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.constr_data(128, [builtin.i_data(18446744073709551616)]),
+        ),
+      ],
+      3088626,
+      20,
+    ),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.constr_data(127, [builtin.i_data(18446744073709551615)]),
+        ),
+      ],
+      2875314,
+      18,
+    ),
+  }
+}
+
+test un_i_data_charges_a_constant_across_the_64_bit_boundary() {
+  and {
+    charges(45, [data_value(builtin.i_data(18446744073709551615))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(18446744073709551616))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(-18446744073709551616))], 20744, 32),
+    charges(45, [data_value(builtin.i_data(-18446744073709551617))], 20744, 32),
+  }
+}
+
+// unConstrData of constructor 128 (tag 102) and of 127 (tag 1400), then
+// fstPair: Cardano returns the index. The program
+// `[(force (force (builtin fstPair))) [(builtin unConstrData) (con data _)]]`
+// costs 278583/864, of which seven machine steps and the start-up are
+// 112100/800.
+fn un_constr_data_pair(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  constant(
+    #"9f06000508ff",
+    cbor.serialise(
+      builtin.constr_data(0, [builtin.i_data(index), builtin.list_data([])]),
+    ),
+  )
+}
+
+fn un_constr_data_then_fst_pair_verifies(index: Int) -> Bool {
+  let source = [data_value(builtin.constr_data(index, []))]
+  let pair = [un_constr_data_pair(index)]
+  let unconstr = cek_builtin_v1.direct_builtin_budget_v1(42, source)
+  let fst = cek_builtin_v1.direct_builtin_budget_v1(29, pair)
+  and {
+    verify_direct_with_split_parity(42, source, un_constr_data_pair(index)),
+    verify_direct_with_split_parity(29, pair, integer_value(index)),
+    unconstr.cpu + fst.cpu == 166483,
+    unconstr.memory + fst.memory == 64,
+  }
+}
+
+test un_constr_data_reads_constructors_127_and_128() {
+  expect cbor.serialise(builtin.constr_data(128, [])) == #"d86682188080"
+  expect cbor.serialise(builtin.i_data(128)) == #"1880"
+  and {
+    un_constr_data_then_fst_pair_verifies(127),
+    un_constr_data_then_fst_pair_verifies(128),
+  }
+}
+
+test un_constr_data_refuses_a_wrong_index_at_constructor_128() {
+  let source = [data_value(builtin.constr_data(128, []))]
+  !verify_direct_with_split_parity(42, source, un_constr_data_pair(127))
+}
+
+test un_constr_data_refuses_constructor_102_with_a_negative_index() fail {
+  let source = [constant(#"9f08ff", #"d866822080")]
+  verify_direct_with_split_parity(42, source, un_constr_data_pair(0))
+}
+
+test un_constr_data_refuses_constructor_102_with_a_bignum_index() fail {
+  let source = [constant(#"9f08ff", #"d86682c2410180")]
+  verify_direct_with_split_parity(42, source, un_constr_data_pair(1))
+}
+
 // mkCons over a list item presented by its semantic summary. The summary
 // memory is not in the item's value root, so the arm binds it to the item's
 // constant memory by element type; any other element type must be revealed.
@@ -2941,4 +3506,115 @@ test mk_cons_over_a_unit_list_is_proved_from_its_split_presentation() {
 
 test mk_cons_over_a_bool_list_is_proved_from_its_split_presentation() {
   mk_cons_from_its_split_presentation(boolean_item_fixture())
+}
+
+test mk_cons_over_a_data_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(data_item_fixture())
+}
+
+test mk_cons_over_an_integer_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(integer_item_fixture())
+}
+
+test mk_cons_over_a_data_pair_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(data_pair_item_fixture())
+}
+
+// Builtin arguments and results that are, or end in, an empty byte string.
+// Each charge is Cardano's PV 11 total for the one-builtin program in
+// cek-program.data-constant-spelling.test.ts, less the 100/100 start-up and
+// its 16000/100 machine steps (five for a two-argument builtin, three for a
+// one-argument one).
+fn empty_bytes_list() -> Data {
+  builtin.list_data([builtin.b_data(#"")])
+}
+
+test data_builtins_charge_cardano_budgets_over_an_ending_empty_byte_string() {
+  and {
+    charges(46, [data_value(builtin.b_data(#""))], 20142, 32),
+    charges(41, [bytes(#"40")], 11183, 32),
+    charges(44, [data_value(empty_bytes_list())], 25933, 32),
+    charges(
+      43,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      24623,
+      32,
+    ),
+    charges(
+      42,
+      [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))],
+      24588,
+      32,
+    ),
+    charges(51, [data_value(builtin.b_data(#""))], 2022066, 10),
+    charges(51, [data_value(empty_bytes_list())], 2875314, 18),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      3941874,
+      28,
+    ),
+    charges(
+      47,
+      [data_value(builtin.b_data(#"")), data_value(builtin.b_data(#""))],
+      1034543,
+      1,
+    ),
+    charges(
+      47,
+      [data_value(empty_bytes_list()), data_value(empty_bytes_list())],
+      1143659,
+      1,
+    ),
+  }
+}
+
+test data_builtins_read_and_return_an_ending_empty_byte_string() {
+  let empty = [data_value(builtin.b_data(#""))]
+  let list = [data_value(empty_bytes_list())]
+  let constructor = [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))]
+  and {
+    verify_direct_with_split_parity(
+      41,
+      [bytes(#"40")],
+      constant(#"9f08ff", #"40"),
+    ),
+    verify_direct_with_split_parity(46, empty, bytes(#"40")),
+    verify_direct_with_split_parity(44, list, constant(#"9f0508ff", #"9f40ff")),
+    verify_direct_with_split_parity(
+      42,
+      constructor,
+      constant(#"9f06000508ff", #"d8799f019f40ffff"),
+    ),
+    verify_direct_with_split_parity(51, list, bytes(#"439f40ff")),
+  }
+}
+
+test data_builtins_reveal_an_ending_empty_byte_string() {
+  and {
+    serialise_data_verifies(builtin.b_data(#""), #"40", #"40"),
+    serialise_data_verifies(empty_bytes_list(), #"9f40ff", #"9f40ff"),
+    serialise_data_split_arm(builtin.b_data(#"")),
+    serialise_data_split_arm(empty_bytes_list()),
+    equals_data_verifies(#"40", #"40", #"d87a80"),
+    equals_data_verifies(#"9f40ff", #"9f40ff", #"d87a80"),
+    equals_data_verifies(#"40", #"9f40ff", #"d87980"),
+  }
+}
+
+test un_b_data_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  let source = [constant(#"9f08ff", #"41")]
+  verify_direct_with_split_parity(46, source, bytes(#"40"))
+}
+
+test serialise_data_refuses_a_revealed_byte_string_claiming_one_byte_past_the_end() fail {
+  serialise_data_verifies(builtin.b_data(#""), #"41", #"40")
 }

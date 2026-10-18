@@ -135,6 +135,29 @@ deadline:
   paths and that the node has written them.
 - `l1_slot_mapping_pending`: the ledger's slot mapping read failed
   transiently. Check the L1 node and its sidecar.
+- `role_non_follower_l1_config` (a `failedReason`, step `l1_access`): the
+  node was started with a non-follower L1 setting (`L1_ACCESS` other than
+  `follower`, `L1_PROVIDER`, a Kupo, Ogmios or Blockfrost endpoint); the
+  log names it. Unset it and restart the node.
+- `l1_node_unconfigured` (a `failedReason`, step `l1_access`): no local
+  node is configured for the follower (`L1_NODE_SOCKET_PATH`,
+  `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`). Configure it
+  and restart the node.
+- `ledger_signature_verifier_unavailable`: the Ed25519 signature verifier,
+  in the node or in a validation worker, has not initialised yet or failed
+  to. It is tried 3 times, 1 s apart; past that the node exits non-zero
+  and its supervisor restarts it. If it repeats, read the log for the
+  verifier's error.
+- `validation_worker_crashed`: a validation worker stopped while it
+  answered its readiness job (an error it did not handle, its heap limit,
+  a non-zero exit). Retried and bounded as
+  `ledger_signature_verifier_unavailable`. Read the worker's error in the
+  log.
+- `validation_worker_load_failed`, `validation_worker_start_failed` (each a
+  `failedReason`, step `validation_workers`): a validation worker's module,
+  or one it imports, did not load, or the workers did not start for another
+  reason. The node exits non-zero. Check that the node's build is complete,
+  then read the log for the cause.
 - `database_unreachable`: PostgreSQL does not answer or refuses
   connections; a pool waits to open, or the schema check waits to run.
   Restore Postgres reachability.
@@ -166,6 +189,10 @@ deadline:
 - `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime
   reference-script preflight failed. Publish the reference scripts it
   names.
+- `runtime_reference_scripts_input_conflict`: the node-runtime
+  reference-script preflight lost an input to a transaction still in flight
+  (typically the previous process's, after a restart). It is built again once
+  that transaction lands; no action unless it outlives the budget.
 - `protocol_initialization_failed`: the startup's protocol initialization
   (its transaction, the reference scripts after it, or the deployment-info
   write) failed; startup ends with it as `failedReason`. Read the log.
@@ -186,6 +213,12 @@ deadline:
   `mpf_closure_missing`, `native_mpf_restore_index_cap_exceeded`) that the
   driver does not retry ends startup with it as `failedReason`; one it
   retries ends startup once it has stood for the database budget.
+- `l1_driver_transient_failure` (a `failedReason`, step `driver`): the
+  follower-change driver ran out of its transient budget or its
+  local-fault bound with no hold to name; otherwise the first hold's own
+  reason is named. The node exits non-zero and its supervisor restarts it.
+  Read the `node_transient_budget_exhausted` line and the driver's log
+  lines before it.
 
 Core checks (`src/commands/readiness.ts`, the readiness handler):
 
@@ -257,6 +290,44 @@ Commitment and liveness (raised by fibers, cleared by them):
   hash. Wait.
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
+- `commit_worker_verifier_unavailable`: the commit worker's runs since the
+  last successful commit kept failing on local faults, up to the local-fault
+  run limit, the last on this node's Ed25519 verifier. A local fault: the
+  node exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
+- `commit_worker_withdrawal_unclassifiable`: the commit worker's runs since
+  the last successful commit kept failing on local faults, up to the
+  local-fault run limit, the last on a due withdrawal this node cannot
+  classify. The runs count together whichever withdrawal row each failed on,
+  and only a successful commit resets the count. A local fault: the node
+  exits non-zero for its supervisor to restart it. The detail names the last
+  row by its event id and says which case it is:
+  - the row or the ledger output it names does not decode (the row's event
+    info, l2_value or l2_outref, or that ledger output). If it repeats after
+    a restart, compare that `withdrawal_utxos` row with the withdrawal event
+    on L1.
+  - the row decodes, and the classifier failed on this node. If it repeats
+    after a restart, read the detail and the node's logs.
+- `commit_build_held:<stage>`: the last block build stopped at commit stage
+  `<stage>` (its name in lower case, words joined by `_`, for example
+  `withdrawal_classification`), because the stage failed and the failure is
+  not one normal transaction's own: a failure of the node, or one that did
+  not happen again when the stage ran the same work again. That build
+  commits nothing and rejects no transaction for it; a later build tries
+  again. It clears when a block commits or nothing is left to build. Read
+  the commit worker's error in the log (the node reports it as
+  `commit_worker_failed`), which includes
+  `Holding the block build: <stage> failed` and carries the stage's failure
+  as its cause, and any warning before it that reads
+  `<stage> failed once on a normal transaction and passed when run again`.
+- `commit_stage_breaker:<stage>` (a detail): in one build, commit stage
+  `<stage>` failed on more than 4 normal transactions of their own. The
+  first 4 were rejected; the rest stay pending, with the transactions in the
+  block that depend on them, for a later build. The node still commits
+  blocks. It clears when a block commits from a build in which no stage
+  reached the limit. Read the warning that reads
+  `<stage> would reject more than 4 normal transactions in one build`, and
+  the rejected transactions in `tx_rejections`.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the
@@ -451,6 +522,13 @@ first hold by priority is the reason, the rest are in its detail):
   does not know at the view. Wait; it is re-read every run.
 - `landed_block_forced_order_pending`: a forced order in a foreign block's
   window cannot be read back yet. Wait.
+- `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
+  a foreign block failed in this node's own computation (hashing, the payload
+  roots, a library the replay runs), or its Ed25519 verifier could not
+  answer. Never attributed to the block. Retried on the driver's backoff;
+  after a fixed number of runs with no progress past that block the node
+  exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it

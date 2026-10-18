@@ -1,7 +1,6 @@
 import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardBoundedItem,
 } from "./bounded-item.js";
 import {
@@ -13,6 +12,7 @@ import {
 } from "./cek-data-traverse.js";
 import {
   midgardRedeemerItemDescriptor,
+  midgardRedeemerItemSpanChunks,
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,
 } from "./redeemer-item-proof.authenticated-span.js";
@@ -161,18 +161,16 @@ const spanProofs = ({
   readonly absoluteStart: number;
   readonly length: number;
 }): Pick<MidgardRedeemerItemProofWitness, "chunkProof" | "nextChunkProof"> => {
-  const firstChunkIndex = Math.floor(
-    absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
-  const lastChunkIndex = Math.floor(
-    (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
+  const chunks = midgardRedeemerItemSpanChunks({ absoluteStart, length });
   return {
-    chunkProof: buildMidgardBoundedItemChunkProof(item, firstChunkIndex),
-    nextChunkProof:
-      lastChunkIndex === firstChunkIndex
+    chunkProof:
+      chunks === null
         ? null
-        : buildMidgardBoundedItemChunkProof(item, lastChunkIndex),
+        : buildMidgardBoundedItemChunkProof(item, chunks.first),
+    nextChunkProof:
+      chunks === null || chunks.last === chunks.first
+        ? null
+        : buildMidgardBoundedItemChunkProof(item, chunks.last),
   };
 };
 

@@ -157,11 +157,10 @@ export const buildBlock = async (input: {
       SDK.ROOT_DOMAINS.eventToStep,
       eventToStepEntries,
     ),
-    validationTracesRoot: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraceEntries,
-    ),
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     ...input.headerOverrides,
   });
   const headerHash = headerHashOf(header);

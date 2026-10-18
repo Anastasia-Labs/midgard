@@ -1,4 +1,10 @@
 export {
+  buildChallengerDescriptorV1,
+  decideValidationChallengeV1,
+  type ValidationChallengeDecisionV1,
+  type ValidationChallengerTraceV1,
+} from "./challenger-descriptor.js";
+export {
   decodeScriptDiscoveryBitmap,
   encodeScriptDiscoveryBitmap,
   encodeScriptDiscoveryControlCbor,
@@ -60,3 +66,11 @@ export {
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
+export {
+  commitValidationTraceV1,
+  openValidationTraceV1,
+  requiresRealValidationDescriptorV1,
+  type ValidationTraceCommitmentV1,
+  type ValidationTraceLeavesV1,
+  validationTraceStateHashV1,
+} from "./validation-trace-v1.js";

@@ -21,7 +21,7 @@ a file can contain skipped, uncollected, or failing scenarios.
 The [installed validation workflow](validation-trace-dispute-installed-workflow.md)
 and [transition replay](transition-trace-installed-replay.md) identify current
 routing and executable acceptance surfaces. The [fit evidence index](size-plans/README.md)
-distinguishes current-blueprint gates from historical snapshot consistency tests.
+describes the gate that holds every checked-in ledger to a fresh run.
 A saved measurement, passing digest check, or a test that returned early does not
 establish current-build acceptance.
 
@@ -144,8 +144,7 @@ cases into independent files. The original 21 cases remain 19 + 1 + 1 with
 identical full test names and an unchanged callback syntax tree, including all
 39 assertions and three restored module spies. Each file retains an isolated
 fork; real local UPLC evaluation, protocol limits and lifecycle checks remain
-required. Optional fit ledgers from the two split files use distinct sibling
-paths to avoid concurrent writes.
+required.
 
 Run the complete named gate from the repository root with the measured worker
 cap (eight is the default on this host):
@@ -158,7 +157,8 @@ The scheduling-only benchmarks below precede the evaluator optimization describe
 later and measure only the fault-proof stage. The separate node
 stage previously passed all 52 cases in 432.61 seconds; add its runtime when
 assessing the complete named gate. Both worker benchmarks use the same frozen
-fault-proof test tree and blueprint, with fit-ledger writes disabled.
+fault-proof test tree and blueprint, with fit ledger writes disabled (fit
+ledgers have since been removed).
 
 | Fault-proof workers                 | Cases / files | Result | Wall time     | Peak aggregate RSS | Peak aggregate PSS |
 | ----------------------------------- | ------------- | ------ | ------------- | ------------------ | ------------------ |

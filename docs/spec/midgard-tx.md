@@ -652,9 +652,10 @@ one-byte boundary controls; these are fixture-bound measurements.
 
 #### Erratum E2 — whole-field walks and witness-set authentication
 
-The current measurement input
-[`native-tx-q1x-exec-ledger-v1.json`](../../onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json)
-is consumed by `verify-q1x-exec-ledger-v1.mjs`. It measures the bounded steps
+The current measurement input is the
+`fraud_proofs/q1x_spend_input_cardinality.test` entries of
+[`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json), judged by
+[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs). They measure the bounded steps
 that replaced direct absence walks at the admissible maximum: step-06 walks at
 most 64 script witnesses directly, and step-04 walks address witnesses in
 32-item batches with a checkpoint. Those readings do not show that a direct
@@ -936,18 +937,18 @@ field-carriage producers and consumers use §8.3's `K`.
 Carriage acceptance requires complete signed publication and execution
 measurements against the release compiler, applied blueprint, parameters, and
 fixture. Historical measurements are not copied here: the following artifacts
-remain because current verifiers consume them.
+remain because current checks consume them.
 
-| Required artifact or observation                                                                                                                | Current consumer and property                                                                                                                                                                                                                        |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`native-tx-carriage-exec-ledger-v1.json`](../../onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json)                                  | [`verify-carriage-exec-ledger-v1.mjs`](../../onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs) remeasures corner opening/reads and certificate mint/retire, checks exact units and controlled deltas, and runs shape and tampering controls. |
-| [`field-preimage-carriage-fit-emulator.test.ts`](../../demo/midgard-validation/tests/field-preimage-carriage-fit-emulator.test.ts) observations | Real signed publication frontiers, certificate min-Ada, and carriage publication/certification journeys.                                                                                                                                             |
-| [`native-tx-carriage.test.ts`](../../demo/midgard-core/tests/native-tx-carriage.test.ts)                                                        | Checks the publication cost model, byte-string framing boundaries, and derived publishability.                                                                                                                                                       |
+| Required artifact or observation                                                                                                                | Current consumer and property                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The carriage entries of [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json)                                                | [`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs) remeasures corner opening/reads and certificate mint/retire and holds each reading, and each fixture-controlled delta, at or under its ceiling. |
+| [`field-preimage-carriage-fit-emulator.test.ts`](../../demo/midgard-validation/tests/field-preimage-carriage-fit-emulator.test.ts) observations | Real signed publication frontiers, certificate min-Ada, and carriage publication/certification journeys.                                                                                                               |
+| [`native-tx-carriage.test.ts`](../../demo/midgard-core/tests/native-tx-carriage.test.ts)                                                        | Checks the publication cost model, byte-string framing boundaries, and derived publishability.                                                                                                                         |
 
-Run the execution comparison from `onchain/aiken` with the pinned fork:
+Run the execution comparison from the repository root with the pinned fork:
 
 ```sh
-node scripts/verify-carriage-exec-ledger-v1.mjs
+node onchain/aiken/scripts/script-budgets.mjs check --module midgard/native_tx_carriage_v1.test --module midgard/field_preimage_certificate_handlers.test
 ```
 
 Run the publication suite from the repository root after building the current
@@ -1050,11 +1051,13 @@ through the field-access door:
 **Cost and acceptance.** The forced-order mint uses the whole-materialising
 door. Fixed-stride count checks are arithmetic; variable-width fields pay a walk
 per item, so a byte-admissible field may still exceed the transaction execution
-basis. The required current baseline is
-[`tx-order-mint-exec-ledger-v1.json`](../../onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json),
-read and remeasured by
-[`verify-tx-order-mint-exec-ledger-v1.mjs`](../../onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs).
-It compares fixture controls and records the linear item cost. An extrapolated
+basis. The required current baseline is the
+`user_events/tx_order_v1.test` entries of
+[`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
+remeasured by
+[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs).
+They hold fixture controls and the linear item cost (the 500-item reading minus
+the 250-item one), which the forced-order memory estimator reads. An extrapolated
 crossing is not a measured maximum or release acceptance.
 
 The mint's `whole_view` check is per-field:
@@ -1201,9 +1204,8 @@ both readers.
    requires, and §11.5 is that table; their cost claims are established from
    runner measurements exactly as item 4 requires, using the suites and controls named in §11.4,
    including the controls that show what each mechanism is an alternative to.
-   Two §11-specific conditions join them: a §11.2 implementation MUST keep
-   canonicity and materialisability as separate predicates, so that the §6.2
-   forms stay canonical while the materialisation path declines them; and a
+   Two §11-specific conditions join them: a §11.2 implementation MUST
+   materialise every datum §6.2 accepts, declining none of the §6.2 forms; and a
    §11.1 implementation MUST NOT answer "absent" without both halves of §11.1's
    evidence — the structural pass and the monotone floor — in place.
 7. §12's fault statements are held to items 4, 5 and 6 on the same terms:
@@ -1677,35 +1679,16 @@ every read.
 
 The acceptor is the recursive companion to §6.2's predicate. §6.2 decides
 **canonicity** — is this a byte form `serialiseData` emits. The acceptor adds
-the second question §6.2's re-pin created, and the interior access that makes
-the answer usable.
+the interior access that makes the answer usable.
 
-**Canonicity and materialisability are different questions.** §6.2 re-pinned
-two forms as canonical that the Aiken-stdlib `cbor.deserialise` path cannot
-produce `Data` from:
-
-- **tag-2/3 bignums** (`i ≥ 2⁶⁴` or `i < −2⁶⁴`). The stdlib's major-6 arm computes
-  `constr_data(tag − 121, …)` with no tag-range guard, so `c2`/`c3` yield a
-  negative alternative. Under the pinned PlutusV3 builtin semantics variant E, that alternative is a
-  `Word64`, so a negative one **fails the machine**. Asking is an
-  abort, not a decline.
-- **tag-102 constructors** (alternatives ≥ 128), which the stdlib declines
-  outright.
-
-`is_materialisable_plutus_data_v1` is canonicity **and** the absence of either
-form at any depth, decided in the same walk. Every materialisation entry point
-MUST screen with it before calling `deserialise`; a datum that fails the screen
-is **declined**, and declining to materialise is **not** declaring
-non-canonical. §6.2 still accepts these bytes and MUST continue to — that
-acceptance is the L1 parity the re-pin exists to restore, and an implementation
-that made bignums non-canonical to make them convenient would have given it
-back.
-
-**The screen is recursive, and that is the point.** The head-byte screen this
-replaces read byte zero only, so a bignum nested inside an otherwise ordinary
-canonical datum still reached the decoder and still aborted. That residual is
-closed here: the flag is set at every tag site the walk passes, so depth is not
-a way around it, and the materialisation path is total on canonical input.
+**Every canonical datum materialises.** The two forms §6.2 re-pinned as
+canonical — **tag-2/3 bignums** (`i ≥ 2⁶⁴` or `i < −2⁶⁴`) and **tag-102
+constructors** (alternatives ≥ 128) — are Plutus Data CBOR the Cardano ledger
+accepts, and the Data entry of `midgard/cbor_deserialise` decodes exactly the
+Plutus Data CBOR the Cardano ledger accepts. A materialisation entry point
+therefore decodes a canonical datum directly, at any depth, and no canonical
+datum is declined. §6.2 still accepts these bytes and MUST continue to — that
+acceptance is the L1 parity the re-pin exists to restore.
 
 **Interior access.** A rule reaches a datum's child by **path**: a list of
 indices, each an index into the item at the current position counted in reading
@@ -1722,8 +1705,8 @@ Three typed leaf readers accompany it, and each reads a form the `Data` route
 cannot: the **integer** reader covers majors 0/1 _and_ canonical tag-2/3
 bignums, definite or 64-byte chunked; the **byte-string** reader covers
 definite and chunked payloads; the **alternative** reader covers all three §6.2
-constructor spellings including tag 102. Between them a rule about a datum the
-materialisation path declines is still a rule that can be stated.
+constructor spellings including tag 102. Between them a rule about a datum can
+be stated without materialising it.
 
 **What the acceptor is for.** Not speed. §11.4 measures interior access as
 _more_ expensive than `cbor.deserialise` on every datum the builtin can take,
@@ -2628,13 +2611,13 @@ Five further conditions are normative:
 
 #### Cost claims
 
-The required baseline is
-[`canonical-decodability-exec-ledger-v1.json`](../../onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json),
-consumed by
-[`verify-canonical-decodability-exec-ledger-v1.mjs`](../../onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs).
-The verifier checks controlled byte-cost and item-cost rows, net execution, and
-boundary-pair measurements against GOAL_SPEC §3.3. Read exact values from that
-input and a fresh report rather than from a duplicate prose table.
+The required baseline is the `canonical_decodability/rule.test` entries of
+[`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
+judged by
+[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs).
+It holds the controlled byte-cost and item-cost rows and the boundary-pair
+measurements at or under ceilings within GOAL_SPEC §3.3. Read current values
+from a fresh report rather than from a duplicate prose table.
 
 The envelope walk's item count is the limiting term. The largest admitted
 preimage can contain more items than the direct one-transaction adjudication
@@ -2945,14 +2928,14 @@ faults into the DA-only boundary.
 
 #### Cost claims
 
-The required baseline is
-[`committed-field-shape-exec-ledger-v1.json`](../../onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json),
-consumed by
-[`verify-committed-field-shape-exec-ledger-v1.mjs`](../../onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs).
+The required baseline is the `committed_field_shape/rule.test` entries of
+[`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
+judged by
+[`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs).
 The envelope guard reuses §12.7's item walk; shape checks add constant work.
 Both families therefore need independent boundary measurements despite sharing
-the dominant traversal. Their exact ledger rows and measured crossings remain
-verifier inputs, not copied history in this document.
+the dominant traversal. Their ceilings remain inputs to that judge, not copied
+history in this document.
 
 The largest byte-admissible field can exceed the direct verdict's execution
 budget through item count. Acceptance must cover a bounded continuation at that

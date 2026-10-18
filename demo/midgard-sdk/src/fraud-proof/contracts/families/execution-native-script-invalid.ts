@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,26 +17,33 @@ import {
 } from "../types.js";
 
 export const EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/execution_native_script_invalid/step_01.main.spend",
-  acceptedReconstructionInit:
-    "fraud_proofs/execution_native_script_invalid/accepted_reconstruction_init.main.spend",
-  acceptedSpendPrefix:
-    "fraud_proofs/execution_native_script_invalid/accepted_spend_prefix.main.spend",
-  acceptedMintPrefix:
-    "fraud_proofs/execution_native_script_invalid/accepted_mint_prefix.main.spend",
-  acceptedObserverPrefix:
-    "fraud_proofs/execution_native_script_invalid/accepted_observer_prefix.main.spend",
-  acceptedReceivePrefix:
-    "fraud_proofs/execution_native_script_invalid/accepted_receive_prefix.main.spend",
-  acceptedInlineSource:
-    "fraud_proofs/execution_native_script_invalid/accepted_inline_source.main.spend",
-  acceptedReferenceSource:
-    "fraud_proofs/execution_native_script_invalid/accepted_reference_source.main.spend",
-  step02: "fraud_proofs/execution_native_script_invalid/step_02.main.spend",
-  step03: "fraud_proofs/execution_native_script_invalid/step_03.main.spend",
-  step04: "fraud_proofs/execution_native_script_invalid/step_04.main.spend",
-  step05: "fraud_proofs/execution_native_script_invalid/step_05.main.spend",
-  step06: "fraud_proofs/execution_native_script_invalid/step_06.main.spend",
+  step01: deployedTitle("fraudProofExecutionNativeScriptInvalid"),
+  acceptedReconstructionInit: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+  ),
+  acceptedSpendPrefix: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+  ),
+  acceptedMintPrefix: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+  ),
+  acceptedObserverPrefix: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+  ),
+  acceptedReceivePrefix: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+  ),
+  acceptedInlineSource: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+  ),
+  acceptedReferenceSource: deployedTitle(
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ),
+  step02: deployedTitle("fraudProofExecutionNativeScriptInvalidStep02"),
+  step03: deployedTitle("fraudProofExecutionNativeScriptInvalidStep03"),
+  step04: deployedTitle("fraudProofExecutionNativeScriptInvalidStep04"),
+  step05: deployedTitle("fraudProofExecutionNativeScriptInvalidStep05"),
+  step06: deployedTitle("fraudProofExecutionNativeScriptInvalidStep06"),
 } as const;
 
 export type ExecutionNativeScriptInvalidFaultProofContracts = {
@@ -136,7 +144,6 @@ export const buildExecutionNativeScriptInvalidChain = ({
       context,
       EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedInlineSource,
       [
-        step03.spendingScriptHash,
         acceptedReferenceSource.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,

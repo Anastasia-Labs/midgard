@@ -1,10 +1,11 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { RejectCodes, validatePhaseASingle } from "../src/index.js";
 import { phaseAConfig } from "./phase-a.outref-projection.js";
@@ -13,6 +14,10 @@ import {
   makeQueued,
   outRefFromByte,
 } from "./validation-fixtures.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 describe("phase A validation", () => {
   it("requires V1 material and rejects a non-canonical profile tuple", async () => {

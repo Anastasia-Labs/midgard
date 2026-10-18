@@ -15,9 +15,9 @@
 //// An Aiken `test` reading is a whole-test upper bound -- it charges fixture
 //// construction to the row. Pinning the fixture-only twin makes the marginal
 //// cost of `ledger_value_v1` a difference the reader takes over two pinned
-//// rows rather than a claim this module asserts. The verifier
-//// `scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs` recomputes
-//// those differences from the measured readings.
+//// rows rather than a claim this module asserts. The script budgets
+//// (`demo/midgard-core/src/script-budgets.json`) hold those differences, taken
+//// from fresh readings, to ceilings.
 ////
 //// Guardrail 3 (#617): no worst-case payload is written as a source literal.
 //// `filler` builds every payload programmatically by doubling, so the source
@@ -130,8 +130,7 @@ test derivation_refuses_truncated_output_bytes() {
 
 /// `40` is the canonical `serialiseData` image of an empty byte string. Its
 /// materialisation must therefore have the same descriptor coverage as the
-/// neighbouring one-byte datum; an Aiken stdlib decoder gap is not a protocol
-/// capability limit.
+/// neighbouring one-byte datum.
 test derivation_accepts_an_empty_inline_datum() {
   and {
     ledger_output_descriptor_v1.ledger_value_v1(
@@ -324,4 +323,52 @@ test descriptor_3545_bytes_derives() {
 
 test descriptor_3545_bytes_fixture_only() {
   fixture_only(3392, 3545)
+}
+
+test descriptor_4073_bytes_derives() {
+  derives(3904, 4073)
+}
+
+test descriptor_4073_bytes_fixture_only() {
+  fixture_only(3904, 4073)
+}
+
+test descriptor_4601_bytes_derives() {
+  derives(4416, 4601)
+}
+
+test descriptor_4601_bytes_fixture_only() {
+  fixture_only(4416, 4601)
+}
+
+test descriptor_4733_bytes_derives() {
+  derives(4544, 4733)
+}
+
+test descriptor_4733_bytes_fixture_only() {
+  fixture_only(4544, 4733)
+}
+
+test descriptor_4799_bytes_derives() {
+  derives(4608, 4799)
+}
+
+test descriptor_4799_bytes_fixture_only() {
+  fixture_only(4608, 4799)
+}
+
+test descriptor_4865_bytes_derives() {
+  derives(4672, 4865)
+}
+
+test descriptor_4865_bytes_fixture_only() {
+  fixture_only(4672, 4865)
+}
+
+test descriptor_4931_bytes_derives() {
+  derives(4736, 4931)
+}
+
+test descriptor_4931_bytes_fixture_only() {
+  fixture_only(4736, 4931)
 }

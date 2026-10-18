@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -33,53 +34,77 @@ import {
 export const TRANSITION_TRACE_ROUTE_FINAL_COUNT = 8;
 
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
-  route: "fraud_proofs/transition_trace/route_v1.main.spend",
-  control: "fraud_proofs/transition_trace/control_v1.main.spend",
-  source: "fraud_proofs/transition_trace/source_v1.main.spend",
-  withdrawal: "fraud_proofs/transition_trace/withdrawal_v1.main.spend",
-  forced: "fraud_proofs/transition_trace/forced_v1.main.spend",
-  accepted: "fraud_proofs/transition_trace/accepted_transaction_v1.main.spend",
-  deposit: "fraud_proofs/transition_trace/deposit_v1.main.spend",
-  l1Event: "fraud_proofs/transition_trace/l1_event_v1.main.spend",
-  duplicate: "fraud_proofs/transition_trace/duplicate_v1.main.spend",
+  route: deployedTitle("fraudProofTransitionTrace"),
+  control: deployedTitle("fraudProofTransitionTraceControl"),
+  source: deployedTitle("fraudProofTransitionTraceSource"),
+  withdrawal: deployedTitle("fraudProofTransitionTraceWithdrawal"),
+  forced: deployedTitle("fraudProofTransitionTraceForced"),
+  accepted: deployedTitle("fraudProofTransitionTraceAcceptedTransaction"),
+  deposit: deployedTitle("fraudProofTransitionTraceDeposit"),
+  l1Event: deployedTitle("fraudProofTransitionTraceL1Event"),
+  duplicate: deployedTitle("fraudProofTransitionTraceDuplicate"),
 } as const;
 
 export const TRANSITION_TRACE_YIELD_TITLES = {
-  l1Event: "fraud_proofs/transition_trace/l1_event_yield.timing.withdraw",
-  forcedTiming:
-    "fraud_proofs/transition_trace/l1_event_yield.forced_timing.withdraw",
-  l2Scan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
-  l2Value: "fraud_proofs/transition_trace/output_value.value_output.withdraw",
-  depositScan: "fraud_proofs/transition_trace/output_scan.scan_output.withdraw",
-  depositValue:
-    "fraud_proofs/transition_trace/deposit_value.value_output.withdraw",
+  l1Event: deployedTitle("fraudProofTransitionTraceL1EventWithdraw"),
+  forcedTiming: deployedTitle("fraudProofTransitionTraceForcedTimingWithdraw"),
+  l2Scan: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+  ),
+  l2Value: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
+  ),
+  depositScan: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
+  ),
+  depositValue: deployedTitle("fraudProofTransitionTraceDepositValueWithdraw"),
 
-  l2Open:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_open.withdraw",
-  l2Summaries:
-    "fraud_proofs/transition_trace/output_summaries.summaries.withdraw",
-  l2Assembly: "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
-  depositReplay:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
-  depositAssembly:
-    "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
-  l2Replay:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
-  claimStructure:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_structure.withdraw",
-  claimSource:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_source.withdraw",
-  claimEndpoints:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_endpoints.withdraw",
-  depositProjection:
-    "fraud_proofs/transition_trace/deposit_yields.projection.withdraw",
-  depositSummaries:
-    "fraud_proofs/transition_trace/deposit_summaries.summaries.withdraw",
+  l2Open: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+  ),
+  l2Delete: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+  ),
+  l2Outputs: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+  ),
+  l2OutputStep: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+  ),
+  l2OutputDescriptor: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+  ),
+  l2OutputSummary: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+  ),
+  l2Summaries: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
+  ),
+  l2Assembly: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+  ),
+  depositReplay: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+  ),
+  depositAssembly: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
+  ),
+  l2Replay: deployedTitle(
+    "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
+  ),
+  depositProjection: deployedTitle(
+    "fraudProofTransitionTraceDepositProjectionWithdraw",
+  ),
+  depositSummaries: deployedTitle(
+    "fraudProofTransitionTraceDepositSummariesWithdraw",
+  ),
 } as const;
 
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  /** Mints the manifests of the accepted transaction's tier-3 field openings. */
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly transitionTrace: FraudProofChain & {
     readonly history: EventHistoryPayloadBounds & {
       readonly retentionAddresses: {
@@ -129,9 +154,11 @@ export const buildTransitionTraceChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
   eventHistoryBounds,
 }: {
   readonly eventHistoryBounds: EventHistoryPayloadBounds;
+  readonly fieldPreimageCertificatePolicyId: string;
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
@@ -282,7 +309,32 @@ export const buildTransitionTraceChain = ({
       );
     const acceptedHash = finals[4].spendingScriptHash;
     const depositHash = finals[5].spendingScriptHash;
-    const l2Open = yield* buildYield("l2Open", [acceptedHash]);
+    const l2Open = yield* buildYield("l2Open", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
+    const l2Delete = yield* buildYield("l2Delete", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
+    const l2Outputs = yield* buildYield("l2Outputs", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
+    // The output step binds the exact credentials of its two verifiers, so
+    // they are built first.
+    const l2OutputDescriptor = yield* buildYield("l2OutputDescriptor", [
+      acceptedHash,
+    ]);
+    const l2OutputSummary = yield* buildYield("l2OutputSummary", [
+      acceptedHash,
+    ]);
+    const l2OutputStep = yield* buildYield("l2OutputStep", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+      l2OutputDescriptor.withdrawalScriptHash,
+      l2OutputSummary.withdrawalScriptHash,
+    ]);
     const depositProjection = yield* buildYield("depositProjection", [
       depositHash,
       hubOraclePolicyId,
@@ -317,12 +369,14 @@ export const buildTransitionTraceChain = ({
       depositValue: yield* buildYield("depositValue", [depositHash]),
 
       l2Open,
+      l2Delete,
+      l2Outputs,
+      l2OutputStep,
+      l2OutputDescriptor,
+      l2OutputSummary,
       l2Summaries,
       l2Assembly: yield* buildYield("l2Assembly", [acceptedHash]),
       l2Replay: yield* buildYield("l2Replay", [acceptedHash]),
-      claimStructure: yield* buildYield("claimStructure", [acceptedHash]),
-      claimSource: yield* buildYield("claimSource", [acceptedHash]),
-      claimEndpoints: yield* buildYield("claimEndpoints", [acceptedHash]),
       depositProjection,
       depositSummaries,
       depositReplay: yield* buildYield("depositReplay", [depositHash]),
@@ -350,6 +404,7 @@ export const buildTransitionTraceFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       transitionTrace,
     };
   });

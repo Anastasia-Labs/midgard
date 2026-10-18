@@ -1,3 +1,4 @@
+import { midgardCekDirectBuiltinFits } from "./cek-builtin.evaluate-reference-builtin.js";
 import {
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,
@@ -41,6 +42,8 @@ const componentMemoryFromNode = (type: MidgardCekConstantType): boolean => {
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       return false;
   }
 };
@@ -86,7 +89,12 @@ export const midgardCekListConstructIsSemantic = (
 /**
  * Whether the builtin step over these arguments is proved as one semantic
  * step: a semantic step tag, except mkCons over a list whose element type is
- * not `midgardCekListConstructIsSemantic`.
+ * not `midgardCekListConstructIsSemantic`. Such a mkCons is proved by the
+ * direct witness when both arguments are revealed and the witness with its
+ * result fits the aggregate direct payload bound
+ * (`midgardCekDirectBuiltinFits`), and as a semantic step otherwise. The
+ * choice depends only on the tag and the arguments, so every execution mode
+ * makes the same one.
  */
 export const isMidgardCekSemanticStep = (
   tag: bigint,
@@ -101,8 +109,12 @@ export const isMidgardCekSemanticStep = (
     return true;
   }
   const type = decodeMidgardCekConstantTypeCbor(source.witness.typeCbor);
-  return (
-    type.kind !== "list" || midgardCekListConstructIsSemantic(type.element)
+  if (type.kind !== "list" || midgardCekListConstructIsSemantic(type.element)) {
+    return true;
+  }
+  return !(
+    arguments_.every((argument) => argument.kind === "constant") &&
+    midgardCekDirectBuiltinFits(tag, arguments_)
   );
 };
 

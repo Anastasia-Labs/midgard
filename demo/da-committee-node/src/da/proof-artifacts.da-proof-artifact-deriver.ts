@@ -21,6 +21,8 @@ import {
   type DaPayloadRootSet,
   daPayloadSha256,
   decodeDaPayloadStrict,
+  headerCommittedCounts,
+  headerCommittedRoots,
 } from "./payload.js";
 import {
   type DaProofArtifactDerivation,
@@ -343,13 +345,18 @@ export class DaProofArtifactDeriver {
     ) {
       return { kind: "rejected", reasonCode: "stored_root_summary_mismatch" };
     }
-    if (rootMismatches(headerRoots(committedHeader.header), roots).length > 0) {
+    if (
+      rootMismatches(
+        headerRoots(committedHeader.header),
+        headerCommittedRoots(roots),
+      ).length > 0
+    ) {
       return { kind: "rejected", reasonCode: "committed_header_root_mismatch" };
     }
     if (
       countMismatches(
         headerCounts(committedHeader.header),
-        payload.block_body.counts,
+        headerCommittedCounts(payload.block_body.counts),
       ).length > 0
     ) {
       return {

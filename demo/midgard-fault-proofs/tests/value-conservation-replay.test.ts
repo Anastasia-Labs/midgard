@@ -273,7 +273,6 @@ it.each([true, false])(
         forcedTransactionCount: BigInt(forced_transactions.length),
         totalEventCount: 2n,
         transitionStepCount: 2n,
-        validationTraceCount: 2n,
         forcedTransactionsRoot: await root(
           SDK.ROOT_DOMAINS.forcedTransactionsV1,
           forced_transactions,
@@ -286,10 +285,9 @@ it.each([true, false])(
           SDK.ROOT_DOMAINS.eventToStep,
           event_to_step,
         ),
-        validationTracesRoot: await root(
-          SDK.ROOT_DOMAINS.validationTraces,
-          validation_traces,
-        ),
+        // The header pins the validation-trace pair; the body keeps its traces.
+        validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        validationTraceCount: 0n,
       };
       const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
         "hex",

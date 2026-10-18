@@ -71,6 +71,8 @@ export type FraudProofChain = {
 export type FaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  /** The script-decode family whose records the decoding steps read. */
+  readonly scriptDecode: AuthenticatedValidator;
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
@@ -132,7 +134,7 @@ export type FaultProofContracts = {
  */
 export type FaultProofContractChains = Omit<
   FaultProofContracts,
-  "computationThread" | "fraudProof"
+  "computationThread" | "fraudProof" | "scriptDecode"
 >;
 
 export type BuildFaultProofContractsParams = {

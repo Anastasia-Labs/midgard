@@ -6,6 +6,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  CaseThread,
   PreparedValidationResolutionDatum,
   type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   ValidationAwardSpendRedeemer,
@@ -14,10 +15,7 @@ import {
   type ValidationBoundarySpendRedeemer as ValidationBoundarySpendRedeemerData,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
-  ValidationCekMaterialRoute,
-  type ValidationCekMaterialRoute as ValidationCekMaterialRouteData,
-  ValidationDispute,
-  validationDisputeDataFromCore,
+  validationCaseThreadDataFromCore,
   ValidationDisputeTurnSchema,
   ValidationGameSpendRedeemer,
   ValidationMachinePhaseSchema,
@@ -56,7 +54,6 @@ describe("validation dispute ABI", () => {
         "ScriptIntegrity",
         "Cek",
         "ValueAndMint",
-        "LedgerDelta",
         "Terminal",
       ].map((value, tag) => ({
         value,
@@ -109,7 +106,7 @@ describe("validation dispute ABI", () => {
     expect(() => Data.from("d9050f80", ValidationMachinePhaseSchema)).toThrow();
   });
 
-  it("round-trips exact descriptors, proofs, disputes, and reveal redeemers", () => {
+  it("round-trips exact descriptors, proofs, case threads, and reveal redeemers", () => {
     const operator = buildMidgardValidationTraceTree(
       [hash(1), hash(2), hash(3)],
       "accepted",
@@ -121,12 +118,17 @@ describe("validation dispute ABI", () => {
     const dispute = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 1_000,
+      sourceTimeUpper: 1_000,
     });
-    const disputeData = validationDisputeDataFromCore(dispute);
-    expect(
-      Data.from(Data.to(disputeData, ValidationDispute), ValidationDispute),
-    ).toEqual(disputeData);
+    const threadData = validationCaseThreadDataFromCore({
+      dispute,
+      caseId: "c1".repeat(32),
+      startedAt: 1_000n,
+      defenderVkh: "d1".repeat(28),
+    });
+    expect(Data.from(Data.to(threadData, CaseThread), CaseThread)).toEqual(
+      threadData,
+    );
 
     const proofData = validationTraceProofDataFromCore(operator.proofs[1]!);
     expect(
@@ -151,9 +153,9 @@ describe("validation dispute ABI", () => {
       ),
     ).toEqual(redeemer);
 
-    expect(validationTraceDescriptorDataFromCore(operator.descriptor)).toEqual(
-      disputeData.operator_descriptor,
-    );
+    expect(
+      validationTraceDescriptorDataFromCore(operator.descriptor).trace_root,
+    ).toEqual(threadData.defender_root);
   });
 
   it("round-trips staged, direct, and award resolution V1 shapes", () => {
@@ -172,7 +174,6 @@ describe("validation dispute ABI", () => {
       execution_memory: 0n,
       verdict: "Pending",
       rejection_code_hash: "00".repeat(32),
-      ledger_delta_root: "07".repeat(32),
     };
     const terminalAward: ValidationBoundarySpendRedeemerData = {
       Continue: [
@@ -291,58 +292,6 @@ describe("validation dispute ABI", () => {
       ),
     );
 
-    const materialRouteVectors = [
-      ["NoCekMaterial", "d87980"],
-      [
-        {
-          DirectCekMaterial: {
-            envelope_cbor: "0102",
-            sidecar_cbor: "0304",
-          },
-        },
-        "d87a9f420102420304ff",
-      ],
-      [
-        {
-          SinglePublicationCekMaterial: {
-            envelope_cbor: "0102",
-            reference_input_index: 2n,
-          },
-        },
-        "d87b9f42010202ff",
-      ],
-      [
-        {
-          MinimumMultiOutputCekMaterial: {
-            envelope_cbor: "0102",
-            reference_input_indices: [4n, 1n],
-          },
-        },
-        "d87c9f4201029f0401ffff",
-      ],
-      [
-        {
-          IncrementalCekMaterial: {
-            program_envelope_hash: "0c".repeat(32),
-          },
-        },
-        `d87d9f5820${"0c".repeat(32)}ff`,
-      ],
-    ] satisfies readonly (readonly [ValidationCekMaterialRouteData, string])[];
-    for (const [route, expectedCbor] of materialRouteVectors) {
-      expect(Data.to(route, ValidationCekMaterialRoute)).toBe(expectedCbor);
-      expect(Data.from(expectedCbor, ValidationCekMaterialRoute)).toEqual(
-        route,
-      );
-    }
-
-    for (const malformed of [
-      "d87e80", // adjacent route tag 5
-      "d87a9f420102ff", // DirectCekMaterial wrong arity
-      "d87c9f42010201ff", // multi indices field is not a list
-    ]) {
-      expect(() => Data.from(malformed, ValidationCekMaterialRoute)).toThrow();
-    }
     expect(
       Data.from(
         Data.to(evidence, ValidationOneStepEvidence),
@@ -362,13 +311,7 @@ describe("validation dispute ABI", () => {
     ).toEqual(winning);
 
     const award: ValidationAwardSpendRedeemerData = {
-      Continue: [
-        {
-          input_index: 0n,
-          output_index: 0n,
-          fraud_proof_mint_redeemer_index: 0n,
-        },
-      ],
+      CloseAwardedThread: { input_index: 0n, case_input_index: 1n },
     };
     expect(
       Data.from(

@@ -15,7 +15,6 @@ import "../src/observers-forbidden-on-untagged-network/family.js";
 import "../src/observers-forbidden-on-untagged-network/submit-cancel.js";
 import "../src/observers-forbidden-on-untagged-network/submit-step-01.js";
 import "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/workflow/transaction-boundary.js";
@@ -36,9 +35,6 @@ import "./observers-forbidden-on-untagged-network-lifecycle.record.js";
 import "./observers-forbidden-on-untagged-network-lifecycle.make-harness.js";
 import "./observers-forbidden-on-untagged-network-lifecycle.forced-block.js";
 
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -51,10 +47,6 @@ import {
   observersForbiddenEvidenceCloses,
   type ObserversForbiddenFinding,
 } from "../src/observers-forbidden-on-untagged-network/family.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
@@ -74,17 +66,13 @@ import { makeHarness } from "./observers-forbidden-on-untagged-network-lifecycle
 import {
   AUTHENTICATION_SEAMS,
   CANCELLABLE_STEPS,
-  CATEGORY_ID,
   coverage,
-  ledgerPath,
   MAXIMUM_FIELD_BYTES,
   MAXIMUM_OBSERVERS,
-  measurements,
   network,
   REASON_ARM,
   record,
 } from "./observers-forbidden-on-untagged-network-lifecycle.record.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
@@ -117,7 +105,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
     expect(observersForbiddenEvidenceCloses(evidence)).toBe(true);
 
     const published = await h.publishField(maximum);
-    h.recordCarriage("accepted", maximum, published);
+    h.recordCarriage("accepted", published);
     const artifact = buildObserversForbiddenArtifact({
       headerHash: setup.headerHash,
       detectionId: `${transactionIdOf(maximum)}:accepted`,
@@ -176,7 +164,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
     );
     record(
       "accepted-cancel-step01",
-      maximum.label,
       (await h.cancel(h.threadOf(cancelAt01.result), 0)).measurement,
     );
     const cancelAt02 = await h.step01Accepted(
@@ -187,7 +174,6 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
     );
     record(
       "accepted-cancel-step02",
-      maximum.label,
       (await h.cancel(cancelAt02.result.nextThreadOutRef, 1)).measurement,
     );
 
@@ -197,7 +183,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       setup.fraudulentBlockOutRef,
       setup.headerHash,
     );
-    record("accepted-init", maximum.label, restarted.measurement);
+    record("accepted-init", restarted.measurement);
     const step01 = await captureEmulatorSubmission(
       h.harness.emulator,
       async () => {
@@ -225,7 +211,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
         };
       },
     );
-    record("accepted-step01", maximum.label, step01.measurement);
+    record("accepted-step01", step01.measurement);
     const proven = await captureEmulatorSubmission(
       h.harness.emulator,
       async () => {
@@ -256,7 +242,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       },
     );
     expect(proven.result.fraudProofUnit).toBeTruthy();
-    record("accepted-step02-proof-mint", maximum.label, proven.measurement);
+    record("accepted-step02-proof-mint", proven.measurement);
     coverage.reason(REASON_ARM, "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     coverage.scenario("maximum_supported_evidence");
@@ -393,7 +379,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
         return { txHash };
       },
     );
-    record("accepted-remove", maximum.label, removal.measurement);
+    record("accepted-remove", removal.measurement);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 900_000);
 
@@ -518,7 +504,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
     await h.cancel(thread, 0);
   }, 600_000);
 
-  it("closes the coverage gate and the Van Rossem fit ledger", async () => {
+  it("closes the coverage gate", () => {
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),
       expectedReasonArms: [REASON_ARM],
@@ -531,36 +517,5 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       // count bound belongs to the shared field door and its own families.
       hasAdjacentConsensusBound: false,
     });
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
-    const ledger = buildVanRossemFitLedger({
-      category: `observersForbiddenOnUntaggedNetwork:${CATEGORY_ID}:testnet`,
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      compilerVersion: `aiken ${preamble.preamble?.compiler?.version ?? "unknown"}`,
-      measurements,
-    });
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(
-        `[observers-forbidden-on-untagged-network-fit-ledger] wrote ${ledgerPath}`,
-      );
-    }
-    console.info(
-      `[observers-forbidden-on-untagged-network-fit-ledger] ${JSON.stringify(ledger.entries)}`,
-    );
   });
 });

@@ -20,6 +20,8 @@ export {
   makePayloadFixture,
   stateQueueNodeDatumCbor,
   tempDir,
+  withBuiltValidationTracePair,
+  withHeaderFields,
 } from "./helpers.make-payload-fixture.js";
 export {
   minimalAvailabilityChallengeYields,

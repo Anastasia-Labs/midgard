@@ -57,8 +57,8 @@ use midgard/native_script_scan_v1 as scan
 // ## Direction domain
 
 /// Direction A: no script source of the claimed policy hash exists among the
-/// committed transaction's script sources (inline field-6 witnesses and
-/// resolved reference-input reference scripts).
+/// committed transaction's script sources (inline field-6 witnesses and the
+/// reference scripts of its resolved spent and reference inputs).
 pub const direction_script_absent: Int = 0
 
 /// Direction B: the policy's native script is pinned by its versioned hash

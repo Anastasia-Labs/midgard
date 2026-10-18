@@ -17,11 +17,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const FIXTURE_URL = new URL(
-  "../fixtures/da-contract-deployment-info.json",
-  import.meta.url,
-);
-
 type FraudProofCatalogueCategoryName =
   (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
 

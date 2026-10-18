@@ -1,9 +1,6 @@
 import {
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   type MidgardCekContinuationFrame,
-  type MidgardCekDataListNode,
-  type MidgardCekDataNode,
-  type MidgardCekDataPairNode,
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import {
@@ -18,16 +15,21 @@ import {
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.js";
 import {
+  decodeMidgardCekConstantWitness,
   midgardCekConstantMemorySize,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
-import type { commitMidgardCekDataTree } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import {
   type Bytes,
   errorSuccessor,
   exactState,
+  rootHex,
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
+import { midgardCekSemanticTopMaterial } from "./cek-executor.semantic-step.js";
+import { type MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
+import { readMidgardCekSemanticData } from "./cek-executor.structural-executor-data.js";
 import {
   type MidgardCekCoreStepWitness,
   MidgardCekErrorCodes,
@@ -38,28 +40,54 @@ type DataTree = ReturnType<typeof commitMidgardCekDataTree>;
 
 /** The executor state a `case` on a constant reads and extends. */
 export type CaseConstantHost = {
+  readonly store: MidgardCekSemanticStore;
   readonly constant: (
     root: Bytes,
   ) => MidgardCekConstantValueWitness | undefined;
-  readonly resolve: (value: MidgardCekDirectValueWitness) => {
-    readonly type: MidgardCekConstantType;
-    readonly payload: Data;
-    readonly tree: DataTree;
-  };
-  readonly top: (tree: DataTree) => {
-    readonly node: MidgardCekDataNode;
-    readonly lists: readonly MidgardCekDataListNode[];
-    readonly pairs: readonly MidgardCekDataPairNode[];
-  };
-  readonly dataNode: (root: Bytes) => MidgardCekDataNode | undefined;
-  readonly dataList: (root: Bytes) => MidgardCekDataListNode | undefined;
-  readonly addResult: (type: MidgardCekConstantType, payload: Data) => Bytes;
   readonly addSequence: (node: SequenceNode) => Bytes;
   readonly addContinuation: (frame: MidgardCekContinuationFrame) => Bytes;
   readonly record: (
     witness: MidgardCekCoreStepWitness,
     post: MidgardCekMachineState,
   ) => void;
+};
+
+/**
+ * The type, payload and committed tree of a scrutinee, with the tree's nodes
+ * installed in the store.
+ */
+const resolve = (
+  store: MidgardCekSemanticStore,
+  value: MidgardCekConstantValueWitness,
+): {
+  readonly type: MidgardCekConstantType;
+  readonly payload: Data;
+  readonly tree: DataTree;
+} => {
+  const resolved =
+    value.kind === "constant"
+      ? decodeMidgardCekConstantWitness(value.witness)
+      : {
+          type: store.typeOf(value.witness.typeCbor),
+          payload: readMidgardCekSemanticData(
+            store,
+            value.witness.payload.root,
+          ),
+        };
+  const tree = commitMidgardCekDataTree(resolved.payload);
+  store.installTree(tree);
+  return { ...resolved, tree };
+};
+
+/** Adds the constant of `type` holding `payload` and returns its value root. */
+const addValue = (
+  store: MidgardCekSemanticStore,
+  type: MidgardCekConstantType,
+  payload: Data,
+): Bytes => {
+  const tree = commitMidgardCekDataTree(payload);
+  store.installTree(tree);
+  return store.addConstant(type, tree.root).root;
 };
 
 type Selected =
@@ -130,6 +158,8 @@ const select = (
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       return "unsupported";
   }
 };
@@ -143,22 +173,23 @@ const semanticMaterial = (
   type: MidgardCekConstantType,
   tree: DataTree,
 ): MidgardCekSemanticBuiltinWitness => {
-  const top = host.top(tree);
-  const firstLink = top.lists[0];
+  const { store } = host;
+  const top = midgardCekSemanticTopMaterial(store, tree.root);
+  const firstLink = top.listNodes[0];
   if (firstLink === undefined) {
     throw new Error("CEK case scrutinee is missing its first list link");
   }
-  const firstNode = host.dataNode(firstLink.head);
+  const firstNode = store.dataNodes.get(rootHex(firstLink.head));
   const secondLink =
     type.kind === "list" && firstLink.length === 1n
       ? undefined
-      : host.dataList(firstLink.tail);
+      : store.dataLists.get(rootHex(firstLink.tail));
   if (firstNode === undefined) {
     throw new Error("CEK case scrutinee material is incomplete");
   }
   if (type.kind === "list") {
     return {
-      dataNodes: [top.node, firstNode],
+      dataNodes: [top.dataNodes[0]!, firstNode],
       listNodes:
         secondLink === undefined ? [firstLink] : [firstLink, secondLink],
       pairNodes: [],
@@ -166,12 +197,14 @@ const semanticMaterial = (
     };
   }
   const secondNode =
-    secondLink === undefined ? undefined : host.dataNode(secondLink.head);
+    secondLink === undefined
+      ? undefined
+      : store.dataNodes.get(rootHex(secondLink.head));
   if (secondLink === undefined || secondNode === undefined) {
     throw new Error("CEK case scrutinee pair material is incomplete");
   }
   return {
-    dataNodes: [top.node, firstNode, secondNode],
+    dataNodes: [top.dataNodes[0]!, firstNode, secondNode],
     listNodes: [firstLink, secondLink],
     pairNodes: [],
     scalarPreimages: [],
@@ -221,7 +254,7 @@ export const returnCaseConstant = (
   if (stored === undefined) {
     throw new Error("CEK case scrutinee constant has no witness");
   }
-  const source = host.resolve(stored);
+  const source = resolve(host.store, stored);
   const memory = midgardCekConstantMemorySize(source.type, source.payload);
   const scrutinee: MidgardCekDirectValueWitness =
     stored.kind === "constant" && committedScrutinee(source, memory)
@@ -270,7 +303,7 @@ export const returnCaseConstant = (
   let valuesRoot: Bytes = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
   selected.values.forEach(([type, payload], index) => {
     valuesRoot = host.addSequence({
-      head: Buffer.from(host.addResult(type, payload)),
+      head: Buffer.from(addValue(host.store, type, payload)),
       tail: Buffer.from(valuesRoot),
       length: BigInt(index + 1),
     });

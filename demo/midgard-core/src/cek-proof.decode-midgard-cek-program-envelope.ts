@@ -9,12 +9,12 @@ import {
   BLOB_CHUNK_DOMAIN,
   exactHash,
   hash32,
+  isMidgardCekProgramUplcVersion,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
   MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION,
-  MIDGARD_CEK_PROGRAM_UPLC_VERSION,
   PROGRAM_ENVELOPE_DOMAIN,
   SEQUENCE_NODE_DOMAIN,
   TERM_NODE_DOMAIN,
@@ -86,13 +86,9 @@ export const decodeMidgardCekProgramEnvelope = (
     minor.nextOffset,
     "cek_program_envelope.uplc_version.patch",
   );
-  if (
-    major.value !== MIDGARD_CEK_PROGRAM_UPLC_VERSION[0] ||
-    minor.value !== MIDGARD_CEK_PROGRAM_UPLC_VERSION[1] ||
-    patch.value !== MIDGARD_CEK_PROGRAM_UPLC_VERSION[2]
-  ) {
+  if (!isMidgardCekProgramUplcVersion(major.value, minor.value, patch.value)) {
     throw new Error(
-      `V1 supports only UPLC ${MIDGARD_CEK_PROGRAM_UPLC_VERSION.join(".")}`,
+      `V1 supports only UPLC 1.0.0 and 1.1.0, received ${major.value.toString()}.${minor.value.toString()}.${patch.value.toString()}`,
     );
   }
 
@@ -136,7 +132,11 @@ export const decodeMidgardCekProgramEnvelope = (
   }
 
   const decoded: MidgardCekProgramEnvelope = Object.freeze({
-    uplcVersion: MIDGARD_CEK_PROGRAM_UPLC_VERSION,
+    uplcVersion: Object.freeze([
+      major.value,
+      minor.value,
+      patch.value,
+    ] as const),
     termRoot: exactTermRoot,
     nodeCount: nodeCount.value,
     materialByteLength: materialByteLength.value,

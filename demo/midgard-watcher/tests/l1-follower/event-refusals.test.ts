@@ -22,7 +22,7 @@ import {
   userEventId,
 } from "../support/follower-user-events-fixture.js";
 
-const deployment = followerUserEventsDeployment();
+const deployment = await followerUserEventsDeployment();
 const K = RELEASE_FINALITY_DEPTH + 2;
 
 const opened: FollowerUserEvents[] = [];

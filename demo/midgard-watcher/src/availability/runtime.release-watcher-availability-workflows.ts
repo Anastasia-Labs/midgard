@@ -52,6 +52,8 @@ export const dropReleasedHeaders = async (
 export type WatcherAvailabilityOpenRefusal = Readonly<{
   headerHash: string;
   reason: "insufficient-availability-capital";
+  /** Which wallet resource fell short. */
+  shortfall: WatcherAvailabilityShortfall;
   requiredLovelace: string;
   availableLovelace: string;
   detail: string;
@@ -193,22 +195,35 @@ export const plainAda = (utxo: UTxO): boolean =>
 export const WATCHER_AVAILABILITY_MAX_COLLATERAL_INPUTS = 3;
 
 /**
- * The wallet cannot fund an availability step: too little plain-ADA
- * collateral, working capital, or no single coin large enough to prepare the
+ * The wallet resource an availability step lacks: separate plain-ADA
+ * `collateral`, plain-ADA `working-capital` for the bond and the removal
+ * path, or one plain-ADA `preparation-input` large enough to prepare the
  * exact challenger coin.
+ */
+export type WatcherAvailabilityShortfall =
+  | "collateral"
+  | "working-capital"
+  | "preparation-input";
+
+/**
+ * The wallet cannot fund an availability step; `shortfall` says which
+ * resource, and the message names the exact plain-ADA input needed.
  */
 export class WatcherAvailabilityCapitalShortfall extends Error {
   readonly requiredLovelace: bigint;
   readonly availableLovelace: bigint;
+  readonly shortfall: WatcherAvailabilityShortfall;
   constructor(
     message: string,
     requiredLovelace: bigint,
     availableLovelace: bigint,
+    shortfall: WatcherAvailabilityShortfall,
   ) {
     super(message);
     this.name = "WatcherAvailabilityCapitalShortfall";
     this.requiredLovelace = requiredLovelace;
     this.availableLovelace = availableLovelace;
+    this.shortfall = shortfall;
   }
 }
 

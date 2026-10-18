@@ -166,8 +166,9 @@ export const buildRetainedValidationBlockFixture = async ({
     minFeeB,
     prevUtxosRoot: priorLedgerRoot,
     ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
-    validationTracesRoot: root.root,
-    validationTraceCount: root.count,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     transitionTraceRoot: transitionRoot.root,
     ...(postLedger === undefined ? {} : { utxosRoot: postLedger.root }),
   };
@@ -232,6 +233,10 @@ export type RetainedPlutusFixtureOptions = Readonly<{
   blockSlot?: bigint;
   /** The disputed transaction's native validity interval, in slots. */
   validityInterval?: Readonly<{ start: bigint; end: bigint }>;
+  /** Carry the program as the created output's reference script. */
+  outputReferenceScript?: boolean;
+  /** Further field-6 items after the program's own witness. */
+  extraScriptWitnesses?: readonly Buffer[];
   /**
    * The default predecessor's header operator and times, so it can be
    * committed as an ordinary first block on an emulator state queue.

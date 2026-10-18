@@ -1,140 +1,64 @@
-# Execution and fit ledgers
+# Script budgets and Van Rossem fit
 
-A ledger records a measured cost, not a derived value, so "regenerate" means
-"measure again". The measurement is only as good as the tree and compiler it ran
-on. All facts below are as of 2026-09-25.
+Neither execution cost nor Van Rossem fit is committed as a reading. Execution
+costs are held to ceilings, and fit is checked as each transaction is
+submitted, so a change that makes a script cheaper or smaller needs no edit
+here.
 
-## Execution ledgers
+## Script budgets
 
-Ten ledgers, one verifier each, in `onchain/aiken/scripts/`:
+`demo/midgard-core/src/script-budgets.json` is the one table of execution-unit
+ceilings. An entry names an Aiken test as `module/test`; with `minusControl` it
+judges that test minus a control test of the same module, and with
+`env: "testnet"` it runs under that Aiken environment. The table is not a
+channel: a ceiling is not something a generator writes, and a reading that
+drops needs no edit.
 
-| Ledger (`*-exec-ledger-v1.json`) | Verifier                                                  | CI step                                                                           |
-| -------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `native-tx-carriage`             | `verify-carriage-exec-ledger-v1.mjs`                      | [ci: Aiken CI/Pin the §8.10 carriage execution ledger]                            |
-| `native-tx-q1x`                  | `verify-q1x-exec-ledger-v1.mjs`                           | [ci: Aiken CI/Pin the Q1x family execution ledger]                                |
-| `native-tx-q31`                  | `verify-q31-exec-ledger-v1.mjs`                           | [ci: Aiken CI/Pin the Q31 reference-input-no-idx family execution ledger]         |
-| `native-tx-q21`                  | `verify-q21-exec-ledger-v1.mjs`                           | [ci: Aiken CI/Pin the Q21 transition-trace family execution ledger]               |
-| `tx-order-mint`                  | `verify-tx-order-mint-exec-ledger-v1.mjs`                 | [ci: Aiken CI/Pin the tx-order mint material-carriage execution ledger]           |
-| `canonical-decodability`         | `verify-canonical-decodability-exec-ledger-v1.mjs`        | [ci: Aiken CI/Pin the canonical-decodability committed-preimage execution ledger] |
-| `committed-field-shape`          | `verify-committed-field-shape-exec-ledger-v1.mjs`         | [ci: Aiken CI/Pin the committed-field-shape slot-verdict execution ledger]        |
-| `native-script-decoding-engine`  | `verify-native-script-decoding-engine-exec-ledger-v1.mjs` | none [review]                                                                     |
-| `native-script-scan`             | `verify-native-script-scan-exec-ledger-v1.mjs`            | none [review]                                                                     |
-| `transition-trace-descriptor`    | `verify-transition-trace-descriptor-exec-ledger-v1.mjs`   | none [review]                                                                     |
-
-Run from `onchain/aiken/` (the verifiers run the aiken `demo/flake.lock` pins):
+`onchain/aiken/scripts/script-budgets.mjs` (run from the repository root, with
+the aiken `demo/flake.lock` pins) judges every reading `<=` its ceiling:
 
 ```sh
-node scripts/verify-<lane>-exec-ledger-v1.mjs            # check
-node scripts/verify-<lane>-exec-ledger-v1.mjs --update   # re-take
+node onchain/aiken/scripts/script-budgets.mjs check [--module <aiken module>]...
+node onchain/aiken/scripts/script-budgets.mjs tighten [--module <aiken module>]...
+node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why>
+node onchain/aiken/scripts/script-budgets.mjs refit <name>
 ```
 
-The transition-trace-descriptor verifier also needs `MIDGARD_AIKEN_ENV=testnet`
-(`verify-transition-trace-descriptor-exec-ledger-v1.mjs:97-100`). The
-carriage verifier has a make target, `make carriage-exec-ledger-v1` (Makefile:55).
+CI judges the whole table from the complete test shards
+[ci: Aiken CI/Hold every script budget to its ceiling]. Locally, `check` runs a
+focused `aiken check` per budgeted module, so `--module` keeps it to the
+modules you touched. `node scripts/preflight.mjs` plans exactly those. The
+plain `check` reaches the verdicts CI does for the same tree and table; the
+script's header says how to judge a CI run's own shard reports instead.
 
-Every reading goes through `exec-ledger-measure-v1.mjs` and
-`run-focused-check.mjs`, which runs only the pinned compiler
-[script: scripts/lib/aiken.mjs]. Each is a focused `aiken check` over the ledger's `modules[].module` selectors,
-so a verifier takes as long as those modules take to compile and run. It is not
-a light check.
+- **Over its ceiling.** Shrink the script. If the cost is accepted, `raise`
+  lifts that one ceiling to the reading plus 1% and records `--reason` in
+  `raisedBecause`. Accepting a regression is a decision for whoever owns the
+  lane [review]. `raise` refuses a budget that is not over its ceiling, and a
+  ceiling above the basis.
+- **Missing.** A renamed or deleted test, or a control that no longer exists.
+  Rename the entry, or delete it with the test.
+- **Now fits.** An `aboveBasis` entry records work that cannot fit an L1
+  transaction. A reading inside the basis means the claim is stale: `refit`
+  drops `aboveBasis` and lowers the ceiling to the reading plus 1%, capped at
+  the basis. Check whatever relied on the infeasibility first. `refit` refuses
+  a budget that is not now-fits.
+- **Out of band.** A `growth` claim holds the difference between two budgets
+  inside a band, in both directions. Movement either way means the scaling the
+  claim describes changed.
 
-### What `--update` absorbs, and what it refuses
+`tighten` only lowers ceilings, to the reading plus 1%. Production reads some
+ceilings through `scriptBudget()` (the native-script scan planner and the
+tx-order mint estimator), so changing one of those moves a production cost:
+run the consumer's tests in the same change [review].
 
-The verifiers split failures into two classes
-(`verify-carriage-exec-ledger-v1.mjs:56-61`,
-`exec-ledger-within-basis-v1.mjs:122-126`):
+## Van Rossem fit has no ledger
 
-- **Drift**: a measured number no longer matches the recorded one. `--update`
-  rewrites these.
-- **Structural**: a selector that did not run, a claim the ledger references
-  that does not exist, a basis edited away from the one the lane is judged at,
-  or a recorded judgement the fresh reading contradicts. These fail in both
-  modes, and the ledger is not rewritten. The within-basis lanes share
-  `checkWithinBasisExecLedger`; the carriage verifier carries its own copy of
-  the same split [runtime: checkWithinBasisExecLedger].
-
-So `--update` cannot launder a broken measurement. It can launder a real
-regression, because a regression is a drift. The next section is the defence.
-
-### Triage before re-taking
-
-1. **Rerun on a clean tree.** The scripts can run no compiler but the pinned
-   one. A reading taken on a
-   tree with unrelated uncommitted `.ak` edits is measuring those edits.
-2. **Read the drift, row by row.** Which rows moved, by how much, on which axis,
-   and which did not move? Where a ledger has fixture-only control rows (the
-   carriage ledger's `tier3_corner_fixture_only`, for one), they separate "the
-   fixture got dearer" from "the code under test got dearer".
-3. **Name the cause.** Find the commit that moved the numbers. The carriage
-   ledger's own note bisects a re-take against builds of the intervening
-   commits rather than assuming a cause
-   (`native-tx-carriage-exec-ledger-v1.json`, `note`, "#606 re-take").
-4. **Classify it.**
-   - _Expected re-measure_: the cause is a change whose cost effect is intended
-     or neutral, for example a compiler pin advance. Example: `7bb5f52cd`
-     (2026-08-28), "consolidate on aiken v1.1.23+5adf783 and re-take exec
-     ledgers".
-   - _Accepted regression_: the cost rose, and someone decided to accept it.
-     It is still pinned at the accepted number. The Q21 step's CI comment says
-     so directly: "A regression that is understood and accepted still has to be
-     held to the number it was accepted at"
-     (`.github/workflows/aiken-ci.yml:227-234`). Accepting one is a decision for
-     whoever owns the lane, not for the person re-taking the ledger [review].
-   - _Structural_: the verifier already refuses it. Fix the selector, basis or
-     claim, not the numbers.
-5. **Write the cause note.** Each re-take appends a dated paragraph to the
-   ledger's `note` that names the cause and the rows it moved. The convention
-   dates from `f01c6ffcb` (2026-08-16), which gave every ledger a cause note and
-   corrected two notes that asserted a guard which had been deleted [review].
-6. **Move the published figures in the same commit.** The carriage ledger backs
-   `docs/spec/midgard-tx.md` §8.10, and its verifier says to move that section in
-   the same commit as the `--update`
-   (`verify-carriage-exec-ledger-v1.mjs:228-232`) [review].
-
-Blind spot: three verifiers have no CI step, so their ledgers can sit red for
-any length of time. When the affected-channels script lists one, run it by hand.
-
-## Fit ledgers
-
-`docs/fault-proofs/size-plans/*-fit-ledger.json` (45 tracked files) record
-Van Rossem fit measurements. Each is stamped with the `blueprintSha256` and
-`compilerVersion` it was measured against.
-[`docs/fault-proofs/size-plans/README.md`](../../../../docs/fault-proofs/size-plans/README.md)
-is the authority. Its rules:
-
-- The `*-fit-ledger.test.ts` readers were removed on 2026-09-09. Most of these
-  files are recorded evidence and writer outputs. Nothing compares them with
-  the current build. `verifyMeasuredFitLedger`
-  (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts:85`) would,
-  but as of 2026-09-25 it has no caller.
-- Two ledgers are still held to the current build:
-  `transition-trace-forced-window-fit-ledger.json` (transition subvariants
-  suite) and `transition-trace-workflow-fit-ledger.json` (installed
-  transition-trace lifecycle suite). Each suite requires the recorded
-  `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
-  scenario and row roster to equal a fresh run's; the budgets themselves may
-  differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
-  [ci: Midgard Node CI/Test fault-proof tooling]. Any
-  change that moves blueprint bytes makes both stale.
-- Regenerate against a freshly built blueprint with
-  `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
-  `--list` shows each ledger's owning test files). It finds the owning files
-  in the test sources, runs exactly those under `MIDGARD_WRITE_FIT_LEDGER=1`
-  with a fragment directory and run token it makes for the run, and keeps the
-  ledger only if every owning file passed and rewrote it; otherwise it puts
-  the ledger back and exits 1. It sets `MIDGARD_FIT_FRAGMENT_DIR` and
-  `MIDGARD_FIT_MEASUREMENT_RUN` itself. Thirteen checked-in ledgers have no
-  suite writer, and the command refuses each with the reason
-  (`LEDGERS_WITHOUT_SUITE_WRITER` in
-  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`)
-  [ci: Midgard Node CI/Test the fit-ledger regeneration script].
-- Without the flag the writer throws `FitLedgerWriteRefusedError` for every
-  checked-in ledger, so no ledger changes; only the caller-named outputs
-  (`MIN_ADA_FIT_LEDGER_PATH`, `TRANSITION_TRACE_FIT_LEDGER_PATH`) write without
-  it [runtime: writeVanRossemFitLedger].
-- Never replace a blueprint digest without re-measuring the transactions. A
-  digest edited by hand makes an old measurement claim a new build [review].
-- Do not recommit a historical report just because a test run rewrote it.
-
-Example of a real re-pin: `1d85e6db3` (2026-09-12), "Re-pin the
-transition-trace forced-window fit ledger to the decision 0007 blueprint".
+There are no fit ledgers. Every transaction a fault-proof emulator test submits
+is held to the Van Rossem limits (16,384 signed bytes, 16.5M memory, 10G CPU)
+at submission, and a publication (zero execution units) to the 15,872-byte
+publication target, by the suite's submit guard
+(`demo/midgard-fault-proofs/tests/support/emulator/van-rossem-submit-guard.ts`,
+limits in `demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts`). A
+transaction over a limit fails the test that submitted it, naming the axis and
+the negative margin. There is nothing to regenerate.

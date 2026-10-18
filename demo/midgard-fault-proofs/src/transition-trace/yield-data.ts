@@ -1,4 +1,3 @@
-import { decodeMidgardNativeByteListPreimage } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -14,6 +13,7 @@ import {
 } from "./history-opening.js";
 import {
   readTransitionProof,
+  transitionL2Replay,
   transitionProofCbor,
   type TransitionProofInput,
 } from "./proof-material.js";
@@ -35,6 +35,10 @@ const deriveTransitionTraceYieldData = ({
   key: YieldKey;
   redeemer: string;
   outputCbors?: readonly string[];
+  /** The accepted transaction's spend-inputs field items. */
+  spendInputCbors?: readonly string[];
+  /** The ledger descriptor each output inserts, in output order. */
+  outputDescriptors?: readonly string[];
   depositSourceCbor?: string;
   depositAssetCount?: number;
   depositAssetIndexes?: Readonly<Record<string, number>>;
@@ -62,32 +66,26 @@ const deriveTransitionTraceYieldData = ({
         redeemer: Data.void(),
       },
     ];
-  if ("AcceptedTransactionTransitionMismatch" in proof.fault)
-    return ["claimStructure", "claimSource", "claimEndpoints"].map((key) => ({
-      key: key as YieldKey,
-      redeemer: Data.void(),
-    }));
   if (!("InvalidOneStepTransition" in proof.fault)) return [];
   const witness = proof.fault.InvalidOneStepTransition.witness;
   let outputCbors: Buffer[];
-  let spendInputKeys: string[];
+  let spendInputCbors: string[] | undefined;
   let outputIndex = 0;
   let depositSourceCbor: string | undefined;
   let depositAssetCount: number | undefined;
   let depositAssetIndexes: Record<string, number> | undefined;
   let openKey: YieldKey;
-  if ("L2TransactionTransition" in witness) {
-    const l2 = witness.L2TransactionTransition;
-    outputCbors = [
-      ...decodeMidgardNativeByteListPreimage(
-        Buffer.from(l2.outputs_preimage, "hex"),
-        "transition outputs",
-      ),
-    ];
-    spendInputKeys = decodeMidgardNativeByteListPreimage(
-      Buffer.from(l2.spend_inputs_preimage, "hex"),
-      "transition inputs",
-    ).map((bytes) => Buffer.from(bytes).toString("hex"));
+  if (
+    "L2TransactionTransition" in witness ||
+    "ValidForcedTransactionTransition" in witness
+  ) {
+    const replay = transitionL2Replay(proofInput);
+    if (replay === undefined)
+      throw new Error(
+        "Transition L2 replay requires its field items and ledger witnesses",
+      );
+    outputCbors = replay.outputCbors.map((item) => Buffer.from(item, "hex"));
+    spendInputCbors = [...replay.spendInputCbors];
     openKey = "l2Open";
   } else if ("ValidDepositTransition" in witness) {
     const deposit = witness.ValidDepositTransition;
@@ -140,53 +138,47 @@ const deriveTransitionTraceYieldData = ({
     if (operation?.type !== "insert")
       throw new Error("transition deposit did not project one insert");
     outputCbors = [operation.outputCbor];
-    spendInputKeys = [];
     outputIndex = Number(source.key.outputIndex);
     openKey = "depositProjection";
   } else return [];
-  const opened: SDK.TransitionTraceOpenedOutputs = {
-    spend_input_keys: spendInputKeys,
-    output_hashes: outputCbors.map((bytes) =>
-      computeHash32(bytes).toString("hex"),
-    ),
-  };
   // The summaries the phase-8 walk derives on chain, so the stepper can write
-  // the checkpoint that commits them.
-  const summaries: SDK.TransitionTraceOutputSummaries = {
-    summaries: outputCbors.map((bytes, index) => {
-      const descriptor = buildCanonicalMidgardLedgerOutputMaterial({
-        outputIndex: outputIndex + index,
-        outputCbor: bytes,
-      }).descriptor;
-      const convert = (summary: typeof descriptor.cardanoTxOut) => ({
-        root: Buffer.from(summary.root).toString("hex"),
-        cbor_length: summary.cborLength,
-        memory: summary.memory,
-      });
-      return [
-        convert(descriptor.cardanoTxOut),
-        convert(descriptor.midgardTxOut),
-        convert(descriptor.cardanoSpendDatum),
-      ];
+  // the checkpoint that commits them, and the descriptor each output inserts.
+  const materials = outputCbors.map((bytes, index) =>
+    buildCanonicalMidgardLedgerOutputMaterial({
+      outputIndex: outputIndex + index,
+      outputCbor: bytes,
     }),
-  };
+  );
+  const convert = (
+    summary: (typeof materials)[number]["descriptor"]["cardanoTxOut"],
+  ) => ({
+    root: Buffer.from(summary.root).toString("hex"),
+    cbor_length: summary.cborLength,
+    memory: summary.memory,
+  });
   return [
     {
       key: openKey,
       depositSourceCbor,
       depositAssetCount,
       depositAssetIndexes,
-      redeemer: Data.to(opened, SDK.TransitionTraceOpenedOutputs),
+      // A deposit's projection names the one output's hash; the accepted
+      // transaction's steps build their redeemers from the walked fields.
+      redeemer:
+        openKey === "depositProjection"
+          ? Data.to(computeHash32(outputCbors[0]!).toString("hex"))
+          : Data.void(),
       outputCbors: outputCbors.map((bytes) => bytes.toString("hex")),
-      outputSummaries: summaries.summaries,
+      ...(spendInputCbors === undefined ? {} : { spendInputCbors }),
+      outputDescriptors: materials.map((material) =>
+        material.descriptorCbor.toString("hex"),
+      ),
+      outputSummaries: materials.map(({ descriptor }) => [
+        convert(descriptor.cardanoTxOut),
+        convert(descriptor.midgardTxOut),
+        convert(descriptor.cardanoSpendDatum),
+      ]),
     },
-    {
-      key: openKey === "l2Open" ? "l2Assembly" : "depositAssembly",
-      redeemer: Data.void(),
-    },
-    ...(openKey === "l2Open"
-      ? [{ key: "l2Replay" as const, redeemer: Data.void() }]
-      : []),
   ];
 };
 
@@ -204,6 +196,7 @@ export const transitionTraceYieldData = (
       network: input.network,
       depositPolicyId: input.depositPolicyId,
       proofCbor: transitionProofCbor(input.proof),
+      l2Replay: transitionL2Replay(input.proof),
       depositOpening: input.depositOpening,
     },
     (_key, value: unknown) =>

@@ -3,6 +3,7 @@
  */
 
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Effect } from "effect";
 
 import { type FraudProofs } from "../../common.js";
@@ -73,6 +74,14 @@ export const buildFaultProofContracts = (
     readonly eventHistoryBounds: EventHistoryPayloadBounds;
     /** The deployment's L1 slot mapping (validation-trace txInfo stage). */
     readonly l1SlotConfig: L1SlotConfig;
+    /**
+     * The validation-dispute bond VerifySource locks at `dispute_bond_v1`, in
+     * lovelace: the deployment's `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`.
+     * A parameter of the source validator.
+     */
+    readonly disputeBondLovelace: bigint;
+    /** The hub oracle nonce: the case configuration policy's one-shot. */
+    readonly caseConfigInitializationNonce: OutRefLike;
   },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {
@@ -265,6 +274,7 @@ export const buildFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       fieldPreimageCertificate: shared.fieldPreimageCertificate,
+      scriptDecode: shared.scriptDecode,
       doubleSpend,
       nonExistentInput,
       noReferenceInput,

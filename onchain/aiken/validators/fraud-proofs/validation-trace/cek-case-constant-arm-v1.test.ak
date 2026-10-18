@@ -7,11 +7,11 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use cardano/transaction as l1
 use fraud_proofs/validation_trace/cek_core_arm_case_constant as core_case_constant
 use fraud_proofs/validation_trace/cek_core_arm_machine as core_machine
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -46,6 +46,15 @@ fn state(
 
 // Each runner references one arm validator only, so a vector's execution
 // units carry no code from the other arm.
+
+/// The mid-step continuation, signed by the fraud prover as a
+/// validation-trace move requires.
+fn prover_continue_tx(output_state: Data) -> l1.Transaction {
+  l1.Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
 
 /// Runs the machine arm (group 1) on one step bound to `group`.
 fn run_machine_bound(
@@ -83,7 +92,7 @@ fn run_machine_bound(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    prover_continue_tx(next),
   )
 }
 
@@ -123,7 +132,7 @@ fn run_case_constant_bound(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    prover_continue_tx(next),
   )
 }
 
@@ -611,7 +620,7 @@ test case_constant_arm_applies_a_list_branch_to_a_wide_list() {
     builtin.replicate_byte(4500, 42),
     builtin.replicate_byte(4500, 42),
   )
-  let blob = cek_data_scan_v1.bounded_blob_root_v1(bytes)
+  let blob = cek_proof_v1.bounded_blob_root_v1(bytes)
   let head = cek_data_v1.bytes_data_summary_v1(9000, blob)
   let link = cek_data_v1.DataListNodeV1 {
     head: head.root,

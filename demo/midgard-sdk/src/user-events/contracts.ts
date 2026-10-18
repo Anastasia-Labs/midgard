@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 /** Shared deployment recipes for the hub and authenticated user-event scripts. */
 import { normalizeOutRef, type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Constr, type Network } from "@lucid-evolution/lucid";
@@ -14,28 +15,20 @@ import {
   getUnappliedScript,
   makeAuthenticatedValidator,
   makeMintingPolicy,
-  makeSpendingValidator,
 } from "../fraud-proof/contracts/blueprint.js";
 import { HUB_ORACLE_ASSET_NAME } from "../hub-oracle.js";
 
 export const USER_EVENT_CONTRACT_TITLES = Object.freeze({
-  hubOracle: Object.freeze({ mint: "hub_oracle.mint.mint" }),
-  deposit: Object.freeze({
-    mint: "user_events/deposit.mint.mint",
-    spend: "user_events/deposit.spend.spend",
-  }),
-  withdrawal: Object.freeze({
-    mint: "user_events/withdrawal.mint.mint",
-    spend: "user_events/withdrawal.spend.spend",
+  hubOracle: Object.freeze({
+    mint: deployedTitle("hubOracleMint"),
   }),
   txOrder: Object.freeze({
-    mint: "user_events/tx_order_v1.mint.mint",
-    spend: "user_events/tx_order_v1.spend.spend",
-    fieldPreimageCertificateSpend:
-      "field_preimage_certificate.field_preimage_certificate.spend",
-    fieldPreimageCertificateMint:
-      "field_preimage_certificate.field_preimage_certificate.mint",
-    cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
+    mint: deployedTitle("txOrderMint"),
+    spend: deployedTitle("txOrderSpend"),
+    fieldPreimageCertificateSpend: deployedTitle(
+      "fieldPreimageCertificateSpend",
+    ),
+    fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
   }),
 });
 
@@ -95,41 +88,12 @@ type UserEventContractInput = Readonly<{
   hubOraclePolicyId: string;
 }>;
 
-const buildAuthenticatedEvent = (
-  input: UserEventContractInput,
-  titles: Readonly<{ mint: string; spend: string }>,
-): AuthenticatedValidator => {
-  assertHubPolicyId(input.hubOraclePolicyId);
-  assertRecipe(input.blueprint, titles.mint, ["hub_oracle"]);
-  assertRecipe(input.blueprint, titles.spend, ["hub_oracle"]);
-  return makeAuthenticatedValidator(
-    input.network,
-    applyBlueprintParams(input.blueprint, titles.mint, [
-      input.hubOraclePolicyId,
-    ]),
-    applyBlueprintParams(input.blueprint, titles.spend, [
-      input.hubOraclePolicyId,
-    ]),
-  );
-};
-
-export const buildDepositValidators = (
-  input: UserEventContractInput,
-): AuthenticatedValidator =>
-  buildAuthenticatedEvent(input, USER_EVENT_CONTRACT_TITLES.deposit);
-
-export const buildWithdrawalValidators = (
-  input: UserEventContractInput,
-): AuthenticatedValidator =>
-  buildAuthenticatedEvent(input, USER_EVENT_CONTRACT_TITLES.withdrawal);
-
 /** Derive the parameterless certificate before applying its policy to tx-order. */
 export const buildTxOrderValidators = (
   input: UserEventContractInput,
 ): {
   readonly txOrder: AuthenticatedValidator;
   readonly fieldPreimageCertificate: SpendingValidator & MintingValidator;
-  readonly cekProgramMaterial: SpendingValidator;
 } => {
   const titles = USER_EVENT_CONTRACT_TITLES.txOrder;
   assertHubPolicyId(input.hubOraclePolicyId);
@@ -141,7 +105,6 @@ export const buildTxOrderValidators = (
   for (const title of [
     titles.fieldPreimageCertificateMint,
     titles.fieldPreimageCertificateSpend,
-    titles.cekProgramMaterialSpend,
   ]) {
     assertRecipe(input.blueprint, title, []);
   }
@@ -152,10 +115,6 @@ export const buildTxOrderValidators = (
   );
   return {
     fieldPreimageCertificate,
-    cekProgramMaterial: makeSpendingValidator(
-      input.network,
-      getUnappliedScript(input.blueprint, titles.cekProgramMaterialSpend),
-    ),
     txOrder: makeAuthenticatedValidator(
       input.network,
       applyBlueprintParams(input.blueprint, titles.mint, [

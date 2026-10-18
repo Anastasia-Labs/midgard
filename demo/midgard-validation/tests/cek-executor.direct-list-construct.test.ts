@@ -15,6 +15,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  evaluateMidgardCekDirectBuiltin,
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,
 } from "../src/cek-builtin.js";
@@ -92,6 +93,10 @@ const describeType = (type: MidgardCekConstantType): string => {
     case "blsG2":
     case "blsMillerLoopResult":
       return type.kind;
+    case "array":
+      return `array<${describeType(type.element)}>`;
+    case "value":
+      return "value";
   }
 };
 
@@ -116,6 +121,8 @@ const constTypeOf = (type: MidgardCekConstantType): ConstType => {
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       throw new Error(`no constant of type ${type.kind}`);
   }
 };
@@ -145,6 +152,8 @@ const valueOf = (type: MidgardCekConstantType, seed: number): unknown => {
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       throw new Error(`no constant of type ${type.kind}`);
   }
 };
@@ -193,6 +202,7 @@ const mkConsStep = (element: MidgardCekConstantType) => {
       ),
     ),
     halted: execution.terminalState.mode,
+    constants: [...program.constantWitnesses.values()],
     evidence: Buffer.from(encodeMidgardCekCoreStepDataCbor(step)).toString(
       "hex",
     ),
@@ -224,6 +234,47 @@ const compactedSemanticWitness = (
 
 const splitChainAccepts = (step: BuiltinStep): boolean =>
   verifyMidgardCekCoreStep(step.pre, step.post, compactedSemanticWitness(step));
+
+/**
+ * The direct witness of a semantic mkCons step: each summarised argument
+ * revealed as the source constant it summarises, and the result the direct
+ * evaluator computes from them.
+ */
+const directWitnessOf = (
+  built: ReturnType<typeof mkConsStep>,
+): MidgardCekCoreStepWitness => {
+  const { witness } = built.step;
+  if (witness.kind !== "executeBuiltinSemantic") {
+    throw new Error("the step is not a semantic witness");
+  }
+  const reveal = (
+    value: MidgardCekDirectValueWitness,
+  ): MidgardCekDirectValueWitness => {
+    if (value.kind !== "semanticConstant") return value;
+    const key = (summary: MidgardCekDirectValueWitness): string =>
+      summary.kind === "semanticConstant"
+        ? `${Buffer.from(summary.witness.typeCbor).toString("hex")}:${Buffer.from(summary.witness.payload.root).toString("hex")}`
+        : "";
+    const source = built.constants.find(
+      (constant) =>
+        constant.kind === "constant" &&
+        key(semanticizeMidgardCekDirectConstant(constant)) === key(value),
+    );
+    if (source?.kind !== "constant") {
+      throw new Error("no source constant has this summary");
+    }
+    return { kind: "constant", witness: source.witness };
+  };
+  const arguments_ = witness.arguments.map(reveal);
+  const evaluated = evaluateMidgardCekDirectBuiltin(32n, arguments_);
+  if (evaluated.kind !== "success") throw new Error("mkCons failed");
+  return {
+    kind: "executeBuiltinDirect",
+    tag: 32n,
+    arguments: arguments_,
+    result: evaluated.result,
+  };
+};
 
 const AIKEN_MODULE = fileURLToPath(
   new URL(
@@ -317,4 +368,45 @@ describe("mkCons emission by element type", () => {
       expect(splitChainAccepts(built.step)).toBe(semantic);
     },
   );
+});
+
+// The step verifier accepts either witness kind for the same mkCons step:
+// which witness the executor emits does not narrow what is accepted.
+const SEMANTIC_ROWS = MATRIX.filter((row) => row.semantic);
+
+describe("mkCons step acceptance by witness kind", () => {
+  it.each(SEMANTIC_ROWS)(
+    "over a $name list the semantic and the direct witness of the same step are both accepted",
+    ({ element }) => {
+      const built = mkConsStep(element);
+      const { pre, post, witness } = built.step;
+      expect(witness.kind).toBe("executeBuiltinSemantic");
+      expect(verifyMidgardCekCoreStep(pre, post, witness)).toBe(true);
+      expect(verifyMidgardCekCoreStep(pre, post, directWitnessOf(built))).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each(SEMANTIC_ROWS)(
+    "over a $name list a semantic witness with another post-state is refused",
+    ({ element }) => {
+      const { pre, post, witness } = mkConsStep(element).step;
+      expect(
+        verifyMidgardCekCoreStep(pre, { ...post, cpu: post.cpu + 1n }, witness),
+      ).toBe(false);
+    },
+  );
+
+  it("the integer row's direct witness is pinned in the Aiken module", () => {
+    const built = mkConsStep(INTEGER);
+    expect(pinnedEvidence().get("mk_cons_integer_direct")).toBe(
+      Buffer.from(
+        encodeMidgardCekCoreStepDataCbor({
+          ...built.step,
+          witness: directWitnessOf(built),
+        }),
+      ).toString("hex"),
+    );
+  });
 });

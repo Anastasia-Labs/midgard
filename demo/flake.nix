@@ -22,6 +22,9 @@
         goToolchainPkgs = import goToolchain { inherit system; };
         pinnedGo = goToolchainPkgs.go_1_26;
         pinnedAiken = aiken.packages.${system}.aiken;
+        pinnedPnpm = pkgs.writeShellScriptBin "pnpm" ''
+          exec ${toolchainPkgs.nodejs_22}/bin/node ${../scripts/pnpm.mjs} "$@"
+        '';
       in
       {
         packages.aiken = pinnedAiken;
@@ -30,7 +33,7 @@
           # nixpkgs advance until the repository's exact Go pin is reviewed.
           packages = [
             toolchainPkgs.nodejs_22
-            toolchainPkgs.pnpm_9
+            pinnedPnpm
             toolchainPkgs.cargo
             toolchainPkgs.rustc
             pinnedGo
@@ -38,7 +41,7 @@
           ];
           shellHook = ''
             echo "node `${toolchainPkgs.nodejs_22}/bin/node --version`"
-            echo "pnpm `${toolchainPkgs.pnpm_9}/bin/pnpm --version`"
+            echo "pnpm `${pinnedPnpm}/bin/pnpm --version`"
             ${toolchainPkgs.cargo}/bin/cargo --version
             ${toolchainPkgs.rustc}/bin/rustc --version
             test "$(go version | awk '{print $3}')" = "go1.26.5"
