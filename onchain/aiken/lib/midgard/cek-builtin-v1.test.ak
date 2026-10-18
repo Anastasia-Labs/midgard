@@ -536,9 +536,10 @@ test miller_loop_expression_and_final_verify_are_authenticated() {
   }
 }
 
-/// The bls12_381_millerLoop budget does not depend on its argument roots, so a
-/// step may take it as one value computed for any two roots.
-test miller_loop_budget_is_the_same_for_every_pair_of_roots(
+/// The bls12_381_finalVerify budget does not depend on the roots of its two
+/// Miller-loop results, so a step may take it as one value computed for any
+/// two roots.
+test final_verify_budget_is_the_same_for_every_pair_of_roots(
   roots via fuzz.both(fuzz.bytearray_fixed(32), fuzz.bytearray_fixed(32)),
 ) {
   let (left, right) = roots
