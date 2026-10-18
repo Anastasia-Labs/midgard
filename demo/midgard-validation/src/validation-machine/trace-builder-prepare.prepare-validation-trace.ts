@@ -416,6 +416,13 @@ export const prepareValidationTrace = (
         ),
       );
     }
+    // The machine has no successor for an undecodable Plutus item, of either
+    // item kind: the rejection is not provable by trace, and no step of it is
+    // recorded. The script-decode family proves it.
+    if (rejection?.subject?.arm === "PlutusScriptUndecodable")
+      return yield* Effect.fail(
+        new DirectValidationTraceUnavailable(RejectCodes.ScriptProgramEncoding),
+      );
 
     // Exact submitted bytes bind the source independently of the operator's verdict.
     const proofSource = (
