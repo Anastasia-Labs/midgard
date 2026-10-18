@@ -117,9 +117,10 @@ export type BlockReplayContext = {
    * and runs no script. Each script run is handed to `onScriptRun`, without
    * its script context, as the replay meets it (the callee need not keep
    * it), then the accepted
-   * transaction to `onTransaction`, for a check after the replay. Unset:
-   * every script runs in the replay. Forced transactions always replay in
-   * full.
+   * transaction to `onTransaction`, for a check after the replay. The
+   * replay gives the event loop a turn after each event
+   * (`yieldToEventLoop`). Unset: every script runs in the replay. Forced
+   * transactions always replay in full.
    */
   readonly committedVerdicts?: Readonly<{
     onScriptRun: (run: MidgardCommittedScriptRun) => void;
@@ -380,6 +381,7 @@ export const replayBlockEvents = (
         input.onReplayedEvent?.({ mutations: Object.freeze(mutations), root });
       }
       mappings.delete(key);
+      if (input.committedVerdicts !== undefined) yield* yieldToEventLoop;
     }
     if (reached.size !== material.length)
       throw blockFault("foreign block CEK material contains unreachable nodes");
@@ -393,3 +395,15 @@ export const replayBlockEvents = (
       );
     return entriesOf();
   });
+
+/**
+ * Gives the event loop a turn: resumes from a macrotask (`setImmediate`),
+ * so pending timers and I/O run first. `Effect.yieldNow` resumes from a
+ * microtask, which runs none of them.
+ */
+export const yieldToEventLoop: Effect.Effect<void> = Effect.async<void>(
+  (resume) => {
+    const pending = setImmediate(() => resume(Effect.void));
+    return Effect.sync(() => clearImmediate(pending));
+  },
+);
