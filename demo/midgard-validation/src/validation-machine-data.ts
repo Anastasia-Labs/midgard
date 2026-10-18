@@ -29,8 +29,6 @@ export {
   redeemerItemProofWitnessData,
 } from "./validation-machine-data.redeemer-item-control-data.js";
 export {
-  extractCekProgramEnvelopeFromFirstSourceChunk,
-  validateCekRouteMaterial,
   validationMachineStateData,
   validationOneStepWitnessData,
 } from "./validation-machine-data.validate-cek-route-material.js";
@@ -43,7 +41,6 @@ export {
   type ValidationMachineFieldCarriageResolver,
 } from "./validation-machine-data.validation-machine-carriage-tier-mismatch-error.js";
 export {
-  type CekRouteMaterial,
   type ValidationOneStepArgument,
   validationSemanticResolverIndex,
 } from "./validation-machine-data.validation-semantic-resolver-index.js";

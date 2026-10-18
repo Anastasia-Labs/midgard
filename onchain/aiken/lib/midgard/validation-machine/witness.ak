@@ -401,7 +401,7 @@ fn encode_resolve_input_output_proof(
 fn resolve_input_output_proof_from_cbor(
   pending_cbor: ByteArray,
 ) -> ResolveInputOutputProofV1 {
-  let data <- cbor_deserialise.expect_deserialise(pending_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(pending_cbor)
   expect
       [
         source_kind_data, key_data, next_schedule_hash_data,
@@ -690,7 +690,7 @@ pub fn resolved_input_accumulator_successor(
 pub fn canonical_decode_control_from_witness(
   witness_cbor: ByteArray,
 ) -> CanonicalDecodeControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -752,7 +752,7 @@ pub fn canonical_decode_control_is_bound(
 pub fn input_sets_control_from_witness(
   witness_cbor: ByteArray,
 ) -> InputSetsControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -845,7 +845,7 @@ pub fn input_sets_control_is_bound(
 pub fn signatures_control_from_witness(
   witness_cbor: ByteArray,
 ) -> SignaturesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -988,7 +988,7 @@ pub fn signatures_control_is_bound(
 pub fn phase_a_native_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseANativeScriptsControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -1385,7 +1385,7 @@ pub fn reset_phase_a_native_control(
 pub fn phase_a_script_preconditions_control_from_witness(
   witness_cbor: ByteArray,
 ) -> PhaseAScriptPreconditionsControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -1479,7 +1479,7 @@ pub fn phase_a_script_preconditions_control_is_bound(
 pub fn resolve_inputs_control_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -1689,7 +1689,7 @@ pub fn encode_script_discovery_control(
 fn script_discovery_control_from_cbor(
   discovery_cbor: ByteArray,
 ) -> ScriptDiscoveryControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(discovery_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(discovery_cbor)
   expect
       [
         purpose_cursor_data, source_cursor_data, redeemer_cursor_data,
@@ -1881,7 +1881,7 @@ pub fn script_sources_control_from_data_items(
 pub fn script_sources_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   if list.length(items) == 30 {
     script_sources_control_from_data_items(
@@ -1965,7 +1965,7 @@ pub fn encode_inline_source_hash_control_v1(
 pub fn inline_source_hash_control_from_cbor(
   control_cbor: ByteArray,
 ) -> InlineSourceHashControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(control_cbor)
   expect
       [
         version_data, source_index_data, inline_source_count_data,
@@ -2310,7 +2310,7 @@ pub fn encode_script_sources_control_v1(
 pub fn script_sources_stage_zero_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   if list.length(items) == 30 {
     script_sources_control_from_data_items(
@@ -2425,7 +2425,7 @@ fn receive_purpose_scan_is_well_formed(
 pub fn script_sources_stage_seven_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 30
   let control = script_sources_control_from_data_items(
@@ -2458,7 +2458,7 @@ pub fn reset_script_discovery_current(
 pub fn script_sources_stage_eight_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2479,7 +2479,7 @@ pub fn script_sources_stage_eight_control_from_witness(
 pub fn script_sources_stage_nine_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2500,7 +2500,7 @@ pub fn script_sources_stage_nine_control_from_witness(
 pub fn script_sources_redeemer_scan_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2521,7 +2521,7 @@ pub fn script_sources_redeemer_scan_control_from_witness(
 pub fn script_sources_stage_ten_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2604,7 +2604,7 @@ pub fn encode_native_scripts_witness_v1(
 pub fn script_sources_stage_eleven_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2625,7 +2625,7 @@ pub fn script_sources_stage_eleven_control_from_witness(
 pub fn script_sources_stage_twelve_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
@@ -2917,7 +2917,7 @@ pub fn script_sources_control_is_bound(
 pub fn native_scripts_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> NativeScriptsControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -3179,11 +3179,10 @@ pub fn empty_data_summary_v1() -> cek_data_v1.DataSummaryV1 {
 }
 
 pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray {
-  encode_definite_array_header(25)
+  encode_definite_array_header(24)
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(encode_definite_bytes(control.program_term_root))
-    |> bytearray.concat(encode_definite_bytes(control.program_envelope_hash))
     |> bytearray.concat(cbor.serialise(control.purpose_kind))
     |> bytearray.concat(cbor.serialise(control.purpose_index))
     |> bytearray.concat(encode_definite_bytes(control.script_hash))
@@ -3219,9 +3218,8 @@ pub fn cek_context_control_from_cbor(
   let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
-        stage_data, language_tag_data, program_term_root_data,
-        program_envelope_hash_data, purpose_kind_data, purpose_index_data,
-        script_hash_data, subject_data, redeemer_leaf_data,
+        stage_data, language_tag_data, program_term_root_data, purpose_kind_data,
+        purpose_index_data, script_hash_data, subject_data, redeemer_leaf_data,
         redeemer_context_control_hash_data, execution_memory_limit_data,
         execution_cpu_limit_data, reference_items_data, spend_items_data,
         output_items_data, signer_items_data, observer_count_data,
@@ -3234,7 +3232,6 @@ pub fn cek_context_control_from_cbor(
     stage: builtin.un_i_data(stage_data),
     language_tag: builtin.un_i_data(language_tag_data),
     program_term_root: builtin.un_b_data(program_term_root_data),
-    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
     purpose_kind: builtin.un_i_data(purpose_kind_data),
     purpose_index: builtin.un_i_data(purpose_index_data),
     script_hash: builtin.un_b_data(script_hash_data),
@@ -3541,7 +3538,6 @@ pub fn cek_context_control_is_well_formed(
       control.language_tag == 128,
     },
     bytearray.length(control.program_term_root) == 32,
-    bytearray.length(control.program_envelope_hash) == 32,
     control.purpose_kind >= 0,
     control.purpose_kind <= 3,
     control.purpose_index >= 0,
@@ -3680,7 +3676,7 @@ pub fn encode_cek_witness_v1(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
-  program_envelope_hash: ByteArray,
+  program_script_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
 ) -> ByteArray {
@@ -3695,12 +3691,12 @@ pub fn encode_cek_witness_v1(
   expect execution_cpu_limit >= 0
   expect execution_memory_limit >= 0
   expect or {
-      program_envelope_hash == #"",
-      bytearray.length(program_envelope_hash) == 32,
+      program_script_hash == #"",
+      bytearray.length(program_script_hash) == 28,
     }
   // The witness must never end with a possibly-empty bytestring:
   // `aiken/cbor.deserialise` rejects a zero-length final item at an
-  // exhausted cursor, so `program_envelope_hash` (empty before program
+  // exhausted cursor, so `program_script_hash` (empty before program
   // selection) sits before the two integer limits and the purpose key.
   #"8b"
     |> bytearray.concat(
@@ -3711,7 +3707,7 @@ pub fn encode_cek_witness_v1(
     |> bytearray.concat(cbor.serialise(completed_cpu))
     |> bytearray.concat(cbor.serialise(completed_memory))
     |> bytearray.concat(encode_definite_bytes(active_state_hash))
-    |> bytearray.concat(encode_definite_bytes(program_envelope_hash))
+    |> bytearray.concat(encode_definite_bytes(program_script_hash))
     |> bytearray.concat(cbor.serialise(execution_cpu_limit))
     |> bytearray.concat(cbor.serialise(execution_memory_limit))
     |> bytearray.concat(cbor.serialise(purpose_kind))
@@ -3783,7 +3779,7 @@ pub fn encode_value_and_mint_control_v1(
 pub fn value_and_mint_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ValueAndMintControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   expect
       [
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
@@ -3848,12 +3844,14 @@ pub fn encode_value_and_mint_witness_v1(
 pub fn cek_witness_control_v1(
   witness: ValidationOneStepWitnessV1,
 ) -> CekWitnessControlV1 {
-  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    witness.work_witness_cbor,
+  )
   expect
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
-        active_state_hash_data, program_envelope_hash_data,
+        active_state_hash_data, program_script_hash_data,
         execution_cpu_limit_data, execution_memory_limit_data, purpose_kind_data,
         purpose_index_data,
       ]
@@ -3867,7 +3865,7 @@ pub fn cek_witness_control_v1(
     completed_cpu: builtin.un_i_data(completed_cpu_data),
     completed_memory: builtin.un_i_data(completed_memory_data),
     active_state_hash: builtin.un_b_data(active_state_hash_data),
-    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
+    program_script_hash: builtin.un_b_data(program_script_hash_data),
     execution_cpu_limit: builtin.un_i_data(execution_cpu_limit_data),
     execution_memory_limit: builtin.un_i_data(execution_memory_limit_data),
     purpose_kind: builtin.un_i_data(purpose_kind_data),
@@ -3912,7 +3910,7 @@ pub fn cek_witness_is_well_formed_v1(
       cek.active_state_hash,
       cek.execution_cpu_limit,
       cek.execution_memory_limit,
-      cek.program_envelope_hash,
+      cek.program_script_hash,
       cek.purpose_kind,
       cek.purpose_index,
     ),

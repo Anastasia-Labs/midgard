@@ -50,6 +50,15 @@ pub type VerdictV1 {
   NoViolation
 }
 
+/// The widest integer the native compact and field-length wires carry: an
+/// unsigned 64-bit argument. A wider integer still re-encodes to its own
+/// bytes, so the bound is checked here and not left to the round trip.
+const max_uint64 = 18446744073709551615
+
+fn is_uint64(value: Int) -> Bool {
+  value >= 0 && value <= max_uint64
+}
+
 fn data_is_constructor(data: Data) -> Bool {
   builtin.choose_data(data, True, False, False, False, False)
 }
@@ -180,12 +189,14 @@ fn inspect_compact_body_v1(body_data: Data) -> Option<NativeTxBodyCompact> {
           bytearray.length(spend_inputs_hash) == 32,
           bytearray.length(reference_inputs_hash) == 32,
           bytearray.length(outputs_hash) == 32,
-          fee >= 0,
+          is_uint64(fee),
           // §2.1: a bound is `-1` (absent) or a non-negative slot. Guarded here
           // so the encoder's `expect_validity_bound` below never aborts this
           // total inspector; an out-of-language bound is a malformed source.
           validity_interval_start >= -1,
+          validity_interval_start <= max_uint64,
           validity_interval_end >= -1,
+          validity_interval_end <= max_uint64,
           bytearray.length(required_observers_hash) == 32,
           bytearray.length(required_signers_hash) == 32,
           bytearray.length(mint_hash) == 32,
@@ -343,15 +354,15 @@ pub fn field_lengths_are_canonical_v1(lengths_cbor: ByteArray) -> Bool {
             let address_witnesses = builtin.un_i_data(address_witnesses_data)
             let redeemers = builtin.un_i_data(redeemers_data)
             if and {
-              spend_inputs >= 0,
-              reference_inputs >= 0,
-              outputs >= 0,
-              required_observers >= 0,
-              required_signers >= 0,
-              mint >= 0,
-              script_witnesses >= 0,
-              address_witnesses >= 0,
-              redeemers >= 0,
+              is_uint64(spend_inputs),
+              is_uint64(reference_inputs),
+              is_uint64(outputs),
+              is_uint64(required_observers),
+              is_uint64(required_signers),
+              is_uint64(mint),
+              is_uint64(script_witnesses),
+              is_uint64(address_witnesses),
+              is_uint64(redeemers),
             } {
               encode_native_tx_field_preimage_lengths_v1(
                 NativeTxFieldPreimageLengthsV1 {

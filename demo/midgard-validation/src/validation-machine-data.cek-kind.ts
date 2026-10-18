@@ -103,7 +103,7 @@ export type CekStepKind = "finish" | "selection" | "context" | "core";
 /**
  * The cek work witness is the eleven-field list
  * `[native_control, context_control, execution_cursor, completed_cpu,
- * completed_memory, active_state_hash, program_envelope_hash,
+ * completed_memory, active_state_hash, program_script_hash,
  * execution_cpu_limit, execution_memory_limit, purpose_kind,
  * purpose_index]` that
  * `encodeMidgardCekValidationWitnessV1` writes and the on-chain

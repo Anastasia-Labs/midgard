@@ -7,12 +7,17 @@
  * admitted order, live or spent since, whatever its resolution status: the
  * facts at the view, never the node's ingested rows). The block's event
  * sets must be exactly the in-window events known there
- * (`start < inclusion <= end`): a deposit, withdrawal or order id the
- * payload names that is not known there at all is `invalid` where the facts
- * cover the block's range for its kind (`replay-foreign.complete.ts`), else
- * `event_unknown` (see `holds.ts`); a known id outside the window, a known in-window id it leaves out, or one
- * it names twice, is `invalid`; an in-window order whose output cannot be read
- * back at the view is `forced_order_pending`. A block that ends past what
+ * (`start < inclusion <= end`), less those ingestion leaves out as
+ * undecodable (`readUserEvent`, so no honest block holds one): a deposit,
+ * withdrawal or order id the payload names that is not known there at all
+ * is `invalid` where the facts cover the block's range for its kind
+ * (`replay-foreign.complete.ts`), else `event_unknown` (see `holds.ts`); a
+ * known id outside the window, an undecodable one, a known in-window id it
+ * leaves out, or one it names twice, is `invalid`; an in-window order whose
+ * output cannot be read back at the view is `forced_order_pending`. A
+ * forced order whose datum no order cast accepts (`readForcedOrder`'s
+ * `unreadable`) is left out the same way as an undecodable event. A block
+ * that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
  * payload that is not available yet.
  *
@@ -52,7 +57,7 @@ import {
   forcedOrdersAdmittedAt,
   outRefLabel,
 } from "../forced-orders/index.js";
-import { userEventEntry } from "../l1-events/entries.js";
+import { readUserEvent } from "../l1-events/entries.js";
 import {
   canonicalSlotConfigForLucid,
   unixTimeToSlotForConfig,
@@ -93,8 +98,9 @@ import type { WithdrawalMembership } from "./store.js";
 
 /**
  * The forced orders admitted in the block's window at the view: order id
- * hex to raw datum, from the facts. An in-window order whose output cannot
- * be read back there is a wait.
+ * hex to raw datum, from the facts, and the in-window unreadable ones, id
+ * hex to why. An in-window order whose output cannot be read back there is
+ * a wait.
  */
 const forcedInWindow = (
   store: FactStore,
@@ -112,20 +118,23 @@ const forcedInWindow = (
       );
     const forced = new Map<string, Buffer>();
     const seen = new Set<string>();
+    const unreadable = new Map<string, string>();
     for (const admitted of read.orders) {
-      if (admitted.order !== null)
-        seen.add(admitted.order.idCbor.toString("hex"));
+      const order = admitted.read;
+      if (order !== null) seen.add(order.idCbor.toString("hex"));
       if (!inWindow(admitted.inclusionTime)) continue;
-      if (admitted.order === null)
+      if (order === null)
         return yield* Effect.fail(
           new Verdict(
             "forced_order_pending",
             `forced order ${outRefLabel(admitted.outRef)} is admitted in the window but its output cannot be read at the view`,
           ),
         );
-      forced.set(admitted.order.idCbor.toString("hex"), admitted.order.datum);
+      if (order.kind === "unreadable")
+        unreadable.set(order.idCbor.toString("hex"), order.detail);
+      else forced.set(order.idCbor.toString("hex"), order.datum);
     }
-    return { forced, seen };
+    return { forced, seen, unreadable };
   });
 
 const depositLedgerKey = (idCbor: string) => {
@@ -318,6 +327,7 @@ export const foreignBlockReplayer = (deps: {
         { l2Outref: string; l2Owner: string; l2Value: string; info: string }
       >();
       const seen = new Set<string>();
+      const undecodable = new Map<string, string>();
       for (const list of deps.events.lists) {
         const read = yield* Effect.promise(() =>
           eventsAt(deps.store, list, view.point),
@@ -329,7 +339,12 @@ export const foreignBlockReplayer = (deps: {
         for (const event of read.value) {
           seen.add(event.idCbor);
           if (!inWindow(event.inclusionTime)) continue;
-          const decoded = userEventEntry(event, config.NETWORK);
+          const reading = readUserEvent(event, config.NETWORK);
+          if (reading.kind === "undecodable") {
+            undecodable.set(event.idCbor, reading.detail);
+            continue;
+          }
+          const decoded = reading.entry;
           if (decoded.kind === "deposit")
             deposits.set(decoded.entry.idCbor, {
               key: depositLedgerKey(decoded.entry.idCbor).toString("hex"),
@@ -345,12 +360,11 @@ export const foreignBlockReplayer = (deps: {
             });
         }
       }
-      const { forced, seen: seenForced } = yield* forcedInWindow(
-        deps.store,
-        deps.forcedOrders,
-        view,
-        inWindow,
-      );
+      const {
+        forced,
+        seen: seenForced,
+        unreadable,
+      } = yield* forcedInWindow(deps.store, deps.forcedOrders, view, inWindow);
       const coverage = yield* Effect.promise(() =>
         coverageAt(
           deps.store,
@@ -383,6 +397,7 @@ export const foreignBlockReplayer = (deps: {
           body.deposits,
           "deposit",
           absent,
+          undecodable,
         ) ??
         exact(
           new Set(withdrawals.keys()),
@@ -390,6 +405,7 @@ export const foreignBlockReplayer = (deps: {
           body.withdrawals,
           "withdrawal",
           absent,
+          undecodable,
         ) ??
         exact(
           new Set(forced.keys()),
@@ -397,6 +413,7 @@ export const foreignBlockReplayer = (deps: {
           body.forced_transactions,
           "forced order",
           absentWhere(coverage.txOrder),
+          unreadable,
         );
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];

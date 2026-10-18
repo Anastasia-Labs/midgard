@@ -14,6 +14,7 @@ import {
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
+import { PLUTUS_SCRIPT_ITEM_KIND_WITNESS } from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
   acceptedTransactionSubject,
@@ -96,7 +97,13 @@ export const detectWitnessScriptDecodingCompleteReplay = (
             ? reason.WitnessNativeScriptNodeLimit
             : "WitnessNativeScriptDepthLimit" in reason
               ? reason.WitnessNativeScriptDepthLimit
-              : undefined;
+              : "PlutusScriptUndecodable" in reason &&
+                  reason.PlutusScriptUndecodable.item_kind ===
+                    PLUTUS_SCRIPT_ITEM_KIND_WITNESS
+                ? {
+                    script_index: reason.PlutusScriptUndecodable.item_index,
+                  }
+                : undefined;
     if (payload === undefined) continue;
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       transaction.fullTransactionCbor,

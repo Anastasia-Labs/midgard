@@ -36,8 +36,10 @@ export {
   decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidence,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardNativeTxProofFieldLengths,
+  decodeMidgardNativeTxProofFieldLengthsExact,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxProofFieldLengthsExact,
   encodeMidgardNativeTxProofSource,
   midgardNativeTxProofFieldPreimageLengths,
 } from "./native.decode-midgard-native-tx-canonical-envelope-for-fault-evidence.js";

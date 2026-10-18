@@ -7,7 +7,10 @@ import {
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
 import { signalTransientExhausted } from "../services/transient-exhaustion.js";
-import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import type {
+  WithdrawalUnclassifiableCase,
+  WorkerOutput,
+} from "../workers/utils/commit-block-header.js";
 
 export const COMMIT_WORKER_SOURCE = "commit_worker";
 export const COMMIT_WORKER_FAILED = "commit_worker_failed";
@@ -19,10 +22,21 @@ export const COMMIT_WORKER_FAILED_ESCALATION_MS = 10 * 60_000;
 /**
  * The reason the node exits under (source `commit_worker`) once
  * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
- * commit failed on this process's Ed25519 verifier fault.
+ * commit failed on a local fault, the last of them on this process's Ed25519
+ * verifier fault.
  */
 export const COMMIT_WORKER_VERIFIER_UNAVAILABLE =
   "commit_worker_verifier_unavailable";
+/**
+ * The reason the node exits under (source `commit_worker`) once
+ * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
+ * commit failed on a local fault, the last of them on a due withdrawal row
+ * this node cannot classify. The detail names the row and its case: the row
+ * or the ledger output it names does not decode, or the row decodes and the
+ * classifier failed on this node.
+ */
+export const COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE =
+  "commit_worker_withdrawal_unclassifiable";
 /** The liveness source `commit_base_pending` is raised under. */
 export const COMMIT_BASE_SOURCE = "commit_base";
 /**
@@ -124,6 +138,15 @@ export const clearCommitWorkerFailure = (
     { discard: true },
   );
 
+/** What the exit's detail says of each case of a withdrawal row this node
+ * cannot classify. */
+const UNCLASSIFIABLE_CASE_TEXT: Readonly<
+  Record<WithdrawalUnclassifiableCase, string>
+> = {
+  undecodable: "the row or the ledger output it names does not decode",
+  classifier_failed: "the row decodes, and the classifier failed on this node",
+};
+
 /** The outputs that prove a commit went through: the same set that clears
  * `commit_worker_failed`. */
 const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
@@ -133,17 +156,21 @@ const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
 ]);
 
 /**
- * Bounds commit-worker attempts that fail on this process's Ed25519 verifier
- * fault (`FailureOutput.localFault`), as the coalesced runner bounds a local
- * fault on a landed block: each such failure counts, and once `limit` of them
+ * Bounds commit-worker attempts that fail on a local fault
+ * (`FailureOutput.localFault`): this process's Ed25519 verifier fault, or a
+ * due withdrawal row it cannot classify, named in `localFaultSubject`. This
+ * is how the coalesced runner bounds a local fault on a landed block: each
+ * such failure counts, whichever row it names, and once `limit` of them
  * accrue without a successful commit (`COMMIT_SUCCEEDED`) between them the
  * node exits non-zero (`transient-exhaustion.ts`) for its supervisor to
- * restart it. Only a successful commit resets the count. A wait (for the
- * commit base or window), a no-op, a skip, or a failure that is not the fault
- * leaves it as it is, so a persistent fault interleaved with them still
- * reaches the bound. The count is this process's, so a restarted node meeting
- * the same fault retries within the same bound and exits again. Failures that
- * are not the fault are never counted and stay `commit_worker_failed` as
+ * restart it, under the reason of the fault that reached the bound. Only a
+ * successful commit resets the count. The latest row is kept for the exit's
+ * detail alone, which names it and its case. A wait (for the commit base or
+ * window), a no-op, a skip, or a failure that is not a local fault leaves the
+ * count as it is, so a persistent fault interleaved with them still reaches
+ * the bound. The count is this process's, so a restarted node meeting the
+ * same fault retries within the same bound and exits again. Failures that are
+ * not local faults are never counted and stay `commit_worker_failed` as
  * before.
  */
 export const boundCommitWorkerLocalFaults = (
@@ -158,21 +185,34 @@ export const boundCommitWorkerLocalFaults = (
     output.type === "FailureOutput" && output.localFault !== undefined
       ? output
       : undefined;
-  return Ref.updateAndGet(globals.COMMIT_WORKER_LOCAL_FAULT_RUNS, (runs) =>
-    fault !== undefined
-      ? runs + 1
-      : COMMIT_SUCCEEDED.has(output.type)
-        ? 0
-        : runs,
+  const row = fault?.localFaultSubject;
+  return Ref.updateAndGet(globals.COMMIT_WORKER_LOCAL_FAULT_RUNS, (count) =>
+    fault === undefined
+      ? COMMIT_SUCCEEDED.has(output.type)
+        ? { runs: 0, row: undefined }
+        : count
+      : { runs: count.runs + 1, row: row ?? count.row },
   ).pipe(
-    Effect.flatMap((runs) =>
-      fault !== undefined && runs >= limit
+    Effect.flatMap((count) =>
+      fault !== undefined && count.runs >= limit
         ? Effect.sync(() =>
-            signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
-              source: COMMIT_WORKER_SOURCE,
-              reason: COMMIT_WORKER_VERIFIER_UNAVAILABLE,
-              detail: `${runs} commit attempts since the last successful commit failed on the Ed25519 verifier: ${fault.error}`,
-            }),
+            signalTransientExhausted(
+              globals.TRANSIENT_EXHAUSTION,
+              row === undefined
+                ? {
+                    source: COMMIT_WORKER_SOURCE,
+                    reason: COMMIT_WORKER_VERIFIER_UNAVAILABLE,
+                    detail:
+                      count.row === undefined
+                        ? `${count.runs} commit attempts since the last successful commit failed on the Ed25519 verifier: ${fault.error}`
+                        : `${count.runs} commit attempts since the last successful commit failed on a local fault (withdrawal ${count.row} could not be classified), the last on the Ed25519 verifier: ${fault.error}`,
+                  }
+                : {
+                    source: COMMIT_WORKER_SOURCE,
+                    reason: COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE,
+                    detail: `${count.runs} commit attempts since the last successful commit failed on a local fault, the last on withdrawal ${row}, which this node cannot classify (${UNCLASSIFIABLE_CASE_TEXT[fault.localFaultCase]}): ${fault.error}`,
+                  },
+            ),
           )
         : Effect.void,
     ),

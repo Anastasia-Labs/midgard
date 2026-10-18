@@ -1,6 +1,3 @@
-import {} from "node:path";
-
-import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
@@ -14,7 +11,6 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-  ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
 import { withExactRequestReuse } from "@al-ft/midgard-test-support/evaluator-reuse";
 import {
@@ -33,7 +29,6 @@ import {
 import { expect } from "vitest";
 
 import {
-  encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   parseOutRef,
   phasMembershipRewardAddress,
@@ -57,7 +52,10 @@ import {
   readBlueprint,
   realBlueprintPath,
 } from "./blueprints.js";
-import { buildCatalogueDeploymentInfo, categoryIdSchema } from "./catalogue.js";
+import {
+  buildCatalogueDeploymentInfo,
+  encodeCatalogueMembershipRedeemer,
+} from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import {
   alignEmulatorToWholeSecond,
@@ -79,24 +77,6 @@ import {
   publishMinAdaYieldReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./reference-scripts.js";
-
-const encodeCatalogueMembershipRedeemer = ({
-  root,
-  categoryId: id,
-  categoryScriptHash,
-  membershipProofCbor,
-}: {
-  readonly root: string;
-  readonly categoryId: string;
-  readonly categoryScriptHash: string;
-  readonly membershipProofCbor: string;
-}): string =>
-  encodePhasMembershipProofRedeemer({
-    root,
-    keyCbor: Data.to(id, asLucidSchema(categoryIdSchema)),
-    valueCbor: Data.to(categoryScriptHash, asLucidSchema(ScriptHashSchema)),
-    membershipProofCbor,
-  });
 
 /**
  * Init transaction for a fabricated family (Q39/Q40): mints the computation
@@ -360,6 +340,7 @@ export const makeFaultProofEmulatorHarness = async ({
   emulatorTimeMs,
   registerAdditionalRewardAccounts,
   lucidOptions,
+  referenceScriptAuthTimelockMs: authMs,
 }: {
   readonly contractOptions?: Parameters<
     typeof buildMinimalFaultProofContracts
@@ -371,6 +352,8 @@ export const makeFaultProofEmulatorHarness = async ({
   };
   readonly emulatorTimeMs?: number;
   readonly lucidOptions?: Parameters<typeof Lucid>[2];
+  /** The reference-script auth policy's window; the SDK's by default. */
+  readonly referenceScriptAuthTimelockMs?: number;
   readonly registerAdditionalRewardAccounts?: (
     funderLucid: Awaited<ReturnType<typeof Lucid>>,
     realBlueprint: Blueprint,
@@ -415,7 +398,12 @@ export const makeFaultProofEmulatorHarness = async ({
     await registerAdditionalRewardAccounts(funderLucid, realBlueprint);
   }
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(funderLucid, publisher, emulator);
+    await createReferenceScriptPublisher(
+      funderLucid,
+      publisher,
+      emulator,
+      authMs,
+    );
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,

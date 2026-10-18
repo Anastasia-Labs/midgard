@@ -6,7 +6,6 @@ use midgard/bounded_item_v1
 use midgard/cek_blob_frontier_v1
 use midgard/cek_data_bytes_v1
 use midgard/cek_data_integer_v1
-use midgard/cek_proof_v1
 use midgard/cek_source_blob_v1
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/ledger_output_commitment_v1
@@ -33,7 +32,6 @@ test canonical_v1_version_tuple_matches_typescript_profile() {
     validation_resolution_v1.resolution_version == 1,
     validation_resolution_v1.prepared_resolution_version == 1,
     validation_resolution_v1.winning_resolution_version == 1,
-    cek_proof_v1.program_envelope_version == 1,
     bounded_blob_v1.version == 1,
     bounded_collection_v1.version == 1,
     bounded_item_v1.version == 1,

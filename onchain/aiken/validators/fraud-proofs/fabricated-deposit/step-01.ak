@@ -11,7 +11,8 @@
 //// `transition_trace.verify_root_membership_with_bytes` under
 //// `DepositsRootDomain`, the same call `transition_trace/proof`'s
 //// `verify_source_membership` makes for a committed deposit and the same domain
-//// `validators/user-events/deposit.ak` keys on the settlement side.
+//// `user_events/history.history` keys on the settlement side (`AbsorbDeposit`
+//// in `midgard/event_history/retirement`).
 
 use aiken/builtin
 use aiken/crypto.{ScriptHash}

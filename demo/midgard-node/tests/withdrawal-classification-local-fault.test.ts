@@ -6,13 +6,17 @@ import {
   isReplayLocalFault,
   ledgerEntriesRoot,
   type ReplayedLedgerRefusal,
-  withdrawalClassificationInputBounded,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  CANONICAL_MAX_DEPTHS,
+  deepPlutusDataCbor,
+  plutusDataNodeCount,
+} from "@al-ft/midgard-test-support/deep-plutus-data";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as LedgerUtils from "../src/database/utils/ledger.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
@@ -39,8 +43,9 @@ import {
  * The withdrawal classifier failing at runtime (as when its signature
  * library faults) on input it handles: own-block production holds the
  * build, foreign replay holds the block as a local fault, and neither
- * reaches a verdict until the fault clears. Input the classifier cannot
- * read keeps the block's own verdict.
+ * reaches a verdict until the fault clears, however deep the info nests.
+ * An info that is malformed, or whose fields do not read, keeps the
+ * block's own verdict.
  */
 
 const base = vi.hoisted(() => ({
@@ -122,9 +127,8 @@ const withdrawalRows = () =>
     }),
   );
 
-/** `order`'s event info with its L1 datum an inline datum nested `depth`
- * lists deep. */
-const deepDatumInfo = (row: WithdrawalsDB.Entry, depth: number): Buffer => {
+/** `order`'s event info with its L1 datum the inline datum `datum`. */
+const withDatum = (row: WithdrawalsDB.Entry, datum: string): Buffer => {
   const marker = "c0ffee".repeat(4);
   const info = Data.from(
     hex(row[WithdrawalsDB.Columns.RAW_EVENT_INFO]),
@@ -140,13 +144,33 @@ const deepDatumInfo = (row: WithdrawalsDB.Entry, depth: number): Buffer => {
   const placeholder = `4c${marker}`;
   if (encoded.split(placeholder).length !== 2)
     throw new Error("the datum placeholder is not unique");
-  return Buffer.from(
-    encoded.replace(placeholder, `${"81".repeat(depth)}00`),
-    "hex",
-  );
+  return Buffer.from(encoded.replace(placeholder, datum), "hex");
 };
 
+/** `row` with its L1 datum `depth` containers of `shape` deep. */
+const deepRow = (
+  row: WithdrawalsDB.Entry,
+  depth: number,
+  shape: "list" | "constr" = "list",
+): WithdrawalsDB.Entry => ({
+  ...row,
+  raw_event_info: withDatum(row, deepPlutusDataCbor({ shape, depth })),
+});
+
+const input = (row: WithdrawalsDB.Entry) => ({
+  l2Owner: hex(row[WithdrawalsDB.Columns.L2_OWNER]),
+  l2ValueCbor: hex(row[WithdrawalsDB.Columns.L2_VALUE]),
+  eventInfoCbor: hex(row[WithdrawalsDB.Columns.RAW_EVENT_INFO]),
+  ledgerOutRef: U[LedgerUtils.Columns.OUTREF],
+  ledgerOutput: U[LedgerUtils.Columns.OUTPUT],
+});
+
 describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
+  // A failed assertion leaves no fault on for the next row.
+  afterEach(() => {
+    fault.on = false;
+  });
+
   it("holds own-block production without classifying, then builds once it clears", async () => {
     const orders = [await order(0x01)];
     const root = await baseRoot();
@@ -308,35 +332,123 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     });
   });
 
-  it("never names a fault on a datum nested past what the Data parser reads", async () => {
+  it("classifies a withdrawal whose datum is nested 20,000 deep, and names a fault on it only when the classifier throws", async () => {
     const honest = await order(0x05);
-    const { root, payload } = await honestBlock([honest]);
-    const deep: WithdrawalsDB.Entry = {
-      ...honest,
-      raw_event_info: deepDatumInfo(honest, 20_000),
-    };
-    const input = (row: WithdrawalsDB.Entry) => ({
-      l2Owner: hex(row[WithdrawalsDB.Columns.L2_OWNER]),
-      l2ValueCbor: hex(row[WithdrawalsDB.Columns.L2_VALUE]),
-      eventInfoCbor: hex(row[WithdrawalsDB.Columns.RAW_EVENT_INFO]),
-      ledgerOutRef: U[LedgerUtils.Columns.OUTREF],
-      ledgerOutput: U[LedgerUtils.Columns.OUTPUT],
-    });
-    expect(withdrawalClassificationInputBounded(input(honest))).toBe(true);
-    expect(withdrawalClassificationInputBounded(input(deep))).toBe(false);
+    const deep = deepRow(honest, 20_000);
 
-    // The classifier's own typed refusal of the input.
+    // The Data parser reads the whole info: the classifier's verdict is on
+    // the signature, which no longer covers the body.
+    const classified = await Effect.runPromise(
+      Effect.either(SDK.classifyWithdrawalFromLedger(input(deep))),
+    );
+    expect(classified).toMatchObject({
+      _tag: "Right",
+      right: { validity: "IncorrectWithdrawalSignature" },
+    });
+
+    // A block whose verdict on the row is another refuses as invalid.
+    const { root, payload } = await honestBlock([honest]);
     expect((await replay(payload, [deep], root)).result).toMatchObject({
       _tag: "Left",
-      left: { _tag: "WithdrawalValidationError" },
+      left: {
+        kind: "invalid",
+        detail: "a withdrawal's verdict differs from its replay",
+      },
     });
 
-    // A throw on such input is not taken for a local fault.
+    // Own-block production and foreign replay reach the same verdict.
+    const own = await honestBlock([deep]);
+    expect(
+      own.produced.includedWithdrawalEntries.map(
+        (row) => row[WithdrawalsDB.Columns.VALIDITY],
+      ),
+    ).toEqual(["IncorrectWithdrawalSignature"]);
+    const imported = await replay(own.payload, [deep], own.root);
+    expect(imported.result._tag).toBe("Right");
+    expect(imported.memberships.map(({ validity }) => validity)).toEqual([
+      "IncorrectWithdrawalSignature",
+    ]);
+
+    // A throw on an info that reads is this node's own fault.
     fault.on = true;
     expect((await replay(payload, [deep], root)).result).toMatchObject({
       _tag: "Left",
-      left: { reason: "invalid" },
+      left: { reason: "local_fault" },
     });
     fault.on = false;
   });
+
+  it("holds a block over an info of 1,025 nodes as a local fault, then imports it once the fault clears", async () => {
+    const honest = await order(0x06);
+    const shallow = plutusDataNodeCount(hex(withDatum(honest, "00")));
+    const row = deepRow(honest, 1_025 - shallow);
+    expect(
+      plutusDataNodeCount(hex(row[WithdrawalsDB.Columns.RAW_EVENT_INFO])),
+    ).toBe(1_025);
+    const { root, payload } = await honestBlock([row]);
+
+    fault.on = true;
+    const held = await run(Effect.either(build([row], root)));
+    expect(held._tag === "Left" && heldBuildStage(held.left)).toBe(
+      WITHDRAWAL_CLASSIFICATION_STAGE,
+    );
+    expect((await replay(payload, [row], root)).result).toMatchObject({
+      _tag: "Left",
+      left: { reason: "local_fault" },
+    });
+
+    fault.on = false;
+    const imported = await replay(payload, [row], root);
+    expect(imported.result._tag).toBe("Right");
+    expect(imported.memberships.map(({ validity }) => validity)).toEqual([
+      "IncorrectWithdrawalSignature",
+    ]);
+  });
+
+  it.each([
+    { name: "a malformed info", info: (cbor: string) => cbor.slice(0, -2) },
+    {
+      name: "an info with a trailing byte",
+      info: (cbor: string) => cbor + "00",
+    },
+    { name: "an info whose fields do not read", info: () => "d87980" },
+  ])(
+    "keeps the input's verdict on $name, whether or not the classifier throws",
+    async ({ info }) => {
+      const honest = await order(0x07);
+      const { root, payload } = await honestBlock([honest]);
+      const row: WithdrawalsDB.Entry = {
+        ...honest,
+        raw_event_info: Buffer.from(
+          info(hex(honest[WithdrawalsDB.Columns.RAW_EVENT_INFO])),
+          "hex",
+        ),
+      };
+      expect((await replay(payload, [row], root)).result).toMatchObject({
+        _tag: "Left",
+        left: { _tag: "WithdrawalValidationError" },
+      });
+      fault.on = true;
+      expect((await replay(payload, [row], root)).result).toMatchObject({
+        _tag: "Left",
+        left: { reason: "invalid" },
+      });
+      fault.on = false;
+    },
+  );
+
+  it.each(CANONICAL_MAX_DEPTHS)(
+    "classifies an info whose $shape datum nests $depth deep without throwing",
+    async ({ shape, depth }) => {
+      const row = deepRow(await order(0x08), depth, shape);
+      expect(
+        await Effect.runPromise(
+          Effect.either(SDK.classifyWithdrawalFromLedger(input(row))),
+        ),
+      ).toMatchObject({
+        _tag: "Right",
+        right: { validity: "IncorrectWithdrawalSignature" },
+      });
+    },
+  );
 });

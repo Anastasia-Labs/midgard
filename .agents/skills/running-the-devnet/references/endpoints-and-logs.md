@@ -261,6 +261,44 @@ Commitment and liveness (raised by fibers, cleared by them):
   hash. Wait.
 - `commit_worker_failed`: the commit worker's last run failed. Read the
   commit worker's error in the log.
+- `commit_worker_verifier_unavailable`: the commit worker's runs since the
+  last successful commit kept failing on local faults, up to the local-fault
+  run limit, the last on this node's Ed25519 verifier. A local fault: the
+  node exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
+- `commit_worker_withdrawal_unclassifiable`: the commit worker's runs since
+  the last successful commit kept failing on local faults, up to the
+  local-fault run limit, the last on a due withdrawal this node cannot
+  classify. The runs count together whichever withdrawal row each failed on,
+  and only a successful commit resets the count. A local fault: the node
+  exits non-zero for its supervisor to restart it. The detail names the last
+  row by its event id and says which case it is:
+  - the row or the ledger output it names does not decode (the row's event
+    info, l2_value or l2_outref, or that ledger output). If it repeats after
+    a restart, compare that `withdrawal_utxos` row with the withdrawal event
+    on L1.
+  - the row decodes, and the classifier failed on this node. If it repeats
+    after a restart, read the detail and the node's logs.
+- `commit_build_held:<stage>`: the last block build stopped at commit stage
+  `<stage>` (its name in lower case, words joined by `_`, for example
+  `withdrawal_classification`), because the stage failed and the failure is
+  not one normal transaction's own: a failure of the node, or one that did
+  not happen again when the stage ran the same work again. That build
+  commits nothing and rejects no transaction for it; a later build tries
+  again. It clears when a block commits or nothing is left to build. Read
+  the commit worker's error in the log (the node reports it as
+  `commit_worker_failed`), which includes
+  `Holding the block build: <stage> failed` and carries the stage's failure
+  as its cause, and any warning before it that reads
+  `<stage> failed once on a normal transaction and passed when run again`.
+- `commit_stage_breaker:<stage>` (a detail): in one build, commit stage
+  `<stage>` failed on more than 4 normal transactions of their own. The
+  first 4 were rejected; the rest stay pending, with the transactions in the
+  block that depend on them, for a later build. The node still commits
+  blocks. It clears when a block commits from a build in which no stage
+  reached the limit. Read the warning that reads
+  `<stage> would reject more than 4 normal transactions in one build`, and
+  the rejected transactions in `tx_rejections`.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the
@@ -501,6 +539,13 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   before the earlier slot the detail names, where it names two, or before
   the protocol-init block; `midgard-l1-follower reset --to-origin`), or
   resync the node, then restart.
+- `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
+  a foreign block failed in this node's own computation (hashing, the payload
+  roots, a library the replay runs), or its Ed25519 verifier could not
+  answer. Never attributed to the block. Retried on the driver's backoff;
+  after a fixed number of runs with no progress past that block the node
+  exits non-zero for its supervisor to restart it. If it repeats after a
+  restart, check the node's libsodium install and read the detail.
 - `landed_block_awaiting_da`, `landed_block_da_refetch_pending`: a foreign
   block's DA payload is not available yet, or a retained one failed to
   verify and is being fetched again. Wait; check the DA committee if it

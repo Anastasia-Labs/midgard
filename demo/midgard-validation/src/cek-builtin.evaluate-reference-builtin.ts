@@ -1,6 +1,6 @@
 import {
   hashMidgardCekBlsExpressionNode,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import { DataB } from "@harmoniclabs/plutus-data";
 import {
@@ -345,7 +345,7 @@ export const evaluateMidgardCekDirectBuiltin = (
 ): MidgardCekDirectBuiltinEvaluation => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
     BigInt(arguments_.length) !==
       (tag > BigInt(Number.MAX_SAFE_INTEGER)
         ? -1n

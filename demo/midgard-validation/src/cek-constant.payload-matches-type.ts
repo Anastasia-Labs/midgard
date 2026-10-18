@@ -10,12 +10,88 @@ import { type ConstType, ConstTyTag } from "@harmoniclabs/uplc";
 import {
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   type MidgardCekConstantType,
+  MidgardCekConstantTypeTags as Tags,
   type MidgardCekConstantWitness,
-  parseMidgardCekConstantType,
   sameBytes,
 } from "./cek-constant.semantic-data.js";
+import {
+  isMidgardCekCanonicalValueData,
+  midgardCekValueEntryCount,
+} from "./cek-constant.value.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
+
+type ParsedTags = {
+  readonly type: MidgardCekConstantType;
+  readonly next: number;
+};
+
+/** Parses Midgard's committed type tags, which use Cardano's numbering. */
+const parseTagsAt = (tags: readonly Data[], offset: number): ParsedTags => {
+  const item = tags[offset];
+  if (!(item instanceof DataI) || item.int < 0n || item.int > 13n) {
+    throw new Error("V1 constant type has an unknown tag");
+  }
+  const tag = Number(item.int);
+  const leaf = (type: MidgardCekConstantType): ParsedTags => ({
+    type,
+    next: offset + 1,
+  });
+  switch (tag) {
+    case Tags.Integer:
+      return leaf({ kind: "integer" });
+    case Tags.ByteString:
+      return leaf({ kind: "bytes" });
+    case Tags.String:
+      return leaf({ kind: "string" });
+    case Tags.Unit:
+      return leaf({ kind: "unit" });
+    case Tags.Boolean:
+      return leaf({ kind: "boolean" });
+    case Tags.List:
+    case Tags.Array: {
+      const element = parseTagsAt(tags, offset + 1);
+      return {
+        type: {
+          kind: tag === Tags.List ? "list" : "array",
+          element: element.type,
+        },
+        next: element.next,
+      };
+    }
+    case Tags.Pair: {
+      const first = parseTagsAt(tags, offset + 1);
+      const second = parseTagsAt(tags, first.next);
+      return {
+        type: { kind: "pair", first: first.type, second: second.type },
+        next: second.next,
+      };
+    }
+    case Tags.Data:
+      return leaf({ kind: "data" });
+    case Tags.BlsG1:
+      return leaf({ kind: "blsG1" });
+    case Tags.BlsG2:
+      return leaf({ kind: "blsG2" });
+    case Tags.BlsMillerLoopResult:
+      return leaf({ kind: "blsMillerLoopResult" });
+    case Tags.Value:
+      return leaf({ kind: "value" });
+    default:
+      throw new Error("V1 constant type has an unknown tag");
+  }
+};
+
+const parseTypeTags = (typeData: Data): MidgardCekConstantType => {
+  if (!(typeData instanceof DataList)) {
+    throw new Error("V1 constant type is not a tag list");
+  }
+  const parsed = parseTagsAt(typeData.list, 0);
+  if (parsed.next !== typeData.list.length) {
+    throw new Error("V1 constant type has trailing tags");
+  }
+  return parsed.type;
+};
 
 export const decodeMidgardCekConstantTypeCbor = (
   typeCbor: Uint8Array,
@@ -30,19 +106,27 @@ export const decodeMidgardCekConstantTypeCbor = (
   ) {
     throw new Error("V1 constant type is not canonical");
   }
-  return parseMidgardCekConstantType(
-    typeData.list.map((tag): ConstTyTag => {
-      if (
-        !(tag instanceof DataI) ||
-        tag.int < 0n ||
-        tag.int > 11n ||
-        tag.int === 7n
-      ) {
-        throw new Error("V1 constant type has an unknown tag");
-      }
-      return Number(tag.int) as ConstTyTag;
-    }) as ConstType,
-  );
+  return parseTypeTags(typeData);
+};
+
+/**
+ * The number of type tags Cardano's flat spends on a constant type, where a
+ * list, an array and a pair each carry their type-application tags.
+ */
+export const midgardCekConstantTypeFlatSize = (
+  type: MidgardCekConstantType,
+): number => {
+  if (type.kind === "list" || type.kind === "array") {
+    return 2 + midgardCekConstantTypeFlatSize(type.element);
+  }
+  if (type.kind === "pair") {
+    return (
+      3 +
+      midgardCekConstantTypeFlatSize(type.first) +
+      midgardCekConstantTypeFlatSize(type.second)
+    );
+  }
+  return 1;
 };
 
 const payloadMatchesType = (
@@ -101,7 +185,26 @@ const payloadMatchesType = (
       return payload instanceof DataB && payload.bytes.length === 96;
     case "blsMillerLoopResult":
       return false;
+    case "array":
+      return (
+        payload instanceof DataList &&
+        payload.list.every((item) => payloadMatchesType(type.element, item))
+      );
+    case "value":
+      return isMidgardCekCanonicalValueData(payload);
   }
+};
+
+/** Memory of the PV 11 constant kinds: an array's length, a Value's entries. */
+export const midgardCekPv11ConstantMemorySize = (
+  type: MidgardCekConstantType & { readonly kind: "array" | "value" },
+  payload: Data,
+): bigint => {
+  if (type.kind === "value") return midgardCekValueEntryCount(payload);
+  if (!(payload instanceof DataList)) {
+    throw new Error("V1 array payload is not DataList");
+  }
+  return BigInt(payload.list.length);
 };
 
 /**
@@ -131,21 +234,7 @@ export const decodeMidgardCekConstantWitness = (
   ) {
     throw new Error("V1 constant witness is not canonical Data CBOR");
   }
-  if (!(typeData instanceof DataList)) {
-    throw new Error("V1 constant type is not a tag list");
-  }
-  const tags = typeData.list.map((tag): ConstTyTag => {
-    if (
-      !(tag instanceof DataI) ||
-      tag.int < 0n ||
-      tag.int > 11n ||
-      tag.int === 7n
-    ) {
-      throw new Error("V1 constant type has an unknown tag");
-    }
-    return Number(tag.int) as ConstTyTag;
-  }) as ConstType;
-  const type = parseMidgardCekConstantType(tags);
+  const type = parseTypeTags(typeData);
   if (!payloadMatchesType(type, payload)) {
     throw new Error("V1 constant payload does not match its type");
   }
@@ -182,7 +271,29 @@ export const midgardConstantTypeToTags = (
       return [ConstTyTag.bls12_381_G2_element];
     case "blsMillerLoopResult":
       return [ConstTyTag.bls12_381_MlResult];
+    case "array":
+    case "value":
+      throw new Error("Harmonic numbers Value and array types differently");
   }
+};
+
+/** Midgard's committed type tags, in Cardano's numbering. */
+const midgardCekConstantTypeTags = (type: MidgardCekConstantType): number[] => {
+  if (type.kind === "list") {
+    return [Tags.List, ...midgardCekConstantTypeTags(type.element)];
+  }
+  if (type.kind === "array") {
+    return [Tags.Array, ...midgardCekConstantTypeTags(type.element)];
+  }
+  if (type.kind === "pair") {
+    return [
+      Tags.Pair,
+      ...midgardCekConstantTypeTags(type.first),
+      ...midgardCekConstantTypeTags(type.second),
+    ];
+  }
+  if (type.kind === "value") return [Tags.Value];
+  return midgardConstantTypeToTags(type);
 };
 
 export const encodeMidgardCekConstantTypeCbor = (
@@ -190,6 +301,6 @@ export const encodeMidgardCekConstantTypeCbor = (
 ): Buffer =>
   encodeMidgardCekPlutusData(
     new DataList(
-      midgardConstantTypeToTags(type).map((tag) => new DataI(BigInt(tag))),
+      midgardCekConstantTypeTags(type).map((tag) => new DataI(BigInt(tag))),
     ),
   );

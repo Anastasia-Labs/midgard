@@ -96,6 +96,16 @@ export const outputWithNativeScript = (script: MidgardNativeScript): Buffer =>
     }),
   );
 
+/** A canonical output carrying `scriptBytes` as a PlutusV3 reference script. */
+export const outputWithPlutusScript = (scriptBytes: Buffer): Buffer =>
+  Buffer.from(
+    encodeMidgardTxOutput({
+      address: subjectAddress,
+      value: subjectValue,
+      script_ref: { language: "PlutusV3", scriptBytes },
+    }),
+  );
+
 /**
  * A canonical output whose reference script is `[0, payload]` for arbitrary
  * payload bytes: encoded as PlutusV3 and re-tagged to the native language, so
@@ -186,8 +196,11 @@ export const registeredContracts = async (harness: Harness) => {
   return { validators, contracts, catalogue: harness.catalogue, category };
 };
 
-export const makeOutputReferenceHarness = async () => {
+export const makeOutputReferenceHarness = async ({
+  referenceScriptAuthTimelockMs,
+}: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
+    referenceScriptAuthTimelockMs,
     contractOptions: {
       realOutputReferenceScriptDecoding: true,
       alwaysFraudProofCatalogue: true,

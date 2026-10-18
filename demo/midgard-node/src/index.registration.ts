@@ -221,6 +221,7 @@ const availabilityChallenge = program
   );
 
 for (const action of [
+  "prepare",
   "open",
   "respond",
   "settle",
@@ -234,7 +235,9 @@ for (const action of [
     .description(
       action === "timeout"
         ? "Advance expired tranche settlement, unavailable timeout and locked descendant removal"
-        : `Run availability ${action}`,
+        : action === "prepare"
+          ? "Prepare a DA challenge opening input from any wallet"
+          : `Run availability ${action}`,
     )
     .requiredOption(
       "--manifest <path>",

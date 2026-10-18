@@ -8,10 +8,7 @@ import {
   type ValidationMachineWorkWitness,
 } from "./validation-machine/index.js";
 import { resolverPhaseIndex } from "./validation-machine-data.redeemer-item-control-data.js";
-import {
-  buildCekRouteMaterial,
-  validationOneStepWitnessData,
-} from "./validation-machine-data.validate-cek-route-material.js";
+import { validationOneStepWitnessData } from "./validation-machine-data.validate-cek-route-material.js";
 import { validationAuxiliaryWitnessData } from "./validation-machine-data.validation-auxiliary-witness-data.js";
 import {
   record,
@@ -102,7 +99,6 @@ export const buildValidationOneStepArgument = ({
       `validation transition ${stateIndex.toString()} exceeds the strict L1 preimage envelope`,
     );
   }
-  const cekRouteMaterial = buildCekRouteMaterial({ trace, witness });
   const resolverIndex = resolverPhaseIndex(pre.phase);
   const semanticResolverIndex = validationSemanticResolverIndex(witness);
   let cekContextSuccessorWorkWitnessCbor: Buffer | undefined;
@@ -153,7 +149,6 @@ export const buildValidationOneStepArgument = ({
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,
-    ...(cekRouteMaterial === undefined ? {} : { cekRouteMaterial }),
     ...(cekContextSuccessorWorkWitnessCbor === undefined
       ? {}
       : { cekContextSuccessorWorkWitnessCbor }),

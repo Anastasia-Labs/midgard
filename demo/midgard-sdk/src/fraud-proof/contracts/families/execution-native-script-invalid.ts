@@ -144,7 +144,6 @@ export const buildExecutionNativeScriptInvalidChain = ({
       context,
       EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedInlineSource,
       [
-        step03.spendingScriptHash,
         acceptedReferenceSource.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,

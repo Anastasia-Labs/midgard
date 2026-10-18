@@ -89,9 +89,18 @@ export const smallCanonicalShape = (fee = 1_003n) =>
     fee,
   );
 
+/** A PlutusV3 item whose script, the flat program 1.1.0 `(con unit ())`, decodes. */
 export const plutusShape = (fee = 1_004n) =>
   shapeOf(
-    "[3, h'01020304']: non-native language (Inline)",
+    "[3, h'450101004981']: decodable PlutusV3 program (Inline)",
+    [Buffer.from("820346450101004981", "hex")],
+    fee,
+  );
+
+/** A PlutusV3 item whose bytes Cardano refuses to decode (class 1). */
+export const undecodablePlutusShape = (fee = 1_009n) =>
+  shapeOf(
+    "[3, h'01020304']: undecodable PlutusV3 bytes (Inline)",
     [decodingPlutusItem()],
     fee,
   );

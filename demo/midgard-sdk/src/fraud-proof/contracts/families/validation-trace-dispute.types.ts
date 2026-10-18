@@ -19,9 +19,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptDecode: AuthenticatedValidator;
   readonly validationTraceDispute: FraudProofChain & {
-    readonly cekProgramMaterial: SpendingValidator;
-    readonly cekMaterialTraversal: SpendingValidator;
     readonly cekCoreStages: CekCoreStages;
     readonly cekContextStages: CekContextStages;
     readonly cekContextItemStages: SharedRedeemerItemStages;
@@ -127,12 +126,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly ledgerOutputDescriptorValueSummary: WithdrawalValidator;
       readonly phaseANativeItemNative: WithdrawalValidator;
       readonly phaseANativeItemForeign: WithdrawalValidator;
-      readonly cekMaterialProgramTask: WithdrawalValidator;
-      readonly cekMaterialDataTask: WithdrawalValidator;
       readonly cekSelectionAuthenticate: WithdrawalValidator;
       readonly cekSelectionSuccessor: WithdrawalValidator;
-      readonly cekSelectionMaterialProgram: WithdrawalValidator;
-      readonly cekSelectionMaterialData: WithdrawalValidator;
       readonly valueAndMintAssetFold: WithdrawalValidator;
     };
     readonly semanticResolvers: readonly [

@@ -36,7 +36,8 @@ use midgard/validation_machine_tests/fixture_types.{
   CekKindFixtureV1, ValueAndMintKindFixtureV1,
 }
 use midgard/validation_machine_tests/fixtures_cek.{
-  cek_active_core_step_fixture, maximum_program_envelope_selection_fixture,
+  cek_active_core_step_fixture, plutus_selection_fixture,
+  plutus_selection_record,
 }
 use midgard/validation_machine_tests/fixtures_ledger.{
   value_output_descriptor_fixture,
@@ -46,7 +47,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_cek_context_control_fixture, empty_native_control_fixture,
   empty_v1_transaction, forced_pending_state, inline_field_door,
   native_scripts_step_fixture, one_step_evidence, script_discovery_step_fixture,
-  singleton_root, v1_program_envelope,
+  singleton_root, v1_plutus_script,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   stage_routes_agree,
@@ -143,7 +144,7 @@ pub fn stage_twelve_finish_fixture(
   let tx = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
@@ -332,7 +333,7 @@ pub fn cek_finish_kind_fixture() -> CekKindFixtureV1 {
 
 /// Kind 1: a PlutusV3 execution selection.
 pub fn cek_execution_selection_kind_fixture() -> CekKindFixtureV1 {
-  let f = maximum_program_envelope_selection_fixture()
+  let f = plutus_selection_fixture(0)
   CekKindFixtureV1 { kind: 1, pre: f.pre, evidence: f.evidence }
 }
 
@@ -408,7 +409,12 @@ pub fn cek_kind_route(
   if kind == 0 {
     vm_cek.verify_cek_finish_semantics_v1(pre, witness)
   } else if kind == 1 {
-    vm_cek.verify_cek_execution_selection_semantics_v1(pre, witness, auxiliary)
+    vm_cek.verify_cek_execution_selection_semantics_v1(
+      pre,
+      witness,
+      auxiliary,
+      Some(plutus_selection_record(0)),
+    )
   } else if kind == 2 {
     vm_cek.verify_cek_context_step_semantics_v1(
       pre,
@@ -423,6 +429,8 @@ pub fn cek_kind_route(
   }
 }
 
+/// The aggregate cek check, given the selection fixture's decode record (the
+/// kind-1 route reads the same one).
 pub fn cek_aggregate_route(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: vm_machine_types.ValidationOneStepWitnessV1,
@@ -436,6 +444,7 @@ pub fn cek_aggregate_route(
     },
     inline_field_door(),
     test_l1_slot_config,
+    Some(plutus_selection_record(0)),
   )
 }
 
@@ -1127,7 +1136,7 @@ pub fn verify_bounded_context_parity(
         bounded_context.seed_hash(context, cek.execution_cursor, auxiliary),
         context.execution_cpu_limit,
         context.execution_memory_limit,
-        cek.program_envelope_hash,
+        cek.program_script_hash,
         context.purpose_kind,
         context.purpose_index,
       )
@@ -1160,7 +1169,7 @@ pub fn verify_bounded_context_parity(
         #"",
         0,
         0,
-        next.program_envelope_hash,
+        next.script_hash,
         -1,
         -1,
       )

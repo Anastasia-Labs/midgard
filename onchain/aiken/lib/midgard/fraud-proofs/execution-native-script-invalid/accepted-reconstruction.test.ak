@@ -58,38 +58,140 @@ test purpose_prefix_binds_the_absolute_execution_coordinate() {
   }
 }
 
-test source_discovery_prefers_inline_before_reference() {
-  let selected = reconstruction.append_purpose_v1(
+fn selected_for(script_hash: ByteArray) -> reconstruction.StateV1 {
+  reconstruction.append_purpose_v1(
     reconstruction.initial_v1(
       rule.BoundExecutionV1 { ..bound(), execution_index: 0 },
       h28,
     ),
     reconstruction.phase_spend,
     0,
-    h28,
+    script_hash,
     #"aa",
     #"00",
     h28,
   )
-  let inline = reconstruction.append_source_v1(
-    selected,
-    reconstruction.SelectedSourceV1 {
-      source_index: 0,
-      origin_kind: 0,
-      source_key: #"00",
-      language_tag: 0,
-      script_hash: h28,
-      total_length: 4,
-      item_commitment: h32,
-    },
+}
+
+fn source(
+  source_index: Int,
+  origin_kind: Int,
+  source_key: ByteArray,
+  script_hash: ByteArray,
+) -> reconstruction.SelectedSourceV1 {
+  reconstruction.SelectedSourceV1 {
+    source_index,
+    origin_kind,
+    source_key,
+    language_tag: 0,
+    script_hash,
+    total_length: 4,
+    item_commitment: h32,
+  }
+}
+
+test source_lookup_selects_a_resolved_source_before_an_inline_one() {
+  let inline = reconstruction.append_inline_source_v1(
+    selected_for(h28),
+    source(0, 0, #"00", h28),
     h28,
   )
-  let complete = reconstruction.finish_inline_sources_v1(inline, h28)
+  let resolved = reconstruction.scan_resolved_output_v1(
+    reconstruction.finish_inline_sources_v1(inline, h28),
+    #"01",
+    Some(source(1, 1, #"01", h28)),
+    h28,
+  )
+  let selected = reconstruction.finish_resolved_outputs_v1(resolved, 1)
   and {
-    complete.phase == reconstruction.phase_complete,
-    complete.selected_source != None,
-    reconstruction.state_is_authentic_v1(complete),
+    inline.selected_source == Some(source(0, 0, #"00", h28)),
+    selected.origin_kind == 1,
+    selected.source_index == 1,
   }
+}
+
+test source_lookup_keeps_an_inline_source_when_no_resolved_output_matches() {
+  let inline = reconstruction.append_inline_source_v1(
+    reconstruction.append_inline_source_v1(
+      selected_for(h28),
+      source(0, 0, #"00", other_h28),
+      h28,
+    ),
+    source(1, 0, #"01", h28),
+    h28,
+  )
+  let resolved = reconstruction.scan_resolved_output_v1(
+    reconstruction.finish_inline_sources_v1(inline, h28),
+    #"01",
+    Some(source(2, 1, #"01", other_h28)),
+    h28,
+  )
+  let selected = reconstruction.finish_resolved_outputs_v1(resolved, 1)
+  and {
+    selected.origin_kind == 0,
+    selected.source_index == 1,
+  }
+}
+
+test source_lookup_keeps_the_first_resolved_match() {
+  let references = reconstruction.finish_inline_sources_v1(
+    selected_for(h28),
+    h28,
+  )
+  let first = reconstruction.scan_resolved_output_v1(
+    references,
+    #"01",
+    Some(source(0, 1, #"01", h28)),
+    h28,
+  )
+  let second = reconstruction.scan_resolved_output_v1(
+    first,
+    #"02",
+    Some(source(1, 1, #"02", h28)),
+    h28,
+  )
+  reconstruction.finish_resolved_outputs_v1(second, 2).source_key == #"01"
+}
+
+test resolved_walk_refuses_a_non_ascending_key() fail {
+  let references = reconstruction.finish_inline_sources_v1(
+    selected_for(h28),
+    h28,
+  )
+  let first = reconstruction.scan_resolved_output_v1(
+    references,
+    #"02",
+    None,
+    h28,
+  )
+  reconstruction.scan_resolved_output_v1(first, #"02", None, h28).field_cursor == 2
+}
+
+test resolved_walk_refuses_to_finish_before_every_output() fail {
+  let references = reconstruction.finish_inline_sources_v1(
+    selected_for(h28),
+    h28,
+  )
+  let first = reconstruction.scan_resolved_output_v1(
+    references,
+    #"01",
+    Some(source(0, 1, #"01", h28)),
+    h28,
+  )
+  reconstruction.finish_resolved_outputs_v1(first, 2).origin_kind == 1
+}
+
+test resolved_walk_refuses_a_source_keyed_off_its_output() fail {
+  let references = reconstruction.finish_inline_sources_v1(
+    selected_for(h28),
+    h28,
+  )
+  reconstruction.scan_resolved_output_v1(
+    references,
+    #"01",
+    Some(source(0, 1, #"02", h28)),
+    h28,
+  ).source_cursor == 1
 }
 
 test checkpoint_refuses_cursor_mutation() fail {
@@ -127,42 +229,27 @@ test receive_passes_enumerate_unique_hashes_in_canonical_order() {
   }
 }
 
-test reference_source_index_ignores_reference_without_a_script() {
-  let selected = reconstruction.append_purpose_v1(
-    reconstruction.initial_v1(
-      rule.BoundExecutionV1 { ..bound(), execution_index: 0 },
-      h28,
-    ),
-    reconstruction.phase_spend,
-    0,
-    h28,
-    #"aa",
-    #"00",
+test resolved_source_index_ignores_outputs_without_a_script() {
+  let references = reconstruction.finish_inline_sources_v1(
+    selected_for(h28),
     h28,
   )
-  let references = reconstruction.finish_inline_sources_v1(selected, h28)
-  let skipped = reconstruction.advance_reference_without_source_v1(
+  let skipped = reconstruction.scan_resolved_output_v1(
     references,
+    #"01",
+    None,
     h28,
   )
-  let found = reconstruction.append_source_v1(
+  let found = reconstruction.scan_resolved_output_v1(
     skipped,
-    reconstruction.SelectedSourceV1 {
-      source_index: 0,
-      origin_kind: 1,
-      source_key: #"01",
-      language_tag: 0,
-      script_hash: h28,
-      total_length: 4,
-      item_commitment: h32,
-    },
+    #"02",
+    Some(source(0, 1, #"02", h28)),
     h28,
   )
-  expect Some(source) = found.selected_source
+  let selected = reconstruction.finish_resolved_outputs_v1(found, 2)
   and {
     skipped.field_cursor == 1,
     skipped.source_cursor == 0,
-    source.source_index == 0,
-    reconstruction.state_is_authentic_v1(found),
+    selected.source_index == 0,
   }
 }

@@ -6,6 +6,7 @@ import {
   ENVIRONMENT_NODE_DOMAIN,
   exactHash,
   hash32,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
   MidgardCekValueTags,
   SEQUENCE_NODE_DOMAIN,
   uint32,
@@ -87,7 +88,7 @@ export const encodeMidgardCekValueNode = (
     case "builtin":
       return encodeCbor([
         MidgardCekValueTags.Builtin,
-        boundedBuiltinTag(node.tag),
+        boundedBuiltinTag(node.tag, MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG),
         uint32(node.forcesRemaining, "cek_value.builtin.forces_remaining"),
         uint32(node.argumentsCount, "cek_value.builtin.arguments_count"),
         exactHash(node.argumentsRoot, "cek_value.builtin.arguments_root"),

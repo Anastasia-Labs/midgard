@@ -283,7 +283,9 @@ availability journal keeps one workflow per header, so a live challenge never
 holds back another header's Open in the same deployment; it refuses every step
 for a different deployment while any challenge is live. An Open the wallet cannot
 fund is skipped and reported under `openRefused` (header, required and available
-lovelace), and the watcher takes the next step in the same reconciliation, so a
+lovelace, the `shortfall` - `collateral`, `working-capital` or
+`preparation-input` - and a `detail` naming the exact ADA-only input needed),
+and the watcher takes the next step in the same reconciliation, so a
 live challenge's settle, close or Timeout is never starved. A Timeout reads the
 pool at the source tip; when no authentic pool is found there it is skipped for
 that reconciliation and reported under `timeoutsDeferred`, and the next step

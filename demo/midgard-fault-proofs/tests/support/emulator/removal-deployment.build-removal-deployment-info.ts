@@ -375,13 +375,17 @@ export const buildRemovalDeploymentInfo = (
             contracts.fraudProofs.validationTraceDispute.spendingScript.script,
         },
       },
-      cekProgramMaterialSpend: {
-        scriptHash: contracts.cekProgramMaterial.spendingScriptHash,
+      scriptDecodeSpend: {
+        scriptHash: contracts.scriptDecode.spendingScriptHash,
         contract: {
-          type: contracts.cekProgramMaterial.spendingScript.type,
-          cborHex: contracts.cekProgramMaterial.spendingScript.script,
+          type: contracts.scriptDecode.spendingScript.type,
+          cborHex: contracts.scriptDecode.spendingScript.script,
         },
       },
+      scriptDecodeMint: deploymentEntry(
+        contracts.scriptDecode.policyId,
+        contracts.scriptDecode.mintingScript,
+      ),
       stateQueueMint: deploymentEntry(
         contracts.stateQueue.policyId,
         contracts.stateQueue.mintingScript,

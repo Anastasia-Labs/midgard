@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/primitive/bytearray
 use cardano/transaction.{OutputReference}
 use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
@@ -162,6 +163,82 @@ fn stage_ten_authentication(
   wrong_rejection_hash: Bool,
   prior_root: ByteArray,
 ) -> rule.AuthenticatedPurposeV1 {
+  stage_ten_authentication_with_inline_sources(
+    direction,
+    language_tag,
+    stage,
+    substitute_source_key,
+    malformed_source_frontier,
+    wrong_machine_source_kind,
+    wrong_descriptor_verdict,
+    wrong_trace_state,
+    wrong_work_root,
+    wrong_transaction_id,
+    wrong_purpose_coordinate,
+    wrong_rejection_hash,
+    prior_root,
+    1,
+  )
+}
+
+/// `control`'s stage-10 work witness with `inline_source_count` written into
+/// its frame directly, so no encoder bound applies to it. The honest encodings
+/// at counts 0 and 1 differ in exactly one byte, that field's head, which
+/// locates it; the helper expects that, so the location cannot drift.
+fn witness_with_inline_count(
+  control: vm_machine_types.ScriptSourcesControlV1,
+  inline_source_count: Int,
+) -> ByteArray {
+  let encode = fn(count) {
+    vm_witness.encode_script_sources_discovery_witness(
+      vm_machine_types.ScriptSourcesControlV1 {
+        ..control,
+        inline_source_count: count,
+      },
+      10,
+      control.discovery,
+    )
+  }
+  let at_zero = encode(0)
+  let at_one = encode(1)
+  let head = first_difference(at_zero, at_one, 0)
+  expect bytearray.length(at_zero) == bytearray.length(at_one)
+  expect bytearray.drop(at_zero, head + 1) == bytearray.drop(at_one, head + 1)
+  let count_head = cbor.serialise(inline_source_count)
+  expect bytearray.length(count_head) == 1
+  bytearray.take(at_zero, head)
+    |> bytearray.concat(count_head)
+    |> bytearray.concat(bytearray.drop(at_zero, head + 1))
+}
+
+fn first_difference(left: ByteArray, right: ByteArray, index: Int) -> Int {
+  if bytearray.at(left, index) == bytearray.at(right, index) {
+    first_difference(left, right, index + 1)
+  } else {
+    index
+  }
+}
+
+/// `stage_ten_authentication` over a control of `inline_source_count` inline
+/// witnesses and one source. The pre-state's work root commits control bytes
+/// assembled past the encoder, so any bound on `inline_source_count` is the
+/// stage-10 authentication's own.
+fn stage_ten_authentication_with_inline_sources(
+  direction: Int,
+  language_tag: Int,
+  stage: Int,
+  substitute_source_key: Bool,
+  malformed_source_frontier: Bool,
+  wrong_machine_source_kind: Bool,
+  wrong_descriptor_verdict: Bool,
+  wrong_trace_state: Bool,
+  wrong_work_root: Bool,
+  wrong_transaction_id: Bool,
+  wrong_purpose_coordinate: Bool,
+  wrong_rejection_hash: Bool,
+  prior_root: ByteArray,
+  inline_source_count: Int,
+) -> rule.AuthenticatedPurposeV1 {
   let out_ref = OutputReference { transaction_id: zero, output_index: 0 }
   let event_key = if direction == substrate.direction_wrongful_acceptance {
     ledger_state.L2TransactionEventKey { tx_id: zero }
@@ -247,7 +324,7 @@ fn stage_ten_authentication(
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    inline_source_count: 1,
+    inline_source_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -294,11 +371,7 @@ fn stage_ten_authentication(
       validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptSources,
         17,
-        vm_witness.encode_script_sources_discovery_witness(
-          committed_control,
-          10,
-          discovery,
-        ),
+        witness_with_inline_count(committed_control, inline_source_count),
       )
     },
     execution_cpu: 0,
@@ -457,6 +530,29 @@ test native_language_stage_ten_refuses() fail {
     False,
     h32,
   ).source_language_tag == 0
+}
+
+/// A work root may commit more inline witnesses than sources, but the stage-10
+/// authentication refuses it: the control encoder it recomputes the work root
+/// with expects the bound. The honest counterpart, as many inline witnesses as
+/// sources, is `accepted_stage_ten_authenticates_exact_purpose_and_source`.
+test more_inline_sources_than_sources_refuses() fail {
+  stage_ten_authentication_with_inline_sources(
+    0,
+    3,
+    10,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    False,
+    h32,
+    2,
+  ).source_language_tag == 3
 }
 
 test wrong_stage_refuses() fail {

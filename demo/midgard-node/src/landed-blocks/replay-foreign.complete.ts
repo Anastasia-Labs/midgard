@@ -217,6 +217,9 @@ export const absentWhere =
  * `known` are the in-window ids, `seen` every id the view knows: an id
  * outside the window has a fixed inclusion time, so naming it is the
  * block's fault; one the view does not know at all is `absent`'s verdict.
+ * `undecodable` are the in-window ids ingestion leaves out, with why: never
+ * in `known`, so a block need not name them, and naming one is the block's
+ * fault.
  */
 export const exact = (
   known: ReadonlySet<string>,
@@ -224,10 +227,16 @@ export const exact = (
   named: readonly SDK.DaPayloadEntry[],
   kind: string,
   absent: Absent = unknownAt,
+  undecodable: ReadonlyMap<string, string> = new Map(),
 ) => {
   const ids = named.map(([key]) => key);
   if (new Set(ids).size !== ids.length)
     return invalid(`the block names a ${kind} twice`);
+  const unread = ids.find((id) => undecodable.has(id));
+  if (unread !== undefined)
+    return invalid(
+      `${kind} ${unread} is not a user event the node reads: ${undecodable.get(unread)}`,
+    );
   const outside = ids.find((id) => !known.has(id) && seen.has(id));
   if (outside !== undefined)
     return invalid(`${kind} ${outside} is outside the block's window`);

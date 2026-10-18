@@ -57,7 +57,7 @@ export class ForcedRejectionUnsupported extends ForcedRejectionStopped {
 /**
  * Rejection codes no `RejectionReasonV1` arm covers. Each is raised by a node
  * pre-screen (consensus guardrail, admission binding, or block-graph rule)
- * whose code is not one of the 19 descriptor codes the fault proofs bind.
+ * that no fault-proof family proves.
  */
 export const FORCED_REJECTION_NO_ARM_CODES = Object.freeze([
   RejectCodes.CborDeserialization,
@@ -84,7 +84,6 @@ export const FORCED_REJECTION_NO_ARM_CODES = Object.freeze([
   RejectCodes.LedgerOutputSize,
   RejectCodes.DatumSize,
   RejectCodes.ScriptProgramSize,
-  RejectCodes.ScriptProgramEncoding,
   RejectCodes.ScriptProgramAggregateSize,
   RejectCodes.RedeemerSize,
   RejectCodes.MintForbidden,
