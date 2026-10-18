@@ -34,8 +34,9 @@ measurements. See [Project Status](/docs/getting-started/status) and the
 ## In the codebase
 
 The off-chain counterpart is the [validation engine](/docs/validation/overview): its Phase B
-stage constructs script contexts and uses the structural CEK executor for
-canonical V1 program material, and
+stage constructs script contexts and evaluates the exact carried Flat script
+for verdicts. Dispute trace construction derives local CEK material from those
+script bytes, and
 [`midgard-validation`](/docs/validation/overview) exposes the public validation
 surface. On L1, the reconstructed step is adjudicated by the
 [computation-thread fraud-proof machines](/docs/onchain/fraud-proof-machines), using

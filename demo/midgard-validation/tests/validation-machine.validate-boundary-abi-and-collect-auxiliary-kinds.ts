@@ -6,6 +6,7 @@ import {
   hashMidgardValidationMachineState,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
+  type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import {
@@ -18,18 +19,21 @@ import {
 } from "@harmoniclabs/uplc";
 
 import {
-  buildMidgardCanonicalCekProgram,
   buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationBoundaryEvidenceCbor,
 } from "../src/index.js";
+import { decodeRecordResolverOf } from "./helpers/cek-decode-record-resolver.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   assertPinnedAuxiliaryEnvelope,
   validationDisputeBlueprint,
 } from "./validation-machine.semantic-resolver-definitions.js";
 
+/** `scripts` are the transaction's carried scripts, for CEK selections. */
 export const validateBoundaryAbiAndCollectAuxiliaryKinds = (
   trace: DeterministicValidationMachineTrace,
+  scripts: readonly MidgardVersionedScript[] = [],
 ): {
   readonly kinds: ReadonlySet<string>;
   readonly maxArgumentsBytes: number;
@@ -87,6 +91,7 @@ export const validateBoundaryAbiAndCollectAuxiliaryKinds = (
     const oneStepArgument = buildValidationOneStepArgument({
       trace,
       stateIndex: lowIndex,
+      resolveCekDecodeRecord: decodeRecordResolverOf(scripts),
     });
     // #579 regenerated: the blueprint carries `ValidationOneStepWitnessV1`
     // (the transition surface every dispatcher's checked redeemer decode
@@ -130,7 +135,7 @@ export const context = {
 
 /** `(lam ctx [(lam _ ()) ctx])`: accepts any context and halts with Unit. */
 export const buildAcceptingUnitProgram = () =>
-  buildMidgardCanonicalCekProgram(
+  buildCekProgramFromRawFlat(
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(
@@ -147,7 +152,7 @@ export const buildNonterminatingSelfApplicationProgram = () => {
   const selfApplication = new Lambda(
     new Application(new UPLCVar(0), new UPLCVar(0)),
   );
-  return buildMidgardCanonicalCekProgram(
+  return buildCekProgramFromRawFlat(
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(

@@ -49,7 +49,9 @@ domain-separated commitment to the complete canonical transaction bytes.
 The builder produces canonical RFC 8949 CBOR compatible with the node codec. It
 must not emit indefinite-length values, `undefined`, duplicate map keys, or
 trailing bytes. Any helper that accepts user-supplied CBOR applies strict decode
-and re-encode rules.
+and re-encode rules for the native framing. Stored Plutus script bytes remain
+opaque to that framing: their exact CBOR-wrapped Flat spelling determines
+script identity, and script decoding checks that payload separately.
 
 ## Field preimages
 

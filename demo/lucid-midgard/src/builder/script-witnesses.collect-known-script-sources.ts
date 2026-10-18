@@ -23,12 +23,11 @@ import {
   type KnownScriptSource,
   knownScriptSource,
   type RedeemerPointer,
-} from "./script-materialization.known-script-source.js";
+} from "./script-witnesses.known-script-source.js";
 import {
-  assertMetadataOnlyReferenceScriptMaterial,
   knownReferenceScriptSource,
   knownTrustedReferenceScriptMetadataSource,
-} from "./script-materialization.prepare-proof-builder-state.js";
+} from "./script-witnesses.reference-script.js";
 import { cloneRedeemer } from "./state.js";
 import { encodeByteListPreimage } from "./unsigned-tx.js";
 
@@ -59,7 +58,6 @@ export const collectKnownScriptSources = (
       consumedMetadata.add(label);
     }
     if (scriptRef === undefined || scriptRef === null) {
-      assertMetadataOnlyReferenceScriptMaterial(metadata, `reference:${label}`);
       return metadata === undefined
         ? []
         : [

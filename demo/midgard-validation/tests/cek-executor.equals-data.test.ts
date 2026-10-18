@@ -16,7 +16,7 @@ import {
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const compile = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
@@ -26,7 +26,7 @@ const compile = (term: UPLCTerm): Buffer =>
 // and reads the builtin step. The wrapper returns unit, so the script halts
 // successfully, as a PlutusV3 script must.
 const equalsDataStep = (left: Data, right: Data) => {
-  const program = buildMidgardCanonicalCekProgram(
+  const program = buildCekProgramFromRawFlat(
     compile(
       new Application(
         new Lambda(UPLCConst.unit),
@@ -38,7 +38,7 @@ const equalsDataStep = (left: Data, right: Data) => {
     ),
   );
   const execution = executeMidgardCekStructuralProgram({
-    root: program.envelope.termRoot,
+    root: program.termRoot,
     material: program.material.values(),
     constantWitnesses: program.constantWitnesses,
     maxSteps: 32,

@@ -1,10 +1,8 @@
-import { type MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -77,12 +75,11 @@ import {
   hasRedeemerWithoutExUnits,
 } from "./builder/redeemer-evaluation.js";
 import {
-  deriveScriptMaterialization,
+  deriveScriptWitnesses,
   normalizeMintAssetsForNormalizedPolicy,
   normalizePolicyId,
   normalizeScriptHash,
-  prepareProofBuilderState,
-} from "./builder/script-materialization.js";
+} from "./builder/script-witnesses.js";
 import {
   assertNoDuplicateStrings,
   assertUniqueUtxos,
@@ -590,7 +587,6 @@ export class TxBuilder {
     tx: MidgardNativeTxFull,
     metadata: Omit<CompleteTxMetadata, "localValidation">,
     options: CompleteOptions,
-    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array
@@ -603,7 +599,6 @@ export class TxBuilder {
       maxSubmitTxCborBytes:
         this.context.config.submissionLimits.maxSubmitTxCborBytes,
       consensusProfile: this.context.config.consensusProfile,
-      programMaterial,
       resolvedReferenceOutputsByOutRef,
     };
     const enrichedMetadata = attachProviderMetadata(
@@ -683,7 +678,6 @@ export class TxBuilder {
     state: BuilderState,
     options: CompleteOptions,
     resolved?: BalancedCompletionInputs,
-    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array
@@ -708,13 +702,12 @@ export class TxBuilder {
       initialFee: resolveInitialFee(state, options.fee),
       maxFeeIterations: resolveMaxFeeIterations(options.maxFeeIterations),
       nativeTxVersion: BigInt(this.context.config.midgardNativeTxVersion),
-      deriveScriptMaterialization,
+      deriveScriptWitnesses,
     });
     return this.finalizeCompleteTx(
       balanced.tx,
       balanced.metadata,
       options,
-      programMaterial,
       resolvedReferenceOutputsByOutRef,
     );
   }
@@ -743,13 +736,7 @@ export class TxBuilder {
     if (hasRedeemerWithoutExUnits(this.state)) {
       return (await this.evaluate(options)).complete(options);
     }
-    const clonedState = cloneState(this.state);
-    const prepared = isMidgardConsensusProfile(
-      this.context.config.consensusProfile,
-    )
-      ? prepareProofBuilderState(clonedState, options.programMaterial)
-      : { state: clonedState, programMaterial: [] };
-    const state = prepared.state;
+    const state = cloneState(this.state);
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
@@ -764,26 +751,25 @@ export class TxBuilder {
         state,
         options,
         undefined,
-        prepared.programMaterial,
         referenceOutputsByOutRef(state.referenceInputs),
       );
     }
 
     const fee = resolveInitialFee(state, options.fee);
-    const scriptMaterialization = deriveScriptMaterialization(state);
+    const scriptWitnesses = deriveScriptWitnesses(state);
     const inputTotal = sumAssets(state.spendInputs.map(utxoOutputAssets));
     const outputTotal = sumAssets(state.outputs.map((output) => output.assets));
     assertBalancedWithoutChange(
       inputTotal,
       outputTotal,
       fee,
-      scriptMaterialization.mintDelta,
+      scriptWitnesses.mintDelta,
     );
 
     const canonical = buildCanonicalUnsignedTx(
       state,
       fee,
-      scriptMaterialization,
+      scriptWitnesses,
       BigInt(this.context.config.midgardNativeTxVersion),
     );
     const tx = materializeMidgardNativeTxFromCanonical(canonical);
@@ -810,7 +796,6 @@ export class TxBuilder {
         ),
       },
       options,
-      prepared.programMaterial,
       referenceOutputsByOutRef(state.referenceInputs),
     );
   }
@@ -894,13 +879,7 @@ export class TxBuilder {
     if (hasRedeemerWithoutExUnits(this.state)) {
       return (await this.evaluate(options)).chain(options);
     }
-    const clonedState = cloneState(this.state);
-    const prepared = isMidgardConsensusProfile(
-      this.context.config.consensusProfile,
-    )
-      ? prepareProofBuilderState(clonedState, options.programMaterial)
-      : { state: clonedState, programMaterial: [] };
-    const state = prepared.state;
+    const state = cloneState(this.state);
     const balanceRequested = shouldBalanceWithWalletDefault(
       options,
       this.context.wallet !== undefined,
@@ -921,7 +900,6 @@ export class TxBuilder {
             state,
             options,
             balancedInputs,
-            prepared.programMaterial,
             referenceOutputsByOutRef(state.referenceInputs),
           );
     const baseWalletInputs =

@@ -3,6 +3,7 @@ import {
   Data,
   LucidEvolution,
   TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -12,6 +13,7 @@ import {
   LucidError,
   makeReturn,
   MidgardValidators,
+  type OutputReference,
   outputReferenceFromUTxO,
 } from "../common.js";
 import { HubOracleError } from "../hub-oracle.js";
@@ -34,13 +36,21 @@ import {
   TxOrderMintRedeemer,
 } from "./tx-order.submit-tx-order-config.js";
 import {
-  DEFAULT_TX_ORDER_LOVELACE,
-  type TxOrderBuildMetadata,
-} from "./tx-order.tx-order-build-metadata.js";
-import {
   carriageIsResolvable,
   txOrderMaterialCarriageVector,
 } from "./tx-order.tx-order-material-carriage-vector.js";
+
+export type TxOrderBuildMetadata = {
+  readonly txOrderAddress: string;
+  readonly txOrderId: OutputReference;
+  readonly authNonceCbor: string;
+  readonly txOrderAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+export const DEFAULT_TX_ORDER_LOVELACE = 3_000_000n;
 
 export const buildUnsignedTxOrderTxWithMetadataProgram = (
   lucid: LucidEvolution,

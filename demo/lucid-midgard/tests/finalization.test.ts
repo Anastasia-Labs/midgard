@@ -1,7 +1,6 @@
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/l1-slot-config";
-import "@al-ft/midgard-validation/cek-program";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
@@ -21,7 +20,6 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -94,73 +92,29 @@ describe("TxBuilder finalization", () => {
     expect(completed.metadata.fee).toBe(10n);
   });
 
-  it("requires exact material for historical reference-script envelopes", async () => {
+  it("preserves exact reference-script resolution through completion, import, and signing", async () => {
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
     });
-    const canonical = buildMidgardCanonicalCekProgram(
-      Buffer.from("010100200101", "hex"),
-    );
+    const storedScript = Buffer.from("46010100200101", "hex");
     const spend = makeUtxo(makeOutRef(0x31), { lovelace: 2_000_000n });
-    const reference = makeReferenceUtxo(
-      makeOutRef(0x32),
-      canonical.envelopeCbor,
-    );
+    const reference = makeReferenceUtxo(makeOutRef(0x32), storedScript);
     const builder = midgard
       .newTx()
       .collectFrom([spend])
       .readFrom([reference])
       .pay.ToAddress(address, { lovelace: 2_000_000n });
 
-    await expect(builder.complete({ fee: 0n })).rejects.toThrow(
-      /Incomplete or mismatched CEK program material/u,
-    );
-
-    const material = [...canonical.material.values()];
-    const completed = await builder.complete({
-      fee: 0n,
-      programMaterial: material,
-    });
-    expect(completed.programMaterial).toEqual(
-      [...material].sort((left, right) =>
-        Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
-      ),
-    );
-
-    const corrupted = material.map((entry, index) =>
-      index === 0
-        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
-        : entry,
-    );
-    await expect(
-      builder.complete({ fee: 0n, programMaterial: corrupted }),
-    ).rejects.toThrow(/Invalid canonical CEK program material/u);
-
-    const rawReference = makeReferenceUtxo(
-      makeOutRef(0x33),
-      Buffer.from("010100200101", "hex"),
-    );
-    await expect(
-      midgard
-        .newTx()
-        .collectFrom([spend])
-        .readFrom([rawReference])
-        .pay.ToAddress(address, { lovelace: 2_000_000n })
-        .complete({ fee: 0n, programMaterial: material }),
-    ).rejects.toThrow(
-      /V1 reference script must contain a canonical CEK program envelope/u,
-    );
+    const completed = await builder.complete({ fee: 0n });
     const importedRaw = midgard.fromTx(completed.txHex, {
       resolvedSpendInputs: [spend],
       resolvedReferenceInputs: [reference],
-      programMaterial: material,
     });
     expect(importedRaw.txHex).toBe(completed.txHex);
     const detached = new CompleteTx(completed.tx, completed.metadata, {
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       networkId: 0n,
-      programMaterial: material,
       resolvedReferenceOutputsByOutRef: new Map([
         [
           Buffer.from(outRefToCbor(reference)).toString("hex"),
@@ -191,34 +145,16 @@ describe("TxBuilder finalization", () => {
     expect(() =>
       midgard.fromTx(completed.txHex, {
         resolvedSpendInputs: [spend],
-        programMaterial: material,
       }),
     ).toThrow(/Missing resolved reference input/u);
 
-    const wrongReference = makeReferenceUtxo(
-      makeOutRef(0x34),
-      canonical.envelopeCbor,
-    );
+    const wrongReference = makeReferenceUtxo(makeOutRef(0x34), storedScript);
     expect(() =>
       midgard.fromTx(completed.txHex, {
         resolvedSpendInputs: [spend],
         resolvedReferenceInputs: [wrongReference],
-        programMaterial: material,
       }),
     ).toThrow(/Unexpected resolved reference input/u);
-
-    const corruptedRawMaterial = material.map((entry, index) =>
-      index === 0
-        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
-        : entry,
-    );
-    expect(() =>
-      midgard.fromTx(completed.txHex, {
-        resolvedSpendInputs: [spend],
-        resolvedReferenceInputs: [reference],
-        programMaterial: corruptedRawMaterial,
-      }),
-    ).toThrow(/Invalid canonical CEK program material/u);
 
     const signer = CML.PrivateKey.generate_ed25519();
     const signerAddress = enterpriseAddressFor(signer);
@@ -233,7 +169,7 @@ describe("TxBuilder finalization", () => {
       .readFrom([reference])
       .addSigner(signer.to_public().hash().to_hex())
       .pay.ToAddress(address, { lovelace: 2_000_000n })
-      .complete({ fee: 0n, programMaterial: material });
+      .complete({ fee: 0n });
     const assembled = signable.assemble(
       await signable.sign.withPrivateKey(signer).partial(),
     );
@@ -259,7 +195,6 @@ describe("TxBuilder finalization", () => {
       .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete({ fee: 0n });
 
-    expect(completed.programMaterial).toEqual([]);
     expect(() =>
       midgard.fromTx(completed.txHex, { resolvedSpendInputs: [spend] }),
     ).toThrow(/Missing resolved reference input/u);
@@ -274,7 +209,7 @@ describe("TxBuilder finalization", () => {
       resolvedSpendInputs: [spend],
       resolvedReferenceInputs: [reference],
     });
-    expect(imported.programMaterial).toEqual([]);
+    expect(imported.txHex).toBe(completed.txHex);
     const partial = midgard.fromTx(completed.txHex, {
       partial: true,
       resolvedSpendInputs: [spend],
@@ -283,7 +218,7 @@ describe("TxBuilder finalization", () => {
     expect("submit" in partial).toBe(false);
   });
 
-  it("rejects metadata-only non-native references from both metadata ingress APIs", async () => {
+  it("resolves trusted non-native reference metadata from both ingress APIs", async () => {
     const midgard = await LucidMidgard.new(zeroFeeProvider, {
       network: "Preview",
       networkId: 0,
@@ -302,6 +237,7 @@ describe("TxBuilder finalization", () => {
         .readFrom([reference])
         .observe(metadata.scriptHash, {
           data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+          exUnits: { mem: 1n, steps: 1n },
         })
         .pay.ToAddress(address, { lovelace: 2_000_000n });
 
@@ -312,21 +248,23 @@ describe("TxBuilder finalization", () => {
         .readFrom([reference], { trustedReferenceScripts: [metadata] })
         .observe(metadata.scriptHash, {
           data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+          exUnits: { mem: 1n, steps: 1n },
         })
         .pay.ToAddress(address, { lovelace: 2_000_000n }),
       makeBuilder().attach.ReferenceScriptMetadata(metadata),
     ];
 
     for (const builder of builders) {
-      await expect(builder.complete({ fee: 0n })).rejects.toMatchObject({
-        name: "BuilderInvariantError",
-        message: expect.stringContaining(
-          "Metadata-only non-native reference scripts require",
+      const completed = await builder.complete({ fee: 0n });
+      expect(completed.metadata.referenceInputCount).toBe(1);
+      expect(completed.tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(
+        EMPTY_CBOR_LIST,
+      );
+      expect(
+        completed.resolvedReferenceOutputsByOutRef?.get(
+          Buffer.from(outRefToCbor(reference)).toString("hex"),
         ),
-        detail: expect.stringContaining(
-          `reference:${metadata.txHash}#${metadata.outputIndex}`,
-        ),
-      });
+      ).toEqual(reference.cbor!.output!);
     }
   });
 
@@ -351,7 +289,6 @@ describe("TxBuilder finalization", () => {
       .complete({ fee: 0n });
 
     expect(completed.metadata.referenceInputCount).toBe(1);
-    expect(completed.programMaterial).toEqual([]);
   });
 
   it("materializes canonical hashes, empty buckets, and default sentinels", async () => {

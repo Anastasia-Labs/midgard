@@ -13,11 +13,9 @@ import {
   type MidgardCekStructuralExecution,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
-import {
-  buildMidgardCanonicalCekProgram,
-  encodeMidgardCekCardanoFlatProgram,
-} from "../src/cek-program.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
 import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * The TypeScript half of the V1 CEK **core-step** cross-language golden
@@ -69,13 +67,8 @@ type GoldenProgram = {
   readonly executionBudget?: { readonly cpu: string; readonly memory: string };
   readonly scriptFlat: string;
   readonly contextCbor: string;
-  readonly envelope: {
-    readonly uplcVersion: readonly string[];
-    readonly termRoot: string;
-    readonly nodeCount: string;
-    readonly materialByteLength: string;
-  };
-  readonly envelopeHash: string;
+  readonly uplcVersion: readonly string[];
+  readonly termRoot: string;
   readonly root: string;
   readonly contextValueRoot: string;
   readonly initialState: GoldenState;
@@ -130,10 +123,10 @@ const recompute = (definition: vectors.CekCoreStepProgramV1): Recomputed => {
     definition.term(),
     encodeMidgardCekCardanoFlatProgram,
   );
-  const program = buildMidgardCanonicalCekProgram(scriptFlat);
+  const program = buildCekProgramFromRawFlat(scriptFlat);
   const contextCbor = encodeMidgardCekPlutusData(definition.context());
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     contextCbor,
   );
@@ -159,15 +152,8 @@ const recompute = (definition: vectors.CekCoreStepProgramV1): Recomputed => {
           }),
       scriptFlat: hex(scriptFlat),
       contextCbor: hex(contextCbor),
-      envelope: {
-        uplcVersion: program.envelope.uplcVersion.map((part) =>
-          part.toString(10),
-        ),
-        termRoot: hex(program.envelope.termRoot),
-        nodeCount: program.envelope.nodeCount.toString(10),
-        materialByteLength: program.envelope.materialByteLength.toString(10),
-      },
-      envelopeHash: hex(program.envelopeHash),
+      uplcVersion: program.uplcVersion.map((part) => part.toString(10)),
+      termRoot: hex(program.termRoot),
       root: hex(graph.root),
       contextValueRoot: hex(graph.contextValueRoot),
       initialState: stateJson(execution.initialState),

@@ -1,9 +1,3 @@
-import {
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   Application,
@@ -16,7 +10,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   applyUTxOStatePatch,
   buildConflictComponents,
@@ -35,6 +28,7 @@ import {
   preState,
   runPhaseB,
 } from "./phase-b.harness.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -381,40 +375,23 @@ describe("phase B validation", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.DoubleSpend);
   });
 
-  it("requires exact material for a historical reference program", async () => {
+  it("uses a historical reference output without a carried material sidecar", async () => {
     const spent = outRefFromByte(0x7a);
     const reference = outRefFromByte(0x7b);
-    const termPreimage = encodeMidgardCekTermNode({ kind: "error" });
-    const termRoot = hashMidgardCekTermNode({ kind: "error" });
-    const envelope = encodeMidgardCekProgramEnvelope({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot,
-      nodeCount: 1n,
-      materialByteLength: BigInt(termPreimage.length),
-    });
     const referenceOutput = encodeMidgardTxOutput({
       address: TEST_ADDRESS_BYTES,
       value: { lovelace: 1n, assets: new Map() },
       script_ref: {
         language: "PlutusV3",
-        scriptBytes: envelope,
+        scriptBytes: Buffer.from("450101006001", "hex"),
       },
     });
-    const material = {
-      kind: "term" as const,
-      root: termRoot,
-      preimage: termPreimage,
-    };
-
-    const missing = await runPhaseB(
+    const result = await runPhaseB(
       [
         makePhaseBCandidate({
           spent: [spent],
           referenceInputs: [reference],
           outputLovelace: FUNDED_OUTPUT_LOVELACE,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
         }),
       ],
       preState([
@@ -422,50 +399,8 @@ describe("phase B validation", () => {
         [reference, referenceOutput],
       ]),
     );
-    expectSinglePhaseBRejection(missing, RejectCodes.CekProgramMaterial);
-
-    const covered = await runPhaseB(
-      [
-        makePhaseBCandidate({
-          spent: [spent],
-          referenceInputs: [reference],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-            material,
-          ]),
-        }),
-      ],
-      preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
-        [reference, referenceOutput],
-      ]),
-    );
-    expect(covered.rejected).toHaveLength(0);
-    expect(covered.accepted).toHaveLength(1);
-
-    const extraNode = { kind: "variable" as const, index: 0n };
-    const extra = await runPhaseB(
-      [
-        makePhaseBCandidate({
-          spent: [spent],
-          referenceInputs: [reference],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-            material,
-            {
-              kind: "term",
-              root: hashMidgardCekTermNode(extraNode),
-              preimage: encodeMidgardCekTermNode(extraNode),
-            },
-          ]),
-        }),
-      ],
-      preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
-        [reference, referenceOutput],
-      ]),
-    );
-    expectSinglePhaseBRejection(extra, RejectCodes.CekProgramMaterial);
+    expect(result.rejected).toHaveLength(0);
+    expect(result.accepted).toHaveLength(1);
   });
 
   it("rejects a later reference input after an earlier component member spends it", async () => {
@@ -784,9 +719,9 @@ describe("phase B validation", () => {
     expect(result.rejected).toHaveLength(0);
   });
 
-  it("executes V1 envelopes through the authenticated CEK graph", async () => {
+  it("executes stored Flat through the evaluator", async () => {
     const spent = outRefFromByte(0x6d);
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram(
@@ -798,7 +733,7 @@ describe("phase B validation", () => {
         ),
       ),
     );
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
@@ -808,9 +743,6 @@ describe("phase B validation", () => {
         { tag: MidgardRedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]),
     });
     const result = await runPhaseB(
       [candidate],
@@ -822,12 +754,12 @@ describe("phase B validation", () => {
     expect(result.accepted).toHaveLength(1);
   });
 
-  it("bounds a nonterminating V1 envelope by its declared execution units", async () => {
+  it("bounds a nonterminating Flat program by its declared execution units", async () => {
     const spent = outRefFromByte(0x6e);
     const selfApplication = new Lambda(
       new Application(new UPLCVar(0), new UPLCVar(0)),
     );
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram(
@@ -837,7 +769,7 @@ describe("phase B validation", () => {
         ),
       ),
     );
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
@@ -851,9 +783,6 @@ describe("phase B validation", () => {
         },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]),
     });
 
     const result = await runPhaseB(
@@ -867,8 +796,9 @@ describe("phase B validation", () => {
       result,
       RejectCodes.PlutusScriptInvalid,
     );
-    expect(rejection.detail).toContain("budget exceeded");
-    expect(rejection.detail).toContain("declared mem=0 cpu=0");
+    // The ledger budget is the declared one: Cardano's machine stops out of
+    // budget (error kind 1).
+    expect(rejection.detail).toContain("execution failed (1)");
   });
 
   it("propagates evaluator infrastructure failures instead of rejecting the tx", async () => {

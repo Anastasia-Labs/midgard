@@ -9,6 +9,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
 
+import { validateCarriedPlutusOutputScripts } from "./carried-plutus-script-decoding.js";
 import { LedgerColumns } from "./ledger.js";
 import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
@@ -247,6 +248,14 @@ export const validateCandidateAgainstState = (
       // Keep its existing classification/mandatory-trace prerequisite behavior.
       if (inspection.kind === "unsupported") break;
     }
+
+    const outputScriptFault = validateCarriedPlutusOutputScripts(ledgerTx);
+    if (outputScriptFault !== null)
+      return {
+        index: node.index,
+        accepted: false,
+        rejection: outputScriptFault,
+      };
 
     if (sawScriptInput || candidate.derived.requiresLocalScriptDiscovery) {
       const localScriptEvaluation = yield* runLocalScriptEvaluation(

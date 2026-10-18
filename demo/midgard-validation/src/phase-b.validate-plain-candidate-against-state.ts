@@ -6,6 +6,7 @@ import {
   type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 
+import { validateCarriedPlutusOutputScripts } from "./carried-plutus-script-decoding.js";
 import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
@@ -117,6 +118,10 @@ const validatePlainCandidateAgainstState = (
       );
     }
   }
+
+  const outputScriptFault = validateCarriedPlutusOutputScripts(ledgerTx);
+  if (outputScriptFault !== null)
+    return { index: node.index, accepted: false, rejection: outputScriptFault };
 
   for (const [outputIndex, output] of ledgerTx.outputs.entries()) {
     const observedNetworkId = BigInt(

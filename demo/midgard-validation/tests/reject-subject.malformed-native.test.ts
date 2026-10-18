@@ -5,12 +5,9 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  buildMidgardCanonicalCekProgram,
-  RejectCodes,
-  validatePhaseASingle,
-} from "../src/index.js";
+import { RejectCodes, validatePhaseASingle } from "../src/index.js";
 import { projectMidgardMalformedNativeWitnessEnvelopeV1 } from "../src/ledger-tx/codec.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
@@ -36,11 +33,10 @@ const MALFORMED_NATIVE = "820043820700";
 const SOUND_NATIVE = "820043820180";
 /** `[0, h'820280']`: the native script `any []`. */
 const FALSE_NATIVE = "820043820280";
-/** A bounded V1 PlutusV3 envelope, which the native proof never finds faulty. */
+/** A stored Flat PlutusV3 script, which the native proof never finds faulty. */
 const PLUTUS_V3_ITEM = encodeCbor([
   3,
-  buildMidgardCanonicalCekProgram(Buffer.from("010100200101", "hex"))
-    .envelopeCbor,
+  buildCekProgramFromRawFlat(Buffer.from("010100200101", "hex")).scriptBytes,
 ]).toString("hex");
 
 const withScriptItems = (items: readonly string[]) => {

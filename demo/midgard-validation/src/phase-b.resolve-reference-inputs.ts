@@ -1,15 +1,9 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   type MidgardTxOutput,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
@@ -215,30 +209,6 @@ export const resolveReferenceInputs = (
     );
     scriptSources.push(source);
     scriptHashes.add(source.scriptHash);
-  }
-
-  // A forced transaction runs no program and carries no program material.
-  const sidecar = node.candidate.submission.programMaterialSidecarCbor;
-  if (sidecar !== null && node.candidate.submission.sourceKind !== "forced") {
-    try {
-      const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
-      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        node.candidate.submission.txCbor,
-      );
-      // Every reference input is present here, so this is the event's whole
-      // program set, the one block builders and DA committee members derive.
-      verifyMidgardCekProgramMaterialBundle(
-        collectMidgardEventProgramEnvelopes(canonicalTx, stateValue),
-        material,
-      );
-    } catch (cause) {
-      return reject(
-        node.candidate.ledgerTx.txId,
-        RejectCodes.CekProgramMaterial,
-        `invalid exact attached/reference-script CEK material: ${String(cause)}`,
-        "scriptSources",
-      );
-    }
   }
 
   return { inputs, scriptSources, scriptHashes };

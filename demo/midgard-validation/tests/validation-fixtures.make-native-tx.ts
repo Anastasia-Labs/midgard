@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
@@ -173,7 +172,6 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -192,7 +190,6 @@ type PhaseBCandidateOptions = Omit<
   readonly referenceInputs?: readonly Buffer[];
   readonly outputLovelace?: bigint;
   readonly outputs?: readonly Buffer[];
-  readonly programMaterialSidecarCbor?: Buffer | null;
 };
 
 export const makePhaseBCandidate = (
@@ -214,7 +211,6 @@ export const makePhaseBCandidate = (
     ledgerTx: submittedTx.ledgerTx,
     expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
-    programMaterialSidecarCbor: opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,
     createdAt: new Date(0),
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

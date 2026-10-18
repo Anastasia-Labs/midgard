@@ -123,8 +123,8 @@ const tx = await midgard
 
 Signing is explicit about the Midgard hash domain. `tx.sign.withWallet()` returns
 a partial-sign builder whose `.complete()` assembles a submit-capable `CompleteTx`.
-`.submit()` posts a proof-submission CBOR envelope containing the canonical
-transaction and its exact program-material sidecar to the node and returns a `SubmittedTx` with
+`.submit()` posts a proof-submission CBOR envelope containing the version and
+canonical transaction to the node and returns a `SubmittedTx` with
 durable admission metadata. `awaitStatus` polls until the requested state.
 
 ```ts twoslash

@@ -111,6 +111,39 @@ export const ValidationCanonicalDecodePrepareSelectedSpendRedeemer =
     ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
   );
 
+/** Twin of cek_selection_yield.Action at the authenticated execution boundary. */
+export const ValidationCekExecutionSelectionActionSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  transition: ValidationOneStepWitnessSchema,
+  auxiliary: ValidationAuxiliaryWitnessSchema,
+  yield_ref_input_indices: Data.Array(Data.Integer({ minimum: 0 }), {
+    minItems: 2,
+    maxItems: 2,
+  }),
+  record_reference_input_index: Data.Integer({ minimum: -1 }),
+});
+export type ValidationCekExecutionSelectionAction = Data.Static<
+  typeof ValidationCekExecutionSelectionActionSchema
+>;
+export const ValidationCekExecutionSelectionAction =
+  asDataType<ValidationCekExecutionSelectionAction>(
+    ValidationCekExecutionSelectionActionSchema,
+  );
+export const ValidationCekExecutionSelectionSpendRedeemerSchema = Data.Enum([
+  cancelActionSchema,
+  Data.Object({
+    Continue: Data.Tuple([ValidationCekExecutionSelectionActionSchema]),
+  }),
+]);
+export type ValidationCekExecutionSelectionSpendRedeemer = Data.Static<
+  typeof ValidationCekExecutionSelectionSpendRedeemerSchema
+>;
+export const ValidationCekExecutionSelectionSpendRedeemer =
+  asDataType<ValidationCekExecutionSelectionSpendRedeemer>(
+    ValidationCekExecutionSelectionSpendRedeemerSchema,
+  );
+
 export const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 

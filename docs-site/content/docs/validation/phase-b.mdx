@@ -105,13 +105,15 @@ The relevant modules:
 
 ### Canonical V1 execution
 
-V1 candidates carry verified CEK program material. Phase B verifies the combined
-attached/reference bundle, builds the context and execution graph, and runs
-`executeMidgardCekStructuralProgram` with the consensus step bound and declared
-budget. Missing or inconsistent proof material fails closed. A configured
-`evaluateProofScript` callback can supply the process-local executor; without
-one, every script runs through the structural executor. There is no other
-script evaluator.
+Phase B resolves the exact carried script bytes, builds the script context,
+and evaluates the Flat program with the PV11 evaluator and declared budget.
+Verdict mode can run in process or through the validation worker. Proof mode
+derives the local CEK graph and structural trace from the same script bytes
+when dispute evidence is needed.
+
+Script decoding and evaluation require compatible dependency capabilities.
+Their absence or failure raises an operational error; it does not create a
+script-rejection verdict.
 
 ### `script-source.ts`
 

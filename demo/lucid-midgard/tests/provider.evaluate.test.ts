@@ -5,7 +5,6 @@ import { ProviderHttpError, ProviderPayloadError } from "../src/index.js";
 import {
   jsonResponse,
   makeProvider,
-  submitProgramMaterial,
   submitTx,
 } from "./provider.protocol-info.js";
 
@@ -24,7 +23,7 @@ describe("MidgardNodeProvider.evaluateTx", () => {
       });
       const submission = decodeMidgardProofSubmission(await requestBody(init));
       expect(submission.transactionCbor.toString("hex")).toBe(submitTx.txHex);
-      expect(submission.programMaterial).toEqual(submitProgramMaterial);
+      expect(Object.keys(submission)).toEqual(["transactionCbor"]);
       return jsonResponse({
         redeemers: [
           { tag: 0, index: "1", memory: "1200", steps: "345678" },
@@ -33,9 +32,7 @@ describe("MidgardNodeProvider.evaluateTx", () => {
       });
     });
 
-    await expect(
-      provider.evaluateTx(submitTx.txHex, submitProgramMaterial),
-    ).resolves.toEqual([
+    await expect(provider.evaluateTx(submitTx.txHex)).resolves.toEqual([
       { tag: 0, index: 1n, memory: 1200n, steps: 345678n },
       { tag: 1, index: 0n, memory: 0n, steps: 18446744073709551616n },
     ]);

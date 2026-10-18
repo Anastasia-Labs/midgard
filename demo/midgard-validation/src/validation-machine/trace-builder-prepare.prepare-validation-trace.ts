@@ -11,14 +11,12 @@ import {
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  decodeMidgardCekProgramMaterialSidecar,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
   deriveMidgardValidationContextCborV1,
   deriveMidgardValidationInitialStateV1,
   encodeCbor,
   encodeMidgardBlake2b224TraceControl,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardLedgerOutputProofControl,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardMintAssetLeaf,
@@ -186,10 +184,6 @@ export const prepareValidationTrace = (
       sourceKind: input.sourceKind,
       txId: Buffer.from(input.transactionId),
       txCbor: Buffer.from(input.canonicalTransactionCbor),
-      programMaterialSidecarCbor:
-        input.programMaterialSidecarCbor === undefined
-          ? encodeMidgardCekProgramMaterialSidecar([])
-          : Buffer.from(input.programMaterialSidecarCbor),
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };
@@ -239,23 +233,6 @@ export const prepareValidationTrace = (
         : (rawExecutionProjection?.ledgerTx ?? null);
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     let reusedEvaluationIndex = 0;
-    const programMaterial = decodeMidgardCekProgramMaterialSidecar(
-      queued.programMaterialSidecarCbor ??
-        encodeMidgardCekProgramMaterialSidecar([]),
-    );
-    const canonicalProgramMaterialSidecarCbor = Buffer.from(
-      encodeMidgardCekProgramMaterialSidecar(programMaterial),
-    );
-    if (
-      !canonicalProgramMaterialSidecarCbor.equals(
-        queued.programMaterialSidecarCbor ?? Buffer.alloc(0),
-      )
-    ) {
-      return yield* Effect.fail(
-        new Error("program material sidecar must use canonical V1 CBOR"),
-      );
-    }
-
     let rejection: RejectedTx | null = null;
     let ledgerOps: readonly ValidationMachineLedgerOp[] = [];
     if (!("ledgerTx" in phaseA)) {
@@ -4122,7 +4099,6 @@ export const prepareValidationTrace = (
       recording,
       verdict,
       contextCbor,
-      canonicalProgramMaterialSidecarCbor,
       ledgerOps,
     } as const;
   });

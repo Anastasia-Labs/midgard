@@ -1,4 +1,5 @@
 import {
+  computeHash32,
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -6,12 +7,12 @@ import {
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
+  encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -28,20 +29,15 @@ import {
 const pubkeyAddress =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 const rawPlutusV3Script = Buffer.from("010100480001", "hex");
-const canonicalPlutusV3 = buildMidgardCanonicalCekProgram(rawPlutusV3Script);
-const canonicalEnvelope = Buffer.from(canonicalPlutusV3.envelopeCbor);
-const canonicalProgramMaterial = [...canonicalPlutusV3.material.values()];
-const sortedCanonicalProgramMaterial = [...canonicalProgramMaterial].sort(
-  (left, right) =>
-    Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
-);
+// A single CBOR byte string containing the original Flat program.
+const storedPlutusV3Script = Buffer.from("46010100480001", "hex");
 const plutusV3Hash = hashMidgardVersionedScript({
   language: "PlutusV3",
-  scriptBytes: canonicalEnvelope,
+  scriptBytes: storedPlutusV3Script,
 });
 const midgardHash = hashMidgardVersionedScript({
   language: "MidgardV1",
-  scriptBytes: canonicalEnvelope,
+  scriptBytes: storedPlutusV3Script,
 });
 
 const fakeProvider: MidgardProvider = {
@@ -180,7 +176,7 @@ describe("V1 script and mint feature surface", () => {
       .attach.Script({
         kind: "plutus-v3",
         language: "PlutusV3",
-        script: rawPlutusV3Script,
+        script: storedPlutusV3Script,
       })
       .collectFrom(
         [
@@ -205,8 +201,7 @@ describe("V1 script and mint feature surface", () => {
       decodeMidgardVersionedScriptListPreimage(
         tx.witnessSet.scriptTxWitsPreimageCbor,
       ),
-    ).toEqual([{ language: "PlutusV3", scriptBytes: canonicalEnvelope }]);
-    expect(completed.programMaterial).toEqual(sortedCanonicalProgramMaterial);
+    ).toEqual([{ language: "PlutusV3", scriptBytes: storedPlutusV3Script }]);
     expectScriptIntegrity(tx, ["PlutusV3"]);
     expect(completed.txId).toEqual(computeMidgardNativeTxId(tx));
     expect(completed.toHash()).toBe(completed.txIdHex);
@@ -239,7 +234,7 @@ describe("V1 script and mint feature surface", () => {
         .attach.Script({
           kind: "plutus-v3",
           language: "PlutusV3",
-          script: rawPlutusV3Script,
+          script: storedPlutusV3Script,
         })
         .collectFrom(
           [
@@ -321,7 +316,7 @@ describe("V1 script and mint feature surface", () => {
     );
   });
 
-  it("completes canonical historical reference scripts with exact material", async () => {
+  it("completes reference-script spends using the exact stored Flat identity", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
       networkId: 0,
@@ -329,16 +324,27 @@ describe("V1 script and mint feature surface", () => {
     const spend = makeUtxo(makeOutRef(0x11), scriptAddress(midgardHash), {
       lovelace: 2_000_000n,
     });
-    const reference = makeReferenceUtxo(
-      makeOutRef(0x22),
-      canonicalPlutusV3.envelopeCbor,
-    );
+    const reference = makeReferenceUtxo(makeOutRef(0x22), storedPlutusV3Script);
     const completed = await midgard
       .newTx()
       .collectFrom([spend], dummyRedeemer)
-      .readFrom([reference])
+      .readFrom([reference], {
+        trustedReferenceScripts: [
+          {
+            ...reference,
+            language: "MidgardV1",
+            scriptHash: midgardHash,
+            scriptCborHash: computeHash32(
+              encodeMidgardVersionedScript({
+                language: "MidgardV1",
+                scriptBytes: storedPlutusV3Script,
+              }),
+            ).toString("hex"),
+          },
+        ],
+      })
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
-      .complete({ fee: 0n, programMaterial: canonicalProgramMaterial });
+      .complete({ fee: 0n });
     const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const referenceKey = Buffer.from(outRefToCbor(reference)).toString("hex");
 
@@ -347,7 +353,6 @@ describe("V1 script and mint feature surface", () => {
       "0:0",
     ]);
     expectScriptIntegrity(tx, ["MidgardV1"]);
-    expect(completed.programMaterial).toEqual(sortedCanonicalProgramMaterial);
     expect(completed.resolvedReferenceOutputsByOutRef?.size).toBe(1);
     expect(
       Buffer.from(
@@ -357,7 +362,47 @@ describe("V1 script and mint feature surface", () => {
     expect(completed.txId).toEqual(computeMidgardNativeTxId(tx));
   });
 
-  it("rejects missing, corrupted, and raw historical reference material", async () => {
+  it.each([
+    ["language", { language: "PlutusV3" as const }, "language"],
+    ["script hash", { scriptHash: "ff".repeat(28) }, "hash"],
+    ["script CBOR hash", { scriptCborHash: "ff".repeat(32) }, "scriptCborHash"],
+  ] as const)(
+    "rejects trusted reference metadata with a mismatched %s",
+    async (_label, mismatch, field) => {
+      const midgard = await LucidMidgard.new(fakeProvider, {
+        network: "Preview",
+        networkId: 0,
+      });
+      const reference = makeReferenceUtxo(
+        makeOutRef(0x42),
+        storedPlutusV3Script,
+      );
+      const spend = makeUtxo(makeOutRef(0x41), scriptAddress(midgardHash), {
+        lovelace: 2_000_000n,
+      });
+      await expect(
+        midgard
+          .newTx()
+          .collectFrom([spend], dummyRedeemer)
+          .readFrom([reference], {
+            trustedReferenceScripts: [
+              {
+                ...reference,
+                language: "MidgardV1",
+                scriptHash: midgardHash,
+                ...mismatch,
+              },
+            ],
+          })
+          .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
+          .complete({ fee: 0n }),
+      ).rejects.toThrow(
+        `Reference script metadata ${field} does not match local script reference`,
+      );
+    },
+  );
+
+  it("rejects a reference script whose stored bytes do not match the spend credential", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
       networkId: 0,
@@ -365,28 +410,6 @@ describe("V1 script and mint feature surface", () => {
     const spend = makeUtxo(makeOutRef(0x31), scriptAddress(midgardHash), {
       lovelace: 2_000_000n,
     });
-    const reference = makeReferenceUtxo(
-      makeOutRef(0x32),
-      canonicalPlutusV3.envelopeCbor,
-    );
-    const builder = midgard
-      .newTx()
-      .collectFrom([spend], dummyRedeemer)
-      .readFrom([reference])
-      .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n });
-
-    await expect(builder.complete({ fee: 0n })).rejects.toThrow(
-      /Incomplete or mismatched CEK program material/u,
-    );
-    const corrupted = canonicalProgramMaterial.map((entry, index) =>
-      index === 0
-        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
-        : entry,
-    );
-    await expect(
-      builder.complete({ fee: 0n, programMaterial: corrupted }),
-    ).rejects.toThrow(/Invalid canonical CEK program material/u);
-
     const rawReference = makeReferenceUtxo(makeOutRef(0x33), rawPlutusV3Script);
     await expect(
       midgard
@@ -394,9 +417,7 @@ describe("V1 script and mint feature surface", () => {
         .collectFrom([spend], dummyRedeemer)
         .readFrom([rawReference])
         .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
-        .complete({ fee: 0n, programMaterial: canonicalProgramMaterial }),
-    ).rejects.toThrow(
-      /V1 reference script must contain a canonical CEK program envelope/u,
-    );
+        .complete({ fee: 0n }),
+    ).rejects.toThrow(/Missing script source for spend/u);
   });
 });

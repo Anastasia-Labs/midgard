@@ -18,10 +18,10 @@ import "./internals.js";
 import "./tx-order.submit-tx-order-config.js";
 import "./tx-order.derive-tx-order-material.js";
 import "./tx-order.tx-order-material-carriage-vector.js";
-import "./tx-order.tx-order-build-metadata.js";
 import "./tx-order.build-unsigned-tx-order-tx-with-metadata-program.js";
 export {
   buildUnsignedTxOrderTxWithMetadataProgram,
+  type TxOrderBuildMetadata,
   unsignedTxOrderTx,
   unsignedTxOrderTxProgram,
 } from "./tx-order.build-unsigned-tx-order-tx-with-metadata-program.js";
@@ -52,5 +52,4 @@ export {
   utxosToTxOrderUTxOs,
   utxoToTxOrderUTxO,
 } from "./tx-order.submit-tx-order-config.js";
-export { type TxOrderBuildMetadata } from "./tx-order.tx-order-build-metadata.js";
 export { txOrderMaterialCarriageVector } from "./tx-order.tx-order-material-carriage-vector.js";

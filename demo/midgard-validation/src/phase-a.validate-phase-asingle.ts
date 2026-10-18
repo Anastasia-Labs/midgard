@@ -1,11 +1,5 @@
 import { type LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterial,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
   EMPTY_NULL_ROOT,
   verifyMidgardNativeScript,
@@ -16,9 +10,9 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
-import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
+import { carriedPlutusWitnessScriptFault } from "./carried-plutus-script-decoding.js";
 import { awaitLedgerEd25519SignatureReady } from "./ledger-ed25519-ready.js";
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
@@ -50,7 +44,11 @@ import {
 import { buildPhaseAValidatedTx } from "./validation-candidate.js";
 import { oversizedCanonicalOutputIndex } from "./validation-machine/canonical-output-bound.js";
 
-const validateNativeScriptWitnesses = (
+/**
+ * The witness-script phase, in witness item order: a native witness must parse
+ * and hold, and a Plutus witness's stored program must decode.
+ */
+const validateWitnessScripts = (
   tx: MidgardLedgerTx | MidgardRawEnvelopePhaseAProjection["ledgerTx"],
 ): RejectedTx | null => {
   let witnessSigners: ReadonlySet<string> | undefined;
@@ -71,6 +69,12 @@ const validateNativeScriptWitnesses = (
       );
     }
     if (script.language !== "NativeCardano") {
+      const plutusFault = carriedPlutusWitnessScriptFault(
+        tx.txId,
+        script,
+        witness.index,
+      );
+      if (plutusFault !== null) return plutusFault;
       continue;
     }
     witnessSigners ??= new Set(hashHexes(tx.witnessKeyHashes));
@@ -301,20 +305,7 @@ export const validatePhaseASingle = (
       "unsupported consensus profile",
     );
   }
-  // A forced transaction passed the tx-order mint's admission rules and runs
-  // no program, so it has no normal-admission screen and no program material.
-  if (!forced && queuedTx.programMaterialSidecarCbor == null) {
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.CekProgramMaterial,
-      "V1 admission is missing its canonical program-material sidecar",
-    );
-  }
-  // Normal-admission proof-fit bounds. The raw projection is reject-only: its
-  // native payload cannot decode and must reach the ordered native scan after
-  // the earlier Phase A checks. Normal structured admission/material decoders
-  // would throw on that payload before the machine can name the first faulty
-  // witness. Every admissible candidate also passes the material screen below.
+  // Normal admission retains the proof-fit bounds; Flat decoding is separate.
   const consensusViolation =
     !forced && rawProjection === null
       ? validateMidgardConsensusTxCbor(queuedTx.txCbor)
@@ -326,35 +317,6 @@ export const validatePhaseASingle = (
       `${consensusViolation.featureId}: ${consensusViolation.detail}`,
     );
   }
-  if (!forced && rawProjection === null) {
-    try {
-      const material = decodeMidgardCekProgramMaterialSidecar(
-        queuedTx.programMaterialSidecarCbor!,
-      );
-      const envelopes = collectMidgardAttachedProgramEnvelopes(
-        decodeMidgardNativeTxFullFromCanonicalCbor(queuedTx.txCbor),
-      );
-      if (ledgerTx.referenceInputs.length > 0) {
-        // Phase A has not resolved reference-input outputs yet. Require complete
-        // attached programs now; Phase B checks the exact combined bundle once
-        // the referenced program envelopes are authoritative.
-        for (const envelope of envelopes) {
-          verifyMidgardCekProgramMaterial(envelope, material, {
-            allowUnreachable: true,
-          });
-        }
-      } else {
-        verifyMidgardCekProgramMaterialBundle(envelopes, material);
-      }
-    } catch (cause) {
-      return reject(
-        ledgerTx.txId,
-        RejectCodes.CekProgramMaterial,
-        `invalid V1 program material: ${String(cause)}`,
-      );
-    }
-  }
-
   if (
     ledgerTx.networkId !== undefined &&
     ledgerTx.networkId !== config.expectedNetworkId
@@ -386,7 +348,7 @@ export const validatePhaseASingle = (
   if (rejection === null) rejection = validateValidityInterval(ledgerTx);
   if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
   if (rejection === null) rejection = verifyVKeyWitnessSignatures(ledgerTx);
-  if (rejection === null) rejection = validateNativeScriptWitnesses(ledgerTx);
+  if (rejection === null) rejection = validateWitnessScripts(ledgerTx);
   if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
   if (rejection === null) {
     rejection = validateScriptEvaluationPreconditions(ledgerTx);
@@ -411,7 +373,6 @@ export const validatePhaseASingle = (
     ledgerTx: submittedTx.ledgerTx,
     expectedNetworkId: config.expectedNetworkId,
     txCbor: submittedTx.txCbor,
-    programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
     arrivalSeq: queuedTx.arrivalSeq,
     createdAt: queuedTx.createdAt,
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

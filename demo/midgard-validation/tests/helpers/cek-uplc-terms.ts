@@ -21,7 +21,7 @@ import {
   type MidgardCekStructuralVerdict,
 } from "../../src/cek-executor.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "../validation-fixtures.flat-program.js";
 
 /** Small UPLC combinators for building CEK test programs at runtime. */
 
@@ -161,11 +161,11 @@ export const prepareMidgardCekProgram = (
   script: UPLCTerm,
   context: Data,
 ): MidgardCekPreparedProgram => {
-  const program = buildMidgardCanonicalCekProgram(
+  const program = buildCekProgramFromRawFlat(
     encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], script)),
   );
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     encodeMidgardCekPlutusData(context),
   );

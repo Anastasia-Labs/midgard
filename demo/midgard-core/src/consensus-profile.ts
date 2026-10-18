@@ -1,11 +1,5 @@
 import { canonicalJson } from "./canonical-json.js";
 import {
-  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-  MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION,
-  MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_VERSION,
-  MIDGARD_CEK_PROGRAM_MATERIAL_VERSION,
   MIDGARD_MAX_DA_PAYLOAD_BYTES,
   MIDGARD_PROOF_SUBMISSION_ENVELOPE_VERSION,
 } from "./cek-proof.js";
@@ -67,14 +61,6 @@ const MAX_TRANSACTION_FIELD_CHUNK_BYTES = 4_095;
 const MAX_LEDGER_MEMBERSHIP_PROOF_OVERHEAD_BYTES = 12 * 1024;
 const MAX_LEDGER_OUTPUT_PREIMAGE_BYTES = MAX_L1_FAULT_PROOF_TX_BYTES;
 const MAX_OUTPUT_VALUE_CBOR_BYTES = 5_000;
-// Raw Flat is a local authoring input, not an L1-revealed script preimage.
-// Consensus script bytes are the compact program envelope below; graph
-// material is admitted separately and checked against its exact DA encoding.
-const MAX_CEK_PROGRAM_NODE_COUNT = Number(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT);
-const MAX_CEK_PROGRAM_MATERIAL_BYTES = Number(
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-);
-
 /**
  * Concrete serialization measurements that justify the profile's proof
  * envelope reservations. These are evidence, not independently configurable
@@ -307,9 +293,6 @@ export const MIDGARD_CONSENSUS_LIMITS = Object.freeze({
     MAX_LEDGER_MEMBERSHIP_PROOF_OVERHEAD_BYTES,
   maxLedgerOutputPreimageBytes: MAX_LEDGER_OUTPUT_PREIMAGE_BYTES,
   maxOutputValueCborBytes: MAX_OUTPUT_VALUE_CBOR_BYTES,
-  maxCekProgramEnvelopeBytes: MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
-  maxCekProgramNodeCount: MAX_CEK_PROGRAM_NODE_COUNT,
-  maxCekProgramMaterialBytes: MAX_CEK_PROGRAM_MATERIAL_BYTES,
   maxCekBlobChunkBytes: 4_095,
   maxCekBuiltinTag: 100,
   // The complete ten-leaf CEK transition (root checks, semantics, pinned
@@ -366,7 +349,6 @@ export const MIDGARD_CONSENSUS_FEATURES = Object.freeze([
   "script_witnesses",
   "redeemers",
   "reference_scripts",
-  "l1_program_material_publication",
   "script_payment_credentials",
   "protected_outputs",
   "required_observers",
@@ -403,12 +385,7 @@ export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
   validationMachineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
   validationTraceDescriptorVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
   validationDisputeVersion: MIDGARD_VALIDATION_DISPUTE_VERSION,
-  cekProgramEnvelopeVersion: Number(MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION) as 1,
   cekValueSchemaVersion: MIDGARD_CEK_VALUE_SCHEMA_VERSION,
-  cekProgramMaterialVersion: Number(MIDGARD_CEK_PROGRAM_MATERIAL_VERSION) as 1,
-  cekProgramMaterialSidecarVersion: Number(
-    MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_VERSION,
-  ) as 1,
   proofSubmissionEnvelopeVersion: Number(
     MIDGARD_PROOF_SUBMISSION_ENVELOPE_VERSION,
   ) as 1,

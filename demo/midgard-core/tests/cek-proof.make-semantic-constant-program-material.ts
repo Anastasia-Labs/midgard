@@ -4,7 +4,6 @@ import {
   encodeMidgardCekValueNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
 } from "../src/cek-proof.js";
 import {
@@ -63,7 +62,12 @@ export const makeSemanticConstantProgramMaterial = (
   payload: FixtureData,
   memory: bigint,
 ): {
-  readonly envelope: MidgardCekProgramEnvelope;
+  readonly summary: {
+    readonly termRoot: Uint8Array;
+    readonly nodeCount: bigint;
+    readonly materialByteLength: bigint;
+    readonly uplcVersion: readonly [bigint, bigint, bigint];
+  };
   readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly typeCbor: Buffer;
   readonly payloadCbor: Buffer;
@@ -200,7 +204,7 @@ export const makeSemanticConstantProgramMaterial = (
   });
   const material = [...byRoot.values()];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),

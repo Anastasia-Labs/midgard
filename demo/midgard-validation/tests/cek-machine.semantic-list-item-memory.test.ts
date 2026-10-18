@@ -27,7 +27,7 @@ import {
   prependListSequence,
 } from "../src/cek-machine.verify-semantic-builtin-control.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 type SemanticWitness = Extract<
   MidgardCekCoreStepWitness,
@@ -42,7 +42,7 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
     new Application(new Force(Builtin.mkCons), item),
     items,
   );
-  const program = buildMidgardCanonicalCekProgram(
+  const program = buildCekProgramFromRawFlat(
     encodeMidgardCekCardanoFlatProgram(
       new UPLCProgram(
         [1, 1, 0],
@@ -51,7 +51,7 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
     ),
   );
   const execution = executeMidgardCekStructuralProgram({
-    root: program.envelope.termRoot,
+    root: program.termRoot,
     material: program.material.values(),
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,

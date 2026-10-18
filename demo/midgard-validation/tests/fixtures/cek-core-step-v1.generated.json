@@ -81,17 +81,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100200101",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "2336790b63554cc935fe96301919683b9391d0486dd750418b4167a21e657674",
-        "nodeCount": "2",
-        "materialByteLength": "39"
-      },
-      "envelopeHash": "4743b7b5d8b9bf87ea2455ca308f6e0fb8ae61e5492015ca53fb214ac1c93028",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "2336790b63554cc935fe96301919683b9391d0486dd750418b4167a21e657674",
       "root": "ba26591917eed7ff76e1d3145f8d75afb6bba28b1de379e0845686dfc814707a",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -196,17 +191,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100251499",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "f468f708ddf750e6a4a5d30f526d742924cf59081598eb171ff78d6dd4763dd6",
-        "nodeCount": "7",
-        "materialByteLength": "294"
-      },
-      "envelopeHash": "77b8475b692a2b37b76c252e729d7238fa6764a941f653e7606202f91c5298f6",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "f468f708ddf750e6a4a5d30f526d742924cf59081598eb171ff78d6dd4763dd6",
       "root": "77b4f6cf828e9fd78a140550823da97a6d186e358c99935835ef1c4370b40b0a",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -325,17 +315,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100200301",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "15ba0d82bee6815db7be536ee31d6cee5fa77c76cd93d5b06bfd0609be441c0b",
-        "nodeCount": "2",
-        "materialByteLength": "39"
-      },
-      "envelopeHash": "0eedf5335ee48e00d831932f1dcc040a6359106cc72f63ccc872668eb9ebd86d",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "15ba0d82bee6815db7be536ee31d6cee5fa77c76cd93d5b06bfd0609be441c0b",
       "root": "43b2e78f8ec0d56bbf255f8619009b8430a9dc197dc08f257a5c4df86f528417",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -440,17 +425,12 @@
       "maxSteps": 32,
       "scriptFlat": "0101002601",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "0d9296939452141af25640ef1f87955e31f020f434094404787b861f81471aea",
-        "nodeCount": "2",
-        "materialByteLength": "38"
-      },
-      "envelopeHash": "0f733d6be1180bf75cc95dbd72bc602c7b5d108fc019695b58edbb2970f10c18",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "0d9296939452141af25640ef1f87955e31f020f434094404787b861f81471aea",
       "root": "31ca1bcf5462d35feb1ef11453f6f0002c31faf101c87c0da3534a2b03463848",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -541,17 +521,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100220011",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "c30a0bf3df736bb7e60078c1c1d9339ebb198685553ee9e57bfeca26626dec2f",
-        "nodeCount": "3",
-        "materialByteLength": "75"
-      },
-      "envelopeHash": "1638f0653e6856dc6af6cd9ee52d974a141165345b8041a2a385db0f82fcceb6",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "c30a0bf3df736bb7e60078c1c1d9339ebb198685553ee9e57bfeca26626dec2f",
       "root": "717dd29e5493d0efc4bc069b58530c527ffbf1d10ccea7185f5ef8404151dabe",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -649,17 +624,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100298005200e01",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "8db28680f0fea73ac0d6914b0d97560cfbb91b010b427136b7b2c5424dc67da1",
-        "nodeCount": "9",
-        "materialByteLength": "402"
-      },
-      "envelopeHash": "6966e610a9fd5f86c0be992bc2cb56c57e92daf54293e0b304716351ad7e8b2f",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "8db28680f0fea73ac0d6914b0d97560cfbb91b010b427136b7b2c5424dc67da1",
       "root": "0a83fc7ab5f31485414783388ce06572d6808cb42b2795d4ffcfbb7763eeef87",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -785,17 +755,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010029800a40a9481592200201",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "1f8ce3b4d4d912adc111cadeffb8cc2e73089058aaa47b96a2a69ec5a046096b",
-        "nodeCount": "18",
-        "materialByteLength": "803"
-      },
-      "envelopeHash": "c0740b7cad700b6cfa28d1615ea4bee238698aa56799a265cf4af47c4e45ba9f",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "1f8ce3b4d4d912adc111cadeffb8cc2e73089058aaa47b96a2a69ec5a046096b",
       "root": "068c57b8da2b9794500027c5771fdc65fbbe31c93fe2e1804ff83f9bf85240fe",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1005,17 +970,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010029800a40054801170001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "fd98b5a0bb1ab9dd170fbc715a611f690762dd713158016f14df7c2cbaca3a10",
-        "nodeCount": "16",
-        "materialByteLength": "729"
-      },
-      "envelopeHash": "f38d2df715fdd3639d6488de1a789f7e23ee09af8791bc2a7117defe453d4715",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "fd98b5a0bb1ab9dd170fbc715a611f690762dd713158016f14df7c2cbaca3a10",
       "root": "28149dc5c71089bdf7429993a95d1b798568ca9ead9cbdca190b904b1c514876",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1204,17 +1164,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010029800a4004a40141",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "d13996ced311994ae5615c6071253e671e896c8212404a97c64c6a1a263b990e",
-        "nodeCount": "14",
-        "materialByteLength": "655"
-      },
-      "envelopeHash": "999ac97eb8bbf08bd05b0211ccc7ae8bb6243346bb4ccfdee212ca135d2fcefa",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "d13996ced311994ae5615c6071253e671e896c8212404a97c64c6a1a263b990e",
       "root": "7feb257428f8a59448734b3563b9f4960c38fa67434f203453f7da9f32800b4f",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1361,17 +1316,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100298015200e01",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "9f45d83f31953b4ec80486a14dc7b51f53cf8ef93c9330a9145b7226453e6d1b",
-        "nodeCount": "9",
-        "materialByteLength": "402"
-      },
-      "envelopeHash": "9b9956f2d2dd1a758f3a7eb083e3e1dde40adf23479875a699364fddae6dcb55",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "9f45d83f31953b4ec80486a14dc7b51f53cf8ef93c9330a9145b7226453e6d1b",
       "root": "d0eb89479c88e6faef6698cba54a2a1b16a92d97a3ff2797a312267f4fb10046",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1476,17 +1426,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100294800a90071",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "c5c5944cba6f1e8247222c8beaf1435aed38f5f8156d94a53722e0c0caa79519",
-        "nodeCount": "12",
-        "materialByteLength": "546"
-      },
-      "envelopeHash": "814aa21135923389b59820958307aaec82540eb53d07a6b2ee579d5d7b610051",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "c5c5944cba6f1e8247222c8beaf1435aed38f5f8156d94a53722e0c0caa79519",
       "root": "26129ef7350a0a976ff5b47bea7c525f750437e033005387c44693bbda4160a0",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1591,17 +1536,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002337009029240041",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "a20da0fead925ba3e9b1a6c761a457338c1d58bd1938dc38a6eb4ced8ebb0f50",
-        "nodeCount": "13",
-        "materialByteLength": "548"
-      },
-      "envelopeHash": "d3e71b8339c30f0f997bb13e0568efe2ee4f2293325d486e31d3c6e08de283b1",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "a20da0fead925ba3e9b1a6c761a457338c1d58bd1938dc38a6eb4ced8ebb0f50",
       "root": "edccf50e72ab31ab9c520946a2d28a0a11553f08402ba3a27fab46b148cdbadf",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1762,17 +1702,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010023335734945200248011",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "0edad802ae4d5daab9ee11df312185e0fdd153ccde6713ec4fa7c3eb53fdaa77",
-        "nodeCount": "19",
-        "materialByteLength": "840"
-      },
-      "envelopeHash": "cfd670de1d645a65a8ce9dab92854cca826acf91439e51623e3abf8c6bd5752a",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "0edad802ae4d5daab9ee11df312185e0fdd153ccde6713ec4fa7c3eb53fdaa77",
       "root": "c92789da9053d74229422b4c51b5ae5f0b627d269c1623a928041955e0afec16",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -1975,17 +1910,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010023370000290011",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "f7da11bce81267b7adb3b9db3498622516f785ca1bdbb0088be625cc841f1bcc",
-        "nodeCount": "10",
-        "materialByteLength": "368"
-      },
-      "envelopeHash": "30ff4df430b67779c7e67291501628037aa25a939a98617ab8d7b3b16d340c71",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "f7da11bce81267b7adb3b9db3498622516f785ca1bdbb0088be625cc841f1bcc",
       "root": "30cb03780cc51ff131a519d50e212be54780fd34ea14ac50640d282ab63d500f",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2146,17 +2076,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002337089001240001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "ed119c22d51db717ca68c049cfe638dd7d35a201c6557e1a2a11c9c5d5dde49f",
-        "nodeCount": "13",
-        "materialByteLength": "547"
-      },
-      "envelopeHash": "09cab3022937f187566b65c3a68dca83b7eb89e820754ade4bcac081c928fa67",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "ed119c22d51db717ca68c049cfe638dd7d35a201c6557e1a2a11c9c5d5dde49f",
       "root": "b7f90715ba6b5dc4c361256700e3704bab7af547502518156b2b0e1397f3c0c6",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2310,17 +2235,12 @@
       "maxSteps": 64,
       "scriptFlat": "010100233376a91120778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117004881110102030405060708090a0b0c0d0e0f1011004881405130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a50001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "ee6dd1eb9a3f7ea24ad52d55900bd58308b41310a0c467e2c80104d519df081f",
-        "nodeCount": "18",
-        "materialByteLength": "921"
-      },
-      "envelopeHash": "f647cf48fdb148cc6b120c468b9e5f4397deeb98a39df5245482479b4ab5a431",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "ee6dd1eb9a3f7ea24ad52d55900bd58308b41310a0c467e2c80104d519df081f",
       "root": "95b81d419aae7bb53731ebb263abc351983348d60a237f3cfcf3e04f308329d5",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2509,17 +2429,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100234800920041",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "50b3f0b6aaf4a77a6bd045631c0a9b4a71d11695f108e1dadea6b65901c5a1cb",
-        "nodeCount": "11",
-        "materialByteLength": "474"
-      },
-      "envelopeHash": "4edf148f9fe91b42f219bd332a523b21591c22c9acc97a4333d4ddd24dfcaf5b",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "50b3f0b6aaf4a77a6bd045631c0a9b4a71d11695f108e1dadea6b65901c5a1cb",
       "root": "e54d2cb5bcdcfef6e6650f3921308a1412502d3576245529d78fb977acded710",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2638,17 +2553,12 @@
       "maxSteps": 32,
       "scriptFlat": "010100254981",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "c800a1a1b773fe16b47790d592153ef12b0af95b37d6170fd54b94261010c705",
-        "nodeCount": "6",
-        "materialByteLength": "258"
-      },
-      "envelopeHash": "17e9b6f62afbec6622b1de45e58f8c951c7cd0f6b87a30a5f6aa4606dfe2eb86",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "c800a1a1b773fe16b47790d592153ef12b0af95b37d6170fd54b94261010c705",
       "root": "63e2ec36cba1c07ba4394789fef53fe44786efa38e5c05b8310c83fe38ba4123",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2753,17 +2663,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010023574297adeb06050460c1",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "bbb8343d7a7435a7b347ae27daddb6807a7834c9d2cadd3acd59a03858b5f79e",
-        "nodeCount": "21",
-        "materialByteLength": "902"
-      },
-      "envelopeHash": "08d725a18ab09238094b5ca5f1809cc2ab4154a6c0309c581b6fd9193c66b8bc",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "bbb8343d7a7435a7b347ae27daddb6807a7834c9d2cadd3acd59a03858b5f79e",
       "root": "86c986cf927b0a41e3a256bfa5b3189543adf0ba0dd08f14a8457df7fc96c9e4",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -2910,17 +2815,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010023754003",
       "contextCbor": "a1014171",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "1afa1c15da3199f1b52d89f9b5dbc685caee955dc729f31c6ed994d9f88f1d67",
-        "nodeCount": "4",
-        "materialByteLength": "113"
-      },
-      "envelopeHash": "89634c2046266ef56b36b1b724e16979431a4c82ef16002799595b8d6a7125c9",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "1afa1c15da3199f1b52d89f9b5dbc685caee955dc729f31c6ed994d9f88f1d67",
       "root": "1f3cc239a65a8f448ea1c6bccd006c836fe1f9f088c80f38b0726c0b718dd0c6",
       "contextValueRoot": "8c44f5005e4ba7094bb818e685424a256f9dfb3a0b4c4a7435a8a969b330d652",
       "initialState": {
@@ -3053,17 +2953,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002374c6eac005",
       "contextCbor": "a2015f58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58402a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a58282a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2aff0203",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
-        "nodeCount": "6",
-        "materialByteLength": "187"
-      },
-      "envelopeHash": "f7d5ab7d6813433e0b4158299bbd4355956bf3dc7bc09a011723a5ce9c232337",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
       "root": "91e276326a4ee16b986aed1e2cf7bf219193d12929799eaddb3996ff8a547f34",
       "contextValueRoot": "3fb25e3ebbc414465782941b092d742b867ceaea900ee14e4f291fa7c8b77654",
       "initialState": {
@@ -3280,17 +3175,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002374c6eac005",
       "contextCbor": "a2014a2a2a2a2a2a2a2a2a2a2a0203",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
-        "nodeCount": "6",
-        "materialByteLength": "187"
-      },
-      "envelopeHash": "f7d5ab7d6813433e0b4158299bbd4355956bf3dc7bc09a011723a5ce9c232337",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
       "root": "1f422d8e61f0897463a15383e8742b65ebd00ce08fa9f9b16534bba600fee88e",
       "contextValueRoot": "aaa5d160074a13f63e08da840c296d369fc5b18d53d5d33a6702495496232a4d",
       "initialState": {
@@ -3507,17 +3397,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002374c6eac005",
       "contextCbor": "a0",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
-        "nodeCount": "6",
-        "materialByteLength": "187"
-      },
-      "envelopeHash": "f7d5ab7d6813433e0b4158299bbd4355956bf3dc7bc09a011723a5ce9c232337",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "138aca546a87ade3172344e4a5dc1b2b0402cd81976d38c15bf4f116232d0346",
       "root": "5a1668eded2761aece1385b5eacfe0a673682c8c04d0fbb1bc853a1e5c829c47",
       "contextValueRoot": "209e9518003dd636e61e112f249463d4d586488e117955dad8bb9d383cbd6b85",
       "initialState": {
@@ -3706,17 +3591,12 @@
       "maxSteps": 64,
       "scriptFlat": "0101002374c6ead3010fa2014a2a2a2a2a2a2a2a2a2a2a02030001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "357645203adfaa305cc64dde65b2bfd75029d6d7acb25309e03e5faacada5e15",
-        "nodeCount": "19",
-        "materialByteLength": "761"
-      },
-      "envelopeHash": "efe978eb2519d31da453ff1f8cce0b9d4ddabb6c3a959e17121d29db533101af",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "357645203adfaa305cc64dde65b2bfd75029d6d7acb25309e03e5faacada5e15",
       "root": "922a109d279f487747be402774c3f1000c9409e7765d4a6df9907dee87cc92a8",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -3926,17 +3806,12 @@
       "maxSteps": 64,
       "scriptFlat": "01010023756981039f01ff0001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "8b66b41c3cf9039013bdb9db06e85a30dd8389144406df66666241ece4e6e9b8",
-        "nodeCount": "10",
-        "materialByteLength": "409"
-      },
-      "envelopeHash": "ac13003868c874b217a4ed2d523cee81b0c75878cb83d7cd377e8cc497af0311",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "8b66b41c3cf9039013bdb9db06e85a30dd8389144406df66666241ece4e6e9b8",
       "root": "f515f3a3d3cb86c6a99e941b2ad99396c93ca2c7439b0eddc5b5bbcac4ba9a74",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -4062,17 +3937,12 @@
       "maxSteps": 256,
       "scriptFlat": "01010023378c66f10ddda4413097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800337886eed2213097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00378491016093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80001",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "4d2697e6d6e5a10a90e0dc5241cab4a5ed897ee77cba6381a6bf5efd38e44da0",
-        "nodeCount": "20",
-        "materialByteLength": "992"
-      },
-      "envelopeHash": "752988ee8efb84b5185e96dc243bc2fdcdafd8940c2340905fd896d44e33f243",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "4d2697e6d6e5a10a90e0dc5241cab4a5ed897ee77cba6381a6bf5efd38e44da0",
       "root": "bda4b0b24da87c4c7a5022125aa798224ca8411381345dc5fecf47224a13b7f3",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {
@@ -4503,17 +4373,12 @@
       },
       "scriptFlat": "01010023230010012300100101",
       "contextCbor": "d87980",
-      "envelope": {
-        "uplcVersion": [
-          "1",
-          "1",
-          "0"
-        ],
-        "termRoot": "15cf3043bdb063419a401bf3df709ed364dbdbc29500640f91c2f0c721c006c6",
-        "nodeCount": "5",
-        "materialByteLength": "215"
-      },
-      "envelopeHash": "098bf99a7f3d38cf4f40ccdbcbf694c279226f217767640f3ed073078b094ef2",
+      "uplcVersion": [
+        "1",
+        "1",
+        "0"
+      ],
+      "termRoot": "15cf3043bdb063419a401bf3df709ed364dbdbc29500640f91c2f0c721c006c6",
       "root": "9400edc77d45d9be16688c6c065fa8ddb38f198c11e745166ac0d9f18c6a2cd3",
       "contextValueRoot": "2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb",
       "initialState": {

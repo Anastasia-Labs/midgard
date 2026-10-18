@@ -4,7 +4,7 @@ import {
   type MidgardCekDecodedProgramTerm,
   type MidgardCekDecodedProgramValue,
   readExactHashAt,
-} from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
+} from "./cek-proof.decode-program-material-entry.js";
 import {
   boundedBuiltinTag,
   MidgardCekTermTags,

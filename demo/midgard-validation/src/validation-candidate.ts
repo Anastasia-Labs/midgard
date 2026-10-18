@@ -142,7 +142,6 @@ type BuildPhaseAValidatedTxArgs = {
   readonly ledgerTx: MidgardLedgerTx;
   readonly expectedNetworkId: bigint;
   readonly txCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
   readonly redeemerWitnessHash: Buffer;
@@ -153,7 +152,6 @@ export const buildPhaseAValidatedTx = ({
   ledgerTx,
   expectedNetworkId,
   txCbor,
-  programMaterialSidecarCbor,
   arrivalSeq,
   createdAt,
   redeemerWitnessHash,
@@ -179,10 +177,6 @@ export const buildPhaseAValidatedTx = ({
     submission: {
       sourceKind,
       txCbor: Buffer.from(txCbor),
-      programMaterialSidecarCbor:
-        programMaterialSidecarCbor == null
-          ? null
-          : Buffer.from(programMaterialSidecarCbor),
       arrivalSeq,
       createdAt: new Date(createdAt.getTime()),
     },

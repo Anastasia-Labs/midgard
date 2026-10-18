@@ -1,4 +1,3 @@
-import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
@@ -45,7 +44,6 @@ export type MidgardTxRedeemerEvaluation =
  */
 export const evaluateMidgardTxRedeemers = (input: {
   readonly txCbor: Uint8Array;
-  readonly programMaterialSidecarCbor: Uint8Array;
   /**
    * Reads the outputs at the given out-refs from one consistent ledger
    * state; a missing out-ref is left out of the map.
@@ -66,22 +64,15 @@ export const evaluateMidgardTxRedeemers = (input: {
       detail,
     });
     let candidate;
-    let material;
     try {
       const submitted = decodeMidgardSubmittedTxFromCanonicalCbor(
         Buffer.from(input.txCbor),
-      );
-      material = decodeMidgardCekProgramMaterialSidecar(
-        input.programMaterialSidecarCbor,
       );
       candidate = buildPhaseAValidatedTx({
         sourceKind: "normal",
         ledgerTx: submitted.ledgerTx,
         expectedNetworkId: input.expectedNetworkId,
         txCbor: submitted.txCbor,
-        programMaterialSidecarCbor: Buffer.from(
-          input.programMaterialSidecarCbor,
-        ),
         arrivalSeq: 0n,
         createdAt: new Date(0),
         redeemerWitnessHash: submitted.commitments.redeemerWitnessHash,
@@ -131,6 +122,9 @@ export const evaluateMidgardTxRedeemers = (input: {
       const { result } = yield* runScriptExecution(
         {
           scriptBytes: execution.resolved.source.scriptBytes,
+          scriptLanguage: execution.resolved.version as
+            | "PlutusV3"
+            | "MidgardV1",
           contextCbor: scriptExecutionContextCbor(
             discovered.contextView,
             execution,
@@ -142,8 +136,6 @@ export const evaluateMidgardTxRedeemers = (input: {
             input.config.maxScriptExecutionSteps ??
             MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
         },
-        input.programMaterialSidecarCbor,
-        material,
         input.config,
       );
       const pointer = `${execution.purpose.kind} redeemer ${redeemer.tag}:${redeemer.index}`;

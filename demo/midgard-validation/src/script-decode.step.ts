@@ -7,7 +7,9 @@
  * It mirrors `initial_run_v1`, `step_with_frames_v1` and `record_of_v1`
  * exactly, because every Walk must reproduce the on-chain successor datum.
  * Its record is the off-chain verdict on a script: `Decoded` or `Refused`,
- * exactly as Cardano decodes it.
+ * exactly as Cardano decodes it. The terminal record is also the off-chain
+ * admission classifier; graph material is derived separately from accepted
+ * stored bytes.
  */
 import { nextSetBit } from "./script-decode.step-bits.js";
 import { tickBytes, tickFiller } from "./script-decode.step-bytes.js";
@@ -63,6 +65,7 @@ export {
 export type {
   Frame as ScriptDecodeFrame,
   Machine as ScriptDecodeMachine,
+  ScriptDecodePhase2Class,
   ScriptDecodeRecord,
   ScriptDecodeRun,
 } from "./script-decode.step-types.js";

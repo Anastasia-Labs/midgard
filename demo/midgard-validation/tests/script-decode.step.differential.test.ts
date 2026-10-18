@@ -4,7 +4,6 @@ import {
   type CardanoFlatRefusalClass,
   decodeCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   SCRIPT_DECODE_LANGUAGE_PLUTUS_V3,
   ScriptDecodeClass,
@@ -22,6 +21,7 @@ import {
   OUTSIDE_PROFILE,
 } from "./cek-program.cardano-flat.vectors.js";
 import { scriptDecodeStepScripts } from "./fixtures/script-decode-step-v1.vectors.mjs";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
 
@@ -122,7 +122,7 @@ describe("the script-decode step port against the Flat reader", () => {
     const flat = bytes(raw);
     let built: Uint8Array | undefined;
     try {
-      built = buildMidgardCanonicalCekProgram(flat).envelope.termRoot;
+      built = buildCekProgramFromRawFlat(flat).termRoot;
     } catch {
       built = undefined;
     }

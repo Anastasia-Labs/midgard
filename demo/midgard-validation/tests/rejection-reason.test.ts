@@ -296,6 +296,20 @@ describe("resolveRejectionReason", () => {
     },
   );
 
+  it("requires the carried-script coordinates for the script-decode code", () => {
+    expect(
+      resolveRejectionReason(
+        { code: RejectCodes.ScriptProgramEncoding },
+        "subject",
+      ),
+    ).toStrictEqual({ kind: "subjectMissing" });
+    expect(
+      rejectionReasonFitsCode(RejectCodes.ScriptProgramEncoding, {
+        PlutusScriptUndecodable: { item_kind: 0n, item_index: 2n, class: 4n },
+      }),
+    ).toBe(true);
+  });
+
   it("never writes a subject whose arm the code cannot end in", () => {
     expect(
       resolveRejectionReason(

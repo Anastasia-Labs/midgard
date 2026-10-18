@@ -83,7 +83,6 @@ export type WirePhaseACandidateV1 = {
   readonly submission: {
     readonly sourceKind: "normal" | "forced";
     readonly txCbor: Bytes;
-    readonly programMaterialSidecarCbor: Bytes | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -300,10 +299,6 @@ export const serializePhaseACandidate = (
     submission: {
       sourceKind: candidate.submission.sourceKind,
       txCbor: bytesView(candidate.submission.txCbor),
-      programMaterialSidecarCbor:
-        candidate.submission.programMaterialSidecarCbor === null
-          ? null
-          : bytesView(candidate.submission.programMaterialSidecarCbor),
       arrivalSeq: candidate.submission.arrivalSeq,
       createdAt: candidate.submission.createdAt,
     },
@@ -380,10 +375,6 @@ export const deserializePhaseACandidate = (
   submission: {
     sourceKind: candidate.submission.sourceKind,
     txCbor: bufferView(candidate.submission.txCbor),
-    programMaterialSidecarCbor:
-      candidate.submission.programMaterialSidecarCbor === null
-        ? null
-        : bufferView(candidate.submission.programMaterialSidecarCbor),
     arrivalSeq: candidate.submission.arrivalSeq,
     createdAt: candidate.submission.createdAt,
   },

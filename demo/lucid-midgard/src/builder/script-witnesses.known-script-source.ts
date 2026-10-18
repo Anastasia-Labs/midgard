@@ -1,8 +1,4 @@
 import {
-  type MidgardCekProgramMaterialEntry,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   decodeMidgardNativeByteListPreimage,
   hashMidgardVersionedScript,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
@@ -11,7 +7,6 @@ import {
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { CML } from "@lucid-evolution/lucid";
 
 import { type Assets, normalizeAssets } from "../core/assets.js";
@@ -22,7 +17,6 @@ import type {
   ScriptLanguage,
   ScriptSource,
 } from "../core/scripts.js";
-import type { BuilderState } from "./context.js";
 import { normalizeHashHex, normalizeNonNegativeBigInt } from "./normalizers.js";
 
 export type KnownScriptSource = {
@@ -275,15 +269,9 @@ export const knownScriptSource = (
   }
 };
 
-export type PreparedProofBuilderState = {
-  readonly state: BuilderState;
-  readonly programMaterial: readonly MidgardCekProgramMaterialEntry[];
-};
-
-export const assertCompleteTxProgramMaterial = (
+export const assertResolvedReferenceInputs = (
   tx: MidgardNativeTxFull,
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array> | undefined,
-  programMaterial: readonly MidgardCekProgramMaterialEntry[],
 ): void => {
   try {
     const resolved = resolvedOutputsByOutRef ?? new Map<string, Uint8Array>();
@@ -306,13 +294,9 @@ export const assertCompleteTxProgramMaterial = (
         throw new Error(`reference input ${key} has no resolved ledger output`);
       }
     }
-    const envelopes = collectMidgardEventProgramEnvelopes(tx, (key) =>
-      resolved.get(key),
-    );
-    verifyMidgardCekProgramMaterialBundle(envelopes, programMaterial);
   } catch (cause) {
     throw new BuilderInvariantError(
-      "Incomplete or mismatched CEK program material",
+      "Incomplete or mismatched reference inputs",
       cause instanceof Error ? cause.message : String(cause),
     );
   }

@@ -88,7 +88,6 @@ export const buildDeterministicValidationMachineTrace = (
     }
     return {
       validationContextCbor: completed.validationContextCbor,
-      programMaterialSidecarCbor: completed.programMaterialSidecarCbor,
       states,
       witnesses: sink!.witnesses,
       tree,

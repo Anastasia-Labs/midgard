@@ -32,7 +32,7 @@ import {
   redeemerIntentKey,
   requiredObserversPreimageCbor,
   resolveKnownScript,
-} from "./script-materialization.collect-known-script-sources.js";
+} from "./script-witnesses.collect-known-script-sources.js";
 import {
   type DerivedRedeemer,
   type KnownScriptSource,
@@ -40,8 +40,8 @@ import {
   redeemerDataBytes,
   type RedeemerPointer,
   RedeemerTags,
-} from "./script-materialization.known-script-source.js";
-import { type ScriptMaterialization } from "./unsigned-tx.js";
+} from "./script-witnesses.known-script-source.js";
+import { type ScriptWitnesses } from "./unsigned-tx.js";
 
 const addRequiredExecution = ({
   scriptHash,
@@ -135,9 +135,7 @@ const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
   });
 };
 
-export const deriveScriptMaterialization = (
-  state: BuilderState,
-): ScriptMaterialization => {
+export const deriveScriptWitnesses = (state: BuilderState): ScriptWitnesses => {
   if (state.scripts.datumWitnesses.length > 0) {
     throw new BuilderInvariantError(
       "Datum witnesses are not supported by Midgard native transactions; use inline datums",

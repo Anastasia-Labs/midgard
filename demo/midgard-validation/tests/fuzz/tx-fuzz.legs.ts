@@ -119,6 +119,22 @@ const sameResult = (
       left.budget.cpu === right.budget.cpu &&
       left.budget.memory === right.budget.memory));
 
+/**
+ * The proof run reports a budget stop as its spend, for the caller to compare
+ * with the declared budget; the verdict run stops out of budget itself. Both
+ * modes agree when their verdicts under the declared budget agree, and, on
+ * acceptance, their spends.
+ */
+const sameVerdict = (
+  proof: LocalScriptEvaluation,
+  fast: LocalScriptEvaluation,
+): boolean =>
+  scriptAccepted(proof)
+    ? fast.result.kind === "accepted" && sameResult(proof.result, fast.result)
+    : proof.result.kind === "indeterminate"
+      ? fast.result.kind === "indeterminate"
+      : fast.result.kind === "script_invalid";
+
 /** Phase B's script verdict under the declared budget. */
 const scriptAccepted = (evaluation: LocalScriptEvaluation): boolean =>
   evaluation.result.kind === "accepted" &&
@@ -305,7 +321,7 @@ export const runTxCase = async (
     }
     proofEvaluations.forEach((proof, index) => {
       const fast = verdict.scriptEvaluations[index];
-      if (fast !== undefined && !sameResult(proof.result, fast.result)) {
+      if (fast !== undefined && !sameVerdict(proof, fast)) {
         divergences.push(
           `script ${index.toString()}: proof mode ${proof.result.kind}, verdict mode ${fast.result.kind}, or their budgets differ`,
         );

@@ -13,6 +13,7 @@ import type { LedgerEntry } from "./ledger.js";
 import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
+import type { ScriptDecodePhase2Class } from "./script-decode.step-types.js";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -70,7 +71,6 @@ export const RejectCodes = {
   MintForbidden: "E_MINT_FORBIDDEN",
   ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
   ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
-  CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
   TxExUnits: "E_TX_EX_UNITS",
 } as const;
 
@@ -84,7 +84,6 @@ export type QueuedTx = {
   readonly sourceKind?: "normal" | "forced";
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -121,7 +120,6 @@ export type PhaseAValidatedTx = {
   readonly submission: {
     readonly sourceKind: "normal" | "forced";
     readonly txCbor: Buffer;
-    readonly programMaterialSidecarCbor: Buffer | null;
     readonly arrivalSeq: bigint;
     readonly createdAt: Date;
   };
@@ -208,6 +206,8 @@ export type LocalScriptEvaluation = {
     | { readonly cpu: bigint; readonly memory: bigint }
     | undefined;
   readonly result: LocalScriptEvalResult;
+  /** Present on proof-mode evaluation, before any CEK graph is constructed. */
+  readonly phase2Class?: ScriptDecodePhase2Class;
   readonly graph: MidgardCekExecutionGraph | null;
   readonly execution: MidgardCekStructuralExecution | null;
 };
@@ -259,7 +259,7 @@ export type PhaseBConfig = {
     evaluation: LocalScriptEvaluation,
   ) => void;
   readonly evaluateProofScript?: (
-    programEnvelopeCbor: Uint8Array,
+    scriptBytes: Uint8Array,
     contextCbor: Uint8Array,
     executionBudget?: {
       readonly cpu: bigint;
@@ -298,6 +298,5 @@ export type MidgardCommittedScriptRun = Omit<
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer | null;
   readonly createdAtMillis: number;
 };
