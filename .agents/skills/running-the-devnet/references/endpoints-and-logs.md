@@ -530,9 +530,10 @@ first hold by priority is the reason, the rest are in its detail):
   range the block's events could be admitted in (the prune passed the
   range's start, so an order admitted in it or the follower's refusal of
   one may be gone; the store was reset or rolled back since the view; the
-  follower's refusals could not be read; or its origin is after that
-  range's start and the protocol-init fact that could cover it is
-  unreadable). Where the facts cover the range, the block is
+  follower's cursor or its refusals could not be read; the block's start
+  maps to no slot; or its origin is after that range's start and the
+  protocol-init fact that could cover it is unreadable). Where the facts
+  cover the range, the block is
   `landed_block_invalid` instead. A
   local fault on the block: it is read again every run, and after eight
   runs in a row end on it with no progress past it the node exits non-zero
@@ -559,22 +560,25 @@ reason=landed_block_forced_order_pending`); a restart meets the same bound
   the slot that block's events could first be admitted at (the detail names
   both slots), or the block's node output was seeded at the origin, or the
   block names a deposit or withdrawal the follower refused because the
-  retention output its payload is read from is not in its facts (that
-  output was created before the origin). The facts cannot judge the block,
-  and the block is never blamed for it. It cannot fire on a store whose
-  `l1Origin` is the documented point before the `prepareHubOracleNonce`
-  block: such a store holds the protocol-init tx (the tx that spends
-  `hubOracleOneShot`), so no event is admitted before its origin and no
-  node output predates it, and it holds every retention output, whose
-  address is derived from that block's hub oracle. A
-  configuration error: not retried, and the node exits non-zero at once
-  (`node_transient_budget_exhausted source=driver
+  retention output its payload is read from is not in its facts: a
+  retention output the follower's facts do not hold, created before its
+  origin. The detail then names the referenced outputs absent from the
+  facts (`<tx hash>#<index>`), one of which is that retention output. The
+  facts cannot judge the block, and the block is never blamed for it. A
+  store whose `l1Origin` is the documented point before the
+  `prepareHubOracleNonce` block holds the protocol-init tx (the tx that
+  spends `hubOracleOneShot`), so no event is admitted before its origin
+  and no node output predates it. Not retried: the node exits non-zero at
+  once (`node_transient_budget_exhausted source=driver
 reason=landed_block_origin_after_frontier`); a restart on the same store
-  exits again. Reset the follower store with an earlier `l1Origin` (at or
-  before the earlier slot the detail names, where it names two, or before
-  the `prepareHubOracleNonce` block;
-  `midgard-l1-follower reset --to-origin`), or
-  resync the node, then restart.
+  exits again. Reset the follower store with an earlier `l1Origin`, then
+  restart (`midgard-l1-follower reset --to-origin`), or resync the node:
+  where the detail names two slots, at or before the earlier one; where it
+  names outputs, before the block that created each of them. For each named
+  `<tx hash>`, `midgard-l1-follower find-origin --tx <tx hash>
+--network-magic <n>` prints the `l1Origin` immediately before the block
+  holding that tx; use the earliest of them (or any earlier point) as
+  `l1Origin`. Otherwise, before the `prepareHubOracleNonce` block.
 - `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
   a foreign block failed in this node's own computation (hashing, the payload
   roots, a library the replay runs), or its Ed25519 verifier could not

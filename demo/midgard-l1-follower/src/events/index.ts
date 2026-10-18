@@ -24,7 +24,6 @@ export {
   eventDerivation,
   ledgerOrderedRedeemers,
   openOrder,
-  retentionUnseenRefusalsIn,
   retirementEvidence,
   type RetirementReason,
   zeroWithdrawalRedeemer,
@@ -46,6 +45,7 @@ export {
   spendableAt,
   type SpendableDeposit,
 } from "./reads.js";
+export { retentionUnseenRefusalsIn } from "./retention-unseen.js";
 export {
   EVENT_TABLES,
   eventMigrations,

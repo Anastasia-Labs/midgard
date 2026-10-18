@@ -30,9 +30,10 @@
  *   not, is then still in the facts.
  * - A deposit or withdrawal with an external payload is admitted on chain
  *   with the retention output holding its payload as a reference input. The
- *   follower refuses it (`retention_output_unseen`) when that output is not
- *   in its facts: it was created before the origin, so naming it is a store
- *   whose origin is too late for the block (`userAbsentWhere`). A refusal
+ *   follower refuses it (`retention_output_unseen`, naming the referenced
+ *   outputs absent from its facts) when its facts lack that output, which
+ *   they do because it was created before the origin, so naming it is a
+ *   store whose origin is too late for the block (`userAbsentWhere`). A refusal
  *   leaves the facts once the prune passes its slot, so an absent deposit or
  *   withdrawal is the block's fault only with the prune at or before `T(B)`
  *   as well.
@@ -205,11 +206,14 @@ const cursorCoverage = async (
 /**
  * The coverage at `view`, with the deposits and withdrawals the follower
  * refused because the retention output their payload is read from is not in
- * its facts (`${kind}:${event key hex}`, at or before the view; null when
- * unread). They are read before the cursor, as every fact is.
+ * its facts (`${kind}:${event key hex}`, at or before the view, each with
+ * the referenced outputs absent from the facts; null when unread). They are
+ * read before the cursor, as every fact is.
  */
 export type CoverageAt = EventCoverage &
-  Readonly<{ unseenRetention: ReadonlySet<string> | null }>;
+  Readonly<{
+    unseenRetention: ReadonlyMap<string, readonly OutRef[]> | null;
+  }>;
 
 export const coverageAt = async (
   store: Pick<FactStore, "cursor" | "protocolInit" | "transaction">,
@@ -250,6 +254,10 @@ export const absentWhere =
           `${kind} ${id} is not known at the view: ${coverage.detail}`,
         );
 
+/** `txHash#index`. */
+const outRefText = ({ txHash, index }: OutRef): string =>
+  `${txHash.toString("hex")}#${index.toString()}`;
+
 /** How the follower keys its refusal of the `kind` event `id`; null for an id that is no event id's CBOR. */
 const refusalKey = (kind: string, id: string): string | null => {
   try {
@@ -274,9 +282,10 @@ export const userAbsentWhere =
   (kind, id) => {
     if (!user.complete) return absentWhere(user)(kind, id);
     const key = refusalKey(kind, id);
-    if (key !== null && unseenRetention?.has(key) === true)
+    const absent = key === null ? undefined : unseenRetention?.get(key);
+    if (absent !== undefined)
       return originAfterFrontier(
-        `${kind} ${id} was refused by the follower: the retention output its payload is read from is not in its facts, so it predates the follower's origin`,
+        `${kind} ${id} was refused by the follower: the retention output its payload is read from is not in its facts, created before its origin; referenced outputs absent from the facts: ${absent.map(outRefText).join(", ")}`,
       );
     if (unseenRetention === null)
       return unknownEvent(

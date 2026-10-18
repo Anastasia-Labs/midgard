@@ -58,8 +58,9 @@ export const LANDED_BLOCK_DA_REFETCH_PENDING =
  * could fall in: the follower's origin is after the slot the block's events
  * are admitted after (`T(B)`) and the protocol-init fact is unreadable, the
  * prune passed `T(B)` (a spent order, or the follower's refusal of one, may
- * be gone), the follower's refusals are unreadable, or the store changed
- * generation since the view. Absence there does not prove the
+ * be gone), the follower's cursor or its refusals are unreadable, the
+ * block's start maps to no slot, or the store changed generation since the
+ * view. Absence there does not prove the
  * block wrong, and a gap local to this node is never blamed on the block, so
  * it is not `landed_block_invalid`; it is a local fault on the block,
  * retried within the runner's bound, after which the node exits (a follower
@@ -74,13 +75,16 @@ export const LANDED_BLOCK_EVENT_UNKNOWN = "landed_block_event_unknown";
  * origin is after the slot the block's events are admitted after (`T(B)`),
  * the block's node output was seeded at the origin, or the follower refused
  * a deposit or withdrawal the block names because the retention output its
- * payload is read from is not in its facts (created before the origin). The
- * facts cannot judge the block, and a later origin never covers it: a
- * configuration error, never the block's fault. A store whose origin is
- * before the `prepareHubOracleNonce` block holds the protocol-init spend and
- * every retention output, so it never raises this. Fatal: not retried, and
- * the node exits non-zero at once.
- * Reset the follower store to an origin early enough, or resync the node.
+ * payload is read from is not in its facts: a retention output the
+ * follower's facts do not hold, created before its origin (the detail names
+ * the referenced outputs absent from the facts). The facts cannot judge the
+ * block, and a later origin never covers it: never the block's fault. A
+ * store whose origin is before the `prepareHubOracleNonce` block holds the
+ * protocol-init spend, so no event is admitted before its origin and no
+ * node output predates it. Fatal: not retried, and the node exits non-zero
+ * at once.
+ * Reset the follower store to an origin early enough (before the block that
+ * created a named output, where the detail names one), or resync the node.
  */
 export const LANDED_BLOCK_ORIGIN_AFTER_FRONTIER =
   "landed_block_origin_after_frontier";
