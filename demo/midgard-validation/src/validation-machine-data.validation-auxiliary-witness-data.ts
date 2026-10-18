@@ -69,6 +69,7 @@ export const validationAuxiliaryWitnessData = (
     case "scheduledLedgerLookup": {
       const fields = [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
       ];
@@ -84,6 +85,7 @@ export const validationAuxiliaryWitnessData = (
     case "resolvedInputReplay":
       return new Constr(7, [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
@@ -205,6 +207,7 @@ export const validationAuxiliaryWitnessData = (
     case "valueInputAsset":
       return new Constr(24, [
         sourceKind(auxiliary.sourceKind),
+        int(auxiliary.itemIndex),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.descriptorCbor),

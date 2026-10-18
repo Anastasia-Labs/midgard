@@ -414,6 +414,7 @@ fn single_replayed_input_native_control(
     ),
     resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
       0,
+      0,
       replayed_input_key,
       vm_witness.empty_resolution_schedule_hash(),
     ),
@@ -517,6 +518,7 @@ fn replay_input_fixture_over(
     },
     ResolvedInputReplayWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
@@ -568,6 +570,7 @@ fn replay_asset_fixture() -> StepFixtureV1 {
     },
     ValueInputAssetWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       descriptor_cbor,
@@ -922,6 +925,7 @@ type ReplayInputMirrorV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
@@ -936,6 +940,7 @@ type ReplayAssetMirrorV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     yield_to_ref_input_index: Int,
@@ -1084,6 +1089,7 @@ test replay_input_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: h_a,
       value: #"8106",
@@ -1096,6 +1102,7 @@ test replay_input_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: h_a,
       value: #"8106",
@@ -1115,6 +1122,7 @@ test replay_asset_wire_layout_is_pinned() {
   expect
       ValueInputAssetWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         descriptor_cbor,
@@ -1135,6 +1143,7 @@ test replay_asset_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
     },
@@ -1147,6 +1156,7 @@ test replay_asset_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
     },
@@ -1492,6 +1502,7 @@ fn shaped_replay_input(
   expect
       ResolvedInputReplayWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
@@ -1509,6 +1520,7 @@ fn shaped_replay_input(
         output_index: 0,
         transition,
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
@@ -1538,6 +1550,7 @@ fn shaped_replay_asset(
   expect
       ValueInputAssetWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         descriptor_cbor,
@@ -1558,6 +1571,7 @@ fn shaped_replay_asset(
       output_index: 0,
       transition,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
     },
@@ -2354,7 +2368,15 @@ fn replay_claim_redeemer(
   claim: AssetFoldClaim,
 ) -> replay_asset_validator.SpendRedeemer {
   let f = replay_asset_fixture()
-  expect ValueInputAssetWitness { source_kind, key, next_schedule_hash, .. } = f.auxiliary
+  expect
+      ValueInputAssetWitness {
+        source_kind,
+        item_index,
+        key,
+        next_schedule_hash,
+        ..
+      }
+    = f.auxiliary
   ct.Continue(
     replay_asset_validator.VerifyReplayAsset {
       claim,
@@ -2362,6 +2384,7 @@ fn replay_claim_redeemer(
       output_index: 0,
       transition: f.transition,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       yield_to_ref_input_index: 0,
@@ -2555,6 +2578,7 @@ fn mutated_asset_auxiliary(
   when auxiliary is {
     ValueInputAssetWitness {
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       descriptor_cbor,
@@ -2568,6 +2592,7 @@ fn mutated_asset_auxiliary(
     } ->
       ValueInputAssetWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         descriptor_cbor,

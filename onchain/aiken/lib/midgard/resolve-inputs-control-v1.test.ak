@@ -74,6 +74,7 @@ test raw_pending_initial_encoding_equals_generic(
   let c = control_fixture()
   let pending = ResolveInputOutputProofV1 {
     source_kind: 0,
+    item_index: 3,
     key: #"aa",
     next_schedule_hash: c.remaining_schedule_hash,
     descriptor_cbor: #"bb",
@@ -98,6 +99,7 @@ test raw_pending_initial_encoding_equals_generic(
   )
   let raw_pending = raw.encode_pending_raw(
     0,
+    3,
     #"aa",
     c.remaining_schedule_hash,
     #"bb",
@@ -117,6 +119,7 @@ test splice_pending_successor_equals_whole_record_reencode(
   let c = control_fixture()
   let pending = raw.PendingRawV1 {
     source_kind: 1,
+    item_index: 0,
     key,
     next_schedule_hash: c.remaining_schedule_hash,
     descriptor_cbor: #"bb",
@@ -147,6 +150,7 @@ test splice_pending_successor_refuses_a_mismatched_proof_tail() fail {
   let c = control_fixture()
   let pending = raw.PendingRawV1 {
     source_kind: 0,
+    item_index: 0,
     key: #"aa",
     next_schedule_hash: c.remaining_schedule_hash,
     descriptor_cbor: #"bb",

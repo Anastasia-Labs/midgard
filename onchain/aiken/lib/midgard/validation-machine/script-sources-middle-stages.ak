@@ -124,6 +124,7 @@ pub fn script_sources_replay_item(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
@@ -132,7 +133,12 @@ pub fn script_sources_replay_item(
   // The schedule node fixes (kind, key); the ledger proof fixes `value`, so
   // every resolved-item leaf appended below is authenticated at its source.
   if and {
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.replay_remaining_schedule_hash,
     mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
   } {
     let descriptor = ledger_output_commitment_v1.decode(value)
@@ -261,6 +267,7 @@ pub fn script_sources_stage_three(
     when auxiliary is {
       ResolvedInputReplayWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
@@ -272,6 +279,7 @@ pub fn script_sources_stage_three(
           witness,
           control,
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,

@@ -26,6 +26,7 @@ pub type ResolutionScheduleTerminalVectorV1 {
   penultimate_spend_index: Int,
   penultimate_resolved_item_peaks: List<validation_merkle_v1.FrontierPeak>,
   last_source_kind: Int,
+  last_item_index: Int,
   last_key: ByteArray,
   last_value: ByteArray,
 }

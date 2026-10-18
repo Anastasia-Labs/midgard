@@ -4,10 +4,7 @@ type Auxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
-const emptyFrontier = {
-  count: 0,
-  peaks: [],
-} as const;
+const emptyFrontier = { count: 0, peaks: [] } as const;
 const chunkProof = {
   version: 1,
   fieldIndex: 0,
@@ -178,6 +175,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "scheduledLedgerLookup",
       sourceKind: "spend",
+      itemIndex: 1,
       key: bytes("03"),
       nextScheduleHash: hash(0x20),
       value: bytes("04"),
@@ -190,6 +188,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "scheduledLedgerLookup",
       sourceKind: "reference",
+      itemIndex: 2,
       key: bytes("05"),
       nextScheduleHash: hash(0x21),
       value: null,
@@ -202,6 +201,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "resolvedInputReplay",
       sourceKind: "spend",
+      itemIndex: 3,
       key: bytes("06"),
       nextScheduleHash: hash(0x22),
       value: bytes("07"),
@@ -390,6 +390,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     auxiliary({
       kind: "valueInputAsset",
       sourceKind: "spend",
+      itemIndex: 4,
       key: bytes("16"),
       nextScheduleHash: hash(0x2c),
       descriptorCbor: bytes("17"),

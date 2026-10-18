@@ -873,6 +873,7 @@ fn ri_state(
     Some(
       vm_machine_types.ResolveInputOutputProofV1 {
         source_kind: 0,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         descriptor_cbor,

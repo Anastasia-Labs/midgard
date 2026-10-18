@@ -508,8 +508,9 @@ export const prepareValidationTrace = (
       spend: spendInputsCollection.items,
       reference: referenceInputsCollection.items,
       keyOf: (item) => item.bytes,
-    }).map(({ sourceKind, item }) => ({
+    }).map(({ sourceKind, itemIndex, item }) => ({
       sourceKind,
+      itemIndex,
       key: item.bytes,
     }));
     const resolutionScheduleNodes = new Array<ResolutionScheduleNode>(
@@ -521,6 +522,7 @@ export const prepareValidationTrace = (
       const nextScheduleHash = resolutionScheduleHash;
       resolutionScheduleHash = prependMidgardInputResolutionSchedule({
         sourceKind: item.sourceKind,
+        itemIndex: item.itemIndex,
         key: item.key,
         nextHash: nextScheduleHash,
       });
@@ -1430,6 +1432,7 @@ export const prepareValidationTrace = (
             inputScheduleHash = prependMidgardInputResolutionSchedule({
               sourceKind:
                 step.consumed.fieldIndex === 0 ? "spend" : "reference",
+              itemIndex: step.consumed.itemIndex,
               key: Buffer.from(step.key),
               nextHash: inputScheduleHash,
             });
@@ -2143,6 +2146,7 @@ export const prepareValidationTrace = (
             ? Buffer.from([0])
             : encodeCbor([
                 pending.node.sourceKind === "spend" ? 0n : 1n,
+                BigInt(pending.node.itemIndex),
                 pending.node.key,
                 pending.node.nextScheduleHash,
                 pending.descriptorCbor,
@@ -2181,6 +2185,7 @@ export const prepareValidationTrace = (
             pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
               kind: "scheduledLedgerLookup",
               sourceKind: item.sourceKind,
+              itemIndex: item.itemIndex,
               key: item.key,
               nextScheduleHash: item.nextScheduleHash,
               value: null,
@@ -2217,6 +2222,7 @@ export const prepareValidationTrace = (
           pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
             kind: "scheduledLedgerLookup",
             sourceKind: item.sourceKind,
+            itemIndex: item.itemIndex,
             key: item.key,
             nextScheduleHash: item.nextScheduleHash,
             value: descriptorCbor,
@@ -2709,6 +2715,7 @@ export const prepareValidationTrace = (
                   {
                     kind: "resolvedInputReplay",
                     sourceKind: node.sourceKind,
+                    itemIndex: node.itemIndex,
                     key: node.key,
                     nextScheduleHash: node.nextScheduleHash,
                     value: descriptorCbor,

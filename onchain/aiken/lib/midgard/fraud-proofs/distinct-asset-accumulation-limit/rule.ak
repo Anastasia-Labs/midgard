@@ -261,6 +261,7 @@ fn finish(state: FoldStateV1, fold: Int, fault: Bool) -> FoldStateV1 {
 pub fn authenticate_input_fold_v1(
   state: FoldStateV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -279,7 +280,12 @@ pub fn authenticate_input_fold_v1(
       state.bound.coordinate.primary_index == control.replay_cursor,
       state.bound.coordinate.asset_index == asset_index,
       control.replay_asset_cursor == asset_index + 1,
-      resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+      resolution_schedule_node_hash(
+        source_kind,
+        item_index,
+        key,
+        next_schedule_hash,
+      ) == control.replay_remaining_schedule_hash,
       blake2b_256(descriptor_cbor) == control.replay_value_hash,
     }
   let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)

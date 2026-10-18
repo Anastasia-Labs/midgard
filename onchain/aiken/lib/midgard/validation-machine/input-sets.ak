@@ -295,12 +295,13 @@ fn verify_input_sets_item(
       } else {
         Pair(next_reference_count, next_reference_seen)
       }
+      let consumed_item = consumed_count - consumed_seen
       successor(
         next_spend_seen,
         next_reference_seen,
         consumed,
         consumed_field,
-        consumed_count - consumed_seen,
+        consumed_item,
         if consumed_seen == consumed_count {
           #""
         } else if order == Greater {
@@ -310,6 +311,7 @@ fn verify_input_sets_item(
         },
         resolution_schedule_node_hash(
           consumed_field,
+          consumed_item,
           consumed,
           control.resolution_schedule_hash,
         ),

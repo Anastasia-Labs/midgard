@@ -2063,6 +2063,7 @@ export const completeValidationTrace = (
                 {
                   kind: "resolvedInputReplay",
                   sourceKind: node.sourceKind,
+                  itemIndex: node.itemIndex,
                   key: node.key,
                   nextScheduleHash: node.nextScheduleHash,
                   value: descriptorCbor,
@@ -2109,6 +2110,7 @@ export const completeValidationTrace = (
                     {
                       kind: "valueInputAsset",
                       sourceKind: "spend",
+                      itemIndex: node.itemIndex,
                       key: node.key,
                       nextScheduleHash: node.nextScheduleHash,
                       descriptorCbor,

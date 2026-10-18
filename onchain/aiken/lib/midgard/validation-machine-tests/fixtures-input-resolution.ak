@@ -124,6 +124,7 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
   )
   let pending_initial = vm_machine_types.ResolveInputOutputProofV1 {
     source_kind: 0,
+    item_index: 0,
     key,
     next_schedule_hash: empty_schedule_hash,
     descriptor_cbor,
@@ -258,6 +259,7 @@ pub fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool
         work_witness_cbor,
         claimed_successor: begin_post,
       },
+      0,
       0,
       key,
       empty_schedule_hash,

@@ -72,6 +72,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ScheduledLedgerMembershipWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         value: Data.Bytes(),
@@ -82,6 +83,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ScheduledLedgerNonMembershipWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         proof: ProofSchema,
@@ -90,6 +92,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ResolvedInputReplayWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         value: Data.Bytes(),
@@ -238,6 +241,7 @@ export const buildValidationAuxiliaryWitnessSchema = <
     Data.Object({
       ValueInputAssetWitness: Data.Object({
         source_kind: Data.Integer(),
+        item_index: Data.Integer(),
         key: Data.Bytes(),
         next_schedule_hash: Data.Bytes(),
         descriptor_cbor: Data.Bytes(),

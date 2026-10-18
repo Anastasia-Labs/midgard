@@ -35,12 +35,13 @@ validator stage_three_replay(dispatcher_script_hashes: List<ScriptHash>) {
       1,
       7,
     )
-    expect [kind, key, next, value, proof_data, _siblings] = fields
+    expect [kind, item_index, key, next, value, proof_data, _siblings] = fields
     expect proof: Proof = proof_data
     semantic.stage_three_replay(
       pre,
       transition,
       builtin.un_i_data(kind),
+      builtin.un_i_data(item_index),
       builtin.un_b_data(key),
       builtin.un_b_data(next),
       builtin.un_b_data(value),

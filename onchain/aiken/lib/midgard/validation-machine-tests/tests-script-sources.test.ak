@@ -686,6 +686,7 @@ test script_sources_replay_appends_reference_scripts() {
       with_prior_ledger_root(post, ledger_root),
       vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 1,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,
@@ -796,6 +797,7 @@ fn spend_replay_step(
       with_prior_ledger_root(post, ledger_root),
       vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 0,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,

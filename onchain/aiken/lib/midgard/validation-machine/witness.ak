@@ -315,8 +315,11 @@ pub fn empty_resolution_schedule_hash() -> ByteArray {
   blake2b_256(resolution_schedule_domain)
 }
 
+/// One schedule node: the input's source field (`source_kind`), its position
+/// in that field (`item_index`), its key, and the rest of the schedule.
 pub fn resolution_schedule_node_hash(
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_hash: ByteArray,
 ) -> ByteArray {
@@ -324,6 +327,7 @@ pub fn resolution_schedule_node_hash(
   expect bytearray.length(next_hash) == 32
   resolution_schedule_domain
     |> bytearray.concat(cbor.serialise(source_kind))
+    |> bytearray.concat(cbor.serialise(item_index))
     |> bytearray.concat(encode_definite_bytes(key))
     |> bytearray.concat(next_hash)
     |> blake2b_256
@@ -335,6 +339,7 @@ fn scheduled_input_resolution_hash(inputs: List<ScheduledInputV1>) -> ByteArray 
     [input, ..rest] ->
       resolution_schedule_node_hash(
         input.source_kind,
+        input.item_index,
         input.key,
         scheduled_input_resolution_hash(rest),
       )
@@ -354,19 +359,21 @@ pub fn transaction_resolution_schedule_hash(
 ) -> ByteArray {
   list.concat(
     spend_inputs
-      |> list.map(
-          fn(input) {
+      |> list.indexed_map(
+          fn(item_index, input) {
             ScheduledInputV1 {
               source_kind: 0,
+              item_index,
               key: encode_midgard_tx_input(input),
             }
           },
         ),
     reference_inputs
-      |> list.map(
-          fn(input) {
+      |> list.indexed_map(
+          fn(item_index, input) {
             ScheduledInputV1 {
               source_kind: 1,
+              item_index,
               key: encode_midgard_tx_input(input),
             }
           },
@@ -379,8 +386,9 @@ pub fn transaction_resolution_schedule_hash(
 fn encode_resolve_input_output_proof(
   pending: ResolveInputOutputProofV1,
 ) -> ByteArray {
-  #"85"
+  #"86"
     |> bytearray.concat(cbor.serialise(pending.source_kind))
+    |> bytearray.concat(cbor.serialise(pending.item_index))
     |> bytearray.concat(encode_definite_bytes(pending.key))
     |> bytearray.concat(encode_definite_bytes(pending.next_schedule_hash))
     |> bytearray.concat(encode_definite_bytes(pending.descriptor_cbor))
@@ -397,12 +405,13 @@ fn resolve_input_output_proof_from_cbor(
   let data <- cbor_deserialise.expect_deserialise(pending_cbor)
   expect
       [
-        source_kind_data, key_data, next_schedule_hash_data,
+        source_kind_data, item_index_data, key_data, next_schedule_hash_data,
         descriptor_cbor_data, output_proof_cbor_data,
       ]
     = builtin.un_list_data(data)
   ResolveInputOutputProofV1 {
     source_kind: builtin.un_i_data(source_kind_data),
+    item_index: builtin.un_i_data(item_index_data),
     key: builtin.un_b_data(key_data),
     next_schedule_hash: builtin.un_b_data(next_schedule_hash_data),
     descriptor_cbor: builtin.un_b_data(descriptor_cbor_data),
@@ -1516,6 +1525,7 @@ pub fn resolve_inputs_control_is_bound(
         pending.source_kind == 0 || pending.source_kind == 1,
         resolution_schedule_node_hash(
           pending.source_kind,
+          pending.item_index,
           pending.key,
           pending.next_schedule_hash,
         ) == control.remaining_schedule_hash,

@@ -594,6 +594,7 @@ pub fn single_replayed_input_native_control(
     ),
     resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
       0,
+      0,
       replayed_input_key,
       vm_witness.empty_resolution_schedule_hash(),
     ),
@@ -665,6 +666,7 @@ pub fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
     },
     vm_machine_types.ResolvedInputReplayWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
@@ -715,6 +717,7 @@ pub fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     },
     vm_machine_types.ValueInputAssetWitness {
       source_kind: 0,
+      item_index: 0,
       key: replayed_input_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       descriptor_cbor,
@@ -941,6 +944,7 @@ pub fn value_and_mint_kind_route(
     expect
         vm_machine_types.ResolvedInputReplayWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
@@ -952,6 +956,7 @@ pub fn value_and_mint_kind_route(
       pre,
       witness,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       value,
@@ -961,6 +966,7 @@ pub fn value_and_mint_kind_route(
     expect
         vm_machine_types.ValueInputAssetWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           descriptor_cbor,
@@ -977,6 +983,7 @@ pub fn value_and_mint_kind_route(
       pre,
       witness,
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       descriptor_cbor,

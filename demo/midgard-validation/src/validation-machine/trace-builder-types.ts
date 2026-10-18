@@ -42,6 +42,7 @@ export type ScriptPurposeProofEntry = {
 };
 export type ResolutionScheduleNode = {
   sourceKind: "spend" | "reference";
+  itemIndex: number;
   key: Buffer;
   nextScheduleHash: Buffer;
   scheduleHash: Buffer;

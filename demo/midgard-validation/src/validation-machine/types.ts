@@ -158,6 +158,7 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "scheduledLedgerLookup";
         readonly sourceKind: "spend" | "reference";
+        readonly itemIndex: number;
         readonly key: Buffer;
         readonly nextScheduleHash: Buffer;
         readonly value: Buffer | null;
@@ -167,6 +168,7 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "resolvedInputReplay";
         readonly sourceKind: "spend" | "reference";
+        readonly itemIndex: number;
         readonly key: Buffer;
         readonly nextScheduleHash: Buffer;
         readonly value: Buffer;
@@ -355,6 +357,7 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "valueInputAsset";
         readonly sourceKind: "spend";
+        readonly itemIndex: number;
         readonly key: Buffer;
         readonly nextScheduleHash: Buffer;
         readonly descriptorCbor: Buffer;

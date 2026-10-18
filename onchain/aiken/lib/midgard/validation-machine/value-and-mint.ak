@@ -271,6 +271,7 @@ fn value_and_mint_replay_input(
   expect
       ResolvedInputReplayWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
@@ -283,7 +284,12 @@ fn value_and_mint_replay_input(
   // `replay_cursor` below `resolved_input_count`, and the leaf hash admits
   // only source kinds 0 and 1.
   if and {
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.replay_remaining_schedule_hash,
     validation_merkle_v1.verify_membership(
       control.native_control.resolved_input_count,
       control.native_control.resolved_item_peaks,
@@ -345,6 +351,7 @@ fn value_and_mint_replay_asset(
   expect
       ValueInputAssetWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         descriptor_cbor,
@@ -359,7 +366,12 @@ fn value_and_mint_replay_asset(
     = auxiliary
   if and {
     source_kind == 0,
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.replay_remaining_schedule_hash,
     control.replay_cursor < control.native_control.resolved_input_count,
     blake2b_256(descriptor_cbor) == control.replay_value_hash,
     asset_index == control.replay_asset_cursor - 1,
@@ -807,6 +819,7 @@ pub fn verify_value_and_mint_replay_input_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
@@ -828,6 +841,7 @@ pub fn verify_value_and_mint_replay_input_semantics_v1(
       witness,
       ResolvedInputReplayWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         value,
@@ -843,6 +857,7 @@ pub fn verify_value_and_mint_replay_asset_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -870,6 +885,7 @@ pub fn verify_value_and_mint_replay_asset_semantics_v1(
       witness,
       ValueInputAssetWitness {
         source_kind,
+        item_index,
         key,
         next_schedule_hash,
         descriptor_cbor,
@@ -1220,6 +1236,7 @@ pub fn verify_value_and_mint_replay_asset_dispatch(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   claim: AssetFoldClaim,
@@ -1238,7 +1255,12 @@ pub fn verify_value_and_mint_replay_asset_dispatch(
     control.replay_asset_cursor > 0,
     control.value_accumulator == claim.pre_value_accumulator,
     source_kind == 0,
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.replay_remaining_schedule_hash,
     control.replay_cursor < control.native_control.resolved_input_count,
     blake2b_256(d.descriptor_cbor) == control.replay_value_hash,
     d.asset_index == control.replay_asset_cursor - 1,

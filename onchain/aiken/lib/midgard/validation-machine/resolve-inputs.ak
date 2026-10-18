@@ -67,6 +67,7 @@ fn resolve_membership_begin_step(
   witness: ValidationOneStepWitnessV1,
   control: ResolveInputsControlV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,
@@ -79,7 +80,12 @@ fn resolve_membership_begin_step(
     control.pending == None,
     signer_proof == NoSignerSetProof,
     source_kind == 0 || source_kind == 1,
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
     input.output_index == descriptor.output_index,
     descriptor.total_length > 0,
     mpf_proof_v1.has(pre.prior_ledger_root, key, descriptor_cbor, proof),
@@ -91,6 +97,7 @@ fn resolve_membership_begin_step(
         pending: Some(
           ResolveInputOutputProofV1 {
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             descriptor_cbor,
@@ -266,12 +273,18 @@ fn resolve_non_membership_step(
   witness: ValidationOneStepWitnessV1,
   control: ResolveInputsControlV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   proof: Proof,
 ) -> Bool {
   and {
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
     mpf_proof_v1.does_not_have(pre.prior_ledger_root, key, proof),
     rejected_successor_is_exact(
       pre,
@@ -316,6 +329,7 @@ fn resolve_lookup_step(
       when auxiliary is {
         ScheduledLedgerMembershipWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
@@ -327,6 +341,7 @@ fn resolve_lookup_step(
             witness,
             control,
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             value,
@@ -335,6 +350,7 @@ fn resolve_lookup_step(
           )
         ScheduledLedgerNonMembershipWitness {
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           proof,
@@ -344,6 +360,7 @@ fn resolve_lookup_step(
             witness,
             control,
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             proof,
@@ -555,6 +572,7 @@ pub fn verify_resolve_inputs_membership_begin_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   value: ByteArray,
@@ -572,7 +590,12 @@ pub fn verify_resolve_inputs_membership_begin_semantics_v1(
     control.remaining_schedule_hash != empty_resolution_schedule_hash(),
     signer_proof == NoSignerSetProof,
     source_kind == 0 || source_kind == 1,
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
     input.output_index == descriptor.output_index,
     descriptor.total_length > 0,
     mpf_proof_v1.has(pre.prior_ledger_root, key, value, proof),
@@ -585,6 +608,7 @@ pub fn verify_resolve_inputs_membership_begin_semantics_v1(
           ..control,
           pending_cbor: raw_control.encode_pending_raw(
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             value,
@@ -646,6 +670,7 @@ pub fn verify_resolve_inputs_non_membership_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   proof: Proof,
@@ -657,7 +682,12 @@ pub fn verify_resolve_inputs_non_membership_semantics_v1(
     raw_control.control_no_pending_is_bound(pre, witness, control),
     control.cursor > 0,
     control.remaining_schedule_hash != empty_resolution_schedule_hash(),
-    resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.remaining_schedule_hash,
+    resolution_schedule_node_hash(
+      source_kind,
+      item_index,
+      key,
+      next_schedule_hash,
+    ) == control.remaining_schedule_hash,
     mpf_proof_v1.does_not_have(pre.prior_ledger_root, key, proof),
     rejected_successor_is_exact(
       pre,

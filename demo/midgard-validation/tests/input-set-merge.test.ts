@@ -44,9 +44,10 @@ const ascendingSchedule = (fields: InputSetFields): Buffer => {
     keyOf: (item) => Buffer.from(item),
   });
   let hash = emptyMidgardInputResolutionSchedule();
-  for (const { sourceKind, item } of [...ordered].reverse())
+  for (const { sourceKind, itemIndex, item } of [...ordered].reverse())
     hash = prependMidgardInputResolutionSchedule({
       sourceKind,
+      itemIndex,
       key: item,
       nextHash: hash,
     });
@@ -93,12 +94,25 @@ describe("InputSets descending merge (TS twin)", () => {
     expect(last.kind === "consume" && last.complete).toBe(true);
   });
 
+  it("binds the item index in the schedule node digest (Aiken twin)", () => {
+    const node = prependMidgardInputResolutionSchedule({
+      sourceKind: "reference",
+      itemIndex: 2,
+      key: Buffer.alloc(34, 0x11),
+      nextHash: emptyMidgardInputResolutionSchedule(),
+    });
+    expect(node.toString("hex")).toBe(
+      "e61b5d40494ba6c3a84531ee3db88e38483b6540a0a75c058abc2be90cc590bb",
+    );
+  });
+
   it("prepends the consumed items into the ascending schedule", () => {
     let hash = emptyMidgardInputResolutionSchedule();
     runInputSetMerge(run, (_control, step) => {
       if (step.kind === "consume")
         hash = prependMidgardInputResolutionSchedule({
           sourceKind: step.consumed.fieldIndex === 0 ? "spend" : "reference",
+          itemIndex: step.consumed.itemIndex,
           key: step.key,
           nextHash: hash,
         });
@@ -160,13 +174,47 @@ describe("InputSets descending merge (TS twin)", () => {
     });
   });
 
+  // The duplicate step's control is the pre-state of the Aiken rows
+  // `input_set_merge_rejects_the_first_repeat_of_a_field_zero_triple` and
+  // `input_set_merge_rejects_a_triple_split_across_fields_at_the_tied_heads`.
   it.each([
-    ["within field 0", [[a, c, c, c], []], [0, 3, 0, 2]],
-    ["split across fields", [[a, c, c], [c]], [0, 2, 1, 0]],
+    [
+      "within field 0",
+      [[a, c, c, c], []],
+      {
+        spendCount: 4,
+        referenceCount: 0,
+        spendSeen: 1,
+        referenceSeen: 0,
+        lastKey: c,
+        lastField: 0,
+        lastItem: 3,
+        cachedOtherHead: EMPTY,
+      },
+      [0, 3, 0, 2],
+    ],
+    [
+      "split across fields",
+      [[a, c, c], [c]],
+      {
+        spendCount: 3,
+        referenceCount: -1,
+        spendSeen: 0,
+        referenceSeen: 0,
+        lastKey: EMPTY,
+        lastField: -1,
+        lastItem: -1,
+        cachedOtherHead: c,
+      },
+      [0, 2, 1, 0],
+    ],
   ] as const)(
     "reports only the first detection of a triple copy %s",
-    (_name, fields, [ff, fi, sf, si]) => {
-      expect(runInputSetMerge(fields)).toMatchObject({
+    (_name, fields, control, [ff, fi, sf, si]) => {
+      const trace = steps(fields);
+      expect(trace.at(-1)!.control).toStrictEqual(control);
+      expect(trace.at(-1)!.step).toMatchObject({
+        kind: "duplicate",
         first: { fieldIndex: ff, itemIndex: fi },
         second: { fieldIndex: sf, itemIndex: si },
       });

@@ -58,11 +58,11 @@ use midgard/validation_trace_v1
 
 pub fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
-    original_schedule_hash: #"b1276de655cef9d7a3bc33abb49024dd36462f2cd2486dd25d9f7347563eab35",
+    original_schedule_hash: #"37dd5fe0c36256fb12a17ffe1c03c85f0554a83579f4ad5000f9baf2fbdd2877",
     terminal_accumulator: #"fb2154b7f046126c8cda87674c2822c3dad1ac294531845e6e6b49c0035e4858",
     terminal_frontier_commitment: #"8d0f7813e70f9bf63f84b78365a38e5c00efb807ac4f5ed16d21f0eff4b5e5b7",
     penultimate_accumulator: #"7f4f9eb3bfca6b31c4c6781cc36b58f0305c7cafbfbbe4dbfef9ad2370f8cbdc",
-    penultimate_remaining_schedule_hash: #"6d5383cff6142a4e20298cf82b71837886eeb853245d068a8cf43a540e1d2b3d",
+    penultimate_remaining_schedule_hash: #"05d16c4dddaaec7b5c46fbdc0268b27ef430a0cea60630349adaf9f31fd7ff9b",
     penultimate_spend_index: 433,
     penultimate_resolved_item_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -87,6 +87,7 @@ pub fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTermi
       },
     ],
     last_source_kind: 0,
+    last_item_index: 433,
     last_key: maximum_input_schedule_last_key,
     last_value: maximum_input_schedule_last_value,
   }
@@ -94,11 +95,11 @@ pub fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTermi
 
 pub fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
   ResolutionScheduleTerminalVectorV1 {
-    original_schedule_hash: #"320bc3d5140983c35d48db52cbf4e722de03b8ea618ef56b6a7f8b6fc6162e56",
+    original_schedule_hash: #"ffe1307d29932bb07004f4586071371d7f31bde1d565c0800353e345244e9ce7",
     terminal_accumulator: #"e0254c2da094b13f9857dd7f442bd346f74ccf0f4a1337bd1328983d80156421",
     terminal_frontier_commitment: #"b4757e20d40f58687e5421545c69f0399d6de0026a8e9728ec6e9bb13b510a46",
     penultimate_accumulator: #"cef5b3dc9392a0a6f359309a1b6ef88bc48196c7d85e4b2ab2b539a778fec226",
-    penultimate_remaining_schedule_hash: #"11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329",
+    penultimate_remaining_schedule_hash: #"9ac79f779bf4a86b8a6c3835a012e644f7ad7ceff000393c453a177137a1b48d",
     penultimate_spend_index: 1,
     penultimate_resolved_item_peaks: [
       validation_merkle_v1.FrontierPeak {
@@ -123,6 +124,7 @@ pub fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleT
       },
     ],
     last_source_kind: 1,
+    last_item_index: 432,
     last_key: maximum_input_schedule_last_key,
     last_value: maximum_input_schedule_last_value,
   }
@@ -252,6 +254,7 @@ pub fn maximum_input_schedule_replay_step(
     },
     vm_machine_types.ResolvedInputReplayWitness {
       source_kind: vector.last_source_kind,
+      item_index: vector.last_item_index,
       key: vector.last_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value,
@@ -311,6 +314,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
     transition: replay_transition,
     auxiliary: vm_machine_types.ResolvedInputReplayWitness {
       source_kind: vector.last_source_kind,
+      item_index: vector.last_item_index,
       key: vector.last_key,
       next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: vector.last_value,
@@ -447,6 +451,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       pre,
       replay_transition,
       vector.last_source_kind,
+      vector.last_item_index,
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
@@ -456,6 +461,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       pre,
       replay_transition,
       vector.last_source_kind,
+      vector.last_item_index,
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
@@ -465,6 +471,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       pre,
       replay_transition,
       mutated_source_kind,
+      vector.last_item_index,
       vector.last_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
@@ -474,6 +481,17 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       pre,
       replay_transition,
       vector.last_source_kind,
+      vector.last_item_index + 1,
+      vector.last_key,
+      vm_witness.empty_resolution_schedule_hash(),
+      vector.last_value,
+      [],
+    ),
+    !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      vector.last_source_kind,
+      vector.last_item_index,
       mutated_key,
       vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
@@ -483,6 +501,7 @@ pub fn verify_maximum_input_schedule_terminal_vector(
       pre,
       replay_transition,
       vector.last_source_kind,
+      vector.last_item_index,
       vector.last_key,
       h_a,
       vector.last_value,

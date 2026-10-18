@@ -78,6 +78,7 @@ fn split_verifier_accepts(step: DecodedStep) -> Bool {
       }
     ResolvedInputReplayWitness {
       source_kind,
+      item_index,
       key,
       next_schedule_hash,
       value,
@@ -89,6 +90,7 @@ fn split_verifier_accepts(step: DecodedStep) -> Bool {
           pre,
           transition,
           source_kind,
+          item_index,
           key,
           next_schedule_hash,
           value,
@@ -101,6 +103,7 @@ fn split_verifier_accepts(step: DecodedStep) -> Bool {
             pre,
             transition,
             source_kind,
+            item_index,
             key,
             next_schedule_hash,
             value,

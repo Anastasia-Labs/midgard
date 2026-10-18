@@ -57,6 +57,7 @@ validator main(
             authenticate_input_fold_v1(
               state,
               evidence.source_kind,
+              evidence.item_index,
               evidence.key,
               evidence.next_schedule_hash,
               evidence.descriptor_cbor,

@@ -109,6 +109,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   NativeScriptFrameWitness { frame: native_script_scan_v1.NativeScriptFrameV1 }
   ScheduledLedgerMembershipWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
@@ -117,6 +118,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   ScheduledLedgerNonMembershipWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     proof: Proof,
@@ -128,6 +130,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   /// `siblings`. Each phase reads only its own field.
   ResolvedInputReplayWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     value: ByteArray,
@@ -239,6 +242,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   CekContextSeedWitness { control: CekFinalContextControlV1 }
   ValueInputAssetWitness {
     source_kind: Int,
+    item_index: Int,
     key: ByteArray,
     next_schedule_hash: ByteArray,
     descriptor_cbor: ByteArray,
@@ -400,11 +404,13 @@ pub type ValidationProofItemDatumV1 {
 
 pub type ScheduledInputV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
 }
 
 pub type ResolveInputOutputProofV1 {
   source_kind: Int,
+  item_index: Int,
   key: ByteArray,
   next_schedule_hash: ByteArray,
   descriptor_cbor: ByteArray,

@@ -130,8 +130,8 @@ fn empty() -> ByteArray {
   vm_witness.empty_resolution_schedule_hash()
 }
 
-fn node(field: Int, item: ByteArray, next: ByteArray) -> ByteArray {
-  vm_witness.resolution_schedule_node_hash(field, item, next)
+fn node(field: Int, index: Int, item: ByteArray, next: ByteArray) -> ByteArray {
+  vm_witness.resolution_schedule_node_hash(field, index, item, next)
 }
 
 fn start(reference_count: Int) -> Scan {
@@ -176,7 +176,7 @@ fn after_c() -> Scan {
     last_field: 0,
     last_item: 1,
     cached_other_head: key(h_b),
-    schedule: node(0, key(h_c), empty()),
+    schedule: node(0, 1, key(h_c), empty()),
   }
 }
 
@@ -188,7 +188,7 @@ fn after_b() -> Scan {
     last_field: 1,
     last_item: 0,
     cached_other_head: #"",
-    schedule: node(1, key(h_b), after_c().schedule),
+    schedule: node(1, 0, key(h_b), after_c().schedule),
   }
 }
 
@@ -212,6 +212,29 @@ test input_set_merge_consumes_the_larger_head() {
   )
 }
 
+// The same node digest as `input-set-merge.test.ts`: field 1, item 2.
+test resolution_schedule_node_hash_matches_the_typescript_twin() {
+  node(
+    1,
+    2,
+    #"11111111111111111111111111111111111111111111111111111111111111111111",
+    empty(),
+  ) == #"e61b5d40494ba6c3a84531ee3db88e38483b6540a0a75c058abc2be90cc590bb"
+}
+
+// The schedule node records the consumed item's position: c is item 1 of
+// field 0, so a node naming item 0 for c is refused.
+test input_set_merge_refuses_a_schedule_node_at_another_position() {
+  let tx = run_tx()
+  let misplaced = Scan { ..after_c(), schedule: node(0, 0, key(h_c), empty()) }
+  !step(
+    tx,
+    seeded(),
+    advance(tx, seeded(), misplaced),
+    inline_field_carriage(run_reference()),
+  )
+}
+
 test input_set_merge_refuses_the_smaller_head() {
   let tx = run_tx()
   let skipped = Scan {
@@ -222,7 +245,7 @@ test input_set_merge_refuses_the_smaller_head() {
     last_field: 1,
     last_item: 0,
     cached_other_head: key(h_c),
-    schedule: node(1, key(h_b), empty()),
+    schedule: node(1, 0, key(h_b), empty()),
   }
   !step(
     tx,
@@ -239,7 +262,7 @@ test input_set_merge_refuses_a_skipped_item() {
     spend_seen: 2,
     last_key: key(h_a),
     last_item: 0,
-    schedule: node(0, key(h_a), after_c().schedule),
+    schedule: node(0, 0, key(h_a), after_c().schedule),
   }
   !step(
     tx,
@@ -255,7 +278,7 @@ test input_set_merge_refuses_a_reopened_item() {
     ..after_c(),
     spend_seen: 2,
     last_item: 1,
-    schedule: node(0, key(h_c), after_c().schedule),
+    schedule: node(0, 1, key(h_c), after_c().schedule),
   }
   !step(
     tx,
@@ -287,7 +310,7 @@ test input_set_merge_consumes_the_cached_head() {
 
 test input_set_merge_reopens_the_other_field_and_completes() {
   let tx = run_tx()
-  let final_schedule = node(0, key(h_a), after_b().schedule)
+  let final_schedule = node(0, 0, key(h_a), after_b().schedule)
   and {
     step(
       tx,
@@ -322,7 +345,7 @@ test input_set_merge_without_reference_inputs_needs_no_seed() {
     last_key: key(h_b),
     last_field: 0,
     last_item: 1,
-    schedule: node(0, key(h_b), empty()),
+    schedule: node(0, 1, key(h_b), empty()),
   }
   step(
     tx,
@@ -348,7 +371,7 @@ fn repeat_pre() -> Scan {
     last_field: 1,
     last_item: 1,
     cached_other_head: key(h_b),
-    schedule: node(1, key(h_c), empty()),
+    schedule: node(1, 1, key(h_c), empty()),
   }
 }
 
@@ -383,7 +406,7 @@ test input_set_merge_refuses_to_consume_a_repeat() {
     ..repeat_pre(),
     reference_seen: 2,
     last_item: 0,
-    schedule: node(1, key(h_c), repeat_pre().schedule),
+    schedule: node(1, 0, key(h_c), repeat_pre().schedule),
   }
   !step(
     tx,
@@ -419,10 +442,54 @@ test input_set_merge_rejects_equal_heads_across_fields() {
           last_field: 0,
           last_item: 1,
           cached_other_head: key(h_c),
-          schedule: node(0, key(h_c), empty()),
+          schedule: node(0, 1, key(h_c), empty()),
         },
       ),
       inline_field_carriage([key(h_b), key(h_c)]),
     ),
+  }
+}
+
+// Triple copy within field 0 = [a, c, c, c], field 1 empty: c (0, 3) is
+// consumed, then field 0's next head c equals `last_key`. The duplicate is
+// (0, 3) and (0, 2), as `input-set-merge.test.ts` and the node producer
+// (`validateInputSets`) report.
+test input_set_merge_rejects_the_first_repeat_of_a_field_zero_triple() {
+  let tx = transaction([h_a, h_c, h_c, h_c], [])
+  let items = [key(h_a), key(h_c), key(h_c), key(h_c)]
+  let after = Scan {
+    ..start(0),
+    spend_count: 4,
+    spend_seen: 1,
+    last_key: key(h_c),
+    last_field: 0,
+    last_item: 3,
+    schedule: node(0, 3, key(h_c), empty()),
+  }
+  and {
+    step(
+      tx,
+      start(0),
+      advance(tx, start(0), after),
+      inline_field_carriage(items),
+    ),
+    step(tx, after, duplicate(tx, after), inline_field_carriage(items)),
+  }
+}
+
+// Triple copy split across fields, field 0 = [a, c, c], field 1 = [c]: the
+// seed caches c (0, 2) and field 1's head is c (1, 0). The duplicate is (0, 2)
+// and (1, 0), as the TypeScript twin and the node producer report.
+test input_set_merge_rejects_a_triple_split_across_fields_at_the_tied_heads() {
+  let tx = transaction([h_a, h_c, h_c], [h_c])
+  let tied = Scan { ..start(-1), spend_count: 3, cached_other_head: key(h_c) }
+  and {
+    step(
+      tx,
+      start(-1),
+      advance(tx, start(-1), tied),
+      inline_field_carriage([key(h_a), key(h_c), key(h_c)]),
+    ),
+    step(tx, tied, duplicate(tx, tied), inline_field_carriage([key(h_c)])),
   }
 }

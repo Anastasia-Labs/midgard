@@ -87,6 +87,29 @@ describe("phase A rejection subjects", () => {
     });
   });
 
+  it.each([
+    ["within the spend inputs", [0x38, 0x39, 0x39, 0x39], [], [0n, 3n, 0n, 2n]],
+    ["split across the fields", [0x38, 0x39, 0x39], [0x39], [0n, 2n, 1n, 0n]],
+  ] as const)(
+    "names the first two positions of a triple copy %s",
+    async (_name, spend, reference, [ff, fi, sf, si]) => {
+      // The positions the machine's merge reaches first (the Aiken rows
+      // `input_set_merge_rejects_*_triple*` in tests-input-set-merge.test.ak).
+      const rejection = await phaseARejection(
+        makeNativeTx({
+          spendInputs: spend.map((byte) => outRefFromByte(byte)),
+          referenceInputs: reference.map((byte) => outRefFromByte(byte)),
+        }),
+        RejectCodes.DuplicateInputInTx,
+      );
+      expect(rejection.subject).toStrictEqual({
+        arm: "DuplicateInput",
+        first: { fieldIndex: ff, itemIndex: fi },
+        second: { fieldIndex: sf, itemIndex: si },
+      });
+    },
+  );
+
   it("names the invalid address witness", async () => {
     // Witness 0 signs the transaction id; witness 1 signs other bytes. Address
     // witnesses ascend by signer hash, so witness 1's signer sorts later.

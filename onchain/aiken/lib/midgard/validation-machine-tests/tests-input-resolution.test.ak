@@ -1313,6 +1313,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
       terminal,
       vm_machine_types.ScheduledLedgerNonMembershipWitness {
         source_kind: 0,
+        item_index: 0,
         key,
         next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         proof: [],
