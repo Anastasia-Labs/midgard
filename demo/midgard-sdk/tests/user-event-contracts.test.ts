@@ -110,7 +110,6 @@ describe("shared user-event contract deployment recipes", () => {
         family.fieldPreimageCertificate,
         titles.txOrder.fieldPreimageCertificateSpend,
       ],
-      [family.cekProgramMaterial, titles.txOrder.cekProgramMaterialSpend],
     ] as const) {
       const expected = independentlyApply(title, []);
       expect(actual.spendingScriptCBOR).toBe(expected);

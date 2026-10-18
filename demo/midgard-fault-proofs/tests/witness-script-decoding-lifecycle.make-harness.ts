@@ -27,7 +27,6 @@ import {
   submitWitnessScriptDecodingStep03,
   submitWitnessScriptDecodingStep04,
   WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES,
-  witnessScriptDecodingCheckpoint,
   type WitnessScriptDecodingContracts,
   type WitnessScriptDecodingEvidence,
 } from "../src/witness-script-decoding/index.js";
@@ -41,6 +40,7 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
@@ -64,6 +64,7 @@ import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
   coverage,
+  exactWitnessScanState,
   record,
   type Shape,
 } from "./witness-script-decoding-lifecycle.authentication-seams.js";
@@ -381,8 +382,11 @@ export const makeHarness = async () => {
     name: string | null = null,
     publishedCarriageUtxos?: readonly UTxO[],
     certificateUtxo?: UTxO,
-  ) =>
-    (
+  ) => {
+    const item = shape.items[evidence.finding.scriptIndex];
+    const recordUtxo =
+      item && (await recordPlutusItem(harness.emulator, lucid, item));
+    return (
       await measured(name, () =>
         submitWitnessScriptDecodingStep02({
           lucid,
@@ -408,10 +412,12 @@ export const makeHarness = async () => {
           certificateReferenceScriptUtxo: shape.certified
             ? requireCertificateReference()
             : undefined,
+          scriptDecodeRecordUtxo: recordUtxo,
           referenceScriptUtxo: ref(1),
         }),
       )
     ).result;
+  };
 
   /**
    * Publish (and certify when the tier requires it) a shape's field-6
@@ -554,27 +560,8 @@ export const makeHarness = async () => {
       ...patch,
     });
 
-  /** The exact step-02 successor state for an evidence value. */
-  const exactScanState = (
-    evidence: WitnessScriptDecodingEvidence,
-  ): SDK.WitnessScriptDecodingScanState => ({
-    bound: {
-      subject: evidence.finding.subject,
-      witness_set_hash: evidence.finding.witnessSetHash,
-      script_index: BigInt(evidence.finding.scriptIndex),
-      accused_class: BigInt(evidence.finding.accusedClass),
-    },
-    total_length: BigInt(evidence.itemLength),
-    item_commitment: evidence.itemCommitmentHex,
-    control_cbor: evidence.initialControlCbor,
-    next_expected_script_hash: contracts.steps[2].spendingScriptHash,
-    checkpoint_hash: witnessScriptDecodingCheckpoint({
-      evidence,
-      controlCbor: evidence.initialControlCbor,
-      nextExpectedScriptHash: contracts.steps[2].spendingScriptHash,
-    }),
-    result_class: BigInt(evidence.initialResultClass),
-  });
+  const exactScanState = (evidence: WitnessScriptDecodingEvidence) =>
+    exactWitnessScanState(contracts.steps[2].spendingScriptHash, evidence);
 
   const step03Raw = (
     threadOutRef: string,

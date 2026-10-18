@@ -23,7 +23,6 @@ import {
 } from "../cek-context.js";
 import { buildCekCoreStages, cekCoreEntryHashes } from "../cek-core.js";
 import {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,
 } from "../titles.js";
@@ -43,6 +42,7 @@ export const buildValidationTraceDisputeChain = ({
   fraudProofCataloguePolicyId,
   computationThread,
   fieldPreimageCertificatePolicyId,
+  scriptDecodePolicyId,
   referenceScriptAuthPolicyId,
   l1SlotConfig,
   disputeBondLovelace,
@@ -54,6 +54,7 @@ export const buildValidationTraceDisputeChain = ({
   readonly fraudProofCataloguePolicyId: string;
   readonly computationThread: MintingValidator;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly scriptDecodePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
   readonly l1SlotConfig: L1SlotConfig;
   readonly disputeBondLovelace: bigint;
@@ -63,14 +64,6 @@ export const buildValidationTraceDisputeChain = ({
   Error
 > =>
   Effect.gen(function* () {
-    const cekProgramMaterial = yield* tryBuild(
-      "Failed to build immutable CEK program-material validator",
-      () =>
-        makeSpendingValidator(
-          network,
-          getUnappliedScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE),
-        ),
-    );
     // The case and its hand-off scripts. From Defend on, a thread carries a
     // token of the case policy, so every validator a thread passes through
     // takes the case policy as its thread policy. Only the opener and the
@@ -120,36 +113,6 @@ export const buildValidationTraceDisputeChain = ({
           award.spendingScriptHash,
           threadPolicyId,
           threadExpiry.withdrawalScriptHash,
-        ),
-    );
-    const cekMaterialTraversal = yield* tryBuild(
-      "Failed to build CEK material traversal",
-      () =>
-        makeSpendingValidator(
-          network,
-          applyHolder(validationTraceTitles.cekMaterialTraversal, [
-            award.spendingScriptHash,
-            threadPolicyId,
-            referenceScriptAuthPolicyId,
-          ]),
-        ),
-    );
-    const cekMaterialProgramTask = yield* tryBuild(
-      "Failed to build CEK program task yield",
-      () =>
-        makeWithdrawalValidator(
-          applyHolder(validationTraceTitles.yields.cekMaterialProgramTask, [
-            cekMaterialTraversal.spendingScriptHash,
-          ]),
-        ),
-    );
-    const cekMaterialDataTask = yield* tryBuild(
-      "Failed to build CEK Data task yield",
-      () =>
-        makeWithdrawalValidator(
-          applyHolder(validationTraceTitles.yields.cekMaterialDataTask, [
-            cekMaterialTraversal.spendingScriptHash,
-          ]),
         ),
     );
     const deploymentId = deriveValidationTraceDeploymentId(
@@ -301,10 +264,6 @@ export const buildValidationTraceDisputeChain = ({
         "cek_context_control_script_hash",
         cekContextStages.control.spendingScriptHash,
       ],
-      [
-        "cek_material_traversal_script_hash",
-        cekMaterialTraversal.spendingScriptHash,
-      ],
       ["reference_script_auth_policy_id", referenceScriptAuthPolicyId],
       ["computation_thread_policy_id", threadPolicyId],
       ["thread_expiry_script_hash", threadExpiry.withdrawalScriptHash],
@@ -317,10 +276,6 @@ export const buildValidationTraceDisputeChain = ({
         canonicalDecodeItemSource.spendingScriptHash,
       ],
       ["proof_item_script_hash", proofItem.spendingScriptHash],
-      [
-        "cek_program_material_script_hash",
-        cekProgramMaterial.spendingScriptHash,
-      ],
     ]);
     const semanticResolverParams = (title: string): readonly Data[] =>
       declaredParameters(getBlueprintValidator(blueprint, title)).map(
@@ -1023,26 +978,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyHolder(validationTraceTitles.yields.cekSelectionSuccessor, [
             selectionDispatcherHash,
-          ]),
-        ),
-    );
-    const cekSelectionMaterialProgram = yield* tryBuild(
-      "Failed to build CEK selection material_program yield",
-      () =>
-        makeWithdrawalValidator(
-          applyHolder(
-            validationTraceTitles.yields.cekSelectionMaterialProgram,
-            [selectionDispatcherHash, cekProgramMaterial.spendingScriptHash],
-          ),
-        ),
-    );
-    const cekSelectionMaterialData = yield* tryBuild(
-      "Failed to build CEK selection material_data yield",
-      () =>
-        makeWithdrawalValidator(
-          applyHolder(validationTraceTitles.yields.cekSelectionMaterialData, [
-            selectionDispatcherHash,
-            cekProgramMaterial.spendingScriptHash,
+            scriptDecodePolicyId,
           ]),
         ),
     );
@@ -1381,8 +1317,6 @@ export const buildValidationTraceDisputeChain = ({
       caseConfig,
       threadExpiry,
       proofItem,
-      cekProgramMaterial,
-      cekMaterialTraversal,
       cekCoreStages,
       cekContextStages,
       cekContextItemStages,
@@ -1435,13 +1369,9 @@ export const buildValidationTraceDisputeChain = ({
         ledgerOutputDescriptorValueSummary,
         phaseANativeItemNative,
         phaseANativeItemForeign,
-        cekMaterialProgramTask,
-        cekMaterialDataTask,
         valueAndMintAssetFold,
         cekSelectionAuthenticate,
         cekSelectionSuccessor,
-        cekSelectionMaterialProgram,
-        cekSelectionMaterialData,
       },
       resolvers,
     };

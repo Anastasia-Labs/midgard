@@ -171,6 +171,28 @@ const LOCATED: readonly (readonly [
     { arm: "ScriptIntegrityHashMismatch" },
     "ScriptIntegrityHashMismatch",
   ],
+  [
+    "witness script the decoder refuses",
+    RejectCodes.ScriptProgramEncoding,
+    {
+      arm: "PlutusScriptUndecodable",
+      itemKind: 0n,
+      index: 2n,
+      refusalClass: 5n,
+    },
+    { PlutusScriptUndecodable: { item_kind: 0n, item_index: 2n, class: 5n } },
+  ],
+  [
+    "output reference script the decoder refuses",
+    RejectCodes.ScriptProgramEncoding,
+    {
+      arm: "PlutusScriptUndecodable",
+      itemKind: 1n,
+      index: 7n,
+      refusalClass: 17n,
+    },
+    { PlutusScriptUndecodable: { item_kind: 1n, item_index: 7n, class: 17n } },
+  ],
 ];
 
 /**
@@ -265,14 +287,14 @@ describe("resolveRejectionReason", () => {
     },
   );
 
-  it("needs a subject for a code whose arms carry coordinates", () => {
-    expect(
-      resolveRejectionReason(
-        { code: RejectCodes.PlutusScriptInvalid },
-        "machine",
-      ),
-    ).toStrictEqual({ kind: "subjectMissing" });
-  });
+  it.each([RejectCodes.PlutusScriptInvalid, RejectCodes.ScriptProgramEncoding])(
+    "needs a subject for %s, whose arms carry coordinates",
+    (code) => {
+      expect(resolveRejectionReason({ code }, "machine")).toStrictEqual({
+        kind: "subjectMissing",
+      });
+    },
+  );
 
   it("never writes a subject whose arm the code cannot end in", () => {
     expect(
@@ -282,6 +304,20 @@ describe("resolveRejectionReason", () => {
           subject: { arm: "RequiredSignerUnsigned", index: 0n },
         },
         "subject",
+      ),
+    ).toStrictEqual({ kind: "subjectMissing" });
+    expect(
+      resolveRejectionReason(
+        {
+          code: RejectCodes.PlutusScriptInvalid,
+          subject: {
+            arm: "PlutusScriptUndecodable",
+            itemKind: 0n,
+            index: 0n,
+            refusalClass: 1n,
+          },
+        },
+        "machine",
       ),
     ).toStrictEqual({ kind: "subjectMissing" });
   });

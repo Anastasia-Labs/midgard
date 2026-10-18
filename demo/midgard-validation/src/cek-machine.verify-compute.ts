@@ -42,13 +42,16 @@ export const verifyCompute = (
         ) &&
         sameState(
           post,
-          exactComputeSuccessor(pre, {
-            mode: "lookup",
-            focusRoot: pre.environmentRoot,
-            environmentRoot: pre.environmentRoot,
-            continuationRoot: pre.continuationRoot,
-            auxiliary: witness.index,
-          }),
+          // The lookup walks `index - 1` environment nodes; index 0 is never bound.
+          witness.index === 0n
+            ? errorSuccessor(pre, MidgardCekErrorCodes.UnboundVariable)
+            : exactComputeSuccessor(pre, {
+                mode: "lookup",
+                focusRoot: pre.environmentRoot,
+                environmentRoot: pre.environmentRoot,
+                continuationRoot: pre.continuationRoot,
+                auxiliary: witness.index - 1n,
+              }),
         )
       );
     case "computeConstant":

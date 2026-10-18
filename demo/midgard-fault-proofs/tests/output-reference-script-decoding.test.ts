@@ -17,6 +17,7 @@ import {
 } from "../src/output-reference-script-decoding/contracts.js";
 import {
   classifyOutputReferenceScriptDecodingFinding,
+  OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID,
   OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
   OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID,
   OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID,
@@ -171,6 +172,80 @@ describe("outputReferenceScriptDecoding V1", () => {
         canonicalTransactionCbor: bytes,
       }),
     ).toThrow(/agrees with operator verdict/u);
+  });
+
+  it("closes a Plutus reference script by its decode record", () => {
+    // `450101004981` is the flat program 1.1.0 `(con unit ())`; `4401020304`
+    // wraps four bytes that are not a program, refused with class 3.
+    const plutusTx = (scriptHex: string) =>
+      makeNativeTx({
+        spendInputCbors: [],
+        fee: 7n,
+        outputCbor: encodeMidgardTxOutput({
+          address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 1)]),
+          value: { lovelace: 2_000_000n, assets: new Map() },
+          script_ref: {
+            language: "PlutusV3",
+            scriptBytes: Buffer.from(scriptHex, "hex"),
+          },
+        }),
+      });
+    const accepted = (scriptHex: string) => {
+      const tx = plutusTx(scriptHex);
+      return prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject(
+          computeMidgardNativeTxId(tx).toString("hex"),
+        ),
+        outputIndex: 0,
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(tx),
+      });
+    };
+    expect(() => accepted("450101004981")).toThrow(
+      /agrees with operator verdict/u,
+    );
+    const refused = accepted("4401020304");
+    expect(refused.resultClass).toBe(103);
+    expect(outputReferenceScriptEvidenceCloses(refused)).toBe(true);
+    expect(outputReferenceScriptDecodingViolationId(103)).toBe(
+      OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID,
+    );
+    const forced = (
+      scriptHex: string,
+      itemKind: bigint,
+      cls: bigint,
+      outputIndex = 0,
+    ) => {
+      const tx = plutusTx(scriptHex);
+      return prepareOutputReferenceScriptDecodingEvidence({
+        subject: forcedVerdictSubject({
+          transactionId: computeMidgardNativeTxId(tx).toString("hex"),
+          sourceKey: { transactionId: "33".repeat(32), outputIndex: 0n },
+          rejectionReason: {
+            PlutusScriptUndecodable: {
+              item_kind: itemKind,
+              item_index: 0n,
+              class: cls,
+            },
+          } as never,
+        }),
+        outputIndex,
+        canonicalTransactionCbor: encodeMidgardForcedTxCanonical(tx),
+      });
+    };
+    expect(() => forced("4401020304", 1n, 3n)).toThrow(
+      /agrees with operator verdict/u,
+    );
+    for (const [scriptHex, cls] of [
+      ["4401020304", 1n],
+      ["450101004981", 3n],
+    ] as const) {
+      expect(
+        outputReferenceScriptEvidenceCloses(forced(scriptHex, 1n, cls)),
+      ).toBe(true);
+    }
+    expect(() => forced("4401020304", 0n, 1n)).toThrow();
+    expect(() => forced("4401020304", 1n, 0n)).toThrow();
+    expect(() => forced("4401020304", 1n, 1n, 1)).toThrow();
   });
 
   it("refuses output coordinate and non-family reason substitutions", () => {

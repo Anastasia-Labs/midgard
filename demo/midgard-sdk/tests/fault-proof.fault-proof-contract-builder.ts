@@ -22,7 +22,6 @@ import {
   buildZeroInputFaultProofContracts,
   CEK_CONTEXT_STAGE_TITLES,
   CEK_CORE_STAGE_TITLES,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   deriveValidationTraceDeploymentId,
   FAULT_PROOF_SHARED_TITLES,
   fraudProofContractsToFirstSteps,
@@ -37,7 +36,6 @@ import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-appl
 import { registerInvalidRangeBlueprintIsolationTest } from "./fault-proof.invalid-range-blueprint-isolation.js";
 import {
   blueprintPath,
-  CEK_MATERIAL_TRAVERSAL_TITLES,
   CEK_REDEEMER_ITEM_TITLES,
   certificatePolicyId,
   collectTitles,
@@ -744,8 +742,6 @@ describe("fault-proof contract builder", () => {
       ...collectTitles(CEK_CORE_STAGE_TITLES),
       ...collectTitles(CEK_CONTEXT_STAGE_TITLES),
       ...CEK_REDEEMER_ITEM_TITLES,
-      ...CEK_MATERIAL_TRAVERSAL_TITLES,
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
     const contracts = await Effect.runPromise(
@@ -934,10 +930,6 @@ describe("fault-proof contract builder", () => {
       reference_script_auth_policy_id: h28,
       source_binder_script_hash:
         dispute.canonicalDecodeItemStages.source.spendingScriptHash,
-      cek_program_material_script_hash:
-        dispute.cekProgramMaterial.spendingScriptHash,
-      cek_material_traversal_script_hash:
-        dispute.cekMaterialTraversal.spendingScriptHash,
       cek_context_control_script_hash:
         dispute.cekContextStages.control.spendingScriptHash,
       arm_script_hashes: cekCoreEntryHashes(dispute.cekCoreStages),
@@ -1083,10 +1075,6 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolverHashParams[index]!,
         threadPolicyId,
       ]),
-    );
-    const expectedCekProgramMaterial = compiledScript(
-      blueprint,
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     );
     const expectedResolvers = [
       expectedPrepareResolvers[0]!,
@@ -1250,9 +1238,6 @@ describe("fault-proof contract builder", () => {
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
     ).toEqual(expectedPrepareResolvers);
-    expect(
-      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptCBOR,
-    ).toBe(expectedCekProgramMaterial);
     expect(
       contracts.validationTraceDispute.resolvers.map(
         ({ spendingScriptCBOR }) => spendingScriptCBOR,

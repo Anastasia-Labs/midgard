@@ -1,6 +1,11 @@
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
+import {
+  witnessScriptDecodingCheckpoint,
+  type WitnessScriptDecodingEvidence,
+} from "../src/witness-script-decoding/index.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
@@ -95,3 +100,29 @@ export type Shape = Readonly<{
   fieldBytes: number;
   certified: boolean;
 }>;
+
+/**
+ * The exact step-02 successor state for an evidence value, handing over to
+ * the step-03 script `nextExpectedScriptHash`.
+ */
+export const exactWitnessScanState = (
+  nextExpectedScriptHash: string,
+  evidence: WitnessScriptDecodingEvidence,
+): SDK.WitnessScriptDecodingScanState => ({
+  bound: {
+    subject: evidence.finding.subject,
+    witness_set_hash: evidence.finding.witnessSetHash,
+    script_index: BigInt(evidence.finding.scriptIndex),
+    accused_class: BigInt(evidence.finding.accusedClass),
+  },
+  total_length: BigInt(evidence.itemLength),
+  item_commitment: evidence.itemCommitmentHex,
+  control_cbor: evidence.initialControlCbor,
+  next_expected_script_hash: nextExpectedScriptHash,
+  checkpoint_hash: witnessScriptDecodingCheckpoint({
+    evidence,
+    controlCbor: evidence.initialControlCbor,
+    nextExpectedScriptHash,
+  }),
+  result_class: BigInt(evidence.initialResultClass),
+});

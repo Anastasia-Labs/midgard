@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramMaterialSidecar,
+  hashMidgardCekTermNode,
   hashMidgardVersionedScript,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import {
   Application,
   Builtin,
+  Constr,
   ErrorUPLC,
   Force,
   Lambda,
@@ -127,18 +129,53 @@ describe("canonical V1 CEK programs", () => {
     expect(first.envelope.materialByteLength).toBeLessThanOrEqual(
       BigInt(MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES),
     );
+    // The innermost bound variable is Cardano's flat index 1.
+    const variableRoot = (index: bigint): string =>
+      Buffer.from(hashMidgardCekTermNode({ kind: "variable", index })).toString(
+        "hex",
+      );
+    expect(first.material.has(variableRoot(1n))).toBe(true);
+    expect(first.material.has(variableRoot(0n))).toBe(false);
     expect(Buffer.from(first.envelope.termRoot).toString("hex")).toBe(
-      "f4906930d1dd9b7010019a55cf5c3eafacd451473a633aeb28d836cab4410ba3",
+      "450a63254c66d0c6c79ebcdd458b77410fd0ad65f43280d7e6461c136f96644c",
     );
     expect(Buffer.from(first.envelopeHash).toString("hex")).toBe(
-      "0dfd4adfb26d0a893123a345ed89b4dfb0dbb8fb5fb3a4db5585d9ff31934cca",
+      "d0945d0668aac4a4b757212ecae7a1e49cbeb52903a873086afc68db30b78c1a",
     );
   });
 
-  it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
-    expect(() => buildMidgardCanonicalCekProgram(compile([1, 0, 0]))).toThrow(
-      /only UPLC 1\.1\.0/u,
+  it("admits UPLC 1.0.0 and 1.1.0 and commits the program version", () => {
+    const v100 = buildMidgardCanonicalCekProgram(compile([1, 0, 0]));
+    const v110 = buildMidgardCanonicalCekProgram(compile([1, 1, 0]));
+    expect(v100.envelope.uplcVersion).toEqual([1n, 0n, 0n]);
+    expect(v110.envelope.uplcVersion).toEqual([1n, 1n, 0n]);
+    expect(v100.envelope.termRoot).toEqual(v110.envelope.termRoot);
+    expect(v100.envelopeHash).not.toEqual(v110.envelopeHash);
+    const constrUnder100 = Buffer.from(
+      UPLCEncoder.compile(new UPLCProgram([1, 0, 0], new Constr(0, []))),
     );
+    expect(() => buildMidgardCanonicalCekProgram(constrUnder100)).toThrow(
+      /constrOrCaseBeforeV110/u,
+    );
+    expect(
+      buildMidgardCanonicalCekProgram(
+        Buffer.from(
+          UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new Constr(0, []))),
+        ),
+      ).envelope.uplcVersion,
+    ).toEqual([1n, 1n, 0n]);
+  });
+
+  it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
+    for (const version of [
+      [2, 0, 0],
+      [1, 2, 0],
+      [1, 1, 1],
+    ] as const) {
+      expect(() => buildMidgardCanonicalCekProgram(compile(version))).toThrow(
+        /only UPLC 1\.0\.0 and 1\.1\.0/u,
+      );
+    }
     const raw = compileLargeString(7_000);
     expect(raw.length).toBeGreaterThan(6_911);
     const canonical = buildMidgardCanonicalCekProgram(raw);

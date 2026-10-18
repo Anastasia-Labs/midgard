@@ -54,7 +54,9 @@ const signatureItem = Buffer.concat([
 ]);
 const malformedHeaderItem = Buffer.from("8201410a", "hex");
 const malformedNativeItem = Buffer.from("820043820700", "hex");
-const plutusItem = Buffer.from("82034401020304", "hex");
+// A PlutusV3 `[3, bytes(script)]` item whose script, the flat program 1.1.0
+// `(con unit ())`, decodes.
+const plutusItem = Buffer.from("820346450101004981", "hex");
 
 const evidence = ({
   subject = accepted,
@@ -81,12 +83,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
         WitnessScriptDecodingResultClasses.NativeMalformed,
         WitnessScriptDecodingResultClasses.NodeLimit,
         WitnessScriptDecodingResultClasses.DepthLimit,
+        101,
       ].map(witnessScriptDecodingViolationId),
     ).toEqual([
       "witness-script-header-malformed",
       "witness-native-script-malformed",
       "witness-native-script-node-limit",
       "witness-native-script-depth-limit",
+      "witness-plutus-script-undecodable",
     ]);
   });
 

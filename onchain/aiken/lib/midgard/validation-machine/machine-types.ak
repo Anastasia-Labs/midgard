@@ -693,10 +693,9 @@ pub type NativeScriptsControlV1 {
 pub type CekContextControlV1 {
   stage: Int,
   language_tag: Int,
+  /// `term_root` of the script's `Decoded` record. The program's identity is
+  /// `script_hash`, the hash the record is keyed by.
   program_term_root: ByteArray,
-  /// Canonical V1 envelope identity, distinct from its executable root.
-  /// This keeps version and complete-material claims bound until terminal.
-  program_envelope_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
   script_hash: ByteArray,
@@ -785,7 +784,9 @@ pub type CekWitnessControlV1 {
   completed_cpu: Int,
   completed_memory: Int,
   active_state_hash: ByteArray,
-  program_envelope_hash: ByteArray,
+  /// Script hash of the running program, the key of its decode record.
+  /// Empty before program selection.
+  program_script_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
   /// Purpose key `(purpose_kind, purpose_index)` of the running execution.

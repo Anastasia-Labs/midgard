@@ -32,7 +32,33 @@ export type MidgardCekConstantType =
   | { readonly kind: "data" }
   | { readonly kind: "blsG1" }
   | { readonly kind: "blsG2" }
-  | { readonly kind: "blsMillerLoopResult" };
+  | { readonly kind: "blsMillerLoopResult" }
+  | {
+      readonly kind: "array";
+      readonly element: MidgardCekConstantType;
+    }
+  | { readonly kind: "value" };
+
+/**
+ * Cardano's flat constant-type tags (`DefaultUni`). Harmonic numbers Value and
+ * array the other way round, so Midgard's type commitment never uses its enum
+ * for them.
+ */
+export const MidgardCekConstantTypeTags = Object.freeze({
+  Integer: 0,
+  ByteString: 1,
+  String: 2,
+  Unit: 3,
+  Boolean: 4,
+  List: 5,
+  Pair: 6,
+  Data: 8,
+  BlsG1: 9,
+  BlsG2: 10,
+  BlsMillerLoopResult: 11,
+  Array: 12,
+  Value: 13,
+} as const);
 
 type ParsedType = {
   readonly type: MidgardCekConstantType;
@@ -85,6 +111,8 @@ const parseTypeAt = (
         type: { kind: "blsMillerLoopResult" },
         nextOffset: offset + 1,
       };
+    // Harmonic's flat decoder swaps Cardano's Value and array tags; those
+    // constants enter through Midgard's own PV 11 decoder instead.
     case ConstTyTag.value:
     case ConstTyTag.array:
     default:
@@ -169,6 +197,11 @@ export const semanticData = (
       // results use dedicated proof nodes produced by their builtin rules.
       throw new Error(
         "V1 source programs cannot contain encoded BLS constants",
+      );
+    case "array":
+    case "value":
+      throw new Error(
+        "V1 Value and array constants enter through the PV 11 flat decoder",
       );
   }
 };

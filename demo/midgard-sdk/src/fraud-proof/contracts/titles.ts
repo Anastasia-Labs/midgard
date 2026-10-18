@@ -3,10 +3,6 @@ import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/d
  * Blueprint titles shared across families.
  */
 
-export const CEK_PROGRAM_MATERIAL_SPEND_TITLE = deployedTitle(
-  "cekProgramMaterialSpend",
-);
-
 export const VALIDATION_TRACE_RESOLVER_COUNT = 13;
 
 /**
@@ -25,4 +21,6 @@ export const FAULT_PROOF_SHARED_TITLES = {
   fraudProofMint: deployedTitle("fraudProofMint"),
   fraudProofSpend: deployedTitle("fraudProofSpend"),
   fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
+  scriptDecodeMint: deployedTitle("scriptDecodeMint"),
+  scriptDecodeSpend: deployedTitle("scriptDecodeSpend"),
 } as const;

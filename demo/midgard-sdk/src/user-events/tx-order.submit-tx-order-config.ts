@@ -1,5 +1,4 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
-import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core/consensus-profile";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -9,8 +8,6 @@ import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
-  CekProgramMaterialDatum,
-  CekProgramMaterialDatumSchema,
   ForcedTxProofSource,
   TxOrderEventSchema,
 } from "../ledger-state.js";
@@ -70,74 +67,6 @@ export const encodeTxOrderDatumCbor = (datum: TxOrderDatum): Buffer =>
 
 export const decodeTxOrderDatumCbor = (bytes: Uint8Array): TxOrderDatum =>
   decodeCanonicalPlutusData(bytes, TxOrderDatumSchema, "TxOrderDatumV1");
-
-export const decodeCekProgramMaterialDatumCbor = (
-  bytes: Uint8Array,
-): CekProgramMaterialDatum =>
-  decodeCanonicalPlutusData(
-    bytes,
-    CekProgramMaterialDatumSchema,
-    "CekProgramMaterialDatumV1",
-  );
-
-export const CEK_SINGLE_PUBLICATION_DATUM_VERSION = 1n;
-
-/** Exact datum ABI for one immutable, reference-only complete CEK graph. */
-export const CekSinglePublicationDatumSchema = Data.Object({
-  version: Data.Integer(),
-  program_envelope_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-  sidecar_cbor: Data.Bytes(),
-});
-
-export type CekSinglePublicationDatum = Data.Static<
-  typeof CekSinglePublicationDatumSchema
->;
-
-export const CekSinglePublicationDatum = asDataType<CekSinglePublicationDatum>(
-  CekSinglePublicationDatumSchema,
-);
-
-const assertCekSinglePublicationDatum = (
-  datum: CekSinglePublicationDatum,
-): void => {
-  if (datum.version !== CEK_SINGLE_PUBLICATION_DATUM_VERSION) {
-    throw new Error("CEK single-publication datum must use version 1");
-  }
-};
-
-export const encodeCekSinglePublicationDatumCbor = (
-  datum: CekSinglePublicationDatum,
-): Buffer => {
-  assertCekSinglePublicationDatum(datum);
-  const encoded = encodeCanonicalPlutusData(
-    datum,
-    CekSinglePublicationDatumSchema,
-  );
-  if (
-    encoded.length >
-    MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes
-  ) {
-    throw new Error(
-      "CEK single-publication datum exceeds the reliable complete-item datum envelope",
-    );
-  }
-  return encoded;
-};
-
-export const decodeCekSinglePublicationDatumCbor = (
-  bytes: Uint8Array,
-): CekSinglePublicationDatum => {
-  const datum = decodeCanonicalPlutusData(
-    bytes,
-    CekSinglePublicationDatumSchema,
-    "CekSinglePublicationDatumV1",
-  ) as CekSinglePublicationDatum;
-  assertCekSinglePublicationDatum(datum);
-  // Reuse the encoder so decoded data is also bounded by the pinned
-  // single-publication datum envelope.
-  encodeCekSinglePublicationDatumCbor(datum);
-  return Object.freeze({ ...datum });
-};
 
 export const TxOrderSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),

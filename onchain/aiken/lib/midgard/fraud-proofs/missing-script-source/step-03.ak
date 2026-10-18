@@ -10,7 +10,6 @@ pub type Args {
   required_script_hash: ByteArray,
   purpose_subject: ByteArray,
   purpose_siblings: List<ByteArray>,
-  transaction_source_count: Int,
 }
 
 pub type Datum =

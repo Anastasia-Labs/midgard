@@ -11,6 +11,7 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
+import { PLUTUS_SCRIPT_REFUSED_RESULT_BASE } from "../script-decode/item-record.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
@@ -40,6 +41,7 @@ export const WITNESS_SCRIPT_DECODING_VIOLATION_IDS = Object.freeze({
   NativeMalformed: "witness-native-script-malformed",
   NodeLimit: "witness-native-script-node-limit",
   DepthLimit: "witness-native-script-depth-limit",
+  PlutusScriptUndecodable: "witness-plutus-script-undecodable",
 } as const);
 
 export const witnessScriptDecodingViolationId = (
@@ -53,6 +55,8 @@ export const witnessScriptDecodingViolationId = (
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.NodeLimit;
   if (resultClass === WitnessScriptDecodingResultClasses.DepthLimit)
     return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.DepthLimit;
+  if (resultClass > PLUTUS_SCRIPT_REFUSED_RESULT_BASE)
+    return WITNESS_SCRIPT_DECODING_VIOLATION_IDS.PlutusScriptUndecodable;
   throw new Error(
     "witnessScriptDecoding result has no exact classifier violation ID",
   );

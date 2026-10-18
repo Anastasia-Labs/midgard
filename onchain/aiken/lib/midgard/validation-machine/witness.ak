@@ -3179,11 +3179,10 @@ pub fn empty_data_summary_v1() -> cek_data_v1.DataSummaryV1 {
 }
 
 pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray {
-  encode_definite_array_header(25)
+  encode_definite_array_header(24)
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(encode_definite_bytes(control.program_term_root))
-    |> bytearray.concat(encode_definite_bytes(control.program_envelope_hash))
     |> bytearray.concat(cbor.serialise(control.purpose_kind))
     |> bytearray.concat(cbor.serialise(control.purpose_index))
     |> bytearray.concat(encode_definite_bytes(control.script_hash))
@@ -3219,9 +3218,8 @@ pub fn cek_context_control_from_cbor(
   let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
-        stage_data, language_tag_data, program_term_root_data,
-        program_envelope_hash_data, purpose_kind_data, purpose_index_data,
-        script_hash_data, subject_data, redeemer_leaf_data,
+        stage_data, language_tag_data, program_term_root_data, purpose_kind_data,
+        purpose_index_data, script_hash_data, subject_data, redeemer_leaf_data,
         redeemer_context_control_hash_data, execution_memory_limit_data,
         execution_cpu_limit_data, reference_items_data, spend_items_data,
         output_items_data, signer_items_data, observer_count_data,
@@ -3234,7 +3232,6 @@ pub fn cek_context_control_from_cbor(
     stage: builtin.un_i_data(stage_data),
     language_tag: builtin.un_i_data(language_tag_data),
     program_term_root: builtin.un_b_data(program_term_root_data),
-    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
     purpose_kind: builtin.un_i_data(purpose_kind_data),
     purpose_index: builtin.un_i_data(purpose_index_data),
     script_hash: builtin.un_b_data(script_hash_data),
@@ -3541,7 +3538,6 @@ pub fn cek_context_control_is_well_formed(
       control.language_tag == 128,
     },
     bytearray.length(control.program_term_root) == 32,
-    bytearray.length(control.program_envelope_hash) == 32,
     control.purpose_kind >= 0,
     control.purpose_kind <= 3,
     control.purpose_index >= 0,
@@ -3680,7 +3676,7 @@ pub fn encode_cek_witness_v1(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
-  program_envelope_hash: ByteArray,
+  program_script_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
 ) -> ByteArray {
@@ -3695,12 +3691,12 @@ pub fn encode_cek_witness_v1(
   expect execution_cpu_limit >= 0
   expect execution_memory_limit >= 0
   expect or {
-      program_envelope_hash == #"",
-      bytearray.length(program_envelope_hash) == 32,
+      program_script_hash == #"",
+      bytearray.length(program_script_hash) == 28,
     }
   // The witness must never end with a possibly-empty bytestring:
   // `aiken/cbor.deserialise` rejects a zero-length final item at an
-  // exhausted cursor, so `program_envelope_hash` (empty before program
+  // exhausted cursor, so `program_script_hash` (empty before program
   // selection) sits before the two integer limits and the purpose key.
   #"8b"
     |> bytearray.concat(
@@ -3711,7 +3707,7 @@ pub fn encode_cek_witness_v1(
     |> bytearray.concat(cbor.serialise(completed_cpu))
     |> bytearray.concat(cbor.serialise(completed_memory))
     |> bytearray.concat(encode_definite_bytes(active_state_hash))
-    |> bytearray.concat(encode_definite_bytes(program_envelope_hash))
+    |> bytearray.concat(encode_definite_bytes(program_script_hash))
     |> bytearray.concat(cbor.serialise(execution_cpu_limit))
     |> bytearray.concat(cbor.serialise(execution_memory_limit))
     |> bytearray.concat(cbor.serialise(purpose_kind))
@@ -3855,7 +3851,7 @@ pub fn cek_witness_control_v1(
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
-        active_state_hash_data, program_envelope_hash_data,
+        active_state_hash_data, program_script_hash_data,
         execution_cpu_limit_data, execution_memory_limit_data, purpose_kind_data,
         purpose_index_data,
       ]
@@ -3869,7 +3865,7 @@ pub fn cek_witness_control_v1(
     completed_cpu: builtin.un_i_data(completed_cpu_data),
     completed_memory: builtin.un_i_data(completed_memory_data),
     active_state_hash: builtin.un_b_data(active_state_hash_data),
-    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
+    program_script_hash: builtin.un_b_data(program_script_hash_data),
     execution_cpu_limit: builtin.un_i_data(execution_cpu_limit_data),
     execution_memory_limit: builtin.un_i_data(execution_memory_limit_data),
     purpose_kind: builtin.un_i_data(purpose_kind_data),
@@ -3914,7 +3910,7 @@ pub fn cek_witness_is_well_formed_v1(
       cek.active_state_hash,
       cek.execution_cpu_limit,
       cek.execution_memory_limit,
-      cek.program_envelope_hash,
+      cek.program_script_hash,
       cek.purpose_kind,
       cek.purpose_index,
     ),

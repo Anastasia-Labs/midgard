@@ -56,6 +56,18 @@ fn opening(compact_cbor: ByteArray, bytes: ByteArray) -> FieldOpeningV1 {
   }
 }
 
+/// How the prover carries the claimed coordinate's field opening.
+type ClaimOpening {
+  /// Exactly when the claimed field is a known field other than the observed
+  /// one and its index can be read: the honest prover's carriage.
+  Honest
+  Omitted
+  /// The claimed field's commitment over an empty field instead.
+  Substituted
+  /// A spend-field opening regardless of the claim.
+  Unused
+}
+
 fn run(
   observed_kind: Int,
   observed_index: Int,
@@ -64,8 +76,42 @@ fn run(
   omit_claim: Bool,
   network_id: Int,
 ) -> Bool {
-  let spend = preimage([10, 30])
-  let reference = preimage([20])
+  run_in(
+    [10, 30],
+    [20],
+    observed_kind,
+    observed_index,
+    r,
+    if omit_claim {
+      Omitted
+    } else if substitute_claim {
+      Substituted
+    } else {
+      Honest
+    },
+    network_id,
+  )
+}
+
+fn claim(
+  observed_kind: Int,
+  observed_index: Int,
+  r: reason.RejectionReasonV1,
+) -> Bool {
+  run_in([10, 30], [20], observed_kind, observed_index, r, Honest, 255)
+}
+
+fn run_in(
+  spend_keys: List<Int>,
+  reference_keys: List<Int>,
+  observed_kind: Int,
+  observed_index: Int,
+  r: reason.RejectionReasonV1,
+  claim_opening: ClaimOpening,
+  network_id: Int,
+) -> Bool {
+  let spend = preimage(spend_keys)
+  let reference = preimage(reference_keys)
   let base = decode_forced_tx_compact_v1(
     submitted_source(empty_v1_transaction()).compact_cbor,
   )
@@ -106,32 +152,36 @@ fn run(
   )
   let index = select.selected_index_v1(subject, observed_kind, observed_index)
   let selected = select.selected_input_v1(subject, observed_kind, view, index)
-  let claimed_kind = when r is {
-    reason.InputNotFound { source_kind, .. } -> source_kind
-    reason.InputSpentOutputNonCanonical { source_kind, .. } -> source_kind
-    reason.SpendInputSignerMissing { .. } -> 0
-    _ -> observed_kind
+  let honest_opening = when order.resolution_coordinate_of_reason_v1(r) is {
+    Some(Pair(kind, index)) ->
+      if ( kind == 0 || kind == 1 ) && kind != observed_kind && index >= 0 {
+        Some(kind)
+      } else {
+        None
+      }
+    None -> None
   }
-  let claimed = select.claimed_input_v1(
-    subject,
-    observed_kind,
-    view,
-    if omit_claim || claimed_kind == observed_kind {
-      None
-    } else {
+  let claimed_opening = when Pair(claim_opening, honest_opening) is {
+    Pair(Honest, Some(kind)) ->
       Some(
         opening(
           compact_cbor,
-          if substitute_claim {
-            #"80"
-          } else if claimed_kind == 0 {
+          if kind == 0 {
             spend
           } else {
             reference
           },
         ),
       )
-    },
+    Pair(Substituted, Some(_)) -> Some(opening(compact_cbor, #"80"))
+    Pair(Unused, _) -> Some(opening(compact_cbor, spend))
+    _ -> None
+  }
+  let claimed = select.claimed_input_v1(
+    subject,
+    observed_kind,
+    view,
+    claimed_opening,
     [],
     #"",
   )
@@ -258,6 +308,148 @@ test actual_source_substituted_claimed_field_is_refused() fail {
     reason.InputNotFound { source_kind: 1, input_index: 0 },
     True,
     False,
+    255,
+  )
+}
+
+// Spend keys 10, 30 and reference key 20 throughout, unless a row names its
+// own fields. Every observed input is absent from the empty ledger.
+
+test n7_reference_absence_convicts_later_spend_signer_claim() {
+  claim(1, 0, reason.SpendInputSignerMissing { input_index: 1 })
+}
+
+// One field whose raw positions run against its out-ref keys: the key decides.
+test n7_within_field_smaller_key_at_later_index_is_admitted() {
+  !run_in(
+    [30, 10],
+    [20],
+    0,
+    0,
+    reason.InputNotFound { source_kind: 0, input_index: 1 },
+    Honest,
+    255,
+  )
+}
+
+test n7_within_field_smaller_key_at_later_index_convicts() {
+  run_in(
+    [30, 10],
+    [20],
+    0,
+    1,
+    reason.InputNotFound { source_kind: 0, input_index: 0 },
+    Honest,
+    255,
+  )
+}
+
+// A claimed coordinate that names no input of the transaction convicts.
+test n7_out_of_domain_absence_claim_in_unknown_field_convicts() {
+  claim(0, 0, reason.InputNotFound { source_kind: 2, input_index: 0 })
+}
+
+test n7_out_of_domain_absence_claim_at_reference_count_convicts() {
+  claim(0, 0, reason.InputNotFound { source_kind: 1, input_index: 1 })
+}
+
+test n7_out_of_domain_output_claim_at_negative_index_convicts() {
+  claim(
+    0,
+    0,
+    reason.InputSpentOutputNonCanonical { source_kind: 0, input_index: -1 },
+  )
+}
+
+test n7_out_of_domain_reference_script_claim_at_reference_count_convicts() {
+  claim(
+    0,
+    0,
+    reason.ResolvedReferenceScriptMalformed { source_kind: 1, input_index: 1 },
+  )
+}
+
+test n7_out_of_domain_node_limit_claim_at_spend_count_convicts() {
+  claim(
+    0,
+    0,
+    reason.ResolvedReferenceScriptNodeLimit { source_kind: 0, input_index: 2 },
+  )
+}
+
+test n7_out_of_domain_depth_limit_claim_in_negative_field_convicts() {
+  claim(
+    1,
+    0,
+    reason.ResolvedReferenceScriptDepthLimit { source_kind: -1, input_index: 0 },
+  )
+}
+
+test n7_out_of_domain_signer_claim_at_spend_count_convicts() {
+  claim(1, 0, reason.SpendInputSignerMissing { input_index: 2 })
+}
+
+// The last input of a field is read and ordered, not treated as out of domain.
+test n7_last_spend_input_claim_is_ordered_and_admitted() {
+  !run_in(
+    [10, 30],
+    [40],
+    1,
+    0,
+    reason.InputSpentOutputNonCanonical { source_kind: 0, input_index: 1 },
+    Honest,
+    255,
+  )
+}
+
+test n7_last_reference_input_true_first_fault_is_admitted() {
+  !claim(1, 0, reason.InputNotFound { source_kind: 1, input_index: 0 })
+}
+
+test n7_unused_claimed_opening_is_refused() fail {
+  run_in(
+    [10, 30],
+    [20],
+    0,
+    0,
+    reason.InputNotFound { source_kind: 0, input_index: 1 },
+    Unused,
+    255,
+  )
+}
+
+test n7_claimed_opening_for_unknown_field_is_refused() fail {
+  run_in(
+    [10, 30],
+    [20],
+    0,
+    0,
+    reason.InputNotFound { source_kind: 2, input_index: 0 },
+    Unused,
+    255,
+  )
+}
+
+test n7_count_bound_without_claimed_opening_is_refused() fail {
+  run_in(
+    [10, 30],
+    [20],
+    0,
+    0,
+    reason.InputNotFound { source_kind: 1, input_index: 1 },
+    Omitted,
+    255,
+  )
+}
+
+test n7_count_bound_over_substituted_opening_is_refused() fail {
+  run_in(
+    [10, 30],
+    [20],
+    0,
+    0,
+    reason.InputNotFound { source_kind: 1, input_index: 1 },
+    Substituted,
     255,
   )
 }

@@ -197,11 +197,7 @@ type ValidationTraceScripts =
   FaultProofContractChains["validationTraceDispute"];
 type RecordedValidationTraceScripts = Omit<
   ValidationTraceScripts,
-  | "cekProgramMaterial"
-  | "cekContextItemStages"
-  | "steps"
-  | "prepareResolvers"
-  | "resolvers"
+  "cekContextItemStages" | "steps" | "prepareResolvers" | "resolvers"
 > & {
   readonly cekContextItemStages: Pick<
     ValidationTraceScripts["cekContextItemStages"],
@@ -212,15 +208,13 @@ type RecordedValidationTraceScripts = Omit<
 /**
  * Finalize the recorded validation-trace scripts before exposing the SDK chain.
  * Unpublished members explicitly refuse reads; shared CEK aliases use the
- * published redeemer-item programs, and program material is supplied by its owner.
+ * published redeemer-item programs.
  */
 export const restoreValidationTraceDisputeScripts = ({
   resolve,
-  cekProgramMaterial,
   missingMember,
 }: {
   readonly resolve: (contract: DeploymentContract) => FamilyMemberValidator;
-  readonly cekProgramMaterial: SpendingValidator;
   readonly missingMember: (member: string) => never;
 }): ValidationTraceScripts => {
   const projection = restoreRecordedFamilyScriptPaths(
@@ -247,7 +241,6 @@ export const restoreValidationTraceDisputeScripts = ({
   const redeemer = recorded.scriptSourcesStageOneRedeemerStages;
   return {
     ...recorded,
-    cekProgramMaterial,
     cekContextItemStages: {
       ...recorded.cekContextItemStages,
       traversalNormalizer: redeemer.traversalNormalizer,
