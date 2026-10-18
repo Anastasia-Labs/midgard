@@ -22,6 +22,7 @@ import { submitInit } from "../src/submit-init.js";
 import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
+  inputChronologies,
   type InputChronology,
   inputExistenceChronologyFixture,
 } from "./helpers/input-existence-chronology-fixture.js";
@@ -83,6 +84,10 @@ const cases: readonly Case[] = [
   "withdrawal_consumed",
   "rejected_creator",
   "forced_target",
+  "same_block_deposit",
+  "prior_deposit",
+  "forced_prior_deposit",
+  "absent_input_rejection",
 ];
 const checkFit = (measurement: CompleteSignedTransactionMeasurement) => {
   expect(measurement.completeSignedBytes).toBeLessThanOrEqual(16_384);
@@ -122,22 +127,11 @@ describe("registered event-relative input-existence lifecycle", () => {
         const rejected =
           kind === "honest_forced_rejection" ||
           kind === "out_of_domain_rejection" ||
-          kind === "prior_ledger_present_rejection";
+          kind === "prior_ledger_present_rejection" ||
+          kind === "absent_input_rejection";
         const chronology = isInitialAbsence(kind)
           ? initialAbsenceSource[kind]
-          : (
-              [
-                "forced_creator",
-                "normal_creator",
-                "later_creator",
-                "forced_spend",
-                "normal_spend",
-                "withdrawal_consumed",
-                "rejected_creator",
-                "forced_target",
-                "prior_ledger_present_rejection",
-              ] as const
-            ).find((scenario) => scenario === kind);
+          : inputChronologies.find((scenario) => scenario === kind);
         const outOfDomain = kind === "out_of_domain_rejection";
         const reason: SDK.RejectionReason = {
           InputNotFound: {
@@ -297,6 +291,8 @@ describe("registered event-relative input-existence lifecycle", () => {
         const present =
           kind === "forced_creator" ||
           kind === "normal_creator" ||
+          kind === "prior_deposit" ||
+          kind === "forced_prior_deposit" ||
           isInitialAbsence(kind) ||
           kind === "prior_ledger_present_rejection";
         if (present) expect(prepared.ledgerEvidence).toHaveProperty("Present");
@@ -430,6 +426,7 @@ describe("registered event-relative input-existence lifecycle", () => {
           ).toHaveLength(1);
         } else if (
           kind === "honest_forced_rejection" ||
+          kind === "absent_input_rejection" ||
           (present && !rejected)
         ) {
           await expectOnchainRefusal(() => send(3));
