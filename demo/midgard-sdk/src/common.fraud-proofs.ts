@@ -171,10 +171,12 @@ export type MidgardValidators = {
    */
   fieldPreimageCertificate: SpendingValidator & MintingValidator;
   /**
-   * Permissionless append-only L1 availability for content-addressed V1
-   * CEK material. Its validator has no successful spending path.
+   * The script-decode family: anyone may walk a script's decode at its
+   * spending address and mint the verdict as a permanent record under its
+   * policy. The validator takes no parameters, so its policy id is a pure
+   * function of the blueprint.
    */
-  cekProgramMaterial: SpendingValidator;
+  scriptDecode: AuthenticatedValidator;
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;

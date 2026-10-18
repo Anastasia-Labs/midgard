@@ -233,12 +233,15 @@ describe("independent validation event replay", () => {
       // again when the CEK witness began carrying its execution's purpose key,
       // when the program began returning Unit (PV 11 halt rule), when each
       // execution began with Cardano's 100 cpu / 100 memory startup cost, and
-      // when the ledger-delta phase and the state's ledger-delta root were
-      // removed, so acceptance follows multi-asset accounting directly.
+      // when the term material began carrying Cardano's 1-based variable index,
+      // when the CEK witness and context control began naming the program
+      // by its script hash, and when the ledger-delta phase and the state's
+      // ledger-delta root were removed, so acceptance follows multi-asset
+      // accounting directly.
       const expectedTraceHash =
         executionCount === 1
-          ? "275a8a02a1300071cfeeb9f5eaf8b71ae91ec277dd37700165427c2b6f494084"
-          : "e3c6aae68868fd7d52e535b058df1df67cfaa517d4a9f289143ef57d83b4b246";
+          ? "a0d53d48a0a7111ecf983048f701348b862ec04dd576775f1b4689f0d72913b0"
+          : "0a96b179a1a18948ce77e57e9927e3482d3f8f69cc645ee7ee006ae0a3c20b34";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );

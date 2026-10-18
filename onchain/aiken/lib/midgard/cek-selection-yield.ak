@@ -5,28 +5,13 @@ use cardano/address.{Script}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
-use midgard/cek_proof_v1.{CekMaterialPartitionFacts}
 use midgard/computation_thread as ct
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
-use midgard/validation_resolver_v1.{
-  CekMaterialRouteV1, DirectCekMaterial, MinimumMultiOutputCekMaterial,
-  SinglePublicationCekMaterial,
-}
 use midgard/validation_semantic_v1.{Datum}
 
 pub const authenticate_role = "V1VtCekSelAuthYield"
 
 pub const successor_role = "V1VtCekSelSuccYield"
-
-pub const material_program_role = "V1VtCekSelMatProgYield"
-
-pub const material_data_role = "V1VtCekSelMatDataYield"
-
-pub type EnvelopeFacts {
-  term_root: ByteArray,
-  node_count: Int,
-  material_byte_length: Int,
-}
 
 pub type Action {
   VerifyExecutionSelection {
@@ -34,11 +19,10 @@ pub type Action {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     auxiliary: Data,
-    material_route: CekMaterialRouteV1,
     yield_ref_input_indices: List<Int>,
-    envelope_facts: EnvelopeFacts,
-    material_facts: CekMaterialPartitionFacts,
-    begin_traversal: Bool,
+    /// Reference input holding the script's decode record, or -1 when the
+    /// selection reads no program.
+    record_reference_input_index: Int,
   }
 }
 
@@ -78,13 +62,4 @@ pub fn unique_dispatch(
   expect redeemer: SpendRedeemer = raw_redeemer
   expect ct.Continue(action) = redeemer
   (datum, action, output_reference)
-}
-
-pub fn route_envelope(route: CekMaterialRouteV1) -> ByteArray {
-  when route is {
-    DirectCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    SinglePublicationCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    MinimumMultiOutputCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    _ -> fail
-  }
 }

@@ -3,7 +3,6 @@ import "./validation-trace-dispute.validation-trace-semantic-resolver-group-size
 import { deploymentValidatorTitle as title } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
-  cekMaterialTraversal: title("validationTraceDisputeCekMaterialTraversal"),
   proofItem: title("validationTraceDisputeProofItem"),
   dispute: title("validationTraceDispute"),
   source: title("validationTraceDisputeSource"),
@@ -332,12 +331,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend",
   },
   yields: {
-    cekMaterialProgramTask: title(
-      "validationTraceDisputeCekMaterialProgramTaskWithdraw",
-    ),
-    cekMaterialDataTask: title(
-      "validationTraceDisputeCekMaterialDataTaskWithdraw",
-    ),
     scriptSourcesStageTwoAdvance: title(
       "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
     ),
@@ -472,12 +465,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     ),
     cekSelectionSuccessor: title(
       "validationTraceDisputeCekSelectionSuccessorWithdraw",
-    ),
-    cekSelectionMaterialProgram: title(
-      "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
-    ),
-    cekSelectionMaterialData: title(
-      "validationTraceDisputeCekSelectionMaterialDataWithdraw",
     ),
     valueAndMintAssetFold: title(
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",

@@ -1,4 +1,5 @@
 import {
+  buildScriptDecodeValidator,
   buildWitnessScriptDecodingChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
@@ -72,15 +73,18 @@ export const applyWitnessScriptDecodingScripts = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
 }): WitnessScriptDecodingContracts["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildWitnessScriptDecodingChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      scriptDecodePolicyId: buildScriptDecodeValidator(parsedBlueprint, network)
+        .policyId,
     }),
   );
   const adapt = (step: SpendingValidator) =>

@@ -38,12 +38,14 @@ export const referenceScriptPublisherAccount = (
  * there; the publisher wallet holds no reserved input. The policy's timelock
  * is anchored at the emulator time this is called at, as before the nonce.
  * Publication transactions carry no Plutus script, so the publisher's Lucid
- * needs no custom evaluator.
+ * needs no custom evaluator. The auth policy expires `timelockMs` after that
+ * time, by default the SDK's.
  */
 export const createReferenceScriptPublisher = async (
   funderLucid: LucidEvolution,
   publisher: EmulatorAccount,
   emulator: Emulator,
+  timelockMs?: number,
 ) => {
   const now = emulator.now();
   const publisherLucid = await Lucid(emulator, "Custom");
@@ -77,6 +79,7 @@ export const createReferenceScriptPublisher = async (
     referenceScriptAuth: await createReferenceScriptAuthPolicy(
       publisherLucid,
       now,
+      timelockMs,
     ),
     referenceScriptPublisher: {
       lucid: publisherLucid,

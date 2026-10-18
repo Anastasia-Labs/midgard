@@ -6,9 +6,9 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     fraudProofScriptIntegrityHashMismatch: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-01",
-      manifestPosition: 357,
-      publicationPosition: 276,
-      referenceRolePosition: 513,
+      manifestPosition: 358,
+      publicationPosition: 277,
+      referenceRolePosition: 509,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
@@ -17,9 +17,9 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     fraudProofScriptIntegrityHashMismatchStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-02",
-      manifestPosition: 358,
-      publicationPosition: 277,
-      referenceRolePosition: 514,
+      manifestPosition: 359,
+      publicationPosition: 278,
+      referenceRolePosition: 510,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
@@ -28,9 +28,9 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     fraudProofScriptIntegrityHashMismatchStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-03",
-      manifestPosition: 359,
-      publicationPosition: 278,
-      referenceRolePosition: 515,
+      manifestPosition: 360,
+      publicationPosition: 279,
+      referenceRolePosition: 511,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
@@ -39,9 +39,9 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     fraudProofScriptIntegrityHashMismatchStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-04",
-      manifestPosition: 360,
-      publicationPosition: 279,
-      referenceRolePosition: 516,
+      manifestPosition: 361,
+      publicationPosition: 280,
+      referenceRolePosition: 512,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
@@ -50,9 +50,9 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
     fraudProofScriptIntegrityHashMismatchStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-05",
-      manifestPosition: 361,
-      publicationPosition: 280,
-      referenceRolePosition: 517,
+      manifestPosition: 362,
+      publicationPosition: 281,
+      referenceRolePosition: 513,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",

@@ -1710,6 +1710,12 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.BlsG1Constant -> 18
     cek_constant_v1.BlsG2Constant -> 36
     cek_constant_v1.BlsMillerLoopResultConstant -> 72
+    cek_constant_v1.ArrayConstant { .. } -> {
+      expect cek_data_v1.ListData { items_count, .. } = node
+      items_count
+    }
+    cek_constant_v1.ValueConstant ->
+      fail @"semantic value memory requires a recursive proof"
   }
 }
 
@@ -2942,7 +2948,7 @@ fn mk_cons_arguments_are_well_typed_v1(
 fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
   expect and {
       tag >= 0,
-      tag <= cek_proof_v1.max_builtin_tag,
+      tag <= cek_proof_v1.max_resolved_builtin_tag,
     }
   if tag >= 0 && tag <= 9 {
     [IntegerRuntimeValue, IntegerRuntimeValue]

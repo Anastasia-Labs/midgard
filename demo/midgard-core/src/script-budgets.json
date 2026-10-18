@@ -1002,6 +1002,108 @@
         "cpu": 133520246
       }
     },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11704090,
+        "cpu": 4113591914
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 131281,
+        "cpu": 147419988
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12925192,
+        "cpu": 4520268965
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136227,
+        "cpu": 162628016
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13196979,
+        "cpu": 4608351303
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136733,
+        "cpu": 166152844
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4652235835
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 135958,
+        "cpu": 167747901
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13467983,
+        "cpu": 4696315453
+      },
+      "aboveBasis": {
+        "why": "13,310,458 mem whole-test, 100.8% of the basis; 13,175,385 net of its fixture-only twin, 99.8%. The 3,413- to 3,545-byte rungs now read inside the basis (refit at 23d0518444), so the 4,865- and 4,931-byte rungs keep the descriptor dimension's measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136424,
+        "cpu": 169545149
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13603696,
+        "cpu": 4740327524
+      },
+      "aboveBasis": {
+        "why": "13,444,827 mem whole-test, 101.9% of the basis, and 13,309,711 net of its fixture-only twin, 100.8%. The 3,413- to 3,545-byte rungs now read inside the basis (refit at 23d0518444), so the 4,865- and 4,931-byte rungs keep the descriptor dimension's measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136468,
+        "cpu": 171273428
+      }
+    },
     "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent": {
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent",
       "env": "testnet",
@@ -1544,6 +1646,63 @@
       "ceiling": {
         "mem": 10464105,
         "cpu": 3625558987
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives - descriptor_4073_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives",
+      "minusControl": "descriptor_4073_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11572809,
+        "cpu": 3966171926
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives - descriptor_4601_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives",
+      "minusControl": "descriptor_4601_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12788965,
+        "cpu": 4357640949
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives - descriptor_4733_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives",
+      "minusControl": "descriptor_4733_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13060246,
+        "cpu": 4442198459
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives - descriptor_4799_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives",
+      "minusControl": "descriptor_4799_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13195899,
+        "cpu": 4484487935
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives - descriptor_4865_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives",
+      "minusControl": "descriptor_4865_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4526770304
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives - descriptor_4931_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives",
+      "minusControl": "descriptor_4931_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13467228,
+        "cpu": 4569054097
+      },
+      "aboveBasis": {
+        "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,309,711 mem net of every fixture the test builds, 100.8% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
       }
     }
   },

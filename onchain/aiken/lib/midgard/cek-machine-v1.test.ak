@@ -394,7 +394,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
   let environment = cek_proof_v1.hash_environment_node_v1(h_02, tail, 2)
   let pre = state(
     cek_machine_v1.mode_compute,
-    cek_proof_v1.hash_variable_term_v1(1),
+    cek_proof_v1.hash_variable_term_v1(2),
     environment,
     cek_proof_v1.empty_continuation_root_v1,
     0,
@@ -432,7 +432,7 @@ test debruijn_lookup_walks_an_authenticated_environment() {
     cek_machine_v1.verify_core_step_v1(
       pre,
       lookup,
-      cek_machine_v1.ComputeVariable { index: 1 },
+      cek_machine_v1.ComputeVariable { index: 2 },
     ),
     cek_machine_v1.verify_core_step_v1(
       lookup,
@@ -449,6 +449,213 @@ test debruijn_lookup_walks_an_authenticated_environment() {
       },
     ),
   }
+}
+
+fn two_node_environment() -> ByteArray {
+  cek_proof_v1.hash_environment_node_v1(
+    h_02,
+    cek_proof_v1.hash_environment_node_v1(
+      h_01,
+      cek_proof_v1.empty_environment_root_v1,
+      1,
+    ),
+    2,
+  )
+}
+
+fn compute_variable_pre(index: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_variable_term_v1(index),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn unbound_variable_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_unbound_variable,
+    100,
+    100,
+  )
+}
+
+test variable_index_one_returns_the_innermost_binding() {
+  let pre = compute_variable_pre(1)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  let found = state(
+    cek_machine_v1.mode_return,
+    h_02,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 1 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      found,
+      cek_machine_v1.LookupEnvironment {
+        value: h_02,
+        tail: cek_proof_v1.hash_environment_node_v1(
+          h_01,
+          cek_proof_v1.empty_environment_root_v1,
+          1,
+        ),
+        length: 2,
+      },
+    ),
+  }
+}
+
+test variable_index_zero_fails_in_one_compute_step() {
+  let pre = compute_variable_pre(0)
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      unbound_variable_error(),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        -1,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+    !cek_machine_v1.verify_core_step_v1(
+      pre,
+      state(
+        cek_machine_v1.mode_lookup,
+        two_node_environment(),
+        two_node_environment(),
+        cek_proof_v1.empty_continuation_root_v1,
+        0,
+        16100,
+        200,
+      ),
+      cek_machine_v1.ComputeVariable { index: 0 },
+    ),
+  }
+}
+
+test variable_index_above_the_environment_fails_at_the_empty_environment() {
+  let tail = cek_proof_v1.hash_environment_node_v1(
+    h_01,
+    cek_proof_v1.empty_environment_root_v1,
+    1,
+  )
+  let pre = compute_variable_pre(3)
+  let lookup = state(
+    cek_machine_v1.mode_lookup,
+    two_node_environment(),
+    two_node_environment(),
+    cek_proof_v1.empty_continuation_root_v1,
+    2,
+    16100,
+    200,
+  )
+  let lookup_tail = state(
+    cek_machine_v1.mode_lookup,
+    tail,
+    tail,
+    cek_proof_v1.empty_continuation_root_v1,
+    1,
+    16100,
+    200,
+  )
+  let lookup_empty = state(
+    cek_machine_v1.mode_lookup,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+  and {
+    cek_machine_v1.verify_core_step_v1(
+      pre,
+      lookup,
+      cek_machine_v1.ComputeVariable { index: 3 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup,
+      lookup_tail,
+      cek_machine_v1.LookupEnvironment { value: h_02, tail, length: 2 },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_tail,
+      lookup_empty,
+      cek_machine_v1.LookupEnvironment {
+        value: h_01,
+        tail: cek_proof_v1.empty_environment_root_v1,
+        length: 1,
+      },
+    ),
+    cek_machine_v1.verify_core_step_v1(
+      lookup_empty,
+      state(
+        cek_machine_v1.mode_halt_error,
+        cek_proof_v1.hash_error_term_v1(),
+        cek_proof_v1.empty_environment_root_v1,
+        cek_proof_v1.empty_continuation_root_v1,
+        cek_machine_v1.error_unbound_variable,
+        16100,
+        200,
+      ),
+      cek_machine_v1.LookupEmptyEnvironment,
+    ),
+  }
+}
+
+test variable_index_takes_the_full_word64_range() {
+  let largest = 18446744073709551615
+  let pre = compute_variable_pre(largest)
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    state(
+      cek_machine_v1.mode_lookup,
+      two_node_environment(),
+      two_node_environment(),
+      cek_proof_v1.empty_continuation_root_v1,
+      largest - 1,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeVariable { index: largest },
+  )
+}
+
+test variable_index_above_word64_does_not_hash() fail {
+  cek_proof_v1.hash_variable_term_v1(18446744073709551616) == #""
 }
 
 test builtin_force_and_application_enter_builtin_micro_machine() {
@@ -2012,6 +2219,75 @@ test malformed_ed25519_lengths_have_one_paid_failure_successor() {
       cek_cost_v1.BuiltinBudgetV1 { cpu: 0, memory: 0 },
     ),
   }
+}
+
+fn compute_builtin_pre(tag: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_builtin_term_v1(tag),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn explicit_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_explicit,
+    100,
+    100,
+  )
+}
+
+test compute_builtin_steps_a_resolved_tag() {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(86),
+    state(
+      cek_machine_v1.mode_return,
+      cek_proof_v1.hash_builtin_value_v1(
+        86,
+        0,
+        0,
+        cek_proof_v1.empty_sequence_root_v1,
+      ),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeBuiltin { tag: 86 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_87() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(87),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 87 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_100() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(100),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 100 },
+  )
+}
+
+test builtin_force_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_force_count(88) >= 0
+}
+
+test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_argument_count(94) >= 0
 }
 
 // ComputeConstant at the 64-bit and constructor-128 boundaries. The post root

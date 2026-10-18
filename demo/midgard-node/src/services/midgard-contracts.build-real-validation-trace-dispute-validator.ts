@@ -52,7 +52,10 @@ export const buildRealFaultProofContracts = (
   l1SlotConfig: L1SlotConfig,
   disputeBondLovelace: bigint,
   caseConfigInitializationNonce: OutRefLike,
-): Effect.Effect<SDK.FaultProofContractChains, Error> =>
+): Effect.Effect<
+  SDK.FaultProofContractChains & Pick<SDK.FaultProofContracts, "scriptDecode">,
+  Error
+> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({

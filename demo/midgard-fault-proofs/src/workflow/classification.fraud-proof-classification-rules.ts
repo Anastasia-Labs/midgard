@@ -205,6 +205,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
       "witness-native-script-malformed",
       "witness-native-script-node-limit",
       "witness-native-script-depth-limit",
+      "witness-plutus-script-undecodable",
     ],
   },
   {
@@ -249,6 +250,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
       "output-reference-script-malformed",
       "output-reference-script-node-limit",
       "output-reference-script-depth-limit",
+      "output-reference-plutus-script-undecodable",
     ],
   },
   {

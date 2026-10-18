@@ -279,17 +279,4 @@ export type ValidationOneStepArgument = {
   /** Exact adjacent witness from fresh canonical replay for context settlement. */
   readonly cekContextSuccessorWorkWitnessCbor?: Buffer;
   readonly ledgerOutputProofSuccessorWorkWitnessCbor?: Buffer;
-  readonly cekRouteMaterial?: CekRouteMaterial;
 };
-
-export type CekRouteMaterial = {
-  readonly envelopeCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
-  readonly programEnvelopeHash: Buffer;
-};
-
-export const CEK_ROUTE_MATERIAL_KEYS = Object.freeze([
-  "envelopeCbor",
-  "programMaterialSidecarCbor",
-  "programEnvelopeHash",
-] as const);

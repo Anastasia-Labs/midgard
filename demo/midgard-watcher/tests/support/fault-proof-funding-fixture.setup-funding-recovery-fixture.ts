@@ -233,7 +233,7 @@ export const setupFundingRecoveryFixture = async (
                     "fraudProofSpend",
                     "fraudProofCatalogueSpend",
                     "fieldPreimageCertificateSpend",
-                    "cekProgramMaterialSpend",
+                    "scriptDecodeSpend",
                     "validationTraceDisputeProofItem",
                   ].includes(name)
                 ? ("field_carrier" as const)
