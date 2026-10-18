@@ -48,6 +48,7 @@ export const buildDecodingBlockFixture = async ({
   operatorVkey,
   startTime,
   priorLedgerRoot,
+  prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
   subject,
   decoyTransactionCount = 0,
   additionalTransactions = [],
@@ -58,6 +59,9 @@ export const buildDecodingBlockFixture = async ({
   readonly operatorVkey: string;
   readonly startTime: bigint;
   readonly priorLedgerRoot: string;
+  /** The header's predecessor ledger root; a fixture whose event resolves
+   * committed outputs passes the same root as `priorLedgerRoot`. */
+  readonly prevUtxosRoot?: string;
   readonly subject: DecodingSubjectSource;
   /**
    * Extra committed L2 transactions, present only to give the header's
@@ -302,7 +306,7 @@ export const buildDecodingBlockFixture = async ({
     validationTraceCount: BigInt(events.length),
   };
   const header: SDK.Header = {
-    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    prevUtxosRoot,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
     forcedTransactionsRoot: roots.forcedTransactions.root,
