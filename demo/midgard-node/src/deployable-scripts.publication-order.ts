@@ -26,7 +26,7 @@ export const manifestDeployableScripts = (
  * but initialization cannot publish them as reference scripts yet. Delete each
  * entry in the change that makes that script fit.
  */
-const NOT_YET_PUBLISHABLE_CONTRACTS: ReadonlySet<string> = new Set([
+export const NOT_YET_PUBLISHABLE_CONTRACTS: ReadonlySet<string> = new Set([
   "scriptDecodeSpend",
   "scriptDecodeMint",
 ]);

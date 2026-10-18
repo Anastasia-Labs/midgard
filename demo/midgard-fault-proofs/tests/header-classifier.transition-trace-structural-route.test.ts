@@ -18,7 +18,10 @@ import {
   reconstructDaPayload,
 } from "../src/transition-trace/reconstruct.js";
 import { createCatalogueCompleteCanonicalReplay } from "../src/workflow/catalogue-replay.js";
-import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import {
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.js";
 import { digest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -121,10 +124,12 @@ const classify = async ({
   fixture,
   block,
   installed,
+  scope = NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
 }: {
   readonly fixture: Fixture;
   readonly block: Block;
   readonly installed: boolean;
+  readonly scope?: typeof NETWORK_ID_COMPLETE_CANONICAL_REPLAY;
 }) => {
   const seed = requireTransitionTraceL1Events(
     await captureRetainedPlutusIdentityOrigins(fixture, { omitEvent: true }),
@@ -206,7 +211,7 @@ const classify = async ({
         }
       : {
           deploymentFingerprint: DEPLOYMENT,
-          replayer: NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+          replayer: scope,
           releaseFinalityAuthority,
         },
   );
@@ -424,6 +429,44 @@ describe("pre-union transition trace structural route", replayBudget, () => {
       installed: false,
     });
     expect(uninstalled.decision.decision).toBe("healthy");
+  });
+
+  it("accepts a normal Plutus transaction whose output carries the program as its reference script through all 42 installed categories", async () => {
+    const fixture = await buildRetainedPlutusIdentityFixture(
+      { verdict: "accepted" },
+      { outputReferenceScript: true },
+    );
+    expect(fixture.replay.trace.verdict).toBe("accepted");
+    const { decision } = await classify({
+      fixture,
+      block: fixture.block,
+      installed: true,
+    });
+    expect(decision).toMatchObject({
+      decision: "healthy",
+      launchScope: INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
+    });
+  });
+
+  it("finds a malformed native witness script beside the Plutus witness through the witness-script-decoding family", async () => {
+    // A tag-0 item whose payload is not a native script.
+    const fixture = await buildRetainedPlutusIdentityFixture(
+      { verdict: "accepted" },
+      { extraScriptWitnesses: [Buffer.from("820043820700", "hex")] },
+    );
+    const { decision } = await classify({
+      fixture,
+      block: fixture.block,
+      installed: false,
+      scope: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    });
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "witnessScriptDecoding",
+      violationId: "witness-native-script-malformed",
+      headerHash: fixture.block.headerHash,
+      launchScope: ["witnessScriptDecoding"],
+    });
   });
 
   it("finds an under-fee normal Plutus transaction with empty witnesses through the same full catalogue", async () => {

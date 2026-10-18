@@ -15,11 +15,6 @@
     "reason": "The suite shares scratch repository creation, command execution, cleanup and red/green classification assertions. Splitting individual cases requires an explicit common fixture harness rather than moving independent top-level declarations."
   },
   {
-    "file": "../.agents/skills/regenerating-goldens-and-ledgers/scripts/affected-channels.test.mjs",
-    "max": 513,
-    "reason": "Channel selection tests share one channel-table/checker fixture and scratch Git histories. Preserve fixture construction and cleanup; this small overage requires a test-harness split to reduce further."
-  },
-  {
     "file": "da-committee-node/src/committee-service.committee-service.ts",
     "max": 1423,
     "reason": "CommitteeService is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
