@@ -31,13 +31,6 @@ export type MidgardForcedTxOutputFault = Readonly<{
   refusalClass?: number;
 }>;
 
-/**
- * The classes validation does not refuse yet: an output of such a class is
- * admitted, and a later faulty output is the first.
- */
-export const MIDGARD_HELD_FORCED_TX_OUTPUT_FAULT_CLASSES: ReadonlySet<MidgardForcedTxOutputFaultClass> =
-  new Set(["plutusScriptUndecodable"]);
-
 const CLASSES_OF_REFUSALS: Readonly<
   Record<MidgardLedgerOutputProofRefusalKind, MidgardForcedTxOutputFaultClass>
 > = {
@@ -139,8 +132,8 @@ export type MidgardForcedTxWitnessScriptFault = Readonly<{
 }>;
 
 /**
- * The first faulty output of a forced transaction whose class is not in
- * `held`, with its class (see {@link classifyMidgardForcedTxOutputItem}).
+ * The first faulty output of a forced transaction, with its class (see
+ * {@link classifyMidgardForcedTxOutputItem}).
  * Returns null when no such output exists, or when the field-2 list itself is
  * not a §5.1 envelope (the tx-order mint refuses such an order).
  *
@@ -149,7 +142,6 @@ export type MidgardForcedTxWitnessScriptFault = Readonly<{
  */
 export const locateMidgardForcedTxOutputFault = (
   txCbor: Uint8Array,
-  held: ReadonlySet<MidgardForcedTxOutputFaultClass> = MIDGARD_HELD_FORCED_TX_OUTPUT_FAULT_CLASSES,
 ): MidgardForcedTxOutputFault | null => {
   let outputs: readonly Uint8Array[];
   try {
@@ -166,7 +158,7 @@ export const locateMidgardForcedTxOutputFault = (
       itemIndex,
       outputs[itemIndex]!,
     );
-    if (fault !== null && !held.has(fault.itemClass)) return fault;
+    if (fault !== null) return fault;
   }
   return null;
 };

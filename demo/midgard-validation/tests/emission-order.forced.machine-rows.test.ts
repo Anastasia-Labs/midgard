@@ -67,17 +67,13 @@ describe("emission order: a forced transaction's faulty output", () => {
 
 /**
  * An undecodable Plutus reference script is its own output class: the
- * locator names it, with its decode record's class, once it is not held.
+ * locator names it, with its decode record's class.
  */
 describe("a forced transaction's undecodable Plutus reference script", () => {
   const { txCbor } = transactionOf(UNDECODABLE_PLUTUS_REF_ROW);
 
-  it("is held: the locator does not name it", () => {
-    expect(locateMidgardForcedTxOutputFault(txCbor)).toBeNull();
-  });
-
   it("is its own class, refused with its record's class", () => {
-    const fault = locateMidgardForcedTxOutputFault(txCbor, new Set());
+    const fault = locateMidgardForcedTxOutputFault(txCbor);
     // Its script bytes are not a CBOR byte string: class 1.
     expect(fault).toEqual({
       itemIndex: 0,

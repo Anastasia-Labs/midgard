@@ -23,7 +23,6 @@ export {
   forcedTxOutputFaultRejection,
   locateMidgardForcedTxOutputFault,
   locateMidgardForcedTxWitnessScriptFault,
-  MIDGARD_HELD_FORCED_TX_OUTPUT_FAULT_CLASSES,
   type MidgardForcedTxOutputFault,
   type MidgardForcedTxOutputFaultClass,
   type MidgardForcedTxWitnessScriptFault,
