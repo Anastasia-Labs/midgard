@@ -26,7 +26,6 @@ export type ValidationTraceStateFrame = {
   readonly validationContextHash: Buffer;
   readonly sourceKind: "normal" | "forced";
   readonly priorLedgerRoot: Buffer;
-  readonly ledgerDeltaRoot: Buffer;
 };
 
 /** The executed budget a state records. */
@@ -75,7 +74,6 @@ export const validationMachineStateV1 = (
     terminal === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
       : terminal.rejectionCodeHash,
-  ledgerDeltaRoot: frame.ledgerDeltaRoot,
 });
 
 /** Receives the builder's states in program-counter order. */

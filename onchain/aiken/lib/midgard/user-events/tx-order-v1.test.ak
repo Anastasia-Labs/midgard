@@ -5,8 +5,10 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
-use midgard/cek_proof_v1
+use cardano/transaction.{
+  Datum as CardanoDatum, DatumHash, InlineDatum, Input, NoDatum, Output,
+  OutputReference,
+}
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_forced_tx_compact_v1, encode_native_tx_body_compact,
@@ -26,8 +28,7 @@ use midgard/fraud_proofs/native_tx/types.{
   TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{
-  CekProgramMaterialDatumV1, ForcedInclusionTxV1, ForcedTxProofSourceV1,
-  TxOrderEventV1, TxOrderPayloadV1,
+  ForcedInclusionTxV1, ForcedTxProofSourceV1, TxOrderEventV1, TxOrderPayloadV1,
 }
 use midgard/native_tx_field_access_v1.{
   Certified, FieldCarriageV1, FieldPreimageCertificateV1, Inline, RawUtxo,
@@ -40,8 +41,9 @@ use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1.{
-  Datum, MintRedeemer, SpendRedeemer, forced_inclusion_key_value,
-  material_carriage_matches_event, verify_order_material,
+  Datum, MintRedeemer, SpendRedeemer, admitted_order_datum,
+  forced_inclusion_key_value, material_carriage_matches_event,
+  verify_order_material,
 }
 
 /// `verify_order_material` returns the nine slots' views; a test that only asks
@@ -328,15 +330,189 @@ test tx_order_payload_rejects_an_extra_field() fail {
   payload.tx_id == order_transaction_id
 }
 
-test cek_program_material_v1_matches_the_typed_blob_chunk_hash_vector() {
-  let chunk = #"6d6174657269616c"
-  let preimage = #"486d6174657269616c"
-  let root = cek_proof_v1.hash_blob_chunk_v1(chunk)
-  let datum = CekProgramMaterialDatumV1 { kind: 3, root, preimage }
-  and {
-    root == #"941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c",
-    cbor.serialise(datum) == #"d8799f035820941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c49486d6174657269616cff",
+/// The canonical vector datum with its refund address and datum replaced.
+fn vector_datum_refunding(
+  refund_address: address.Address,
+  refund_datum: CardanoDatum,
+) -> Data {
+  let datum: Datum = user_events.OptimisticDatum {
+    ..vector_datum(),
+    refund_address,
+    refund_datum,
   }
+  let datum_data: Data = datum
+  datum_data
+}
+
+fn key_address(hash_length: Int) -> address.Address {
+  address.from_verification_key(bytearray.from_int_big_endian(7, hash_length))
+}
+
+fn with_stake(
+  payment: address.Address,
+  stake: address.StakeCredential,
+) -> address.Address {
+  address.Address { ..payment, stake_credential: Some(stake) }
+}
+
+fn inline_key_stake(hash_length: Int) -> address.StakeCredential {
+  address.Inline(
+    address.VerificationKey(bytearray.from_int_big_endian(8, hash_length)),
+  )
+}
+
+fn inline_script_stake(hash_length: Int) -> address.StakeCredential {
+  address.Inline(address.Script(bytearray.from_int_big_endian(9, hash_length)))
+}
+
+fn datum_hash(hash_length: Int) -> CardanoDatum {
+  DatumHash(bytearray.from_int_big_endian(6, hash_length))
+}
+
+/// The vector datum's own fields, for spelling a datum the type does not admit.
+fn vector_datum_fields() -> List<Data> {
+  let datum: Data = vector_datum()
+  builtin.unconstr_fields(datum)
+}
+
+/// True when the mint admits the datum; a refused datum fails the call, so a
+/// `fail` row cannot pass by reading back a different datum.
+fn admits(order_data: Data) -> Bool {
+  admitted_order_datum(order_data).inclusion_time == 123
+}
+
+test admitted_order_datum_reads_the_canonical_vector() {
+  let datum: Data = vector_datum()
+  admitted_order_datum(datum) == vector_datum()
+}
+
+test admitted_order_datum_reads_a_definite_length_spelling() {
+  // `vector_datum` with every list definite-length, as a non-canonical
+  // encoder may write it.
+  expect Some(data) = cbor.deserialise(
+    #"d87985d87982d879825820333333333333333333333333333333333333333333333333333333333333333304d879835820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555d8798341014202034104187b581c66666666666666666666666666666666666666666666666666666666d87982d87981581c77777777777777777777777777777777777777777777777777777777d87a80d87980",
+  )
+  admitted_order_datum(data) == vector_datum()
+}
+
+test admitted_order_datum_reads_a_script_payment_credential() {
+  let refund_address = address.from_script(bytearray.from_int_big_endian(5, 28))
+  let order = admitted_order_datum(
+    vector_datum_refunding(refund_address, NoDatum),
+  )
+  order.refund_address == refund_address
+}
+
+test admitted_order_datum_reads_an_inline_key_stake_part() {
+  let refund_address = with_stake(key_address(28), inline_key_stake(28))
+  let order = admitted_order_datum(
+    vector_datum_refunding(refund_address, NoDatum),
+  )
+  order.refund_address == refund_address
+}
+
+test admitted_order_datum_reads_an_inline_script_stake_part() {
+  let refund_address = with_stake(key_address(28), inline_script_stake(28))
+  let order = admitted_order_datum(
+    vector_datum_refunding(refund_address, NoDatum),
+  )
+  order.refund_address == refund_address
+}
+
+test admitted_order_datum_reads_a_32_byte_datum_hash() {
+  let order = admitted_order_datum(
+    vector_datum_refunding(key_address(28), datum_hash(32)),
+  )
+  order.refund_datum == datum_hash(32)
+}
+
+test admitted_order_datum_reads_an_inline_refund_datum() {
+  let refund_datum = InlineDatum(builtin.list_data([builtin.i_data(1)]))
+  let order = admitted_order_datum(
+    vector_datum_refunding(key_address(28), refund_datum),
+  )
+  order.refund_datum == refund_datum
+}
+
+test admitted_order_datum_refuses_an_unknown_outer_constructor() fail {
+  admits(builtin.constr_data(1, vector_datum_fields()))
+}
+
+test admitted_order_datum_refuses_an_extra_field() fail {
+  admits(
+    builtin.constr_data(
+      0,
+      list.concat(vector_datum_fields(), [builtin.i_data(0)]),
+    ),
+  )
+}
+
+test admitted_order_datum_refuses_a_missing_field() fail {
+  admits(builtin.constr_data(0, list.take(vector_datum_fields(), 4)))
+}
+
+test admitted_order_datum_refuses_an_unknown_refund_datum_constructor() fail {
+  let fields = vector_datum_fields()
+  admits(
+    builtin.constr_data(
+      0,
+      list.concat(list.take(fields, 4), [builtin.constr_data(3, [])]),
+    ),
+  )
+}
+
+test admitted_order_datum_refuses_a_27_byte_payment_key_hash() fail {
+  admits(vector_datum_refunding(key_address(27), NoDatum))
+}
+
+test admitted_order_datum_refuses_a_29_byte_payment_key_hash() fail {
+  admits(vector_datum_refunding(key_address(29), NoDatum))
+}
+
+test admitted_order_datum_refuses_an_empty_payment_script_hash() fail {
+  admits(vector_datum_refunding(address.from_script(#""), NoDatum))
+}
+
+test admitted_order_datum_refuses_a_27_byte_stake_key_hash() fail {
+  admits(
+    vector_datum_refunding(
+      with_stake(key_address(28), inline_key_stake(27)),
+      NoDatum,
+    ),
+  )
+}
+
+test admitted_order_datum_refuses_a_29_byte_stake_script_hash() fail {
+  admits(
+    vector_datum_refunding(
+      with_stake(key_address(28), inline_script_stake(29)),
+      NoDatum,
+    ),
+  )
+}
+
+test admitted_order_datum_refuses_a_pointer_stake_part() fail {
+  admits(
+    vector_datum_refunding(
+      with_stake(
+        key_address(28),
+        address.Pointer {
+          slot_number: 1,
+          transaction_index: 2,
+          certificate_index: 3,
+        },
+      ),
+      NoDatum,
+    ),
+  )
+}
+
+test admitted_order_datum_refuses_a_31_byte_datum_hash() fail {
+  admits(vector_datum_refunding(key_address(28), datum_hash(31)))
+}
+
+test admitted_order_datum_refuses_a_33_byte_datum_hash() fail {
+  admits(vector_datum_refunding(key_address(28), datum_hash(33)))
 }
 
 // ---------------------------------------------------------------------------

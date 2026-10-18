@@ -13,6 +13,7 @@
  * that the vectors are this table's (same bytes, same descriptor facts) and
  * that the node's verdict equals the pinned one.
  */
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -23,9 +24,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import VECTORS from "./fixtures/withdrawal-mistag-agreement-vectors.json" with { type: "json" };
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",

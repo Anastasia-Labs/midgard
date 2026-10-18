@@ -3,7 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationOneStepWitnessV1,
 }
@@ -77,18 +77,17 @@ fn bind_item_source(
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
   let transition_data: Data = transition
   let auxiliary_data: Data = NoAuxiliaryWitness
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step_datum,
     input_index,
     output_index,
     own_out_ref,
-    inputs,
-    outputs,
+    tx,
+    ProverOnly,
     fn(
       _input_script_hash,
       _computation_thread_token_asset_name,

@@ -339,10 +339,28 @@ export const buildRegisteredOperatorsValidator = (
     (policyId) => [policyId],
   );
 
+/**
+ * The policy of the lost-defense receipts, which both operator directories
+ * read to slash for a lost validation-case defense: the mint purpose of the
+ * validation-trace award validator.
+ */
+type LostDefenseReceiptPolicySource = {
+  readonly fraudProofContracts: {
+    readonly validationTraceDispute: {
+      readonly award: { readonly policyId: string };
+    };
+  };
+};
+
+const lostDefenseReceiptPolicyId = (
+  contracts: LostDefenseReceiptPolicySource,
+): string =>
+  contracts.fraudProofContracts.validationTraceDispute.award.policyId;
+
 export const buildActiveOperatorsValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
-  contracts: {
+  contracts: LostDefenseReceiptPolicySource & {
     readonly hubOracle: { readonly policyId: string };
     readonly registeredOperators: { readonly policyId: string };
     readonly retiredOperators: { readonly policyId: string };
@@ -356,6 +374,7 @@ export const buildActiveOperatorsValidator = (
       contracts.hubOracle.policyId,
       contracts.registeredOperators.policyId,
       contracts.retiredOperators.policyId,
+      lostDefenseReceiptPolicyId(contracts),
     ],
     (policyId) => [policyId, contracts.hubOracle.policyId],
   );
@@ -363,13 +382,15 @@ export const buildActiveOperatorsValidator = (
 export const buildRetiredOperatorsValidator = (
   blueprint: FaultProofBlueprint,
   network: Network,
-  contracts: { readonly hubOracle: { readonly policyId: string } },
+  contracts: LostDefenseReceiptPolicySource & {
+    readonly hubOracle: { readonly policyId: string };
+  },
 ): AuthenticatedValidator =>
   buildAuthenticatedBlueprintValidator(
     blueprint,
     network,
     RETIRED_OPERATORS_SCRIPT_TITLES,
-    [contracts.hubOracle.policyId],
+    [contracts.hubOracle.policyId, lostDefenseReceiptPolicyId(contracts)],
     (policyId) => [policyId],
   );
 

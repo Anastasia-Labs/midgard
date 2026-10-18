@@ -6,9 +6,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageTwoAdvance yield",
-      manifestPosition: 122,
-      publicationPosition: 400,
-      referenceRolePosition: 237,
+      manifestPosition: 129,
+      publicationPosition: 407,
+      referenceRolePosition: 244,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_two_advance.withdraw",
@@ -18,9 +18,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace script-sources StageThreeReplay yield",
-      manifestPosition: 123,
-      publicationPosition: 401,
-      referenceRolePosition: 238,
+      manifestPosition: 130,
+      publicationPosition: 408,
+      referenceRolePosition: 245,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_three_replay.withdraw",
@@ -30,9 +30,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace script-sources StageThreeFinish yield",
-      manifestPosition: 124,
-      publicationPosition: 402,
-      referenceRolePosition: 239,
+      manifestPosition: 131,
+      publicationPosition: 409,
+      referenceRolePosition: 246,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_three_finish.withdraw",
@@ -41,9 +41,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesStageFourBeginWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageFourBegin yield",
-      manifestPosition: 125,
-      publicationPosition: 403,
-      referenceRolePosition: 240,
+      manifestPosition: 132,
+      publicationPosition: 410,
+      referenceRolePosition: 247,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_four_begin.withdraw",
@@ -52,9 +52,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesStageFourFinishWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageFourFinish yield",
-      manifestPosition: 126,
-      publicationPosition: 404,
-      referenceRolePosition: 241,
+      manifestPosition: 133,
+      publicationPosition: 411,
+      referenceRolePosition: 248,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_four_finish.withdraw",
@@ -64,9 +64,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace script-sources StageSixBeginPolicy yield",
-      manifestPosition: 127,
-      publicationPosition: 405,
-      referenceRolePosition: 242,
+      manifestPosition: 134,
+      publicationPosition: 412,
+      referenceRolePosition: 249,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_begin_policy.withdraw",
@@ -76,9 +76,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace script-sources StageSixFoldAsset yield",
-      manifestPosition: 128,
-      publicationPosition: 406,
-      referenceRolePosition: 243,
+      manifestPosition: 135,
+      publicationPosition: 413,
+      referenceRolePosition: 250,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_fold_asset.withdraw",
@@ -87,9 +87,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesStageSixFinishWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources StageSixFinish yield",
-      manifestPosition: 129,
-      publicationPosition: 407,
-      referenceRolePosition: 244,
+      manifestPosition: 136,
+      publicationPosition: 414,
+      referenceRolePosition: 251,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_middle_yields_v1.stage_six_finish.withdraw",
@@ -98,9 +98,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesObserverItemWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources observer item yield",
-      manifestPosition: 130,
-      publicationPosition: 408,
-      referenceRolePosition: 245,
+      manifestPosition: 137,
+      publicationPosition: 415,
+      referenceRolePosition: 252,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_observer_item_yield_v1.main.withdraw",
@@ -109,9 +109,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeScriptSourcesObserverBoundWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace script-sources observer bound yield",
-      manifestPosition: 131,
-      publicationPosition: 409,
-      referenceRolePosition: 246,
+      manifestPosition: 138,
+      publicationPosition: 416,
+      referenceRolePosition: 253,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_observer_bound_yield_v1.main.withdraw",
@@ -121,9 +121,9 @@ export const validationTraceScriptSourcesYieldsMembers = defineDeploymentFamily(
       purpose: "withdraw",
       referenceRole:
         "V1 validation-trace script-sources redeemer descriptor yield",
-      manifestPosition: 132,
-      publicationPosition: 410,
-      referenceRolePosition: 247,
+      manifestPosition: 139,
+      publicationPosition: 417,
+      referenceRolePosition: 254,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_redeemer_item_step_yield_v1.main.withdraw",

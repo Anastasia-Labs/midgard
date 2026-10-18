@@ -22,6 +22,7 @@ use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/ledger_output_commitment_v1.{LedgerOutputCommitmentV1}
 use midgard/ledger_state
 use midgard/rejection_reason_v1
+use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
 use midgard/transition_trace
 use midgard/validation_merkle_v1
 
@@ -88,6 +89,33 @@ pub fn empty_payload_item_v1() -> ByteArray {
 /// `[3, h'01020304']` — a (dummy) PlutusV3 wrapper: `MachineBindNonNativeV1`.
 pub fn plutus_script_item_v1() -> ByteArray {
   #"82034401020304"
+}
+
+/// The script hash of `plutus_script_item_v1`: blake2b-224 of the language
+/// byte 03 and the script bytes 01020304, computed off-chain.
+pub fn plutus_script_hash_v1() -> ByteArray {
+  #"add2f892aabc2d306a3c6e90301694bfdf7fd2c952e0896a3f105e3b"
+}
+
+/// A decode record of `plutus_script_item_v1`: `Decoded` for class 0,
+/// otherwise `Refused` with `class`.
+pub fn plutus_script_record_v1(class: Int) -> ScriptDecodeRecordV1 {
+  if class == 0 {
+    Decoded {
+      script_hash: plutus_script_hash_v1(),
+      language: 3,
+      program_version: 1,
+      term_root: #"",
+      phase2_class: 0,
+    }
+  } else {
+    Refused {
+      script_hash: plutus_script_hash_v1(),
+      language: 3,
+      class,
+      bit_offset: 0,
+    }
+  }
 }
 
 // ## Resolved-output descriptors

@@ -17,17 +17,38 @@ import {
 } from "../prepare-double-spend.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { firstCanonicalViolationDetection } from "../workflow/classification.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
+import { withoutHeldPlutusScriptItems } from "../workflow/plutus-script-item-hold.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
   type OutputReferenceScriptDecodingAuthenticatedSource,
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
-import {
-  detectOutputReferenceScriptDecodingCompleteReplay,
-  type OutputReferenceScriptDecodingEvidence,
-} from "./output-reference-script-decoding.js";
+import { outputReferenceScriptDecodingCanonicalFindings } from "./output-reference-script-decoding.canonical-findings.js";
+import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 import { type OutputReferenceScriptDecodingStage } from "./workflow.js";
+
+/**
+ * Derives the family evidence to prove from L1-bound public retained DA: the
+ * first unheld finding in the order `classifyCanonicalBlockViolations`
+ * selects, so the workflow proves the detection the classifier chose.
+ */
+export const deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock = (
+  block: CanonicalBlockEvidence,
+): OutputReferenceScriptDecodingEvidence => {
+  const first = firstCanonicalViolationDetection(
+    block,
+    withoutHeldPlutusScriptItems(
+      outputReferenceScriptDecodingCanonicalFindings(block),
+    ),
+  );
+  if (first === undefined)
+    throw new Error(
+      "outputReferenceScriptDecoding public replay yielded no exact finding",
+    );
+  return first.evidence;
+};
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
 export const deriveOutputReferenceScriptDecodingAuthenticatedSource = async ({
@@ -166,12 +187,8 @@ export const prepareOutputReferenceScriptDecodingRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
 ) => {
-  const findings = detectOutputReferenceScriptDecodingCompleteReplay(canonical);
-  if (findings.length !== 1)
-    throw new Error(
-      "outputReferenceScriptDecoding public replay requires one exact finding",
-    );
-  const evidence = findings[0]!;
+  const evidence =
+    deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock(canonical);
   const source = await deriveOutputReferenceScriptDecodingAuthenticatedSource({
     block: canonical,
     evidence,

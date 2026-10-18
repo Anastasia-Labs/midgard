@@ -23,6 +23,7 @@ import {
 import {
   decodeMidgardCekConstantTypeCbor,
   decodeMidgardCekConstantWitness,
+  midgardCekPv11ConstantMemorySize,
   midgardConstantTypeToTags,
 } from "./cek-constant.payload-matches-type.js";
 import {
@@ -109,6 +110,11 @@ const semanticUplcConstant = (
     case "blsMillerLoopResult":
       throw new Error(
         "V1 BLS constants require their dedicated runtime proof nodes",
+      );
+    case "array":
+    case "value":
+      throw new Error(
+        "V1 Value and array constants are evaluated by the PV 11 semantic layer",
       );
   }
 };
@@ -243,6 +249,9 @@ export const midgardCekConstantMemorySize = (
       return MIDGARD_CEK_BLS_G2_MEMORY;
     case "blsMillerLoopResult":
       return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
+    case "array":
+    case "value":
+      return midgardCekPv11ConstantMemorySize(type, payload);
   }
 };
 

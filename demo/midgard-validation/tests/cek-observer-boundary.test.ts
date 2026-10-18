@@ -35,7 +35,6 @@ const initialControl = (languageTag: 3 | 128) =>
   initialMidgardCekContextControl({
     languageTag,
     programTermRoot: Buffer.alloc(32, 0xaa),
-    programEnvelopeHash: Buffer.alloc(32, 0xdd),
     purposeKind: 0,
     purposeIndex: 0n,
     scriptHash: Buffer.alloc(28, 0xbb),
@@ -93,7 +92,7 @@ const exactObserverBoundary = () => {
 };
 
 describe("bounded CEK observer context", () => {
-  it("encodes the required canonical envelope identity in the exact V1 tuple positions", () => {
+  it("encodes the program script hash in the exact V1 tuple positions", () => {
     const control = initialControl(3);
     const contextCbor = encodeMidgardCekContextControl(control);
     const activeWitness = encodeMidgardCekValidationWitness({
@@ -105,7 +104,7 @@ describe("bounded CEK observer context", () => {
       activeStateHash: Buffer.alloc(32, 0xee),
       executionCpuLimit: 17n,
       executionMemoryLimit: 19n,
-      programEnvelopeHash: control.programEnvelopeHash,
+      programScriptHash: control.scriptHash,
       purposeKind: 2n,
       purposeIndex: 5n,
     });
@@ -118,22 +117,30 @@ describe("bounded CEK observer context", () => {
       activeStateHash: null,
       executionCpuLimit: 0n,
       executionMemoryLimit: 0n,
-      programEnvelopeHash: null,
+      programScriptHash: null,
       purposeKind: -1n,
       purposeIndex: -1n,
     });
 
-    expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x19]));
-    expect(contextCbor.subarray(38, 72)).toEqual(
-      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    // 24 items: the term root is followed by the purpose key and the script
+    // hash, which names the program's decode record.
+    expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x18]));
+    expect(contextCbor.subarray(4, 38)).toEqual(
+      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xaa)]),
+    );
+    expect(contextCbor.subarray(38, 70)).toEqual(
+      Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x58, 0x1c]),
+        Buffer.alloc(28, 0xbb),
+      ]),
     );
     expect(activeWitness[0]).toBe(0x8b);
-    // The possibly-empty program envelope hash sits before the integer
+    // The possibly-empty program script hash sits before the integer
     // limits and purpose key so the witness never ends with a zero-length
     // bytestring, which the Aiken `cbor.deserialise` consumer rejects at an
     // exhausted cursor.
-    expect(activeWitness.subarray(-38, -4)).toEqual(
-      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    expect(activeWitness.subarray(-34, -4)).toEqual(
+      Buffer.concat([Buffer.from([0x58, 0x1c]), Buffer.alloc(28, 0xbb)]),
     );
     expect(activeWitness.subarray(-4)).toEqual(
       Buffer.from([0x11, 0x13, 0x02, 0x05]),
@@ -215,7 +222,7 @@ describe("bounded CEK observer context", () => {
           ...control,
           stage: 5,
         }).subarray(0, 2),
-      ).toEqual(Buffer.from([0x98, 0x19]));
+      ).toEqual(Buffer.from([0x98, 0x18]));
 
       if (languageTag === 3 && process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(

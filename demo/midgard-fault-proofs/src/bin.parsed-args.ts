@@ -35,6 +35,7 @@ export type ParsedArgs = {
   readonly outputDir: string | undefined;
   readonly daPayloadEnvelopePath: string | undefined;
   readonly transitionFaultProofPath: string | undefined;
+  readonly transitionL2ReplayPath: string | undefined;
   readonly referenceInputOutRefs: readonly string[];
   readonly awaitConfirmation: boolean;
   readonly fraudCategory: SubmitInitFraudCategory | undefined;
@@ -76,7 +77,7 @@ export const usage = `Usage:
   midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
-  midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--transition-l2-replay <replay.json>] [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <${fraudCategoryUsage}>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]

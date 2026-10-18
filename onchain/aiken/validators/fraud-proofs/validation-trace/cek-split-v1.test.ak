@@ -5,7 +5,7 @@
 //// of four) plus one semantic validator per auxiliary kind:
 ////
 ////   0  `cek_finish_semantic_v1`               hand-off to ValueAndMint, no auxiliary
-////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + material route
+////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + decode record
 ////   2  `cek_context_step_semantic_v1`         context-build step, §8 door
 ////   3  `cek_core_step_semantic_v1`            `CekCoreStepWitness`
 ////
@@ -18,8 +18,8 @@
 //// kind -- is proven at the library level in
 //// `lib/midgard/validation-machine-tests/tests-parity.test.ak` (`cek_kinds_partition_the_cek_step_space`);
 //// what these add is that the deployed validators reach those wrappers with
-//// the right arguments, commit to the right evidence hash, and route the
-//// material through the `cek_execution_selection_yields` validators.
+//// the right arguments, commit to the right evidence hash, and read the
+//// decode record through the `cek_execution_selection_yields` validators.
 
 use aiken/builtin
 use aiken/cbor
@@ -81,8 +81,10 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, TxIsValid,
   native_tx_version_v1,
 }
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/redeemer_item_proof_v1 as redeemer_item
 use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
 use midgard/script_proof_v1
 use midgard/script_sources_redeemer_normalization_v1.{
   CekContextItemStepPending, CekContextItemStepVerified,
@@ -109,11 +111,27 @@ use midgard/validation_resolution_v1.{
   hash_one_step_evidence, prepare_semantic_resolution,
   prepared_resolution_version, resolution_version, winning_resolution,
 }
-use midgard/validation_resolver_v1.{
-  CekMaterialRouteV1, DirectCekMaterial, NoCekMaterial, PrepareSelected,
-}
+use midgard/validation_resolver_v1.{PrepareSelected}
 use midgard/validation_semantic_v1 as semantic
 use midgard/validation_trace_v1
+
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// Every hop's transaction left honest.
+fn honest_at(_hop: ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  census.honest
+}
+
+/// make accept it too.
+fn prover_continue_tx(
+  asset_name: ByteArray,
+  output_state: Data,
+) -> l1.Transaction {
+  l1.Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -241,7 +259,7 @@ fn cek_state(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
-  program_envelope_hash: ByteArray,
+  program_script_hash: ByteArray,
   program_counter: Int,
   execution_cpu: Int,
   execution_memory: Int,
@@ -260,7 +278,7 @@ fn cek_state(
     active_state_hash,
     execution_cpu_limit,
     execution_memory_limit,
-    program_envelope_hash,
+    program_script_hash,
     -1,
     -1,
   )
@@ -288,21 +306,21 @@ fn cek_state(
       execution_memory,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
     },
     work_witness_cbor,
   )
 }
 
 /// One honest cek step of some kind: the pre-state, the transition, the
-/// auxiliary the kind's validator rebuilds from its action, and the
-/// material route the selection validator carries.
+/// auxiliary the kind's validator rebuilds from its action, and the decode
+/// record the selection validator reads (`None` for every other kind and for
+/// a selection that needs none).
 type CekStepFixtureV1 {
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
 }
 
 fn step_fixture(
@@ -311,7 +329,7 @@ fn step_fixture(
   work_witness_cbor: ByteArray,
   post: validation_trace_v1.ValidationMachineStateV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> CekStepFixtureV1 {
   CekStepFixtureV1 {
     kind,
@@ -321,7 +339,7 @@ fn step_fixture(
       claimed_successor: post,
     },
     auxiliary,
-    material_route,
+    record,
   }
 }
 
@@ -354,34 +372,36 @@ fn finish_fixture() -> CekStepFixtureV1 {
       vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
-  step_fixture(
-    0,
-    pre,
-    work_witness_cbor,
-    post,
-    NoAuxiliaryWitness,
-    NoCekMaterial,
-  )
+  step_fixture(0, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
 }
 
-/// The one-node program (`error`) whose complete material fits a direct
-/// route: the same envelope and sidecar `validation-resolver-v1.test.ak`
-/// verifies through `verify_cek_material_route_for_selected_envelope_v1`.
-fn one_node_envelope() -> ByteArray {
-  cek_proof_v1.encode_program_envelope_v1(
-    1,
-    1,
-    0,
-    cek_proof_v1.hash_error_term_v1(),
-    1,
-    2,
-  )
+/// The one-node program `(program 1.1.0 (error))` as PlutusV3 script bytes:
+/// the CBOR byte string around its Flat encoding.
+fn one_node_script() -> ByteArray {
+  #"4401010061"
 }
 
-fn one_node_sidecar() -> ByteArray {
-  #"820181825820"
-    |> bytearray.concat(cek_proof_v1.hash_error_term_v1())
-    |> bytearray.concat(#"46830100428106")
+/// The decode record of `script_hash` for the one-node program.
+fn one_node_record(script_hash: ByteArray) -> ScriptDecodeRecordV1 {
+  Decoded {
+    script_hash,
+    language: 3,
+    program_version: 1,
+    term_root: cek_proof_v1.hash_error_term_v1(),
+    phase2_class: 0,
+  }
+}
+
+/// The decode record of `selection_fixture`'s script.
+fn selection_record() -> ScriptDecodeRecordV1 {
+  one_node_record(
+    script_proof_v1.versioned_script_hash(
+      MidgardVersionedScript {
+        language: PlutusV3Script,
+        script_bytes: one_node_script(),
+      },
+    ),
+  )
 }
 
 fn singleton_field_item_chunk_proof(
@@ -406,22 +426,12 @@ fn singleton_field_item_chunk_proof(
 }
 
 /// Kind 1: selecting the single PlutusV3 execution of a transaction whose
-/// one script is the one-node program, with the complete material carried
-/// directly in the redeemer.
+/// one script is the one-node program, read through its decode record.
 fn selection_fixture() -> CekStepFixtureV1 {
   let tx = empty_v1_transaction()
-  let envelope = one_node_envelope()
-  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(
-    1,
-    1,
-    0,
-    cek_proof_v1.hash_error_term_v1(),
-    1,
-    2,
-  )
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: envelope,
+    script_bytes: one_node_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
@@ -465,7 +475,6 @@ fn selection_fixture() -> CekStepFixtureV1 {
     stage: 0,
     language_tag: 3,
     program_term_root: cek_proof_v1.hash_error_term_v1(),
-    program_envelope_hash: envelope_hash,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash,
@@ -517,7 +526,7 @@ fn selection_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    envelope_hash,
+    script_hash,
     41,
     0,
     0,
@@ -545,10 +554,7 @@ fn selection_fixture() -> CekStepFixtureV1 {
       execution_siblings: [],
       first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
     },
-    DirectCekMaterial {
-      envelope_cbor: envelope,
-      sidecar_cbor: one_node_sidecar(),
-    },
+    Some(one_node_record(script_hash)),
   )
 }
 
@@ -656,8 +662,8 @@ fn native_only_selection_fixture() -> CekStepFixtureV1 {
       execution_siblings: [],
       first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
     },
-    // A native selection selects no program, so it carries no material.
-    NoCekMaterial,
+    // A native selection selects no program, so it reads no decode record.
+    None,
   )
 }
 
@@ -687,7 +693,6 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     stage: 6,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -731,7 +736,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -744,19 +749,12 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
   )
-  step_fixture(
-    2,
-    pre,
-    work_witness_cbor,
-    post,
-    NoAuxiliaryWitness,
-    NoCekMaterial,
-  )
+  step_fixture(2, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
 }
 
 /// Kind 3: one active core step, a `ComputeApplication` over two leaf terms
@@ -825,7 +823,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     active_pre_hash,
     1000000,
     1000000,
-    h_b,
+    h_28_a,
     40,
     10,
     11,
@@ -838,7 +836,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     active_post_hash,
     1000000,
     1000000,
-    h_b,
+    h_28_a,
     41,
     16010,
     111,
@@ -858,7 +856,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
         },
       },
     },
-    NoCekMaterial,
+    None,
   )
 }
 
@@ -951,11 +949,8 @@ type SelectionWireMirrorV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     auxiliary: ValidationAuxiliaryWitnessV1,
-    material_route: CekMaterialRouteV1,
     yield_ref_input_indices: List<Int>,
-    envelope_facts: selection_yield.EnvelopeFacts,
-    material_facts: cek_proof_v1.CekMaterialPartitionFacts,
-    begin_traversal: Bool,
+    record_reference_input_index: Int,
   }
 }
 
@@ -993,7 +988,6 @@ fn golden_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: zero,
   }
 }
 
@@ -1066,11 +1060,8 @@ test execution_selection_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       auxiliary: f.auxiliary,
-      material_route: f.material_route,
-      yield_ref_input_indices: [0, 1, 2, 3],
-      envelope_facts: selection_envelope_facts(False),
-      material_facts: selection_material_facts(False),
-      begin_traversal: False,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
     },
   )
   let mirror: ct.StepRedeemer<SelectionWireMirrorV1> = ct.Continue(
@@ -1079,11 +1070,8 @@ test execution_selection_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       auxiliary: f.auxiliary,
-      material_route: f.material_route,
-      yield_ref_input_indices: [0, 1, 2, 3],
-      envelope_facts: selection_envelope_facts(False),
-      material_facts: selection_material_facts(False),
-      begin_traversal: False,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
     },
   )
   let mirror_data: Data = mirror
@@ -1188,6 +1176,18 @@ fn run_prepare(
   semantic_resolver_index: Int,
   output_state: Data,
 ) -> Bool {
+  shaped_prepare(honest_at, f, group, semantic_resolver_index, output_state)
+}
+
+/// `run_prepare`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  group: List<ByteArray>,
+  semantic_resolver_index: Int,
+  output_state: Data,
+) -> Bool {
   prepare_validator.main.spend(
     group,
     fixture.computation_thread_policy_id,
@@ -1202,7 +1202,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    at("prepare_validator")(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -1288,6 +1288,16 @@ fn run_finish(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_finish(honest_at, base, transition)
+}
+
+/// `run_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   finish_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1300,147 +1310,180 @@ fn run_finish(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    at("finish_validator")(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
-fn selection_envelope_facts(native: Bool) -> selection_yield.EnvelopeFacts {
-  selection_yield.EnvelopeFacts {
-    term_root: if native {
-      #""
-    } else {
-      cek_proof_v1.hash_error_term_v1()
-    },
-    node_count: if native {
-      0
-    } else {
-      1
-    },
-    material_byte_length: if native {
-      0
-    } else {
-      2
-    },
+/// The policy the selection validators take for the decode family.
+const decode_policy_id =
+  #"50505050505050505050505050505050505050505050505050505050"
+
+fn selection_roles() {
+  list.zip(
+    [selection_yield.authenticate_role, selection_yield.successor_role],
+    [
+      #"10101010101010101010101010101010101010101010101010101010",
+      #"20202020202020202020202020202020202020202020202020202020",
+    ],
+  )
+}
+
+fn record_script_hash(record: ScriptDecodeRecordV1) -> ByteArray {
+  when record is {
+    Decoded { script_hash, .. } -> script_hash
+    Refused { script_hash, .. } -> script_hash
   }
 }
 
-fn selection_material_facts(
-  native: Bool,
-) -> cek_proof_v1.CekMaterialPartitionFacts {
-  cek_proof_v1.CekMaterialPartitionFacts {
-    program_node_count: if native {
-      0
-    } else {
-      1
-    },
-    program_byte_length: if native {
-      0
-    } else {
-      2
-    },
-    data_node_count: 0,
-    data_byte_length: 0,
-    data_roots: [],
-    data_blob_roots: [],
-  }
-}
-
-fn selection_roles(native: Bool) {
-  let roles = [
-    selection_yield.authenticate_role,
-    selection_yield.successor_role,
-    selection_yield.material_program_role,
-    selection_yield.material_data_role,
-  ]
-  let hashes = [
-    #"10101010101010101010101010101010101010101010101010101010",
-    #"20202020202020202020202020202020202020202020202020202020",
-    #"30303030303030303030303030303030303030303030303030303030",
-    #"40404040404040404040404040404040404040404040404040404040",
-  ]
-  let pairs = list.zip(roles, hashes)
-  if native {
-    list.take(pairs, 2)
-  } else {
-    pairs
-  }
-}
-
+/// Runs the selection validator and both yields with `record`, when there is
+/// one, at reference input 2 under the decode token named by its own hash.
 fn run_selection(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  shaped_selection(honest_at, base, transition, auxiliary, record)
+}
+
+/// `run_selection`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  shaped_selection_with_token(
+    at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    when record is {
+      Some(r) -> record_script_hash(r)
+      None -> #""
+    },
+  )
+}
+
+/// `run_selection` with the record output holding the decode token named
+/// `token_name`, or no decode token when `token_name` is empty.
+fn run_selection_with_token(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
+) -> Bool {
+  shaped_selection_with_token(
+    honest_at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    token_name,
+  )
+}
+
+fn shaped_selection_with_token(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
 ) -> Bool {
   let raw_aux: Data = auxiliary
-  let native = selection_yield.selection_language(raw_aux) == 0
   let action = selection_yield.VerifyExecutionSelection {
     input_index: 0,
     output_index: 0,
     transition,
     auxiliary: raw_aux,
-    material_route,
-    yield_ref_input_indices: if native {
-      [0, 1]
-    } else {
-      [0, 1, 2, 3]
+    yield_ref_input_indices: [0, 1],
+    record_reference_input_index: when record is {
+      Some(_) -> 2
+      None -> -1
     },
-    envelope_facts: selection_envelope_facts(native),
-    material_facts: selection_material_facts(native),
-    begin_traversal: False,
   }
   let redeemer: selection_validator.SpendRedeemer = ct.Continue(action)
   let raw_redeemer: Data = redeemer
   let datum = semantic_datum(base)
   let raw_datum: Data = datum
   let input = fixture.ct_thread_input(ct_asset)
-  let template = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
-  let roles = selection_roles(native)
+  let template = prover_continue_tx(ct_asset, winning_output())
+  let roles = selection_roles()
   let reward_redeemer: Data = 0
-  let tx = l1.Transaction {
-    ..template,
-    inputs: [
+  let yield_inputs = list.map(
+    roles,
+    fn(pair) {
       l1.Input {
         ..input,
-        output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
-      },
-    ],
-    reference_inputs: list.map(
-      roles,
-      fn(pair) {
+        output: l1.Output {
+          address: address.from_script(pair.2nd),
+          value: assets.from_asset(
+            fixture.test_certificate_policy_id,
+            pair.1st,
+            1,
+          ),
+          datum: l1.NoDatum,
+          reference_script: Some(pair.2nd),
+        },
+      }
+    },
+  )
+  let record_inputs = when record is {
+    Some(r) -> {
+      let raw_record: Data = r
+      [
         l1.Input {
           ..input,
           output: l1.Output {
-            address: address.from_script(pair.2nd),
-            value: assets.from_asset(
-              fixture.test_certificate_policy_id,
-              pair.1st,
-              1,
-            ),
-            datum: l1.NoDatum,
-            reference_script: Some(pair.2nd),
+            address: address.from_script(decode_policy_id),
+            value: if token_name == #"" {
+              assets.from_lovelace(2000000)
+            } else {
+              assets.from_asset(decode_policy_id, token_name, 1)
+            },
+            datum: l1.InlineDatum(raw_record),
+            reference_script: None,
           },
-        }
-      },
-    ),
-    withdrawals: list.map(roles, fn(pair) { Pair(address.Script(pair.2nd), 0) }),
-    redeemers: [
-      Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
-      ..list.map(
-        roles,
-        fn(pair) {
-          Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
         },
-      )
-    ],
+      ]
+    }
+    None -> []
   }
+  let tx = at("selection_validator")(
+    l1.Transaction {
+      ..template,
+      inputs: [
+        l1.Input {
+          ..input,
+          output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
+        },
+      ],
+      reference_inputs: list.concat(yield_inputs, record_inputs),
+      withdrawals: list.map(
+        roles,
+        fn(pair) { Pair(address.Script(pair.2nd), 0) },
+      ),
+      redeemers: [
+        Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
+        ..list.map(
+          roles,
+          fn(pair) {
+            Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
+          },
+        )
+      ],
+    },
+  )
   and {
     selection_validator.main.spend(
       fixture.next_step_script_hash,
       fixture.computation_thread_policy_id,
-      fixture.catalogue_script_hash,
       fixture.test_certificate_policy_id,
-      fixture.catalogue_script_hash,
       Some(datum),
       redeemer,
       fixture.own_out_ref(),
@@ -1454,30 +1497,11 @@ fn run_selection(
     ),
     selection_yields.successor.withdraw(
       fixture.step_script_hash,
+      decode_policy_id,
       reward_redeemer,
       address.Script(fixture.step_script_hash),
       tx,
     ),
-    if native {
-      True
-    } else {
-      and {
-        selection_yields.material_program.withdraw(
-          fixture.step_script_hash,
-          fixture.catalogue_script_hash,
-          reward_redeemer,
-          address.Script(fixture.step_script_hash),
-          tx,
-        ),
-        selection_yields.material_data.withdraw(
-          fixture.step_script_hash,
-          fixture.catalogue_script_hash,
-          reward_redeemer,
-          address.Script(fixture.step_script_hash),
-          tx,
-        ),
-      }
-    },
   }
 }
 
@@ -1488,7 +1512,7 @@ fn run_context_step(
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  let tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let tx = prover_continue_tx(ct_asset, winning_output())
   let auxiliary_data: Data = auxiliary
   semantic.continue_winning(
     validation_trace_v1.Cek,
@@ -1515,6 +1539,17 @@ fn run_context_step(
 }
 
 fn run_core_step(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+) -> Bool {
+  shaped_core_step(honest_at, base, transition, step)
+}
+
+/// `run_core_step`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   step: cek_machine_v1.CoreStepEvidenceV1,
@@ -1547,7 +1582,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      at("core_validator")(prover_continue_tx(ct_asset, next)),
     ),
     run_core_compute_chain(bound, witness_data),
     core_settle.main.spend(
@@ -1569,7 +1604,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      at("core_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -1586,7 +1621,7 @@ fn run_kind(kind: Int, f: CekStepFixtureV1) -> Bool {
   if kind == 0 {
     run_finish(prepared(f), f.transition)
   } else if kind == 1 {
-    run_selection(prepared(f), f.transition, own.auxiliary, own.material_route)
+    run_selection(prepared(f), f.transition, own.auxiliary, own.record)
   } else if kind == 2 {
     run_context_step(prepared(f), f.transition, own.auxiliary)
   } else {
@@ -1599,7 +1634,7 @@ test finish_validator_wins_the_hand_off() {
   run_kind(0, finish_fixture())
 }
 
-test execution_selection_validator_wins_with_direct_material() {
+test execution_selection_validator_wins_with_the_decode_record() {
   run_kind(1, selection_fixture())
 }
 
@@ -1611,25 +1646,55 @@ test core_step_validator_wins_the_application_step() {
   run_kind(3, core_step_fixture())
 }
 
-/// The retired direct shape pinned the route only at finalisation; now the
-/// selection validator itself refuses a selection whose material is missing
-/// (`NoCekMaterial` against a selected Plutus envelope) or whose direct
-/// sidecar does not reconstruct the envelope.
-test execution_selection_validator_refuses_a_missing_material_route() fail {
+/// A Plutus selection runs only the program its decode record states: the
+/// selection validator refuses it with no record, with a record that does
+/// not hold the decode token named by its own hash, with a record of another
+/// script, and with a `Refused` record of the selected script.
+test execution_selection_validator_refuses_a_missing_record() fail {
   let f = selection_fixture()
-  run_selection(prepared(f), f.transition, f.auxiliary, NoCekMaterial)
+  run_selection(prepared(f), f.transition, f.auxiliary, None)
 }
 
-test execution_selection_validator_refuses_a_truncated_sidecar() fail {
+test execution_selection_validator_refuses_a_record_without_its_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    #"",
+  )
+}
+
+test execution_selection_validator_refuses_a_record_under_another_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    h_28_a,
+  )
+}
+
+test execution_selection_validator_refuses_another_scripts_record() fail {
   let f = selection_fixture()
   run_selection(
     prepared(f),
     f.transition,
     f.auxiliary,
-    DirectCekMaterial {
-      envelope_cbor: one_node_envelope(),
-      sidecar_cbor: bytearray.take(one_node_sidecar(), 8),
-    },
+    Some(one_node_record(h_28_a)),
+  )
+}
+
+test execution_selection_validator_refuses_a_refused_record() fail {
+  let f = selection_fixture()
+  expect Some(Decoded { script_hash, .. }) = f.record
+  run_selection(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    Some(Refused { script_hash, language: 3, class: 1, bit_offset: 0 }),
   )
 }
 
@@ -1729,7 +1794,7 @@ test finish_validator_refuses_a_wrong_award_output() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, not_winning),
+    prover_continue_tx(ct_asset, not_winning),
   )
 }
 
@@ -1746,7 +1811,7 @@ test finish_validator_refuses_a_wrong_award_output() fail {
 fn pending_execution_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: one_node_envelope(),
+    script_bytes: one_node_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
@@ -1814,7 +1879,7 @@ test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   run_finish(prepared(f), f.transition)
 }
@@ -1856,6 +1921,7 @@ test native_only_selection_is_an_honest_machine_step() {
       certificate_policy_id: #"",
     },
     test_l1_slot_config,
+    None,
   )
 }
 
@@ -1889,7 +1955,7 @@ test finish_validator_refuses_a_foreign_transaction_commitment() fail {
 /// refuses to *accept* one. The vector is therefore the honest hand-off
 /// witness with its encoded cursor byte bumped by hand -- the last nine
 /// bytes of a hand-off witness are `cursor, completed_cpu,
-/// completed_memory, active_state_hash, program_envelope_hash,
+/// completed_memory, active_state_hash, program_script_hash,
 /// execution_cpu_limit, execution_memory_limit, purpose_kind,
 /// purpose_index`, all empty or zero except the `-1, -1` purpose key, so
 /// the cursor is the byte at `length - 9`. The positive below pins that layout;
@@ -1935,7 +2001,7 @@ test finish_validator_refuses_a_cek_cursor_past_the_execution_count() fail {
     work_witness_cbor,
     honest.transition.claimed_successor,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   run_finish(prepared(f), f.transition)
 }
@@ -1957,6 +2023,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
     vm_one_step.verify_cek_one_step_v1(
       selection_fixture().pre,
@@ -1966,6 +2033,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      Some(selection_record()),
     ),
     vm_one_step.verify_cek_one_step_v1(
       context_step_fixture().pre,
@@ -1975,6 +2043,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
     vm_one_step.verify_cek_one_step_v1(
       core_step_fixture().pre,
@@ -1984,6 +2053,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
   }
 }
@@ -2008,6 +2078,16 @@ fn run_core_compute_chain(
   bound: core_chain.CoreBound,
   witness_data: Data,
 ) -> Bool {
+  shaped_core_compute_chain(honest_at, bound, witness_data)
+}
+
+/// `run_core_compute_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_compute_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  bound: core_chain.CoreBound,
+  witness_data: Data,
+) -> Bool {
   let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
   core_compute.main.spend(
     fixture.next_step_script_hash,
@@ -2026,7 +2106,7 @@ fn run_core_compute_chain(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    at("core_compute")(prover_continue_tx(ct_asset, next)),
   )
 }
 
@@ -2056,7 +2136,7 @@ test bounded_core_compute_chain_agrees_with_the_original() {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      prover_continue_tx(ct_asset, next),
     ),
     run_core_compute_chain(bound, witness_data),
     core_settle.main.spend(
@@ -2078,7 +2158,7 @@ test bounded_core_compute_chain_agrees_with_the_original() {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -2112,7 +2192,7 @@ test bounded_core_settle_refuses_omitted_arm() fail {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2146,6 +2226,14 @@ fn context_chain_action(f: CekStepFixtureV1) -> context_chain.ContextAction {
 }
 
 test bounded_context_mint_chain_agrees_with_original() {
+  shaped_context_mint_chain(honest_at)
+}
+
+/// `context_mint_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
   let f = context_step_fixture()
   let staged = context_staged_fixture(f)
   let bound_data: Data = staged.bound
@@ -2172,7 +2260,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
     ),
     context_control.main.spend(
       [
@@ -2188,7 +2276,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
     ),
     context_mint_init.main.spend(
       next_hash,
@@ -2201,7 +2289,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      at("context_mint_init")(prover_continue_tx(ct_asset, verified_data)),
     ),
     context_settle.main.spend(
       next_hash,
@@ -2214,7 +2302,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2238,7 +2326,7 @@ test bounded_context_mint_refuses_substituted_auxiliary() fail {
       ),
       ct.Continue(action),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2297,7 +2385,7 @@ test bounded_context_refuses_an_honest_operator_successor() fail {
       ),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2318,11 +2406,20 @@ test bounded_context_refuses_substituted_source_transaction() fail {
       Some(semantic_datum(prepared(f))),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     )
 }
 
 fn run_empty_context_chain(stage: Int) -> Bool {
+  shaped_empty_context_chain(honest_at, stage)
+}
+
+/// `run_empty_context_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_empty_context_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  stage: Int,
+) -> Bool {
   let tx = empty_v1_transaction()
   let original = context_staged_fixture(context_step_fixture())
   expect cek: CekWitnessControlV1 = original.bound.control
@@ -2348,7 +2445,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -2361,7 +2458,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
@@ -2372,7 +2469,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   let staged = context_staged_fixture(f)
   let bound_data: Data = staged.bound
@@ -2390,7 +2487,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       data: Some(staged),
     },
   )
-  let tx_leaf = fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data)
+  let tx_leaf = prover_continue_tx(ct_asset, verified_data)
   let leaf = when stage is {
     1 ->
       context_reference.main.spend(
@@ -2399,7 +2496,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_reference")(tx_leaf),
       )
     2 ->
       context_spend.main.spend(
@@ -2408,7 +2505,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_spend")(tx_leaf),
       )
     3 ->
       context_output.main.spend(
@@ -2417,7 +2514,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_output")(tx_leaf),
       )
     4 ->
       context_signer.main.spend(
@@ -2426,7 +2523,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_signer")(tx_leaf),
       )
     5 -> {
       let pending = context_observer.ObserverPending {
@@ -2442,7 +2539,9 @@ fn run_empty_context_chain(stage: Int) -> Bool {
           datum,
           action,
           fixture.own_out_ref(),
-          fixture.continue_mid_step_l1_tx_v1(ct_asset, pending_data),
+          at("context_observer_authenticate")(
+            prover_continue_tx(ct_asset, pending_data),
+          ),
         ),
         context_observer_fold.main.spend(
           next_hash,
@@ -2455,7 +2554,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
           ),
           action,
           fixture.own_out_ref(),
-          tx_leaf,
+          at("context_observer_fold")(tx_leaf),
         ),
       }
     }
@@ -2469,7 +2568,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
     ),
     context_control.main.spend(
       list.repeat(next_hash, 14),
@@ -2482,7 +2581,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
     ),
     leaf,
     context_settle.main.spend(
@@ -2496,7 +2595,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2522,6 +2621,15 @@ test bounded_context_observer_empty_chain() {
 }
 
 fn run_context_descriptor_handoff(finish: Bool) -> Bool {
+  shaped_context_descriptor_handoff(honest_at, finish)
+}
+
+/// `run_context_descriptor_handoff`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_descriptor_handoff(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  finish: Bool,
+) -> Bool {
   let bytes = #"8400004100820a14"
   let commitment = bounded_item_v1.from_bytes(8, 0, bytes)
   let proof = bounded_item_v1.ChunkProofV1 {
@@ -2613,7 +2721,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -2626,7 +2734,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
@@ -2636,14 +2744,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
     control: current,
     witness: item_witness,
   }
-  let f = step_fixture(
-    2,
-    pre,
-    work_witness_cbor,
-    post,
-    auxiliary,
-    NoCekMaterial,
-  )
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
   let staged = context_staged_fixture(f)
   let staged_data: Data = staged
   let auxiliary_data: Data = auxiliary
@@ -2680,7 +2781,9 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, context_verified_data),
+      at("context_item_selection_finish")(
+        prover_continue_tx(ct_asset, context_verified_data),
+      ),
     )
   } else {
     let result = context_item.ItemHashResult {
@@ -2695,7 +2798,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         verified_datum,
         action,
         fixture.own_out_ref(),
-        fixture.continue_mid_step_l1_tx_v1(ct_asset, result_data),
+        at("context_item_hash")(prover_continue_tx(ct_asset, result_data)),
       ),
       context_item_selection_continue.main.spend(
         next_hash,
@@ -2708,7 +2811,9 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         ),
         action,
         fixture.own_out_ref(),
-        fixture.continue_mid_step_l1_tx_v1(ct_asset, context_verified_data),
+        at("context_item_selection_continue")(
+          prover_continue_tx(ct_asset, context_verified_data),
+        ),
       ),
     }
   }
@@ -2733,7 +2838,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, pending_data),
+      at("context_item_bind")(prover_continue_tx(ct_asset, pending_data)),
     ),
     context_item_return.main.spend(
       list.repeat(next_hash, 5),
@@ -2741,7 +2846,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      at("context_item_return")(prover_continue_tx(ct_asset, verified_data)),
     ),
     return_path,
     context_settle.main.spend(
@@ -2755,7 +2860,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2892,7 +2997,7 @@ fn run_stage9_item_bind(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+    prover_continue_tx(ct_asset, pending),
   )
 }
 
@@ -2926,14 +3031,17 @@ test bounded_context_stage9_item_bind_refuses_another_item() fail {
   run_stage9_item_bind(fn(_) { stage9_item_control(1) })
 }
 
-test bounded_context_binding_wire_matches_sdk() {
-  let f = context_step_fixture()
+/// The context-binding wire the SDK binder is checked against: prepared, work
+/// witness, transaction ID, auxiliary, bound and staged. The SDK fixtures
+/// `cek-context-binding.json` (normal) and `cek-context-binding-forced.json`
+/// hold these exact bytes.
+fn context_binding_wire(f: CekStepFixtureV1) -> Data {
   let staged = context_staged_fixture(f)
   let prepared_data: Data = prepared(f)
   let auxiliary: Data = f.auxiliary
   let bound_data: Data = staged.bound
   let staged_data: Data = staged
-  let vector = builtin.constr_data(
+  builtin.constr_data(
     0,
     [
       prepared_data,
@@ -2944,7 +3052,25 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"a0941f466a25f523e9650c28f2ee5d038b3093d7e6065ffe799fe4335bb6bd95"
+}
+
+test bounded_context_binding_wire_matches_sdk() {
+  let vector = context_binding_wire(context_step_fixture())
+  blake2b_256(cbor.serialise(vector)) == #"30bb2eb5db65017b978d06b36c850d0a49b318f2eaf3c799765af0a6a17791e4"
+}
+
+test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
+  let f = context_step_fixture()
+  let vector = context_binding_wire(
+    CekStepFixtureV1 {
+      ..f,
+      pre: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.pre,
+        source_kind: validation_trace_v1.Normal,
+      },
+    },
+  )
+  blake2b_256(cbor.serialise(vector)) == #"ee84d4e0fefe57c8a3c7ded9a5c63223de80e3fc899b008eb76191642b457c24"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
@@ -3089,7 +3215,7 @@ fn mint_stage_fixture(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -3102,12 +3228,12 @@ fn mint_stage_fixture(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
   )
-  step_fixture(2, pre, work_witness_cbor, post, auxiliary, NoCekMaterial)
+  step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
 }
 
 fn mint_stage_control(
@@ -3211,6 +3337,16 @@ fn mint_item_claim_data(
 }
 
 fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
+  shaped_mint_item_hop(honest_at, f, output_state)
+}
+
+/// `run_mint_item_hop`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_mint_item_hop(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  output_state: Data,
+) -> Bool {
   context_mint_item.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -3222,7 +3358,7 @@ fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
     ),
     ct.Continue(context_chain_action(f)),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    at("context_mint_item")(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -3256,7 +3392,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       [
@@ -3272,7 +3408,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     run_mint_item_hop(f, verified_data),
     context_settle.main.spend(
@@ -3286,7 +3422,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -3453,7 +3589,7 @@ test context_mint_item_refuses_a_forged_successor_at_settlement() fail {
       ),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -3744,6 +3880,24 @@ fn run_redeemer_select_authenticate(
   named: Int,
   length_delta: Int,
 ) -> Bool {
+  shaped_redeemer_select_authenticate(
+    honest_at,
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+}
+
+/// `run_redeemer_select_authenticate`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Bool {
   let auxiliary = redeemer_select_auxiliary(
     control,
     item_index,
@@ -3770,7 +3924,7 @@ fn run_redeemer_select_authenticate(
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+    at("redeemer_select_authenticate")(prover_continue_tx(ct_asset, pending)),
   )
 }
 
@@ -3823,7 +3977,7 @@ fn run_redeemer_skip_authenticate(
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, verified),
+    prover_continue_tx(ct_asset, verified),
   )
 }
 
@@ -3973,7 +4127,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     53,
     0,
     0,
@@ -3986,7 +4140,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     54,
     0,
     0,
@@ -3997,7 +4151,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     work_witness_cbor,
     post,
     redeemer_skip_auxiliary(True, redeemers, 1),
-    NoCekMaterial,
+    None,
   )
 }
 
@@ -4021,7 +4175,7 @@ test redeemer_skip_split_agrees_with_original() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       [
@@ -4037,7 +4191,7 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     redeemer_select_authenticate.main.spend(
       redeemer_select_other_hash,
@@ -4051,7 +4205,7 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      prover_continue_tx(ct_asset, verified_data),
     ),
     context_settle.main.spend(
       next_hash,
@@ -4064,12 +4218,21 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
 
 fn run_redeemer_select_finish(next_bound: Int) -> Bool {
+  shaped_redeemer_select_finish(honest_at, next_bound)
+}
+
+/// `run_redeemer_select_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  next_bound: Int,
+) -> Bool {
   let control = vm_witness.initial_cek_redeemer_context_control_v1(2)
   let auxiliary = redeemer_select_auxiliary(control, 0, 1, 0)
   let staged = redeemer_select_staged(False, control, auxiliary)
@@ -4104,7 +4267,7 @@ fn run_redeemer_select_finish(next_bound: Int) -> Bool {
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    at("redeemer_select_finish")(prover_continue_tx(ct_asset, next)),
   )
 }
 
@@ -4114,6 +4277,759 @@ test redeemer_select_finish_lowers_the_bound_to_the_selected_purpose() {
 
 test redeemer_select_finish_refuses_a_successor_that_keeps_the_bound() fail {
   run_redeemer_select_finish(2)
+}
+
+// ---------------------------------------------------------------------------
+// Census: who funds and who signs each move
+// ---------------------------------------------------------------------------
+//
+// Each hop runs inside its honest chain with only its own transaction
+// reshaped. A lone thread input pays up to the cap and no more; beside another
+// input the thread keeps its value. The award hops (finish, the selection
+// without a traversal, the core and context settles) are open to anyone; every
+// other hop is the prover's alone.
+
+/// Reshapes only `hop`'s transaction.
+fn only(
+  hop: ByteArray,
+  shape: fn(l1.Transaction) -> l1.Transaction,
+) -> fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  fn(h) {
+    if h == hop {
+      shape
+    } else {
+      census.honest
+    }
+  }
+}
+
+fn unsigned_paying_the_cap(tx: l1.Transaction) -> l1.Transaction {
+  census.without_signers(census.lone_input_paying(census.cap)(tx))
+}
+
+fn census_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = fixture_of_kind(0)
+  shaped_prepare(at, f, group_with_slot(0), 0, expected_prepared_output(f))
+}
+
+fn census_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = finish_fixture()
+  shaped_finish(at, prepared(f), f.transition)
+}
+
+fn census_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = selection_fixture()
+  shaped_selection(at, prepared(f), f.transition, f.auxiliary, f.record)
+}
+
+fn census_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_step(at, prepared(f), f.transition, step)
+}
+
+fn census_core_compute(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_compute_chain(at, core_chain_bound(f), step.witness)
+}
+
+fn census_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_mint_chain(at)
+}
+
+fn census_context_reference(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 1)
+}
+
+fn census_context_spend(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 2)
+}
+
+fn census_context_output(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 3)
+}
+
+fn census_context_signer(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 4)
+}
+
+fn census_context_observers(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 5)
+}
+
+fn census_descriptor_header(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, False)
+}
+
+fn census_descriptor_tail(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, True)
+}
+
+fn census_mint_item(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = mint_item_fixture()
+  shaped_mint_item_hop(at, f, mint_item_claim_data(f, #"00", 7))
+}
+
+fn census_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_authenticate(
+    at,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    0,
+  )
+}
+
+fn census_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_finish(at, 1)
+}
+
+test census_the_prover_moves_prepare_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_prepare(
+      only("prepare_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_prepare(only("prepare_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_prepare_unsigned_is_refused() fail {
+  census_prepare(only("prepare_validator", census.without_signers))
+}
+
+test census_prepare_paying_over_the_cap_is_refused() fail {
+  census_prepare(
+    only("prepare_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_prepare_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_prepare(only("prepare_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_finish(only("finish_validator", unsigned_paying_the_cap)),
+    census_finish(only("finish_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_finish_paying_over_the_cap_is_refused() fail {
+  census_finish(
+    only("finish_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_finish(only("finish_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_execution_selection_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_selection(only("selection_validator", unsigned_paying_the_cap)),
+    census_selection(only("selection_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_execution_selection_paying_over_the_cap_is_refused() fail {
+  census_selection(
+    only("selection_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_execution_selection_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_selection(only("selection_validator", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_step_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(
+      only("core_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_core_step(only("core_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_step_unsigned_is_refused() fail {
+  census_core_step(only("core_validator", census.without_signers))
+}
+
+test census_core_step_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_step_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_core_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(only("core_settle", unsigned_paying_the_cap)),
+    census_core_step(only("core_settle", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_settle_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_settle", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_compute_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_compute(
+      only("core_compute", census.lone_input_paying(census.cap)),
+    ),
+    census_core_compute(only("core_compute", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_compute_unsigned_is_refused() fail {
+  census_core_compute(only("core_compute", census.without_signers))
+}
+
+test census_core_compute_paying_over_the_cap_is_refused() fail {
+  census_core_compute(
+    only("core_compute", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_compute_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_compute(only("core_compute", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_bind_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.without_signers))
+}
+
+test census_context_bind_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_control_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_control", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_control", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_control_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_control", census.without_signers))
+}
+
+test census_context_control_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_control_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_init_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_mint_init", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_mint_init", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_mint_init_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_mint_init", census.without_signers))
+}
+
+test census_context_mint_init_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_init_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.beside_wallet_input(1)),
+  )
+}
+
+test census_anyone_moves_context_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(only("context_settle", unsigned_paying_the_cap)),
+    census_context_mint_chain(
+      only("context_settle", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_settle_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_reference_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_reference(
+      only("context_reference", census.lone_input_paying(census.cap)),
+    ),
+    census_context_reference(
+      only("context_reference", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_reference_unsigned_is_refused() fail {
+  census_context_reference(only("context_reference", census.without_signers))
+}
+
+test census_context_reference_paying_over_the_cap_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_reference_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_spend_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_spend(
+      only("context_spend", census.lone_input_paying(census.cap)),
+    ),
+    census_context_spend(only("context_spend", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_spend_unsigned_is_refused() fail {
+  census_context_spend(only("context_spend", census.without_signers))
+}
+
+test census_context_spend_paying_over_the_cap_is_refused() fail {
+  census_context_spend(
+    only("context_spend", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_spend_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_spend(only("context_spend", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_output_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_output(
+      only("context_output", census.lone_input_paying(census.cap)),
+    ),
+    census_context_output(only("context_output", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_output_unsigned_is_refused() fail {
+  census_context_output(only("context_output", census.without_signers))
+}
+
+test census_context_output_paying_over_the_cap_is_refused() fail {
+  census_context_output(
+    only("context_output", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_output_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_output(only("context_output", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_signer_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_signer(
+      only("context_signer", census.lone_input_paying(census.cap)),
+    ),
+    census_context_signer(only("context_signer", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_signer_unsigned_is_refused() fail {
+  census_context_signer(only("context_signer", census.without_signers))
+}
+
+test census_context_signer_paying_over_the_cap_is_refused() fail {
+  census_context_signer(
+    only("context_signer", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_signer_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_signer(only("context_signer", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_observer_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only(
+        "context_observer_authenticate",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_context_observers(
+      only("context_observer_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_authenticate_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.without_signers),
+  )
+}
+
+test census_context_observer_authenticate_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only(
+      "context_observer_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_observer_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_observer_fold_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only("context_observer_fold", census.lone_input_paying(census.cap)),
+    ),
+    census_context_observers(
+      only("context_observer_fold", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_fold_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.without_signers),
+  )
+}
+
+test census_context_observer_fold_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_observer_fold_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_bind_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_bind", census.without_signers))
+}
+
+test census_context_item_bind_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_return_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_return", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_return", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_return_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_return", census.without_signers))
+}
+
+test census_context_item_return_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_return_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_hash_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_hash", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_hash", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_hash_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_hash", census.without_signers))
+}
+
+test census_context_item_hash_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_hash_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_continue_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only(
+        "context_item_selection_continue",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_header(
+      only("context_item_selection_continue", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_continue_unsigned_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.without_signers),
+  )
+}
+
+test census_context_item_selection_continue_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only(
+      "context_item_selection_continue",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_continue_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_tail(
+      only(
+        "context_item_selection_finish",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_tail(
+      only("context_item_selection_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_finish_unsigned_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.without_signers),
+  )
+}
+
+test census_context_item_selection_finish_paying_over_the_cap_is_refused() fail {
+  census_descriptor_tail(
+    only(
+      "context_item_selection_finish",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_item_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_mint_item(
+      only("context_mint_item", census.lone_input_paying(census.cap)),
+    ),
+    census_mint_item(only("context_mint_item", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_mint_item_unsigned_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.without_signers))
+}
+
+test census_context_mint_item_paying_over_the_cap_is_refused() fail {
+  census_mint_item(
+    only("context_mint_item", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_item_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_redeemer_select_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_authenticate_unsigned_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.without_signers),
+  )
+}
+
+test census_redeemer_select_authenticate_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only(
+      "redeemer_select_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_redeemer_select_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_redeemer_select_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_finish_unsigned_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.without_signers),
+  )
+}
+
+test census_redeemer_select_finish_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_redeemer_select_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.beside_wallet_input(1)),
+  )
 }
 
 /// The settle step of a context seed. Starting an execution spends Cardano's
@@ -4132,7 +5048,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     55,
     7,
     9,
@@ -4148,7 +5064,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     initial_state_hash,
     20,
     10,
-    h_b,
+    h_28_a,
     0,
     0,
   )
@@ -4169,7 +5085,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   let staged_data: Data = context_staged_fixture(f)
   let verified = context_chain.ContextVerified {

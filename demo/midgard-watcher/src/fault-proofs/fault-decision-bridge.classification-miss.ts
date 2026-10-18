@@ -1,6 +1,7 @@
 import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import {
   isFraudProofL1WaitError,
+  isReplayLocalFault,
   isRetainedDaPayloadUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
@@ -37,7 +38,8 @@ export type WatcherClassificationWarning = Readonly<
       cause:
         | "l1_source_unavailable"
         | "retained_da_transport_unavailable"
-        | "retained_da_payload_unavailable";
+        | "retained_da_payload_unavailable"
+        | "replay_local_fault";
     }
   | {
       event: "unverified_past_horizon";
@@ -125,6 +127,16 @@ export const classificationMissRecorder = (
         event: "classification_deferred",
         headerHash: header.headerHash,
         cause: "l1_source_unavailable",
+      });
+      return "defer";
+    }
+    // This watcher's own replay failed, which says nothing about the
+    // header: it is classified again on a later wake.
+    if (isReplayLocalFault(error)) {
+      warnOnce({
+        event: "classification_deferred",
+        headerHash: header.headerHash,
+        cause: "replay_local_fault",
       });
       return "defer";
     }

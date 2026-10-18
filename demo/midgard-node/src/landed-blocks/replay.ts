@@ -2,7 +2,7 @@
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
  * (`missing`, `da_refetch_pending`, `event_unknown`, `forced_order_pending`,
- * `incomplete`) or
+ * `local_fault`, `incomplete`, `verifier_unavailable`) or
  * ever (`invalid`:
  * the block does not replay to its header). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
@@ -11,6 +11,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import type { ImportBlockChecks } from "../mpf/verified-block-import.js";
 import type { WithdrawalMembership } from "./store.js";
 
 export type ReplayInput = Readonly<{
@@ -18,6 +19,12 @@ export type ReplayInput = Readonly<{
   header: SDK.Header;
   /** The block's commit time (its node's `block_time`). */
   blockTime: bigint;
+  /**
+   * Its node's availability status. While it is Unattested no commitment
+   * binds the payload, so a replay that refuses the payload is `missing`
+   * (another peer's copy may replay), never `invalid`.
+   */
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];
@@ -33,6 +40,9 @@ export type Replayed = Readonly<{
   withdrawals: readonly WithdrawalMembership[];
   forcedIds: readonly Buffer[];
   txIds: readonly Buffer[];
+  /** The transactions the replay applied by their committed verdicts, for
+   * the import checker. */
+  scriptChecks: ImportBlockChecks;
 }>;
 
 /**
@@ -44,9 +54,14 @@ export type Replayed = Readonly<{
  *   the view at all (a known one outside the window is `invalid`);
  * - `forced_order_pending`: a forced order admitted in the block's window
  *   cannot be read back from the facts at the view yet;
+ * - `local_fault`: this node's own computation failed where the block's
+ *   input cannot make it fail;
  * - `incomplete`: the import failed for a reason it cannot pin on the
  *   block (a local computation, or a replay failure it cannot classify);
- * - `invalid`: the block does not replay to its header.
+ * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
+ *   during the replay, a local fault and never the block's;
+ * - `invalid`: the block does not replay to its header, and its node carries
+ *   the availability commitment of the payload replayed.
  */
 export type ReplayOutcome =
   | Replayed
@@ -56,7 +71,9 @@ export type ReplayOutcome =
         | "da_refetch_pending"
         | "event_unknown"
         | "forced_order_pending"
+        | "local_fault"
         | "incomplete"
+        | "verifier_unavailable"
         | "invalid";
       detail: string;
     }>;

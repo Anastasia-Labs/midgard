@@ -105,6 +105,44 @@ export const applyBlueprintParams = (
   return applied;
 };
 
+/** The parameter through which a thread holder releases its thread at expiry. */
+export const THREAD_EXPIRY_PARAMETER_TITLE = "thread_expiry_script_hash";
+
+/**
+ * Applies a validation-trace thread holder's parameters. A holder that
+ * declares the thread expiry script hash takes it as its LAST parameter, after
+ * the parameters the caller passes; a validator that does not declare it is
+ * applied with the caller's parameters alone. The declared list stays the only
+ * authority, so a holder declaring the hash anywhere but last is refused, and
+ * {@link applyBlueprintParams} still refuses any other arity mismatch.
+ */
+export const applyThreadHolderParams = (
+  blueprint: FaultProofBlueprint,
+  title: string,
+  params: readonly Data[],
+  threadExpiryScriptHash: string,
+): string => {
+  const declared = declaredParameters(getBlueprintValidator(blueprint, title));
+  const expiryPosition = declared.findIndex(
+    ({ title: parameterTitle }) =>
+      parameterTitle === THREAD_EXPIRY_PARAMETER_TITLE,
+  );
+  if (expiryPosition === -1) {
+    return applyBlueprintParams(blueprint, title, params);
+  }
+  if (expiryPosition !== declared.length - 1) {
+    throw new Error(
+      `Blueprint validator "${title}" declares ` +
+        `${THREAD_EXPIRY_PARAMETER_TITLE} at position ` +
+        `${expiryPosition.toString()}, not last`,
+    );
+  }
+  return applyBlueprintParams(blueprint, title, [
+    ...params,
+    threadExpiryScriptHash,
+  ]);
+};
+
 /**
  * Applies parameters with the Aiken `uplc` crate — the code `aiken blueprint
  * apply` itself runs — compiled to wasm, rather than with Lucid's JavaScript

@@ -5,6 +5,7 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-validation";
 import "effect";
 import "vitest";
+import "../../midgard-validation/tests/ed25519-ledger-vectors.js";
 import "../../midgard-validation/tests/validation-fixtures.js";
 import "../src/services/validation-pool.js";
 import "../src/workers/utils/validation-pool.js";
@@ -15,12 +16,18 @@ import { existsSync } from "node:fs";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   deserializePhaseACandidate,
+  RejectCodes,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import {
+  honestVkeyWitness,
+  ownKeyIdentityRVkeyWitness,
+  TEST_SIGNER_SEED,
+} from "../../midgard-validation/tests/ed25519-ledger-vectors.js";
 import {
   makeNativeTx,
   makeOutput,
@@ -37,7 +44,6 @@ import {
   init,
   injectDefensiveCycle,
   invalidTxs,
-  nodeVerifierInit,
   normalizeVerdict,
   runWorkerPhaseA,
   workerEntry,
@@ -77,36 +83,37 @@ describe("long-lived validation worker pool", () => {
     }
   });
 
-  it.each(["node", "cml"] as const)(
-    "uses the explicit %s signature verifier and reuses its bounded key cache",
-    async (signatureVerifier) => {
-      const fixture = makeNativeTx();
-      const queued = makeQueued(fixture.txId, fixture.txCbor);
-      const pool = new FixedValidationWorkerPool(1, 4, 30_000, workerEntry, {
-        ...init,
-        signatureVerifier,
+  it("verifies witness signatures exactly as the ledger does", async () => {
+    const honest = makeNativeTx({
+      vkeyWitnesses: (message) => [
+        honestVkeyWitness(TEST_SIGNER_SEED)(message),
+      ],
+    });
+    const identityR = makeNativeTx({
+      vkeyWitnesses: (message) => [
+        ownKeyIdentityRVkeyWitness(TEST_SIGNER_SEED)(message),
+      ],
+    });
+    const pool = new FixedValidationWorkerPool(1, 4, 30_000, workerEntry, init);
+    try {
+      await pool.start();
+      const response = await pool.submit(
+        packPhaseAJob(pool.allocateJobId(), [
+          makeQueued(honest.txId, honest.txCbor, 0n),
+          makeQueued(identityR.txId, identityR.txCbor, 1n),
+        ]),
+      );
+      expect(response).toMatchObject({
+        kind: "phase_a",
+        results: [
+          { ok: true },
+          { ok: false, code: RejectCodes.InvalidSignature },
+        ],
       });
-      try {
-        await pool.start();
-        const response = await pool.submit(
-          packPhaseAJob(pool.allocateJobId(), [queued, queued]),
-        );
-        expect(response.kind).toBe("phase_a");
-        if (response.kind === "phase_a") {
-          expect(response.results.every((result) => result.ok)).toBe(true);
-          expect(response.publicKeyCache).toMatchObject({
-            size: 1,
-            maxEntries: 4_096,
-            hits: 1,
-            misses: 1,
-            evictions: 0,
-          });
-        }
-      } finally {
-        await pool.close();
-      }
-    },
-  );
+    } finally {
+      await pool.close();
+    }
+  });
 
   it.each([2, 6])(
     "matches inline Phase A verdicts and ordering with a %i-worker pool",
@@ -136,7 +143,7 @@ describe("long-lived validation worker pool", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        nodeVerifierInit,
+        init,
       );
       try {
         await pool.start();
@@ -210,7 +217,7 @@ describe("long-lived validation worker pool", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        nodeVerifierInit,
+        init,
       );
       try {
         await pool.start();
@@ -238,13 +245,7 @@ describe("long-lived validation worker pool", () => {
   );
 
   it("fails an in-flight chunk on worker crash and serves the next job after respawn", async () => {
-    const pool = new FixedValidationWorkerPool(
-      1,
-      4,
-      30_000,
-      workerEntry,
-      nodeVerifierInit,
-    );
+    const pool = new FixedValidationWorkerPool(1, 4, 30_000, workerEntry, init);
     try {
       await pool.start();
       const inFlight = pool.submit(
@@ -262,7 +263,6 @@ describe("long-lived validation worker pool", () => {
       expect(afterRespawn).toMatchObject({
         kind: "phase_a",
         results: [{ ok: true }],
-        publicKeyCache: { size: 1, misses: 1 },
       });
     } finally {
       await pool.close();

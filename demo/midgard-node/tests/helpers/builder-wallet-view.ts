@@ -27,7 +27,7 @@ import type { IntentEmulator } from "./intent-journal-emulator.js";
  * settled event's id) under `plan`, opened before the wallet-view read its
  * build rests on (S5).
  */
-export const ownPaymentIntent = (label: string, plan: IntentPlan) =>
+const ownPaymentIntent = (label: string, plan: IntentPlan) =>
   journaledIntent(
     "reserve_payout",
     `reserve_payout:${label}:add_funds`,

@@ -7,7 +7,7 @@ use midgard/cek_context_chain as chain
 use midgard/cek_context_redeemer.{RedeemerSelectionPending}
 use midgard/cek_context_step
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/redeemer_item_proof_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
@@ -20,7 +20,7 @@ use midgard/validation_merkle_v1
 // control's purpose bound. The execution leaf at `purpose_bound - 1` was
 // appended with that purpose's own leaf, source and redeemer item, so it
 // admits exactly one step: a select (tag 17) when it names a redeemer, a
-// skip (tag 40) when it is a native execution. Nothing else in the witness
+// skip (tag 36) when it is a native execution. Nothing else in the witness
 // reaches the successor except `total_length`, which the item commitment
 // fixes.
 validator main(
@@ -126,7 +126,7 @@ validator main(
           }
           (initialize_script_hash, pending)
         } else {
-          expect tag == 40
+          expect tag == 36
           expect [_,
                 purpose_leaf_data, source_leaf_data, siblings_data] = fields
           expect purpose_leaf: ByteArray = purpose_leaf_data
@@ -164,14 +164,14 @@ validator main(
           }
           (settle_script_hash, verified)
         }
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) { hash == target && state == next },
         )
       }

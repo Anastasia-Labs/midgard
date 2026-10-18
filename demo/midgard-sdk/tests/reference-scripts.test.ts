@@ -20,7 +20,6 @@ import {
   referenceScriptRoleAssets,
   SCRIPT_REF_OUTPUT_LOVELACE,
   SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
-  selectReferenceScriptFundingUtxos,
 } from "../src/reference-scripts.js";
 
 const address = "addr_test1reference";
@@ -237,23 +236,6 @@ describe("reference-script SDK boundary", () => {
         policyId: "aa".repeat(28),
       }),
     ).toBe(true);
-  });
-
-  it("selects only plain ADA funding inputs in deterministic largest-first order", () => {
-    const selected = selectReferenceScriptFundingUtxos(
-      [
-        utxo({
-          txHash: "1",
-          assets: { lovelace: 20_000_000n, ["bb".repeat(28)]: 1n },
-        }),
-        utxo({ txHash: "2", assets: { lovelace: 4_000_000n }, datum: "00" }),
-        utxo({ txHash: "3", assets: { lovelace: 5_000_000n } }),
-        utxo({ txHash: "4", assets: { lovelace: 15_000_000n } }),
-      ],
-      16_000_000n,
-    );
-
-    expect(selected.map(({ txHash }) => txHash.slice(-1))).toEqual(["4", "3"]);
   });
 
   it("computes publication funding target from output count and buffer", () => {

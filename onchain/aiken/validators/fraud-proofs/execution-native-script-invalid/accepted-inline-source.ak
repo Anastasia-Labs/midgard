@@ -21,7 +21,6 @@ use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
 use midgard/script_proof_v1
 
 validator main(
-  evaluator_step_03_script_hash: ScriptHash,
   accepted_reference_source_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   field_preimage_certificate_policy_id: PolicyId,
@@ -88,7 +87,7 @@ validator main(
                 offset == bytearray.length(item),
                 encode_midgard_versioned_script(script) == item,
               }
-            let advanced = reconstruction.append_source_v1(
+            let advanced = reconstruction.append_inline_source_v1(
               state,
               reconstruction.SelectedSourceV1 {
                 source_index: state.source_cursor,
@@ -103,25 +102,11 @@ validator main(
                   item,
                 ),
               },
-              if script_proof_v1.versioned_script_hash(script) == expect_selected_hash(
-                state,
-              ) {
-                evaluator_step_03_script_hash
-              } else {
-                own_hash
-              },
+              own_hash,
             )
-            let expected: Data = if advanced.selected_source == None {
-              let encoded: Data = advanced
-              encoded
-            } else {
-              let encoded: Data = reconstruction.authenticated_source_v1(
-                advanced,
-              )
-              encoded
-            }
+            let expected: Data = advanced
             and {
-              output_hash == advanced.next_expected_script_hash,
+              output_hash == own_hash,
               output_state == expected,
             }
           }
@@ -145,11 +130,6 @@ validator main(
   else(_) {
     fail
   }
-}
-
-fn expect_selected_hash(state: reconstruction.StateV1) -> ByteArray {
-  expect Some(purpose) = state.selected_purpose
-  purpose.script_hash
 }
 
 fn action_input_index(action: Action) -> Int {

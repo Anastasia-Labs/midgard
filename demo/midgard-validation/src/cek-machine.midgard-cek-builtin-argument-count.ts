@@ -9,7 +9,7 @@ import {
   MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
   type MidgardCekMachineState,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
@@ -239,7 +239,7 @@ export const environmentSummaryMatches = (
 };
 
 export const midgardCekBuiltinForceCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 29n || tag === 30n || tag === 31n) return 2n;
@@ -250,7 +250,7 @@ export const midgardCekBuiltinForceCount = (tag: bigint): bigint => {
 };
 
 export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
-  if (tag < 0n || tag > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+  if (tag < 0n || tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG) {
     throw new RangeError("CEK builtin tag is outside the V1 table");
   }
   if (tag === 36n) return 6n;

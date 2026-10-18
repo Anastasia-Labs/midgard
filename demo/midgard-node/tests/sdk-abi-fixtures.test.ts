@@ -123,11 +123,6 @@ describe("SDK canonical ABI fixtures", () => {
     ]);
     expect(
       fields(
-        constructor("midgard/user_events/deposit/DepositDatum", "DepositDatum"),
-      ),
-    ).toEqual(["event", "inclusion_time", "witness"]);
-    expect(
-      fields(
         constructor(
           "midgard/fraud_proofs/transition_trace/proof/TransitionFaultProof",
           "TransitionFaultProof",
@@ -163,6 +158,14 @@ describe("SDK canonical ABI fixtures", () => {
       "source_membership",
       "projected_utxo",
     ]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/proof/InvalidOneStepTransitionWitness",
+          "ValidForcedTransactionTransition",
+        ),
+      ),
+    ).toEqual(["trace_proof", "event_to_step", "source_membership"]);
     for (const [definition, variant, sourceField] of [
       [
         "OmittedDueL1EventWitness",
@@ -212,14 +215,6 @@ describe("SDK canonical ABI fixtures", () => {
       "hub_ref_input_index",
       "fraud_proof_mint_redeemer_index",
     ]);
-    expect(
-      fields(
-        constructor(
-          "midgard/user_events/withdrawal/SpendRedeemer",
-          "SpendRedeemer",
-        ),
-      ),
-    ).toContain("purpose");
     expect(
       constructor(
         "midgard/ledger_state/WithdrawalValidity",

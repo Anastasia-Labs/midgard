@@ -8,7 +8,10 @@ import { Data, Effect } from "effect";
 
 import type * as Ledger from "../database/utils/ledger.js";
 import type { DriverHold } from "../l1-events/driver.js";
-import type { LandedStateQueueElement } from "../l1-state-queue/index.js";
+import type {
+  LandedStateQueue,
+  LandedStateQueueElement,
+} from "../l1-state-queue/index.js";
 import type { Database } from "../services/database.js";
 import type { ReplayInput, ReplayOutcome } from "./replay.js";
 import type { WithdrawalMembership } from "./store.js";
@@ -52,6 +55,14 @@ export type LandedBlockPorts<R> = Readonly<{
   replay: (
     input: ReplayInput,
   ) => Effect.Effect<ReplayOutcome, unknown, R | Database>;
+  /**
+   * Checks the retained payload copies of the queue's processed foreign
+   * blocks against the availability commitments their nodes now carry
+   * (`replay-foreign.bind.ts`); it never fails.
+   */
+  bindRetained?: (
+    queue: LandedStateQueue,
+  ) => Effect.Effect<void, never, R | Database>;
   /** This node's journal of `headerHash`, if it committed that block. */
   ownJournal: (
     headerHash: string,

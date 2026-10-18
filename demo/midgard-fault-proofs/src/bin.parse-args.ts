@@ -42,6 +42,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let outputDir: string | undefined;
   let daPayloadEnvelopePath: string | undefined;
   let transitionFaultProofPath: string | undefined;
+  let transitionL2ReplayPath: string | undefined;
   const referenceInputOutRefs: string[] = [];
   let awaitConfirmation = true;
   let fraudCategory: SubmitInitFraudCategory | undefined;
@@ -170,6 +171,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
         break;
       case "--transition-fault-proof":
         transitionFaultProofPath = rest[++index];
+        break;
+      case "--transition-l2-replay":
+        transitionL2ReplayPath = rest[++index];
         break;
       case "--reference-input": {
         const outRef = rest[++index];
@@ -306,6 +310,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     outputDir,
     daPayloadEnvelopePath,
     transitionFaultProofPath,
+    transitionL2ReplayPath,
     referenceInputOutRefs,
     awaitConfirmation,
     fraudCategory,

@@ -101,7 +101,8 @@ export type ReferenceScriptResolved = {
 
 export type ReferenceScriptWalletReplenishmentTxParams = {
   readonly lucid: LucidEvolution;
-  readonly selectedFundingInputs: readonly UTxO[];
+  /** The funding wallet's view, which coin selection picks from (never empty). */
+  readonly fundingWalletInputs: readonly UTxO[];
   readonly referenceScriptAddress: string;
   readonly topUpAmount: bigint;
 };

@@ -6,7 +6,7 @@ import {
   MintingValidator,
   SpendingValidator,
 } from "../../../common.js";
-import type { CertifiedFaultProofChainInputs } from "../shared.js";
+import type { ScriptDecodeFaultProofChainInputs } from "../shared.js";
 import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
@@ -27,6 +27,7 @@ export type WitnessScriptDecodingFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptDecode: AuthenticatedValidator;
   readonly witnessScriptDecoding: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -48,7 +49,8 @@ export const buildWitnessScriptDecodingChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: CertifiedFaultProofChainInputs): Effect.Effect<
+  scriptDecodePolicyId,
+}: ScriptDecodeFaultProofChainInputs): Effect.Effect<
   WitnessScriptDecodingFaultProofContracts["witnessScriptDecoding"],
   Error
 > =>
@@ -77,6 +79,7 @@ export const buildWitnessScriptDecodingChain = ({
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
+        scriptDecodePolicyId,
       ],
       "Failed to build witness-script-decoding step 02",
     );

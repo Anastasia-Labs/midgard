@@ -101,6 +101,38 @@
       }
     },
     {
+      "id": "validation-initial-state-v1",
+      "kind": "golden",
+      "summary": "State 0 of a validation trace derived from the header context, event key, source triple and pre-state root, from the TypeScript twin: JSON fixture plus a whole generated Aiken module asserting validation_claim_v1.derive_initial_state. The multi_redeemer vectors carry script bytes and are provisional.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-validation-initial-state-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:validation-initial-state-v1:sync",
+        "demo/midgard-core:fixtures:validation-initial-state-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-core/tests/fixtures/validation-initial-state-v1.vectors.mjs",
+        "demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/validation-initial-state-v1.generated.json",
+        "onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check validation initial-state golden vectors"
+      }
+    },
+    {
       "id": "cek-data-canonical-corpus-v1",
       "kind": "golden",
       "summary": "Canonical Data corpus: accepted spans bound to the TypeScript traverse summary and unreadable spans to their stage, rendered as a whole generated Aiken module run by the honest traverse driver.",
@@ -521,6 +553,129 @@
       }
     },
     {
+      "id": "plutus-data-cbor-decoding-v1",
+      "kind": "golden",
+      "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:sync",
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json",
+        "onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check Plutus Data CBOR decoding golden vectors"
+      }
+    },
+    {
+      "id": "script-decode-step-v1",
+      "kind": "golden",
+      "summary": "Script-decode step machine, Walk by Walk: JSON fixture plus a generated Aiken module replaying each walk with midgard/script_decode_v1 and checking every run-datum hash against the TypeScript port.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-step-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-step-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json",
+        "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check script-decode step golden vectors"
+      }
+    },
+    {
+      "id": "script-decode-haskell-v1",
+      "kind": "golden",
+      "summary": "Cardano's own verdict (deserialiseScript and mkTermToEvaluate at protocol version 11) on every PlutusV3 script-decode golden script and seeded one-bit flips, as the record the step machine must reach. Sync and check need MIDGARD_SCRIPT_DECODE_PROBE set to the built probe.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs",
+        "demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:check"
+      },
+      "ci": {
+        "none": "The check needs a built Haskell probe, which no workflow builds."
+      }
+    },
+    {
+      "id": "rejection-reason-v1",
+      "kind": "golden",
+      "summary": "RejectionReasonV1 codec vectors: one reason per arm of the on-chain declaration, its Plutus Data CBOR from a stand-alone encoder, and its domain hash.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:rejection-reason-v1:sync",
+        "demo/midgard-core:fixtures:rejection-reason-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": [
+        "@golden-channel",
+        "onchain/aiken/lib/midgard/rejection-reason-v1.ak"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check"
+      },
+      "ci": {
+        "none": "No workflow step runs this generator's --check."
+      }
+    },
+    {
       "id": "ledger-output-proof-replay",
       "kind": "golden",
       "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",
@@ -693,7 +848,7 @@
     {
       "id": "script-source-lookup-rows",
       "kind": "golden",
-      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
+      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, and its native execution scan vectors for each native row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
       "generators": [
         "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
       ],
@@ -1019,6 +1174,35 @@
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Build, typecheck, and test Midgard validation",
         "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      }
+    },
+    {
+      "id": "cek-executor-differential-v1",
+      "kind": "fixture",
+      "summary": "Proof- and verdict-mode outcomes of the structural executor differential corpus, written by its test under MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 and asserted by the same test without it.",
+      "generators": [
+        "demo/midgard-validation/tests/cek-executor.differential.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "demo/midgard-validation/tests/helpers/cek-differential-*.ts",
+        "demo/midgard-validation/tests/helpers/cek-adversarial-shapes.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-executor-differential-v1.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_CEK_EXECUTOR_DIFFERENTIAL=1 pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/cek-executor.differential.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/cek-executor.differential.test.ts"
       }
     },
     {

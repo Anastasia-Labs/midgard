@@ -13,7 +13,6 @@ import {
   HeaderSchema,
   L2TransactionSourceSchema,
   TransitionStepSchema,
-  ValidationTraceDescriptorSchema,
 } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
@@ -129,11 +128,6 @@ export const ValidationOneStepEvidence = asDataType<ValidationOneStepEvidence>(
   ValidationOneStepEvidenceSchema,
 );
 
-const ValidationDescriptorMembershipSchema = rootMembershipProofSchema(
-  EventKeySchema,
-  ValidationTraceDescriptorSchema,
-);
-
 const ValidationTransitionStepMembershipSchema = rootMembershipProofSchema(
   Data.Integer(),
   TransitionStepSchema,
@@ -169,15 +163,9 @@ export const ValidationSourceMembershipSchema = Data.Enum([
 
 export const ValidationClaimWitnessSchema = Data.Object({
   version: Data.Integer(),
-  descriptor_membership: ValidationDescriptorMembershipSchema,
   transition_step_membership: ValidationTransitionStepMembershipSchema,
   event_to_step_membership: ValidationEventToStepMembershipSchema,
   source_membership: ValidationSourceMembershipSchema,
-  validation_context_cbor: Data.Bytes(),
-  initial_state: ValidationMachineStateSchema,
-  terminal_state: ValidationMachineStateSchema,
-  initial_state_proof: ValidationTraceProofSchema,
-  terminal_state_proof: ValidationTraceProofSchema,
 });
 
 export type ValidationClaimWitness = Data.Static<
@@ -192,8 +180,13 @@ export const PendingValidationClaimSchema = Data.Object({
   challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
   challenged_header: HeaderSchema,
   claim: ValidationClaimWitnessSchema,
-  challenger_descriptor: ValidationTraceDescriptorSchema,
-  open_time_upper: Data.Integer(),
+  // The challenger's trace root over states `0..step_count`.
+  challenger_root: H32Schema,
+  // S: the challenger's step count.
+  step_count: Data.Integer(),
+  // The challenged block's state-queue `block_time`, read at Open.
+  // VerifySource's open guard runs from it.
+  block_end: Data.Integer(),
 });
 
 export type PendingValidationClaim = Data.Static<
@@ -232,7 +225,8 @@ export const ValidationDisputeOpenActionSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
   claim: ValidationClaimWitnessSchema,
-  challenger_descriptor: ValidationTraceDescriptorSchema,
+  challenger_root: H32Schema,
+  step_count: Data.Integer(),
 });
 
 export type ValidationDisputeOpenAction = Data.Static<
@@ -258,20 +252,14 @@ export const ValidationDisputeOpenSpendRedeemer =
     ValidationDisputeOpenSpendRedeemerSchema,
   );
 
-export const CommittedValidationStepEvidenceSchema = Data.Object({
-  pre_state: ValidationMachineStateSchema,
-  pre_proof: ValidationTraceProofSchema,
-  post_proof: ValidationTraceProofSchema,
-  challenger_successor_hash: H32Schema,
-});
-
-export type CommittedValidationStepEvidence = Data.Static<
-  typeof CommittedValidationStepEvidenceSchema
->;
-
 export const ValidationSourceActionSchema = Data.Object({
   input_index: Data.Integer(),
+  // The case output.
   output_index: Data.Integer(),
+  // The challenger's claimed state at its step count S, and its leaf under
+  // the challenger's trace root.
+  challenger_terminal: ValidationMachineStateSchema,
+  challenger_terminal_proof: ValidationTraceProofSchema,
 });
 
 export type ValidationSourceAction = Data.Static<
@@ -323,14 +311,6 @@ export const ValidationGameActionSchema = Data.Enum([
       output_index: Data.Integer(),
     }),
   }),
-  Data.Object({
-    DirectCommittedStep: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      resolver_index: Data.Integer(),
-      evidence: CommittedValidationStepEvidenceSchema,
-    }),
-  }),
 ]);
 
 export type ValidationGameAction = Data.Static<
@@ -353,10 +333,10 @@ export type ValidationGameSpendRedeemer = Data.Static<
 export const ValidationGameSpendRedeemer =
   asDataType<ValidationGameSpendRedeemer>(ValidationGameSpendRedeemerSchema);
 
+// Gap A: the successor hashes come from the dispute datum, so the evidence is
+// the agreed pre-state alone.
 export const ValidationBoundaryEvidenceSchema = Data.Object({
   pre_state: ValidationMachineStateSchema,
-  operator_post: ValidationTraceProofSchema,
-  challenger_post: ValidationTraceProofSchema,
 });
 
 export type ValidationBoundaryEvidence = Data.Static<

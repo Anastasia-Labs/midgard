@@ -1,5 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -10,6 +11,7 @@ import {
 import { type DeploymentManifest } from "./contract-deployment-info.js";
 
 export type AvailabilityCommandAction =
+  | "prepare"
   | "open"
   | "respond"
   | "settle"
@@ -42,7 +44,7 @@ export const parseAvailabilityOutRef = (
 };
 
 export const planAvailabilityCommandAction = (
-  action: Exclude<AvailabilityCommandAction, "status" | "recover">,
+  action: Exclude<AvailabilityCommandAction, "prepare" | "status" | "recover">,
   snapshot: Pick<
     SDK.DaAvailabilityChallengeSnapshot,
     | "recordDatum"
@@ -148,13 +150,69 @@ export const assertAvailabilityCommandRemovalCapital = (input: {
         input.parameters.challenge_record_lovelace +
         input.parameters.max_open_fee_lovelace
       : 0n);
+  const availableCapital = available.reduce(
+    (sum, utxo) => sum + utxo.assets.lovelace,
+    0n,
+  );
+  if (availableCapital < requiredCapital)
+    throw new Error(
+      `Availability actor cannot fund the challenger bond, the challenge record and the remaining descendant removal path after excluding collateral and reserved inputs: it needs ${requiredCapital.toString()} lovelace in ADA-only coins with no datum and holds ${availableCapital.toString()}; availability-challenge prepare pays them from any wallet`,
+    );
+};
+
+/** The change an availability action keeps: a plain 2-ADA coin's min-ADA. */
+export const availabilityCommandMinimumChangeLovelace = (
+  coinsPerUtxoByte: bigint,
+  walletAddress: string,
+): bigint =>
+  calculateMinLovelaceFromUTxO(coinsPerUtxoByte, {
+    address: walletAddress,
+    assets: { lovelace: 2_000_000n },
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  });
+
+/**
+ * The ADA-only coins `prepare` pays the actor for one challenge, in lovelace:
+ * the exact opening input (bond, record and maximum opening fee), one
+ * collateral coin every workflow step accepts, and the working capital the
+ * Open's removal-path check asks for beside the opening input. The
+ * preparation's own fee is the maximum opening fee.
+ */
+export const availabilityPreparationAmounts = (input: {
+  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly collateralPercentage: number;
+  readonly coinsPerUtxoByte: bigint;
+  readonly walletAddress: string;
+  readonly remainingRemovalSteps: number;
+}) => {
   if (
-    available.reduce((sum, utxo) => sum + utxo.assets.lovelace, 0n) <
-    requiredCapital
+    !Number.isSafeInteger(input.remainingRemovalSteps) ||
+    input.remainingRemovalSteps < 1
   )
     throw new Error(
-      "Availability actor cannot fund the challenger bond, the challenge record and the remaining descendant removal path after excluding collateral and reserved inputs",
+      "Availability preparation requires an authenticated remaining removal path",
     );
+  const p = input.parameters;
+  return {
+    openingLovelace:
+      p.challenger_bond_lovelace +
+      p.challenge_record_lovelace +
+      p.max_open_fee_lovelace,
+    collateralLovelace: SDK.daAvailabilityWorkflowCollateralLovelace({
+      parameters: p,
+      challengerAddress: input.walletAddress,
+      collateralPercentage: input.collateralPercentage,
+      coinsPerUtxoByte: input.coinsPerUtxoByte,
+    }),
+    workingCapitalLovelace:
+      BigInt(input.remainingRemovalSteps) * p.max_timeout_fee_lovelace +
+      availabilityCommandMinimumChangeLovelace(
+        input.coinsPerUtxoByte,
+        input.walletAddress,
+      ),
+    feeLovelace: p.max_open_fee_lovelace,
+  };
 };
 
 /**

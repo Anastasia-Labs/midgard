@@ -13,6 +13,7 @@
  * `classifyWithdrawalFromLedger` tags the withdrawal valid exactly when the
  * pinned verdict is payable.
  */
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -26,9 +27,13 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import VECTORS from "./fixtures/withdrawal-mistag-agreement-vectors.json" with { type: "json" };
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",

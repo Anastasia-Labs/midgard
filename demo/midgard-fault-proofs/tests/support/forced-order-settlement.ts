@@ -27,6 +27,11 @@ import {
 } from "../../src/transition-trace/phas.js";
 import { settleOldestCrossBlockHeader } from "./cross-block-settlement-emulator.js";
 import {
+  type OrderDatumRewrite,
+  payOrderRefund,
+  withOrderDatumRewrite,
+} from "./forced-order-refund.js";
+import {
   alignUnixTimeToEmulatorSlotBoundary,
   type CompleteSignedTransactionMeasurement,
   makeFaultProofEmulatorHarness,
@@ -112,9 +117,17 @@ export const publishForcedOrderCarriage = async (
   return { material, plan, referenceInputs: published };
 };
 
+/** One order's refund: `rewrite` changes the order datum the SDK writes. */
+export type ForcedOrderRefund = {
+  readonly rewrite?: OrderDatumRewrite;
+};
+
 /** Real order mint/spend, settlement mint, state-queue and PHAS validators.
  * DA attachment uses the common emulator transport boundary, as in the
  * installed settlement lifecycle. No synthetic order or settlement is seeded.
+ * With `refunds`, one order is minted per entry, a mint the validator refuses
+ * is recorded in `refusals` rather than thrown, and `minted` holds each
+ * entry's order or undefined; each settle pays the refund its datum names.
  */
 export const makeForcedOrderSettlementScenario = async (
   options: {
@@ -122,6 +135,7 @@ export const makeForcedOrderSettlementScenario = async (
     changeLeaf?: (leaf: SDK.ForcedInclusionTxV1) => SDK.ForcedInclusionTxV1;
     foreignOrderKey?: boolean;
     twoOrders?: boolean;
+    refunds?: readonly ForcedOrderRefund[];
     submitted?: ReturnType<typeof materializeMidgardForcedTxFromCanonical>;
     onMeasurement?: (
       stage: string,
@@ -140,19 +154,20 @@ export const makeForcedOrderSettlementScenario = async (
   const lucid = await Lucid(h.emulator, network);
   h.proverSigner.selectWallet(lucid);
   const wallets = [lucid];
-  if (options.twoOrders) {
-    const second = await Lucid(h.emulator, network);
-    second.selectWallet.fromSeed(generateSeedPhrase());
+  const orderCount = options.refunds?.length ?? (options.twoOrders ? 2 : 1);
+  while (wallets.length < orderCount) {
+    const next = await Lucid(h.emulator, network);
+    next.selectWallet.fromSeed(generateSeedPhrase());
     const funding = await lucid
       .newTx()
-      .pay.ToAddress(await second.wallet().address(), {
+      .pay.ToAddress(await next.wallet().address(), {
         lovelace: 100_000_000n,
       })
       .complete();
     await lucid.awaitTx(
       await (await funding.sign.withWallet().complete()).submit(),
     );
-    wallets.push(second);
+    wallets.push(next);
   }
   const submitted =
     options.submitted ??
@@ -229,10 +244,8 @@ export const makeForcedOrderSettlementScenario = async (
     forcedTransactionCount: BigInt(wallets.length),
     totalEventCount: BigInt(wallets.length),
     transitionStepCount: BigInt(wallets.length),
-    validationTraceCount: BigInt(wallets.length),
     transitionTraceRoot: "aa".repeat(32),
     eventToStepRoot: "bb".repeat(32),
-    validationTracesRoot: "cc".repeat(32),
   };
   const setup = await submitSetupTx({
     lucid: h.funderLucid,
@@ -241,7 +254,8 @@ export const makeForcedOrderSettlementScenario = async (
     catalogue: h.catalogue,
     header,
   });
-  const orders: UTxO[] = [];
+  const minted: (UTxO | undefined)[] = [];
+  const refusals: (string | undefined)[] = [];
   for (const [index, wallet] of wallets.entries()) {
     const refundAddress = await Effect.runPromise(
       SDK.addressDataFromBech32(await wallet.wallet().address()),
@@ -249,8 +263,17 @@ export const makeForcedOrderSettlementScenario = async (
     const clock = vi
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
-    const built = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(wallet, h.contracts, {
+    const rewrite = options.refunds?.[index]?.rewrite;
+    const builder =
+      rewrite === undefined
+        ? wallet
+        : withOrderDatumRewrite(
+            wallet,
+            h.contracts.txOrder.spendingScriptAddress,
+            rewrite,
+          );
+    const mint = Effect.runPromise(
+      SDK.buildUnsignedTxOrderTxWithMetadataProgram(builder, h.contracts, {
         nonceInput: nonces[index]!,
         submittedTxCbor: bytes.toString("hex"),
         carriageReferenceInputs: carriage[index]!.referenceInputs,
@@ -260,6 +283,20 @@ export const makeForcedOrderSettlementScenario = async (
         lovelace: 3_000_000n,
       }),
     ).finally(() => clock.mockRestore());
+    const built = await mint.catch((error: unknown) => {
+      const text = error instanceof Error ? error.message : String(error);
+      if (
+        options.refunds === undefined ||
+        !/failed script execution/u.test(text)
+      )
+        throw error;
+      refusals[index] = text;
+      return undefined;
+    });
+    if (built === undefined) {
+      minted.push(undefined);
+      continue;
+    }
     await runEmulatorLifecycleStage("forced.order-mint", async () => {
       const signed = await built.tx.sign.withWallet().complete();
       options.onMeasurement?.(
@@ -272,15 +309,16 @@ export const makeForcedOrderSettlementScenario = async (
       await wallet.utxosAt(h.contracts.txOrder.spendingScriptAddress)
     ).find(
       (utxo) =>
-        !orders.some(
+        !minted.some(
           (old) =>
-            old.txHash === utxo.txHash && old.outputIndex === utxo.outputIndex,
+            old?.txHash === utxo.txHash && old.outputIndex === utxo.outputIndex,
         ),
     );
     if (order === undefined)
       throw new Error("real order mint did not create its output");
-    orders.push(order);
+    minted.push(order);
   }
+  const orders = minted.filter((order) => order !== undefined);
   const order = orders[0]!;
   const datum = Data.from(order.datum!, SDK.TxOrderDatum);
   await runEmulatorLifecycleStage("forced.settlement-mint", () =>
@@ -316,7 +354,9 @@ export const makeForcedOrderSettlementScenario = async (
     claimedVerdict: SDK.OperatorVerdict = verdict,
   ) => {
     const lucid = wallets[orderIndex]!;
-    const order = orders[orderIndex]!;
+    const order = minted[orderIndex];
+    if (order === undefined)
+      throw new Error(`order ${orderIndex.toString()} was not minted`);
     const key = keys[proofIndex]!;
     const proof = await keyValuePhasProof(
       { ...root, root: root.phasRoot },
@@ -383,13 +423,14 @@ export const makeForcedOrderSettlementScenario = async (
       value.toString("hex"),
       Data.castTo(proof, SDK.Proof),
     ]);
-    const tx = await lucid
-      .newTx()
-      .collectFrom([order], spend)
-      .readFrom([setup.hubOracle, settlement, ...spendReferences])
-      .pay.ToAddress(await lucid.wallet().address(), {
-        lovelace: order.assets.lovelace!,
-      })
+    const tx = await payOrderRefund(
+      lucid
+        .newTx()
+        .collectFrom([order], spend)
+        .readFrom([setup.hubOracle, settlement, ...spendReferences]),
+      network,
+      order,
+    )
       .mintAssets({ [unit]: -1n }, burn)
       .deregister.Stake(
         SDK.scriptRewardAddress("Custom", certificate),
@@ -413,6 +454,8 @@ export const makeForcedOrderSettlementScenario = async (
     datum,
     order,
     orders,
+    minted,
+    refusals,
     settlement,
     bytes,
     settle,

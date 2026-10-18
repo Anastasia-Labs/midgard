@@ -20,7 +20,7 @@ use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 /// same argument at another family).
 ///
 /// `min_fee_a` / `min_fee_b` are the disputed block header's own fee
-/// schedule — the exact values `validation_claim_v1.validation_context_is_exact`
+/// schedule — the exact values `validation_claim_v1.derive_validation_context_cbor`
 /// binds into the validation machine's context, read here off the header that
 /// `pass_native_tx_to_next_step` authenticated against the state queue.
 pub type State {

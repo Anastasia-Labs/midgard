@@ -213,6 +213,54 @@ describe("DA proof artifact derivation", () => {
     expect(result.response.status).toBe("rejected");
   });
 
+  it("derives artifacts for an honest payload with transactions whose header pins the validation-trace pair to the empty tree", async () => {
+    const context = await makeVerifiedContext();
+    expect(context.header.l2TransactionCount).toBe(3n);
+    expect(context.header.validationTracesRoot).toBe(
+      SDK.EMPTY_MERKLE_TREE_ROOT,
+    );
+    expect(context.header.validationTraceCount).toBe(0n);
+    const deriver = makeDeriver(context.store);
+
+    const result = await deriver.traceStepByIndex(
+      traceStepRequest(context.headerHash, 0),
+    );
+
+    expect(result.reasonCode).toBeNull();
+    expect(result.response.status).toBe("found");
+  });
+
+  it.each([
+    ["root", "committed_header_root_mismatch"],
+    ["count", "committed_header_count_mismatch"],
+  ] as const)(
+    "refuses a committed header that carries the built validation-trace %s",
+    async (carried, reasonCode) => {
+      const context = await makeVerifiedContext();
+      const rebound = await rebindContextWithHeader(context, {
+        ...context.header,
+        ...(carried === "root"
+          ? {
+              validationTracesRoot: (
+                await computeDaPayloadRoots(context.payload)
+              ).validationTracesRoot,
+            }
+          : {
+              validationTraceCount:
+                context.payload.block_body.counts.validationTraceCount,
+            }),
+      });
+      const deriver = makeDeriver(rebound.store);
+
+      const result = await deriver.traceStepByIndex(
+        traceStepRequest(rebound.headerHash, 0),
+      );
+
+      expect(result.reasonCode).toBe(reasonCode);
+      expect(result.response.status).toBe("rejected");
+    },
+  );
+
   it("fails closed when the committed L1 header identity diverges", async () => {
     const context = await makeVerifiedContext();
     const store = makeStore({
@@ -284,11 +332,13 @@ describe("DA proof artifact derivation", () => {
     expect(Buffer.from(bundle[3] as Uint8Array)).toHaveLength(32);
     expect(rootValues).toHaveLength(8);
     expect(countValues).toHaveLength(7);
+    // The bundle summarises the body: its validation-trace pair is the built
+    // one, while the header pins the pair to the empty tree.
     expect(Buffer.from(rootValues[7] as Uint8Array).toString("hex")).toBe(
-      context.header.validationTracesRoot,
+      (await computeDaPayloadRoots(context.payload)).validationTracesRoot,
     );
     expect(BigInt(countValues[6] as number | bigint)).toBe(
-      context.header.validationTraceCount,
+      context.payload.block_body.counts.validationTraceCount,
     );
     expect(Buffer.from(bundle[3] as Uint8Array)).toEqual(
       computeDaSha256Hash(

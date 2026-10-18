@@ -86,6 +86,26 @@ export const transientFailure = (hold: DriverHold): DriverHold => {
 export const isTransientFailureHold = (hold: DriverHold): boolean =>
   TRANSIENT_FAILURE.has(hold);
 
+/** Retried holds that stand for a local fault on one subject (`localFault`). */
+const LOCAL_FAULT = new WeakMap<DriverHold, string>();
+
+/**
+ * Marks `hold` as a local fault of this process on `subject` (the header
+ * hash of a foreign block whose import failed locally: in this node's own
+ * computation, its Ed25519 verifier's included, or in a replay failure it
+ * cannot classify): retried on the coalesced runner's backoff a bounded
+ * number of runs with no progress past the faulted blocks, after which the
+ * node exits for its supervisor to restart it.
+ */
+export const localFault = (hold: DriverHold, subject: string): DriverHold => {
+  LOCAL_FAULT.set(hold, subject);
+  return hold;
+};
+
+/** The subject `hold` is a local fault on (`localFault`), if it is one. */
+export const localFaultSubject = (hold: DriverHold): string | undefined =>
+  LOCAL_FAULT.get(hold);
+
 /**
  * Builds the hold for a failure: retried without bound, retried for a
  * bounded time (`transientFailure`) or `notRetried`. The effectful caller

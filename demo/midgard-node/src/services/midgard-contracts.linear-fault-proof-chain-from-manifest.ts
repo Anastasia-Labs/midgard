@@ -10,6 +10,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
+  mintingValidatorFromManifest,
   spendingValidatorFromManifest,
   withdrawalValidatorFromManifest,
 } from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
@@ -19,7 +20,7 @@ export const faultProofMemberFromManifest = (
   manifest: DeploymentManifest,
   sourcePath: string,
   contract: DeploymentContract,
-): SDK.SpendingValidator | SDK.WithdrawalValidator => {
+): SDK.FamilyMemberValidator => {
   const member = DEPLOYMENT_MEMBERS[contract];
   if (member.purpose === "spend")
     return spendingValidatorFromManifest(
@@ -30,9 +31,7 @@ export const faultProofMemberFromManifest = (
     );
   if (member.purpose === "withdraw")
     return withdrawalValidatorFromManifest(manifest, sourcePath, contract);
-  throw new Error(
-    `Fault-proof family member has unexpected mint purpose: ${contract}`,
-  );
+  return mintingValidatorFromManifest(manifest, sourcePath, contract);
 };
 
 export const faultProofFamilyScriptsFromManifest = <

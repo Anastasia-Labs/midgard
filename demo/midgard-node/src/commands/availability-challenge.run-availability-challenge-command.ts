@@ -19,6 +19,7 @@ import {
   type AvailabilityCommandOptions,
   planAvailabilityCommandAction,
 } from "./availability-challenge.plan-availability-command-action.js";
+import { prepareAvailabilityOpeningInput } from "./availability-challenge.prepare-availability-opening-input.js";
 import { availabilityDeploymentFromManifest } from "./availability-challenge-deployment.js";
 import {
   assertAvailabilityActionServed,
@@ -164,6 +165,19 @@ const runAvailabilityOnAccess = async (
       throw new Error(
         "Availability state changed during canonical discovery; rerun against the next stable point",
       );
+    if (action === "prepare")
+      return {
+        action,
+        headerHash: options.headerHash,
+        ...(await prepareAvailabilityOpeningInput({
+          lucid,
+          deployment,
+          snapshot,
+          context,
+          headerHash: options.headerHash,
+          reservedOutRefs: new Set(journal.reservedOutRefs(actor.hash)),
+        })),
+      };
     if (action === "status") {
       const record = snapshot.recordDatum;
       return {

@@ -9,17 +9,33 @@ import {
   type ValidationWorkerResponse,
 } from "../workers/utils/validation-pool.js";
 import {
+  clampBacklogShare,
+  idleSlot,
+  isIdle,
+  queueBackgroundJob,
+  rejectBackgroundJobs,
+  takeBackgroundJob,
+} from "./validation-pool.background-lanes.js";
+import {
+  type BackgroundJob,
   BUNDLED_WORKER_EXEC_ARGV,
+  jobFailedError,
   type PendingJob,
   restartCounter,
   timeoutCounter,
+  ValidationJobTimeoutError,
   ValidationWorkerError,
+  ValidationWorkerStoppedError,
   type WorkerSlot,
 } from "./validation-pool.bundled-worker-exec-argv.js";
 
 export class FixedValidationWorkerPool {
   readonly slots: WorkerSlot[] = [];
   readonly queue: PendingJob[] = [];
+  /** Import-check jobs, both lanes, in submission order. */
+  readonly backgroundQueue: BackgroundJob[] = [];
+  /** Workers reserved for the backlog lane (`clampBacklogShare`). */
+  readonly backlogShare: number;
   readonly capacityWaiters: Array<() => void> = [];
   readonly restartTimers = new Set<NodeJS.Timeout>();
   nextJobId = 1;
@@ -40,7 +56,10 @@ export class FixedValidationWorkerPool {
     readonly timeoutMs: number,
     readonly entry: URL,
     readonly init: ValidationWorkerInit,
-  ) {}
+    backlogShare = 1,
+  ) {
+    this.backlogShare = clampBacklogShare(size, backlogShare);
+  }
 
   start(): Promise<void> {
     if (this.started) return Promise.resolve();
@@ -207,6 +226,31 @@ export class FixedValidationWorkerPool {
     });
   }
 
+  /** An import-check job, scheduled by its lane (`takeBackgroundJob`),
+   * killed and cancelled as `ValidationPoolService.evaluateImportCheck`
+   * says; a fresh worker's start never counts toward its kill. */
+  submitBackground(
+    request: ValidationJobRequest,
+    options: Pick<BackgroundJob, "killMs" | "fresh" | "lane" | "startBy">,
+  ): Promise<ValidationWorkerResponse> {
+    if (this.closed || !this.started)
+      return Promise.reject(
+        new ValidationWorkerError({
+          message: "validation pool is not running",
+        }),
+      );
+    return new Promise<ValidationWorkerResponse>((resolve, reject) => {
+      queueBackgroundJob(this, {
+        request,
+        transferList: [],
+        resolve,
+        reject,
+        ...options,
+      });
+      this.dispatch();
+    });
+  }
+
   /** Advisory work dispatches only to an idle slot and never enters either production queue. */
   trySubmitAdvisory(
     request: ValidationJobRequest,
@@ -248,6 +292,11 @@ export class FixedValidationWorkerPool {
       message: "validation pool shut down",
     });
     for (const job of this.queue.splice(0)) job.reject(error);
+    rejectBackgroundJobs(this, error);
+    for (const slot of this.slots) {
+      slot.reservedFor?.reject(error);
+      slot.reservedFor = null;
+    }
     for (const resolve of this.capacityWaiters.splice(0)) resolve();
     await Promise.all(
       this.slots.map(async (slot) => {
@@ -273,16 +322,22 @@ export class FixedValidationWorkerPool {
       restartAttempt: 0,
       restarting: false,
       inFlightStartedAt: 0,
+      started: false,
+      lane: null,
+      reservedFor: null,
+      heldLane: null,
     };
     worker.on("message", (response: ValidationWorkerResponse) =>
       this.handleResponse(slot, response),
     );
-    worker.on("error", (cause) => this.failSlot(slot, cause));
+    worker.on("error", (error) =>
+      this.failSlot(slot, new ValidationWorkerStoppedError(index, { error })),
+    );
     worker.on("exit", (code) => {
       if (!this.closed && !slot.restarting) {
         this.failSlot(
           slot,
-          new Error(`validation worker exited with code ${code}`),
+          new ValidationWorkerStoppedError(index, { exitCode: code }),
         );
       }
       if (!this.closed) this.scheduleRespawn(slot);
@@ -291,28 +346,72 @@ export class FixedValidationWorkerPool {
   }
 
   private dispatch(): void {
+    this.dispatchBackground(false);
     for (const slot of this.slots) {
-      if (slot.inFlight !== null || slot.restarting) continue;
+      if (!isIdle(slot)) continue;
       const job = this.queue.shift();
       if (job === undefined) break;
       this.capacityWaiters.shift()?.();
       this.dispatchToSlot(slot, job);
     }
+    this.dispatchBackground(
+      this.queue.length === 0 && this.capacityWaiters.length === 0,
+    );
   }
 
-  private dispatchToSlot(slot: WorkerSlot, job: PendingJob): void {
+  /** Import-check jobs on idle workers (`takeBackgroundJob`). */
+  private dispatchBackground(open: boolean): void {
+    for (;;) {
+      const slot = idleSlot(this.slots);
+      const job = slot && takeBackgroundJob(this, open);
+      if (slot === undefined || job === undefined) return;
+      this.startBackground(slot, job);
+    }
+  }
+
+  private startBackground(slot: WorkerSlot, job: BackgroundJob): void {
+    if (job.fresh) {
+      // Respawned by the exit handler, warmed up, then runs `job`.
+      slot.reservedFor = job;
+      slot.restarting = true;
+      void slot.worker.terminate();
+    } else if (!slot.started) {
+      // A respawned worker that has not yet started: warm it up first.
+      this.warmUpFor(slot, job);
+    } else {
+      this.dispatchToSlot(slot, job, job.killMs, job.lane);
+    }
+  }
+
+  /** Starts `slot`'s worker with an empty job, then runs `job` on it. */
+  private warmUpFor(slot: WorkerSlot, job: BackgroundJob): void {
+    slot.reservedFor = job;
+    const warmUp = packPhaseAJob(this.allocateJobId(), []);
+    this.dispatchToSlot(slot, {
+      request: warmUp,
+      transferList: [warmUp.arena],
+      resolve: () => undefined,
+      reject: () => undefined,
+    });
+  }
+
+  private dispatchToSlot(
+    slot: WorkerSlot,
+    job: PendingJob,
+    timeoutMs = this.timeoutMs,
+    lane: WorkerSlot["lane"] = null,
+  ): void {
     slot.inFlight = job;
+    slot.lane = lane;
     slot.inFlightStartedAt = Date.now();
     slot.timeout = setTimeout(() => {
       void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
       this.failSlot(
         slot,
-        new Error(
-          `validation job ${job.request.jobId} timed out after ${this.timeoutMs}ms`,
-        ),
+        new ValidationJobTimeoutError(job.request.jobId, timeoutMs),
       );
       void slot.worker.terminate();
-    }, this.timeoutMs);
+    }, timeoutMs);
     slot.worker.postMessage(job.request, [...job.transferList]);
   }
 
@@ -332,10 +431,11 @@ export class FixedValidationWorkerPool {
       return;
     }
     if (response.kind === "job_failed") {
-      this.failSlot(slot, new Error(response.error));
+      this.failSlot(slot, jobFailedError(slot.index, response));
       void slot.worker.terminate();
       return;
     }
+    slot.started = true;
     this.finishSlot(slot);
     job.resolve(response);
   }
@@ -344,8 +444,15 @@ export class FixedValidationWorkerPool {
     if (slot.timeout !== null) clearTimeout(slot.timeout);
     slot.timeout = null;
     slot.inFlight = null;
+    slot.lane = null;
     slot.inFlightStartedAt = 0;
     slot.restartAttempt = 0;
+    const reserved = slot.reservedFor;
+    if (reserved !== null) {
+      slot.reservedFor = null;
+      this.dispatchToSlot(slot, reserved, reserved.killMs, reserved.lane);
+      return;
+    }
     this.dispatch();
   }
 
@@ -354,28 +461,39 @@ export class FixedValidationWorkerPool {
     slot.restarting = true;
     if (slot.timeout !== null) clearTimeout(slot.timeout);
     slot.timeout = null;
-    slot.inFlight?.reject(
-      new ValidationWorkerError({
-        message: `validation worker ${slot.index} failed`,
-        cause,
-      }),
-    );
+    const error = new ValidationWorkerError({
+      message: `validation worker ${slot.index} failed`,
+      cause,
+    });
+    slot.inFlight?.reject(error);
+    slot.reservedFor?.reject(error);
+    slot.heldLane = slot.lane ?? slot.reservedFor?.lane ?? null;
     slot.inFlight = null;
+    slot.reservedFor = null;
+    slot.lane = null;
     slot.inFlightStartedAt = 0;
   }
 
   private scheduleRespawn(slot: WorkerSlot): void {
     if (this.closed) return;
-    const delay = Math.min(250 * 2 ** slot.restartAttempt, 5_000);
-    slot.restartAttempt += 1;
+    // A slot replaced for a fresh import check is not a failure.
+    const reserved = slot.reservedFor;
+    const delay =
+      reserved !== null ? 0 : Math.min(250 * 2 ** slot.restartAttempt, 5_000);
+    if (reserved === null) slot.restartAttempt += 1;
     const timer = setTimeout(() => {
       this.restartTimers.delete(timer);
       if (this.closed) return;
       const replacement = this.spawnSlot(slot.index);
       replacement.restartAttempt = slot.restartAttempt;
       this.slots[slot.index] = replacement;
-      void Metric.increment(restartCounter).pipe(Effect.runPromise);
-      this.dispatch();
+      if (reserved === null) {
+        void Metric.increment(restartCounter).pipe(Effect.runPromise);
+        this.dispatch();
+        return;
+      }
+      slot.reservedFor = null;
+      this.warmUpFor(replacement, reserved);
     }, delay);
     this.restartTimers.add(timer);
   }

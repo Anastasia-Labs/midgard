@@ -1,6 +1,3 @@
-import {} from "node:path";
-
-import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
@@ -14,7 +11,6 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-  ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
 import { withExactRequestReuse } from "@al-ft/midgard-test-support/evaluator-reuse";
 import {
@@ -33,7 +29,6 @@ import {
 import { expect } from "vitest";
 
 import {
-  encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   parseOutRef,
   phasMembershipRewardAddress,
@@ -57,7 +52,10 @@ import {
   readBlueprint,
   realBlueprintPath,
 } from "./blueprints.js";
-import { buildCatalogueDeploymentInfo, categoryIdSchema } from "./catalogue.js";
+import {
+  buildCatalogueDeploymentInfo,
+  encodeCatalogueMembershipRedeemer,
+} from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import {
   alignEmulatorToWholeSecond,
@@ -69,6 +67,7 @@ import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
   createReferenceScriptPublisher,
   type ReferenceScriptPublisher,
+  referenceScriptPublisherAccount,
 } from "./reference-script-publisher.js";
 import {
   type MinAdaYieldReferenceScripts,
@@ -78,24 +77,6 @@ import {
   publishMinAdaYieldReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./reference-scripts.js";
-
-const encodeCatalogueMembershipRedeemer = ({
-  root,
-  categoryId: id,
-  categoryScriptHash,
-  membershipProofCbor,
-}: {
-  readonly root: string;
-  readonly categoryId: string;
-  readonly categoryScriptHash: string;
-  readonly membershipProofCbor: string;
-}): string =>
-  encodePhasMembershipProofRedeemer({
-    root,
-    keyCbor: Data.to(id, asLucidSchema(categoryIdSchema)),
-    valueCbor: Data.to(categoryScriptHash, asLucidSchema(ScriptHashSchema)),
-    membershipProofCbor,
-  });
 
 /**
  * Init transaction for a fabricated family (Q39/Q40): mints the computation
@@ -344,11 +325,11 @@ export type FaultProofEmulatorHarness = {
 /**
  * The journey preamble every fault-proof emulator suite opens with, in the
  * exact order the suites performed it: read both blueprints, stand up the
- * funder/prover party, register the PHAS membership reward account (then any
- * family-specific reward accounts the caller registers, in the caller's own
- * order), reserve a funder UTxO as the parameterizing nonce, build the
- * minimal contract set for the family under test, then derive the catalogue
- * deployment info.
+ * funder/prover party and a separate reference-script publisher, register the
+ * PHAS membership reward account (then any family-specific reward accounts
+ * the caller registers, in the caller's own order), reserve a funder UTxO as
+ * the parameterizing nonce, build the minimal contract set for the family
+ * under test, then derive the catalogue deployment info.
  *
  * Shared witness scripts are published here exactly once per scenario harness
  * so every downstream submitter sees the same immutable reference UTxOs.
@@ -359,6 +340,7 @@ export const makeFaultProofEmulatorHarness = async ({
   emulatorTimeMs,
   registerAdditionalRewardAccounts,
   lucidOptions,
+  referenceScriptAuthTimelockMs: authMs,
 }: {
   readonly contractOptions?: Parameters<
     typeof buildMinimalFaultProofContracts
@@ -366,9 +348,12 @@ export const makeFaultProofEmulatorHarness = async ({
   readonly accounts?: {
     readonly funder: EmulatorAccount;
     readonly prover: EmulatorAccount;
+    readonly publisher: EmulatorAccount;
   };
   readonly emulatorTimeMs?: number;
   readonly lucidOptions?: Parameters<typeof Lucid>[2];
+  /** The reference-script auth policy's window; the SDK's by default. */
+  readonly referenceScriptAuthTimelockMs?: number;
   readonly registerAdditionalRewardAccounts?: (
     funderLucid: Awaited<ReturnType<typeof Lucid>>,
     realBlueprint: Blueprint,
@@ -380,7 +365,9 @@ export const makeFaultProofEmulatorHarness = async ({
     accounts?.funder ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover =
     accounts?.prover ?? fundedProverEmulatorAccount(20_000_000_000n);
-  const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
+  const publisher = referenceScriptPublisherAccount(accounts?.publisher);
+  const genesis = [funder, prover, publisher];
+  const emulator = new Emulator(genesis, EMULATOR_PROTOCOL_PARAMETERS);
   if (emulatorTimeMs !== undefined) {
     emulator.time = emulatorTimeMs;
   }
@@ -411,7 +398,12 @@ export const makeFaultProofEmulatorHarness = async ({
     await registerAdditionalRewardAccounts(funderLucid, realBlueprint);
   }
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(funderLucid, emulator.now());
+    await createReferenceScriptPublisher(
+      funderLucid,
+      publisher,
+      emulator,
+      authMs,
+    );
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -434,7 +426,7 @@ export const makeFaultProofEmulatorHarness = async ({
     await publishOperatorLifecycleReferenceScripts({
       // Plain references share the prover's witness-publication funding.
       // Authenticated roles use contracts.referenceScriptPublisher, funded
-      // by the deployment wallet while preserving its reserved nonce.
+      // by the separate reference-script wallet.
       lucid: proverLucid,
       contracts: baseContracts,
     });

@@ -89,9 +89,18 @@ export const smallCanonicalShape = (fee = 1_003n) =>
     fee,
   );
 
+/** A PlutusV3 item whose script, the flat program 1.1.0 `(con unit ())`, decodes. */
 export const plutusShape = (fee = 1_004n) =>
   shapeOf(
-    "[3, h'01020304']: non-native language (Inline)",
+    "[3, h'450101004981']: decodable PlutusV3 program (Inline)",
+    [Buffer.from("820346450101004981", "hex")],
+    fee,
+  );
+
+/** A PlutusV3 item whose bytes Cardano refuses to decode (class 1). */
+export const undecodablePlutusShape = (fee = 1_009n) =>
+  shapeOf(
+    "[3, h'01020304']: undecodable PlutusV3 bytes (Inline)",
     [decodingPlutusItem()],
     fee,
   );
@@ -160,20 +169,26 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>;
 // Replay detection over the committed block
 // ---------------------------------------------------------------------------
 
-export const expectReplayDetection = (
+const replayOf = (
   block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
   transactions: readonly Shape[],
-  evidence: WitnessScriptDecodingEvidence,
-  violationIds: readonly string[],
-) => {
-  const replay = {
+) =>
+  ({
     headerHash: block.headerHash,
     transactions: transactions.map((shape) => ({
       nodeTxId: shape.txId,
       txCbor: encodeMidgardNativeTxCanonical(shape.nativeTx).toString("hex"),
     })),
     reconstruction: block.reconstruction,
-  } as never;
+  }) as never;
+
+export const expectReplayDetection = (
+  block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
+  transactions: readonly Shape[],
+  evidence: WitnessScriptDecodingEvidence,
+  violationIds: readonly string[],
+) => {
+  const replay = replayOf(block, transactions);
   expect(
     detectWitnessScriptDecodingCompleteReplay(replay).map(
       (finding) => finding.violationId,
@@ -183,6 +198,26 @@ export const expectReplayDetection = (
     deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(replay)
       .itemCommitmentHex,
   ).toBe(evidence.itemCommitmentHex);
+};
+
+/**
+ * The detector still finds `violationIds`, and the workflow refuses to derive
+ * evidence for them: the Plutus-item hold until the program-bytes migration.
+ */
+export const expectReplayHeld = (
+  block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
+  transactions: readonly Shape[],
+  violationIds: readonly string[],
+) => {
+  const replay = replayOf(block, transactions);
+  expect(
+    detectWitnessScriptDecodingCompleteReplay(replay).map(
+      (finding) => finding.violationId,
+    ),
+  ).toEqual([...violationIds]);
+  expect(() =>
+    deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(replay),
+  ).toThrow(/yielded no exact finding/u);
 };
 
 /**

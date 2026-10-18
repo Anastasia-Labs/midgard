@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -10,13 +11,15 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
 import {
   classifyWithdrawal,
   classifyWithdrawalsInOrder,
 } from "../src/workers/utils/mpf/withdrawal-classification.js";
+
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",

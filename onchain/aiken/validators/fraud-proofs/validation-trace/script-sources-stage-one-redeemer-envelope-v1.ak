@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/script_sources_item_normalization as normalized
 use midgard/script_sources_redeemer_normalization_v1 as normalization
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
@@ -59,17 +59,16 @@ validator main(
         expected_next_item_control_hash,
         action_family,
       }) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let transition_data: Data = transition
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          ProverOnly,
           fn(
             input_script_hash,
             _computation_thread_token_asset_name,

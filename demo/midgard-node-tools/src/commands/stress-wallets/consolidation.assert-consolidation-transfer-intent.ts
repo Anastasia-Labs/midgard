@@ -1,3 +1,4 @@
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import {
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
@@ -8,7 +9,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec/native";
 import { decodeMidgardLedgerTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
-import { CML, type Network } from "@lucid-evolution/lucid";
+import { type Network } from "@lucid-evolution/lucid";
 
 import { STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION } from "./constants.js";
 import { type StressWalletOperationScope } from "./scope.js";
@@ -189,20 +190,10 @@ export const assertConsolidationTransferIntent = ({
     );
   }
   const witness = tx.vkeyWitnesses[0]!;
-  const publicKey = CML.PublicKey.from_bytes(witness.vkey);
-  try {
-    const signature = CML.Ed25519Signature.from_raw_bytes(witness.signature);
-    try {
-      if (!publicKey.verify(tx.txId, signature)) {
-        throw new Error(
-          `Consolidation transaction intent for ${entry.walletId} has an invalid source signature.`,
-        );
-      }
-    } finally {
-      signature.free();
-    }
-  } finally {
-    publicKey.free();
+  if (!verifyLedgerEd25519Signature(witness.vkey, tx.txId, witness.signature)) {
+    throw new Error(
+      `Consolidation transaction intent for ${entry.walletId} has an invalid source signature.`,
+    );
   }
   if (
     tx.referenceInputs.length !== 0 ||

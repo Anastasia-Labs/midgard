@@ -52,6 +52,8 @@ export const midgardCekConstantTypeKey = (
   switch (type.kind) {
     case "list":
       return `list(${midgardCekConstantTypeKey(type.element)})`;
+    case "array":
+      return `array(${midgardCekConstantTypeKey(type.element)})`;
     case "pair":
       return `pair(${midgardCekConstantTypeKey(type.first)},${midgardCekConstantTypeKey(type.second)})`;
     case "integer":
@@ -63,6 +65,7 @@ export const midgardCekConstantTypeKey = (
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "value":
       return type.kind;
   }
 };
@@ -153,6 +156,10 @@ export class MidgardCekSemanticSizing {
         };
       case "blsMillerLoopResult":
         return { memory: MIDGARD_CEK_BLS_ML_RESULT_MEMORY, exact: false };
+      // The PV 11 kinds are not sized from installed nodes.
+      case "array":
+      case "value":
+        return REFUSED;
       case "string":
       case "list":
       case "pair":

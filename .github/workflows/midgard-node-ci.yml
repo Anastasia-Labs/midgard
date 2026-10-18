@@ -116,6 +116,7 @@ env:
   L1_BLOCKFROST_KEY: test-key
   L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
   NETWORK: Preprod
   RUN_GENESIS_ON_STARTUP: "false"
   POSTGRES_HOST: 127.0.0.1
@@ -376,6 +377,12 @@ jobs:
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
+      # State 0 of a validation trace: the TypeScript twin's derivation, which
+      # the generated Aiken module asserts against
+      # validation_claim_v1.derive_initial_state.
+      - name: Check validation initial-state golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-initial-state-v1
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
@@ -470,6 +477,16 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The Plutus Data CBOR decoding channel: both entries of the on-chain
+      # decoder are held to the TypeScript decoder's outcome on every row.
+      - name: Check Plutus Data CBOR decoding golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:plutus-data-cbor-decoding-v1
+      # The script-decode step channel: the on-chain step machine replays every
+      # walk of the TypeScript port and must write the same run datums.
+      - name: Check script-decode step golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:script-decode-step-v1
       # The ledger output proof replay channel: outputs holding an empty field
       # or a large chunked datum scalar, the witness list the TypeScript trace
       # builder emits for each and the hash of its terminal control. The

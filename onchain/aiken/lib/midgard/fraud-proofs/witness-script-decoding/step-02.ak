@@ -6,6 +6,9 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   opening: FieldOpeningV1,
+  /// Reference input holding the script's decode record when the item is a
+  /// Plutus script, or -1.
+  record_reference_input_index: Int,
 }
 
 pub type Datum =

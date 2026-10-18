@@ -202,9 +202,9 @@ describe("midgard contracts registry", () => {
       expect(
         txOrderContracts.fieldPreimageCertificate.spendingScriptHash,
       ).toHaveLength(56);
-      expect(
-        txOrderContracts.cekProgramMaterial.spendingScriptHash,
-      ).toHaveLength(56);
+      // One script holds the script-decode mint and spend handlers.
+      const { policyId, spendingScriptHash } = resolved.scriptDecode;
+      expect(policyId).toEqual(spendingScriptHash);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

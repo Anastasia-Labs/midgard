@@ -20,6 +20,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import {
+  PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+  plutusItemScriptDecode,
+  plutusRecordResultClass,
+  type PlutusScriptRefusedResultClass,
+  plutusUndecodableAccusedClass,
+} from "../script-decode/item-record.js";
+
 export const WITNESS_SCRIPT_DECODING_CATEGORY =
   "witnessScriptDecoding" as const;
 export const WITNESS_SCRIPT_DECODING_PROPOSED_ID = "00000022" as const;
@@ -34,7 +42,8 @@ export const WitnessScriptDecodingResultClasses = Object.freeze({
   DepthLimit: 3,
 } as const);
 export type WitnessScriptDecodingResultClass =
-  (typeof WitnessScriptDecodingResultClasses)[keyof typeof WitnessScriptDecodingResultClasses];
+  | (typeof WitnessScriptDecodingResultClasses)[keyof typeof WitnessScriptDecodingResultClasses]
+  | PlutusScriptRefusedResultClass;
 
 const fail = (message: string): never => {
   throw new Error(`${WITNESS_SCRIPT_DECODING_CATEGORY}: ${message}`);
@@ -59,6 +68,19 @@ const accusedClassV1 = (
   scriptIndex: number,
 ): WitnessScriptDecodingResultClass => {
   if (typeof reason === "string") return fail("typed reason is outside family");
+  if ("PlutusScriptUndecodable" in reason) {
+    try {
+      return (
+        plutusUndecodableAccusedClass(
+          reason,
+          PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+          scriptIndex,
+        ) ?? fail("typed reason is outside witness-script-decoding")
+      );
+    } catch {
+      return fail("typed reason script coordinate differs");
+    }
+  }
   const entries: readonly [string, WitnessScriptDecodingResultClass][] = [
     [
       "WitnessScriptHeaderMalformed",
@@ -188,11 +210,19 @@ export const prepareWitnessScriptDecodingEvidence = ({
   });
   const decoded = resultClassOfItem(item);
   const header = parseMidgardVersionedScriptHeader(item, item.length);
+  // A Plutus item's class is its decode record's, which step 02 reads.
+  const plutus = plutusItemScriptDecode(item);
+  const plutusClass =
+    plutus === undefined
+      ? undefined
+      : (plutusRecordResultClass(plutus.record) ??
+        WitnessScriptDecodingResultClasses.NoFault);
+  const resultClass = plutusClass ?? decoded.resultClass;
   const initialResultClass =
     header === null
       ? WitnessScriptDecodingResultClasses.HeaderMalformed
-      : header.languageTag !== 0
-        ? WitnessScriptDecodingResultClasses.NoFault
+      : plutusClass !== undefined
+        ? plutusClass
         : header.payloadLength === 0
           ? // Twin of `authenticate_item_v1`: a decodable tag-0 wrapper over an
             // empty payload is the structural class, fixed at step 02 because
@@ -213,7 +243,7 @@ export const prepareWitnessScriptDecodingEvidence = ({
     itemCommitmentHex: bounded.commitment.toString("hex"),
     itemLength: item.length,
     initialResultClass,
-    resultClass: decoded.resultClass,
+    resultClass,
     initialControlCbor: decoded.initialControlCbor,
     carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
     chunkProofCount,

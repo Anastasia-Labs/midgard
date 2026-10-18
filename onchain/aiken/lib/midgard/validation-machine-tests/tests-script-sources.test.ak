@@ -49,7 +49,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   script_sources_pending_redeemer_item_fixture,
   script_sources_receive_scan_step_fixture, script_sources_step_fixture,
   script_sources_step_fixture_with_resolved_items,
-  singleton_field_item_chunk_proof, submitted_source, v1_program_envelope,
+  singleton_field_item_chunk_proof, submitted_source, v1_plutus_script,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   stage_zero_script_sources_control, stage_zero_script_sources_state,
@@ -71,7 +71,7 @@ use midgard/validation_trace_v1
 
 test script_sources_commits_inline_reference_script_candidates() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -468,7 +468,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let tx = MidgardTransaction {
     ..base,
@@ -605,7 +605,7 @@ test script_sources_replay_appends_reference_scripts() {
   let key = encode_midgard_tx_input(input)
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let output = MidgardTxOutput {
     address: MidgardAddress {
@@ -1071,8 +1071,8 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   let rejection_code = rejection_reason_v1.ProtectedOutputSignerMissing {
     output_index: 0,
   }
-  // An exact rejection also clears the ledger delta to the empty frontier
-  // commitment; `exact_rejection_post` is the canonical successor shape.
+  // An exact rejection ends the machine with the rejected verdict and its
+  // reason's code; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
@@ -1681,7 +1681,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let tx = MidgardTransaction {
     ..base,
@@ -1916,7 +1916,7 @@ test script_sources_stage_eight_finishes_empty_discovery_exactly() {
 test script_sources_discovers_an_exact_non_native_execution() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let redeemer = MidgardRedeemerWitness {
     purpose: SpendRedeemer,
@@ -2158,7 +2158,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
 test script_sources_stage_ten_redeemer_family_guards() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let redeemer = MidgardRedeemerWitness {
     purpose: SpendRedeemer,
@@ -2440,7 +2440,7 @@ test script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly() {
 test script_sources_stage_nine_accepts_an_exact_mismatch() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
@@ -2511,10 +2511,82 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
   }
 }
 
+/// The stage-9 mismatch verifier on the one-source frontier, for the step that
+/// stays at stage 9 and moves the lookup cursor past source 0 while the
+/// lookup wants `wanted_hash`.
+fn stage_nine_skip_of_source_zero_verifies(wanted_hash: ByteArray) -> Bool {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_plutus_script(),
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, wanted_hash, #"0102")],
+  )
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: wanted_hash,
+    current_subject: #"0102",
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    discovery,
+    24,
+  )
+  let Pair(post, _) = script_discovery_step_fixture(
+    empty_v1_transaction(),
+    9,
+    source_frontier,
+    validation_merkle_v1.build_frontier([]),
+    purpose_frontier,
+    vm_machine_types.ScriptDiscoveryControlV1 { ..discovery, source_cursor: 1 },
+    25,
+  )
+  vm_script_sources_late_stages.verify_script_sources_stage_nine_mismatch_semantics_v1(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    0,
+    0,
+    #"00",
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    script_item_commitment,
+    [],
+  )
+}
+
+test script_sources_stage_nine_refuses_skipping_a_matching_source() {
+  let script_hash = script_proof_v1.versioned_script_hash(
+    MidgardVersionedScript {
+      language: PlutusV3Script,
+      script_bytes: v1_plutus_script(),
+    },
+  )
+  and {
+    // The same skip, while the lookup wants another script, verifies.
+    stage_nine_skip_of_source_zero_verifies(h_28_a),
+    !stage_nine_skip_of_source_zero_verifies(script_hash),
+  }
+}
+
 test script_sources_stage_nine_accepts_an_exact_effectful_match() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
@@ -2696,7 +2768,7 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
 test script_sources_stage_eleven_audits_inline_sources_exactly() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
@@ -2788,7 +2860,7 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
 test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
@@ -2910,7 +2982,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
   }
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {

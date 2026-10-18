@@ -207,8 +207,6 @@ pub const max_total_event_count_v1: Int = 40_000
 
 pub const max_transition_step_count_v1: Int = 40_000
 
-pub const max_validation_trace_count_v1: Int = 20_000
-
 fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool {
   if count == 0 {
     root == env.empty_merkle_tree_root
@@ -255,11 +253,8 @@ pub fn header_transition_commitments_v1_are_valid(
     commitments.total_event_count <= max_total_event_count_v1,
     commitments.transition_step_count >= 0,
     commitments.transition_step_count <= max_transition_step_count_v1,
-    commitments.validation_trace_count >= 0,
-    commitments.validation_trace_count <= max_validation_trace_count_v1,
     commitments.total_event_count == commitments.withdrawal_count + commitments.forced_transaction_count + commitments.l2_transaction_count + commitments.deposit_count,
     commitments.transition_step_count == commitments.total_event_count,
-    commitments.validation_trace_count == commitments.forced_transaction_count + commitments.l2_transaction_count,
     root_matches_count_v1(
       commitments.forced_transactions_root,
       commitments.forced_transaction_count,
@@ -272,10 +267,10 @@ pub fn header_transition_commitments_v1_are_valid(
       commitments.event_to_step_root,
       commitments.total_event_count,
     ),
-    root_matches_count_v1(
-      commitments.validation_traces_root,
-      commitments.validation_trace_count,
-    ),
+    // A block commits each transaction's leaf verdict and no validation-trace
+    // descriptor, so the pair is pinned to the empty tree.
+    commitments.validation_traces_root == env.empty_merkle_tree_root,
+    commitments.validation_trace_count == 0,
   }
 }
 
@@ -392,17 +387,6 @@ pub type ForcedTxProofSourceV1 {
   field_preimage_lengths_cbor: ByteArray,
 }
 
-/// Permissionless, immutable L1 publication of one content-addressed CEK
-/// program node. The root authenticates `(kind, preimage)` under the
-/// canonical V1 domain; the enclosing validator deliberately has no spend path so
-/// forced-transaction material remains available for later classification and
-/// challenge.
-pub type CekProgramMaterialDatumV1 {
-  kind: Int,
-  root: ByteArray,
-  preimage: ByteArray,
-}
-
 /// The L1 forced-inclusion order's payload.
 ///
 /// **No `terminal_receipt_reference`.** It used to name the last link of the
@@ -475,8 +459,8 @@ pub type MidgardTxCompactWithoutValidity {
 /// The compact leaf's two-valued validity scalar (wire code 0 = valid,
 /// 1 = invalid). The five rejection arms retired in the #640 format wave
 /// (catalogue C-3, design note 3): the forced leaf's `OperatorVerdictV1`
-/// carries the full `RejectionReasonV1`, so a coarse arm choice — which
-/// `forced_verdict_matches` never adjudicated — has no surface left.
+/// carries the full `RejectionReasonV1`, so a coarse arm choice has no surface
+/// left.
 pub type MidgardTxValidity {
   TxIsValid
   TxIsInvalid
@@ -495,7 +479,8 @@ pub type MidgardTxValidity {
 /// validator reaches by two different routes. `verify_source_authentication`,
 /// under the mandatory `committed_claim_source_is_authenticated`, asserted that
 /// the carried value equalled the `native_tx_proof_commitment_v1` it re-derived
-/// from the `source` sitting beside it. `source_binding_is_exact`, under
+/// from the `source` sitting beside it. `source_binding_is_exact` (since folded
+/// into `derive_initial_state`), under
 /// `committed_claim_endpoints_and_source_are_valid` — which
 /// `validators/fraud-proofs/validation-trace/source-v1.ak` uses as a *branch
 /// selector* rather than a conjunct — then bound the carried value to the machine

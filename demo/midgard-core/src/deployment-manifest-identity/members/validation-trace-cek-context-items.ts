@@ -6,29 +6,29 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
     validationTraceDisputeCekContextItemEntry: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item entry",
-      manifestPosition: 458,
-      publicationPosition: 491,
-      referenceRolePosition: 332,
+      manifestPosition: 465,
+      publicationPosition: 498,
+      referenceRolePosition: 338,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_envelope.main.spend",
       familyPaths: [
         ["cekContextItemStages", "entry"],
-        ["steps", "157"],
+        ["steps", "149"],
       ],
     },
     validationTraceDisputeCekContextItemSettlement: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item settlement",
-      manifestPosition: 459,
-      publicationPosition: 492,
-      referenceRolePosition: 333,
+      manifestPosition: 466,
+      publicationPosition: 499,
+      referenceRolePosition: 339,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_settlement.main.spend",
       familyPaths: [
         ["cekContextItemStages", "settlement"],
-        ["steps", "158"],
+        ["steps", "150"],
       ],
     },
   },

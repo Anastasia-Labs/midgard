@@ -7,6 +7,7 @@
 //       [--plan <plan.json> --reports <directory>]
 //   node scripts/script-budgets.mjs tighten [same options]
 //   node scripts/script-budgets.mjs raise <budget name> --reason <text>
+//   node scripts/script-budgets.mjs refit <budget name>
 //
 // Readings come from focused `aiken check` runs (run-focused-check.mjs), one
 // per module and Aiken environment. With --plan and --reports, budgets in the
@@ -15,7 +16,22 @@
 //
 // `tighten` lowers every passing ceiling that is more than 1% above its
 // reading to the reading plus 1%. `raise` lifts one failing ceiling to its
-// reading plus 1% and records why. Neither touches a growth band.
+// reading plus 1% and records why. `refit` settles one now-fits budget: it
+// drops the aboveBasis record and lowers the ceiling to the reading plus 1%,
+// capped at the basis. None of them touches a growth band.
+//
+// The plain form measures every budget with focused runs. CI's form reads
+// the default-environment budgets from the shard census instead
+// (.github/workflows/aiken-ci.yml, "Hold every script budget to its
+// ceiling"), and runs the other environments the same way as the plain form.
+// A census shard runs whole modules, a focused run only the budgeted tests,
+// and a unit test reads the same units in either, so both forms judge the
+// same budgets with the same verdicts. To judge a CI run's own readings,
+// download its `aiken-shard-plan` artifact and every
+// `aiken-shard-report-<N>` artifact (`gh run download <run id> -n <name>`),
+// put the shard-<N>.json files in one directory, and pass the plan and that
+// directory as --plan and --reports. That works only on the commit the run
+// measured: the plan pins the source hash.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -221,7 +237,7 @@ export const judgeBudgets = ({ table, basis, readings, names }) => {
         measured: units,
         ceiling: entry.ceiling,
         detail:
-          "recorded as above the basis, but the reading now fits; delete aboveBasis and revisit what it ruled out",
+          "recorded as above the basis, but the reading now fits; run `refit` on it and revisit what it ruled out",
       });
     } else {
       verdicts.push({
@@ -318,6 +334,31 @@ export const raiseBudget = ({ table, basis, name, verdict, reason }) => {
   };
 };
 
+/**
+ * Settles one now-fits budget: drops its aboveBasis record and lowers its
+ * ceiling to the reading plus 1%, capped at the basis.
+ */
+export const refitBudget = ({ table, basis, name, verdict }) => {
+  const entry = table.budgets[name];
+  if (entry === undefined) throw new Error(`no budget "${name}"`);
+  if (verdict?.status !== "now-fits")
+    throw new Error(
+      `"${name}" is ${verdict?.status ?? "unmeasured"}, not now-fits; only a budget recorded above the basis whose reading fits is refit`,
+    );
+  const { aboveBasis: _settled, ...rest } = entry;
+  const ceiling = {};
+  for (const axis of AXES)
+    ceiling[axis] = Math.min(
+      entry.ceiling[axis],
+      withHeadroom(verdict.measured[axis]),
+      basis[axis],
+    );
+  return {
+    ...table,
+    budgets: { ...table.budgets, [name]: { ...rest, ceiling } },
+  };
+};
+
 // ---------------------------------------------------------------- readings
 
 const readFocused = (env, module, titles, readings, errors) => {
@@ -371,7 +412,8 @@ const collectReadings = (budgets, census) => {
 const usage = `usage:
   node scripts/script-budgets.mjs check [--module <aiken-module>]... [--plan <plan.json> --reports <dir>]
   node scripts/script-budgets.mjs tighten [--module <aiken-module>]... [--plan <plan.json> --reports <dir>]
-  node scripts/script-budgets.mjs raise <budget name> --reason <text>`;
+  node scripts/script-budgets.mjs raise <budget name> --reason <text>
+  node scripts/script-budgets.mjs refit <budget name>`;
 
 const parseOptions = (args) => {
   const options = { modules: [], plan: undefined, reports: undefined };
@@ -431,6 +473,7 @@ const run = (args) => {
   let options;
   let raiseName;
   let reason;
+  let refitName;
   if (command === "check" || command === "tighten") {
     options = parseOptions(rest);
     names = Object.keys(table.budgets).filter(
@@ -456,6 +499,15 @@ const run = (args) => {
       return 2;
     }
     names = [raiseName];
+    options = { modules: [] };
+  } else if (command === "refit") {
+    [refitName] = rest;
+    if (rest.length !== 1) throw new Error(usage);
+    if (!Object.hasOwn(table.budgets, refitName)) {
+      process.stderr.write(`no budget "${refitName}"\n`);
+      return 2;
+    }
+    names = [refitName];
     options = { modules: [] };
   } else {
     throw new Error(usage);
@@ -494,6 +546,18 @@ const run = (args) => {
       }),
     );
     process.stdout.write(`raised ${raiseName}\n`);
+    return 0;
+  }
+  if (command === "refit") {
+    writeTable(
+      refitBudget({
+        table,
+        basis: SCRIPT_BUDGET_BASIS,
+        name: refitName,
+        verdict: verdicts.find((verdict) => verdict.name === refitName),
+      }),
+    );
+    process.stdout.write(`refit ${refitName}\n`);
     return 0;
   }
   if (command === "tighten") {

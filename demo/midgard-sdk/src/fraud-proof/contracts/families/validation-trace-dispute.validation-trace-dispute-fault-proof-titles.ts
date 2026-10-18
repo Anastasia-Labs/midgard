@@ -3,7 +3,6 @@ import "./validation-trace-dispute.validation-trace-semantic-resolver-group-size
 import { deploymentValidatorTitle as title } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
-  cekMaterialTraversal: title("validationTraceDisputeCekMaterialTraversal"),
   proofItem: title("validationTraceDisputeProofItem"),
   dispute: title("validationTraceDispute"),
   source: title("validationTraceDisputeSource"),
@@ -11,6 +10,12 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   boundary: title("validationTraceDisputeBoundary"),
   timeout: title("validationTraceDisputeTimeout"),
   award: title("validationTraceDisputeAward"),
+  awardMint: title("validationTraceDisputeAwardMint"),
+  disputeBond: title("validationTraceDisputeBond"),
+  caseSpend: title("validationTraceDisputeCase"),
+  caseMint: title("validationTraceDisputeCaseMint"),
+  caseConfig: title("validationTraceDisputeCaseConfigMint"),
+  threadExpiry: title("validationTraceDisputeThreadExpiryWithdraw"),
   canonicalDecodeItemStages: {
     source: title("validationTraceDisputeCanonicalDecodeItemSource"),
     observe: title("validationTraceDisputeCanonicalDecodeItemObserve"),
@@ -106,7 +111,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
     cek: "fraud_proofs/validation_trace/cek_v1.main.spend",
     valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
-    ledgerDelta: "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
   },
   semantics: {
     canonicalDecodeEmpty: title(
@@ -325,30 +329,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/value_and_mint_mint_finish_semantic_v1.main.spend",
     valueAndMintFinalize:
       "fraud_proofs/validation_trace/value_and_mint_finalize_semantic_v1.main.spend",
-    ledgerDeltaOperation:
-      "fraud_proofs/validation_trace/ledger_delta_operation_semantic_v1.main.spend",
-    ledgerDeltaReplay:
-      "fraud_proofs/validation_trace/ledger_delta_replay_semantic_v1.main.spend",
-    ledgerDeltaReplayFinish:
-      "fraud_proofs/validation_trace/ledger_delta_replay_finish_semantic_v1.main.spend",
-    ledgerDeltaOutput:
-      "fraud_proofs/validation_trace/ledger_delta_output_semantic_v1.main.spend",
-    ledgerDeltaOutputFinish:
-      "fraud_proofs/validation_trace/ledger_delta_output_finish_semantic_v1.main.spend",
-    ledgerDeltaProofFrame:
-      "fraud_proofs/validation_trace/ledger_delta_proof_frame_semantic_v1.main.spend",
-    ledgerDeltaFinalize:
-      "fraud_proofs/validation_trace/ledger_delta_finalize_semantic_v1.main.spend",
-    ledgerDeltaTerminal:
-      "fraud_proofs/validation_trace/ledger_delta_terminal_semantic_v1.main.spend",
   },
   yields: {
-    cekMaterialProgramTask: title(
-      "validationTraceDisputeCekMaterialProgramTaskWithdraw",
-    ),
-    cekMaterialDataTask: title(
-      "validationTraceDisputeCekMaterialDataTaskWithdraw",
-    ),
     scriptSourcesStageTwoAdvance: title(
       "validationTraceDisputeScriptSourcesStageTwoAdvanceWithdraw",
     ),
@@ -483,12 +465,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     ),
     cekSelectionSuccessor: title(
       "validationTraceDisputeCekSelectionSuccessorWithdraw",
-    ),
-    cekSelectionMaterialProgram: title(
-      "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
-    ),
-    cekSelectionMaterialData: title(
-      "validationTraceDisputeCekSelectionMaterialDataWithdraw",
     ),
     valueAndMintAssetFold: title(
       "validationTraceDisputeValueAndMintAssetFoldWithdraw",

@@ -2,17 +2,13 @@ use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/state_queue
 use midgard/validation_claim_v1
-use midgard/validation_dispute_v1
 use midgard/validation_game_v1
-use midgard/validation_trace_v1
 
 pub type Datum =
   ct.StepDatum<Data>
@@ -24,7 +20,10 @@ pub type OpenActionV1 {
     hub_ref_input_index: Int,
     state_queue_node_ref_input_index: Int,
     claim: validation_claim_v1.ValidationClaimWitnessV1,
-    challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+    /// The challenger's trace root over states `0..step_count`.
+    challenger_root: ByteArray,
+    /// S: the challenger's step count.
+    step_count: Int,
   }
 }
 
@@ -61,56 +60,46 @@ validator main(
         hub_ref_input_index,
         state_queue_node_ref_input_index,
         claim,
-        challenger_descriptor,
+        challenger_root,
+        step_count,
       }) -> {
-        let
-            Transaction {
-              inputs,
-              outputs,
-              reference_inputs,
-              extra_signatories,
-              validity_range,
-              ..
-            }
-          = tx
-        let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
-          validity_range,
-        )
+        let Transaction { reference_inputs, .. } = tx
         let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
           reference_inputs,
           hub_oracle,
           hub_ref_input_index,
         )
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          ProverOnly,
           fn(
             _input_script_hash,
             computation_thread_token_asset_name,
-            fraud_prover,
+            _fraud_prover,
             input_state,
             output_script_hash,
             output_state,
           ) {
             expect None = input_state
-            expect fraud_prover |> utils.has_signed(extra_signatories)
-            state_queue.get_block_datum_v1(
+            state_queue.get_state_queue_node(
               reference_inputs,
               state_queue_policy,
               state_queue_node_ref_input_index,
-              fn(header, header_hash) {
+              fn(node, header_hash) {
+                let header = state_queue.decode_header_view(node.header)
                 let expected_state: Data = validation_game_v1.PendingValidationClaimV1 {
                   challenged_header_hash: header_hash,
                   challenged_header: header,
                   claim,
-                  challenger_descriptor,
-                  open_time_upper: current_time_upper,
+                  challenger_root,
+                  step_count,
+                  block_end: node.block_time,
                 }
                 and {
                   output_script_hash == source_validator_script_hash,
@@ -121,11 +110,6 @@ validator main(
                   validation_claim_v1.committed_claim_structure_is_valid(
                     header,
                     claim,
-                  ),
-                  validation_dispute_v1.can_open_before_maturity(
-                    current_time_upper,
-                    header.end_time,
-                    ledger_state.block_maturity_duration_v1,
                   ),
                   output_state == expected_state,
                 }

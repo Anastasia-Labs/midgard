@@ -49,7 +49,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   phase_a_native_scan_witness, phase_a_native_step_fixture,
   script_discovery_step_fixture, script_sources_output_step_fixture,
   script_sources_output_step_fixture_with_resolved_items,
-  script_sources_receive_scan_step_fixture, v1_program_envelope,
+  script_sources_receive_scan_step_fixture, v1_plutus_script,
 }
 use midgard/validation_machine_tests/fixtures_script_identity.{
   stage_routes_agree, stage_zero_script_sources_control,
@@ -62,7 +62,7 @@ use midgard/validation_trace_v1
 
 test stage_differential_zero_begin_routes_agree() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -177,7 +177,7 @@ test stage_differential_zero_begin_routes_agree() {
 
 test stage_differential_zero_finish_routes_agree() {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,
@@ -804,7 +804,7 @@ test stage_differential_eleven_finish_routes_agree() {
   let tx = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: v1_program_envelope(),
+    script_bytes: v1_plutus_script(),
   }
   let script_hash = script_proof_v1.versioned_script_hash(script)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
@@ -1152,7 +1152,7 @@ test phase_a_payload_binding_matches_full_binding(
       ],
     },
   }
-  let Pair(pre, _) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, _) = phase_a_native_step_fixture(tx)
   let work_witness_cbor = phase_a_native_scan_witness(
     tx,
     stage,
@@ -1262,7 +1262,7 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let next_work = phase_a_native_scan_witness(
     tx,
@@ -1340,7 +1340,6 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
 test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
   let Pair(base, work_witness_cbor) = phase_a_native_step_fixture(
     empty_v1_transaction(),
-    h_a,
   )
   let Pair(before, after) = when choice is {
     0 -> Pair(validation_trace_v1.InputSets, validation_trace_v1.InputSets)

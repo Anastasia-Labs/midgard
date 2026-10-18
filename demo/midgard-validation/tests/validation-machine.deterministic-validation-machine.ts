@@ -26,13 +26,11 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
   initialMidgardResolvedInputsAccumulator,
   MidgardRedeemerTag,
   RejectCodes,
-  validateCekRouteMaterial,
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
@@ -128,7 +126,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
-      ...Array<string>(9).fill("ledgerDelta"),
       "terminal",
     ]);
     const canonicalWitnesses = trace.witnesses.filter(
@@ -607,95 +604,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBeLessThanOrEqual(4_095);
     expect("script" in nativeExecutionWitness.source).toBe(false);
     expect("signerHashes" in nativeExecutionWitness).toBe(false);
-    const selectionStateIndex = trace.witnesses.findIndex(
-      (witness) => witness.auxiliary === nativeExecutionWitness,
-    );
-    const selectionArgument = buildValidationOneStepArgument({
-      trace,
-      stateIndex: selectionStateIndex,
-    });
-    expect(selectionArgument.cekRouteMaterial).toEqual({
-      envelopeCbor: program.envelopeCbor,
-      programMaterialSidecarCbor: trace.programMaterialSidecarCbor,
-      programEnvelopeHash: program.envelopeHash,
-    });
-    const laterCekStateIndex = trace.witnesses.findIndex(
-      (witness, index) =>
-        index > selectionStateIndex &&
-        witness.phase === "cek" &&
-        witness.auxiliary?.kind !== "nativeExecutionScan",
-    );
-    expect(
-      buildValidationOneStepArgument({
-        trace,
-        stateIndex: laterCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-    const nonCekStateIndex = trace.witnesses.findIndex(
-      (witness) => witness.phase !== "cek",
-    );
-    expect(
-      buildValidationOneStepArgument({
-        trace,
-        stateIndex: nonCekStateIndex,
-      }).cekRouteMaterial,
-    ).toBeUndefined();
-
-    const routeMaterial = selectionArgument.cekRouteMaterial!;
-    const validateRouteMaterial = (value: unknown) =>
-      validateCekRouteMaterial({
-        value,
-        firstSourceChunk: nativeExecutionWitness.firstChunkProof.chunk,
-        languageTag: nativeExecutionWitness.languageTag as 3 | 128,
-      });
-    expect(validateRouteMaterial(routeMaterial)).toEqual(routeMaterial);
-    const substituteProgram = buildNonterminatingSelfApplicationProgram();
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        envelopeCbor: substituteProgram.envelopeCbor,
-        programEnvelopeHash: substituteProgram.envelopeHash,
-      }),
-    ).toThrow(/selected first-source-chunk payload/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: Buffer.concat([
-          routeMaterial.programMaterialSidecarCbor,
-          Buffer.from([0]),
-        ]),
-      }),
-    ).toThrow(/trailing|canonical/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-      }),
-    ).toThrow(/program material is missing root/u);
-    const retainedRoots = new Set(
-      [...program.material.keys()].map((root) => root.toLowerCase()),
-    );
-    const unrelatedEntry = [...substituteProgram.material.values()].find(
-      (entry) => !retainedRoots.has(Buffer.from(entry.root).toString("hex")),
-    );
-    if (unrelatedEntry === undefined) {
-      throw new Error("expected unrelated canonical CEK material");
-    }
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-          unrelatedEntry,
-        ]),
-      }),
-    ).toThrow(/unreachable/u);
-    expect(() =>
-      validateRouteMaterial({
-        ...routeMaterial,
-        programEnvelopeHash: Buffer.alloc(32, 0xff),
-      }),
-    ).toThrow(/program-envelope hash/u);
     const challengedDescriptorWitnesses = cekWitnesses.flatMap((witness) => {
       const auxiliary = witness.auxiliary;
       return auxiliary?.kind === "cekResolvedContextItem" ||
@@ -801,9 +709,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
   });
 
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
@@ -1013,12 +918,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect([
         ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
       ]).toEqual(
-        expect.arrayContaining([
-          "cekMintContextItem",
-          "valueMintAsset",
-          "ledgerDeltaReplay",
-          "ledgerDeltaOutput",
-        ]),
+        expect.arrayContaining(["cekMintContextItem", "valueMintAsset"]),
       );
     },
     // Measured 15.0 s for the burn case on a 2-core CI runner against the
@@ -1125,7 +1025,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         "nativeExecutionScan",
         "cekOutputContextItem",
         "cekContextFinalize",
-        "ledgerDeltaOutput",
       ]),
     );
   }, 60_000);
@@ -1431,14 +1330,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueOutputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueOutputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1507,14 +1399,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueInputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueInputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1615,9 +1500,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")

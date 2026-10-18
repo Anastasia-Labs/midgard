@@ -1,3 +1,4 @@
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import {
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
@@ -9,7 +10,6 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec/native";
 import { decodeMidgardLedgerTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
-import { CML } from "@lucid-evolution/lucid";
 
 import {
   type TerminalDrainEntry,
@@ -127,18 +127,8 @@ export const assertTerminalDrainIntent = (
   )
     throw new Error("Terminal drain is not signed solely by the source key.");
   const witness = tx.vkeyWitnesses[0]!;
-  const publicKey = CML.PublicKey.from_bytes(witness.vkey);
-  try {
-    const signature = CML.Ed25519Signature.from_raw_bytes(witness.signature);
-    try {
-      if (!publicKey.verify(tx.txId, signature))
-        throw new Error("Terminal drain signature is invalid.");
-    } finally {
-      signature.free();
-    }
-  } finally {
-    publicKey.free();
-  }
+  if (!verifyLedgerEd25519Signature(witness.vkey, tx.txId, witness.signature))
+    throw new Error("Terminal drain signature is invalid.");
   if (
     tx.referenceInputs.length !== 0 ||
     tx.requiredObserverHashes.length !== 0 ||

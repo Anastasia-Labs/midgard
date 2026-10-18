@@ -159,6 +159,7 @@ export const renderRequiredChecks = (registry) =>
     "of repeating unchanged protocol suites; Repo Tools CI remains required.",
     "Shared probes, artifact derivation, package execution and unknown new",
     "preflight helpers retain full scope. `--full` still runs every check locally.",
+    "",
     ...VERIFICATION_ONLY.map((glob) => `- ${code(glob)}`),
     "",
     "## Verified CI reuse",

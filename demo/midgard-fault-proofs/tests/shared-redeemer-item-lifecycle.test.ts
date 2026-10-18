@@ -55,6 +55,7 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     computationThreadPolicyId: policy,
     deploymentId,
     returnScriptHash: returnHash,
+    threadExpiryScriptHash: "74".repeat(28),
   });
   const traces = [
     "00",
@@ -221,11 +222,16 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const contracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      disputeBondLovelace: 10_000_000_000n,
       blueprint,
       network,
       hubOraclePolicyId: "82".repeat(28),
       fraudProofCataloguePolicyId: catalogue,
       referenceScriptAuthPolicyId: "83".repeat(28),
+      caseConfigInitializationNonce: {
+        txHash: "84".repeat(32),
+        outputIndex: 0,
+      },
     }),
   );
   const registered =
@@ -233,9 +239,11 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const cek = buildCekRedeemerItemStages({
     blueprint,
     network,
-    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadPolicyId: contracts.validationTraceDispute.case.policyId,
     deploymentId: deriveValidationTraceDeploymentId(catalogue),
     returnScriptHash: contracts.validationTraceDispute.award.spendingScriptHash,
+    threadExpiryScriptHash:
+      contracts.validationTraceDispute.threadExpiry.withdrawalScriptHash,
   });
   expect(registered.executors).toHaveLength(21);
   expect(
@@ -251,7 +259,7 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   expect(registered.settlement.spendingScriptHash).not.toBe(
     cek.settlement.spendingScriptHash,
   );
-  expect(contracts.validationTraceDispute.semanticResolvers[90]).toEqual(
+  expect(contracts.validationTraceDispute.semanticResolvers[82]).toEqual(
     registered.envelope,
   );
   for (const role of [registered.sourceAuthenticator, ...registered.executors])

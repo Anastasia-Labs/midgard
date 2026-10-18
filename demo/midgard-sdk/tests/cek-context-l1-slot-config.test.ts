@@ -18,6 +18,7 @@ import {
 const DEVNET = { zeroTime: 1_789_056_000_000, zeroSlot: 0, slotLength: 1000 };
 const AWARD = "aa".repeat(28);
 const CT_POLICY = "bb".repeat(28);
+const THREAD_EXPIRY = "e1".repeat(28);
 const FIELD_PREIMAGE_POLICY = "cc".repeat(28);
 
 const blueprint = () =>
@@ -63,6 +64,7 @@ describe("buildCekContextTail slot mapping", () => {
       CT_POLICY,
       FIELD_PREIMAGE_POLICY,
       NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      THREAD_EXPIRY,
     );
     const devnet = buildCekContextTail(
       loaded,
@@ -71,6 +73,7 @@ describe("buildCekContextTail slot mapping", () => {
       CT_POLICY,
       FIELD_PREIMAGE_POLICY,
       DEVNET,
+      THREAD_EXPIRY,
     );
     expect(devnet.txInfo.spendingScriptHash).not.toBe(
       preprod.txInfo.spendingScriptHash,

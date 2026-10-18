@@ -3,6 +3,7 @@ import {
   type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
 import {
@@ -56,6 +57,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   certificateUtxo,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
+  scriptDecodeRecordUtxo,
   publicationPreSubmitBoundary,
   certificatePreSubmitBoundary,
   preSubmitBoundary,
@@ -74,6 +76,11 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
+  /**
+   * The decode record of the item's script when it is a Plutus script
+   * (`recordScriptDecode`); a native or malformed item takes none.
+   */
+  readonly scriptDecodeRecordUtxo?: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -167,6 +174,10 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
           })
         ).certificateUtxo
       : undefined);
+  const extraReferenceInputs = [
+    ...(resolvedCertificate === undefined ? [] : [resolvedCertificate]),
+    ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
+  ];
   const initialResult =
     evidence.initialControlCbor.length > 0
       ? OutputReferenceScriptResultClasses.Pending
@@ -214,7 +225,19 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
     return Data.to(
       {
         Continue: [
-          { input_index: inputIndex, output_index: outputIndex, opening },
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            record_reference_input_index:
+              scriptDecodeRecordUtxo === undefined
+                ? -1n
+                : requireReferenceInputIndex(
+                    ctx,
+                    scriptDecodeRecordUtxo,
+                    `${FAMILY} step04 decode record`,
+                  ),
+          },
         ],
       } as never,
       OutputReferenceStep04RedeemerSchema as never,
@@ -232,8 +255,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    extraReferenceInputs:
-      resolvedCertificate === undefined ? [] : [resolvedCertificate],
+    extraReferenceInputs,
     preSubmitBoundary,
     awaitConfirmation,
   });

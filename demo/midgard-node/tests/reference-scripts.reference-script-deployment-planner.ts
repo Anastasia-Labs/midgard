@@ -4,13 +4,11 @@ import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import {
   buildReferenceScriptDeploymentPlan,
   buildReferenceScriptWalletStatus,
   REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
   referenceScriptWalletStatusProgram,
-  resolveSpendableWalletUtxos,
 } from "../src/transactions/reference-scripts.js";
 import {
   mkUtxo,
@@ -118,42 +116,6 @@ describe("reference-script deployment planner", () => {
       lovelace: 5_000_000n,
     });
     expect(utxosAt).toHaveBeenCalledWith(REFERENCE_SCRIPT_ADDRESS);
-  });
-
-  it("excludes reserved outrefs from spendable funding UTxOs", async () => {
-    const reserved = mkUtxo({
-      txHash: "50",
-      assets: { lovelace: 100_000_000n },
-    });
-    const available = mkUtxo({
-      txHash: "51",
-      outputIndex: 1,
-      assets: { lovelace: 60_000_000n },
-    });
-    const tokenBearing = mkUtxo({
-      txHash: "52",
-      outputIndex: 2,
-      assets: { lovelace: 70_000_000n, [`${"a".repeat(56)}01`]: 1n },
-    });
-    const utxos = [reserved, available, tokenBearing];
-    // No follower here: the wallet view is the provider's UTxOs at the
-    // selected wallet's address.
-    const lucid = {
-      wallet: () => ({ address: async () => "addr_test1wallet" }),
-      utxosAt: async (address: string) =>
-        address === "addr_test1wallet" ? utxos : [],
-    } as unknown as LucidEvolution;
-
-    const spendable = await Effect.runPromise(
-      resolveSpendableWalletUtxos(
-        lucid,
-        new Set([`${reserved.txHash}#${reserved.outputIndex.toString()}`]),
-      ).pipe(Effect.provide(IntentJournalWithoutFollower)),
-    );
-
-    expect(
-      spendable.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
-    ).toEqual([`${available.txHash}#${available.outputIndex}`]);
   });
 
   it("precomputes missing targets, conservative batches, and aggregate top-up", () => {

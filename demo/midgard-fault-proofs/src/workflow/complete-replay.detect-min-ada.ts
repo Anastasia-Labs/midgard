@@ -3,9 +3,11 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardVersionedScript,
+  ledgerEd25519SignatureReady,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import {
   committedWithdrawalKeyBytes,
   decodeAddressWitnessPreimage,
@@ -42,6 +44,7 @@ export const detectInvalidSignatures = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
+  await ledgerEd25519SignatureReady();
   return transactions.flatMap((transaction, transactionIndex) =>
     decodeAddressWitnessPreimage(
       transaction.nativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -60,6 +63,16 @@ export const detectInvalidSignatures = async (
           ],
     ),
   );
+};
+
+/** The witness item's script, or undefined when the item does not decode. */
+const decodedWitnessScript = (item: Uint8Array) => {
+  try {
+    return decodeMidgardVersionedScript(item);
+  } catch (cause) {
+    if (cause instanceof MidgardTxCodecError) return undefined;
+    throw cause;
+  }
 };
 
 /** Complete evaluation of every well-formed native witness in accepted txs. */
@@ -85,8 +98,10 @@ export const detectNativeScriptInvalid = async (
     return decodeMidgardFieldPreimage(
       transaction.nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     ).flatMap((item, scriptIndex) => {
-      const script = decodeMidgardVersionedScript(item);
+      const script = decodedWitnessScript(item);
+      // An item that does not decode is witnessScriptDecoding's to prove.
       if (
+        script === undefined ||
         script.language !== "NativeCardano" ||
         verifyMidgardNativeScript(script.nativeScript, {
           validityIntervalStart:

@@ -5,7 +5,6 @@ use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/fraud_proofs/native_tx/types.{VerifiedTxSourceView}
 use midgard/ledger_output_proof_v1
-use midgard/mpf_proof_fold_v1
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
@@ -23,7 +22,7 @@ pub type ValidationOneStepWitnessV1 {
 /// frontier; that membership (`[execution-leaf]` / `[native-execution]`) is
 /// the pin, so the frontier index is derived and never named by the witness.
 /// The step is a select (auxiliary constructor 17) when the leaf carries a
-/// redeemer item leaf (language 3 or 128), and a skip (constructor 40) when
+/// redeemer item leaf (language 3 or 128), and a skip (constructor 36) when
 /// it is a native execution (language 0, empty redeemer leaf); only one can
 /// apply at a given bound. Each select or skip lowers the bound by exactly
 /// one. The item steps between a select and its finish walk the selected
@@ -62,14 +61,6 @@ pub type CekTxInfoAssemblyControlV1 {
   tail_fields: cek_data_v1.DataSequenceSummaryV1,
   redeemer: cek_data_v1.DataSummaryV1,
   script_info: cek_data_v1.DataSummaryV1,
-}
-
-pub type LedgerDeltaOperationProofV1 {
-  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
-  operation_count: Int,
-  operation_peaks: List<validation_merkle_v1.FrontierPeak>,
-  operation_index: Int,
-  operation_siblings: List<ByteArray>,
 }
 
 pub type ValidationAuxiliaryWitnessV1 {
@@ -272,17 +263,6 @@ pub type ValidationAuxiliaryWitnessV1 {
     siblings: List<ByteArray>,
     mutation: ValueAssetMutationWitnessV1,
   }
-  LedgerDeltaReplayWitness {
-    source_kind: Int,
-    key: ByteArray,
-    next_schedule_hash: ByteArray,
-    value: ByteArray,
-  }
-  LedgerDeltaOutputWitness {
-    output_index: Int,
-    descriptor_cbor: ByteArray,
-    siblings: List<ByteArray>,
-  }
   /// `ScriptSources` stage 1 (field 8, one redeemer item) and stage 4 (field 2,
   /// one output item). Both stages need the item's *length* and its
   /// `bounded_item_v1` commitment and never look at its bytes, so the door's
@@ -314,19 +294,6 @@ pub type ValidationAuxiliaryWitnessV1 {
   /// descriptor is not a witness field: it is derived from the terminal
   /// control.
   LedgerOutputProofFinalizeWitness { signer_proof: SignerSetProofV1 }
-  LedgerDeltaProofFrameWitness {
-    frame: mpf_proof_fold_v1.ProofFrameV1,
-    siblings: List<ByteArray>,
-    /// Deletion only: the group opening a terminal Branch frame needs
-    /// (`mpf_proof_v1.terminal_branch_keeps_two_children`). Empty otherwise.
-    opening: ByteArray,
-  }
-  LedgerDeltaOperationWitness {
-    operation_kind: Int,
-    key: ByteArray,
-    value: ByteArray,
-    operation_proof: LedgerDeltaOperationProofV1,
-  }
   ScriptSourceHashBlockWitness {
     chunk_proof: bounded_item_v1.ChunkProofV1,
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
@@ -726,10 +693,9 @@ pub type NativeScriptsControlV1 {
 pub type CekContextControlV1 {
   stage: Int,
   language_tag: Int,
+  /// `term_root` of the script's `Decoded` record. The program's identity is
+  /// `script_hash`, the hash the record is keyed by.
   program_term_root: ByteArray,
-  /// Canonical V1 envelope identity, distinct from its executable root.
-  /// This keeps version and complete-material claims bound until terminal.
-  program_envelope_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
   script_hash: ByteArray,
@@ -805,32 +771,6 @@ pub type ValueAndMintControlV1 {
   value_accumulator: ValueAccumulatorV1,
 }
 
-pub type LedgerDeltaControlV1 {
-  resolved_input_count: Int,
-  resolved_inputs_accumulator: ByteArray,
-  output_count: Int,
-  output_descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
-  stage: Int,
-  replay_schedule_hash: ByteArray,
-  replay_cursor: Int,
-  replay_accumulator: ByteArray,
-  replay_remaining_schedule_hash: ByteArray,
-  current_ledger_root: ByteArray,
-  output_cursor: Int,
-  operation_count: Int,
-  operation_peaks: List<validation_merkle_v1.FrontierPeak>,
-  pending_mutation_cbor: ByteArray,
-}
-
-pub type LedgerDeltaPendingMutationV1 {
-  authorization_stage: Int,
-  operation_kind: Int,
-  key: ByteArray,
-  value: ByteArray,
-  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
-  fold_control: mpf_proof_fold_v1.ProofFoldControlV1,
-}
-
 /// The decoded cek work witness. `cek_witness_is_well_formed_v1` applies the
 /// checks every cek step shares: the native transaction proof source (whose
 /// `expect`s are load-bearing), the transaction commitment, the validation
@@ -844,7 +784,9 @@ pub type CekWitnessControlV1 {
   completed_cpu: Int,
   completed_memory: Int,
   active_state_hash: ByteArray,
-  program_envelope_hash: ByteArray,
+  /// Script hash of the running program, the key of its decode record.
+  /// Empty before program selection.
+  program_script_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
   /// Purpose key `(purpose_kind, purpose_index)` of the running execution.

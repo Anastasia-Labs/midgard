@@ -1,5 +1,6 @@
 export {
   applyBlueprintParams,
+  applyThreadHolderParams,
   assertParameterShapes,
   deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
@@ -12,6 +13,7 @@ export {
   makeSpendingValidator,
   makeWithdrawalValidator,
   parseFaultProofBlueprint,
+  THREAD_EXPIRY_PARAMETER_TITLE,
   verifyBlueprintDeploymentRegistry,
 } from "./blueprint.js";
 export {
@@ -328,10 +330,14 @@ export {
 } from "./families/unused-script-witness.js";
 export { canonicalValidationTraceReferenceScripts } from "./families/validation-trace-dispute.canonical-references.js";
 export {
+  buildValidationCaseContracts,
+  buildValidationThreadExpiry,
   buildValidationTraceDisputeFaultProofContracts,
   type BuildValidationTraceDisputeFaultProofContractsParams,
+  outRefData,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  type ValidationCaseContracts,
   type ValidationTraceDisputeFaultProofContracts,
 } from "./families/validation-trace-dispute.js";
 export {
@@ -372,8 +378,8 @@ export {
   ZERO_INPUT_FAULT_PROOF_TITLES,
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
+export { buildScriptDecodeValidator } from "./script-decode.js";
 export {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,

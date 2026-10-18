@@ -80,12 +80,10 @@ export const validationTraceDisputeFromManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  cekProgramMaterial: SDK.SpendingValidator,
 ): SDK.FaultProofContractChains["validationTraceDispute"] =>
   SDK.restoreValidationTraceDisputeScripts({
     resolve: (contract) =>
       faultProofMemberFromManifest(network, manifest, sourcePath, contract),
-    cekProgramMaterial,
     missingMember: (member) => {
       throw new Error(
         `Deployment manifest at "${sourcePath}" does not record validation-trace ${member}; a manifest-sourced contract bundle cannot provide it`,

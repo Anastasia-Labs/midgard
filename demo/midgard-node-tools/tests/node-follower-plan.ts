@@ -40,7 +40,6 @@ export const deployedContracts = {
     spendingScriptAddress: SCRIPT_ADDRESS,
   },
   txOrder: { policyId: "f4".repeat(28), spendingScriptAddress: SCRIPT_ADDRESS },
-  cekProgramMaterial: { spendingScriptHash: "a5".repeat(28) },
 } as unknown as PlanInput["contracts"];
 
 /** The node's follower plan for `env`, as the node would read it. */

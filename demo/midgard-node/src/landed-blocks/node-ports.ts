@@ -6,6 +6,7 @@
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
@@ -19,7 +20,10 @@ import { readQueueHistory } from "./history.js";
 import { ownJournal } from "./journal.js";
 import { ledgerRows } from "./ledger.js";
 import type { LandedBlockPorts } from "./ports.js";
-import { replayForeignBlock } from "./replay-foreign.js";
+import {
+  foreignBlockReplayer,
+  type replayForeignBlock,
+} from "./replay-foreign.js";
 
 const confirmView = followerViewValid;
 
@@ -38,7 +42,8 @@ const genesis = Effect.gen(function* () {
 
 /**
  * The node's landed-block ports over `store`, with the follower plan's
- * configs and the driver's recompute as the rebase.
+ * configs, the driver's recompute as the rebase, and the deployment's
+ * availability commitment authority.
  */
 export const nodeLandedBlockPorts = (
   store: FactStore,
@@ -48,20 +53,25 @@ export const nodeLandedBlockPorts = (
     readonly stateQueue: StateQueueProjectionConfig;
   },
   rebase: (reason: string) => Effect.Effect<DriverHold | undefined>,
-) =>
-  ({
+  availability: () => SDK.DaPayloadAvailabilityAuthority,
+) => {
+  const replayer = foreignBlockReplayer({
+    store,
+    events: plan.projection,
+    forcedOrders: plan.forcedOrders,
+    availability,
+  });
+  return {
     confirmView,
     queueHistory: (view) => readQueueHistory(store, plan.stateQueue, view),
     write: (work) => withFollowerWrite(work),
-    replay: replayForeignBlock({
-      store,
-      events: plan.projection,
-      forcedOrders: plan.forcedOrders,
-    }),
+    replay: replayer.replay,
+    bindRetained: replayer.bind,
     ownJournal,
     genesis,
     rebase,
-  }) satisfies LandedBlockPorts<NodeLandedBlockContext>;
+  } satisfies LandedBlockPorts<NodeLandedBlockContext>;
+};
 
 export type NodeLandedBlockContext = Effect.Effect.Context<
   ReturnType<ReturnType<typeof replayForeignBlock>>
