@@ -45,8 +45,10 @@ export type DaAvailabilityFundingPreparationInput = Readonly<{
   /** A further ADA-only output funding the workflow's later step fees. */
   workingCapitalLovelace?: bigint;
   /**
-   * The coins coin selection may spend, whatever they hold; every wallet
-   * coin when omitted. Spent tokens return to the wallet as change.
+   * The coins coin selection may spend, token-bearing ones included; every
+   * wallet coin when omitted. A coin carrying a datum, a datum hash or a
+   * reference script is never selected. Spent tokens return to the wallet as
+   * change.
    */
   walletInputs?: readonly UTxO[];
   validFrom: bigint;
@@ -55,6 +57,10 @@ export type DaAvailabilityFundingPreparationInput = Readonly<{
 
 const refOf = (u: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${u.txHash}#${u.outputIndex}`;
+
+/** A coin the preparation may spend: no datum, datum hash or reference script. */
+const carriesNoDatumOrScript = (u: UTxO): boolean =>
+  u.datum == null && u.datumHash == null && u.scriptRef == null;
 
 const tokensOf = (assets: Assets): Assets =>
   Object.fromEntries(
@@ -73,7 +79,8 @@ const addTokens = (into: Record<string, bigint>, assets: Assets): void => {
  * outputs, then change. The Open takes the input only at the challenger's
  * enterprise key address, so a challenger prepares from its enterprise
  * wallet, as the CLI and the watcher do. Lucid's coin selection picks any
- * wallet coins, token-bearing ones included; one explicit change output
+ * wallet coins without a datum, datum hash or reference script,
+ * token-bearing ones included; one explicit change output
  * returns their tokens and spare lovelace, so the fee is exactly
  * `feeLovelace`. Every refusal is a `DaAvailabilityTransactionError` with a
  * reason.
@@ -132,23 +139,24 @@ export const buildDaAvailabilityFundingPreparationTx = async (
         { requiredLovelace: minimum, availableLovelace: lovelace },
       );
   }
-  const candidates = [
+  const offered = [
     ...(input.walletInputs ?? (await read(() => lucid.wallet().getUtxos()))),
   ];
-  if (candidates.length === 0)
-    fail(
-      "Availability funding preparation found no wallet coin to spend",
-      "preparation-no-wallet-inputs",
-    );
-  const byRef = new Map(candidates.map((u) => [refOf(u), u]));
   if (
-    byRef.size !== candidates.length ||
-    candidates.some((u) => u.address !== walletAddress)
+    new Set(offered.map(refOf)).size !== offered.length ||
+    offered.some((u) => u.address !== walletAddress)
   )
     fail(
       "Availability funding preparation inputs must be distinct wallet coins",
       "preparation-invalid-request",
     );
+  const candidates = offered.filter(carriesNoDatumOrScript);
+  if (candidates.length === 0)
+    fail(
+      "Availability funding preparation found no wallet coin without a datum or reference script to spend",
+      "preparation-no-wallet-inputs",
+    );
+  const byRef = new Map(candidates.map((u) => [refOf(u), u]));
   const lovelaceOf = (coins: readonly UTxO[]) =>
     coins.reduce((sum, u) => sum + (u.assets.lovelace ?? 0n), 0n);
   const tokensOfCoins = (coins: readonly UTxO[]) => {
@@ -186,10 +194,10 @@ export const buildDaAvailabilityFundingPreparationTx = async (
       "preparation-insufficient-lovelace",
       { requiredLovelace, availableLovelace },
     );
-  // Lucid's own coin selection, largest coin first, whatever the coins hold;
-  // it widens the selection until the change meets its floor. Every floor
-  // only grows with the coins added, so the check over all candidates above
-  // is exactly when this succeeds.
+  // Lucid's own coin selection, largest coin first, whatever tokens the
+  // coins hold; it widens the selection until the change meets its floor.
+  // Every floor only grows with the coins added, so the check over all
+  // candidates above is exactly when this succeeds.
   const ordered = sortUTxOs(candidates);
   let selected = selectUTxOs(ordered, { lovelace: spend }, true);
   for (;;) {
