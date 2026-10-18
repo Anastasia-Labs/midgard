@@ -53,7 +53,9 @@ pub fn open_frame_v1(
   expected_stage: Int,
 ) -> RawScriptSourcesFrameV1 {
   expect expected_item_count == 30 || expected_item_count == 31
-  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    witness.work_witness_cbor,
+  )
   let items = builtin.un_list_data(data)
   expect list.length(items) == expected_item_count
   expect

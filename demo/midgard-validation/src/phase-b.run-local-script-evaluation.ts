@@ -182,11 +182,6 @@ export const runLocalScriptEvaluation = (
         };
       }
 
-      const contextCbor = scriptExecutionContextCbor(
-        discovered.contextView,
-        execution,
-        redeemer,
-      );
       const executionBudget =
         config.enforceScriptBudget === false
           ? undefined
@@ -195,6 +190,25 @@ export const runLocalScriptEvaluation = (
               memory: redeemer.exUnits.memory,
             };
       const executionIndex = executionIndexOf.get(execution)!;
+      const maxSteps =
+        config.maxScriptExecutionSteps ??
+        MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount;
+      if (config.committedScriptRun !== undefined) {
+        config.committedScriptRun({
+          scriptBytes: execution.resolved.source.scriptBytes,
+          executionBudget,
+          executionIndex,
+          maxSteps,
+          programMaterialSidecarCbor:
+            candidate.submission.programMaterialSidecarCbor,
+        });
+        continue;
+      }
+      const contextCbor = scriptExecutionContextCbor(
+        discovered.contextView,
+        execution,
+        redeemer,
+      );
       const {
         result,
         graph,
@@ -205,9 +219,7 @@ export const runLocalScriptEvaluation = (
           contextCbor,
           executionBudget,
           executionIndex,
-          maxSteps:
-            config.maxScriptExecutionSteps ??
-            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+          maxSteps,
         },
         candidate.submission.programMaterialSidecarCbor,
         proofProgramMaterial,

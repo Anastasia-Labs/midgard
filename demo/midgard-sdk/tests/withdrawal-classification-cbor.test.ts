@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -10,7 +11,7 @@ import {
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { addressDataFromBech32, Value } from "../src/common.js";
 import {
@@ -23,6 +24,10 @@ import {
   verifyWithdrawalSignature,
 } from "../src/withdrawal-signature.js";
 import { classifyWithdrawalFromLedger } from "../src/withdrawal-validation.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",

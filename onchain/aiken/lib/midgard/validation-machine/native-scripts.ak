@@ -25,7 +25,7 @@ use midgard/validation_trace_v1
 pub fn script_integrity_control_and_stage(
   work_witness_cbor: ByteArray,
 ) -> Pair<NativeScriptsControlV1, Int> {
-  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(work_witness_cbor)
   let fields = builtin.un_list_data(data)
   expect Some(native_control_cbor_data) = list.at(fields, 0)
   expect Some(stage_data) = list.at(fields, 1)

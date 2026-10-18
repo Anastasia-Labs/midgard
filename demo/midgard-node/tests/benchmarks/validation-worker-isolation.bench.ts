@@ -132,7 +132,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        { config: phaseAConfig, signatureVerifier: "node" },
+        { config: phaseAConfig },
       );
       const batchDurations: number[] = [];
       const phaseADurations: number[] = [];
@@ -367,7 +367,6 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
         quick,
         batchSize,
         poolSize,
-        signatureVerifier: "node",
         chunkSize,
         durationMsRequested: durationMs,
         durationMsObserved: wallMs,
@@ -461,7 +460,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
         poolSize * 4,
         30_000,
         workerEntry,
-        { config: phaseAConfig, signatureVerifier: "node" },
+        { config: phaseAConfig },
       );
 
       await pool.start();

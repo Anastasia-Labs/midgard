@@ -175,6 +175,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "landed_block_follower_schema_missing",
   "landed_block_forced_order_pending",
   "landed_block_invalid",
+  "landed_block_local_fault",
   "landed_block_own_journal_mismatch",
   "landed_block_own_revival_pending",
   "landed_block_rebase_failed",
@@ -236,7 +237,7 @@ const boundedReason =
 
 // Fixed stage vocabulary from the actual commit-build alarm producers.
 const commitAlarmReason =
-  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|program_material_sidecar|program_material_coverage|unclassified)$/u;
+  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|program_material_sidecar|program_material_coverage|withdrawal_classification|unclassified)$/u;
 const pipelineCountPath =
   /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|localMutationJobs\.unfinished|settlement\.unfinishedJobs|pendingBlockFinalizations\.countsByStatus\.(?:pending_submission|submitted_local_finalization_pending|submitted_unconfirmed|observed_waiting_stability|locally_applied|abandoned))$/u;
 

@@ -10,10 +10,10 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxProofFieldLengths,
+  decodeMidgardNativeTxProofFieldLengthsExact,
   decodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxProofFieldLengthsExact,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
@@ -132,8 +132,8 @@ export const adjudicateCommittedSourceLeaf = ({
     );
     exactBytes(
       lengthsCbor,
-      decodeMidgardNativeTxProofFieldLengths,
-      encodeMidgardNativeTxProofFieldLengths,
+      decodeMidgardNativeTxProofFieldLengthsExact,
+      encodeMidgardNativeTxProofFieldLengthsExact,
     );
   } catch {
     return {

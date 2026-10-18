@@ -1,8 +1,9 @@
 import { writeFile } from "node:fs/promises";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 import { Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { RejectCodes } from "../src/index.js";
 import {
@@ -10,6 +11,10 @@ import {
   validationMachineStateData,
 } from "../src/validation-machine-data.js";
 import { nativeFaultFixture } from "./forced-native-first-fault.fixture.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /** The raw envelope must retain prior Phase A faults, then use the same native
  * scan as canonical witnesses. Optional output captures actual producer bytes

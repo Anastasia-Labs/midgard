@@ -25,7 +25,6 @@ export const verifyScriptHeavyReport = (
   equal(report.poolSize, 6, "poolSize");
   equal(report.batchSize, 256, "batchSize");
   equal(report.chunkSize, chunkSize, "chunkSize");
-  equal(report.signatureVerifier, "node", "signatureVerifier");
   equal(
     report.everyTransactionHasPlutusSpend,
     true,

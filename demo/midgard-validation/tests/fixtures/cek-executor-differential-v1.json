@@ -1205,14 +1205,14 @@
       "steps": 267,
       "stopReason": "halted",
       "terminal": "4d7f4cad93675a136e3176aec58a9d755dee789c1784ab960a36cd903efe1a39",
-      "digest": "9e45d27265f86e65b5e7807cdcb6a506e9de3c941eea0049f7adbd97a3dcbf03"
+      "digest": "d03e19672642c8fab310771e330efaacff62ea0ad5419e63b0402971bdc8b1d6"
     },
     "verdict": {
       "throws": false,
       "steps": 267,
       "stopReason": "halted",
       "terminal": "4d7f4cad93675a136e3176aec58a9d755dee789c1784ab960a36cd903efe1a39",
-      "digest": "cbe256dc5ad43b24ad690d0613b01fc5de87afa900f851aa9c29cf582b0b4576"
+      "digest": "a455fff45c5609b4dfff072a3d229d4280c739477bfb181519f52a14548ae27e"
     }
   },
   "map with duplicate keys": {
