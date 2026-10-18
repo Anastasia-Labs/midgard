@@ -7,7 +7,10 @@ import {
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
 import { signalTransientExhausted } from "../services/transient-exhaustion.js";
-import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
+import type {
+  WithdrawalUnclassifiableCase,
+  WorkerOutput,
+} from "../workers/utils/commit-block-header.js";
 
 export const COMMIT_WORKER_SOURCE = "commit_worker";
 export const COMMIT_WORKER_FAILED = "commit_worker_failed";
@@ -27,7 +30,9 @@ export const COMMIT_WORKER_VERIFIER_UNAVAILABLE =
  * The reason the node exits under (source `commit_worker`) once
  * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
  * commit failed on a local fault, the last of them on a due withdrawal row
- * this node cannot classify from its bytes. The detail names the row.
+ * this node cannot classify. The detail names the row and its case: the row
+ * or the ledger output it names does not decode, or the row decodes and the
+ * classifier failed on this node.
  */
 export const COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE =
   "commit_worker_withdrawal_unclassifiable";
@@ -132,6 +137,15 @@ export const clearCommitWorkerFailure = (
     { discard: true },
   );
 
+/** What the exit's detail says of each case of a withdrawal row this node
+ * cannot classify. */
+const UNCLASSIFIABLE_CASE_TEXT: Readonly<
+  Record<WithdrawalUnclassifiableCase, string>
+> = {
+  undecodable: "the row or the ledger output it names does not decode",
+  classifier_failed: "the row decodes, and the classifier failed on this node",
+};
+
 /** The outputs that prove a commit went through: the same set that clears
  * `commit_worker_failed`. */
 const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
@@ -143,8 +157,7 @@ const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
 /**
  * Bounds commit-worker attempts that fail on a local fault
  * (`FailureOutput.localFault`): this process's Ed25519 verifier fault, or a
- * due withdrawal row it cannot classify from its bytes, named in
- * `localFaultSubject`. This is how the coalesced runner bounds a local fault
+ * due withdrawal row it cannot classify, named in `localFaultSubject`. This is how the coalesced runner bounds a local fault
  * on a landed block: each such failure counts, and once `limit` of them
  * accrue without a successful commit (`COMMIT_SUCCEEDED`) between them the
  * node exits non-zero (`transient-exhaustion.ts`) for its supervisor to
@@ -197,7 +210,7 @@ export const boundCommitWorkerLocalFaults = (
                 : {
                     source: COMMIT_WORKER_SOURCE,
                     reason: COMMIT_WORKER_WITHDRAWAL_UNCLASSIFIABLE,
-                    detail: `${count.runs} commit attempts since the last successful commit failed on a local fault, the last on withdrawal ${row}, which this node cannot classify: ${fault.error}`,
+                    detail: `${count.runs} commit attempts since the last successful commit failed on a local fault, the last on withdrawal ${row}, which this node cannot classify (${UNCLASSIFIABLE_CASE_TEXT[fault.localFaultCase]}): ${fault.error}`,
                   },
             ),
           )

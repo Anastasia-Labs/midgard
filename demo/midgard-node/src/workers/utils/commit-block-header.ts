@@ -93,10 +93,11 @@ export type NothingToCommitOutput = {
 /**
  * `localFault` is set when the failure is a local fault: this process's
  * Ed25519 verifier fault (`LedgerSignatureVerifierUnavailableError`), or a
- * due withdrawal row this node cannot classify from its bytes
+ * due withdrawal row this node cannot classify
  * (`WithdrawalUnclassifiableError`), whose event id (hex) is
- * `localFaultSubject`. The parent retries either for a bounded number of
- * attempts without a successful commit before the node exits.
+ * `localFaultSubject` and whose case is `localFaultCase`. The parent retries
+ * either for a bounded number of attempts without a successful commit before
+ * the node exits.
  */
 export type FailureOutput = {
   type: "FailureOutput";
@@ -105,15 +106,26 @@ export type FailureOutput = {
 
 /** `FailureOutput`'s local fault, if it is one. */
 export type LocalFaultMark =
-  | { localFault?: undefined; localFaultSubject?: undefined }
+  | {
+      localFault?: undefined;
+      localFaultSubject?: undefined;
+      localFaultCase?: undefined;
+    }
   | {
       localFault: typeof VERIFIER_UNAVAILABLE_FAULT;
       localFaultSubject?: undefined;
+      localFaultCase?: undefined;
     }
   | {
       localFault: typeof WITHDRAWAL_UNCLASSIFIABLE_FAULT;
       localFaultSubject: string;
+      localFaultCase: WithdrawalUnclassifiableCase;
     };
+
+/** Why a due withdrawal row cannot be classified on this node: the row, or
+ * the ledger output it names, does not decode; or the row decodes and the
+ * classifier failed on this node. */
+export type WithdrawalUnclassifiableCase = "undecodable" | "classifier_failed";
 
 /** `FailureOutput.localFault` of an Ed25519 verifier fault. */
 export const VERIFIER_UNAVAILABLE_FAULT = "verifier_unavailable";

@@ -269,11 +269,15 @@ Commitment and liveness (raised by fibers, cleared by them):
 - `commit_worker_withdrawal_unclassifiable`: the commit worker's runs since
   the last successful commit kept failing on local faults, up to the
   local-fault run limit, the last on a due withdrawal this node cannot
-  classify: the row's event info, l2_value or l2_outref, or the ledger output
-  it names, does not decode. A local fault: the node exits non-zero for its
-  supervisor to restart it. The detail names the row by its event id. If it
-  repeats after a restart, compare that `withdrawal_utxos` row with the
-  withdrawal event on L1.
+  classify. A local fault: the node exits non-zero for its supervisor to
+  restart it. The detail names the row by its event id and says which case
+  it is:
+  - the row or the ledger output it names does not decode (the row's event
+    info, l2_value or l2_outref, or that ledger output). If it repeats after
+    a restart, compare that `withdrawal_utxos` row with the withdrawal event
+    on L1.
+  - the row decodes, and the classifier failed on this node. If it repeats
+    after a restart, read the detail and the node's logs.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the

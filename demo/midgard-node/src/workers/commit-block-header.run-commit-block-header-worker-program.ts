@@ -233,6 +233,7 @@ const localFaultOf = (errors: readonly unknown[]): LocalFaultMark => {
     : {
         localFault: WITHDRAWAL_UNCLASSIFIABLE_FAULT,
         localFaultSubject: row.eventId,
+        localFaultCase: row.kind,
       };
 };
 

@@ -12,22 +12,25 @@ import { DatabaseError } from "../../../database/utils/common.js";
 import * as Ledger from "../../../database/utils/ledger.js";
 import * as WithdrawalsDB from "../../../database/withdrawals.js";
 import { heldBuildError } from "../../../mpf/commit-rejection.evict-uncommittable-normal-txs.js";
+import type { WithdrawalUnclassifiableCase } from "../commit-block-header.js";
 
 /** The commit stage a withdrawal classification's local fault holds. */
 export const WITHDRAWAL_CLASSIFICATION_STAGE = "Withdrawal classification";
 
 /**
- * A due withdrawal row this node cannot classify from its bytes: its event
- * info, l2_value or l2_outref, or the ledger output it names, does not
- * decode. It names the row by its event id (hex). Carried as the cause of the
- * classification's `DatabaseError`, it marks the commit worker's failure as a
- * local fault on that row, which the parent bounds
- * (`boundCommitWorkerLocalFaults`).
+ * A due withdrawal row this node cannot classify, named by its event id
+ * (hex). Its `kind` says why: `undecodable`, its event info, l2_value or
+ * l2_outref, or the ledger output it names, does not decode; or
+ * `classifier_failed`, it decodes and the classifier failed on this node.
+ * Carried as the cause of the classification's `DatabaseError`, it marks the
+ * commit worker's failure as a local fault on that row, which the parent
+ * bounds (`boundCommitWorkerLocalFaults`).
  */
 export class WithdrawalUnclassifiableError extends Data.TaggedError(
   "WithdrawalUnclassifiableError",
 )<{
   readonly eventId: string;
+  readonly kind: WithdrawalUnclassifiableCase;
   readonly message: string;
   readonly cause: unknown;
 }> {}
@@ -55,6 +58,7 @@ const unclassifiable = (
     message: error.message,
     cause: new WithdrawalUnclassifiableError({
       eventId: entry[WithdrawalsDB.Columns.ID].toString("hex"),
+      kind: "undecodable",
       message: error.message,
       cause: error.cause,
     }),
@@ -136,7 +140,8 @@ export const classifyWithdrawal = ({
     }),
     // A runtime fault of the classifier is this node's: the withdrawal is
     // not classified, and the build holds (nothing is committed or
-    // projected) until a later build classifies it.
+    // projected) until a later build classifies it. The hold names the row,
+    // so the commit worker's failure is a local fault on it.
     Effect.catchSomeDefect((defect) =>
       isReplayLocalFault(defect)
         ? Option.some(
@@ -151,7 +156,12 @@ export const classifyWithdrawal = ({
                   heldBuildError(WITHDRAWAL_CLASSIFICATION_STAGE, {
                     table: WithdrawalsDB.tableName,
                     message: `Holding the block build: withdrawal classification failed locally: ${defect.message}`,
-                    cause: defect,
+                    cause: new WithdrawalUnclassifiableError({
+                      eventId: entry[WithdrawalsDB.Columns.ID].toString("hex"),
+                      kind: "classifier_failed",
+                      message: defect.message,
+                      cause: defect,
+                    }),
                   }),
                 ),
               ),
