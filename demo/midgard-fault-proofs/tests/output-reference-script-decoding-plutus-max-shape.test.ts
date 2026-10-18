@@ -5,8 +5,11 @@
  *
  * - The densest Flat there is: version 1.1.0 and then `delay` after `delay`
  *   (four bits each) until the bytes run out, so Cardano refuses it only at
- *   its last bit. Recording it walks every node, and step 04 convicts its
- *   acceptance.
+ *   its last bit. Its transaction spends a funded output and is otherwise
+ *   valid, so the producer's first fault is the script, at the script-source
+ *   phase (8). Recording it walks every node through the script-decode
+ *   validator and its class stakers, and step 04 convicts its acceptance;
+ *   every transaction is reported with its bytes and execution units.
  * - The shape whose record takes the most Walk transactions: constant lists
  *   nested 6 deep, each level holding an empty list ahead of the deeper list,
  *   the innermost holding 31 unit pair chains of depth 4 over `[()]`.
@@ -24,7 +27,6 @@
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
 } from "@al-ft/midgard-sdk";
 import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -51,28 +53,16 @@ import {
   subjectTransaction,
 } from "./support/output-reference-script-decoding-emulator.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
+import {
+  createTransactionJournal,
+  MAX_RECORD_AUTH_TIMELOCK_MS,
+  maximumDelayChainReferenceScript,
+  plutusReferenceOutput,
+  producerVerdict,
+  referenceScriptSubject,
+  WALK_CEILING,
+} from "./support/script-decode-plutus-max-shape.js";
 import { costliestNestedLists } from "./support/script-decode-walk-shapes.js";
-
-/** Flat 1.1.0 followed by `flatBytes - 3` bytes of `delay delay`. */
-const delayChainScript = (flatBytes: number): Buffer => {
-  const flat = Buffer.concat([
-    Buffer.from("010100", "hex"),
-    Buffer.alloc(flatBytes - 3, 0x11),
-  ]);
-  return Buffer.concat([
-    Buffer.from([0x59, flat.length >> 8, flat.length & 0xff]),
-    flat,
-  ]);
-};
-
-/** The delay-chain output of exactly `length` canonical bytes. */
-const delayChainOutputOfLength = (length: number) => {
-  for (let flatBytes = length; flatBytes > length - 128; flatBytes -= 1) {
-    const output = outputWithPlutusScript(delayChainScript(flatBytes));
-    if (output.length === length) return output;
-  }
-  throw new Error(`no delay-chain output of ${length.toString()} bytes`);
-};
 
 /** The chains in each innermost list of the most Walk-heavy shape. */
 const MAX_WALK_INNER = 31;
@@ -104,18 +94,8 @@ const maxWalkOutputOfLength = (length: number) => {
 
 const MAX_TX_BYTES = 16_384;
 
-/** The most Walks a record may take (`support/script-decode-walk-gate.ts`). */
-const WALK_CEILING = 1_500;
-
 const PLUTUS_V3 = 3;
-
-/** One emulator block, which each Bind, Walk and Finish takes. */
-const EMULATOR_BLOCK_MS = 20_000;
-
-/** The default auth window plus the longest record the gate allows (Bind,
- * 1,500 Walks, Finish). */
-const MAX_WALK_AUTH_TIMELOCK_MS =
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS + (WALK_CEILING + 2) * EMULATOR_BLOCK_MS;
+const SCRIPT_SOURCE_PHASE = 8;
 
 /** Every Walk fits the ledger's transaction limits. */
 const expectWalksFit = (
@@ -139,12 +119,18 @@ const walkSummary = (walks: readonly ScriptDecodeWalkReport[]) => ({
 });
 
 describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
-  it("records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance through removal", async () => {
+  it("records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance, the producer's phase-8 first fault, through removal", async () => {
+    const script = maximumDelayChainReferenceScript();
+    const maximum = plutusReferenceOutput(script);
+    expect(maximum).toHaveLength(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);
+    const producerSubject = referenceScriptSubject(maximum);
+    const verdict = await producerVerdict(producerSubject);
+
     const context = await makeOutputReferenceHarness();
     const { emulator, proverLucid } = context.harness;
-    const maximum = delayChainOutputOfLength(OUTPUT_REFERENCE_MAX_OUTPUT_BYTES);
+    const journal = createTransactionJournal(emulator, proverLucid);
     const block = await commitAcceptedBlock(context, [
-      subjectTransaction([maximum], 7n),
+      producerSubject.nativeTx,
     ]);
     const [subject] = block.subjects;
     if (subject === undefined) throw new Error("accepted subject absent");
@@ -172,31 +158,49 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     // Refused at its very last bit: every node is walked.
     expect(decoded.record.bitOffset).toBe(decoded.scriptBytes.length * 8);
     expect(evidence.resultClass).toBe(100 + decoded.record.class);
+    // The producer's first fault is the script, at the script-source phase.
+    expect(verdict).toEqual({
+      verdict: "rejected",
+      reason: {
+        PlutusScriptUndecodable: {
+          item_kind: 1n,
+          item_index: 0n,
+          class: BigInt(decoded.record.class),
+        },
+      },
+      phase: SCRIPT_SOURCE_PHASE,
+    });
 
     const openedAt = emulator.now();
-    const s1 = await stages.step01Accepted(
-      (await stages.init()).result,
-      evidence,
-      subject.txInclusion,
+    const initialized = await journal.stage("init", () => stages.init());
+    const s1 = await journal.stage("step 01", () =>
+      stages.step01Accepted(initialized.result, evidence, subject.txInclusion),
     );
-    const s2 = await stages.step02(
-      s1.result.nextThreadOutRef,
-      evidence,
-      subject,
+    const s2 = await journal.stage("step 02", () =>
+      stages.step02(s1.result.nextThreadOutRef, evidence, subject),
     );
     const opened = {
       carriageUtxos: s2.result.carriageUtxos,
       certificateUtxo: s2.result.certificateUtxo,
     };
-    const s3 = await stages.step03Loop(s2.result.nextThreadOutRef, evidence);
+    const s3 = await journal.stage(
+      "step 03",
+      () => stages.step03Loop(s2.result.nextThreadOutRef, evidence),
+      { summarize: true },
+    );
 
     const recordedFrom = emulator.now();
-    const recorded = await recordScriptDecode({
-      lucid: proverLucid,
-      deployment: scriptDecodeDeploymentOf(emulator),
-      language: decoded.language,
-      scriptBytes: decoded.scriptBytes,
-    });
+    const recorded = await journal.stage(
+      "record",
+      () =>
+        recordScriptDecode({
+          lucid: proverLucid,
+          deployment: scriptDecodeDeploymentOf(emulator),
+          language: decoded.language,
+          scriptBytes: decoded.scriptBytes,
+        }),
+      { summarize: true },
+    );
     const recordedAt = emulator.now();
     expect(recorded.record).toEqual(decoded.record);
     expectWalksFit(recorded.walks, proverLucid.config().protocolParameters!);
@@ -210,19 +214,28 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     );
     expect(recorded.walks.length).toBeGreaterThan(100);
 
-    const s4 = await stages.step04(
-      s3.threadOutRef,
-      evidence,
-      subject.compactCborHex,
-      opened,
-      recorded.recordUtxo,
+    const s4 = await journal.stage("step 04", () =>
+      stages.step04(
+        s3.threadOutRef,
+        evidence,
+        subject.compactCborHex,
+        opened,
+        recorded.recordUtxo,
+      ),
     );
-    const s5 = await stages.step05(s4.result.nextThreadOutRef, evidence);
+    const s5 = await journal.stage("step 05", () =>
+      stages.step05(s4.result.nextThreadOutRef, evidence),
+    );
     expect(s5.result.closed).toBe(true);
-    const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
+    const s6 = await journal.stage("step 06 (proof mint)", () =>
+      stages.step06(s5.result.nextThreadOutRef, evidence),
+    );
     expect(s6.result.fraudProofUnit).toBeTruthy();
-    const removal = await stages.remove(block.setup.headerHash);
+    const removal = await journal.stage("removal", () =>
+      stages.remove(block.setup.headerHash),
+    );
     expect(removal.result.fraudCategoryId).toBe(OUTPUT_REFERENCE_CATEGORY_ID);
+    journal.report("kind 1 conviction");
     console.info(
       `[script-decode-max-shape] delay chain case virtual ms ${(emulator.now() - openedAt).toString()}`,
     );
@@ -230,7 +243,7 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
 
   it("records the most Walk-heavy decodable script of a 16,384-byte output and convicts its undecodable rejection by the Decoded record through removal", async () => {
     const context = await makeOutputReferenceHarness({
-      referenceScriptAuthTimelockMs: MAX_WALK_AUTH_TIMELOCK_MS,
+      referenceScriptAuthTimelockMs: MAX_RECORD_AUTH_TIMELOCK_MS,
     });
     const { emulator, proverLucid } = context.harness;
     const { output: maximum, script } = maxWalkOutputOfLength(
