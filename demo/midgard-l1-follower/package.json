@@ -114,9 +114,6 @@
           "package": "@al-ft/midgard-core"
         },
         {
-          "kind": "blueprint"
-        },
-        {
           "kind": "postgres"
         }
       ]
