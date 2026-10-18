@@ -201,26 +201,6 @@ export const expectReplayDetection = (
 };
 
 /**
- * The detector still finds `violationIds`, and the workflow refuses to derive
- * evidence for them: the Plutus-item hold until the program-bytes migration.
- */
-export const expectReplayHeld = (
-  block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
-  transactions: readonly Shape[],
-  violationIds: readonly string[],
-) => {
-  const replay = replayOf(block, transactions);
-  expect(
-    detectWitnessScriptDecodingCompleteReplay(replay).map(
-      (finding) => finding.violationId,
-    ),
-  ).toEqual([...violationIds]);
-  expect(() =>
-    deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(replay),
-  ).toThrow(/yielded no exact finding/u);
-};
-
-/**
  * Drive an accepted thread's scan with the arguments a direction-B twin of
  * the same item plans (the arguments do not depend on the direction), so an
  * honest accepted block's canonical native script reaches the exact terminal

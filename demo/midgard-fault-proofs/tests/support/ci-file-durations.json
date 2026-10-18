@@ -333,7 +333,6 @@
     "tests/transition-trace-submit-routing.test.ts": 2.1,
     "tests/transition-workflow-artifact.test.ts": 2,
     "tests/transition-workflow-checkpoint.test.ts": 1.9,
-    "tests/typed-reason-disposition.test.ts": 2.5,
     "tests/unattested-timeout-suffix-lifecycle.test.ts": 4.4,
     "tests/unretired-absence-without-funding.test.ts": 3.6,
     "tests/validation-trace-resolver-publication.test.ts": 5.7,

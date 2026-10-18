@@ -128,13 +128,6 @@ export const CURSOR_FAMILY_DEFINITIONS: CursorFamilyDefinitions = Object.freeze(
   { fooBar: FOO_BAR_FAMILY_DEFINITION },
 );
 `,
-  [SOURCES.reasons]: `
-export const TYPED_REASON_DISPOSITIONS = Object.freeze({
-  // Comment with a { bracket.
-  FooBarBroken: direct("fooBar"),
-  SomethingElse: direct("bazFooBar"),
-}) satisfies Readonly<Record<string, TypedReasonDisposition>>;
-`,
   [SOURCES.classification]: `
 export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   { category: "fooBar", violationIds: ["foo-bar"] },
@@ -208,7 +201,6 @@ describe("family-checklist", () => {
       result.out,
       /OK\s+reference-scripts\s+2 member\(s\) in family fooBar/u,
     );
-    assert.match(result.out, /typed-reasons\s+.*FooBarBroken/u);
     assert.match(result.out, /cursor FamilyDefinition/u);
     assert.match(result.out, /foo-bar-lifecycle\.test\.ts/u);
   });

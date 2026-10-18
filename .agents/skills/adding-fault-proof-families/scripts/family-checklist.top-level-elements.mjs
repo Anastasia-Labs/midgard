@@ -24,7 +24,6 @@ export const SOURCES = Object.freeze({
     "demo/midgard-fault-proofs/src/workflow/family-application-registry.ts",
   linearSpec: "demo/midgard-fault-proofs/src/workflow/linear-family-spec.ts",
   definitions: "demo/midgard-fault-proofs/src/workflow/family-definitions.ts",
-  reasons: "demo/midgard-fault-proofs/src/workflow/reason-disposition.ts",
   classification: "demo/midgard-fault-proofs/src/workflow/classification.ts",
   adapters: "demo/midgard-fault-proofs/src/workflow/adapters.ts",
   catalogueStatus: "docs/fault-proofs/catalogue-status.md",

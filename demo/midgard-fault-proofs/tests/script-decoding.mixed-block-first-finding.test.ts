@@ -4,8 +4,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/index.js";
-import { prepareOutputReferenceScriptDecodingRecoveryMaterial } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
+import {
+  deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock,
+  prepareOutputReferenceScriptDecodingRecoveryMaterial,
+} from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 import { prepareWitnessScriptDecodingRecoveryMaterial } from "../src/witness-script-decoding/workflow.create-witness-script-decoding-recovery-ports.js";
+import { deriveWitnessScriptDecodingEvidenceFromCanonicalBlock } from "../src/witness-script-decoding/workflow.derive-witness-script-decoding-authenticated-source.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
@@ -26,7 +30,10 @@ import {
   setup,
   transport,
 } from "./support/catalogue-retained-classification.setup.js";
-import { outputWithRawNativePayload } from "./support/output-reference-script-decoding-emulator.js";
+import {
+  outputWithPlutusScript,
+  outputWithRawNativePayload,
+} from "./support/output-reference-script-decoding-emulator.js";
 import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.js";
 
 afterEach(() => {
@@ -43,6 +50,14 @@ const malformedNativeOutputs = () => [
   outputWithRawNativePayload(Buffer.from("820700", "hex")),
   outputWithRawNativePayload(Buffer.from("820800", "hex")),
 ];
+
+/** A tag-0 field-6 item carrying the native script `all []`. */
+const HONEST_NATIVE_ITEM = Buffer.from("820043820180", "hex");
+/** A PlutusV3 field-6 item whose bytes are not a program. */
+const UNDECODABLE_PLUTUS_ITEM = Buffer.from("82034401020304", "hex");
+/** A PlutusV3 reference script whose bytes are not a program. */
+const undecodablePlutusOutput = () =>
+  outputWithPlutusScript(Buffer.from("4401020304", "hex"));
 
 const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
@@ -62,14 +77,17 @@ const plutusReferenceOutput = () =>
   });
 
 /**
- * The output-reference family's classification of one accepted transaction
- * creating `outputs`, with the authenticated block evidence it read.
+ * A family's classification of one accepted transaction built from
+ * `transaction`, with the authenticated block evidence it read.
  */
-const classifyOutputs = async (outputs: readonly Buffer[]) => {
+const classifyTransaction = async (
+  family:
+    | typeof WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY
+    | typeof OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  transaction: Omit<Parameters<typeof buildFixtureTransaction>[0], "fee">,
+) => {
   const fixture = await buildCanonicalBlockFixture({
-    transactions: [
-      buildFixtureTransaction({ spendInputs: [], outputs, fee: 1n }),
-    ],
+    transactions: [buildFixtureTransaction({ ...transaction, fee: 1n })],
   });
   const canonical = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation(fixture),
@@ -78,16 +96,22 @@ const classifyOutputs = async (outputs: readonly Buffer[]) => {
   });
   const classification = await classifyCanonicalBlockViolations({
     evidence: canonical,
-    detections: (
-      await OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY.replay(
-        canonical,
-      )
-    ).detections,
+    detections: (await family.replay(canonical)).detections,
   });
   if (classification.decision !== "fault_detected")
     throw new Error(`expected a fault, got ${classification.decision}`);
   return { selected: classification.selected, canonical };
 };
+
+/**
+ * The output-reference family's classification of one accepted transaction
+ * creating `outputs`, with the authenticated block evidence it read.
+ */
+const classifyOutputs = (outputs: readonly Buffer[]) =>
+  classifyTransaction(
+    OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    { spendInputs: [], outputs },
+  );
 
 type Fixture = Awaited<ReturnType<typeof buildRetainedPlutusIdentityFixture>>;
 
@@ -186,6 +210,48 @@ describe(
         );
       expect(material.evidence.outputIndex).toBe(1);
       expect(selected.detectionId.split(":")[4]).toBe("1");
+    });
+
+    it("proves an undecodable Plutus witness beside an honest native witness", async () => {
+      const { selected, canonical } = await classifyTransaction(
+        WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+        {
+          spendInputs: [],
+          scriptWitnesses: [HONEST_NATIVE_ITEM, UNDECODABLE_PLUTUS_ITEM],
+        },
+      );
+      expect(selected.violationId).toBe("witness-plutus-script-undecodable");
+      expect(selected.detectionId.split(":")[3]).toBe("1");
+      const material = await prepareWitnessScriptDecodingRecoveryMaterial(
+        canonical,
+        selected.detectionId,
+      );
+      expect(material.evidence.finding.scriptIndex).toBe(1);
+      expect(
+        deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(canonical),
+      ).toEqual(material.evidence);
+    });
+
+    it("proves an undecodable Plutus reference script beside an honest Plutus reference script", async () => {
+      const { selected, canonical } = await classifyOutputs([
+        plutusReferenceOutput(),
+        undecodablePlutusOutput(),
+      ]);
+      expect(selected.violationId).toBe(
+        "output-reference-plutus-script-undecodable",
+      );
+      expect(selected.detectionId.split(":")[4]).toBe("1");
+      const material =
+        await prepareOutputReferenceScriptDecodingRecoveryMaterial(
+          canonical,
+          selected.detectionId,
+        );
+      expect(material.evidence.outputIndex).toBe(1);
+      expect(
+        deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock(
+          canonical,
+        ),
+      ).toEqual(material.evidence);
     });
   },
 );

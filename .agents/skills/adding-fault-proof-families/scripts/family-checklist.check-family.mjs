@@ -456,28 +456,6 @@ export const checkFamily = (root, category) => {
         : "none; the family uses a bespoke workflow (allowed, not assembled from a definition)",
   );
 
-  const reasonsLiteral = extractLiteral(
-    readSource(root, "reasons"),
-    "TYPED_REASON_DISPOSITIONS",
-    SOURCES.reasons,
-  );
-  const arms = [
-    ...stripComments(reasonsLiteral).matchAll(
-      /\b([A-Z]\w*)\s*:\s*(?:direct\(([^)]*)\)|\{[^}]*categories:\s*\[([^\]]*)\])/gu,
-    ),
-  ]
-    .filter((match) =>
-      arrayStrings(match[2] ?? match[3] ?? "").includes(category),
-    )
-    .map((match) => match[1]);
-  record(
-    "typed-reasons",
-    "info",
-    arms.length > 0
-      ? `RejectionReason arm(s) routed here: ${arms.join(", ")}`
-      : "no RejectionReason arm routes here (history or structural family)",
-  );
-
   const status = readSource(root, "catalogueStatus");
   const rowShape =
     id === undefined
