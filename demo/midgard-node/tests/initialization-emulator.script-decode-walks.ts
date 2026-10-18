@@ -17,9 +17,12 @@ import {
   type OutRef,
   type Script,
   type UTxO,
+  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
+
+import { buildRewardRegistrationsTx } from "../src/transactions/utils.reward-registration-funding.js";
 
 /**
  * A withdraw-zero script outside the family that accepts anything: the
@@ -110,6 +113,26 @@ export const payDecoy = (lucid: LucidEvolution, datum: string) =>
 /** A wallet output carrying the outside staker as a reference script. */
 export const publishOutsideStaker = (lucid: LucidEvolution) =>
   payWallet(lucid, undefined, OUTSIDE_STAKER.withdrawalScript);
+
+/**
+ * Registers the outside staker's reward account from the wallet, so a Walk it
+ * passes is refused by the run's spend rather than by the ledger.
+ */
+export const registerOutsideStaker = async (lucid: LucidEvolution) => {
+  const network = lucid.config().network;
+  if (network === undefined) throw new Error("lucid has no network");
+  const tx = await buildRewardRegistrationsTx(
+    lucid,
+    {
+      address: await lucid.wallet().address(),
+      utxos: await lucid.wallet().getUtxos(),
+    },
+    [validatorToRewardAddress(network, OUTSIDE_STAKER.withdrawalScript)],
+    "the outside staker's reward account",
+  );
+  const signed = await tx.sign.withWallet().complete();
+  await lucid.awaitTx(await signed.submit());
+};
 
 const positioned = (
   walk: ScriptDecodeChainedWalk,

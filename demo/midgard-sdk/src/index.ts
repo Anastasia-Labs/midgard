@@ -37,7 +37,6 @@ export * from "./retired-operators.js";
 export * from "./scheduler.js";
 export * from "./scheduler-refresh.js";
 export * from "./script-decode.js";
-export * from "./script-reward-registration.js";
 export * from "./settlement.js";
 export * from "./state-queue.js";
 export * from "./state-queue-authenticated-replay-checkpoint.js";

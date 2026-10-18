@@ -23,10 +23,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../src/deployment-manifest.js";
 import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
-import {
-  ensureRuntimeRewardAccountsRegisteredProgram,
-  ensureScriptRewardAccountRegisteredProgram,
-} from "../src/transactions/script-reward-registration.js";
+import { ensureRuntimeRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   buildAtomicInitializationTx,
@@ -38,10 +35,10 @@ import {
   brokenLinkStakes,
   expectSpendRefusal,
   gapStakes,
-  OUTSIDE_STAKER,
   outsideStakes,
   payDecoy,
   publishOutsideStaker,
+  registerOutsideStaker,
   scriptDecodeDeploymentAt,
 } from "./initialization-emulator.script-decode-walks.js";
 
@@ -183,12 +180,7 @@ describe("initialization emulator: script decode", () => {
       referenceScriptsAddress,
       contracts.scriptDecode,
     );
-    await runWithoutFollower(
-      ensureScriptRewardAccountRegisteredProgram(
-        lucid,
-        OUTSIDE_STAKER.withdrawalScript,
-      ),
-    );
+    await registerOutsideStaker(lucid);
     const scriptHashHex = scriptDecodeScriptHash(
       PLUTUS_V3,
       DECODED_SCRIPT,
