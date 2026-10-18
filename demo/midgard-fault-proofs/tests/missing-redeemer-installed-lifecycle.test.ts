@@ -3,8 +3,8 @@
  * the fault, the port prepares a journaled artifact, and the cursor adapter
  * drives every one of the 39 roles from a genuine Init to the proof token
  * across an emulated restart after each broadcast; the block is then removed.
- * The honest forced rejection's replay is covered by
- * missing-redeemer-honest-forced.test.ts.
+ * An honest forced rejection, committed after the anchor that carries its
+ * predecessor ledger, yields no detection.
  */
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,13 +15,17 @@ import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { singleLedgerAt } from "../src/ledger-at.js";
 import {
   createMissingRedeemerTransactionPort,
   type MissingRedeemerWorkflowReferenceScripts,
 } from "../src/missing-redeemer/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import {
+  admitCompleteCanonicalReplayPredecessor,
+  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { MISSING_REDEEMER_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import {
@@ -43,6 +47,7 @@ import {
   publishMissingRedeemerRoles,
 } from "./support/missing-redeemer-emulator.js";
 import {
+  honestForcedObserverShape,
   nativeScript,
   plutusScript,
   redeemerMissingVerdict,
@@ -367,4 +372,28 @@ describe("missingRedeemer installed cursor actuator", () => {
     },
     1_800_000,
   );
+
+  it("detects nothing in an honest forced RedeemerMissing rejection", async () => {
+    const h = await makeMissingRedeemerHarness();
+    const shape = honestForcedObserverShape(5);
+    const scenario = await setupMissingRedeemerScenario({
+      harness: h,
+      shape,
+      source: { kind: "forced", verdict: redeemerMissingVerdict(2n, 0n) },
+    });
+    const evidence = await blockEvidence(scenario);
+    const decision = await MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY.replay(
+      evidence,
+      {
+        predecessor: await admitCompleteCanonicalReplayPredecessor({
+          ledgerAt: singleLedgerAt(evidence.header.prevHeaderHash, [
+            ...(shape.spend ?? []),
+            ...(shape.reference ?? []),
+          ]),
+          currentEvidence: evidence,
+        }),
+      },
+    );
+    expect(decision.detections).toStrictEqual([]);
+  }, 600_000);
 });

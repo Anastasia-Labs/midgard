@@ -21,6 +21,7 @@ import {
   publishMissingRedeemerRoles,
 } from "./support/missing-redeemer-emulator.js";
 import {
+  honestForcedObserverShape,
   plutusScript,
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
@@ -118,12 +119,10 @@ describe("missing-redeemer forged successor refusal", () => {
   }, 2_400_000);
 
   it("refuses a forged successor at every role of the forced claimed-redeemer route", async () => {
-    // The route reads only the named observer and the redeemer field; the
-    // subject spends nothing (see the forced-rejection row in the verticals).
-    const refused = await forgeEveryRole(
-      { observers: [{ script: plutusScript(5), redeemer: false }] },
-      { kind: "forced", verdict: redeemerMissingVerdict(2n, 0n) },
-    );
+    const refused = await forgeEveryRole(honestForcedObserverShape(5), {
+      kind: "forced",
+      verdict: redeemerMissingVerdict(2n, 0n),
+    });
     expect(new Set(refused)).toStrictEqual(
       new Set<MissingRedeemerRole>([
         "familyEntry",

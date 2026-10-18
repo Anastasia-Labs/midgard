@@ -24,7 +24,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/index.js";
@@ -35,6 +35,12 @@ import {
 } from "../../src/ledger-at.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import {
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
+  submitSuccessorBlockTx,
+} from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -240,49 +246,114 @@ export const FORCED_ORDER_KEY: SDK.OutputReference = {
   outputIndex: 0n,
 };
 
-/** Commits the subject's block on the emulator and derives its material. */
+/** The ledger root the subject's spend and reference entries resolve in. */
+const predecessorRoot = async (shape: MissingRedeemerSubjectShape) => {
+  const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
+  return entries.length === 0
+    ? SDK.EMPTY_MERKLE_TREE_ROOT
+    : await ledgerEntriesRoot(entries);
+};
+
+/**
+ * Commits the subject's block on the emulator and derives its material. A
+ * subject that resolves no committed output commits directly after genesis.
+ * One that does commits after a queued anchor block whose UTxO root is its
+ * predecessor root, since the genesis state's root is empty and a commit
+ * carries its anchor's root over.
+ */
 export const setupMissingRedeemerScenario = async ({
   harness,
   shape,
   source,
 }: {
   readonly harness: {
-    readonly funderLucid: Parameters<typeof funderPaymentKeyHash>[0];
-    readonly emulator: { now(): number };
-    readonly contracts: Parameters<typeof submitSetupTx>[0]["contracts"];
-    readonly nonceUtxo: Parameters<typeof submitSetupTx>[0]["nonceUtxo"];
-    readonly catalogue: Parameters<typeof submitSetupTx>[0]["catalogue"];
+    readonly funderLucid: SetupFraudulentBlockArgs["funderLucid"];
+    readonly emulator: SetupFraudulentBlockArgs["emulator"];
+    readonly contracts: SetupFraudulentBlockArgs["contracts"];
+    readonly nonceUtxo: UTxO;
+    readonly catalogue: SetupFraudulentBlockArgs["catalogue"];
   };
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
 }) => {
-  const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
-  const startTime = BigInt(
-    alignUnixTimeToEmulatorSlotBoundary(
-      harness.funderLucid,
-      harness.emulator.now() + 120_000,
-    ) - 1,
-  );
+  const root = await predecessorRoot(shape);
+  if (root === SDK.EMPTY_MERKLE_TREE_ROOT) {
+    const built = await buildMissingRedeemerBlock({
+      shape,
+      source,
+      operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
+      startTime: BigInt(
+        alignUnixTimeToEmulatorSlotBoundary(
+          harness.funderLucid,
+          harness.emulator.now() + 120_000,
+        ) - 1,
+      ),
+    });
+    const setup = await submitSetupTx({
+      lucid: harness.funderLucid,
+      contracts: harness.contracts,
+      nonceUtxo: harness.nonceUtxo,
+      catalogue: harness.catalogue,
+      header: built.block.header,
+    });
+    return {
+      subject: built.subject,
+      block: built.block,
+      setup,
+      material: built.material,
+    };
+  }
+  const anchor = await setupFraudulentBlock({
+    funderLucid: harness.funderLucid,
+    emulator: harness.emulator,
+    contracts: harness.contracts,
+    catalogue: harness.catalogue,
+    fixture: {
+      transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      l2TransactionCount: 0n,
+      utxosRoot: root,
+      headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+    },
+  });
   const built = await buildMissingRedeemerBlock({
     shape,
     source,
-    operatorVkey,
-    startTime,
+    operatorVkey: anchor.header.operatorVkey,
+    startTime: BigInt(
+      emulatorSuccessorHeaderStart({
+        predecessorEndTime: anchor.header.endTime,
+        emulator: harness.emulator,
+      }),
+    ),
+    prevHeaderHash: anchor.headerHash,
   });
-  const setup = await submitSetupTx({
+  const target = await submitSuccessorBlockTx({
     lucid: harness.funderLucid,
+    emulator: harness.emulator,
     contracts: harness.contracts,
-    nonceUtxo: harness.nonceUtxo,
-    catalogue: harness.catalogue,
+    anchorBlockUnit: anchor.stateQueueBlockUnit,
     header: built.block.header,
+    hubOracle: anchor.hubOracle,
+    scheduler: anchor.scheduler,
+    activeOperatorNode: anchor.activeOperatorNode,
+    activeOperatorNodeUnit: anchor.activeOperatorNodeUnit,
   });
   return {
     subject: built.subject,
     block: built.block,
-    setup,
+    setup: {
+      ...anchor,
+      header: target.header,
+      headerHash: target.successorHeaderHash,
+      fraudulentBlockOutRef: target.successorOutRef,
+      stateQueueBlockUnit: target.successorBlockUnit,
+      activeOperatorNode: target.activeOperatorNode,
+    },
     material: built.material,
   };
 };
+
+type SetupFraudulentBlockArgs = Parameters<typeof setupFraudulentBlock>[0];
 
 /** The subject's committed block and derived material, without an L1
  * commit: the header hash is the one a commit would name. */
@@ -291,18 +362,18 @@ export const buildMissingRedeemerBlock = async ({
   source,
   operatorVkey = "aa".repeat(28),
   startTime = 1_000_000n,
+  prevHeaderHash,
 }: {
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
   readonly operatorVkey?: string;
   readonly startTime?: bigint;
+  /** The queued block the header follows; genesis when absent. */
+  readonly prevHeaderHash?: string;
 }) => {
   const subject = buildMissingRedeemerSubject(shape);
   const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
-  const root =
-    entries.length === 0
-      ? SDK.EMPTY_MERKLE_TREE_ROOT
-      : await ledgerEntriesRoot(entries);
+  const root = await predecessorRoot(shape);
   const predecessor =
     entries.length === 0
       ? undefined
@@ -316,6 +387,7 @@ export const buildMissingRedeemerBlock = async ({
     startTime,
     priorLedgerRoot: root,
     prevUtxosRoot: root,
+    ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
     subject:
       source.kind === "normal"
         ? { kind: "normal", nativeTx: subject.nativeTx }
