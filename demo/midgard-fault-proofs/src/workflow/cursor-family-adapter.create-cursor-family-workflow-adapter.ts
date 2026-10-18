@@ -39,7 +39,7 @@ import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconci
 import { submitCapturedTransaction } from "./transaction-boundary.js";
 
 /**
- * Crash-safe mechanics for explicitly specified one-to-eight-step state
+ * Crash-safe mechanics for explicitly specified bounded-step state
  * machines. This is not a production admission factory: each family must
  * still provide a fixed manifest-bound transaction port and admitted replay.
  */

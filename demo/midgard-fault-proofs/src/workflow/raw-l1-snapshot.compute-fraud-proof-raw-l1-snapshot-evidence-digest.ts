@@ -3,6 +3,11 @@ import { createHash } from "node:crypto";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 
+import {
+  COMPUTATION_THREAD_STEP_ROLES,
+  type ComputationThreadStepRole,
+} from "./computation-thread-steps.js";
+
 export const FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION =
   "midgard-fraud-proof-raw-l1-snapshot-v1" as const;
 
@@ -15,24 +20,7 @@ export type FraudProofL1ObservationDepth =
   | "release_finality"
   | "recovery_finality";
 
-export type FraudProofRawL1ComputationStepRole =
-  | "computation_thread_step_01"
-  | "computation_thread_step_02"
-  | "computation_thread_step_03"
-  | "computation_thread_step_04"
-  | "computation_thread_step_05"
-  | "computation_thread_step_06"
-  | "computation_thread_step_07"
-  | "computation_thread_step_08"
-  | "computation_thread_step_09"
-  | "computation_thread_step_10"
-  | "computation_thread_step_11"
-  | "computation_thread_step_12"
-  | "computation_thread_step_13"
-  | "computation_thread_step_14"
-  | "computation_thread_step_15"
-  | "computation_thread_step_16"
-  | "computation_thread_step_17";
+export type FraudProofRawL1ComputationStepRole = ComputationThreadStepRole;
 
 export type FraudProofRawL1ScopeRole =
   | "deposit_event"
@@ -219,24 +207,7 @@ export const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "forced_transaction_event",
   "hub_oracle",
   "state_queue",
-  "computation_thread_step_01",
-  "computation_thread_step_02",
-  "computation_thread_step_03",
-  "computation_thread_step_04",
-  "computation_thread_step_05",
-  "computation_thread_step_06",
-  "computation_thread_step_07",
-  "computation_thread_step_08",
-  "computation_thread_step_09",
-  "computation_thread_step_10",
-  "computation_thread_step_11",
-  "computation_thread_step_12",
-  "computation_thread_step_13",
-  "computation_thread_step_14",
-  "computation_thread_step_15",
-  "computation_thread_step_16",
-  "computation_thread_step_17",
-
+  ...COMPUTATION_THREAD_STEP_ROLES,
   "permanent_proof_token",
   "active_operator_directory",
   "retired_operator_directory",

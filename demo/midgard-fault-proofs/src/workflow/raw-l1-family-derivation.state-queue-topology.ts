@@ -11,6 +11,10 @@ import {
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  COMPUTATION_THREAD_STEP_ROLES,
+  type ComputationThreadStep,
+} from "./computation-thread-steps.js";
 import { type FraudProofWorkflowTerminal } from "./journal.js";
 import type {
   FraudProofRawL1ComputationStepRole,
@@ -70,24 +74,7 @@ export type FraudProofRawL1FamilyStage =
     }
   | {
       readonly kind: "step";
-      readonly step:
-        | 1
-        | 2
-        | 3
-        | 4
-        | 5
-        | 6
-        | 7
-        | 8
-        | 9
-        | 10
-        | 11
-        | 12
-        | 13
-        | 14
-        | 15
-        | 16
-        | 17;
+      readonly step: ComputationThreadStep;
       readonly threadOutRef: string;
       readonly stateQueueBlockOutRef: string;
     }
@@ -106,25 +93,7 @@ export const HEX_4 = /^[0-9a-f]{8}$/u;
 
 export const HEX_28 = /^[0-9a-f]{56}$/u;
 
-const COMPUTATION_STEP_ROLES = Object.freeze([
-  "computation_thread_step_01",
-  "computation_thread_step_02",
-  "computation_thread_step_03",
-  "computation_thread_step_04",
-  "computation_thread_step_05",
-  "computation_thread_step_06",
-  "computation_thread_step_07",
-  "computation_thread_step_08",
-  "computation_thread_step_09",
-  "computation_thread_step_10",
-  "computation_thread_step_11",
-  "computation_thread_step_12",
-  "computation_thread_step_13",
-  "computation_thread_step_14",
-  "computation_thread_step_15",
-  "computation_thread_step_16",
-  "computation_thread_step_17",
-] as const satisfies readonly FraudProofRawL1ComputationStepRole[]);
+const COMPUTATION_STEP_ROLES = COMPUTATION_THREAD_STEP_ROLES;
 
 export const assertCanonicalComputationSteps = (
   definition: FraudProofRawL1TerminalDefinition,
