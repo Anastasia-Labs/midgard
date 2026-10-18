@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
   NetworkOrderContextV1, PurposeCoordinateV1,
@@ -314,4 +315,48 @@ test observer_wrong_opening_does_not_prove_impossibility() fail {
 test observer_route_refuses_the_observed_coordinate() fail {
   // The observed route's own coordinate is reused through Complete only.
   cbor.serialise(observe(9, [hash])) != #""
+}
+
+// A transaction minting under one policy at mint 0, with no redeemer and no
+// required observer: its forced rejection RedeemerMissing { 1, 0 } is the
+// true first fault. The observer route opens field 3 only.
+fn observe_on_minting_tx(leaf_kind: Int) {
+  let tx = fixture.valid_native_tx_v1()
+  let block = fixture.native_block_fixture_v1(
+    native_types.MidgardTransaction {
+      ..tx,
+      body: native_types.MidgardTransactionBody {
+        ..tx.body,
+        required_observers: [],
+        mint: builtin.map_data(
+          [
+            Pair(
+              builtin.b_data(hash),
+              builtin.map_data([Pair(builtin.b_data(#"41"), builtin.i_data(1))]),
+            ),
+          ],
+        ),
+      },
+      witness_set: native_types.MidgardTransactionWitnessSet {
+        ..tx.witness_set,
+        redeemer_tx_wits: [],
+      },
+    },
+  )
+  start.observe_v1(
+    observed(block, reason(leaf_kind, 0), root),
+    fixture.inline_body_opening(block.compact_cbor, []),
+    [],
+    fixture.test_certificate_policy_id,
+  )
+}
+
+test observer_route_proves_an_observer_leaf_impossible_on_a_minting_tx() {
+  observe_on_minting_tx(2).purpose == impossible(2, 0)
+}
+
+// Either result passes the body, so only an abort satisfies this row.
+test observer_route_refuses_a_mint_leaf() fail {
+  let state = observe_on_minting_tx(1)
+  state.purpose == impossible(1, 0) || state.purpose != impossible(1, 0)
 }

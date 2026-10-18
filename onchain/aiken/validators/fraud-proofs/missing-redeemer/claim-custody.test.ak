@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
@@ -30,7 +31,7 @@ use midgard/fraud_proofs/field_opening_v1
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_mint as mint
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
-  ClaimPurposeStateV1, ExistingPurpose, NotRequired,
+  ClaimPurposeStateV1, ExistingPurpose, ImpossiblePurpose, NotRequired,
 }
 use midgard/fraud_proofs/missing_redeemer/claim_receive as receive_claim
 use midgard/fraud_proofs/missing_redeemer/claim_spend as spend
@@ -314,6 +315,75 @@ test claim_start_hands_the_spend_context_over_without_a_signature() {
 
 test claim_start_spend_handover_cannot_alter_the_context() {
   !start_spend(True)
+}
+
+// A transaction minting under one policy at mint 0, with no redeemer and no
+// required observer. Its forced rejection RedeemerMissing { 1, 0 } is the true
+// first fault; the step output is the receipt the observer route would derive
+// if it ignored the leaf's purpose kind.
+fn start_observe_on_minting_tx(leaf_kind: Int) {
+  let tx = fixture.valid_native_tx_v1()
+  let block = fixture.native_block_fixture_v1(
+    native_types.MidgardTransaction {
+      ..tx,
+      body: native_types.MidgardTransactionBody {
+        ..tx.body,
+        required_observers: [],
+        mint: builtin.map_data(
+          [
+            Pair(
+              builtin.b_data(hash),
+              builtin.map_data([Pair(builtin.b_data(#"41"), builtin.i_data(1))]),
+            ),
+          ],
+        ),
+      },
+      witness_set: native_types.MidgardTransactionWitnessSet {
+        ..tx.witness_set,
+        redeemer_tx_wits: [],
+      },
+    },
+  )
+  let initial = observed(block, reason(leaf_kind, 0), root)
+  let output: Data = ClaimPurposeStateV1 {
+    context: initial,
+    purpose: ImpossiblePurpose {
+      coordinate: PurposeCoordinateV1 { kind: leaf_kind, index: 0 },
+    },
+  }
+  start_entry.main.spend(
+    fixture.next_step_script_hash,
+    hash,
+    hash,
+    hash,
+    fixture.computation_thread_policy_id,
+    fixture.test_certificate_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(initial),
+      },
+    ),
+    ct.Continue(
+      start.Observe {
+        input_index: 0,
+        output_index: 0,
+        opening: fixture.inline_body_opening(block.compact_cbor, []),
+      },
+    ),
+    fixture.own_out_ref(),
+    step_tx(output, [], False),
+  )
+}
+
+test claim_start_observer_route_proves_an_observer_leaf_impossible_on_a_minting_tx() {
+  start_observe_on_minting_tx(2)
+}
+
+// Either result passes the body, so only an abort satisfies this row.
+test claim_start_observer_route_refuses_a_mint_leaf() fail {
+  let accepted = start_observe_on_minting_tx(1)
+  accepted || !accepted
 }
 
 fn spend_open(signatures: List<ByteArray>) {
