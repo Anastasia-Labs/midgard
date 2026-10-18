@@ -15,9 +15,9 @@
  * `StartupStepFailedError` naming the step, the reason and the last cause.
  * The node's startup then fails: `/readyz` reports `startup_failed` with the
  * step and its reason. A transient failure that outlived the budget exits the
- * process non-zero, its supervisor's restart being the backoff; any other
- * failure holds the process up, unready, until it is restarted
- * (`withStartupHttpServer`).
+ * process non-zero, its supervisor's restart being the backoff, and so does a
+ * failure its step marks `terminal`; any other failure holds the process up,
+ * unready, until it is restarted (`withStartupHttpServer`).
  *
  * Steps run in the runtime's layers as well as in `runNode`, so the
  * reporter is a fiber reference the startup HTTP server sets for the whole
@@ -161,7 +161,8 @@ export const STARTUP_L1_NODE_BUDGET = Duration.minutes(10);
  * A startup step failed for good: on a failure it does not wait out
  * (`exhausted: false`), or on a transient one that outlived its budget
  * (`exhausted: true`). `step` is the step's key, `reason` the named reason,
- * `cause` the last failure.
+ * `cause` the last failure. `terminal` marks a failure the step does not
+ * wait out on which the process exits rather than holds.
  */
 export class StartupStepFailedError extends Data.TaggedError(
   "StartupStepFailedError",
@@ -171,6 +172,7 @@ export class StartupStepFailedError extends Data.TaggedError(
     readonly reason: string;
     readonly exhausted: boolean;
     readonly attempts: number;
+    readonly terminal?: true;
   }
 > {}
 
@@ -181,6 +183,8 @@ export const startupStepFailed = (
     reason: string;
     cause: unknown;
     exhausted?: boolean;
+    /** The process exits on this failure rather than holds. */
+    terminal?: boolean;
     attempts?: number;
     /** How long the step waited before it ran out of budget. */
     waitedMs?: number;
@@ -197,6 +201,7 @@ export const startupStepFailed = (
     reason: fields.reason,
     exhausted,
     attempts,
+    ...(fields.terminal === true ? { terminal: true as const } : {}),
     cause: fields.cause,
     message: `startup step ${fields.step} failed: reason=${fields.reason}; ${
       exhausted

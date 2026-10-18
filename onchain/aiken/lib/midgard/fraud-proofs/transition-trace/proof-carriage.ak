@@ -28,7 +28,7 @@ pub fn chunks(indices: List<Int>, references: List<Input>) -> ByteArray {
 
 pub fn open(indices: List<Int>, references: List<Input>) -> (Commitment, Data) {
   let bytes = chunks(indices, references)
-  let data <- cbor_deserialise.expect_deserialise(bytes)
+  let data <- cbor_deserialise.expect_deserialise_envelope(bytes)
   // This is reference-byte transport, not a consensus serialiseData preimage.
   // Its exact bytes are frozen by the thread commitment; native preimages
   // contained within it still pass their canonical field/output doors.

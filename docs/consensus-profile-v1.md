@@ -251,8 +251,12 @@ bytes are an SDK input format, not the consensus identity: the SDK decodes
 them and emits the canonical term DAG. This removes an otherwise separate
 untrusted bytes-to-term interpretation from L1 consensus.
 
-The authoring decoder must round-trip to the exact canonical Flat bytes before
-the graph is accepted. UPLC 1.1.0 type-instantiation forces that the authoring
+The authoring decoder reads the raw Flat exactly as the Cardano ledger reads a
+Plutus V3 script at protocol version 11: it refuses every program Cardano
+refuses and accepts every spelling Cardano accepts, such as padded Flat words
+and non-minimal Data constant encodings. The graph commits each constant's
+value in canonical form, so every spelling of a program builds the same graph.
+UPLC 1.1.0 type-instantiation forces that the authoring
 library represents implicitly around polymorphic builtins are restored as
 explicit authenticated term nodes. Missing, duplicated, or otherwise
 non-canonical builtin forces therefore reject instead of being normalized into

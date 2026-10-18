@@ -218,6 +218,50 @@ describe("Q44 da-hash-preimage total source verdict", () => {
     });
   });
 
+  // `FIELD_LENGTHS_CBOR` with its first length written raw. Field lengths are
+  // unsigned 64-bit integers, as in the Aiken rule: the whole range is a
+  // well-formed source and only a wider integer is malformed. Twin of the Aiken
+  // `da_hash_preimage_*_field_length*` tests.
+  const lengthsStartingWith = (firstCbor: string): string =>
+    `89${firstCbor}${FIELD_LENGTHS_CBOR.slice(6)}`;
+
+  it.each([
+    ["2^53", encodeCbor(2n ** 53n).toString("hex")],
+    ["2^64 - 1", encodeCbor(2n ** 64n - 1n).toString("hex")],
+  ])("does not convict a field length of %s", (_label, firstCbor) => {
+    expect(
+      adjudicateCommittedSourceLeaf({
+        committedTxId: VALID_TX_ID,
+        committedLeafValue: sourceBytes(
+          source({
+            source: {
+              ...source().source,
+              field_preimage_lengths_cbor: lengthsStartingWith(firstCbor),
+            },
+          }),
+        ),
+      }).verdict,
+    ).toBe("NoViolation");
+  });
+
+  it("convicts a field length beyond 64 bits as a malformed proof source", () => {
+    expect(
+      adjudicateCommittedSourceLeaf({
+        committedTxId: VALID_TX_ID,
+        committedLeafValue: sourceBytes(
+          source({
+            source: {
+              ...source().source,
+              field_preimage_lengths_cbor: lengthsStartingWith(
+                "c249010000000000000000",
+              ),
+            },
+          }),
+        ),
+      }).verdict,
+    ).toBe("MalformedProofSource");
+  });
+
   it("derives the pinned id from the raw body bytes", () => {
     expect(rawBodyTxId(COMPACT_CBOR)).toBe(VALID_TX_ID);
     expect(compactWithRawBounds(-1n, -1n)).toBe(COMPACT_CBOR);

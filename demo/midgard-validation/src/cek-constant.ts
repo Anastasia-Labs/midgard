@@ -30,6 +30,10 @@ export {
   midgardCekConstantWitnessToUplc,
   midgardCekUplcConstantMemorySize,
 } from "./cek-constant.semantic-uplc-constant.js";
+export {
+  midgardEnvelopeDataFromCborIterative,
+  plutusDataFromCborIterative,
+} from "./plutus-data-iterative.decode.js";
 export { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 export {
   midgardCekByteStringMemorySize,

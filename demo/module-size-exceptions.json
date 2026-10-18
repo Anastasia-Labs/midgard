@@ -96,7 +96,7 @@
   },
   {
     "file": "lucid-midgard/src/builder.lucid-midgard.ts",
-    "max": 511,
+    "max": 513,
     "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
   },
   {
@@ -746,7 +746,7 @@
   },
   {
     "file": "midgard-node/scripts/verify-phase2-benchmark-report.verify-phase2-benchmark-reports.mjs",
-    "max": 658,
+    "max": 652,
     "reason": "verifyPhase2BenchmarkReports is the dominant indivisible declaration (518 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -786,7 +786,7 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1042,
+    "max": 1041,
     "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment."
   },
   {
@@ -866,12 +866,12 @@
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
-    "max": 1503,
+    "max": 1501,
     "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-worker-isolation.bench.ts",
-    "max": 598,
+    "max": 597,
     "reason": "Retained test registration “Phase 2 validation-worker isolation benchmark” (524 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1031,12 +1031,12 @@
   },
   {
     "file": "midgard-node/tests/operator-lifecycle-emulator.test.ts",
-    "max": 954,
+    "max": 960,
     "reason": "Retained test registration “operator lifecycle emulator” (895 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-node/tests/phase2-benchmark-report.test.ts",
-    "max": 745,
+    "max": 744,
     "reason": "Retained test registration “Phase 2 benchmark report gate” (732 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1156,7 +1156,7 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4134,
+    "max": 4128,
     "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. A late native execution scan step binds the hash of its NativeScripts continuation; measured with that binding."
   },
   {

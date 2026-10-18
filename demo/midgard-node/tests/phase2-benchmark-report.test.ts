@@ -622,7 +622,6 @@ describe("Phase 2 benchmark report gate", () => {
       poolSize: 6,
       batchSize: 512,
       chunkSize: 64,
-      signatureVerifier: "node",
       targetTps: 2_500,
       steadyStateWarmupMsRequested: 300_000,
       steadyStateWarmupMsObserved: 300_032,

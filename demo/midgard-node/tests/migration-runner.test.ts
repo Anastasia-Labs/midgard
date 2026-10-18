@@ -101,6 +101,7 @@ describe("splitSqlStatements", () => {
       [25, "block_time", true],
       [26, "drop_utxo_payload_aggregate", true],
       [27, "public_http_read_indexes", true],
+      [28, "import_checks", true],
     ]);
   });
 

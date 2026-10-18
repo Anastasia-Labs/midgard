@@ -11,10 +11,6 @@ import "./validation-candidate.js";
 import "./phase-a.validate-input-sets.js";
 import "./phase-a.validate-phase-asingle.js";
 export {
-  phaseAPublicKeyCacheStats,
-  resetPhaseAPublicKeyCache,
-} from "./phase-a.validate-input-sets.js";
-export {
   runPhaseAValidation,
   validatePhaseASingle,
 } from "./phase-a.validate-phase-asingle.js";

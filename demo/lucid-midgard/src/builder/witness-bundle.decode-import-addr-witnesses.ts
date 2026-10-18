@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
@@ -265,6 +266,7 @@ export const signMidgardNativeTx = async (
   tx: MidgardNativeTxFull,
   wallet: MidgardWallet,
 ): Promise<MidgardNativeTxFull> => {
+  await ledgerEd25519SignatureReady();
   const bodyHash = computeMidgardNativeTxId(tx);
   const witness = assertVKeyWitness(
     bodyHash,

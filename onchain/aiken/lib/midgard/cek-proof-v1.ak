@@ -996,7 +996,7 @@ pub fn inspect_program_blob_material_v1(
   preimage: ByteArray,
 ) -> Option<ProgramBlobMaterialV1> {
   if kind == 3 {
-    when cbor_deserialise.deserialise(preimage) is {
+    when cbor_deserialise.deserialise_envelope(preimage) is {
       Some(data) ->
         if data_is_bytes(data) {
           let bytes = builtin.un_b_data(data)
@@ -1087,7 +1087,7 @@ fn inspect_program_material_entry_data_v1(
       when data_hash(root_data) is {
         Some(root) -> {
           let decoded_value = if data_is_bytes(value_data) {
-            cbor_deserialise.deserialise(builtin.un_b_data(value_data))
+            cbor_deserialise.deserialise_envelope(builtin.un_b_data(value_data))
           } else {
             None
           }
@@ -1156,7 +1156,7 @@ fn strictly_sorted_material_roots_v1(
 pub fn inspect_complete_program_material_sidecar_v1(
   sidecar_cbor: ByteArray,
 ) -> Option<List<CekProgramMaterialDatumV1>> {
-  when cbor_deserialise.deserialise(sidecar_cbor) is {
+  when cbor_deserialise.deserialise_envelope(sidecar_cbor) is {
     Some(data) ->
       when list_data(data) is {
         Some([version_data, entries_data]) ->

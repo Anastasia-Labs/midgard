@@ -135,6 +135,7 @@ These modules serve preflight only. They select tooling self-tests instead
 of repeating unchanged protocol suites; Repo Tools CI remains required.
 Shared probes, artifact derivation, package execution and unknown new
 preflight helpers retain full scope. `--full` still runs every check locally.
+
 - `scripts/preflight.mjs`
 - `scripts/preflight/run.mjs`
 - `scripts/preflight/registry.mjs`
@@ -742,6 +743,31 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:plutus-data-cbor-decoding-v1`
+
+Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`

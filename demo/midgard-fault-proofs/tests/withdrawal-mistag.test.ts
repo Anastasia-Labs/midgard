@@ -1,4 +1,7 @@
-import { computeHash32 } from "@al-ft/midgard-core";
+import {
+  computeHash32,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -11,7 +14,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   buildCountedRoot,
@@ -23,6 +26,10 @@ import {
   withdrawalMistagStates,
   withdrawalMistagStepPayloadCbor,
 } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const makeEvidence = async ({
   lovelace,

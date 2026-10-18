@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/primitive/bytearray
 use midgard/cek_data_v1
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_value_v1
@@ -617,4 +618,33 @@ test written_control_reads_back_unchanged() {
       ),
     ),
   }
+}
+
+/// The widest byte strings a well-formed control carries are a 28-byte policy
+/// and 32-byte sequence roots; the TypeScript pre-terminal control carries
+/// both and reads back through both readers.
+test written_control_at_its_widest_fields_reads_back_unchanged() {
+  let control = ledger_output_value_v1.decode_written_control_v1(
+    typescript_maximum_value_pre_terminal_control,
+  )
+  and {
+    bytearray.length(control.current_policy) == 28,
+    bytearray.length(control.current_assets.root) == 32,
+    bytearray.length(control.value_entries.root) == 32,
+    control == ledger_output_value_v1.decode_control_v1(
+      typescript_maximum_value_pre_terminal_control,
+    ),
+  }
+}
+
+test written_control_refuses_truncated_bytes() fail {
+  ledger_output_value_v1.decode_written_control_v1(
+    bytearray.take(terminal_control, bytearray.length(terminal_control) - 1),
+  ) == ledger_output_value_v1.decode_control_v1(terminal_control)
+}
+
+test written_control_refuses_trailing_bytes() fail {
+  ledger_output_value_v1.decode_written_control_v1(
+    bytearray.concat(terminal_control, #"00"),
+  ) == ledger_output_value_v1.decode_control_v1(terminal_control)
 }
