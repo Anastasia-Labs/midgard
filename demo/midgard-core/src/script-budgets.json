@@ -958,11 +958,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 13381141,
-        "cpu": 4606279288
-      },
-      "aboveBasis": {
-        "why": "13,251,280 mem whole-test, 100.4% of the basis, but net of its fixture-only twin it fits, at 13,122,184 (99.4%, a margin of 77,816 mem), so on this rung the over-basis amount is fixture cost. Added 2026-10-14 after the TxOut-summary reuse (e9117395a, 7c8bb33d4) moved the 3,149- and 3,215-byte rungs inside the basis, so the descriptor dimension keeps a measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs; see `openQuestions` (`maximum-serviceable-output-width`)."
+        "mem": 10323501,
+        "cpu": 3671105548
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_fixture_only": {
@@ -977,11 +974,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 13574956,
-        "cpu": 4668154663
-      },
-      "aboveBasis": {
-        "why": "13,443,176 mem whole-test, 101.8% of the basis, and 13,314,442 net of its fixture-only twin, 100.9%. Added 2026-10-14 after the TxOut-summary reuse (e9117395a, 7c8bb33d4) moved the 3,149- and 3,215-byte rungs inside the basis, so the descriptor dimension keeps a measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs; see `openQuestions` (`maximum-serviceable-output-width`)."
+        "mem": 10458628,
+        "cpu": 3715020185
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_fixture_only": {
@@ -996,11 +990,8 @@
       "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives",
       "env": "testnet",
       "ceiling": {
-        "mem": 13769605,
-        "cpu": 4730174449
-      },
-      "aboveBasis": {
-        "why": "13,635,898 mem whole-test, 103.3% of the basis, and 13,506,706 net of its fixture-only twin, 102.3%. Added 2026-10-14 after the TxOut-summary reuse (e9117395a, 7c8bb33d4) moved the 3,149- and 3,215-byte rungs inside the basis, so the descriptor dimension keeps a measured crossing. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs; see `openQuestions` (`maximum-serviceable-output-width`)."
+        "mem": 10594589,
+        "cpu": 3759079233
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_fixture_only": {
@@ -1542,11 +1533,8 @@
       "minusControl": "descriptor_3479_bytes_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 13444935,
-        "cpu": 4536430967
-      },
-      "aboveBasis": {
-        "why": "Deriving the §5.3 descriptor for a single 3,479-byte canonical output costs 13,314,442 mem net of every fixture the test builds, 100.9% of the 13,200,000 basis. Since the TxOut-summary reuse (e9117395a, 7c8bb33d4) this is the narrowest measured output for which the derivation itself, not the harness around it, does not fit; 3,413 bytes fits at 13,122,184. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling; see `openQuestions` (`maximum-serviceable-output-width`)."
+        "mem": 10328607,
+        "cpu": 3583296489
       }
     },
     "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives - descriptor_3545_bytes_fixture_only": {
@@ -1554,11 +1542,8 @@
       "minusControl": "descriptor_3545_bytes_fixture_only",
       "env": "testnet",
       "ceiling": {
-        "mem": 13639121,
-        "cpu": 4596654203
-      },
-      "aboveBasis": {
-        "why": "Deriving the §5.3 descriptor for a single 3,545-byte canonical output costs 13,506,706 mem net of every fixture the test builds, 102.3% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling; see `openQuestions` (`maximum-serviceable-output-width`)."
+        "mem": 10464105,
+        "cpu": 3625558987
       }
     }
   },
