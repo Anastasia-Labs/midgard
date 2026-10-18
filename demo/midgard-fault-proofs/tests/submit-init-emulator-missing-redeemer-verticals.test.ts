@@ -11,6 +11,11 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
+  MissingRedeemerHonestLeaf,
+  requireConvictingMissingRedeemerProof,
+} from "../src/missing-redeemer/index.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import {
   driveMissingRedeemerThread,
   makeMissingRedeemerHarness,
   MISSING_REDEEMER_STEP_BOUNDS,
@@ -19,7 +24,9 @@ import {
   stepTable,
 } from "./support/missing-redeemer-emulator.js";
 import {
+  nativeScript,
   plutusScript,
+  redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import {
@@ -70,6 +77,31 @@ const removeBlock = async (
     validFrom: now > 120_000n ? now - 120_000n : 0n,
     validTo: now + 300_000n,
   });
+};
+
+/** Drives a convicting thread to its terminal and checks the token. */
+const convictAndCheck = async (
+  harness: MissingRedeemerHarness,
+  scenario: Awaited<ReturnType<typeof setupMissingRedeemerScenario>>,
+  label: string,
+) => {
+  const references = await publishMissingRedeemerRoles(harness);
+  const run = await driveMissingRedeemerThread({
+    harness,
+    scenario,
+    references,
+  });
+  expect(run.prepared.convicts).toBe(true);
+  const outcome = await run.terminal();
+  console.log(`MR ${label} steps`, JSON.stringify(stepTable(run.steps)));
+  expectWithinBounds(run.steps);
+  expect(outcome.fraudulentHeaderHash).toBe(scenario.setup.headerHash);
+  await expectSingleUtxoWithUnit(
+    harness.proverLucid,
+    harness.missingRedeemer.fraudProof.spendingScriptAddress,
+    outcome.fraudProofUnit,
+  );
+  return run;
 };
 
 describe("missing-redeemer genuine-Init verticals", () => {
@@ -126,5 +158,66 @@ describe("missing-redeemer genuine-Init verticals", () => {
         scenario.setup.stateQueueBlockUnit,
       ),
     ).resolves.toHaveLength(0);
+  }, 1_200_000);
+
+  it("C-4: convicts an accepted transaction whose redeemer field is empty", async () => {
+    const harness = await makeMissingRedeemerHarness();
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: { observers: [{ script: plutusScript(3), redeemer: false }] },
+      source: { kind: "normal" },
+    });
+    expect(scenario.material.fields[8]).toHaveLength(0);
+    const run = await convictAndCheck(harness, scenario, "C-4");
+    expect(run.prepared.final.claim).toBe("NotRequired");
+    expect(run.prepared.final.context.observed?.redeemer_missing).toBe(true);
+  }, 1_200_000);
+
+  it("R-F: convicts a forced rejection whose RedeemerMissing names a native observer", async () => {
+    const harness = await makeMissingRedeemerHarness();
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: { observers: [{ script: nativeScript(1n), redeemer: false }] },
+      source: { kind: "forced", verdict: redeemerMissingVerdict(2n, 0n) },
+    });
+    const run = await convictAndCheck(harness, scenario, "R-F false");
+    expect(run.prepared.final.claim).toHaveProperty("NativeSource");
+  }, 1_200_000);
+
+  it("R-F: refuses a forced rejection whose claimed observer redeemer is absent", async () => {
+    const harness = await makeMissingRedeemerHarness();
+    const scenario = await setupMissingRedeemerScenario({
+      harness,
+      shape: { observers: [{ script: plutusScript(5), redeemer: false }] },
+      source: { kind: "forced", verdict: redeemerMissingVerdict(2n, 0n) },
+    });
+    await expect(
+      requireConvictingMissingRedeemerProof({
+        material: scenario.material,
+        contracts: harness.missingRedeemer,
+        prover: harness.proverSigner.paymentKeyHash,
+      }),
+    ).rejects.toThrow(MissingRedeemerHonestLeaf);
+    const references = await publishMissingRedeemerRoles(harness);
+    const run = await driveMissingRedeemerThread({
+      harness,
+      scenario,
+      references,
+    });
+    expect(run.prepared.convicts).toBe(false);
+    expect(run.prepared.final.claim).toHaveProperty("RedeemerAbsent");
+    expectWithinBounds(run.steps);
+    // The claimed redeemer is absent, as the leaf says: the terminal's
+    // conviction rule returns false and no fraud-proof token can mint.
+    await expectOnchainRefusal(() => run.terminal(false), {
+      refusedBy: "fraud_proofs/missing_redeemer/step_05",
+      check: /^Validator returned false$/u,
+    });
+    await expect(
+      harness.proverLucid.utxosAtWithUnit(
+        harness.missingRedeemer.steps.at(-1)!.spendingScriptAddress,
+        run.unit,
+      ),
+    ).resolves.toHaveLength(1);
   }, 1_200_000);
 });
