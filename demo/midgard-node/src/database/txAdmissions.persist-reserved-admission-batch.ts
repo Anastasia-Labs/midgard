@@ -53,16 +53,6 @@ export const persistReservedAdmissionBatch = (
           ${pg.array(postgresByteaArray(variants.map((value) => value.txId)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCbor)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
-          ${pg.array(
-            postgresByteaArray(
-              variants.map((value) => value.programMaterialSidecarCbor),
-            ),
-          )}::bytea[],
-          ${pg.array(
-            postgresByteaArray(
-              variants.map((value) => value.programMaterialSidecarSha256),
-            ),
-          )}::bytea[],
           ${pg.array(variants.map((value) => value.submitSource))}::text[],
           ${pg.array(variants.map((value) => value.requestIndices.length))}::integer[],
           ${pg.array(variants.map((value) => value.variantOrdinal))}::integer[],
@@ -71,8 +61,6 @@ export const persistReservedAdmissionBatch = (
           tx_id,
           tx_canonical_cbor,
           tx_full_hash_v1,
-          cek_program_material_sidecar_cbor,
-          cek_program_material_sidecar_sha256,
           submit_source,
           request_count,
           variant_ordinal,
@@ -99,16 +87,12 @@ export const persistReservedAdmissionBatch = (
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_FULL_HASH_V1)},
-          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+          ${sql(Columns.TX_FULL_HASH_V1)}
         )
         SELECT
           inserted.${sql(Columns.TX_ID)},
           input.tx_canonical_cbor,
-          input.tx_full_hash_v1,
-          input.cek_program_material_sidecar_cbor,
-          input.cek_program_material_sidecar_sha256
+          input.tx_full_hash_v1
         FROM inserted_admission inserted
         INNER JOIN input
           ON input.tx_id = inserted.${sql(Columns.TX_ID)}
@@ -137,14 +121,7 @@ export const persistReservedAdmissionBatch = (
             input.tx_full_hash_v1
           AND payload.${sql(Columns.TX_CANONICAL_CBOR)} =
             input.tx_canonical_cbor
-          AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
-            = input.cek_program_material_sidecar_sha256
         WHERE admissions.${sql(Columns.TX_ID)} = input.tx_id
-          AND (
-            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
-              = input.cek_program_material_sidecar_cbor
-            OR admissions.${sql(Columns.STATUS)} IN ('accepted', 'rejected')
-          )
           AND NOT EXISTS (
             SELECT 1
             FROM inserted_admission inserted
@@ -157,9 +134,7 @@ export const persistReservedAdmissionBatch = (
         'new'::text AS result_kind,
         inserted.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)}
       FROM input
       INNER JOIN inserted_admission inserted
         ON inserted.${sql(Columns.TX_ID)} = input.tx_id
@@ -187,9 +162,7 @@ export const persistReservedAdmissionBatch = (
         updated.${sql(Columns.SUBMIT_SOURCE)},
         updated.${sql(Columns.REQUEST_COUNT)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)}
       FROM updated_existing updated
       INNER JOIN input ON input.variant_ordinal = updated.variant_ordinal
       INNER JOIN ${sql(payloadTableName)} payload
@@ -211,8 +184,6 @@ export const persistReservedAdmissionBatch = (
         txId: variant.txId,
         txFullHashV1: variant.txFullHashV1,
         txCanonicalCbor: variant.txCanonicalCbor,
-        programMaterialSidecarCbor: variant.programMaterialSidecarCbor,
-        programMaterialSidecarSha256: variant.programMaterialSidecarSha256,
         requestCount: variant.requestIndices.length,
       });
       if (duplicate !== null) {

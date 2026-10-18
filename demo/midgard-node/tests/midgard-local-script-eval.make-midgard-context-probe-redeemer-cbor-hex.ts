@@ -95,7 +95,7 @@ export const evaluateScriptStructurally = (
 ): LocalScriptEvalResult => {
   const program = buildMidgardCanonicalCekProgram(scriptBytes);
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     encodeMidgardCekPlutusData(context),
   );

@@ -126,8 +126,6 @@ export const loadClaimedPayloads = ({
         admission.${sql(Columns.TX_ID)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
         payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
         admission.${sql(Columns.ARRIVAL_SEQ)},
         admission.${sql(Columns.FIRST_SEEN_AT)},
         admission.${sql(Columns.VALIDATION_STARTED_AT)}

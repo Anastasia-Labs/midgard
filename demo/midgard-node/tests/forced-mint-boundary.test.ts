@@ -3,7 +3,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -121,9 +120,6 @@ describe("forced admission at the tx-order mint", () => {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: tx,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
           sourceKind: "forced",
           ledgerWitnessEntries: result.ledgerWitnessEntries,
           blockTimeMs: time.getTime(),
@@ -238,7 +234,6 @@ describe("forced admission at the tx-order mint", () => {
             ],
           ],
           validation_trace_witnesses: [],
-          cek_program_material: [],
         },
       };
       expect(

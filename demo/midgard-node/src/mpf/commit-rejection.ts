@@ -46,12 +46,6 @@ export const COMMIT_REJECT_CODE_TRACE_UNAVAILABLE =
 /** Alone in a block, the transaction's DA payload exceeds the submit frame. */
 export const COMMIT_REJECT_CODE_DA_OVERSIZE = "E_COMMIT_DA_OVERSIZE";
 
-/**
- * Adding the transaction's program material makes the block's material fail
- * the DA committee's block-wide program coverage check.
- */
-export const COMMIT_REJECT_CODE_PROGRAM_COVERAGE = "E_COMMIT_PROGRAM_COVERAGE";
-
 export type ResolvedTxDeltaForCommit =
   | {
       readonly _tag: "Decoded";

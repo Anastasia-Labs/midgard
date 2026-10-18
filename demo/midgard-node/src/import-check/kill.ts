@@ -10,17 +10,13 @@ import {
 import { type ImportCheckLoad } from "../database/importChecks.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
 
-/** The bytes a run decodes: its script, its context (`contextBytes`) and
- * its sidecar. */
+/** The bytes a run decodes: its script and its context (`contextBytes`). */
 export const importCheckCommittedRunBytes = (
   run: MidgardCommittedScriptRun,
   contextBytes: number,
-): number =>
-  run.scriptBytes.byteLength +
-  contextBytes +
-  (run.programMaterialSidecarCbor?.byteLength ?? 0);
+): number => run.scriptBytes.byteLength + contextBytes;
 
-/** The bytes a run decodes: its script, its context and its sidecar. */
+/** The bytes a run decodes: its script and its context. */
 export const importCheckRunBytes = (run: MidgardCekVerdictRequest): number =>
   importCheckCommittedRunBytes(run, run.contextCbor.byteLength);
 

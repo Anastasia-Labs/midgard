@@ -81,10 +81,7 @@ const identityOf = (run: MidgardCommittedScriptRun) => ({
   executionBudget: run.executionBudget,
   executionIndex: run.executionIndex,
   maxSteps: run.maxSteps,
-  programMaterialSidecarCbor:
-    run.programMaterialSidecarCbor === null
-      ? null
-      : Buffer.from(run.programMaterialSidecarCbor).toString("hex"),
+  scriptLanguage: run.scriptLanguage,
 });
 
 const bytesOf = (run: MidgardCekVerdictRequest) => ({

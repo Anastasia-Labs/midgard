@@ -1,14 +1,6 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardFieldPreimage,
   encodeMidgardFieldPreimage,
@@ -255,26 +247,15 @@ const admitted = (tx: MidgardForcedTxCanonical): Buffer | null => {
   }
 };
 
-const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
-
-/** An L2 output carrying a script reference whose material no one retains. */
-const scriptRefOutput = (() => {
-  const terminal = { kind: "error" } as const;
-  const termPreimage = encodeMidgardCekTermNode(terminal);
-  return encodeMidgardTxOutput({
-    address: TEST_ADDRESS,
-    value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
-    script_ref: {
-      language: "MidgardV1",
-      scriptBytes: encodeMidgardCekProgramEnvelope({
-        uplcVersion: [1n, 1n, 0n],
-        termRoot: hashMidgardCekTermNode(terminal),
-        nodeCount: 1n,
-        materialByteLength: BigInt(termPreimage.length),
-      }),
-    },
-  });
-})();
+/** An L2 output carrying a stored Flat script reference. */
+const scriptRefOutput = encodeMidgardTxOutput({
+  address: TEST_ADDRESS,
+  value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
+  script_ref: {
+    language: "MidgardV1",
+    scriptBytes: encodeCbor(Buffer.from("01010061", "hex")),
+  },
+});
 
 const itemsOf = (preimage: Buffer): readonly Buffer[] => {
   try {
@@ -335,10 +316,6 @@ const entryOf = (nativeTxCbor: Buffer, label: number) =>
         [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
         [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
           encoded.transactionCommitment,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-          sidecar,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-          createHash("sha256").update(sidecar).digest(),
         [ForcedTransactionsDB.Columns.INCLUSION_TIME]: new Date(
           "2026-07-23T12:00:00.000Z",
         ),
@@ -377,13 +354,6 @@ const leafOf = (
       ].toString("hex"),
       SDK.ForcedInclusionTxV1,
     );
-    // A forced transaction never commits program material.
-    if (
-      decodeMidgardCekProgramMaterialSidecar(
-        classified!.programMaterialSidecarCbor,
-      ).length !== 0
-    )
-      return yield* Effect.die("forced transaction committed program material");
     yield* buildPlaceholderValidationTraceMembers({
       transactions: [
         {

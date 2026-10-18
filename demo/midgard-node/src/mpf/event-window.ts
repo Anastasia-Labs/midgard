@@ -9,7 +9,6 @@ import "@al-ft/midgard-core/script-proof";
 import "@al-ft/midgard-validation";
 import "@effect/sql";
 import "effect";
-import "../database/cekProgramMaterial.js";
 import "../database/deposits.js";
 import "../database/forcedTransactions.js";
 import "../database/mempoolLedger.js";

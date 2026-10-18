@@ -21,12 +21,10 @@ import {
   configureEmulatorDaRuntimeManifest,
   confirmedLedgerFullScanCounter,
   ContractDeploymentIdentity,
-  createHash,
   Data,
   Database,
   decodeNodeUtxo,
   Effect,
-  EMPTY_PROGRAM_MATERIAL_SIDECAR,
   EMULATOR_DEPLOYMENT_IDENTITY,
   fetchLatestCommittedBlock,
   ForcedTransactionsDB,
@@ -250,7 +248,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       const queuedNormal = {
         txId: normalTransfer.txId,
         txCbor: normalTransfer.txCbor,
-        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
         arrivalSeq: 0n,
         createdAt: eventTime,
       } satisfies QueuedTx;
@@ -292,7 +289,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           yield* TxAdmissionsDB.tryInsert({
             txId: normalTransfer.txId,
             txCanonicalCbor: normalTransfer.txCbor,
-            programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
             submitSource: "native",
           });
           yield* withFollowerWrite(
@@ -325,7 +321,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         ),
         "hex",
       );
-      const forcedSidecar = EMPTY_PROGRAM_MATERIAL_SIDECAR;
       const forcedEntry: ForcedTransactionsDB.Entry = {
         [ForcedTransactionsDB.Columns.TX_ORDER_ID]: forcedEventId,
         [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
@@ -347,10 +342,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           ),
         [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
           forcedEncoding.transactionCommitment,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-          forcedSidecar,
-        [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-          createHash("sha256").update(forcedSidecar).digest(),
         [ForcedTransactionsDB.Columns.INCLUSION_TIME]: eventTime,
         [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
         [ForcedTransactionsDB.Columns.STATUS]:
@@ -525,7 +516,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       const queued: QueuedTx[] = built.map((tx, index) => ({
         txId: tx.txId,
         txCbor: tx.txCbor,
-        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
         arrivalSeq: BigInt(index),
         createdAt: new Date(Date.now() - 10_000 + index),
       }));
@@ -583,8 +573,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
             TxAdmissionsDB.tryInsert({
               txId: tx.txId,
               txCanonicalCbor: tx.txCbor,
-              programMaterialSidecarCbor:
-                tx.programMaterialSidecarCbor ?? EMPTY_PROGRAM_MATERIAL_SIDECAR,
               submitSource: "native",
             }),
           { concurrency: 1 },
@@ -594,16 +582,13 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       await runNodeDatabaseEffect(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          // The commit worker's canonical V1 revalidation requires a durable
-          // program-material sidecar in tx_admission_payloads for every
-          // mempool transaction, so mirror the production admission write.
+          // Mirror the production write of durable canonical transaction bytes.
           yield* Effect.forEach(
             queued,
             (tx) =>
               TxAdmissionsDB.tryInsert({
                 txId: tx.txId,
                 txCanonicalCbor: tx.txCbor,
-                programMaterialSidecarCbor: tx.programMaterialSidecarCbor!,
                 submitSource: "native",
               }),
             { concurrency: 1 },

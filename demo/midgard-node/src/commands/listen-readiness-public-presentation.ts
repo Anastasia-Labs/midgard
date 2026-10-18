@@ -237,7 +237,7 @@ const boundedReason =
 
 // Fixed stage vocabulary from the actual commit-build alarm producers.
 const commitAlarmReason =
-  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|program_material_sidecar|program_material_coverage|withdrawal_classification|unclassified)$/u;
+  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|withdrawal_classification|unclassified)$/u;
 const pipelineCountPath =
   /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|localMutationJobs\.unfinished|settlement\.unfinishedJobs|pendingBlockFinalizations\.countsByStatus\.(?:pending_submission|submitted_local_finalization_pending|submitted_unconfirmed|observed_waiting_stability|locally_applied|abandoned))$/u;
 

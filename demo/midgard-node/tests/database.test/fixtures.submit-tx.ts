@@ -1,14 +1,6 @@
-import { createHash } from "node:crypto";
 import { default as path } from "node:path";
 
-import {
-  decodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  encodeMidgardProofSubmission,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
@@ -34,11 +26,7 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { postSubmitHandler } from "../../src/commands/listen-router.post-submit-handler.js";
-import {
-  CekProgramMaterialDB,
-  MempoolDB,
-  TxAdmissionsDB,
-} from "../../src/database/index.js";
+import { MempoolDB, TxAdmissionsDB } from "../../src/database/index.js";
 import { AdmissionWriter } from "../../src/services/admission-writer.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { BatchSql } from "../../src/services/database.js";
@@ -186,22 +174,8 @@ export const makeProofSubmitTx = (): {
   return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
 };
 
-export const makeMaterialProofSubmitTx = (nonce: number) => {
-  const term = { kind: "variable" as const, index: BigInt(nonce) };
-  const preimage = encodeMidgardCekTermNode(term);
-  const material = {
-    kind: "term" as const,
-    root: hashMidgardCekTermNode(term),
-    preimage,
-  };
-  const envelope = decodeMidgardCekProgramEnvelope(
-    encodeMidgardCekProgramEnvelope({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: material.root,
-      nodeCount: 1n,
-      materialByteLength: BigInt(preimage.length),
-    }),
-  );
+export const makeScriptProofSubmitTx = (nonce: number) => {
+  const scriptBytes = encodeCbor(Buffer.from("0101002499", "hex"));
   const base = decodeMidgardNativeTxFullFromCanonicalCbor(
     makeNativeSubmitTx().txCanonicalCbor,
   );
@@ -217,7 +191,7 @@ export const makeMaterialProofSubmitTx = (nonce: number) => {
       scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
         {
           language: "MidgardV1",
-          scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
+          scriptBytes,
         },
       ]),
     },
@@ -228,25 +202,20 @@ export const makeMaterialProofSubmitTx = (nonce: number) => {
   const txId = computeMidgardNativeTxId(
     decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
-  const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([material]);
   return {
     txId,
     txIdHex: txId.toString("hex"),
     txCanonicalCbor,
-    material,
-    envelope,
-    sidecarCbor,
     proofEnvelope: encodeMidgardProofSubmission({
       transactionCbor: txCanonicalCbor,
-      programMaterial: [material],
     }),
   };
 };
 
-export const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
-  const attached = makeMaterialProofSubmitTx(nonce);
+export const makeReferenceScriptProofSubmitTx = (nonce: number) => {
+  const attached = makeScriptProofSubmitTx(nonce);
   const referenceOutRef = makeOutRefCbor(
-    databaseTxHash(`accepted-reference-material-${nonce.toString()}`),
+    databaseTxHash(`accepted-reference-script-${nonce.toString()}`),
     0,
   );
   const attachedCanonical = decodeMidgardNativeTxFullFromCanonicalCbor(
@@ -277,7 +246,6 @@ export const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
     referenceOutRef,
     proofEnvelope: encodeMidgardProofSubmission({
       transactionCbor: txCanonicalCbor,
-      programMaterial: [attached.material],
     }),
   };
 };
@@ -307,60 +275,9 @@ export const retrieveAllMempool = MempoolDB.retrievePage({
 export const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
 
-export const emptyProgramMaterialSidecar =
-  encodeMidgardCekProgramMaterialSidecar([]);
-
-export const emptyProgramMaterialSidecarSha256 = createHash("sha256")
-  .update(emptyProgramMaterialSidecar)
-  .digest();
-
-export const readCekProgramMaterialStoreStats = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<{
-    readonly entry_count: string;
-    readonly membership_count: string;
-    readonly owner_count: string;
-    readonly total_bytes: string;
-  }>`SELECT
-      (SELECT COUNT(*)::text
-        FROM ${sql(CekProgramMaterialDB.entryTableName)}) AS entry_count,
-      (SELECT COUNT(*)::text
-        FROM ${sql(CekProgramMaterialDB.membershipTableName)})
-        AS membership_count,
-      (SELECT COUNT(*)::text
-        FROM ${sql(CekProgramMaterialDB.admissionOwnerTableName)})
-        AS owner_count,
-      (
-        COALESCE((
-          SELECT SUM(
-            octet_length(material_root) + octet_length(da_value_cbor)
-          )
-          FROM ${sql(CekProgramMaterialDB.entryTableName)}
-        ), 0)
-        + COALESCE((
-          SELECT SUM(
-            octet_length(program_envelope_hash)
-              + octet_length(material_root)
-              + 1
-          )
-          FROM ${sql(CekProgramMaterialDB.membershipTableName)}
-        ), 0)
-        + COALESCE((
-          SELECT SUM(
-            octet_length(tx_id)
-              + octet_length(program_envelope_hash)
-              + octet_length(material_root)
-          )
-          FROM ${sql(CekProgramMaterialDB.admissionOwnerTableName)}
-        ), 0)
-      )::text AS total_bytes`;
-  return rows[0]!;
-});
-
 export const wrapNativeSubmitTx = (txCanonicalCbor: Buffer): Buffer =>
   encodeMidgardProofSubmission({
     transactionCbor: txCanonicalCbor,
-    programMaterial: [],
   });
 
 export const databaseTxHash = (label: string): Buffer =>

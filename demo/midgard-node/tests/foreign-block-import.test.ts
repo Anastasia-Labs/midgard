@@ -54,16 +54,6 @@ describe("complete foreign block import", () => {
       });
     },
   );
-  it("imports a block whose forced events reach none of its CEK material", async () => {
-    const payload = await fixture();
-    payload.block_body.cek_program_material = (
-      await fixture({ withProgram: true })
-    ).block_body.cek_program_material;
-    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
-    const result = await verdict(await rebind(payload));
-    if (result._tag === "Left") throw result.left;
-    expect(result.right.root).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
-  });
   it("imports two forced orders, one whose items do not decode, each at its own step", async () => {
     const first = await fixture();
     const [, reason, bytes] = MINT_ADMITTED_UNDECODABLE[0]!;
@@ -102,7 +92,6 @@ describe("complete foreign block import", () => {
           ...first.block_body.forced_transaction_preimages,
           ...body.forced_transaction_preimages,
         ],
-        cek_program_material: [],
         transition_trace: [
           ...first.block_body.transition_trace,
           [

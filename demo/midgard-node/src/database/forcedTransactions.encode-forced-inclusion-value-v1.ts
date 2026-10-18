@@ -14,7 +14,6 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
-import { sha256 } from "../sha256.js";
 import {
   Columns,
   type Entry,
@@ -168,7 +167,6 @@ export const setProofClassifications = (
   classifications: readonly {
     readonly txOrderId: Buffer;
     readonly verdict: SDK.OperatorVerdict;
-    readonly programMaterialSidecarCbor: Buffer;
   }[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -224,8 +222,6 @@ export const setProofClassifications = (
             });
             yield* sql`UPDATE ${sql(tableName)} SET
               ${sql(Columns.FORCED_INCLUSION_VALUE)} = ${value},
-              ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} = ${classification.programMaterialSidecarCbor},
-              ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} = ${sha256(classification.programMaterialSidecarCbor)},
               updated_at = NOW()
             WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}`;
           }),

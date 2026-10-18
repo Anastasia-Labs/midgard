@@ -217,13 +217,7 @@ describe("public readiness database diagnostics", () => {
 });
 
 it("preserves source-defined commit alarms while withholding arbitrary worker stage text", () => {
-  const stages = [
-    "phase_a",
-    "phase_b",
-    "transaction_root_derivation",
-    "program_material_sidecar",
-    "program_material_coverage",
-  ];
+  const stages = ["phase_a", "phase_b", "transaction_root_derivation"];
   for (const code of ["commit_build_held", "commit_stage_breaker"]) {
     const known = stages.map((stage) => `${code}:${stage}`);
     const source = {

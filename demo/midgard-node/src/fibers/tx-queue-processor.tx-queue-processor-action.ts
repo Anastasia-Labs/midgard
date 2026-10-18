@@ -41,7 +41,6 @@ import {
 import { pooledCekVerdictEvaluator } from "./tx-queue-processor.pooled-cek-verdict.js";
 import {
   admissionToQueuedTx,
-  collectAcceptedProgramEnvelopes,
   runPhaseAForBatch,
   sampleValidationQueueWaits,
   selectValidationBatchSize,
@@ -227,48 +226,41 @@ export const txQueueProcessorAction = (
 
             const pendingWithdrawalOutRefHexes =
               yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
-            const { phaseB, allRejected, programEnvelopesByTxId } =
-              yield* phaseBSequence.runDecision(
-                Effect.gen(function* () {
-                  const cachedState = yield* ledgerCache.currentState;
-                  const phaseBStart = Date.now();
-                  const { phaseB, allRejected } = yield* decideAdmissionBatch({
-                    phaseA,
-                    pendingWithdrawalOutRefHexes,
-                    ledgerState: cachedState,
-                    phaseBConfig: {
-                      nowCardanoSlotNo: BigInt(nowSlot.right),
-                      l1SlotConfig,
-                      bucketConcurrency:
-                        nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-                      enforceScriptBudget: true,
-                      evaluateCekVerdict:
-                        pooledCekVerdictEvaluator(validationPool),
-                    },
-                  });
-                  yield* validationPhaseBLatencyGauge(
-                    Effect.succeed(Date.now() - phaseBStart),
-                  );
-                  yield* validationPhaseBDurationTimer(
-                    Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
-                  );
+            const { phaseB, allRejected } = yield* phaseBSequence.runDecision(
+              Effect.gen(function* () {
+                const cachedState = yield* ledgerCache.currentState;
+                const phaseBStart = Date.now();
+                const { phaseB, allRejected } = yield* decideAdmissionBatch({
+                  phaseA,
+                  pendingWithdrawalOutRefHexes,
+                  ledgerState: cachedState,
+                  phaseBConfig: {
+                    nowCardanoSlotNo: BigInt(nowSlot.right),
+                    l1SlotConfig,
+                    bucketConcurrency:
+                      nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+                    enforceScriptBudget: true,
+                    evaluateCekVerdict:
+                      pooledCekVerdictEvaluator(validationPool),
+                  },
+                });
+                yield* validationPhaseBLatencyGauge(
+                  Effect.succeed(Date.now() - phaseBStart),
+                );
+                yield* validationPhaseBDurationTimer(
+                  Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
+                );
 
-                  const programEnvelopesByTxId =
-                    collectAcceptedProgramEnvelopes(
-                      phaseB.accepted,
-                      cachedState,
-                    );
-                  yield* ledgerCache.applySpeculativePatch(
-                    phaseBSequence.sequence,
-                    phaseB.statePatch,
-                  );
-                  return {
-                    phaseB,
-                    allRejected,
-                    programEnvelopesByTxId,
-                  };
-                }),
-              );
+                yield* ledgerCache.applySpeculativePatch(
+                  phaseBSequence.sequence,
+                  phaseB.statePatch,
+                );
+                return {
+                  phaseB,
+                  allRejected,
+                };
+              }),
+            );
 
             yield* phaseBSequence.runPersistence(
               Effect.gen(function* () {
@@ -298,7 +290,6 @@ export const txQueueProcessorAction = (
                     processedTxs: phaseB.accepted.map(
                       processedTxFromValidatedTx,
                     ),
-                    programEnvelopesByTxId,
                   });
                   yield* validationMempoolInsertDurationTimer(
                     Effect.succeed(

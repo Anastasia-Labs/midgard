@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxBodyCompact,
@@ -203,7 +200,6 @@ export const forcedEntry = async ({
     transactionId: Buffer.alloc(32, label).toString("hex"),
     outputIndex: 0n,
   };
-  const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
   return {
     [ForcedTransactionsDB.Columns.TX_ORDER_ID]: Buffer.from(
       Data.to(txOrderId, SDK.OutputReference),
@@ -222,10 +218,6 @@ export const forcedEntry = async ({
     [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: transaction.canonicalCbor,
     [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
       encoded.transactionCommitment,
-    [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-      sidecarCbor,
-    [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-      createHash("sha256").update(sidecarCbor).digest(),
     [ForcedTransactionsDB.Columns.INCLUSION_TIME]: new Date(
       `2026-07-23T12:00:${label.toString().padStart(2, "0")}.000Z`,
     ),

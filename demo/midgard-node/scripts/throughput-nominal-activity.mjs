@@ -198,7 +198,6 @@ const submitTxHex = async (txHex) => {
   while (attempt <= retry503) {
     const body = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from(txHex, "hex"),
-      programMaterial: [],
     });
     const resp = await fetch(`${submitEndpoint}/submit`, {
       method: "POST",

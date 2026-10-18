@@ -27,6 +27,7 @@ import blockTimeSql from "./sql/0025_block_time.sql";
 import dropUtxoPayloadAggregateSql from "./sql/0026_drop_utxo_payload_aggregate.sql";
 import publicHttpReadIndexesSql from "./sql/0027_public_http_read_indexes.sql";
 import importChecksSql from "./sql/0028_import_checks.sql";
+import dropCekProgramMaterialSql from "./sql/0029_drop_cek_program_material.sql";
 
 export type Migration = {
   readonly version: number;
@@ -233,6 +234,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: importChecksSql,
     transactional: true,
   },
+  {
+    version: 29,
+    name: "drop_cek_program_material",
+    checksumSha256: sha256Hex(dropCekProgramMaterialSql),
+    sql: dropCekProgramMaterialSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -270,10 +278,6 @@ export const APPLICATION_TABLE_NAMES = [
   "settlement_owners",
   "address_history",
   "blocks",
-  "cek_program_material_admission_owners",
-  "cek_program_material_retained_state_owners",
-  "cek_program_material_entries",
-  "cek_program_material_memberships",
   "confirmed_ledger",
   "commit_build_calibration",
   "deposits_utxos",

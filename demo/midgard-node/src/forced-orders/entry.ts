@@ -2,9 +2,6 @@
  * A forced order's `forced_transaction_utxos` row, from the order and the
  * nine field preimages its carriage supplied.
  */
-import { createHash } from "node:crypto";
-
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -23,7 +20,6 @@ const lucidError = (message: string, cause: unknown) =>
  * lost identity is never persisted under the datum's name. Identity is read
  * from the §5.1 envelope the tx-order mint authenticated, so an order whose
  * items do not decode still gets its row; classification gives its verdict.
- * A forced transaction runs no program, so its program material is empty.
  */
 export const forcedOrderEntry = (input: {
   readonly order: SDK.TxOrderUTxOV1;
@@ -72,7 +68,6 @@ export const forcedOrderEntry = (input: {
           `datum=${payload.transaction_commitment},derived=${encoded.transactionCommitment.toString("hex")}`,
         ),
       );
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const C = ForcedTransactionsDB.Columns;
     return {
       [C.TX_ORDER_ID]: Buffer.from(order.idCbor),
@@ -86,10 +81,6 @@ export const forcedOrderEntry = (input: {
       [C.CONSENSUS_PROFILE_ID]: consensusProfile.profileId,
       [C.NATIVE_TX_CBOR]: nativeTxCbor,
       [C.TRANSACTION_COMMITMENT]: encoded.transactionCommitment,
-      [C.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: sidecar,
-      [C.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: createHash("sha256")
-        .update(sidecar)
-        .digest(),
       [C.INCLUSION_TIME]: order.inclusionTime,
       [C.PROJECTED_HEADER_HASH]: null,
       [C.STATUS]: ForcedTransactionsDB.Status.Awaiting,

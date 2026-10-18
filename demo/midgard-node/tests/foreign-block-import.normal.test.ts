@@ -40,20 +40,11 @@ describe("normal foreign event identity", () => {
   });
   it("imports a PlutusV3 spend under its placeholder descriptor with no retained witnesses", async () => {
     const f = await normalFixture(false, "plutus");
-    expect(f.payload.block_body.cek_program_material.length).toBeGreaterThan(0);
+    expect(Object.keys(f.payload.block_body)).not.toContain(
+      "cek_program_material",
+    );
     expect(f.payload.block_body.validation_trace_witnesses).toEqual([]);
     expect((await f.imported())._tag).toBe("Right");
-  });
-  it("waits for missing reachable CEK material", async () => {
-    const f = await normalFixture(false, "plutus");
-    f.payload.block_body.cek_program_material = [];
-    const result = await f.imported();
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({
-        reason: "missing",
-        detail: expect.stringContaining("material"),
-      });
   });
   it("refuses a wrong normal source key even when every DA and semantic commitment is regenerated", async () => {
     const f = await normalFixture(true);

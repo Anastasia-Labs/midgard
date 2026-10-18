@@ -1,18 +1,7 @@
-import {
-  decodeMidgardCekProgramMaterialDaEntry,
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
-import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
-import {
-  admissionOwnerTableName,
-  canonicalEntries,
-  entryTableName,
-} from "./cekProgramMaterial.canonical-entries.js";
 import {
   ADMISSION_BYTE_QUOTA_LOCK_KEY,
   currentBacklogPayloadBytes,
@@ -25,7 +14,6 @@ import {
   type Entry,
   normalizeRow,
   payloadTableName,
-  postgresByteaArray,
   type RawClaimedPayloadEntry,
   type RawEntry,
   type ReservedAdmissionOutcome,
@@ -91,9 +79,7 @@ export const admitReservedBatch = (
           ) {
             continue;
           }
-          const requestedBytes = BigInt(
-            request.programMaterialSidecarCbor.length,
-          );
+          const requestedBytes = BigInt(request.txCanonicalCbor.length);
           if (projectedBacklogBytes + requestedBytes > maxBacklogBytes) {
             deniedTxIds.add(txIdHex);
           } else {
@@ -170,9 +156,7 @@ export const getByTxId = (
     const rows = yield* sql<RawEntry>`SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)}
       FROM ${sql(tableName)} AS admission
       INNER JOIN ${sql(payloadTableName)} AS payload
         ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
@@ -181,106 +165,6 @@ export const getByTxId = (
     return rows.length === 0 ? null : normalizeRow(rows[0]!);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to retrieve tx admission"),
-  );
-
-export type ProgramMaterialSidecarRecord = {
-  readonly txId: Buffer;
-  readonly sidecarCbor: Buffer;
-};
-
-/**
- * Loads the V1 sidecars of an exact transaction set. Missing rows are omitted
- * so callers can compare cardinality and fail closed. Acceptance scrubs a
- * payload's sidecar bytes after promoting its material into the global
- * availability index; a scrubbed sidecar is rebuilt from the material the
- * transaction owns there, which acceptance verified against its programs.
- */
-export const retrieveProgramMaterialSidecars = (
-  txIds: readonly Buffer[],
-): Effect.Effect<
-  readonly ProgramMaterialSidecarRecord[],
-  DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    if (txIds.length === 0) return [];
-    const sql = yield* SqlClient.SqlClient;
-    const pg = sql as PgClient;
-    const rows = yield* sql<{
-      readonly tx_id: Buffer;
-      readonly cek_program_material_sidecar_cbor: Buffer;
-    }>`SELECT
-        ${sql(Columns.TX_ID)},
-        ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
-      FROM ${sql(payloadTableName)}
-      WHERE ${sql(Columns.TX_ID)} =
-        ANY(${pg.array(postgresByteaArray(txIds))}::bytea[])
-      ORDER BY ${sql(Columns.TX_ID)} ASC`;
-    const scrubbed = encodeMidgardCekProgramMaterialSidecar([]);
-    const scrubbedTxIds = rows
-      .filter((row) =>
-        Buffer.from(row.cek_program_material_sidecar_cbor).equals(scrubbed),
-      )
-      .map((row) => Buffer.from(row.tx_id));
-    const owned =
-      scrubbedTxIds.length === 0
-        ? []
-        : yield* sql<{
-            readonly tx_id: Buffer;
-            readonly material_root: Buffer;
-            readonly da_value_cbor: Buffer;
-          }>`SELECT DISTINCT
-              owner.tx_id,
-              entry.material_root,
-              entry.da_value_cbor
-            FROM ${sql(admissionOwnerTableName)} owner
-            INNER JOIN ${sql(entryTableName)} entry
-              ON entry.material_root = owner.material_root
-            WHERE owner.tx_id =
-              ANY(${pg.array(postgresByteaArray(scrubbedTxIds))}::bytea[])`;
-    return yield* Effect.try({
-      try: () => {
-        const ownedByTxId = new Map<string, MidgardCekProgramMaterialEntry[]>();
-        for (const row of owned) {
-          const key = Buffer.from(row.tx_id).toString("hex");
-          const entries = ownedByTxId.get(key) ?? [];
-          entries.push(
-            decodeMidgardCekProgramMaterialDaEntry(
-              row.material_root,
-              row.da_value_cbor,
-            ),
-          );
-          ownedByTxId.set(key, entries);
-        }
-        return rows.map((row) => {
-          const txId = Buffer.from(row.tx_id);
-          const ownedEntries = ownedByTxId.get(txId.toString("hex"));
-          return {
-            txId,
-            sidecarCbor:
-              ownedEntries === undefined
-                ? Buffer.from(row.cek_program_material_sidecar_cbor)
-                : Buffer.from(
-                    encodeMidgardCekProgramMaterialSidecar(
-                      canonicalEntries(ownedEntries),
-                    ),
-                  ),
-          };
-        });
-      },
-      catch: (cause) =>
-        new DatabaseError({
-          table: entryTableName,
-          message:
-            "Durable CEK program material owned by an accepted transaction is malformed",
-          cause,
-        }),
-    });
-  }).pipe(
-    sqlErrorToDatabaseError(
-      payloadTableName,
-      "Failed to retrieve V1 program-material sidecars",
-    ),
   );
 
 export const claimBatch = ({
@@ -345,8 +229,6 @@ export const claimBatch = ({
             admissions.${sql(Columns.TX_ID)},
             payload.${sql(Columns.TX_CANONICAL_CBOR)},
             payload.${sql(Columns.TX_FULL_HASH_V1)},
-            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},
             admissions.${sql(Columns.FIRST_SEEN_AT)},
             admissions.${sql(Columns.VALIDATION_STARTED_AT)}

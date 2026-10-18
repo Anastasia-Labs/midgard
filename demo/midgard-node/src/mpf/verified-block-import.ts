@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
-import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type BlockReplayContext,
@@ -47,7 +46,7 @@ const ledgerRows = (
   }));
 
 /**
- * - `missing`: material the block needs is not available yet;
+ * - `missing`: the block's DA payload is not available yet;
  * - `invalid`: the block (its header, DA payload or replay) is at fault;
  * - `local_fault`: this node's own computation failed where the block's
  *   input cannot make it fail (hashing, the payload roots after their keys
@@ -77,18 +76,17 @@ export class ForeignBlockVerificationError extends Data.TaggedError(
 /**
  * One imported L2 transaction with script runs, which the import did not
  * evaluate: the transaction is applied by its committed verdict, and its
- * runs are checked after the import, rebuilt from the transaction, its
- * sidecar and the outputs it resolves. `position` is the transaction's order
- * among the block's transactions with script runs. The rest summarizes its
- * runs: their count, declared cpu, bytes (script, sidecar and context per
- * run, the context estimated as the transaction and the outputs it
- * resolves: none is built at import) and distinct scripts (sha256).
+ * runs are checked after the import, rebuilt from the transaction and the
+ * outputs it resolves. `position` is the transaction's order among the
+ * block's transactions with script runs. The rest summarizes its runs: their
+ * count, declared cpu, bytes (script and context per run, the context
+ * estimated as the transaction and the outputs it resolves: none is built at
+ * import) and distinct scripts (sha256).
  */
 export type ImportScriptCheck = Readonly<{
   transactionId: Buffer;
   position: number;
   transactionCbor: Buffer;
-  programMaterialSidecarCbor: Buffer;
   runs: number;
   cpu: bigint;
   runBytes: number;
@@ -162,7 +160,6 @@ const blockChecksCollector = (context: ImportCheckContext) => {
             transactionId: transaction.transactionId,
             position: checks.length,
             transactionCbor: transaction.canonicalTransactionCbor,
-            programMaterialSidecarCbor: transaction.programMaterialSidecarCbor,
             runs,
             cpu,
             runBytes,
@@ -239,9 +236,9 @@ const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
  * callback's included), is `verifier_unavailable`, checked first; otherwise
  * the caller's callbacks' pass through unchanged (their verdicts are the
  * caller's). A `ReplayLocalFault` defect (named where it arose) and
- * this import's own computations are `local_fault`; a missing CEK root is
- * `missing`; any other defect is `invalid`: it may come from reading the
- * block's or its events' bytes, so it is never taken for a local fault.
+ * this import's own computations are `local_fault`; any other defect is
+ * `invalid`: it may come from reading the block's or its events' bytes, so
+ * it is never taken for a local fault.
  * Any other typed failure is `incomplete`. */
 export const verifyAndImportBlock = (
   input: ImportedBlockReplayContext & {
@@ -399,10 +396,8 @@ export const verifyAndImportBlock = (
             foreignHeaderHash: input.headerHash,
             reason: isReplayLocalFault(cause)
               ? "local_fault"
-              : cause instanceof MidgardCekProgramMaterialMissingRootError
-                ? "missing"
-                : // A `BlockReplayFault`, or a throw not named local.
-                  "invalid",
+              : // A `BlockReplayFault`, or a throw not named local.
+                "invalid",
             detail: String(cause),
           }),
       ),
@@ -422,10 +417,7 @@ export const verifyAndImportBlock = (
                   reason:
                     cause instanceof LocalFailure
                       ? "local_fault"
-                      : cause instanceof
-                          MidgardCekProgramMaterialMissingRootError
-                        ? "missing"
-                        : "incomplete",
+                      : "incomplete",
                   detail:
                     cause instanceof LocalFailure
                       ? `${cause.what} failed locally: ${String(cause.cause)}`

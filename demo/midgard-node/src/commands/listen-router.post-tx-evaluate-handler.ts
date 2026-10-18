@@ -1,7 +1,4 @@
-import {
-  decodeMidgardProofSubmission,
-  encodeMidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   evaluateMidgardTxRedeemers,
@@ -143,9 +140,6 @@ export const postTxEvaluateHandler = Effect.gen(function* () {
       const evaluation = yield* Effect.either(
         evaluateMidgardTxRedeemers({
           txCbor: submission.right.transactionCbor,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            submission.right.programMaterial,
-          ),
           readState: (outRefHexes) =>
             ledgerCache.withPhaseBLock(
               ledgerCache.currentState.pipe(

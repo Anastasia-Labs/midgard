@@ -2,11 +2,6 @@ import "./utils.js";
 
 import { createHash } from "node:crypto";
 
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -27,20 +22,10 @@ describe("durable admission monotone timestamps", () => {
           yield* resetApplicationTables;
 
           const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
-          const terminalNode = { kind: "error" as const };
-          const programMaterialSidecarCbor =
-            encodeMidgardCekProgramMaterialSidecar([
-              {
-                kind: "term",
-                root: hashMidgardCekTermNode(terminalNode),
-                preimage: encodeMidgardCekTermNode(terminalNode),
-              },
-            ]);
           const txId = createHash("sha256").update(txCanonicalCbor).digest();
           const admitted = yield* TxAdmissionsDB.tryInsert({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor,
             submitSource: "native",
           });
           expect(admitted).not.toBeNull();
@@ -57,7 +42,6 @@ describe("durable admission monotone timestamps", () => {
           const duplicate = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor,
             submitSource: "native",
             currentBacklog: 1n,
             maxBacklog: 10,
@@ -75,7 +59,6 @@ describe("durable admission monotone timestamps", () => {
           const second = yield* TxAdmissionsDB.tryInsert({
             txId: secondTxId,
             txCanonicalCbor: secondCbor,
-            programMaterialSidecarCbor,
             submitSource: "native",
           });
           expect(second).not.toBeNull();
@@ -117,11 +100,6 @@ describe("durable admission monotone timestamps", () => {
           });
           const terminal = yield* TxAdmissionsDB.getByTxId(txId);
           expect(terminal?.status).toBe(TxAdmissionsDB.Status.Rejected);
-          expect(
-            terminal?.[
-              TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-            ],
-          ).toEqual(encodeMidgardCekProgramMaterialSidecar([]));
           expect(terminal?.terminal_at?.getTime()).toBeGreaterThanOrEqual(
             future[0]!.future.getTime(),
           );
@@ -132,7 +110,6 @@ describe("durable admission monotone timestamps", () => {
           const idempotentSubmit = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -151,7 +128,6 @@ describe("durable admission monotone timestamps", () => {
             {
               txId,
               txCanonicalCbor,
-              programMaterialSidecarCbor,
               submitSource: "native",
             },
           ]);
