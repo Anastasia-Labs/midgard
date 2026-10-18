@@ -1,28 +1,36 @@
 //// Handler coverage for `validators/script-decode-v1.ak`.
 ////
 //// The decoder's classes and roots are covered in
-//// `lib/midgard/script-decode-v1.test.ak`. These tests drive the three
-//// handlers over whole transactions: an honest bind, walk and finish, and one
-//// `fail` test per guard where the honest transaction is changed so that one
-//// check flips.
+//// `lib/midgard/script-decode-v1.test.ak`. These tests drive the handlers
+//// over whole transactions: an honest bind, walk and finish, and one `fail`
+//// test per guard where the honest transaction is changed so that one check
+//// flips. A Walk transaction runs the spend and the withdraw handler of each
+//// class staker it withdraws from, as the ledger does.
 
 use aiken/builtin
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
+  Spend, Transaction, Withdraw,
 }
 use midgard/cek_proof_v1
 use midgard/script_decode_v1.{
-  Decoded, Frame, Refused, ScriptDecodeRecordV1, ScriptDecodeRunV1,
-  decode_env_v1, empty_stack_root, initial_run_v1, is_terminal, record_of_v1,
-  stack_root_of, step_v1, step_with_frames_v1,
+  Control, DecodeEnv, Decoded, Frame, Machine, Refused, ScriptDecodeRecordV1,
+  ScriptDecodeRunV1, decode_env_v1, empty_stack_root, initial_run_v1,
+  is_bytes_control_v1, is_data_control_v1, is_fold_control_v1,
+  is_list_control_v1, is_term_control_v1, is_terminal, is_value_control_v1,
+  machine_hash_v1, push_stack_root, record_of_v1, step_bytes_v1, step_data_v1,
+  step_fold_v1, step_list_v1, step_revealing_v1, step_term_v1, step_v1,
+  step_value_v1,
 }
 use script_decode_v1.{
-  Bind, Close, Finish, ScriptDecodeMintRedeemerV1, ScriptDecodeSpendRedeemerV1,
-  Walk, run_token_name, script_hash_v1,
+  Bind, Close, Finish, ScriptDecodeLinkV1, ScriptDecodeMintRedeemerV1,
+  ScriptDecodeSegmentV1, ScriptDecodeSpendRedeemerV1,
+  ScriptDecodeStakeRedeemerV1, Walk, run_token_name, script_hash_v1,
 } as family
 
 // ## Fixtures
@@ -30,6 +38,21 @@ use script_decode_v1.{
 const policy = #"5c7d0a1f2e3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091"
 
 const stager = #"11111111111111111111111111111111111111111111111111111111"
+
+/// The class stakers' hashes, main's parameter: term, value, list, fold,
+/// bytes and Data, in that order.
+const stakers =
+  [
+    #"a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    #"a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    #"a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+    #"a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+    #"a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+  ]
+
+/// A withdraw-zero script outside the family; it accepts anything.
+const outsider = #"b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
 
 fn own_address() -> Address {
   Address { payment_credential: Script(policy), stake_credential: None }
@@ -154,18 +177,22 @@ fn own_output(name: ByteArray, datum: Data) -> Output {
   }
 }
 
+fn run_ref() -> OutputReference {
+  OutputReference {
+    transaction_id: #"7272727272727272727272727272727272727272727272727272727272727272",
+    output_index: 0,
+  }
+}
+
 fn run_input(run: ScriptDecodeRunV1) -> Input {
   Input {
-    output_reference: OutputReference {
-      transaction_id: #"7272727272727272727272727272727272727272727272727272727272727272",
-      output_index: 0,
-    },
+    output_reference: run_ref(),
     output: own_output(run_token_name(run.script_hash), run),
   }
 }
 
 fn mint(redeemer: ScriptDecodeMintRedeemerV1, tx: Transaction) -> Bool {
-  family.script_decode_v1.mint(redeemer, policy, tx)
+  family.script_decode_v1.mint(stakers, redeemer, policy, tx)
 }
 
 fn spend(
@@ -173,7 +200,13 @@ fn spend(
   input: Input,
   tx: Transaction,
 ) -> Bool {
-  family.script_decode_v1.spend(None, redeemer, input.output_reference, tx)
+  family.script_decode_v1.spend(
+    stakers,
+    None,
+    redeemer,
+    input.output_reference,
+    tx,
+  )
 }
 
 // ## Bind
@@ -356,109 +389,477 @@ test script_decode_family_bind_rejects_a_spent_run() fail {
   mint(bind_redeemer(staged), Transaction { ..tx, inputs: [run_input(run)] })
 }
 
-// ## Walk
+// ## Segments
+//
+// A Walk's ticks are cut into segments, each a maximal run of ticks of one
+// class, stepped by that class's staker.
 
-fn walk_tx(
-  script: ByteArray,
-  run: ScriptDecodeRunV1,
-  next: ScriptDecodeRunV1,
-  chunk_size: Int,
-) -> (Transaction, List<Int>) {
-  let staged = staging_inputs(chunks_of(script, chunk_size), 0)
-  (
-    Transaction {
-      ..transaction.placeholder,
-      inputs: [run_input(run), fee_input()],
-      reference_inputs: staged,
-      outputs: [own_output(run_token_name(run.script_hash), next)],
-    },
-    indices(staged),
+/// The class of `control`: its staker's index in `stakers`, or -1 for a
+/// terminal control.
+fn class_of(control: Control) -> Int {
+  if is_term_control_v1(control) {
+    0
+  } else if is_value_control_v1(control) {
+    1
+  } else if is_list_control_v1(control) {
+    2
+  } else if is_fold_control_v1(control) {
+    3
+  } else if is_bytes_control_v1(control) {
+    4
+  } else if is_data_control_v1(control) {
+    5
+  } else {
+    -1
+  }
+}
+
+fn staker_of(class: Int) -> ByteArray {
+  expect Some(hash) = list.at(stakers, class)
+  hash
+}
+
+fn step_class(
+  class: Int,
+  env: DecodeEnv,
+  machine: Machine,
+  reveals: List<Frame>,
+  base: ByteArray,
+  fuel: Int,
+) -> Machine {
+  when class is {
+    0 -> step_term_v1(env, machine, reveals, base, fuel)
+    1 -> step_value_v1(env, machine, reveals, base, fuel)
+    2 -> step_list_v1(env, machine, reveals, base, fuel)
+    3 -> step_fold_v1(env, machine, reveals, base, fuel)
+    4 -> step_bytes_v1(env, machine, reveals, base, fuel)
+    _ -> step_data_v1(env, machine, reveals, base, fuel)
+  }
+}
+
+/// The withdraw handler of the staker of `class`.
+fn withdraw(class: Int, redeemer: Data, tx: Transaction) -> Bool {
+  let credential = Script(staker_of(class))
+  when class is {
+    0 -> family.script_decode_term_v1.withdraw(redeemer, credential, tx)
+    1 -> family.script_decode_value_v1.withdraw(redeemer, credential, tx)
+    2 -> family.script_decode_list_v1.withdraw(redeemer, credential, tx)
+    3 -> family.script_decode_fold_v1.withdraw(redeemer, credential, tx)
+    4 -> family.script_decode_bytes_v1.withdraw(redeemer, credential, tx)
+    _ -> family.script_decode_data_v1.withdraw(redeemer, credential, tx)
+  }
+}
+
+/// One segment of a Walk with its class, its position in the chain and the
+/// hashes of the machines it starts from and reaches.
+type Piece {
+  class: Int,
+  position: Int,
+  segment: ScriptDecodeSegmentV1,
+  from: ByteArray,
+  to: ByteArray,
+}
+
+/// A stack with the root at each of its frames, top first.
+type Stack =
+  List<(Frame, ByteArray)>
+
+fn root(stack: Stack) -> ByteArray {
+  when stack is {
+    [] -> empty_stack_root()
+    [(_, at), ..] -> at
+  }
+}
+
+/// `frames`, top first, pushed over `below`.
+fn over(frames: List<Frame>, below: Stack) -> Stack {
+  list.foldr(
+    frames,
+    below,
+    fn(frame, stack) { [(frame, push_stack_root(frame, root(stack))), ..stack] },
   )
 }
 
-/// Walks `run` to its end, checking each step's transaction against the
-/// spend handler. `frames` is the whole stack, top first.
-fn walk_all(
+fn frames_of(stack: Stack) -> List<Frame> {
+  list.map(stack, fn(entry) { entry.1st })
+}
+
+/// Up to `fuel` ticks from `machine` revealing the top `visible` frames of
+/// `stack`, with the stack they leave.
+fn step_stack(
+  env: DecodeEnv,
+  machine: Machine,
+  stack: Stack,
+  visible: Int,
+  fuel: Int,
+) -> (Machine, Stack) {
+  let hidden = list.drop(stack, visible)
+  let (reached, top) = step_revealing_v1(
+    env,
+    machine,
+    frames_of(list.take(stack, visible)),
+    root(hidden),
+    fuel,
+  )
+  (reached, over(top, hidden))
+}
+
+/// One tick from `machine`, revealing the top frames of `stack`, or all of
+/// them when the top ones are not enough.
+fn tick(env: DecodeEnv, machine: Machine, stack: Stack) -> (Machine, Stack) {
+  let (reached, after) = step_stack(env, machine, stack, 8, 1)
+  if reached == machine {
+    step_stack(env, machine, stack, list.length(stack), 1)
+  } else {
+    (reached, after)
+  }
+}
+
+/// The ticks of `class` from `machine`, up to `ticks` of them: how many, and
+/// the machine and stack they reach.
+fn class_run(
+  env: DecodeEnv,
+  machine: Machine,
+  stack: Stack,
+  class: Int,
+  ticks: Int,
+  taken: Int,
+) -> (Int, Machine, Stack) {
+  if ticks <= 0 || class_of(machine.control) != class {
+    (taken, machine, stack)
+  } else {
+    let (reached, after) = tick(env, machine, stack)
+    class_run(env, reached, after, class, ticks - 1, taken + 1)
+  }
+}
+
+/// The fewest top frames a segment of `class` must reveal to reach
+/// `reached` from `machine` in `fuel` ticks, trying 0, 1, 2, 4, ...
+fn reveal_count(
+  env: DecodeEnv,
+  class: Int,
+  machine: Machine,
+  stack: Stack,
+  fuel: Int,
+  reached: Machine,
+  visible: Int,
+) -> Int {
+  let top = list.take(stack, visible)
+  if list.length(top) < visible {
+    list.length(top)
+  } else if step_class(
+    class,
+    env,
+    machine,
+    frames_of(top),
+    root(list.drop(stack, visible)),
+    fuel,
+  ) == reached {
+    visible
+  } else {
+    reveal_count(
+      env,
+      class,
+      machine,
+      stack,
+      fuel,
+      reached,
+      if visible == 0 {
+        1
+      } else {
+        2 * visible
+      },
+    )
+  }
+}
+
+/// The honest segments of a Walk of at most `ticks` ticks from `machine`
+/// over `stack`, numbered from `position`. Each reveals only the frames it
+/// pops. Returns them with the machine and stack the Walk reaches.
+fn plan(
+  env: DecodeEnv,
+  machine: Machine,
+  stack: Stack,
+  ticks: Int,
+  position: Int,
+) -> (List<Piece>, Machine, Stack) {
+  let class = class_of(machine.control)
+  if ticks <= 0 || class < 0 {
+    ([], machine, stack)
+  } else {
+    let (fuel, reached, after) = class_run(env, machine, stack, class, ticks, 0)
+    let visible = reveal_count(env, class, machine, stack, fuel, reached, 0)
+    let piece = Piece {
+      class,
+      position,
+      segment: ScriptDecodeSegmentV1 {
+        machine,
+        reveals: frames_of(list.take(stack, visible)),
+        base: root(list.drop(stack, visible)),
+        fuel,
+      },
+      from: machine_hash_v1(machine),
+      to: machine_hash_v1(reached),
+    }
+    let (rest, end, end_stack) = plan(
+      env,
+      reached,
+      after,
+      ticks - fuel,
+      position + 1,
+    )
+    ([piece, ..rest], end, end_stack)
+  }
+}
+
+/// The redeemer of a staker holding `pieces` for the run at `run`.
+fn stake_redeemer(
+  pieces: List<Piece>,
+  run: OutputReference,
+  staging: List<Int>,
+) -> Data {
+  let redeemer: Data = ScriptDecodeStakeRedeemerV1 {
+    run,
+    links: list.map(
+      pieces,
+      fn(piece) {
+        ScriptDecodeLinkV1 {
+          position: piece.position,
+          from: piece.from,
+          to: piece.to,
+        }
+      },
+    ),
+    staging,
+    segments: list.map(pieces, fn(piece) { piece.segment }),
+  }
+  redeemer
+}
+
+/// One redeemer per class with pieces, under its staker's withdrawal.
+fn stake_redeemers(
+  pieces: List<Piece>,
+  run: OutputReference,
+  staging: List<Int>,
+) -> Pairs<ScriptPurpose, Redeemer> {
+  list.foldr(
+    list.range(0, 5),
+    [],
+    fn(class, rest) {
+      let own = list.filter(pieces, fn(piece) { piece.class == class })
+      if own == [] {
+        rest
+      } else {
+        [
+          Pair(
+            Withdraw(Script(staker_of(class))),
+            stake_redeemer(own, run, staging),
+          ),
+          ..rest
+        ]
+      }
+    },
+  )
+}
+
+fn chunk_size(script: ByteArray) -> Int {
+  if bytearray.length(script) > 4095 {
+    4095
+  } else {
+    64
+  }
+}
+
+/// A Walk of `run` to `reached` along `pieces`, withdrawing zero from each
+/// staker with pieces.
+fn walk_tx(
   script: ByteArray,
   run: ScriptDecodeRunV1,
-  frames: List<Frame>,
-  fuel: Int,
-  visible: Int,
-  steps: Int,
-) -> (ScriptDecodeRunV1, Int) {
-  if is_terminal(run.machine.control) {
-    (run, steps)
-  } else {
-    let (machine, after) = step_with_frames_v1(
-      decode_env_v1(script, run),
-      run.machine,
-      frames,
-      visible,
-      fuel,
-    )
-    let next = ScriptDecodeRunV1 { ..run, machine }
-    let (tx, staging) = walk_tx(script, run, next, 5)
-    expect
-      spend(
-        Walk {
-          staging,
-          reveals: list.take(frames, visible),
-          base: stack_root_of(list.drop(frames, visible), empty_stack_root()),
-          fuel,
-          run_output: 0,
-        },
-        run_input(run),
-        tx,
-      )
-    walk_all(script, next, after, fuel, visible, steps + 1)
+  reached: Machine,
+  pieces: List<Piece>,
+) -> Transaction {
+  let staged = staging_inputs(chunks_of(script, chunk_size(script)), 0)
+  let staked = stake_redeemers(pieces, run_ref(), indices(staged))
+  Transaction {
+    ..transaction.placeholder,
+    inputs: [run_input(run), fee_input()],
+    reference_inputs: staged,
+    outputs: [
+      own_output(
+        run_token_name(run.script_hash),
+        ScriptDecodeRunV1 { ..run, machine: reached },
+      ),
+    ],
+    withdrawals: list.map(
+      staked,
+      fn(pair) {
+        expect Withdraw(credential) = pair.1st
+        Pair(credential, 0)
+      },
+    ),
+    redeemers: [Pair(Spend(run_ref()), walk_data()), ..staked],
   }
+}
+
+fn walk_data() -> Data {
+  let walk: Data = Walk { run_output: 0 }
+  walk
+}
+
+/// The spend of the Walk's run.
+fn main(run: ScriptDecodeRunV1, tx: Transaction) -> Bool {
+  spend(Walk { run_output: 0 }, run_input(run), tx)
+}
+
+/// Every family staker the transaction withdraws from, run on its redeemer.
+/// Other withdrawals' scripts accept.
+fn stakers_run(tx: Transaction) -> Bool {
+  list.all(
+    tx.withdrawals,
+    fn(pair) {
+      when pair.1st is {
+        Script(hash) ->
+          when list.index_of(stakers, hash) is {
+            None -> True
+            Some(class) -> staker_runs(class, tx)
+          }
+        _ -> True
+      }
+    },
+  )
+}
+
+/// The staker of `class`, run on its redeemer in `tx`.
+fn staker_runs(class: Int, tx: Transaction) -> Bool {
+  expect Some(redeemer) = pairs.get_first(
+    tx.redeemers,
+    Withdraw(Script(staker_of(class))),
+  )
+  withdraw(class, redeemer, tx)
+}
+
+/// Everything the ledger runs for the Walk of `run`.
+fn walk_runs(run: ScriptDecodeRunV1, tx: Transaction) -> Bool {
+  main(run, tx) && stakers_run(tx)
 }
 
 fn opened(script: ByteArray) -> ScriptDecodeRunV1 {
   initial_run_v1(script_hash_v1(3, script), 3, script)
 }
 
-/// The honest first step of `script` and its walk redeemer.
-fn first_walk(
+/// An honest Walk of `script` of at most `ticks` ticks, after `skip` ticks.
+type Fixture {
   script: ByteArray,
-  fuel: Int,
-) -> (Transaction, ScriptDecodeSpendRedeemerV1, ScriptDecodeRunV1) {
+  run: ScriptDecodeRunV1,
+  stack: Stack,
+  pieces: List<Piece>,
+  reached: Machine,
+}
+
+fn fixture(script: ByteArray, skip: Int, ticks: Int) -> Fixture {
   let run = opened(script)
-  let machine = step_v1(
-    decode_env_v1(script, run),
-    run.machine,
-    [],
-    empty_stack_root(),
-    fuel,
-  )
-  let (tx, staging) = walk_tx(
+  let env = decode_env_v1(script, run)
+  let (_, start, stack) = plan(env, run.machine, [], skip, 0)
+  let (pieces, reached, _) = plan(env, start, stack, ticks, 0)
+  Fixture {
     script,
-    run,
-    ScriptDecodeRunV1 { ..run, machine },
-    if bytearray.length(script) > 4095 {
-      4095
-    } else {
-      5
+    run: ScriptDecodeRunV1 { ..run, machine: start },
+    stack,
+    pieces,
+    reached,
+  }
+}
+
+fn tx_of(f: Fixture) -> Transaction {
+  walk_tx(f.script, f.run, f.reached, f.pieces)
+}
+
+/// The same Walk along other pieces.
+fn tx_along(f: Fixture, pieces: List<Piece>) -> Transaction {
+  walk_tx(f.script, f.run, f.reached, pieces)
+}
+
+fn classes(pieces: List<Piece>) -> List<Int> {
+  list.foldr(
+    pieces,
+    [],
+    fn(piece, seen) {
+      if list.has(seen, piece.class) {
+        seen
+      } else {
+        [piece.class, ..seen]
+      }
     },
-  )
-  (
-    tx,
-    Walk { staging, reveals: [], base: empty_stack_root(), fuel, run_output: 0 },
-    run,
   )
 }
 
+/// Walks `script` from its bind to its end in Walks of at most `ticks`
+/// ticks, checking each Walk transaction as the ledger runs it. Returns the
+/// finished run, the number of Walks, the most classes one Walk crossed and
+/// whether a segment kept frames hidden.
+fn walk_all(
+  script: ByteArray,
+  ticks: Int,
+) -> (ScriptDecodeRunV1, Int, Int, Bool) {
+  let run = opened(script)
+  walk_from(script, decode_env_v1(script, run), run, [], ticks, 0, 0, False)
+}
+
+fn walk_from(
+  script: ByteArray,
+  env: DecodeEnv,
+  run: ScriptDecodeRunV1,
+  stack: Stack,
+  ticks: Int,
+  walks: Int,
+  widest: Int,
+  hidden: Bool,
+) -> (ScriptDecodeRunV1, Int, Int, Bool) {
+  if is_terminal(run.machine.control) {
+    (run, walks, widest, hidden)
+  } else {
+    let (pieces, reached, after) = plan(env, run.machine, stack, ticks, 0)
+    expect walk_runs(run, walk_tx(script, run, reached, pieces))
+    let width = list.length(classes(pieces))
+    walk_from(
+      script,
+      env,
+      ScriptDecodeRunV1 { ..run, machine: reached },
+      after,
+      ticks,
+      walks + 1,
+      if width > widest {
+        width
+      } else {
+        widest
+      },
+      hidden || list.any(
+        pieces,
+        fn(piece) { piece.segment.base != empty_stack_root() },
+      ),
+    )
+  }
+}
+
+/// The record a single unbounded step reaches.
+fn one_shot(script: ByteArray) -> ScriptDecodeRecordV1 {
+  expect Some(record) = record_of_v1(finished(script))
+  record
+}
+
+// ## Walk
+
 test script_decode_family_walk_advances_a_run() {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  spend(redeemer, run_input(run), tx)
+  let f = fixture(nested_script(3), 0, 4)
+  walk_runs(f.run, tx_of(f))
 }
 
 test script_decode_family_walk_reaches_the_decoded_record() {
   let script = nested_script(12)
-  let (run, steps) = walk_all(script, opened(script), [], 3, 2, 0)
+  let (run, walks, _, _) = walk_all(script, 3)
   expect Some(record) = record_of_v1(run)
   and {
-    steps > 5,
+    walks > 5,
     record == Decoded {
       script_hash: script_hash_v1(3, script),
       language: 3,
@@ -471,7 +872,7 @@ test script_decode_family_walk_reaches_the_decoded_record() {
 
 test script_decode_family_walk_decodes_compiled_scripts() {
   let decoded = fn(script) {
-    let (run, _) = walk_all(script, opened(script), [], 40, 4, 0)
+    let (run, _, _, _) = walk_all(script, 40)
     expect Some(Decoded { program_version, phase2_class, script_hash, .. }) = record_of_v1(
       run,
     )
@@ -479,6 +880,7 @@ test script_decode_family_walk_decodes_compiled_scripts() {
       program_version == 1,
       phase2_class == 0,
       script_hash == script_hash_v1(3, script),
+      record_of_v1(run) == Some(one_shot(script)),
     }
   }
   and {
@@ -487,58 +889,77 @@ test script_decode_family_walk_decodes_compiled_scripts() {
   }
 }
 
-test script_decode_family_walk_at_max_script_size() {
-  let (tx, redeemer, run) = first_walk(max_script(), 60)
-  spend(redeemer, run_input(run), tx)
+/// `(program 1.1.0 (con data (List [I 0, ...])))` with `n` items, as an
+/// indefinite CBOR list.
+fn data_script(n: Int) -> ByteArray {
+  wrap(
+    #"0101004c01"
+      |> bytearray.concat(
+          flat_chunks(
+            #"9f"
+              |> bytearray.concat(builtin.replicate_byte(n, 0))
+              |> bytearray.concat(#"ff"),
+          ),
+        )
+      |> bytearray.concat(#"01"),
+  )
 }
 
-test script_decode_family_walk_rejects_other_staged_bytes() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  spend(
-    redeemer,
-    run_input(run),
+/// A whole decode of a Data constant in one Walk: term, value, byte-string
+/// and Data segments in one transaction.
+fn crossing() -> Fixture {
+  fixture(data_script(2), 0, 10_000)
+}
+
+test script_decode_family_walk_crosses_classes_in_one_transaction() {
+  let f = crossing()
+  expect Some(record) = record_of_v1(
+    ScriptDecodeRunV1 { ..f.run, machine: f.reached },
+  )
+  and {
+    list.length(classes(f.pieces)) >= 4,
+    list.length(f.pieces) >= 5,
+    record == one_shot(data_script(2)),
+    walk_runs(f.run, tx_of(f)),
+  }
+}
+
+test script_decode_family_walk_at_max_script_size() {
+  let f = fixture(max_script(), 0, 60)
+  walk_runs(f.run, tx_of(f))
+}
+
+/// Other bytes whose Flat prefix the Walk decodes are the same.
+test script_decode_family_walk_main_does_not_read_the_staged_bytes() {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
     Transaction {
-      ..tx,
-      reference_inputs: staging_inputs(chunks_of(nested_script(4), 5), 0),
+      ..tx_of(f),
+      reference_inputs: staging_inputs(chunks_of(nested_script(4), 64), 0),
     },
   )
 }
 
-test script_decode_family_walk_rejects_a_wrong_successor() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  expect Walk { staging, reveals, base, run_output, .. } = redeemer
-  spend(
-    Walk { staging, reveals, base, fuel: 3, run_output },
-    run_input(run),
-    tx,
+test script_decode_family_walk_rejects_other_staged_bytes() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  staker_runs(
+    0,
+    Transaction {
+      ..tx_of(f),
+      reference_inputs: staging_inputs(chunks_of(nested_script(4), 64), 0),
+    },
   )
 }
 
 test script_decode_family_walk_rejects_no_progress() fail {
-  let script = nested_script(3)
-  let run = opened(script)
-  let (tx, staging) = walk_tx(script, run, run, 5)
-  spend(
-    Walk {
-      staging,
-      reveals: [],
-      base: empty_stack_root(),
-      fuel: 0,
-      run_output: 0,
-    },
-    run_input(run),
-    tx,
-  )
+  let f = fixture(nested_script(3), 0, 4)
+  main(f.run, walk_tx(f.script, f.run, f.run.machine, []))
 }
 
-test script_decode_family_walk_rejects_a_wrong_reveal() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  expect Walk { staging, base, fuel, run_output, .. } = redeemer
-  spend(
-    Walk { staging, reveals: [script_decode_v1.FDelay], base, fuel, run_output },
-    run_input(run),
-    tx,
-  )
+test script_decode_family_walk_rejects_a_finished_run() fail {
+  let run = finished(nested_script(3))
+  main(run, walk_tx(nested_script(3), run, run.machine, []))
 }
 
 /// A Walk of `script`'s opened run in a transaction that also mints under
@@ -551,14 +972,14 @@ fn walk_and_mint(
   extra: List<Output>,
   mint_redeemer: fn(List<Int>) -> ScriptDecodeMintRedeemerV1,
 ) -> Bool {
-  let (tx, walk, run) = first_walk(script, 4)
-  expect Walk { staging, .. } = walk
+  let f = fixture(script, 0, 4)
+  let tx = tx_of(f)
   let tx = Transaction {
     ..tx,
     mint: minted,
     outputs: list.concat(tx.outputs, extra),
   }
-  spend(walk, run_input(run), tx) && mint(mint_redeemer(staging), tx)
+  walk_runs(f.run, tx) && mint(mint_redeemer(indices(tx.reference_inputs)), tx)
 }
 
 /// A Walk beside a bind of its own script, with the bound run's output.
@@ -592,94 +1013,654 @@ test script_decode_family_walk_rejects_a_finish_mint() fail {
 
 /// A finished run spent by a Walk beside its own Finish: the run's successor
 /// at output 0 and its record at output 1.
-fn finished_walk_tx(
-  script: ByteArray,
-) -> (Transaction, ScriptDecodeSpendRedeemerV1, ScriptDecodeRunV1) {
+fn finished_walk_tx(script: ByteArray) -> (Transaction, ScriptDecodeRunV1) {
   let run = finished(script)
   expect Some(record) = record_of_v1(run)
-  let staged = staging_inputs(chunks_of(script, 5), 0)
   let tx = finish_tx(run, record)
   (
     Transaction {
       ..tx,
-      reference_inputs: staged,
+      reference_inputs: staging_inputs(chunks_of(script, 64), 0),
       outputs: [own_output(run_token_name(run.script_hash), run), ..tx.outputs],
-    },
-    Walk {
-      staging: indices(staged),
-      reveals: [],
-      base: empty_stack_root(),
-      fuel: 4,
-      run_output: 0,
     },
     run,
   )
 }
 
 test script_decode_family_finish_holds_beside_a_walk_output() {
-  let (tx, _, _) = finished_walk_tx(nested_script(3))
+  let (tx, _) = finished_walk_tx(nested_script(3))
   mint(Finish { record_output: 1 }, tx)
 }
 
 test script_decode_family_walk_rejects_a_finished_run_with_its_finish() fail {
-  let (tx, walk, run) = finished_walk_tx(nested_script(3))
-  mint(Finish { record_output: 1 }, tx) && spend(walk, run_input(run), tx)
+  let (tx, run) = finished_walk_tx(nested_script(3))
+  mint(Finish { record_output: 1 }, tx) && main(run, tx)
+}
+
+/// A second run, of another script, at another out_ref.
+fn other_run_input() -> Input {
+  Input {
+    ..run_input(opened(nested_script(4))),
+    output_reference: OutputReference {
+      transaction_id: #"7373737373737373737373737373737373737373737373737373737373737373",
+      output_index: 0,
+    },
+  }
 }
 
 test script_decode_family_walk_rejects_two_runs() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  let other = opened(nested_script(4))
-  spend(
-    redeemer,
-    run_input(run),
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
     Transaction {
-      ..tx,
-      inputs: [
-        run_input(run),
-        Input {
-          ..run_input(other),
-          output_reference: OutputReference {
-            transaction_id: #"7373737373737373737373737373737373737373737373737373737373737373",
-            output_index: 0,
-          },
-        },
-        fee_input(),
-      ],
+      ..tx_of(f),
+      inputs: [run_input(f.run), other_run_input(), fee_input()],
     },
   )
 }
 
-test script_decode_family_walk_rejects_a_successor_elsewhere() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
+fn successor_with(f: Fixture, change: fn(Output) -> Output) -> Transaction {
+  let tx = tx_of(f)
   expect [output] = tx.outputs
-  spend(
-    redeemer,
-    run_input(run),
-    Transaction {
-      ..tx,
-      outputs: [
+  Transaction { ..tx, outputs: [change(output)] }
+}
+
+test script_decode_family_walk_rejects_a_successor_elsewhere() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) {
         Output {
           ..output,
           address: Address {
             payment_credential: VerificationKey(stager),
             stake_credential: None,
           },
-        },
+        }
+      },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_staked_successor() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) {
+        Output {
+          ..output,
+          address: Address {
+            payment_credential: Script(policy),
+            stake_credential: Some(address.Inline(VerificationKey(stager))),
+          },
+        }
+      },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_successor_without_the_token() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) { Output { ..output, value: assets.from_lovelace(5_000_000) } },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_successor_with_another_token() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) {
+        Output { ..output, value: assets.add(output.value, policy, #"00", 1) }
+      },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_successor_with_a_reference_script() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) { Output { ..output, reference_script: Some(policy) } },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_successor_of_another_header() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  main(
+    f.run,
+    successor_with(
+      f,
+      fn(output) {
+        let next: Data = ScriptDecodeRunV1 {
+          ..f.run,
+          flat_length: f.run.flat_length - 1,
+          machine: f.reached,
+        }
+        Output { ..output, datum: InlineDatum(next) }
+      },
+    ),
+  )
+}
+
+test script_decode_family_walk_rejects_a_run_without_its_token() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  let bare = Input {
+    ..run_input(f.run),
+    output: Output {
+      ..run_input(f.run).output,
+      value: assets.from_lovelace(5_000_000),
+    },
+  }
+  spend(
+    Walk { run_output: 0 },
+    bare,
+    Transaction { ..tx_of(f), inputs: [bare, fee_input()] },
+  )
+}
+
+// ## Chained segments
+//
+// Each row changes the honest Walk that decodes a Data constant in one
+// transaction, along term, value, byte-string and Data segments.
+
+fn renumber(pieces: List<Piece>) -> List<Piece> {
+  list.indexed_map(pieces, fn(i, piece) { Piece { ..piece, position: i } })
+}
+
+fn at(pieces: List<Piece>, index: Int) -> Piece {
+  expect Some(piece) = list.at(pieces, index)
+  piece
+}
+
+/// The index of the first piece whose class differs from the next one's.
+fn first_boundary(pieces: List<Piece>, index: Int) -> Int {
+  expect [piece, next, ..] = list.drop(pieces, index)
+  if piece.class != next.class {
+    index
+  } else {
+    first_boundary(pieces, index + 1)
+  }
+}
+
+fn with_redeemers(
+  tx: Transaction,
+  change: fn(Pair<ScriptPurpose, Redeemer>) -> Pair<ScriptPurpose, Redeemer>,
+) -> Transaction {
+  Transaction { ..tx, redeemers: list.map(tx.redeemers, change) }
+}
+
+/// Mutant 1: links passed by a staker outside the family are not read. The
+/// whole chain sits in one outside staker's redeemer, so main sees no link.
+test script_decode_family_chain_rejects_an_outside_staker() fail {
+  let f = crossing()
+  let tx = tx_of(f)
+  let outside = Pair(
+    Withdraw(Script(outsider)),
+    stake_redeemer(f.pieces, run_ref(), indices(tx.reference_inputs)),
+  )
+  main(
+    f.run,
+    Transaction {
+      ..tx,
+      withdrawals: [Pair(Script(outsider), 0)],
+      redeemers: [Pair(Spend(run_ref()), walk_data()), outside],
+    },
+  )
+}
+
+/// Mutant 2 (and 16): main reads links from whichever family staker passes
+/// them; a segment handed to another class's staker is refused by it.
+test script_decode_family_chain_main_reads_links_of_any_family_staker() {
+  let f = crossing()
+  let k = first_boundary(f.pieces, 0) + 1
+  let moved = list.indexed_map(
+    f.pieces,
+    fn(i, piece) {
+      if i == k {
+        Piece { ..piece, class: 0 }
+      } else {
+        piece
+      }
+    },
+  )
+  and {
+    at(f.pieces, k).class != 0,
+    main(f.run, tx_along(f, moved)),
+  }
+}
+
+test script_decode_family_chain_rejects_a_segment_at_another_class_staker() fail {
+  let f = crossing()
+  let k = first_boundary(f.pieces, 0) + 1
+  let moved = list.indexed_map(
+    f.pieces,
+    fn(i, piece) {
+      if i == k {
+        Piece { ..piece, class: 0 }
+      } else {
+        piece
+      }
+    },
+  )
+  staker_runs(0, tx_along(f, moved))
+}
+
+/// Mutant 16: a staker refuses an in-state of another class even when it
+/// claims no progress.
+fn foreign_no_op(f: Fixture) -> List<Piece> {
+  let k = first_boundary(f.pieces, 0) + 1
+  let next = at(f.pieces, k)
+  let machine = next.segment.machine
+  let no_op = Piece {
+    class: 0,
+    position: k,
+    segment: ScriptDecodeSegmentV1 {
+      machine,
+      reveals: [],
+      base: machine.stack_root,
+      fuel: 1,
+    },
+    from: next.from,
+    to: next.from,
+  }
+  renumber(
+    list.concat(list.take(f.pieces, k), [no_op, ..list.drop(f.pieces, k)]),
+  )
+}
+
+test script_decode_family_chain_main_accepts_a_no_op_link() {
+  let f = crossing()
+  main(f.run, tx_along(f, foreign_no_op(f)))
+}
+
+test script_decode_family_chain_rejects_an_in_state_of_another_class() fail {
+  let f = crossing()
+  staker_runs(0, tx_along(f, foreign_no_op(f)))
+}
+
+/// Mutant 3: the stakers' links name another input than the spent run.
+test script_decode_family_chain_rejects_links_for_another_input() fail {
+  let f = crossing()
+  let staged = staging_inputs(chunks_of(f.script, 64), 0)
+  let tx = tx_of(f)
+  main(
+    f.run,
+    Transaction {
+      ..tx,
+      redeemers: [
+        Pair(Spend(run_ref()), walk_data()),
+        ..stake_redeemers(
+          f.pieces,
+          fee_input().output_reference,
+          indices(staged),
+        )
       ],
     },
   )
 }
 
-test script_decode_family_walk_rejects_a_run_without_its_token() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  let bare = Input {
-    ..run_input(run),
-    output: Output {
-      ..run_input(run).output,
-      value: assets.from_lovelace(5_000_000),
+/// Mutant 4: links under another purpose than the staker's withdrawal.
+test script_decode_family_chain_rejects_links_under_another_purpose() fail {
+  let f = crossing()
+  main(
+    f.run,
+    with_redeemers(
+      tx_of(f),
+      fn(pair) {
+        when pair.1st is {
+          Withdraw(Script(hash)) -> Pair(Mint(hash), pair.2nd)
+          _ -> pair
+        }
+      },
+    ),
+  )
+}
+
+test script_decode_family_chain_rejects_links_under_a_key_withdrawal() fail {
+  let f = crossing()
+  main(
+    f.run,
+    with_redeemers(
+      tx_of(f),
+      fn(pair) {
+        when pair.1st is {
+          Withdraw(Script(hash)) ->
+            Pair(Withdraw(VerificationKey(hash)), pair.2nd)
+          _ -> pair
+        }
+      },
+    ),
+  )
+}
+
+/// Mutant 5: a forged `to` that the successor matches. Main accepts the
+/// chain; the staker that passed it refuses.
+fn forged_end(f: Fixture) -> (Machine, List<Piece>) {
+  let forged = Machine { ..f.reached, binders: f.reached.binders + 1 }
+  let last = list.length(f.pieces) - 1
+  (
+    forged,
+    list.indexed_map(
+      f.pieces,
+      fn(i, piece) {
+        if i == last {
+          Piece { ..piece, to: machine_hash_v1(forged) }
+        } else {
+          piece
+        }
+      },
+    ),
+  )
+}
+
+test script_decode_family_chain_main_accepts_a_forged_end() {
+  let f = crossing()
+  let (forged, pieces) = forged_end(f)
+  main(f.run, walk_tx(f.script, f.run, forged, pieces))
+}
+
+test script_decode_family_chain_rejects_a_forged_end() fail {
+  let f = crossing()
+  let (forged, pieces) = forged_end(f)
+  let last = at(pieces, list.length(pieces) - 1)
+  staker_runs(last.class, walk_tx(f.script, f.run, forged, pieces))
+}
+
+/// Mutant 5: a forged `from` on an honest in-state.
+test script_decode_family_chain_rejects_a_from_of_another_machine() fail {
+  let f = crossing()
+  let k = first_boundary(f.pieces, 0) + 1
+  let tampered = list.indexed_map(
+    f.pieces,
+    fn(i, piece) {
+      if i == k {
+        Piece { ..piece, from: machine_hash_v1(f.run.machine) }
+      } else {
+        piece
+      }
     },
+  )
+  staker_runs(at(f.pieces, k).class, tx_along(f, tampered))
+}
+
+/// Mutant 9: one segment across a class boundary.
+fn merged(f: Fixture) -> (Int, List<Piece>) {
+  let k = first_boundary(f.pieces, 0)
+  let first = at(f.pieces, k)
+  let second = at(f.pieces, k + 1)
+  let joined = Piece {
+    ..first,
+    segment: ScriptDecodeSegmentV1 {
+      ..first.segment,
+      fuel: first.segment.fuel + second.segment.fuel,
+    },
+    to: second.to,
   }
-  spend(redeemer, bare, Transaction { ..tx, inputs: [bare, fee_input()] })
+  (
+    first.class,
+    renumber(
+      list.concat(
+        list.take(f.pieces, k),
+        [joined, ..list.drop(f.pieces, k + 2)],
+      ),
+    ),
+  )
+}
+
+test script_decode_family_chain_main_accepts_a_merged_segment() {
+  let f = crossing()
+  let (_, pieces) = merged(f)
+  main(f.run, tx_along(f, pieces))
+}
+
+test script_decode_family_chain_rejects_a_step_outside_the_class() fail {
+  let f = crossing()
+  let (class, pieces) = merged(f)
+  staker_runs(class, tx_along(f, pieces))
+}
+
+/// Mutant 11: a segment left out, the others keeping their positions.
+test script_decode_family_chain_rejects_a_gap() fail {
+  let f = crossing()
+  let pieces = list.concat(list.take(f.pieces, 2), list.drop(f.pieces, 3))
+  main(f.run, tx_along(f, pieces))
+}
+
+/// Mutant 12: two segments swapped.
+test script_decode_family_chain_rejects_swapped_segments() fail {
+  let f = crossing()
+  let pieces = list.indexed_map(
+    f.pieces,
+    fn(i, piece) {
+      if i == 1 {
+        Piece { ..piece, position: 2 }
+      } else if i == 2 {
+        Piece { ..piece, position: 1 }
+      } else {
+        piece
+      }
+    },
+  )
+  main(f.run, tx_along(f, pieces))
+}
+
+/// Mutant 13: a segment left out and the rest renumbered. Every staker
+/// accepts its own segments; the link that no longer meets is refused.
+fn broken(f: Fixture) -> List<Piece> {
+  renumber(list.concat(list.take(f.pieces, 2), list.drop(f.pieces, 3)))
+}
+
+test script_decode_family_chain_stakers_accept_a_broken_chain() {
+  let f = crossing()
+  stakers_run(tx_along(f, broken(f)))
+}
+
+test script_decode_family_chain_rejects_a_broken_link() fail {
+  let f = crossing()
+  main(f.run, tx_along(f, broken(f)))
+}
+
+/// Mutant 14: an honest chain from another state than the spent run's.
+fn unanchored() -> (ScriptDecodeRunV1, Fixture) {
+  let f = fixture(data_script(2), 1, 10_000)
+  (opened(data_script(2)), f)
+}
+
+test script_decode_family_chain_stakers_accept_an_unanchored_chain() {
+  let (run, f) = unanchored()
+  stakers_run(walk_tx(f.script, run, f.reached, f.pieces))
+}
+
+test script_decode_family_chain_rejects_a_chain_from_another_state() fail {
+  let (run, f) = unanchored()
+  main(run, walk_tx(f.script, run, f.reached, f.pieces))
+}
+
+/// Mutant 15: a successor other than the chain's end.
+test script_decode_family_chain_rejects_a_successor_off_the_chain_end() fail {
+  let f = crossing()
+  let last = at(f.pieces, list.length(f.pieces) - 1)
+  main(f.run, walk_tx(f.script, f.run, last.segment.machine, f.pieces))
+}
+
+test script_decode_family_chain_rejects_a_successor_after_fewer_ticks() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  let g = fixture(nested_script(3), 0, 3)
+  main(f.run, walk_tx(f.script, f.run, g.reached, f.pieces))
+}
+
+/// Mutant 17: a staker's links for one run cannot advance another.
+test script_decode_family_chain_rejects_links_of_another_run() fail {
+  let f = crossing()
+  let other = other_run_input()
+  let tx = tx_of(f)
+  let staged = indices(tx.reference_inputs)
+  main(
+    f.run,
+    Transaction {
+      ..tx,
+      inputs: [run_input(f.run), other, fee_input()],
+      redeemers: [
+        Pair(Spend(run_ref()), walk_data()),
+        ..stake_redeemers(f.pieces, other.output_reference, staged)
+      ],
+    },
+  )
+}
+
+/// Mutant 18: a staker whose segment lies past the chain's end.
+test script_decode_family_chain_rejects_a_link_left_over() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  let extra = Piece {
+    class: 1,
+    position: list.length(f.pieces) + 1,
+    segment: at(f.pieces, 0).segment,
+    from: machine_hash_v1(f.reached),
+    to: machine_hash_v1(f.reached),
+  }
+  main(f.run, tx_along(f, list.concat(f.pieces, [extra])))
+}
+
+test script_decode_family_chain_rejects_a_link_after_the_end() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  let extra = Piece {
+    class: 1,
+    position: list.length(f.pieces),
+    segment: at(f.pieces, 0).segment,
+    from: machine_hash_v1(f.reached),
+    to: machine_hash_v1(Machine { ..f.reached, binders: f.reached.binders + 1 }),
+  }
+  main(f.run, tx_along(f, list.concat(f.pieces, [extra])))
+}
+
+/// A forged in-state. At the head of the chain main refuses it, since its
+/// hash is not the spent run's.
+fn forged_at(f: Fixture, k: Int) -> List<Piece> {
+  let forged = forged_at_head(f.pieces, k)
+  let hash = at(forged, k).from
+  list.indexed_map(
+    forged,
+    fn(i, piece) {
+      if i == k - 1 {
+        Piece { ..piece, to: hash }
+      } else {
+        piece
+      }
+    },
+  )
+}
+
+fn forged_at_head(pieces: List<Piece>, k: Int) -> List<Piece> {
+  list.indexed_map(
+    pieces,
+    fn(i, piece) {
+      if i == k {
+        let machine = Machine {
+          ..piece.segment.machine,
+          binders: piece.segment.machine.binders + 1,
+        }
+        Piece {
+          ..piece,
+          segment: ScriptDecodeSegmentV1 { ..piece.segment, machine },
+          from: machine_hash_v1(machine),
+        }
+      } else {
+        piece
+      }
+    },
+  )
+}
+
+test script_decode_family_chain_rejects_a_forged_first_in_state() fail {
+  let f = crossing()
+  main(f.run, tx_along(f, forged_at_head(f.pieces, 0)))
+}
+
+/// Inside the chain, a forged in-state that the links meet is refused by
+/// the staker whose segment should have reached it.
+test script_decode_family_chain_main_accepts_a_linked_forged_in_state() {
+  let f = crossing()
+  main(f.run, tx_along(f, forged_at(f, 2)))
+}
+
+test script_decode_family_chain_rejects_a_linked_forged_in_state() fail {
+  let f = crossing()
+  staker_runs(at(f.pieces, 1).class, tx_along(f, forged_at(f, 2)))
+}
+
+test script_decode_family_chain_rejects_a_forged_in_state_under_its_hash() fail {
+  let f = crossing()
+  let pieces = list.indexed_map(
+    forged_at_head(f.pieces, 2),
+    fn(i, piece) {
+      if i == 2 {
+        Piece { ..piece, from: at(f.pieces, 2).from }
+      } else {
+        piece
+      }
+    },
+  )
+  staker_runs(at(f.pieces, 2).class, tx_along(f, pieces))
+}
+
+/// Revealed frames are checked against the in-state's stack root.
+test script_decode_family_chain_rejects_a_wrong_reveal() fail {
+  let f = crossing()
+  let pieces = list.indexed_map(
+    f.pieces,
+    fn(i, piece) {
+      if i == 0 {
+        Piece {
+          ..piece,
+          segment: ScriptDecodeSegmentV1 {
+            ..piece.segment,
+            reveals: [script_decode_v1.FDelay],
+          },
+        }
+      } else {
+        piece
+      }
+    },
+  )
+  staker_runs(at(f.pieces, 0).class, tx_along(f, pieces))
+}
+
+/// A redeemer of another shape is refused by the staker and by main.
+fn malformed(f: Fixture, redeemer: Data) -> Transaction {
+  with_redeemers(
+    tx_of(f),
+    fn(pair) {
+      when pair.1st is {
+        Withdraw(_) -> Pair(pair.1st, redeemer)
+        _ -> pair
+      }
+    },
+  )
+}
+
+test script_decode_family_chain_staker_rejects_a_malformed_redeemer() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  staker_runs(0, malformed(f, builtin.i_data(0)))
+}
+
+test script_decode_family_chain_main_rejects_malformed_links() fail {
+  let f = fixture(nested_script(3), 0, 4)
+  let run: Data = run_ref()
+  main(f.run, malformed(f, builtin.constr_data(0, [run, builtin.i_data(0)])))
 }
 
 // ## Walks over several transactions
@@ -720,125 +1701,35 @@ fn flat_chunks(bytes: ByteArray) -> ByteArray {
   }
 }
 
-/// `(program 1.1.0 (con data (List [I 0, ...])))` with `n` items, as an
-/// indefinite CBOR list.
-fn data_script(n: Int) -> ByteArray {
-  wrap(
-    #"0101004c01"
-      |> bytearray.concat(
-          flat_chunks(
-            #"9f"
-              |> bytearray.concat(builtin.replicate_byte(n, 0))
-              |> bytearray.concat(#"ff"),
-          ),
-        )
-      |> bytearray.concat(#"01"),
-  )
-}
-
-/// The record a single unbounded step reaches.
-fn one_shot(script: ByteArray) -> ScriptDecodeRecordV1 {
-  expect Some(record) = record_of_v1(finished(script))
-  record
-}
-
-/// Walks `script` to its end over staged chunks of `chunk_size`, checking
-/// every step's transaction against the spend handler.
-fn walk_staged(
-  script: ByteArray,
-  run: ScriptDecodeRunV1,
-  frames: List<Frame>,
-  fuel: Int,
-  visible: Int,
-  chunk_size: Int,
-  steps: Int,
-) -> (ScriptDecodeRunV1, Int) {
-  if is_terminal(run.machine.control) {
-    (run, steps)
-  } else {
-    let (machine, after) = step_with_frames_v1(
-      decode_env_v1(script, run),
-      run.machine,
-      frames,
-      visible,
-      fuel,
-    )
-    let next = ScriptDecodeRunV1 { ..run, machine }
-    let (tx, staging) = walk_tx(script, run, next, chunk_size)
-    expect
-      spend(
-        Walk {
-          staging,
-          reveals: list.take(frames, visible),
-          base: stack_root_of(list.drop(frames, visible), empty_stack_root()),
-          fuel,
-          run_output: 0,
-        },
-        run_input(run),
-        tx,
-      )
-    walk_staged(script, next, after, fuel, visible, chunk_size, steps + 1)
-  }
-}
-
-/// The run and whole stack after `count` honest steps, without transactions.
-fn advance(
-  script: ByteArray,
-  run: ScriptDecodeRunV1,
-  frames: List<Frame>,
-  fuel: Int,
-  visible: Int,
-  count: Int,
-) -> (ScriptDecodeRunV1, List<Frame>) {
-  if count == 0 {
-    (run, frames)
-  } else {
-    let (machine, after) = step_with_frames_v1(
-      decode_env_v1(script, run),
-      run.machine,
-      frames,
-      visible,
-      fuel,
-    )
-    advance(
-      script,
-      ScriptDecodeRunV1 { ..run, machine },
-      after,
-      fuel,
-      visible,
-      count - 1,
-    )
-  }
-}
-
 test script_decode_family_walk_dense_shape_over_several_txs() {
   let script = dense_script(1024)
-  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  let (run, walks, _, _) = walk_all(script, 80)
   expect Some(record) = record_of_v1(run)
   expect Decoded { phase2_class: 0, program_version: 1, .. } = record
   and {
-    steps > 10,
+    walks > 10,
     record == one_shot(script),
   }
 }
 
 test script_decode_family_walk_dense_refusal_over_several_txs() {
   let script = dense_script(1026)
-  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  let (run, walks, _, _) = walk_all(script, 80)
   expect Some(record) = record_of_v1(run)
   expect Refused { class: 9, .. } = record
   and {
-    steps > 10,
+    walks > 10,
     record == one_shot(script),
   }
 }
 
 test script_decode_family_walk_deep_shape_over_several_txs() {
   let script = nested_script(300)
-  let (run, steps) = walk_staged(script, opened(script), [], 80, 4, 255, 0)
+  let (run, walks, _, hidden) = walk_all(script, 80)
   expect Some(record) = record_of_v1(run)
   and {
-    steps > 5,
+    walks > 5,
+    hidden,
     record == Decoded {
       script_hash: script_hash_v1(3, script),
       language: 3,
@@ -851,65 +1742,45 @@ test script_decode_family_walk_deep_shape_over_several_txs() {
 
 test script_decode_family_walk_data_shape_over_several_txs() {
   let script = data_script(600)
-  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  let (run, walks, widest, _) = walk_all(script, 80)
   expect Some(record) = record_of_v1(run)
   expect Decoded { phase2_class: 0, .. } = record
   and {
-    steps > 5,
+    walks > 5,
+    widest >= 2,
     record == one_shot(script),
   }
 }
 
-/// The honest walk transaction at step `count` of the deep shape, with its
-/// redeemer and the frames the step hides.
-fn deep_mid_walk(
-  count: Int,
-) -> (Transaction, ScriptDecodeSpendRedeemerV1, ScriptDecodeRunV1, List<Frame>) {
-  let script = nested_script(40)
-  let (run, frames) = advance(script, opened(script), [], 6, 2, count)
-  let (machine, _) = step_with_frames_v1(
-    decode_env_v1(script, run),
-    run.machine,
-    frames,
-    2,
-    6,
-  )
-  let (tx, staging) = walk_tx(
-    script,
-    run,
-    ScriptDecodeRunV1 { ..run, machine },
-    255,
-  )
-  (
-    tx,
-    Walk {
-      staging,
-      reveals: list.take(frames, 2),
-      base: stack_root_of(list.drop(frames, 2), empty_stack_root()),
-      fuel: 6,
-      run_output: 0,
-    },
-    run,
-    list.drop(frames, 2),
-  )
+/// A Walk deep inside the nested shape, whose segments keep the stack below
+/// their reveals hidden.
+fn deep_mid_walk() -> Fixture {
+  fixture(nested_script(40), 40, 6)
 }
 
 test script_decode_family_walk_mid_walk_step_is_accepted() {
-  let (tx, redeemer, run, hidden) = deep_mid_walk(8)
+  let f = deep_mid_walk()
   and {
-    hidden != [],
-    spend(redeemer, run_input(run), tx),
+    list.any(f.pieces, fn(piece) { piece.segment.base != empty_stack_root() }),
+    walk_runs(f.run, tx_of(f)),
   }
 }
 
 test script_decode_family_walk_mid_walk_rejects_a_hidden_stack_dropped() fail {
-  let (tx, redeemer, run, _) = deep_mid_walk(8)
-  expect Walk { staging, reveals, fuel, run_output, .. } = redeemer
-  spend(
-    Walk { staging, reveals, base: empty_stack_root(), fuel, run_output },
-    run_input(run),
-    tx,
+  let f = deep_mid_walk()
+  let pieces = list.map(
+    f.pieces,
+    fn(piece) {
+      Piece {
+        ..piece,
+        segment: ScriptDecodeSegmentV1 {
+          ..piece.segment,
+          base: empty_stack_root(),
+        },
+      }
+    },
   )
+  stakers_run(tx_along(f, pieces))
 }
 
 // ## Finish

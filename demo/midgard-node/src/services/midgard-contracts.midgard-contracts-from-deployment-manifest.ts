@@ -21,6 +21,7 @@ import {
   linearFaultProofChainFromManifest,
 } from "./midgard-contracts.linear-fault-proof-chain-from-manifest.js";
 import { requireManifestString } from "./midgard-contracts.load-reference-script-auth-validator.js";
+import { scriptDecodeFromManifest } from "./midgard-contracts.script-decode-from-manifest.js";
 import {
   eventHistoryContractsFromManifest,
   validationTraceDisputeFromManifest,
@@ -92,13 +93,7 @@ export const midgardContractsFromDeploymentManifest = (
       "fieldPreimageCertificateMint",
     ),
   };
-  const scriptDecode = authenticatedValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    "scriptDecodeSpend",
-    "scriptDecodeMint",
-  );
+  const scriptDecode = scriptDecodeFromManifest(network, manifest, sourcePath);
   const transitionTraceScripts = faultProofFamilyScriptsFromManifest(
     network,
     manifest,

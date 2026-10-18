@@ -4,8 +4,9 @@
  * of a decode walk: the run each Bind opens, and for each Walk its fuel, the
  * frames it reveals, the root below them and the successor run.
  *
- * It mirrors `initial_run_v1`, `step_with_frames_v1` and `record_of_v1`
- * exactly, because every Walk must reproduce the on-chain successor datum.
+ * It mirrors `initial_run_v1`, `step_with_frames_v1`, the class steppers
+ * `step_<class>_v1` and `record_of_v1` exactly, because every Walk must
+ * reproduce the on-chain successor datum and every segment's machine.
  * Its record is the off-chain verdict on a script: `Decoded` or `Refused`,
  * exactly as Cardano decodes it.
  */
@@ -286,18 +287,77 @@ const tick = (env: DecodeEnv, ex: Exec): Tick => {
   }
 };
 
-const runTicks = (env: DecodeEnv, start: Exec, fuel: number): Exec => {
+/**
+ * The classes of controls, one withdraw-zero staker each, in the order of
+ * the main validator's `stakers` parameter.
+ */
+export const SCRIPT_DECODE_STAKER_CLASSES = [
+  "term",
+  "value",
+  "list",
+  "fold",
+  "bytes",
+  "data",
+] as const;
+
+export type ScriptDecodeStakerClass =
+  (typeof SCRIPT_DECODE_STAKER_CLASSES)[number];
+
+/** The staker class that steps `control`; undefined for a terminal one. */
+export const scriptDecodeControlClass = (
+  control: Control,
+): ScriptDecodeStakerClass | undefined => {
+  switch (control.k) {
+    case "term":
+    case "return":
+    case "consBit":
+    case "constrFold":
+    case "caseFold":
+    case "nat":
+    case "magnitude":
+    case "types":
+    case "final":
+      return "term";
+    case "value":
+    case "valueReturn":
+      return "value";
+    case "listBit":
+    case "assetOuterBit":
+    case "assetInnerBit":
+      return "list";
+    case "constFold":
+      return "fold";
+    case "filler":
+    case "bytes":
+      return "bytes";
+    case "data":
+      return "data";
+    case "done":
+    case "refused":
+      return undefined;
+  }
+};
+
+/**
+ * Up to `fuel` ticks; with `within`, only ticks of that class, stopping at
+ * the first control outside it (`step_<class>_v1`). Also counts the ticks.
+ */
+const runCounted = (
+  env: DecodeEnv,
+  start: Exec,
+  fuel: number,
+  within?: ScriptDecodeStakerClass,
+): { readonly ex: Exec; readonly ticks: number } => {
   let ex = start;
-  for (
-    let left = fuel;
-    left > 0 && !isScriptDecodeTerminal(ex.control);
-    left -= 1
-  ) {
+  let ticks = 0;
+  for (; ticks < fuel && !isScriptDecodeTerminal(ex.control); ticks += 1) {
+    if (within !== undefined && scriptDecodeControlClass(ex.control) !== within)
+      break;
     const next = tick(env, ex);
     if (next === undefined) break;
     ex = next;
   }
-  return ex;
+  return { ex, ticks };
 };
 
 /** The frames `reveals` (top first) opened over `base`, and their root. */
@@ -354,14 +414,15 @@ const runStep = (
   reveals: readonly Frame[],
   base: Uint8Array,
   fuel: number,
-): Exec => {
+  within?: ScriptDecodeStakerClass,
+): { readonly ex: Exec; readonly ticks: number } => {
   const [revealed, root] = openReveals(reveals, base);
   if (!root.equals(machine.stackRoot)) {
     throw new Error(
       "script decode: revealed frames do not open the stack root",
     );
   }
-  return runTicks(env, startExec(machine, revealed), fuel);
+  return runCounted(env, startExec(machine, revealed), fuel, within);
 };
 
 /** `step_v1`: the machine a Walk with these witnesses reaches. */
@@ -371,7 +432,17 @@ export const scriptDecodeStep = (
   reveals: readonly Frame[],
   base: Uint8Array,
   fuel: number,
-): Machine => machineOf(runStep(env, machine, reveals, base, fuel));
+): Machine => machineOf(runStep(env, machine, reveals, base, fuel).ex);
+
+/** `step_<class>_v1`: the machine one class staker's segment reaches. */
+export const scriptDecodeClassStep = (
+  env: DecodeEnv,
+  within: ScriptDecodeStakerClass,
+  machine: Machine,
+  reveals: readonly Frame[],
+  base: Uint8Array,
+  fuel: number,
+): Machine => machineOf(runStep(env, machine, reveals, base, fuel, within).ex);
 
 export type ScriptDecodeStepResult = {
   readonly machine: Machine;
@@ -379,11 +450,13 @@ export type ScriptDecodeStepResult = {
   readonly frames: readonly Frame[];
   /** How many of the revealed frames the step popped. */
   readonly consumed: number;
+  /** How many ticks the step took. */
+  readonly ticks: number;
 };
 
 /**
  * `step_with_frames_v1`: the whole stack is `frames` (top first) and the step
- * reveals its top `visible` frames.
+ * reveals its top `visible` frames. With `within`, only that class's ticks.
  */
 export const scriptDecodeStepWithFrames = (
   env: DecodeEnv,
@@ -391,14 +464,16 @@ export const scriptDecodeStepWithFrames = (
   frames: readonly Frame[],
   visible: number,
   fuel: number,
+  within?: ScriptDecodeStakerClass,
 ): ScriptDecodeStepResult => {
   const hidden = frames.slice(visible);
-  const done = runStep(
+  const { ex: done, ticks } = runStep(
     env,
     machine,
     frames.slice(0, visible),
     stackRootOf(hidden, EMPTY_STACK_ROOT),
     fuel,
+    within,
   );
   return {
     machine: machineOf(done),
@@ -408,5 +483,6 @@ export const scriptDecodeStepWithFrames = (
       ...hidden,
     ],
     consumed: done.revealedAt,
+    ticks,
   };
 };

@@ -1,24 +1,32 @@
 /**
  * Transaction builders for the `script_decode_v1` validator: stage a script's
- * bytes, Bind a run, Walk it, and Finish it into a record.
+ * bytes, Bind a run, Walk it, and Finish it into a record. A Walk spends the
+ * run and withdraws zero from each class staker that steps one of its
+ * segments; each staker's redeemer carries its segments and their links.
  *
  * Every transaction is funded from the wallet's plain-Ada UTxOs only, so a
  * staged chunk (which sits at the wallet address with a datum) or a token is
  * never spent by coin selection.
  */
-import type { AuthenticatedValidator } from "@al-ft/midgard-sdk";
-import { requireReferenceInputIndex } from "@al-ft/midgard-sdk";
 import {
+  requireReferenceInputIndex,
+  type ScriptDecodeStakerClassName,
+  type ScriptDecodeValidator,
+  type WithdrawalValidator,
+} from "@al-ft/midgard-sdk";
+import {
+  type ScriptDecodeChainedWalk,
   type ScriptDecodeRecord,
   type ScriptDecodeRun,
-  type ScriptDecodeWalkStep,
 } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   CML,
   type LucidEvolution,
+  type OutRef,
   type TxOutput,
   type UTxO,
+  validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
@@ -27,20 +35,38 @@ import {
   SCRIPT_DECODE_CLOSE_REDEEMER,
   scriptDecodeBindRedeemer,
   scriptDecodeFinishRedeemer,
+  type ScriptDecodePositionedSegment,
   scriptDecodeRecordDatum,
   scriptDecodeRunDatum,
   scriptDecodeRunTokenName,
   scriptDecodeStagingDatum,
+  scriptDecodeStakeRedeemer,
   scriptDecodeWalkRedeemer,
 } from "./data.js";
 
 /** Staged bytes per UTxO, leaving room in a 16,384-byte transaction. */
 export const SCRIPT_DECODE_STAGING_UTXO_BYTES = 12_288;
 
-/** The validator and a UTxO carrying it as a reference script. */
+/**
+ * The validator and a UTxO carrying it as a reference script, and for each
+ * class staker a UTxO carrying it. Each staker's reward account must be
+ * registered for a Walk to withdraw zero from it.
+ */
 export type ScriptDecodeDeployment = Readonly<{
-  validator: AuthenticatedValidator;
+  validator: ScriptDecodeValidator;
   reference: UTxO;
+  stakerReferences: Readonly<Record<ScriptDecodeStakerClassName, UTxO>>;
+}>;
+
+/**
+ * One withdraw-zero of a Walk: the staker, a UTxO carrying it as a reference
+ * script, and the redeemer's run and segments at their chain positions.
+ */
+export type ScriptDecodeStake = Readonly<{
+  staker: WithdrawalValidator;
+  reference: UTxO;
+  run: OutRef;
+  segments: readonly ScriptDecodePositionedSegment[];
 }>;
 
 /** The execution units a built transaction's redeemers declare, summed. */
@@ -76,17 +102,48 @@ export const transactionExUnits = (txCbor: string): ScriptDecodeExUnits => {
   return { mem, steps };
 };
 
-const requireScriptReference = (deployment: ScriptDecodeDeployment): UTxO => {
-  const { reference, validator } = deployment;
+const requireReference = (reference: UTxO, scriptHash: string): UTxO => {
   if (
     reference.scriptRef == null ||
-    validatorToScriptHash(reference.scriptRef) !== validator.spendingScriptHash
+    validatorToScriptHash(reference.scriptRef) !== scriptHash
   ) {
     throw new Error(
-      "script decode: the reference UTxO does not carry the validator",
+      "script decode: the reference UTxO does not carry the script",
     );
   }
   return reference;
+};
+
+const requireScriptReference = (deployment: ScriptDecodeDeployment): UTxO =>
+  requireReference(
+    deployment.reference,
+    deployment.validator.spendingScriptHash,
+  );
+
+/**
+ * The withdraw-zeros of `walk` from the run at `run`: one per class with a
+ * segment, holding that class's segments at their chain positions.
+ */
+export const scriptDecodeWalkStakes = (
+  deployment: ScriptDecodeDeployment,
+  run: OutRef,
+  walk: ScriptDecodeChainedWalk,
+): ScriptDecodeStake[] => {
+  const byClass = new Map<
+    ScriptDecodeStakerClassName,
+    ScriptDecodePositionedSegment[]
+  >();
+  walk.segments.forEach((segment, position) => {
+    const own = byClass.get(segment.within) ?? [];
+    own.push({ position, segment });
+    byClass.set(segment.within, own);
+  });
+  return [...byClass].map(([name, segments]) => ({
+    staker: deployment.validator.stakers[name],
+    reference: deployment.stakerReferences[name],
+    run: { txHash: run.txHash, outputIndex: run.outputIndex },
+    segments,
+  }));
 };
 
 const ownTokenOutput =
@@ -218,42 +275,64 @@ export const bindScriptDecodeRun = async ({
 };
 
 /**
- * Builds and signs one Walk. Throws when the transaction cannot be built, for
- * instance when the Walk's fuel overruns the transaction budget.
+ * Builds and signs one Walk of `runUtxo` to `after` along `stakes`. Throws
+ * when the transaction cannot be built, for instance when its segments
+ * overrun the transaction budget. `inputs` are further wallet inputs to
+ * spend.
  */
-export const buildScriptDecodeWalk = async ({
+export const buildScriptDecodeWalkTx = async ({
   lucid,
   deployment,
   scriptHashHex,
   runUtxo,
   staging,
-  step,
+  after,
+  stakes,
+  inputs = [],
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
   readonly scriptHashHex: string;
   readonly runUtxo: UTxO;
   readonly staging: readonly UTxO[];
-  readonly step: ScriptDecodeWalkStep;
+  readonly after: ScriptDecodeRun;
+  readonly stakes: readonly ScriptDecodeStake[];
+  readonly inputs?: readonly UTxO[];
 }) => {
   const { policyId, spendingScriptAddress } = deployment.validator;
   const runUnit = `${policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const matches = ownTokenOutput(spendingScriptAddress, runUnit);
-  const redeemer = ((ctx) =>
-    scriptDecodeWalkRedeemer({
-      staging: stagingIndices(ctx, staging),
-      reveals: step.reveals,
-      base: step.base,
-      fuel: step.fuel,
-      runOutput: requireOutputIndex(ctx.outputs, matches, "run"),
-    })) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const network = lucid.config().network ?? "Custom";
+  let tx = lucid
     .newTx()
-    .collectFrom([runUtxo], redeemer)
-    .readFrom([...staging, requireScriptReference(deployment)])
-    .pay.ToContract(
+    .collectFrom([runUtxo], ((ctx) =>
+      scriptDecodeWalkRedeemer(
+        requireOutputIndex(ctx.outputs, matches, "run"),
+      )) satisfies BuildTxWithRedeemer)
+    .readFrom([
+      ...staging,
+      requireScriptReference(deployment),
+      ...stakes.map(({ staker, reference }) =>
+        requireReference(reference, staker.withdrawalScriptHash),
+      ),
+    ]);
+  if (inputs.length > 0) tx = tx.collectFrom([...inputs]);
+  for (const { staker, run, segments } of stakes) {
+    tx = tx.withdraw(
+      validatorToRewardAddress(network, staker.withdrawalScript),
+      0n,
+      ((ctx) =>
+        scriptDecodeStakeRedeemer({
+          run,
+          staging: stagingIndices(ctx, staging),
+          segments,
+        })) satisfies BuildTxWithRedeemer,
+    );
+  }
+  const unsigned = await tx.pay
+    .ToContract(
       spendingScriptAddress,
-      { kind: "inline", value: scriptDecodeRunDatum(step.after) },
+      { kind: "inline", value: scriptDecodeRunDatum(after) },
       { [runUnit]: 1n },
     )
     .complete({
@@ -269,6 +348,24 @@ export const buildScriptDecodeWalk = async ({
       submitAndFind(lucid, signed, spendingScriptAddress, matches, "run"),
   };
 };
+
+/** Builds and signs the honest Walk `walk` of `runUtxo`. */
+export const buildScriptDecodeWalk = ({
+  walk,
+  ...rest
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deployment: ScriptDecodeDeployment;
+  readonly scriptHashHex: string;
+  readonly runUtxo: UTxO;
+  readonly staging: readonly UTxO[];
+  readonly walk: ScriptDecodeChainedWalk;
+}) =>
+  buildScriptDecodeWalkTx({
+    ...rest,
+    after: walk.after,
+    stakes: scriptDecodeWalkStakes(rest.deployment, rest.runUtxo, walk),
+  });
 
 /** Burns the finished run's token and mints its record; returns the record. */
 export const finishScriptDecodeRun = async ({
