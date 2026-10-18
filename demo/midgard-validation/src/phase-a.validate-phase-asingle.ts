@@ -18,9 +18,11 @@ import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
   locateMidgardForcedTxOutputFault,
   locateMidgardForcedTxWitnessScriptFault,
+  type MidgardForcedTxWitnessScriptFault,
   MidgardLedgerTxDecodeError,
   type MidgardRawEnvelopePhaseAProjection,
   projectMidgardMalformedNativeWitnessEnvelopeV1,
+  projectMidgardRawEnvelopeForPhaseAV1,
 } from "./ledger-tx/codec.js";
 import type { MidgardLedgerTx, MidgardSubmittedTx } from "./ledger-tx/types.js";
 import {
@@ -186,31 +188,96 @@ const validateDeclaredExUnits = (
     : null;
 };
 
+/** The first output past the canonical width bound, if the fields derive. */
+const oversizedOutputIndex = (
+  txCbor: Buffer,
+  sourceKind: "normal" | "forced",
+): number | undefined => {
+  try {
+    return oversizedCanonicalOutputIndex(txCbor, sourceKind);
+  } catch {
+    // The canonical decode below refuses bytes whose fields do not derive.
+    return undefined;
+  }
+};
+
+/**
+ * A forced transaction's projection up to its first faulty script item, or
+ * null when a field outside field 6 does not decode either.
+ */
+const projectScriptPrefix = (
+  txCbor: Buffer,
+  outputCount: number | undefined,
+  scriptCount: number,
+): MidgardRawEnvelopePhaseAProjection | null => {
+  try {
+    return projectMidgardRawEnvelopeForPhaseAV1(txCbor, "forced", {
+      outputCount,
+      scriptCount,
+    });
+  } catch {
+    return null;
+  }
+};
+
+/** A field-6 item's fault at its turn in the Phase A native-script scan. */
+const scriptItemRejection = (
+  txId: Buffer,
+  fault: MidgardForcedTxWitnessScriptFault,
+): RejectedTx =>
+  reject(
+    txId,
+    RejectCodes.InvalidFieldType,
+    `script witness ${fault.itemIndex} is not a canonical versioned script`,
+    "phaseANativeScripts",
+    {
+      arm:
+        fault.itemClass === "headerMalformed"
+          ? "WitnessScriptHeaderMalformed"
+          : "WitnessNativeScriptMalformed",
+      index: BigInt(fault.itemIndex),
+    },
+  );
+
 export const validatePhaseASingle = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
 ): PhaseAValidatedTx | RejectedTx => {
-  const forced = queuedTx.sourceKind === "forced";
-  // The tx-order mint admits a forced transaction whose outputs or native
-  // script bodies may not decode. Each such item is a machine verdict: the
-  // rejection names the lowest faulty output first.
-  if (forced) {
-    const outputFault = locateMidgardForcedTxOutputFault(queuedTx.txCbor);
-    if (outputFault !== null)
-      return reject(
-        queuedTx.txId,
-        RejectCodes.InvalidOutput,
-        `output[${outputFault.itemIndex}] is not a canonical ledger output`,
-        "canonicalDecode",
-        { arm: "OutputNonCanonical", index: BigInt(outputFault.itemIndex) },
-      );
-  }
+  const sourceKind = queuedTx.sourceKind ?? "normal";
+  const forced = sourceKind === "forced";
+  // The canonical scan bounds every item's width before any later phase.
+  const oversizedOutput = oversizedOutputIndex(queuedTx.txCbor, sourceKind);
+  if (oversizedOutput !== undefined)
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      `output[${oversizedOutput}] exceeds the declared canonical output preimage bound`,
+      "canonicalDecode",
+      {
+        arm: "FieldItemWidthIllegal",
+        fieldIndex: 2n,
+        itemIndex: BigInt(oversizedOutput),
+      },
+    );
+  // The tx-order mint admits a forced transaction whose outputs or script
+  // items may not decode. The machine reads an output at the ScriptSources
+  // output scan and a script item at its turn in the Phase A native-script
+  // scan, so each such fault waits for its phase: the decode stops before the
+  // first faulty output, which Phase B refuses after input resolution, and
+  // the projection before the first faulty script item, refused below after
+  // the signatures and the native scripts before it.
+  const heldOutputFault = forced
+    ? (locateMidgardForcedTxOutputFault(queuedTx.txCbor) ?? undefined)
+    : undefined;
+  const heldOutputFaultIndex = heldOutputFault?.itemIndex;
   let submittedTx: MidgardSubmittedTx | null = null;
   let rawProjection: MidgardRawEnvelopePhaseAProjection | null = null;
+  let heldScriptFault: MidgardForcedTxWitnessScriptFault | null = null;
   try {
     submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
       queuedTx.txCbor,
-      queuedTx.sourceKind,
+      sourceKind,
+      heldOutputFaultIndex,
     );
   } catch (e) {
     const code =
@@ -229,7 +296,8 @@ export const validatePhaseASingle = (
       code === RejectCodes.InvalidFieldType
         ? projectMidgardMalformedNativeWitnessEnvelopeV1(
             queuedTx.txCbor,
-            queuedTx.sourceKind,
+            sourceKind,
+            heldOutputFaultIndex,
           )
         : null;
     const scriptFault =
@@ -239,51 +307,30 @@ export const validatePhaseASingle = (
     if (malformedNative?.malformedScriptIndex != null) {
       rawProjection = malformedNative.projection;
     } else if (scriptFault !== null) {
-      return reject(
-        queuedTx.txId,
-        RejectCodes.InvalidFieldType,
-        codecErrorDetail(e),
-        "canonicalDecode",
-        {
-          arm:
-            scriptFault.itemClass === "headerMalformed"
-              ? "WitnessScriptHeaderMalformed"
-              : "WitnessNativeScriptMalformed",
-          index: BigInt(scriptFault.itemIndex),
-        },
+      rawProjection = projectScriptPrefix(
+        queuedTx.txCbor,
+        heldOutputFaultIndex,
+        scriptFault.itemIndex,
       );
-    } else {
+      heldScriptFault = scriptFault;
+    }
+    if (rawProjection === null) {
       return reject(
         queuedTx.txId,
-        code,
+        scriptFault !== null ? RejectCodes.InvalidFieldType : code,
         codecErrorDetail(e),
         "canonicalDecode",
-        outputIndex !== undefined
-          ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
-          : undefined,
+        scriptFault !== null
+          ? scriptItemRejection(queuedTx.txId, scriptFault).subject
+          : outputIndex !== undefined
+            ? { arm: "OutputNonCanonical", index: BigInt(outputIndex) }
+            : undefined,
       );
     }
   }
 
   const ledgerTx =
     submittedTx !== null ? submittedTx.ledgerTx : rawProjection!.ledgerTx;
-
-  const oversizedOutput = oversizedCanonicalOutputIndex(
-    queuedTx.txCbor,
-    queuedTx.sourceKind ?? "normal",
-  );
-  if (oversizedOutput !== undefined)
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.InvalidFieldType,
-      `output[${oversizedOutput}] exceeds the declared canonical output preimage bound`,
-      "canonicalDecode",
-      {
-        arm: "FieldItemWidthIllegal",
-        fieldIndex: 2n,
-        itemIndex: BigInt(oversizedOutput),
-      },
-    );
 
   if (!ledgerTx.txId.equals(queuedTx.txId)) {
     return reject(
@@ -349,6 +396,8 @@ export const validatePhaseASingle = (
   if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
   if (rejection === null) rejection = verifyVKeyWitnessSignatures(ledgerTx);
   if (rejection === null) rejection = validateWitnessScripts(ledgerTx);
+  if (rejection === null && heldScriptFault !== null)
+    rejection = scriptItemRejection(ledgerTx.txId, heldScriptFault);
   if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
   if (rejection === null) {
     rejection = validateScriptEvaluationPreconditions(ledgerTx);
@@ -366,8 +415,8 @@ export const validatePhaseASingle = (
     );
   }
 
-  // Every output decoded above, so building the candidate cannot fail on
-  // transaction content; a throw here is a defect, not a verdict.
+  // Every output the candidate keeps decoded above, so building it cannot
+  // fail on transaction content; a throw here is a defect, not a verdict.
   return buildPhaseAValidatedTx({
     sourceKind: queuedTx.sourceKind ?? "normal",
     ledgerTx: submittedTx.ledgerTx,
@@ -376,6 +425,7 @@ export const validatePhaseASingle = (
     arrivalSeq: queuedTx.arrivalSeq,
     createdAt: queuedTx.createdAt,
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
+    heldOutputFault,
   });
 };
 

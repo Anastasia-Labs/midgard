@@ -10,6 +10,7 @@ import type {
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
+import type { MidgardForcedTxOutputFault } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
 import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
@@ -145,6 +146,13 @@ export type PhaseAValidatedTx = {
     readonly redeemerWitnessHash: Buffer;
     readonly requiresLocalScriptDiscovery: boolean;
   };
+
+  /**
+   * A forced transaction's first faulty output, with its class.
+   * `ledgerTx.outputs` stops before it, and Phase B refuses the transaction
+   * at the ScriptSources output scan, where the machine reads it.
+   */
+  readonly heldOutputFault?: MidgardForcedTxOutputFault;
 };
 
 /**

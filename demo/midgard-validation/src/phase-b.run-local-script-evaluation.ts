@@ -74,6 +74,11 @@ export const runLocalScriptEvaluation = (
         };
       }
     }
+    // Stage 12 follows stage 11: an unused redeemer is refused only once every
+    // inline witness is used.
+    if (discovered.unusedRedeemer !== undefined) {
+      return discovered.unusedRedeemer;
+    }
 
     // Execution ordinals are positions in the discovered execution list
     // (spend, mint, observe, receive), native and non-native alike.

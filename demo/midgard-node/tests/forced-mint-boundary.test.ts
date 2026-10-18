@@ -57,7 +57,7 @@ describe("forced admission at the tx-order mint", () => {
   );
 
   it.each(MINT_ADMITTED_UNDECODABLE)(
-    "an admitted order with %s is rejected at its item and attested",
+    "an admitted order with %s is rejected at its first fault and attested",
     async (_name, reason, bytes) => {
       const tx = bytes();
       expect(
@@ -108,8 +108,8 @@ describe("forced admission at the tx-order mint", () => {
       );
       expect(leaf.verdict).toEqual({ ForcedTxInvalid: { reason } });
       const code =
-        typeof reason === "object" && "OutputNonCanonical" in reason
-          ? RejectCodes.InvalidOutput
+        typeof reason === "object" && "InputNotFound" in reason
+          ? RejectCodes.InputNotFound
           : RejectCodes.InvalidFieldType;
       expect(result.rejectionCode).toBe(code);
       expect(result.ledgerOps).toEqual([]);

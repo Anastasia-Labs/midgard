@@ -7,6 +7,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 
 import { LedgerColumns, type LedgerEntry, type ProcessedTx } from "./ledger.js";
+import type { MidgardForcedTxOutputFault } from "./ledger-tx/codec.locate-forced-tx-item-fault.js";
 import type {
   MidgardLedgerOutput,
   MidgardLedgerTx,
@@ -145,6 +146,7 @@ type BuildPhaseAValidatedTxArgs = {
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
   readonly redeemerWitnessHash: Buffer;
+  readonly heldOutputFault?: MidgardForcedTxOutputFault;
 };
 
 export const buildPhaseAValidatedTx = ({
@@ -155,6 +157,7 @@ export const buildPhaseAValidatedTx = ({
   arrivalSeq,
   createdAt,
   redeemerWitnessHash,
+  heldOutputFault,
 }: BuildPhaseAValidatedTxArgs): PhaseAValidatedTx => {
   const outputAddresses = ledgerTx.outputs.map((output) =>
     projectAddress(output.address),
@@ -204,8 +207,11 @@ export const buildPhaseAValidatedTx = ({
         ledgerTx.redeemers.length > 0 ||
         ledgerTx.requiredObserverHashes.length > 0 ||
         ledgerTx.mint.assets.length > 0 ||
-        outputAddresses.some((address) => address.protected),
+        outputAddresses.some((address) => address.protected) ||
+        // Only the full route reaches the output scan that refuses it.
+        heldOutputFault !== undefined,
     },
+    ...(heldOutputFault === undefined ? {} : { heldOutputFault }),
   };
 };
 
