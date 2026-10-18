@@ -308,9 +308,8 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     });
   });
 
-  it("never names a fault on a datum nested past what the Data parser reads", async () => {
+  it("classifies a withdrawal whose datum is nested 20,000 deep and names no fault on it", async () => {
     const honest = await order(0x05);
-    const { root, payload } = await honestBlock([honest]);
     const deep: WithdrawalsDB.Entry = {
       ...honest,
       raw_event_info: deepDatumInfo(honest, 20_000),
@@ -325,11 +324,38 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
     expect(withdrawalClassificationInputBounded(input(honest))).toBe(true);
     expect(withdrawalClassificationInputBounded(input(deep))).toBe(false);
 
-    // The classifier's own typed refusal of the input.
+    // The Data parser reads the whole info: the classifier's verdict is on
+    // the signature, which no longer covers the body.
+    const classified = await Effect.runPromise(
+      Effect.either(SDK.classifyWithdrawalFromLedger(input(deep))),
+    );
+    expect(classified).toMatchObject({
+      _tag: "Right",
+      right: { validity: "IncorrectWithdrawalSignature" },
+    });
+
+    // A block whose verdict on the row is another refuses as invalid.
+    const { root, payload } = await honestBlock([honest]);
     expect((await replay(payload, [deep], root)).result).toMatchObject({
       _tag: "Left",
-      left: { _tag: "WithdrawalValidationError" },
+      left: {
+        kind: "invalid",
+        detail: "a withdrawal's verdict differs from its replay",
+      },
     });
+
+    // Own-block production and foreign replay reach the same verdict.
+    const own = await honestBlock([deep]);
+    expect(
+      own.produced.includedWithdrawalEntries.map(
+        (row) => row[WithdrawalsDB.Columns.VALIDITY],
+      ),
+    ).toEqual(["IncorrectWithdrawalSignature"]);
+    const imported = await replay(own.payload, [deep], own.root);
+    expect(imported.result._tag).toBe("Right");
+    expect(imported.memberships.map(({ validity }) => validity)).toEqual([
+      "IncorrectWithdrawalSignature",
+    ]);
 
     // A throw on such input is not taken for a local fault.
     fault.on = true;
