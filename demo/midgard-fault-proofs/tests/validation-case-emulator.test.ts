@@ -234,17 +234,20 @@ describe("validation case defense", () => {
     await expectOnchainRefusal(() =>
       world.lucid
         .newTx()
-        // Only wallet inputs and plain outputs exist, so whichever position
-        // the indices name holds no case or thread.
-        .mintAssets({ [unit]: 1n }, () =>
+        .mintAssets(
+          { [unit]: 1n },
           Data.to(
             {
+              /* eslint-disable midgard/redeemer-index-from-builder -- Only
+                 wallet inputs and plain outputs exist, so whichever position
+                 the indices name holds no case or thread. */
               ThreadClose: {
                 case_output_index: 0n,
                 thread_input_index: 0n,
                 outcome: "DefenderWins",
                 defender_vkh: defender.vkh,
               },
+              /* eslint-enable midgard/redeemer-index-from-builder */
             },
             CaseRedeemer,
           ),
@@ -365,9 +368,13 @@ describe("validation case configuration and receipts", () => {
     await expectOnchainRefusal(() =>
       world.lucid
         .newTx()
-        // Only wallet inputs exist, so the index names no case input.
-        .mintAssets({ [unit]: 1n }, () =>
-          Data.to({ MintReceipt: { case_input_index: 0n } }, ReceiptRedeemer),
+        .mintAssets(
+          { [unit]: 1n },
+          Data.to(
+            // eslint-disable-next-line midgard/redeemer-index-from-builder -- Only wallet inputs exist, so the index names no case input.
+            { MintReceipt: { case_input_index: 0n } },
+            ReceiptRedeemer,
+          ),
         )
         .readFrom([referenceOf(world, world.award)])
         .pay.ToAddress(world.award.address, {
