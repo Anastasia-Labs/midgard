@@ -1,4 +1,8 @@
-import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type DeploymentContract,
+  deploymentFamilyStepNames,
+  deploymentValidatorTitle as deployedTitle,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -31,51 +35,76 @@ export const MISSING_REDEEMER_FAULT_PROOF_TITLES = {
   step05: deployedTitle("fraudProofMissingRedeemerStep05"),
 } as const;
 
-/** Spending roles in deployment step order. Off-chain code reads named roles
- * through `missingRedeemerRoles`, so a manifest-restored chain carries them. */
-export const MISSING_REDEEMER_ROLE_ORDER = [
-  "step01",
-  "bindEvent",
-  "bindPreState",
-  "sourceStart",
-  "sourceResolved",
-  "sourceAuthenticate",
-  "sourceMap",
-  "sourceInputFinish",
-  "sourceGrammar",
-  "sourceWitnesses",
-  "sourceFinish",
-  "familyEntry",
-  "purposeSelect",
-  "spendSelect",
-  "spendScan",
-  "mintGrammar",
-  "mintScan",
-  "receiveStart",
-  "receiveGrammar",
-  "receiveOutputs",
-  "receiveFinish",
-  "receiveDeclaration",
-  "sourceLookup",
-  "observedStart",
-  "observedGrammar",
-  "observedScan",
-  "claimStart",
-  "claimSpendStart",
-  "claimSpendScan",
-  "claimMintGrammar",
-  "claimMintScan",
-  "claimReceiveGrammar",
-  "claimReceiveOutputs",
-  "claimReceiveFinish",
-  "claimReceiveDeclaration",
-  "claimAdjudicate",
-  "claimedRedeemerGrammar",
-  "claimedRedeemerScan",
-  "terminal",
-] as const;
+/** Each spending role bound once to its deployment member, in deployment step
+ * order. Off-chain code reads named roles through `missingRedeemerRoles`, so a
+ * manifest-restored chain carries them. */
+const MISSING_REDEEMER_ROLE_MEMBERS = [
+  ["step01", "fraudProofMissingRedeemer"],
+  ["bindEvent", "fraudProofMissingRedeemerBindEvent"],
+  ["bindPreState", "fraudProofMissingRedeemerBindPreState"],
+  ["sourceStart", "fraudProofMissingRedeemerSourceStart"],
+  ["sourceResolved", "fraudProofMissingRedeemerSourceResolved"],
+  ["sourceAuthenticate", "fraudProofMissingRedeemerSourceAuthenticate"],
+  ["sourceMap", "fraudProofMissingRedeemerSourceMap"],
+  ["sourceInputFinish", "fraudProofMissingRedeemerSourceInputFinish"],
+  ["sourceGrammar", "fraudProofMissingRedeemerSourceGrammar"],
+  ["sourceWitnesses", "fraudProofMissingRedeemerSourceWitnesses"],
+  ["sourceFinish", "fraudProofMissingRedeemerSourceFinish"],
+  ["familyEntry", "fraudProofMissingRedeemerFamilyEntry"],
+  ["purposeSelect", "fraudProofMissingRedeemerPurposeSelect"],
+  ["spendSelect", "fraudProofMissingRedeemerSpendSelect"],
+  ["spendScan", "fraudProofMissingRedeemerSpendScan"],
+  ["mintGrammar", "fraudProofMissingRedeemerMintGrammar"],
+  ["mintScan", "fraudProofMissingRedeemerMintScan"],
+  ["receiveStart", "fraudProofMissingRedeemerReceiveStart"],
+  ["receiveGrammar", "fraudProofMissingRedeemerReceiveGrammar"],
+  ["receiveOutputs", "fraudProofMissingRedeemerReceiveOutputs"],
+  ["receiveFinish", "fraudProofMissingRedeemerReceiveFinish"],
+  ["receiveDeclaration", "fraudProofMissingRedeemerReceiveDeclaration"],
+  ["sourceLookup", "fraudProofMissingRedeemerSourceLookup"],
+  ["observedStart", "fraudProofMissingRedeemerStep02"],
+  ["observedGrammar", "fraudProofMissingRedeemerStep03"],
+  ["observedScan", "fraudProofMissingRedeemerStep04"],
+  ["claimStart", "fraudProofMissingRedeemerClaimStart"],
+  ["claimSpendStart", "fraudProofMissingRedeemerClaimSpendStart"],
+  ["claimSpendScan", "fraudProofMissingRedeemerClaimSpendScan"],
+  ["claimMintGrammar", "fraudProofMissingRedeemerClaimMintGrammar"],
+  ["claimMintScan", "fraudProofMissingRedeemerClaimMintScan"],
+  ["claimReceiveGrammar", "fraudProofMissingRedeemerClaimReceiveGrammar"],
+  ["claimReceiveOutputs", "fraudProofMissingRedeemerClaimReceiveOutputs"],
+  ["claimReceiveFinish", "fraudProofMissingRedeemerClaimReceiveFinish"],
+  [
+    "claimReceiveDeclaration",
+    "fraudProofMissingRedeemerClaimReceiveDeclaration",
+  ],
+  ["claimAdjudicate", "fraudProofMissingRedeemerClaimAdjudicate"],
+  ["claimedRedeemerGrammar", "fraudProofMissingRedeemerClaimedRedeemerGrammar"],
+  ["claimedRedeemerScan", "fraudProofMissingRedeemerClaimedRedeemerScan"],
+  ["terminal", "fraudProofMissingRedeemerStep05"],
+] as const satisfies readonly (readonly [string, DeploymentContract])[];
 
-export type MissingRedeemerRole = (typeof MISSING_REDEEMER_ROLE_ORDER)[number];
+export type MissingRedeemerRole =
+  (typeof MISSING_REDEEMER_ROLE_MEMBERS)[number][0];
+
+export const MISSING_REDEEMER_ROLE_ORDER: readonly MissingRedeemerRole[] =
+  Object.freeze(MISSING_REDEEMER_ROLE_MEMBERS.map(([role]) => role));
+
+/** Refuses, by role name, a role whose member the given manifest step order
+ * places at another step of the `missingRedeemer` family. */
+export const checkMissingRedeemerRoleOrder = (
+  steps: readonly DeploymentContract[],
+): void => {
+  if (steps.length !== MISSING_REDEEMER_ROLE_MEMBERS.length)
+    throw new Error(
+      `missing-redeemer has ${MISSING_REDEEMER_ROLE_MEMBERS.length} roles; the manifest has ${steps.length} steps`,
+    );
+  MISSING_REDEEMER_ROLE_MEMBERS.forEach(([role, member], index) => {
+    if (steps[index] !== member)
+      throw new Error(
+        `missing-redeemer role ${role} is ${member}, but manifest step ${index} is ${String(steps[index])}`,
+      );
+  });
+};
 
 export type MissingRedeemerChain = FraudProofChain;
 
@@ -87,6 +116,7 @@ export type MissingRedeemerRoles = Readonly<
 export const missingRedeemerRoles = (
   chain: FraudProofChain,
 ): MissingRedeemerRoles => {
+  checkMissingRedeemerRoleOrder(deploymentFamilyStepNames("missingRedeemer"));
   if (chain.steps.length !== MISSING_REDEEMER_ROLE_ORDER.length)
     throw new Error(
       `missing-redeemer chain has ${chain.steps.length} steps; expected ${MISSING_REDEEMER_ROLE_ORDER.length}`,
@@ -246,7 +276,7 @@ export const buildMissingRedeemerChain = ({
       terminal,
     ];
     const chain = { firstStep: step01, steps };
-    // Fails closed when the order above and the role names drift apart.
+    // Fails closed when this order, the role names and the manifest drift apart.
     missingRedeemerRoles(chain);
     return chain;
   });
