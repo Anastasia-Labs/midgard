@@ -3,7 +3,8 @@
  * the fault, the port prepares a journaled artifact, and the cursor adapter
  * drives every one of the 39 roles from a genuine Init to the proof token
  * across an emulated restart after each broadcast; the block is then removed.
- * An honest forced rejection yields no detection.
+ * The honest forced rejection's replay is covered by
+ * missing-redeemer-honest-forced.test.ts.
  */
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -366,17 +367,4 @@ describe("missingRedeemer installed cursor actuator", () => {
     },
     1_800_000,
   );
-
-  it("detects nothing in an honest forced RedeemerMissing rejection", async () => {
-    const h = await makeMissingRedeemerHarness();
-    const scenario = await setupMissingRedeemerScenario({
-      harness: h,
-      shape: { observers: [{ script: plutusScript(5), redeemer: false }] },
-      source: { kind: "forced", verdict: redeemerMissingVerdict(2n, 0n) },
-    });
-    const decision = await MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY.replay(
-      await blockEvidence(scenario),
-    );
-    expect(decision.detections).toStrictEqual([]);
-  }, 600_000);
 });

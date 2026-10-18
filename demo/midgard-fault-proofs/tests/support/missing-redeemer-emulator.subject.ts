@@ -3,6 +3,7 @@
  * (and optionally ledger reference scripts), committed in a block whose
  * predecessor ledger root the event pre-root names. */
 import {
+  computeMidgardNativeTxId,
   EMPTY_NULL_ROOT,
   encodeMidgardRedeemerWitnessItem,
   encodeMidgardSpendInputItem,
@@ -16,9 +17,15 @@ import {
   type MidgardNativeTxFull,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import {
+  deriveMidgardNativeTxBodyCompact,
+  encodeMidgardForcedTxCanonical,
+  type MidgardNativeTxBodyCanonical,
+} from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/index.js";
 import {
@@ -26,6 +33,7 @@ import {
   ledgerEntriesRoot,
   type LedgerEntry,
 } from "../../src/ledger-at.js";
+import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -64,6 +72,8 @@ export type MissingRedeemerSubjectShape = {
   readonly paddingRedeemers?: readonly Buffer[];
   /** Redeemer Data bytes for each observer redeemer. */
   readonly redeemerData?: (index: number) => Buffer;
+  /** Signs the body with one address witness. */
+  readonly signer?: CML.PrivateKey;
 };
 
 const redeemerItem = (index: bigint, data: Buffer) =>
@@ -102,32 +112,51 @@ export const buildMissingRedeemerSubject = (
       redeemerItem(BigInt(ordered.length + index), item),
     ),
   ];
+  const body: MidgardNativeTxBodyCanonical = {
+    spendInputsPreimageCbor: encodeCbor(
+      (shape.spend ?? []).map((entry) => entry.outRef),
+    ),
+    referenceInputsPreimageCbor: encodeCbor(
+      (shape.reference ?? []).map((entry) => entry.outRef),
+    ),
+    outputsPreimageCbor: encodeCbor([]),
+    fee: 0n,
+    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    requiredObserversPreimageCbor: encodeCbor(
+      ordered.map((observer) => observer.hash),
+    ),
+    requiredSignersPreimageCbor: encodeCbor([]),
+    mintPreimageCbor: encodeCbor([]),
+    scriptIntegrityHash: EMPTY_NULL_ROOT,
+    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    // Observers are admitted only on a tagged network.
+    networkId: ordered.length === 0 ? MIDGARD_NATIVE_NETWORK_ID_NONE : 0n,
+  };
+  // An address witness signs the body alone.
+  const bodyHash = computeMidgardNativeTxId({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    transactionBody: deriveMidgardNativeTxBodyCompact(body),
+    transactionWitnessSetHash: Buffer.alloc(32),
+    validity: "TxIsValid",
+  });
   const nativeTx = materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
-    body: {
-      spendInputsPreimageCbor: encodeCbor(
-        (shape.spend ?? []).map((entry) => entry.outRef),
-      ),
-      referenceInputsPreimageCbor: encodeCbor(
-        (shape.reference ?? []).map((entry) => entry.outRef),
-      ),
-      outputsPreimageCbor: encodeCbor([]),
-      fee: 0n,
-      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-      requiredObserversPreimageCbor: encodeCbor(
-        ordered.map((observer) => observer.hash),
-      ),
-      requiredSignersPreimageCbor: encodeCbor([]),
-      mintPreimageCbor: encodeCbor([]),
-      scriptIntegrityHash: EMPTY_NULL_ROOT,
-      auxiliaryDataHash: EMPTY_NULL_ROOT,
-      // Observers are admitted only on a tagged network.
-      networkId: ordered.length === 0 ? MIDGARD_NATIVE_NETWORK_ID_NONE : 0n,
-    },
+    body,
     witnessSet: {
-      addrTxWitsPreimageCbor: encodeCbor([]),
+      addrTxWitsPreimageCbor: encodeCbor(
+        shape.signer === undefined
+          ? []
+          : [
+              Buffer.from(
+                CML.make_vkey_witness(
+                  CML.TransactionHash.from_raw_bytes(bodyHash),
+                  shape.signer,
+                ).to_cbor_bytes(),
+              ),
+            ],
+      ),
       scriptTxWitsPreimageCbor: encodeCbor(
         hashed
           .filter((observer) => observer.witness ?? true)
@@ -144,6 +173,7 @@ export const buildMissingRedeemerSubject = (
 export const missingRedeemerLedgerEntries = (
   firstByte: number,
   scripts: readonly (MidgardVersionedScript | null)[],
+  address = Buffer.from(`60${"44".repeat(28)}`, "hex"),
 ): LedgerEntry[] =>
   scripts.map((script, index) => ({
     outRef: encodeMidgardSpendInputItem({
@@ -151,11 +181,55 @@ export const missingRedeemerLedgerEntries = (
       outputIndex: index,
     }),
     output: encodeMidgardTxOutput({
-      address: Buffer.from(`60${"44".repeat(28)}`, "hex"),
+      address,
       value: { lovelace: 5_000_000n, assets: new Map() },
       ...(script === null ? {} : { script_ref: script }),
     }),
   }));
+
+const HONEST_SIGNER = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x07));
+
+/** A forced transaction the admission screen accepts: it spends one output
+ * its witness signs for, and its Plutus observer is sourced only from a
+ * reference input's script, so it carries no script witness and no redeemer.
+ * Its first fault is RedeemerMissing at that observer. */
+export const honestForcedObserverShape = (
+  seed: number,
+): MissingRedeemerSubjectShape => {
+  const script = plutusScript(seed);
+  return {
+    observers: [{ script, witness: false, redeemer: false }],
+    spend: missingRedeemerLedgerEntries(
+      0x21,
+      [null],
+      Buffer.from(
+        CML.EnterpriseAddress.new(
+          0,
+          CML.Credential.new_pub_key(HONEST_SIGNER.to_public().hash()),
+        )
+          .to_address()
+          .to_raw_bytes(),
+      ),
+    ),
+    reference: missingRedeemerLedgerEntries(0x31, [script]),
+    signer: HONEST_SIGNER,
+  };
+};
+
+/** The verdict the node's forced classifier writes for the subject, against
+ * the subject's own committed predecessor outputs. */
+export const machineForcedVerdict = async (
+  shape: MissingRedeemerSubjectShape,
+): Promise<SDK.OperatorVerdict> => {
+  const { nativeTx } = buildMissingRedeemerSubject(shape);
+  return await nodeForcedVerdict({
+    transactionId: Buffer.from(computeMidgardNativeTxId(nativeTx)),
+    forcedCanonicalCbor: Buffer.from(encodeMidgardForcedTxCanonical(nativeTx)),
+    ledger: [...(shape.spend ?? []), ...(shape.reference ?? [])].map(
+      (entry) => [entry.outRef, entry.output] as const,
+    ),
+  });
+};
 
 export type MissingRedeemerSource =
   | { readonly kind: "normal" }
@@ -182,6 +256,47 @@ export const setupMissingRedeemerScenario = async ({
   readonly shape: MissingRedeemerSubjectShape;
   readonly source: MissingRedeemerSource;
 }) => {
+  const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
+  const startTime = BigInt(
+    alignUnixTimeToEmulatorSlotBoundary(
+      harness.funderLucid,
+      harness.emulator.now() + 120_000,
+    ) - 1,
+  );
+  const built = await buildMissingRedeemerBlock({
+    shape,
+    source,
+    operatorVkey,
+    startTime,
+  });
+  const setup = await submitSetupTx({
+    lucid: harness.funderLucid,
+    contracts: harness.contracts,
+    nonceUtxo: harness.nonceUtxo,
+    catalogue: harness.catalogue,
+    header: built.block.header,
+  });
+  return {
+    subject: built.subject,
+    block: built.block,
+    setup,
+    material: built.material,
+  };
+};
+
+/** The subject's committed block and derived material, without an L1
+ * commit: the header hash is the one a commit would name. */
+export const buildMissingRedeemerBlock = async ({
+  shape,
+  source,
+  operatorVkey = "aa".repeat(28),
+  startTime = 1_000_000n,
+}: {
+  readonly shape: MissingRedeemerSubjectShape;
+  readonly source: MissingRedeemerSource;
+  readonly operatorVkey?: string;
+  readonly startTime?: bigint;
+}) => {
   const subject = buildMissingRedeemerSubject(shape);
   const entries = [...(shape.spend ?? []), ...(shape.reference ?? [])];
   const root =
@@ -196,14 +311,8 @@ export const setupMissingRedeemerScenario = async ({
           utxosRoot: root,
           label: "missing-redeemer predecessor",
         });
-  const startTime = BigInt(
-    alignUnixTimeToEmulatorSlotBoundary(
-      harness.funderLucid,
-      harness.emulator.now() + 120_000,
-    ) - 1,
-  );
   const block = await buildDecodingBlockFixture({
-    operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
+    operatorVkey,
     startTime,
     priorLedgerRoot: root,
     prevUtxosRoot: root,
@@ -217,13 +326,6 @@ export const setupMissingRedeemerScenario = async ({
             verdict: source.verdict,
           },
   });
-  const setup = await submitSetupTx({
-    lucid: harness.funderLucid,
-    contracts: harness.contracts,
-    nonceUtxo: harness.nonceUtxo,
-    catalogue: harness.catalogue,
-    header: block.header,
-  });
   const eventKey: SDK.EventKey =
     source.kind === "normal"
       ? { L2TransactionEventKey: { tx_id: block.nativeTxId } }
@@ -233,7 +335,13 @@ export const setupMissingRedeemerScenario = async ({
     eventKey,
     ...(predecessor === undefined ? {} : { predecessor }),
   });
-  return { subject, block, setup, material };
+  return {
+    subject,
+    block,
+    material,
+    predecessor,
+    headerHash: await Effect.runPromise(SDK.hashBlockHeader(block.header)),
+  };
 };
 
 export type MissingRedeemerScenario = Awaited<

@@ -186,6 +186,11 @@ describe("missing-redeemer genuine-Init verticals", () => {
 
   it("R-F: refuses a forced rejection whose claimed observer redeemer is absent", async () => {
     const harness = await makeMissingRedeemerHarness();
+    // The claim route reads only the named observer and the redeemer field.
+    // This subject spends nothing, so the node would classify it EmptyInputs;
+    // the subject the node classifies RedeemerMissing is
+    // honestForcedObserverShape, whose spend needs a non-empty ledger root
+    // at setup (missing-redeemer-honest-forced.test.ts covers it off chain).
     const scenario = await setupMissingRedeemerScenario({
       harness,
       shape: { observers: [{ script: plutusScript(5), redeemer: false }] },
