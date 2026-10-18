@@ -168,7 +168,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
           throw new EventHistoryRegistrationUnfunded(
             "No funding remains after reserving the initialization nonces and the reference-script outputs",
           );
-        // Lucid's coin selection (0.8.0) leaves certificate deposits out of
+        // Lucid's coin selection (0.8.3) leaves certificate deposits out of
         // what it must cover, so this path selects its inputs itself: enough
         // for the deposits, the fee and the change, without collecting every
         // output of a fragmented wallet. Revisit this if a later Lucid counts
