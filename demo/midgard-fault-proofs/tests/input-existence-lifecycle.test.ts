@@ -19,6 +19,7 @@ import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { submitInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { submitInit } from "../src/submit-init.js";
+import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   type InputChronology,
@@ -35,6 +36,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -52,7 +54,19 @@ type Case =
   | "honest_forced_rejection"
   | "out_of_domain_rejection"
   | "prior_ledger_present_rejection"
+  | InitialAbsence
   | InputChronology;
+/** A prover that carries an absence proof taken against the block-initial
+ * ledger, for an input an earlier event of the same block created. */
+type InitialAbsence =
+  | "forced_creator_initial_absence"
+  | "normal_creator_initial_absence";
+const initialAbsenceSource = {
+  forced_creator_initial_absence: "forced_creator",
+  normal_creator_initial_absence: "normal_creator",
+} as const satisfies Record<InitialAbsence, InputChronology>;
+const isInitialAbsence = (kind: Case): kind is InitialAbsence =>
+  Object.hasOwn(initialAbsenceSource, kind);
 const cases: readonly Case[] = [
   "normal_missing",
   "forced_missing",
@@ -61,6 +75,8 @@ const cases: readonly Case[] = [
   "prior_ledger_present_rejection",
   "forced_creator",
   "normal_creator",
+  "forced_creator_initial_absence",
+  "normal_creator_initial_absence",
   "later_creator",
   "forced_spend",
   "normal_spend",
@@ -107,19 +123,21 @@ describe("registered event-relative input-existence lifecycle", () => {
           kind === "honest_forced_rejection" ||
           kind === "out_of_domain_rejection" ||
           kind === "prior_ledger_present_rejection";
-        const chronology = (
-          [
-            "forced_creator",
-            "normal_creator",
-            "later_creator",
-            "forced_spend",
-            "normal_spend",
-            "withdrawal_consumed",
-            "rejected_creator",
-            "forced_target",
-            "prior_ledger_present_rejection",
-          ] as const
-        ).find((scenario) => scenario === kind);
+        const chronology = isInitialAbsence(kind)
+          ? initialAbsenceSource[kind]
+          : (
+              [
+                "forced_creator",
+                "normal_creator",
+                "later_creator",
+                "forced_spend",
+                "normal_spend",
+                "withdrawal_consumed",
+                "rejected_creator",
+                "forced_target",
+                "prior_ledger_present_rejection",
+              ] as const
+            ).find((scenario) => scenario === kind);
         const outOfDomain = kind === "out_of_domain_rejection";
         const reason: SDK.RejectionReason = {
           InputNotFound: {
@@ -279,11 +297,40 @@ describe("registered event-relative input-existence lifecycle", () => {
         const present =
           kind === "forced_creator" ||
           kind === "normal_creator" ||
+          isInitialAbsence(kind) ||
           kind === "prior_ledger_present_rejection";
         if (present) expect(prepared.ledgerEvidence).toHaveProperty("Present");
         else if (outOfDomain)
           expect(prepared.ledgerEvidence).toBe("OutOfDomain");
         else expect(prepared.ledgerEvidence).toHaveProperty("Absent");
+        const carried = await (async () => {
+          if (!isInitialAbsence(kind)) return prepared;
+          if (history === undefined)
+            throw new Error("initial-absence case has no chronology");
+          // The block-initial ledger lacks the created input, so a genuine
+          // non-membership proof exists against it, but not against the
+          // target event's pre-root.
+          expect(history.predecessor.utxosRoot).toBe(
+            selected.evidence.header.prevUtxosRoot,
+          );
+          expect(history.targetPreRoot).not.toBe(history.predecessor.utxosRoot);
+          expect(
+            history.predecessor.trie.entries.some(({ key }) =>
+              key.equals(history.selected),
+            ),
+          ).toBe(false);
+          return {
+            ...prepared,
+            ledgerEvidence: {
+              Absent: {
+                proof: await keyValuePhasNonMembershipProof(
+                  history.predecessor.trie,
+                  history.selected,
+                ),
+              },
+            },
+          };
+        })();
         const stepReferences: UTxO[] = [];
         for (const [index, step] of family.steps.entries())
           stepReferences.push(
@@ -327,8 +374,18 @@ describe("registered event-relative input-existence lifecycle", () => {
         );
         checkFit(init.measurement);
         let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
+        // The local submitter admits only evidence that matches the event's
+        // pre-root, so the carried absence goes through the raw producer,
+        // which claims the block-initial root as the event's pre-root.
+        const submitStep = isInitialAbsence(kind)
+          ? (args: Parameters<typeof submitRawInputExistenceStep>[0]) =>
+              submitRawInputExistenceStep({
+                ...args,
+                claimedPreUtxosRoot: selected.evidence.header.prevUtxosRoot,
+              })
+          : submitInputExistenceStep;
         const send = (stepIndex: 0 | 1 | 2 | 3) =>
-          submitInputExistenceStep({
+          submitStep({
             lucid: h.proverLucid,
             blueprint: h.realBlueprint,
             network,
@@ -341,7 +398,7 @@ describe("registered event-relative input-existence lifecycle", () => {
             categoryId: h.catalogue.categories[category].categoryId,
             signer: h.proverSigner,
             threadOutRef,
-            prepared,
+            prepared: carried,
             stepIndex,
             stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
             referenceScripts: {
@@ -351,14 +408,30 @@ describe("registered event-relative input-existence lifecycle", () => {
             },
             witnessReferenceScripts: h.witnessReferenceScripts,
           });
-        for (const index of [0, 1, 2] as const) {
+        const accepted = isInitialAbsence(kind)
+          ? ([0, 1] as const)
+          : ([0, 1, 2] as const);
+        for (const index of accepted) {
           const submitted = await captureEmulatorSubmission(h.emulator, () =>
             send(index),
           );
           checkFit(submitted.measurement);
           threadOutRef = submitted.result.nextThreadOutRef;
         }
-        if (kind === "honest_forced_rejection" || (present && !rejected)) {
+        if (isInitialAbsence(kind)) {
+          // The pre-state step binds the target event's own pre-root, so the
+          // block-initial root cannot become the ledger state.
+          await expectOnchainRefusal(() => send(2));
+          const [txHash, index] = threadOutRef.split("#");
+          expect(
+            await h.proverLucid.utxosByOutRef([
+              { txHash: txHash!, outputIndex: Number(index) },
+            ]),
+          ).toHaveLength(1);
+        } else if (
+          kind === "honest_forced_rejection" ||
+          (present && !rejected)
+        ) {
           await expectOnchainRefusal(() => send(3));
           // A refusal must preserve the actual step-04 thread and mint no proof.
           const [txHash, index] = threadOutRef.split("#");
