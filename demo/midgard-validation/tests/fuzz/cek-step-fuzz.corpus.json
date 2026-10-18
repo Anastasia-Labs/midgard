@@ -1,5 +1,5 @@
 {
-  "note": "Programs the step differential replays on every run: each diverging program a run records, and seed vectors that reach the source-constant bound, a budget stop and a machine-arm failure.",
+  "note": "Programs the step differential replays on every run: each diverging program a run records, seed vectors that reach the source-constant bound, a budget stop and a machine-arm failure, and mkCons rows over a list of integers holding an integer of 2^64 or more.",
   "vectors": [
     {
       "label": "seed 4028760066 builtin 0",
@@ -100,6 +100,30 @@
       "contextCbor": "a180d87a9fa31a0005252418ff41ad3a000dc9de023a000449b8ff",
       "tightBudget": false,
       "sampleSeed": 656232640
+    },
+    {
+      "label": "mkCons of 2^64 onto a list of integers, read back",
+      "programFlat": "01010025333573466e1cd5d099aba0482020202020202020200112f5820504241010101010101010100082930b01",
+      "contextCbor": "d8799f014401203f5e9f02ffff",
+      "tightBudget": false
+    },
+    {
+      "label": "mkCons of -2^200 onto a list of integers, read back",
+      "programFlat": "01010025333573466e1cd5d099aba0483fffffffffffffffffffffffffffffffffffffffffffffffffffffffc7d2f58204483fffffffffffffffffffffffffffffffffffffffffffffffffffffffc7c5261601",
+      "contextCbor": "d8799f014401203f5e9f02ffff",
+      "tightBudget": false
+    },
+    {
+      "label": "mkCons onto a list of integers holding 2^64, read back",
+      "programFlat": "01010025333573466e1cd5d09aba2335740900725eb06020202020202020200120c48202020202020202020010526161",
+      "contextCbor": "d8799f014401203f5e9f02ffff",
+      "tightBudget": false
+    },
+    {
+      "label": "mkCons of 2^64 onto a list of integers, compared with 2^64 + 1",
+      "programFlat": "01010025333573466e1cd5d099aba0482020202020202020200112f5820504241050101010101010100082930b01",
+      "contextCbor": "d8799f014401203f5e9f02ffff",
+      "tightBudget": false
     }
   ]
 }
