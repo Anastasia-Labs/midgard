@@ -278,6 +278,26 @@ Commitment and liveness (raised by fibers, cleared by them):
     on L1.
   - the row decodes, and the classifier failed on this node. If it repeats
     after a restart, read the detail and the node's logs.
+- `commit_build_held:<stage>`: the last block build stopped at commit stage
+  `<stage>` (its name in lower case, words joined by `_`, for example
+  `withdrawal_classification`), because the stage failed and the failure is
+  not one normal transaction's own: a failure of the node, or one that did
+  not happen again when the stage ran the same work again. That build
+  commits nothing and rejects no transaction for it; a later build tries
+  again. It clears when a block commits or nothing is left to build. Read
+  the commit worker's error in the log (the node reports it as
+  `commit_worker_failed`), which includes
+  `Holding the block build: <stage> failed` and carries the stage's failure
+  as its cause, and any warning before it that reads
+  `<stage> failed once on a normal transaction and passed when run again`.
+- `commit_stage_breaker:<stage>` (a detail): in one build, commit stage
+  `<stage>` failed on more than 4 normal transactions of their own. The
+  first 4 were rejected; the rest stay pending, with the transactions in the
+  block that depend on them, for a later build. The node still commits
+  blocks. It clears when a block commits from a build in which no stage
+  reached the limit. Read the warning that reads
+  `<stage> would reject more than 4 normal transactions in one build`, and
+  the rejected transactions in `tx_rejections`.
 - `commit_anchor_unavailable`: the follower has no block the profile's
   commit-event depth d below the view the driver applied (a chain too short
   above the origin, or a pruned block while the applied view trails the
