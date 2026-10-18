@@ -221,19 +221,28 @@ const haltErrorCodeOf = (execution: Execution | null | undefined) =>
     : null;
 
 /**
+ * Runs one leg to its result or its stop. A leg that dies (a throw inside it,
+ * such as the commit-mode golden check refusing what the proof build
+ * accepted) stops like a failed one, so the case reports it as a divergence
+ * and the row counts it instead of aborting.
+ */
+const settle = <A, E>(leg: Effect.Effect<A, E>) =>
+  Effect.runPromise(
+    Effect.either(Effect.catchAllDefect(leg, (defect) => Effect.fail(defect))),
+  );
+
+/**
  * The error code Phase B's proof-mode run halts with, for a case whose trace
  * replay stopped before handing its run back.
  */
 const proofHaltErrorCode = async (
   scenario: TxFuzzScenario,
 ): Promise<bigint | null> => {
-  const proof = await Effect.runPromise(
-    Effect.either(
-      replayValidationVerdictEvent({
-        ...scenario.event,
-        cekExecutionMode: "proof",
-      }),
-    ),
+  const proof = await settle(
+    replayValidationVerdictEvent({
+      ...scenario.event,
+      cekExecutionMode: "proof",
+    }),
   );
   return Either.isRight(proof)
     ? haltErrorCodeOf(proof.right.scriptEvaluations[0]?.execution)
@@ -248,13 +257,11 @@ export const runTxCase = async (
 ): Promise<TxCaseResult> => {
   const divergences: string[] = [];
   const known: TxKnownClass[] = [];
-  const verdictLeg = await Effect.runPromise(
-    Effect.either(
-      replayValidationVerdictEvent({
-        ...scenario.event,
-        cekExecutionMode: "verdict",
-      }),
-    ),
+  const verdictLeg = await settle(
+    replayValidationVerdictEvent({
+      ...scenario.event,
+      cekExecutionMode: "verdict",
+    }),
   );
   if (Either.isLeft(verdictLeg)) {
     divergences.push(`verdict leg stopped: ${String(verdictLeg.left)}`);
@@ -270,9 +277,7 @@ export const runTxCase = async (
   }
   const verdict = verdictLeg.right;
   const rejectionCode = verdict.rejection?.code ?? null;
-  const replay = await Effect.runPromise(
-    Effect.either(replayValidationMachineEvent(scenario.event)),
-  );
+  const replay = await settle(replayValidationMachineEvent(scenario.event));
   let steps: PreparedCase | null = null;
   let haltErrorCode: bigint | null = null;
   if (Either.isLeft(replay)) {
@@ -280,10 +285,8 @@ export const runTxCase = async (
     haltErrorCode = await proofHaltErrorCode(scenario);
   } else {
     const { replayInput } = replay.right;
-    const independent = await Effect.runPromise(
-      Effect.either(
-        buildDeterministicValidationMachineTrace(withoutCaptures(replayInput)),
-      ),
+    const independent = await settle(
+      buildDeterministicValidationMachineTrace(withoutCaptures(replayInput)),
     );
     if (Either.isLeft(independent)) {
       divergences.push(
@@ -303,8 +306,8 @@ export const runTxCase = async (
       expectedRejectionCode:
         verdict.verdict === "accepted" ? RejectCodes.PlutusScriptInvalid : null,
     };
-    const opposite = await Effect.runPromise(
-      Effect.either(buildDeterministicValidationMachineTrace(flipped)),
+    const opposite = await settle(
+      buildDeterministicValidationMachineTrace(flipped),
     );
     if (
       Either.isRight(opposite) ||
