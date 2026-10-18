@@ -253,7 +253,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
           }),
         itemForAction: (input) => scriptDecodeRecord(context, input),
         publications: l1.publications,
-        transactionConfirmed,
       }),
     });
   }

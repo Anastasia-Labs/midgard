@@ -4,7 +4,7 @@
  * provider: liveness only, as the validator checks every step) and the
  * journal, and names the one action the record needs next; `capture` builds
  * and signs it from the reserved funding; `reconcile` settles a submitted one
- * against authenticated L1.
+ * from its signed bytes on authenticated L1, or else from its exact output.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
@@ -120,7 +120,6 @@ export const createScriptDecodePrerequisitePort = <
   deployment,
   itemForAction,
   publications,
-  transactionConfirmed,
   now = Date.now,
   maxAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
@@ -131,10 +130,6 @@ export const createScriptDecodePrerequisitePort = <
   readonly deployment: () => ScriptDecodeDeployment;
   readonly itemForAction: ScriptDecodeItemForAction;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
-  readonly transactionConfirmed: (input: {
-    readonly headerHash: string;
-    readonly txHash: string;
-  }) => Promise<boolean>;
   readonly now?: () => number;
   /** Submissions of one action the ledger may reject before it is held. */
   readonly maxAttempts?: number;
@@ -413,7 +408,6 @@ export const createScriptDecodePrerequisitePort = <
       };
     },
     reconcile: async ({
-      headerHash,
       action,
       txHash,
       durableRecovery,
@@ -426,8 +420,9 @@ export const createScriptDecodePrerequisitePort = <
           reason: `${category} script decode action omitted its exact transaction hash`,
         };
       }
+      let recovery: ReturnType<typeof parseScriptDecodeRecovery>;
       try {
-        parseScriptDecodeRecovery({
+        recovery = parseScriptDecodeRecovery({
           value: durableRecovery,
           stage: parseScriptDecodeAction(action, category).stage,
           txHash,
@@ -453,7 +448,19 @@ export const createScriptDecodePrerequisitePort = <
           ? { kind: "confirmed", txHash }
           : reconciled;
       }
-      return (await transactionConfirmed({ headerHash, txHash }))
+      // Without the signed bytes (a funding confirmation journaled before its
+      // reconciliation), the exact output the intent journaled settles it. A
+      // record transaction touches no family history unit, so the family's
+      // authenticated L1 never shows it; the provider does, for liveness
+      // only, as the validator checks every record step it continues from.
+      const output = await runAt(recovery.outRef);
+      return output !== undefined &&
+        output.address === recovery.address &&
+        output.datum !== undefined &&
+        output.datum !== null &&
+        output.scriptRef == null &&
+        scriptDecodeDatumDigest(output.datum) === recovery.datumCborSha256 &&
+        (recovery.unit === null || output.assets[recovery.unit] === 1n)
         ? { kind: "confirmed", txHash }
         : { kind: "pending", txHash };
     },
