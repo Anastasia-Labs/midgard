@@ -106,7 +106,7 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   payoutSpend: {
     purpose: "spend",
     referenceRole: "payout spending",
-    manifestPosition: 42,
+    manifestPosition: 43,
     publicationPosition: 40,
     referenceRolePosition: 33,
     commands: ["payout"],
@@ -116,7 +116,7 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   payoutMint: {
     purpose: "mint",
     referenceRole: "payout minting",
-    manifestPosition: 43,
+    manifestPosition: 44,
     publicationPosition: 41,
     referenceRolePosition: 34,
     commands: ["payout"],
@@ -126,7 +126,7 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   reserveSpend: {
     purpose: "spend",
     referenceRole: "reserve spending",
-    manifestPosition: 44,
+    manifestPosition: 45,
     publicationPosition: 38,
     referenceRolePosition: 35,
     commands: ["reserve"],
@@ -136,7 +136,7 @@ export const protocolUserEventsMembers = defineDeploymentFamily("protocol", {
   reserveWithdraw: {
     purpose: "withdraw",
     referenceRole: "reserve observer",
-    manifestPosition: 45,
+    manifestPosition: 46,
     publicationPosition: 39,
     referenceRolePosition: 36,
     commands: ["reserve"],

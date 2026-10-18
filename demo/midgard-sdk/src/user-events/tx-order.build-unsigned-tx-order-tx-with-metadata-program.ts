@@ -24,12 +24,6 @@ import {
   UserEventBuildError,
 } from "./internals.js";
 import {
-  buildUnsignedCekProgramMaterialProgram,
-  buildUnsignedCekSinglePublicationProgram,
-  DEFAULT_TX_ORDER_LOVELACE,
-  type TxOrderBuildMetadata,
-} from "./tx-order.build-unsigned-cek-single-publication-program.js";
-import {
   deriveTxOrderMaterial,
   planTxOrderMaterialCarriage,
   requireTxOrderCreatorKeyHashProgram,
@@ -40,9 +34,11 @@ import {
   TxOrderMintRedeemer,
 } from "./tx-order.submit-tx-order-config.js";
 import {
+  DEFAULT_TX_ORDER_LOVELACE,
+  type TxOrderBuildMetadata,
+} from "./tx-order.tx-order-build-metadata.js";
+import {
   carriageIsResolvable,
-  type PublishCekProgramMaterialConfig,
-  type PublishCekSinglePublicationConfig,
   txOrderMaterialCarriageVector,
 } from "./tx-order.tx-order-material-carriage-vector.js";
 
@@ -282,22 +278,4 @@ export const unsignedTxOrderTx = (
 ): Promise<TxSignBuilder> =>
   makeReturn(
     unsignedTxOrderTxProgram(lucid, contracts, txOrderParams),
-  ).unsafeRun();
-
-export const unsignedCekProgramMaterial = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishCekProgramMaterialConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedCekProgramMaterialProgram(lucid, contracts, config),
-  ).unsafeRun();
-
-export const unsignedCekSinglePublication = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: PublishCekSinglePublicationConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(
-    buildUnsignedCekSinglePublicationProgram(lucid, contracts, config),
   ).unsafeRun();

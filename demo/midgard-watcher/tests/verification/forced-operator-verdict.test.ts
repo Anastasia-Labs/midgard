@@ -1,3 +1,4 @@
+import { MIDGARD_REJECTION_REASON_V1_ARMS } from "@al-ft/midgard-core";
 import {
   forcedRejectionReason,
   ForcedRejectionStopped,
@@ -71,63 +72,10 @@ const FIXTURE_VERDICT_CBOR = Object.freeze({
   ValueNotPreserved: "d87a9fd9052780ff",
 } as const);
 
-/**
- * Every `RejectionReasonV1` constructor tag, in the schema's wire order.
- *
- * Restated here rather than imported so that the watcher's accepted vocabulary
- * is pinned against the catalogue independently of the SDK helper it delegates
- * membership to — an arm silently dropped from the twin's code bridge would
- * otherwise narrow what the watcher accepts with nothing to notice.
- */
-const REJECTION_REASON_ARMS = Object.freeze([
-  "FieldPreimageLengthMismatch",
-  "FieldItemWidthIllegal",
-  "EmptyInputs",
-  "DuplicateInput",
-  "ValidityIntervalMalformed",
-  "NetworkIdMismatch",
-  "FeeBelowMinimum",
-  "AddressWitnessSignatureInvalid",
-  "RequiredSignerUnsigned",
-  "WitnessScriptHeaderMalformed",
-  "WitnessNativeScriptMalformed",
-  "WitnessNativeScriptNodeLimit",
-  "WitnessNativeScriptDepthLimit",
-  "WitnessNativeScriptFalse",
-  "ScriptIntegrityHashMissing",
-  "ObserversForbiddenOnUntaggedNetwork",
-  "ObserverOrderInvalid",
-  "ValidityIntervalExcludesBlockSlot",
-  "InputNotFound",
-  "InputSpentOutputNonCanonical",
-  "ResolvedReferenceScriptMalformed",
-  "ResolvedReferenceScriptNodeLimit",
-  "ResolvedReferenceScriptDepthLimit",
-  "SpendInputSignerMissing",
-  "RedeemerMalformed",
-  "OutputNonCanonical",
-  "OutputReferenceScriptMalformed",
-  "OutputReferenceScriptNodeLimit",
-  "OutputReferenceScriptDepthLimit",
-  "ProtectedOutputSignerMissing",
-  "MintDeclaredAssetLimit",
-  "ScriptSourceMissing",
-  "RedeemerMissing",
-  "UnusedScriptWitness",
-  "UnusedRedeemer",
-  "ExecutionNativeScriptMalformed",
-  "ExecutionNativeScriptNodeLimit",
-  "ExecutionNativeScriptDepthLimit",
-  "ExecutionNativeScriptFalse",
-  "ScriptIntegrityHashMismatch",
-  "ReceivePurposePlutusV3Forbidden",
-  "PlutusExecutionFailed",
-  "InputAssetAccumulationLimit",
-  "OutputAssetAccumulationLimit",
-  "MintAssetAccumulationLimit",
-  "OutputBelowMinAda",
-  "ValueNotPreserved",
-] as const);
+/** Every `RejectionReasonV1` constructor tag, in the codec's wire order. */
+const REJECTION_REASON_ARMS = Object.freeze(
+  MIDGARD_REJECTION_REASON_V1_ARMS.map((arm) => arm.name),
+);
 
 /** The spellings the retired six-member `MidgardTxValidity` classification used. */
 const RETIRED_VALIDITY_SPELLINGS = Object.freeze([
@@ -170,9 +118,9 @@ describe("forced operator verdict vocabulary", () => {
     }
   });
 
-  it("accepts the whole 47-arm vocabulary plus the accepting literal", () => {
-    expect(REJECTION_REASON_ARMS).toHaveLength(47);
-    expect(new Set(REJECTION_REASON_ARMS).size).toBe(47);
+  it("accepts the whole 49-arm vocabulary plus the accepting literal", () => {
+    expect(REJECTION_REASON_ARMS).toHaveLength(49);
+    expect(new Set(REJECTION_REASON_ARMS).size).toBe(49);
     expect(WATCHER_FORCED_TX_VALID).toBe("ForcedTxValid");
     expect(isWatcherForcedOperatorVerdict(WATCHER_FORCED_TX_VALID)).toBe(true);
     for (const arm of REJECTION_REASON_ARMS) {

@@ -34,6 +34,7 @@ import {
   type OutputReferenceContext,
 } from "./output-reference-script-decoding-emulator.commit-accepted-block.js";
 import { type ForcedLeaf } from "./output-reference-script-decoding-emulator.commit-forced-block.js";
+import { recordPlutusItem } from "./script-decode-emulator.js";
 import {
   publishRemovalReferenceScripts,
   submitSetupTx,
@@ -215,6 +216,10 @@ export const makeOutputReferenceStages = ({
     }
     return { threadOutRef: current, windows };
   };
+  /**
+   * `record` is the decode record step 04 reads: by default the item's own
+   * (recorded on first use, none for a native item); `null` reads none.
+   */
   const step04 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,
@@ -223,8 +228,17 @@ export const makeOutputReferenceStages = ({
       readonly carriageUtxos: readonly UTxO[];
       readonly certificateUtxo?: UTxO;
     },
-  ) =>
-    await captured(() =>
+    record?: UTxO | null,
+  ) => {
+    const scriptDecodeRecordUtxo =
+      record === undefined
+        ? await recordPlutusItem(
+            harness.emulator,
+            lucid,
+            Buffer.from(evidence.referenceScriptItemHex, "hex"),
+          )
+        : (record ?? undefined);
+    return await captured(() =>
       submitOutputReferenceScriptDecodingStep04({
         lucid,
         contracts,
@@ -236,8 +250,10 @@ export const makeOutputReferenceStages = ({
         publishedCarriageUtxos: opened.carriageUtxos,
         certificateUtxo: opened.certificateUtxo,
         referenceScriptUtxo: references[3]!,
+        scriptDecodeRecordUtxo,
       }),
     );
+  };
   const step05 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,

@@ -5,7 +5,7 @@
 //// of four) plus one semantic validator per auxiliary kind:
 ////
 ////   0  `cek_finish_semantic_v1`               hand-off to ValueAndMint, no auxiliary
-////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + material route
+////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + decode record
 ////   2  `cek_context_step_semantic_v1`         context-build step, §8 door
 ////   3  `cek_core_step_semantic_v1`            `CekCoreStepWitness`
 ////
@@ -18,8 +18,8 @@
 //// kind -- is proven at the library level in
 //// `lib/midgard/validation-machine-tests/tests-parity.test.ak` (`cek_kinds_partition_the_cek_step_space`);
 //// what these add is that the deployed validators reach those wrappers with
-//// the right arguments, commit to the right evidence hash, and route the
-//// material through the `cek_execution_selection_yields` validators.
+//// the right arguments, commit to the right evidence hash, and read the
+//// decode record through the `cek_execution_selection_yields` validators.
 
 use aiken/builtin
 use aiken/cbor
@@ -84,6 +84,7 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/redeemer_item_proof_v1 as redeemer_item
 use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
 use midgard/script_proof_v1
 use midgard/script_sources_redeemer_normalization_v1.{
   CekContextItemStepPending, CekContextItemStepVerified,
@@ -110,9 +111,7 @@ use midgard/validation_resolution_v1.{
   hash_one_step_evidence, prepare_semantic_resolution,
   prepared_resolution_version, resolution_version, winning_resolution,
 }
-use midgard/validation_resolver_v1.{
-  CekMaterialRouteV1, DirectCekMaterial, NoCekMaterial, PrepareSelected,
-}
+use midgard/validation_resolver_v1.{PrepareSelected}
 use midgard/validation_semantic_v1 as semantic
 use midgard/validation_trace_v1
 
@@ -260,7 +259,7 @@ fn cek_state(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
-  program_envelope_hash: ByteArray,
+  program_script_hash: ByteArray,
   program_counter: Int,
   execution_cpu: Int,
   execution_memory: Int,
@@ -279,7 +278,7 @@ fn cek_state(
     active_state_hash,
     execution_cpu_limit,
     execution_memory_limit,
-    program_envelope_hash,
+    program_script_hash,
     -1,
     -1,
   )
@@ -313,14 +312,15 @@ fn cek_state(
 }
 
 /// One honest cek step of some kind: the pre-state, the transition, the
-/// auxiliary the kind's validator rebuilds from its action, and the
-/// material route the selection validator carries.
+/// auxiliary the kind's validator rebuilds from its action, and the decode
+/// record the selection validator reads (`None` for every other kind and for
+/// a selection that needs none).
 type CekStepFixtureV1 {
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
 }
 
 fn step_fixture(
@@ -329,7 +329,7 @@ fn step_fixture(
   work_witness_cbor: ByteArray,
   post: validation_trace_v1.ValidationMachineStateV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> CekStepFixtureV1 {
   CekStepFixtureV1 {
     kind,
@@ -339,7 +339,7 @@ fn step_fixture(
       claimed_successor: post,
     },
     auxiliary,
-    material_route,
+    record,
   }
 }
 
@@ -372,34 +372,36 @@ fn finish_fixture() -> CekStepFixtureV1 {
       vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
-  step_fixture(
-    0,
-    pre,
-    work_witness_cbor,
-    post,
-    NoAuxiliaryWitness,
-    NoCekMaterial,
-  )
+  step_fixture(0, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
 }
 
-/// The one-node program (`error`) whose complete material fits a direct
-/// route: the same envelope and sidecar `validation-resolver-v1.test.ak`
-/// verifies through `verify_cek_material_route_for_selected_envelope_v1`.
-fn one_node_envelope() -> ByteArray {
-  cek_proof_v1.encode_program_envelope_v1(
-    1,
-    1,
-    0,
-    cek_proof_v1.hash_error_term_v1(),
-    1,
-    2,
-  )
+/// The one-node program `(program 1.1.0 (error))` as PlutusV3 script bytes:
+/// the CBOR byte string around its Flat encoding.
+fn one_node_script() -> ByteArray {
+  #"4401010061"
 }
 
-fn one_node_sidecar() -> ByteArray {
-  #"820181825820"
-    |> bytearray.concat(cek_proof_v1.hash_error_term_v1())
-    |> bytearray.concat(#"46830100428106")
+/// The decode record of `script_hash` for the one-node program.
+fn one_node_record(script_hash: ByteArray) -> ScriptDecodeRecordV1 {
+  Decoded {
+    script_hash,
+    language: 3,
+    program_version: 1,
+    term_root: cek_proof_v1.hash_error_term_v1(),
+    phase2_class: 0,
+  }
+}
+
+/// The decode record of `selection_fixture`'s script.
+fn selection_record() -> ScriptDecodeRecordV1 {
+  one_node_record(
+    script_proof_v1.versioned_script_hash(
+      MidgardVersionedScript {
+        language: PlutusV3Script,
+        script_bytes: one_node_script(),
+      },
+    ),
+  )
 }
 
 fn singleton_field_item_chunk_proof(
@@ -424,22 +426,12 @@ fn singleton_field_item_chunk_proof(
 }
 
 /// Kind 1: selecting the single PlutusV3 execution of a transaction whose
-/// one script is the one-node program, with the complete material carried
-/// directly in the redeemer.
+/// one script is the one-node program, read through its decode record.
 fn selection_fixture() -> CekStepFixtureV1 {
   let tx = empty_v1_transaction()
-  let envelope = one_node_envelope()
-  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(
-    1,
-    1,
-    0,
-    cek_proof_v1.hash_error_term_v1(),
-    1,
-    2,
-  )
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: envelope,
+    script_bytes: one_node_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
@@ -483,7 +475,6 @@ fn selection_fixture() -> CekStepFixtureV1 {
     stage: 0,
     language_tag: 3,
     program_term_root: cek_proof_v1.hash_error_term_v1(),
-    program_envelope_hash: envelope_hash,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash,
@@ -535,7 +526,7 @@ fn selection_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    envelope_hash,
+    script_hash,
     41,
     0,
     0,
@@ -563,10 +554,7 @@ fn selection_fixture() -> CekStepFixtureV1 {
       execution_siblings: [],
       first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
     },
-    DirectCekMaterial {
-      envelope_cbor: envelope,
-      sidecar_cbor: one_node_sidecar(),
-    },
+    Some(one_node_record(script_hash)),
   )
 }
 
@@ -674,8 +662,8 @@ fn native_only_selection_fixture() -> CekStepFixtureV1 {
       execution_siblings: [],
       first_chunk_proof: singleton_field_item_chunk_proof(6, script_cbor),
     },
-    // A native selection selects no program, so it carries no material.
-    NoCekMaterial,
+    // A native selection selects no program, so it reads no decode record.
+    None,
   )
 }
 
@@ -705,7 +693,6 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     stage: 6,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -749,7 +736,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -762,19 +749,12 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
   )
-  step_fixture(
-    2,
-    pre,
-    work_witness_cbor,
-    post,
-    NoAuxiliaryWitness,
-    NoCekMaterial,
-  )
+  step_fixture(2, pre, work_witness_cbor, post, NoAuxiliaryWitness, None)
 }
 
 /// Kind 3: one active core step, a `ComputeApplication` over two leaf terms
@@ -843,7 +823,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     active_pre_hash,
     1000000,
     1000000,
-    h_b,
+    h_28_a,
     40,
     10,
     11,
@@ -856,7 +836,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     active_post_hash,
     1000000,
     1000000,
-    h_b,
+    h_28_a,
     41,
     16010,
     111,
@@ -876,7 +856,7 @@ fn core_step_fixture() -> CekStepFixtureV1 {
         },
       },
     },
-    NoCekMaterial,
+    None,
   )
 }
 
@@ -969,11 +949,8 @@ type SelectionWireMirrorV1 {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     auxiliary: ValidationAuxiliaryWitnessV1,
-    material_route: CekMaterialRouteV1,
     yield_ref_input_indices: List<Int>,
-    envelope_facts: selection_yield.EnvelopeFacts,
-    material_facts: cek_proof_v1.CekMaterialPartitionFacts,
-    begin_traversal: Bool,
+    record_reference_input_index: Int,
   }
 }
 
@@ -1083,11 +1060,8 @@ test execution_selection_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       auxiliary: f.auxiliary,
-      material_route: f.material_route,
-      yield_ref_input_indices: [0, 1, 2, 3],
-      envelope_facts: selection_envelope_facts(False),
-      material_facts: selection_material_facts(False),
-      begin_traversal: False,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
     },
   )
   let mirror: ct.StepRedeemer<SelectionWireMirrorV1> = ct.Continue(
@@ -1096,11 +1070,8 @@ test execution_selection_wire_layout_is_pinned() {
       output_index: 2,
       transition: golden_transition(),
       auxiliary: f.auxiliary,
-      material_route: f.material_route,
-      yield_ref_input_indices: [0, 1, 2, 3],
-      envelope_facts: selection_envelope_facts(False),
-      material_facts: selection_material_facts(False),
-      begin_traversal: False,
+      yield_ref_input_indices: [0, 1],
+      record_reference_input_index: 2,
     },
   )
   let mirror_data: Data = mirror
@@ -1343,75 +1314,36 @@ fn shaped_finish(
   )
 }
 
-fn selection_envelope_facts(native: Bool) -> selection_yield.EnvelopeFacts {
-  selection_yield.EnvelopeFacts {
-    term_root: if native {
-      #""
-    } else {
-      cek_proof_v1.hash_error_term_v1()
-    },
-    node_count: if native {
-      0
-    } else {
-      1
-    },
-    material_byte_length: if native {
-      0
-    } else {
-      2
-    },
+/// The policy the selection validators take for the decode family.
+const decode_policy_id =
+  #"50505050505050505050505050505050505050505050505050505050"
+
+fn selection_roles() {
+  list.zip(
+    [selection_yield.authenticate_role, selection_yield.successor_role],
+    [
+      #"10101010101010101010101010101010101010101010101010101010",
+      #"20202020202020202020202020202020202020202020202020202020",
+    ],
+  )
+}
+
+fn record_script_hash(record: ScriptDecodeRecordV1) -> ByteArray {
+  when record is {
+    Decoded { script_hash, .. } -> script_hash
+    Refused { script_hash, .. } -> script_hash
   }
 }
 
-fn selection_material_facts(
-  native: Bool,
-) -> cek_proof_v1.CekMaterialPartitionFacts {
-  cek_proof_v1.CekMaterialPartitionFacts {
-    program_node_count: if native {
-      0
-    } else {
-      1
-    },
-    program_byte_length: if native {
-      0
-    } else {
-      2
-    },
-    data_node_count: 0,
-    data_byte_length: 0,
-    data_roots: [],
-    data_blob_roots: [],
-  }
-}
-
-fn selection_roles(native: Bool) {
-  let roles = [
-    selection_yield.authenticate_role,
-    selection_yield.successor_role,
-    selection_yield.material_program_role,
-    selection_yield.material_data_role,
-  ]
-  let hashes = [
-    #"10101010101010101010101010101010101010101010101010101010",
-    #"20202020202020202020202020202020202020202020202020202020",
-    #"30303030303030303030303030303030303030303030303030303030",
-    #"40404040404040404040404040404040404040404040404040404040",
-  ]
-  let pairs = list.zip(roles, hashes)
-  if native {
-    list.take(pairs, 2)
-  } else {
-    pairs
-  }
-}
-
+/// Runs the selection validator and both yields with `record`, when there is
+/// one, at reference input 2 under the decode token named by its own hash.
 fn run_selection(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
-  shaped_selection(honest_at, base, transition, auxiliary, material_route)
+  shaped_selection(honest_at, base, transition, auxiliary, record)
 }
 
 /// `run_selection`, each hop's L1 transaction reshaped by `at` (see
@@ -1421,24 +1353,59 @@ fn shaped_selection(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
-  material_route: CekMaterialRouteV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  shaped_selection_with_token(
+    at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    when record is {
+      Some(r) -> record_script_hash(r)
+      None -> #""
+    },
+  )
+}
+
+/// `run_selection` with the record output holding the decode token named
+/// `token_name`, or no decode token when `token_name` is empty.
+fn run_selection_with_token(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
+) -> Bool {
+  shaped_selection_with_token(
+    honest_at,
+    base,
+    transition,
+    auxiliary,
+    record,
+    token_name,
+  )
+}
+
+fn shaped_selection_with_token(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  record: Option<ScriptDecodeRecordV1>,
+  token_name: ByteArray,
 ) -> Bool {
   let raw_aux: Data = auxiliary
-  let native = selection_yield.selection_language(raw_aux) == 0
   let action = selection_yield.VerifyExecutionSelection {
     input_index: 0,
     output_index: 0,
     transition,
     auxiliary: raw_aux,
-    material_route,
-    yield_ref_input_indices: if native {
-      [0, 1]
-    } else {
-      [0, 1, 2, 3]
+    yield_ref_input_indices: [0, 1],
+    record_reference_input_index: when record is {
+      Some(_) -> 2
+      None -> -1
     },
-    envelope_facts: selection_envelope_facts(native),
-    material_facts: selection_material_facts(native),
-    begin_traversal: False,
   }
   let redeemer: selection_validator.SpendRedeemer = ct.Continue(action)
   let raw_redeemer: Data = redeemer
@@ -1446,8 +1413,47 @@ fn shaped_selection(
   let raw_datum: Data = datum
   let input = fixture.ct_thread_input(ct_asset)
   let template = prover_continue_tx(ct_asset, winning_output())
-  let roles = selection_roles(native)
+  let roles = selection_roles()
   let reward_redeemer: Data = 0
+  let yield_inputs = list.map(
+    roles,
+    fn(pair) {
+      l1.Input {
+        ..input,
+        output: l1.Output {
+          address: address.from_script(pair.2nd),
+          value: assets.from_asset(
+            fixture.test_certificate_policy_id,
+            pair.1st,
+            1,
+          ),
+          datum: l1.NoDatum,
+          reference_script: Some(pair.2nd),
+        },
+      }
+    },
+  )
+  let record_inputs = when record is {
+    Some(r) -> {
+      let raw_record: Data = r
+      [
+        l1.Input {
+          ..input,
+          output: l1.Output {
+            address: address.from_script(decode_policy_id),
+            value: if token_name == #"" {
+              assets.from_lovelace(2000000)
+            } else {
+              assets.from_asset(decode_policy_id, token_name, 1)
+            },
+            datum: l1.InlineDatum(raw_record),
+            reference_script: None,
+          },
+        },
+      ]
+    }
+    None -> []
+  }
   let tx = at("selection_validator")(
     l1.Transaction {
       ..template,
@@ -1457,24 +1463,7 @@ fn shaped_selection(
           output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
         },
       ],
-      reference_inputs: list.map(
-        roles,
-        fn(pair) {
-          l1.Input {
-            ..input,
-            output: l1.Output {
-              address: address.from_script(pair.2nd),
-              value: assets.from_asset(
-                fixture.test_certificate_policy_id,
-                pair.1st,
-                1,
-              ),
-              datum: l1.NoDatum,
-              reference_script: Some(pair.2nd),
-            },
-          }
-        },
-      ),
+      reference_inputs: list.concat(yield_inputs, record_inputs),
       withdrawals: list.map(
         roles,
         fn(pair) { Pair(address.Script(pair.2nd), 0) },
@@ -1494,9 +1483,7 @@ fn shaped_selection(
     selection_validator.main.spend(
       fixture.next_step_script_hash,
       fixture.computation_thread_policy_id,
-      fixture.catalogue_script_hash,
       fixture.test_certificate_policy_id,
-      fixture.catalogue_script_hash,
       Some(datum),
       redeemer,
       fixture.own_out_ref(),
@@ -1510,30 +1497,11 @@ fn shaped_selection(
     ),
     selection_yields.successor.withdraw(
       fixture.step_script_hash,
+      decode_policy_id,
       reward_redeemer,
       address.Script(fixture.step_script_hash),
       tx,
     ),
-    if native {
-      True
-    } else {
-      and {
-        selection_yields.material_program.withdraw(
-          fixture.step_script_hash,
-          fixture.catalogue_script_hash,
-          reward_redeemer,
-          address.Script(fixture.step_script_hash),
-          tx,
-        ),
-        selection_yields.material_data.withdraw(
-          fixture.step_script_hash,
-          fixture.catalogue_script_hash,
-          reward_redeemer,
-          address.Script(fixture.step_script_hash),
-          tx,
-        ),
-      }
-    },
   }
 }
 
@@ -1653,7 +1621,7 @@ fn run_kind(kind: Int, f: CekStepFixtureV1) -> Bool {
   if kind == 0 {
     run_finish(prepared(f), f.transition)
   } else if kind == 1 {
-    run_selection(prepared(f), f.transition, own.auxiliary, own.material_route)
+    run_selection(prepared(f), f.transition, own.auxiliary, own.record)
   } else if kind == 2 {
     run_context_step(prepared(f), f.transition, own.auxiliary)
   } else {
@@ -1666,7 +1634,7 @@ test finish_validator_wins_the_hand_off() {
   run_kind(0, finish_fixture())
 }
 
-test execution_selection_validator_wins_with_direct_material() {
+test execution_selection_validator_wins_with_the_decode_record() {
   run_kind(1, selection_fixture())
 }
 
@@ -1678,25 +1646,55 @@ test core_step_validator_wins_the_application_step() {
   run_kind(3, core_step_fixture())
 }
 
-/// The retired direct shape pinned the route only at finalisation; now the
-/// selection validator itself refuses a selection whose material is missing
-/// (`NoCekMaterial` against a selected Plutus envelope) or whose direct
-/// sidecar does not reconstruct the envelope.
-test execution_selection_validator_refuses_a_missing_material_route() fail {
+/// A Plutus selection runs only the program its decode record states: the
+/// selection validator refuses it with no record, with a record that does
+/// not hold the decode token named by its own hash, with a record of another
+/// script, and with a `Refused` record of the selected script.
+test execution_selection_validator_refuses_a_missing_record() fail {
   let f = selection_fixture()
-  run_selection(prepared(f), f.transition, f.auxiliary, NoCekMaterial)
+  run_selection(prepared(f), f.transition, f.auxiliary, None)
 }
 
-test execution_selection_validator_refuses_a_truncated_sidecar() fail {
+test execution_selection_validator_refuses_a_record_without_its_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    #"",
+  )
+}
+
+test execution_selection_validator_refuses_a_record_under_another_token() fail {
+  let f = selection_fixture()
+  run_selection_with_token(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    f.record,
+    h_28_a,
+  )
+}
+
+test execution_selection_validator_refuses_another_scripts_record() fail {
   let f = selection_fixture()
   run_selection(
     prepared(f),
     f.transition,
     f.auxiliary,
-    DirectCekMaterial {
-      envelope_cbor: one_node_envelope(),
-      sidecar_cbor: bytearray.take(one_node_sidecar(), 8),
-    },
+    Some(one_node_record(h_28_a)),
+  )
+}
+
+test execution_selection_validator_refuses_a_refused_record() fail {
+  let f = selection_fixture()
+  expect Some(Decoded { script_hash, .. }) = f.record
+  run_selection(
+    prepared(f),
+    f.transition,
+    f.auxiliary,
+    Some(Refused { script_hash, language: 3, class: 1, bit_offset: 0 }),
   )
 }
 
@@ -1813,7 +1811,7 @@ test finish_validator_refuses_a_wrong_award_output() fail {
 fn pending_execution_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
-    script_bytes: one_node_envelope(),
+    script_bytes: one_node_script(),
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
@@ -1881,7 +1879,7 @@ test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   run_finish(prepared(f), f.transition)
 }
@@ -1923,6 +1921,7 @@ test native_only_selection_is_an_honest_machine_step() {
       certificate_policy_id: #"",
     },
     test_l1_slot_config,
+    None,
   )
 }
 
@@ -1956,7 +1955,7 @@ test finish_validator_refuses_a_foreign_transaction_commitment() fail {
 /// refuses to *accept* one. The vector is therefore the honest hand-off
 /// witness with its encoded cursor byte bumped by hand -- the last nine
 /// bytes of a hand-off witness are `cursor, completed_cpu,
-/// completed_memory, active_state_hash, program_envelope_hash,
+/// completed_memory, active_state_hash, program_script_hash,
 /// execution_cpu_limit, execution_memory_limit, purpose_kind,
 /// purpose_index`, all empty or zero except the `-1, -1` purpose key, so
 /// the cursor is the byte at `length - 9`. The positive below pins that layout;
@@ -2002,7 +2001,7 @@ test finish_validator_refuses_a_cek_cursor_past_the_execution_count() fail {
     work_witness_cbor,
     honest.transition.claimed_successor,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   run_finish(prepared(f), f.transition)
 }
@@ -2024,6 +2023,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
     vm_one_step.verify_cek_one_step_v1(
       selection_fixture().pre,
@@ -2033,6 +2033,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      Some(selection_record()),
     ),
     vm_one_step.verify_cek_one_step_v1(
       context_step_fixture().pre,
@@ -2042,6 +2043,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
     vm_one_step.verify_cek_one_step_v1(
       core_step_fixture().pre,
@@ -2051,6 +2053,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
       test_l1_slot_config,
+      None,
     ),
   }
 }
@@ -2442,7 +2445,7 @@ fn shaped_empty_context_chain(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -2455,7 +2458,7 @@ fn shaped_empty_context_chain(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
@@ -2466,7 +2469,7 @@ fn shaped_empty_context_chain(
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   let staged = context_staged_fixture(f)
   let bound_data: Data = staged.bound
@@ -2718,7 +2721,7 @@ fn shaped_context_descriptor_handoff(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -2731,7 +2734,7 @@ fn shaped_context_descriptor_handoff(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
@@ -2741,14 +2744,7 @@ fn shaped_context_descriptor_handoff(
     control: current,
     witness: item_witness,
   }
-  let f = step_fixture(
-    2,
-    pre,
-    work_witness_cbor,
-    post,
-    auxiliary,
-    NoCekMaterial,
-  )
+  let f = step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
   let staged = context_staged_fixture(f)
   let staged_data: Data = staged
   let auxiliary_data: Data = auxiliary
@@ -3035,14 +3031,17 @@ test bounded_context_stage9_item_bind_refuses_another_item() fail {
   run_stage9_item_bind(fn(_) { stage9_item_control(1) })
 }
 
-test bounded_context_binding_wire_matches_sdk() {
-  let f = context_step_fixture()
+/// The context-binding wire the SDK binder is checked against: prepared, work
+/// witness, transaction ID, auxiliary, bound and staged. The SDK fixtures
+/// `cek-context-binding.json` (normal) and `cek-context-binding-forced.json`
+/// hold these exact bytes.
+fn context_binding_wire(f: CekStepFixtureV1) -> Data {
   let staged = context_staged_fixture(f)
   let prepared_data: Data = prepared(f)
   let auxiliary: Data = f.auxiliary
   let bound_data: Data = staged.bound
   let staged_data: Data = staged
-  let vector = builtin.constr_data(
+  builtin.constr_data(
     0,
     [
       prepared_data,
@@ -3053,7 +3052,25 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"43af4831f31bcf8837ddbb2c11f7539bc4f0b33a8ebc27237f752d33c92de882"
+}
+
+test bounded_context_binding_wire_matches_sdk() {
+  let vector = context_binding_wire(context_step_fixture())
+  blake2b_256(cbor.serialise(vector)) == #"30bb2eb5db65017b978d06b36c850d0a49b318f2eaf3c799765af0a6a17791e4"
+}
+
+test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
+  let f = context_step_fixture()
+  let vector = context_binding_wire(
+    CekStepFixtureV1 {
+      ..f,
+      pre: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.pre,
+        source_kind: validation_trace_v1.Normal,
+      },
+    },
+  )
+  blake2b_256(cbor.serialise(vector)) == #"ee84d4e0fefe57c8a3c7ded9a5c63223de80e3fc899b008eb76191642b457c24"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
@@ -3198,7 +3215,7 @@ fn mint_stage_fixture(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     47,
     0,
     0,
@@ -3211,12 +3228,12 @@ fn mint_stage_fixture(
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     48,
     0,
     0,
   )
-  step_fixture(2, pre, work_witness_cbor, post, auxiliary, NoCekMaterial)
+  step_fixture(2, pre, work_witness_cbor, post, auxiliary, None)
 }
 
 fn mint_stage_control(
@@ -4110,7 +4127,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     53,
     0,
     0,
@@ -4123,7 +4140,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     54,
     0,
     0,
@@ -4134,7 +4151,7 @@ fn redeemer_skip_step_fixture() -> CekStepFixtureV1 {
     work_witness_cbor,
     post,
     redeemer_skip_auxiliary(True, redeemers, 1),
-    NoCekMaterial,
+    None,
   )
 }
 
@@ -4308,7 +4325,7 @@ fn census_selection(
   at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
 ) -> Bool {
   let f = selection_fixture()
-  shaped_selection(at, prepared(f), f.transition, f.auxiliary, f.material_route)
+  shaped_selection(at, prepared(f), f.transition, f.auxiliary, f.record)
 }
 
 fn census_core_step(
@@ -5031,7 +5048,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     #"",
     0,
     0,
-    h_b,
+    h_28_a,
     55,
     7,
     9,
@@ -5047,7 +5064,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     initial_state_hash,
     20,
     10,
-    h_b,
+    h_28_a,
     0,
     0,
   )
@@ -5068,7 +5085,7 @@ fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
     work_witness_cbor,
     post,
     NoAuxiliaryWitness,
-    NoCekMaterial,
+    None,
   )
   let staged_data: Data = context_staged_fixture(f)
   let verified = context_chain.ContextVerified {

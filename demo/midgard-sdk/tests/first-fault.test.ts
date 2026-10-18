@@ -381,6 +381,8 @@ const phases = [
       "WitnessNativeScriptNodeLimit",
       "WitnessNativeScriptDepthLimit",
       "WitnessNativeScriptFalse",
+      // Built below with every field 0, so a witness item (kind 0).
+      "PlutusScriptUndecodable",
     ],
   ],
   [
@@ -458,8 +460,8 @@ const everyReason = MIDGARD_REJECTION_REASON_V1_ARMS.map((arm) => ({
   ),
 }));
 describe("complete N2 classification", () => {
-  it("covers exactly all 48 normative arms", () => {
-    expect(expectedPhases.size).toBe(48);
+  it("covers exactly all 49 normative arms", () => {
+    expect(expectedPhases.size).toBe(49);
     expect([...expectedPhases.keys()].sort()).toEqual(
       MIDGARD_REJECTION_REASON_V1_ARMS.map((arm) => arm.name).sort(),
     );

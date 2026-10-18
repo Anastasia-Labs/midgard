@@ -378,6 +378,32 @@ export const VALIDATOR_SCENARIOS: Readonly<
     directScriptDerivationScenario(DIRECT_RECEIVE),
   "fraud_proofs/direct_script_derivation/receive_declaration.main":
     directScriptDerivationScenario(DIRECT_RECEIVE),
+  "script_decode_v1.script_decode_v1": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "records a decodable script once and finds it afterwards",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "refuses a forged run, Walk, or record and accepts the honest one",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/output-reference-script-decoding-plutus-max-shape.test.ts",
+        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance through removal",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "records a decodable script once and finds it afterwards",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/script-decode-record.test.ts",
+        test: "refuses a forged run, Walk, or record and accepts the honest one",
+      },
+    ],
+  },
   ...VALIDATION_TRACE_SCENARIOS,
   "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
     streamedReplayStep(

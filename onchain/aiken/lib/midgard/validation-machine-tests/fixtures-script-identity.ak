@@ -19,7 +19,7 @@ use midgard/validation_machine_tests/constants.{h_b, validation_context_cbor}
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, forced_pending_state, inline_field_door,
   signer_frontier_for_tx, singleton_field_item_chunk_proof, submitted_source,
-  v1_program_envelope,
+  v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -142,7 +142,7 @@ pub fn stage_zero_script_sources_state(
 
 pub fn stage_zero_hash_block_checks_binding(wrong_commitment: Bool) -> Bool {
   let base = empty_v1_transaction()
-  let payload = v1_program_envelope()
+  let payload = v1_plutus_script()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
     script_bytes: payload,

@@ -240,9 +240,9 @@ describe("V1 CEK commitments", () => {
     expect(() =>
       hashMidgardCekBlobChunk(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1)),
     ).toThrow(/at most 4095 bytes/u);
-    expect(() => hashMidgardCekTermNode({ kind: "builtin", tag: 87n })).toThrow(
-      /between 0 and 86/u,
-    );
+    expect(() =>
+      hashMidgardCekTermNode({ kind: "builtin", tag: 101n }),
+    ).toThrow(/between 0 and 100/u);
     expect(() =>
       hashMidgardCekSequenceNode({
         head: hash(1),
@@ -283,16 +283,6 @@ describe("V1 CEK commitments", () => {
     expect(() => decodeMidgardCekProgramEnvelope(unsupportedEnvelope)).toThrow(
       /unsupported CEK program envelope version 23/u,
     );
-    expect(() =>
-      decodeMidgardCekProgramEnvelope(
-        encodeMidgardCekProgramEnvelope({
-          uplcVersion: [1n, 0n, 0n],
-          termRoot: hash(1),
-          nodeCount: 3n,
-          materialByteLength: 144n,
-        }),
-      ),
-    ).toThrow(/only UPLC 1.1.0/u);
     expect(() =>
       decodeMidgardCekProgramEnvelope(
         encodeMidgardCekProgramEnvelope({

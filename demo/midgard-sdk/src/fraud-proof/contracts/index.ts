@@ -378,8 +378,8 @@ export {
   ZERO_INPUT_FAULT_PROOF_TITLES,
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
+export { buildScriptDecodeValidator } from "./script-decode.js";
 export {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
   VALIDATION_TRACE_RESOLVER_COUNT,

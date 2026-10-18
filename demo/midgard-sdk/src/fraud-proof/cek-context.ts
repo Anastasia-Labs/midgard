@@ -83,10 +83,10 @@ export const deriveCekContextBinding = (input: {
       ),
     ),
   ]);
-  const contextFields = cborArray(cek[1]!, 25);
-  for (const index of [12, 13, 14, 15, 17, 22, 23])
+  const contextFields = cborArray(cek[1]!, 24);
+  for (const index of [11, 12, 13, 14, 16, 21, 22])
     contextFields[index] = record(array(contextFields[index]!, 4));
-  for (const index of [19, 24])
+  for (const index of [18, 23])
     contextFields[index] = record(array(contextFields[index]!, 3));
   const context = record(contextFields);
   const facts = record(

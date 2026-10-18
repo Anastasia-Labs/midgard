@@ -16,6 +16,23 @@ type ReasonArm<R = RejectionReason> = R extends string
     ? keyof R
     : never;
 
+type PhaseRule = number | "network" | ((reason: RejectionReason) => number);
+
+/**
+ * A Plutus item is decoded where its native siblings are: a witness script at
+ * PhaseANativeScripts, an output reference script at ScriptSources. No other
+ * item kind exists.
+ */
+const scriptItemPhase = (reason: RejectionReason): number => {
+  const kind =
+    typeof reason === "string" || !("PlutusScriptUndecodable" in reason)
+      ? undefined
+      : reason.PlutusScriptUndecodable.item_kind;
+  if (kind === 0n) return 5;
+  if (kind === 1n) return 8;
+  throw new Error("first-fault: unknown script item kind");
+};
+
 const PHASE = {
   FieldPreimageLengthMismatch: 0,
   FieldItemWidthIllegal: 0,
@@ -65,8 +82,9 @@ const PHASE = {
   MintAssetAccumulationLimit: 12,
   OutputBelowMinAda: 12,
   ValueNotPreserved: 12,
-} satisfies Record<ReasonArm, number | "network">;
-const PHASE_BY_ARM: ReadonlyMap<string, number | "network"> = new Map(
+  PlutusScriptUndecodable: scriptItemPhase,
+} satisfies Record<ReasonArm, PhaseRule>;
+const PHASE_BY_ARM: ReadonlyMap<string, PhaseRule> = new Map(
   Object.entries(PHASE),
 );
 
@@ -153,6 +171,7 @@ export const rejectionReasonPhase = (
   const phase = PHASE_BY_ARM.get(reasonArm(reason));
   if (phase === undefined)
     throw new Error("first-fault: unknown rejection arm");
+  if (typeof phase === "function") return phase(reason);
   return phase === "network" ? (checked.body_network_mismatch ? 2 : 8) : phase;
 };
 
@@ -451,6 +470,7 @@ export const leafAdmitsFault = (
     case "ProtectedOutputSignerMissing":
     case "MintDeclaredAssetLimit":
     case "MintItemMalformed":
+    case "PlutusScriptUndecodable":
     case "NetworkIdMismatch":
       requireNotRequired(claimed);
       return true;

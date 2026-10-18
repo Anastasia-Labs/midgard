@@ -94,6 +94,8 @@ const listItemPayloadWords = (
     case "blsG1":
     case "blsG2":
     case "blsMillerLoopResult":
+    case "array":
+    case "value":
       return null;
   }
 };

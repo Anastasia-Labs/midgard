@@ -475,6 +475,11 @@ jobs:
       - name: Check Plutus Data CBOR decoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:plutus-data-cbor-decoding-v1
+      # The script-decode step channel: the on-chain step machine replays every
+      # walk of the TypeScript port and must write the same run datums.
+      - name: Check script-decode step golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:script-decode-step-v1
       # The ledger output proof replay channel: outputs holding an empty field
       # or a large chunked datum scalar, the witness list the TypeScript trace
       # builder emits for each and the hash of its terminal control. The

@@ -554,6 +554,97 @@
       }
     },
     {
+      "id": "script-decode-step-v1",
+      "kind": "golden",
+      "summary": "Script-decode step machine, Walk by Walk: JSON fixture plus a generated Aiken module replaying each walk with midgard/script_decode_v1 and checking every run-datum hash against the TypeScript port.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-step-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-step-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json",
+        "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check script-decode step golden vectors"
+      }
+    },
+    {
+      "id": "script-decode-haskell-v1",
+      "kind": "golden",
+      "summary": "Cardano's own verdict (deserialiseScript and mkTermToEvaluate at protocol version 11) on every PlutusV3 script-decode golden script and seeded one-bit flips, as the record the step machine must reach. Sync and check need MIDGARD_SCRIPT_DECODE_PROBE set to the built probe.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs",
+        "demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:check"
+      },
+      "ci": {
+        "none": "The check needs a built Haskell probe, which no workflow builds."
+      }
+    },
+    {
+      "id": "rejection-reason-v1",
+      "kind": "golden",
+      "summary": "RejectionReasonV1 codec vectors: one reason per arm of the on-chain declaration, its Plutus Data CBOR from a stand-alone encoder, and its domain hash.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:rejection-reason-v1:sync",
+        "demo/midgard-core:fixtures:rejection-reason-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": [
+        "@golden-channel",
+        "onchain/aiken/lib/midgard/rejection-reason-v1.ak"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check"
+      },
+      "ci": {
+        "none": "No workflow step runs this generator's --check."
+      }
+    },
+    {
       "id": "ledger-output-proof-replay",
       "kind": "golden",
       "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",

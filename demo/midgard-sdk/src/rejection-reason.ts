@@ -6,7 +6,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 /**
- * Twin of `midgard/rejection_reason_v1.RejectionReasonV1`: 48 arms (0–47).
+ * Twin of `midgard/rejection_reason_v1.RejectionReasonV1`: 49 arms (0–48).
  * Its Plutus Data bytes equal the structural codec in
  * `@al-ft/midgard-core/validation-trace` (`encodeMidgardRejectionReasonV1Cbor`),
  * which the descriptor's rejection-code hash is computed over.
@@ -232,6 +232,14 @@ export const RejectionReasonSchema = Data.Enum([
   // ── ScriptSources mint items ───────────────────────────────────────
   Data.Object({
     MintItemMalformed: Data.Object({ policy_index: Data.Integer() }),
+  }),
+  // ── ScriptDecode ───────────────────────────────────────────────────
+  Data.Object({
+    PlutusScriptUndecodable: Data.Object({
+      item_kind: Data.Integer(),
+      item_index: Data.Integer(),
+      class: Data.Integer(),
+    }),
   }),
 ]);
 export type RejectionReason = Data.Static<typeof RejectionReasonSchema>;

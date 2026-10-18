@@ -1,5 +1,6 @@
 import {
   buildOutputReferenceScriptDecodingChain,
+  buildScriptDecodeValidator,
   parseFaultProofBlueprint,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
@@ -80,15 +81,18 @@ export const applyOutputReferenceScriptDecodingScripts = ({
   fieldPreimageCertificatePolicyId: string;
   hubOracleScriptHash: string;
 }): OutputReferenceScriptDecodingContracts["steps"] => {
+  const parsedBlueprint = parseFaultProofBlueprint(blueprint);
   const { steps } = Effect.runSync(
     buildOutputReferenceScriptDecodingChain({
-      blueprint: parseFaultProofBlueprint(blueprint),
+      blueprint: parsedBlueprint,
       network,
       hubOraclePolicyId: hubOracleScriptHash,
       computationThread: { policyId: computationThreadPolicyId },
       fraudProof: { policyId: fraudProofPolicyId },
       fraudProofTokenAddressData,
       fieldPreimageCertificatePolicyId,
+      scriptDecodePolicyId: buildScriptDecodeValidator(parsedBlueprint, network)
+        .policyId,
     }),
   );
   const titles = Object.values(
