@@ -12,20 +12,22 @@ Both take their versions from the same places:
 - `demo/flake.lock`: the Aiken compiler (both routes run it through Nix, see
   `onchain/aiken/AGENTS.md`).
 
-`demo/flake.nix` reads the manifest directly. The Dockerfiles, the compose
-files and CI cannot, so `node scripts/release/toolchain.mjs` checks every
-version pin they carry against it (the `toolchain-pins` preflight check, which
-repo-tools CI runs). To move a version, edit the manifest and each pin the
-check names.
+`demo/flake.nix` reads the manifest directly. Everything else that names a
+version cannot: the Dockerfiles, the compose files and `.env.example`, CI's
+Go setup, `go.mod` and `.nvmrc`. `node scripts/release/toolchain.mjs` (the
+`toolchain-pins` preflight check, which repo-tools CI runs) checks each of
+them still pins its tools at the manifest's versions. To move a version, edit
+the manifest and each pin the check names.
 
 ## Docker
 
 The Dockerfiles in `demo/midgard-node`, `demo/midgard-watcher` and
 `demo/da-committee-node` build the Go transport, the Rust MPF owner and the
 pnpm workspace in their own stages. The compose files run PostgreSQL and the
-Cardano services from upstream images pinned by digest. See
+Cardano services from upstream images. See
 `demo/midgard-node/README.md` for the compose stacks and
-`demo/midgard-node-tools/devnet` for the local devnet.
+`demo/midgard-node-tools/devnet` for the local devnet; the devnet and the
+observability stack run only under Docker.
 
 ## Nix
 
@@ -48,16 +50,22 @@ From `demo`:
 | `mithril-client`            | The snapshot client, from its release binary.               |
 | `aiken`                     | The pinned compiler.                                        |
 
-The three Midgard apps default `L1_NODE_TRANSPORT_BINARY_PATH` and
-`MPF_NATIVE_OWNER_BINARY_PATH` to the Nix builds of the native binaries. Like
-the images, they take the contract blueprint as an input: run them from the
+As in the images, each Midgard app's output carries its native binaries, each
+with a `.sha256`, under `native/`, and its wrapper sets only the environment
+its Dockerfile sets. Name those paths in the app's own configuration:
+`L1_NODE_TRANSPORT_BINARY_PATH`, `MPF_NATIVE_OWNER_BINARY_PATH` and
+`MPF_NATIVE_OWNER_BINARY_SHA256` for the node,
+`CARDANO_L1_NODE_TRANSPORT_BINARY_PATH` for the DA committee, and
+`l1NodeTransportBinaryPath` in the watcher's process file. Like the images,
+the apps take the contract blueprint as an input: run them from the
 repository root after building it, or set `MIDGARD_REAL_BLUEPRINT_PATH`.
 
-Ogmios, Kupo and mithril-client publish no Intel macOS build, so those
-packages are missing on `x86_64-darwin`.
+Nix CI builds and starts everything on `x86_64-linux`; other platforms are
+untested. Aiken, Ogmios, Kupo and mithril-client have no Intel macOS build,
+so the development shell does not evaluate on `x86_64-darwin`.
 
 Two fixed-output hashes in `demo/flake.nix` follow lockfiles: `vendorHash`
 follows `demo/l1-node-transport/native/go.sum` and `pnpmDepsHash` follows
 `demo/pnpm-lock.yaml`. After changing either lockfile, a Nix build fails and
-prints the new hash. Nix CI (`.github/workflows/nix-ci.yml`) builds every
-package whenever a lockfile, the manifest or a flake file changes.
+prints the new hash. Nix CI (`.github/workflows/nix-ci.yml`) runs on a pull
+request that changes either lockfile, the manifest or a flake file.

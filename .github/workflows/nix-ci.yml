@@ -1,24 +1,16 @@
 name: Nix CI
 
 # The Nix route (demo/flake.nix, docs/toolchain.md) builds everything the
-# Docker route does. Its pnpm and Go dependency hashes follow the lockfiles,
-# so any change to a lockfile or a flake input rebuilds every package here.
+# Docker route does. A pull request runs it when a build input changes: a
+# lockfile, a flake file, the manifest, or how packages build. Every push to
+# main that touches demo runs it, so an app change that breaks the Nix build
+# shows on the next merge.
 on:
   workflow_dispatch:
   push:
     branches: ["main"]
     paths:
-      - "demo/flake.nix"
-      - "demo/flake.lock"
-      - "demo/nix/**"
-      - "demo/toolchain.json"
-      - "demo/package.json"
-      - "demo/pnpm-lock.yaml"
-      - "demo/pnpm-workspace.yaml"
-      - "demo/patches/**"
-      - "demo/vendor/**"
-      - "demo/l1-node-transport/native/**"
-      - "demo/midgard-node/native/mpf-event-flat-wasm/**"
+      - "demo/**"
       - ".github/workflows/nix-ci.yml"
   pull_request:
     paths:
@@ -27,8 +19,10 @@ on:
       - "demo/nix/**"
       - "demo/toolchain.json"
       - "demo/package.json"
+      - "demo/*/package.json"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
+      - "demo/scripts/package-tasks.mjs"
       - "demo/patches/**"
       - "demo/vendor/**"
       - "demo/l1-node-transport/native/**"
@@ -53,7 +47,7 @@ jobs:
           github_access_token: ${{ github.token }}
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('demo/flake.lock', 'demo/pnpm-lock.yaml', 'demo/l1-node-transport/native/go.sum', 'demo/midgard-node/native/mpf-event-flat-wasm/Cargo.lock') }}
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('demo/flake.nix', 'demo/flake.lock', 'demo/nix/**', 'demo/toolchain.json', 'demo/pnpm-lock.yaml', 'demo/l1-node-transport/native/go.sum', 'demo/midgard-node/native/mpf-event-flat-wasm/Cargo.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
       - name: Build every package
         working-directory: demo
@@ -62,6 +56,16 @@ jobs:
           .#midgard-node .#midgard-watcher .#da-committee-node
           .#midgard-l1-node-transport .#architecture-g-owner
           .#postgresql .#cardano-node .#ogmios .#kupo .#mithril-client
+      # A build that succeeds can still ship an app whose imports do not
+      # resolve; each entry point loads its whole module graph to print help.
+      - name: Start every Midgard entry point
+        working-directory: demo
+        run: |
+          for app in midgard-node midgard-watcher da-committee-node; do
+            for entry in "$(nix build --no-link --print-out-paths ".#$app")"/bin/*; do
+              "$entry" --help > /dev/null
+            done
+          done
       - name: Enter the development shell
         working-directory: demo
         run: nix develop --command true

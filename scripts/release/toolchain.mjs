@@ -23,7 +23,10 @@ const IMAGES = {
 // `image:tag`, or a compose default `image:${VAR:-tag}`.
 const IMAGE_TAG =
   /(?<![\w.-])([a-z][\w-]*):(?:\$\{[A-Z_]+:-)?([0-9v][^\s"'@}]*)/gu;
-const GO_VERSION = /\bgo([0-9]+\.[0-9]+\.[0-9]+)\b|go-version: "([^"]+)"/gu;
+const GO_VERSION =
+  /\bgo([0-9]+\.[0-9]+\.[0-9]+)\b|go-version: ["']?([^"'\s]+)/gu;
+// `.env.example` defaults the compose files read: `OGMIOS_IMAGE_TAG=v7.0.0@…`.
+const ENV_TAG = /^([A-Z_]+)_IMAGE_TAG=([^\s@]+)/gmu;
 
 const images = (text) =>
   [...text.matchAll(IMAGE_TAG)]
@@ -40,28 +43,72 @@ const goVersions = (text) =>
     match,
   }));
 
-/** Each enrolled file and the pins read from it. */
+const envTags = (text) =>
+  [...text.matchAll(ENV_TAG)].map(([match, name, tag]) => ({
+    tool: name.toLowerCase().replaceAll("_", "-"),
+    tag,
+    match,
+  }));
+
+/**
+ * Each enrolled file, the pins read from it and the tools it must pin. A pin
+ * that changes to a form the readers miss (`kupo:latest`, a digest alone)
+ * then fails as a missing pin instead of passing.
+ */
 export const ENROLLED = [
   ...["midgard-node", "midgard-watcher", "da-committee-node"].map((pkg) => ({
     path: `demo/${pkg}/Dockerfile`,
     pins: (text) => [...images(text), ...goVersions(text)],
+    tools: ["node", "go", "rust"],
   })),
   ...[
     "demo/midgard-node/docker-compose.yaml",
     "demo/midgard-node/docker-compose.dev.yaml",
-    "demo/midgard-node/docker-compose.kupmios.yaml",
+  ].map((path) => ({ path, pins: images, tools: ["postgres"] })),
+  {
+    path: "demo/midgard-node/docker-compose.kupmios.yaml",
+    pins: images,
+    tools: ["cardano-node", "ogmios", "kupo", "mithril-client"],
+  },
+  {
+    path: "demo/midgard-node/.env.example",
+    pins: envTags,
+    tools: ["cardano-node", "ogmios", "kupo", "mithril-client"],
+  },
+  ...[
     "demo/midgard-node-tools/devnet/phase4-process/compose.yaml",
     "demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh",
-  ].map((path) => ({ path, pins: images })),
+  ].map((path) => ({
+    path,
+    pins: images,
+    tools: ["cardano-node", "ogmios", "kupo", "postgres"],
+  })),
   // CI builds the transport with setup-go and every job takes Node from
   // .nvmrc; the test databases its jobs start are not a build input.
   ...[
     ".github/workflows/midgard-node-ci.yml",
     ".github/workflows/midgard-watcher-ci.yml",
-  ].map((path) => ({ path, pins: goVersions })),
+  ].map((path) => ({ path, pins: goVersions, tools: ["go"] })),
+  // The module and the full-stack prerequisite build name the same Go.
+  {
+    path: "demo/l1-node-transport/native/go.mod",
+    pins: (text) =>
+      [...text.matchAll(/^go ([0-9.]+)$/gmu)].map(([match, tag]) => ({
+        tool: "go",
+        tag,
+        match,
+      })),
+    tools: ["go"],
+  },
+  {
+    path: "demo/midgard-node-tools/src/full-stack/prerequisites.ts",
+    pins: goVersions,
+    tools: ["go"],
+  },
   {
     path: "demo/.nvmrc",
     pins: (text) => [{ tool: "node", tag: text.trim(), match: text.trim() }],
+    tools: ["node"],
   },
 ];
 
@@ -84,10 +131,11 @@ export const toolchainProblems = (root, enrolled = ENROLLED) => {
   const manifest = JSON.parse(readFileSync(resolve(root, MANIFEST), "utf8"));
   const problems = [];
   const seen = new Set();
-  for (const { path, pins } of enrolled) {
+  for (const { path, pins, tools } of enrolled) {
     const found = pins(readFileSync(resolve(root, path), "utf8"));
-    // A file that stops matching would otherwise pass in silence.
-    if (found.length === 0) problems.push(`${path}: no version pin found`);
+    for (const tool of tools)
+      if (!found.some((pin) => pin.tool === tool))
+        problems.push(`${path}: no ${tool} version pin found`);
     for (const { tool, tag, match } of found) {
       seen.add(tool);
       const version = manifest[tool];

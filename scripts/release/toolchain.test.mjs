@@ -14,6 +14,7 @@ import {
 const MANIFEST_VERSIONS = {
   node: "22.22.2",
   go: "1.26.5",
+  rust: "1.91.0",
   postgres: "15",
   kupo: "2.11.0",
 };
@@ -21,6 +22,7 @@ const DOCKERFILE = [
   "ARG MIDGARD_NODE_BUILD_IMAGE=node:22.22.2",
   "ARG MIDGARD_NODE_RUNTIME_IMAGE=node:22.22.2-bookworm-slim",
   "ARG MIDGARD_GO_BUILD_IMAGE=golang:1.26.5-bookworm",
+  "ARG MIDGARD_RUST_BUILD_IMAGE=rust:1.91.0-bookworm",
   `RUN test "$(go version | awk '{print $3}')" = "go1.26.5"`,
 ].join("\n");
 const COMPOSE = [
@@ -96,14 +98,59 @@ test("a compose default tag is read through its variable", (t) => {
   ]);
 });
 
-test("an enrolled file with no pin left, or a manifest tool no file pins, fails", (t) => {
+test("a file that stops pinning one of its tools fails, even if another file still pins it", (t) => {
   const root = tree(t, {
     ...SCENE,
-    "demo/midgard-node/docker-compose.yaml": "services: {}\n",
+    "demo/midgard-node/docker-compose.dev.yaml": COMPOSE,
+    "demo/midgard-node/docker-compose.yaml": COMPOSE.replace(
+      "postgres:15.15-alpine@sha256:d4c3",
+      "postgres@sha256:d4c3",
+    ),
+  });
+  assert.deepEqual(
+    toolchainProblems(
+      root,
+      enrolled([
+        ...Object.keys(SCENE),
+        "demo/midgard-node/docker-compose.dev.yaml",
+      ]),
+    ),
+    ["demo/midgard-node/docker-compose.yaml: no postgres version pin found"],
+  );
+});
+
+test("a manifest tool no enrolled file pins fails", (t) => {
+  const root = tree(t, {
+    ...SCENE,
+    "demo/midgard-node/docker-compose.yaml": COMPOSE.replace(
+      "kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:0a8c}",
+      "kupo:latest",
+    ),
   });
   assert.deepEqual(toolchainProblems(root, enrolled(Object.keys(SCENE))), [
-    "demo/midgard-node/docker-compose.yaml: no version pin found",
-    `${MANIFEST}: postgres is pinned by no enrolled file`,
     `${MANIFEST}: kupo is pinned by no enrolled file`,
   ]);
+});
+
+test("an .env.example image default is read by its variable name", (t) => {
+  const root = tree(t, {
+    [MANIFEST]: JSON.stringify({
+      "cardano-node": "11.1.0",
+      ogmios: "7.0.0",
+      kupo: "2.11.0",
+      "mithril-client": "2630.1-hotfix",
+    }),
+    "demo/midgard-node/.env.example": [
+      "CARDANO_NODE_IMAGE_TAG=11.1.0",
+      "OGMIOS_IMAGE_TAG=v7.0.0@sha256:8892",
+      "KUPO_IMAGE_TAG=v2.10.0@sha256:0a8c",
+      "MITHRIL_CLIENT_IMAGE_TAG=2630.1-hotfix-3f6cb73@sha256:e512",
+    ].join("\n"),
+  });
+  assert.deepEqual(
+    toolchainProblems(root, enrolled(["demo/midgard-node/.env.example"])),
+    [
+      "demo/midgard-node/.env.example: KUPO_IMAGE_TAG=v2.10.0 differs from kupo 2.11.0",
+    ],
+  );
 });

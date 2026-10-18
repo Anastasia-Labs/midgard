@@ -251,6 +251,9 @@ Docker, compose and CI version pins match demo/toolchain.json.
   - `demo/.nvmrc`
   - `demo/*/Dockerfile`
   - `demo/**/docker-compose*.yaml`
+  - `demo/midgard-node/.env.example`
+  - `demo/l1-node-transport/native/go.mod`
+  - `demo/midgard-node-tools/src/full-stack/prerequisites.ts`
   - `demo/midgard-node-tools/devnet/phase4-process/**`
   - `.github/workflows/**`
   - `scripts/release/toolchain.mjs`
