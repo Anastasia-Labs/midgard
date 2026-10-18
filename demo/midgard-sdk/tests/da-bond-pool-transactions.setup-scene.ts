@@ -232,7 +232,8 @@ export type Scene = {
   readonly walletKeyHash: string;
   readonly otherOwner: string;
   readonly daParamsUtxo: UTxO;
-  readonly spendingReference: UTxO;
+  /** The pool's one script, published: both the mint and the spend read it. */
+  readonly poolReference: UTxO;
 };
 
 export const submit = async (
@@ -293,7 +294,7 @@ export const setupScene = async (): Promise<Scene> => {
     .withWallet()
     .complete();
   const setupHash = await submit({ emulator, lucid }, setup);
-  const [spendingReference, daParamsUtxo] = await lucid.utxosByOutRef([
+  const [poolReference, daParamsUtxo] = await lucid.utxosByOutRef([
     { txHash: setupHash, outputIndex: 0 },
     { txHash: setupHash, outputIndex: 1 },
   ]);
@@ -305,7 +306,7 @@ export const setupScene = async (): Promise<Scene> => {
     walletKeyHash: payment.hash,
     otherOwner,
     daParamsUtxo: daParamsUtxo!,
-    spendingReference: spendingReference!,
+    poolReference: poolReference!,
   };
 };
 
