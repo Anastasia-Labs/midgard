@@ -589,8 +589,8 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    *
    * `Emulator.submitTx` parses the candidate through
    * `CML.Transaction.from_cbor_hex`. The submission runs in its own
-   * short-lived child process (`helpers/cml-max-depth-runner.ts`), apart from
-   * the rest of this suite.
+   * short-lived child process (`helpers/cml-max-depth-runner.ts`) on Node's
+   * default machine stack, apart from the rest of this suite.
    */
   it("admits the exact maximum-depth candidate through the real emulator", () => {
     const privateKey = deterministicCardanoBoundaryPrivateKey(0);

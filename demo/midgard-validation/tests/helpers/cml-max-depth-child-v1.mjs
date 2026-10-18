@@ -1,11 +1,11 @@
 /**
  * Out-of-process runner for the C26 maximum-depth CML work.
  *
- * Each maximum-depth operation runs in its own short-lived process, on a
- * machine stack the caller sets with `--stack-size`. That keeps the flag
- * scoped to the suites that pass it and every other suite's execution
- * unchanged. `@lucid-evolution/cml` 0.1.2 reads the maximum on a stack below
- * the 1,400 KB its 0.1.0 needed (`cml-wasm-shadow-stack.test.ts`).
+ * Each maximum-depth operation runs in its own short-lived process, on Node's
+ * default machine stack unless the caller sets one with `--stack-size`, so
+ * every other suite's execution stays unchanged. `@lucid-evolution/cml` 0.1.2
+ * reads the maximum on a stack below the 1,400 KB its 0.1.0 needed
+ * (`cml-wasm-shadow-stack.test.ts`).
  *
  * Usage:  node [--stack-size=<kb>] cml-max-depth-child-v1.mjs <requestJsonPath>
  * Writes a single JSON object to stdout. Never throws out of `main`; failures

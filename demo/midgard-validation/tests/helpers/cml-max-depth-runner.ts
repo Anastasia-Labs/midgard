@@ -7,17 +7,13 @@ import { fileURLToPath } from "node:url";
 /**
  * Typed front end for `cml-max-depth-child-v1.mjs`.
  *
- * Every maximum-depth operation runs in its own short-lived child, on the
- * machine stack `stackSizeKb` sets (`--stack-size`, which cannot be set from
- * inside a running worker). No vitest pool option, no `NODE_OPTIONS`, no
- * change to how any other suite executes.
+ * Every maximum-depth operation runs in its own short-lived child, on Node's
+ * default machine stack unless `stackSizeKb` sets one (`--stack-size`, which
+ * cannot be set from inside a running worker). No vitest pool option, no
+ * `NODE_OPTIONS`, no change to how any other suite executes.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-/** The child's default machine stack. Kept from `@lucid-evolution/cml`
- * 0.1.0, which needed more than 1,400 KB at depth 4,043; 0.1.2 does not. */
-export const MAX_DEPTH_V8_STACK_SIZE_KB = 2_000;
 
 export const CML_MAX_DEPTH_CHILD_SCRIPT = join(
   HERE,
@@ -71,15 +67,15 @@ const encodeBigints = (value: unknown): unknown => {
 export const runMaxDepthCmlOperation = (
   request: MaxDepthCmlRequest,
   {
-    stackSizeKb = MAX_DEPTH_V8_STACK_SIZE_KB,
+    stackSizeKb,
     timeoutMs = 300_000,
-  }: { readonly stackSizeKb?: number | null; readonly timeoutMs?: number } = {},
+  }: { readonly stackSizeKb?: number; readonly timeoutMs?: number } = {},
 ): MaxDepthCmlResult => {
   const scratch = mkdtempSync(join(tmpdir(), "midgard-c26-maxdepth-"));
   const requestPath = join(scratch, "request.json");
   writeFileSync(requestPath, JSON.stringify(encodeBigints(request)), "utf8");
   const nodeArgs = [
-    ...(stackSizeKb === null ? [] : [`--stack-size=${stackSizeKb}`]),
+    ...(stackSizeKb === undefined ? [] : [`--stack-size=${stackSizeKb}`]),
     CML_MAX_DEPTH_CHILD_SCRIPT,
     requestPath,
   ];
