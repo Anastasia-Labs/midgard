@@ -304,16 +304,18 @@ const highIndex = lowIndex + 1;
 // `transactionFieldChunk` auxiliary here checks the two language halves against
 // each other — this producer's bytes against the Aiken decoder and the Aiken
 // constructor's own field names — rather than either half against a frozen
-// blueprint that agrees with neither.
-const fieldChunkIndex = trace.witnesses.findIndex(
+// blueprint that agrees with neither. A small native-script spend emits one
+// (Phase A, field 6); InputSets and Signatures emit item auxiliaries only.
+const fieldChunkTrace = await buildTraceForScriptItem(128);
+const fieldChunkIndex = fieldChunkTrace.witnesses.findIndex(
   (witness) => witness.auxiliary?.kind === "transactionFieldChunk",
 );
 if (fieldChunkIndex < 0) {
   throw new Error("generated trace has no transactionFieldChunk transition");
 }
-const fieldChunkWitness = trace.witnesses[fieldChunkIndex];
+const fieldChunkWitness = fieldChunkTrace.witnesses[fieldChunkIndex];
 const fieldChunkArgument = buildValidationOneStepArgument({
-  trace,
+  trace: fieldChunkTrace,
   stateIndex: fieldChunkIndex,
 });
 const fieldChunkFieldIndex = fieldChunkWitness.auxiliary.fieldIndex;
