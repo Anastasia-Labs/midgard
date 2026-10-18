@@ -34,6 +34,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/event-history-submission-publication-expiry-emulator.test.ts
  *   tests/event-history-submission-reservations.test.ts
  *   tests/event-history-submission-revival-emulator.test.ts
+ *   tests/event-history-submission-same-id-emulator.test.ts
  *   tests/event-history-submission-takeover-emulator.test.ts
  *   tests/settlement-journal.test.ts
  *   tests/settlement-ownership-handoff.test.ts
