@@ -2,14 +2,18 @@
  * The `/readyz` reasons landed-block processing holds (plan §7.3, N3). Each
  * keeps the process up, and the reason clears once the condition does. A
  * wait (on DA peers, the follower, the rebase, this node's own commit path)
- * is retried on the driver's backoff; a verdict on the view (an invalid
- * block, a base or journal mismatch), a failure that is not transient, and
- * a missing schema are `notRetried`: the next follower change re-reads them.
+ * and a local fault of a foreign block's import (within the follower
+ * runner's bound) are retried on the driver's backoff; a verdict on the
+ * view (an invalid block, a base or journal mismatch), a failure that is
+ * not transient, and a missing schema are `notRetried`: the next follower
+ * change re-reads them.
  */
 import {
   type DriverHold,
   isRetriedHold,
   isTransientFailureHold,
+  localFault,
+  localFaultSubject,
   notRetried,
   transientFailure,
 } from "../l1-events/driver.js";
@@ -64,10 +68,31 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
 /**
  * Importing a foreign block failed for a reason it cannot pin on the block:
  * a local computation (an MPF root) or a replay failure it cannot classify.
- * Never attributed to the block, and not known to be transient: the next
- * follower change runs it again, no timer does.
+ * Never attributed to the block: retried on the driver's backoff, with the
+ * `landed_block_local_fault` alarm, and bounded as `LANDED_BLOCK_LOCAL_FAULT`
+ * is.
  */
 export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
+/**
+ * Importing a foreign block failed in this node's own computation, where
+ * the block's input cannot make it fail (a runtime fault of a library the
+ * replay runs, hashing, the payload roots). Never attributed to the block:
+ * retried on the driver's backoff, with the `landed_block_local_fault`
+ * alarm, and bounded as `LANDED_BLOCK_VERIFIER_UNAVAILABLE` is: the same
+ * count of runs with no progress past the faulted block, then the same
+ * non-zero exit (`l1-follower.coalesced-runner.ts`).
+ */
+export const LANDED_BLOCK_LOCAL_FAULT = "landed_block_local_fault";
+/**
+ * This node's Ed25519 verifier could not answer while it replayed a foreign
+ * block (libsodium failed to initialise, or raised). A local fault, never
+ * attributed to the block: retried on the driver's backoff, and after a
+ * fixed number of runs with no progress past the faulted block (processing
+ * committing it) the node exits non-zero for its supervisor to restart it
+ * (`l1-follower.coalesced-runner.ts`).
+ */
+export const LANDED_BLOCK_VERIFIER_UNAVAILABLE =
+  "landed_block_verifier_unavailable";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
 /**
@@ -112,6 +137,7 @@ const PRIORITY = [
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+  LANDED_BLOCK_VERIFIER_UNAVAILABLE,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_DA_REFETCH_PENDING,
@@ -120,6 +146,7 @@ const PRIORITY = [
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   LANDED_BLOCK_REBASE_FAILED,
+  LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCK_REPLAY_FAILED,
   CONFIRMED_LEDGER_BASE_MISMATCH,
@@ -141,7 +168,8 @@ const cut = (detail: string) =>
  * Only each reason's own detail is truncated, so every reason stays named.
  * The combined hold is retried on the driver's backoff when any hold in it
  * is, and is `notRetried` when none is; it is a `transientFailure` when any
- * hold in it is.
+ * hold in it is, and a `localFault` on the first local fault's subject when
+ * any hold in it is one.
  */
 export const combineHolds = (
   holds: readonly DriverHold[],
@@ -161,5 +189,9 @@ export const combineHolds = (
     ].join("; "),
   };
   if (holds.some(isTransientFailureHold)) transientFailure(combined);
+  const subject = ordered
+    .map(localFaultSubject)
+    .find((faulted) => faulted !== undefined);
+  if (subject !== undefined) localFault(combined, subject);
   return holds.some(isRetriedHold) ? combined : notRetried(combined);
 };

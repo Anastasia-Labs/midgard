@@ -215,6 +215,10 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
     publications,
     "da-bond-pool minting",
   ),
+  validationCaseConfigMinting: requireReferenceScriptPublication(
+    publications,
+    "V1 validation-trace case configuration minting",
+  ),
 });
 
 /**

@@ -157,14 +157,12 @@ export const buildJourneyTransactionSourceFault = async (
         value: Buffer.from(value, "hex"),
       })),
     );
+  // The header keeps the control's pinned validation-trace pair.
   const header = {
     ...control.header,
     transactionsRoot: root.root,
     eventToStepRoot: (await counted(SDK.ROOT_DOMAINS.eventToStep, eventToStep))
       .root,
-    validationTracesRoot: (
-      await counted(SDK.ROOT_DOMAINS.validationTraces, validationTraces)
-    ).root,
     transitionTraceRoot: (
       await counted(SDK.ROOT_DOMAINS.transitionTrace, transitions)
     ).root,

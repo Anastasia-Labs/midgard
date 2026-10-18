@@ -3,6 +3,7 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardVersionedScript,
+  ledgerEd25519SignatureReady,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
@@ -42,6 +43,7 @@ export const detectInvalidSignatures = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
+  await ledgerEd25519SignatureReady();
   return transactions.flatMap((transaction, transactionIndex) =>
     decodeAddressWitnessPreimage(
       transaction.nativeTx.witnessSet.addrTxWitsPreimageCbor,

@@ -66,6 +66,11 @@ export type NativeTxOptions = {
   readonly privateKey?: CML.PrivateKey;
   /** Keys that each add a valid witness after the first one. */
   readonly extraVkeyWitnessKeys?: readonly CML.PrivateKey[];
+  /**
+   * The address witnesses, as `vkeywitness` CBOR items, built from the
+   * message they sign; in place of the one witness by `privateKey`.
+   */
+  readonly vkeyWitnesses?: (signedMessage: Buffer) => readonly Uint8Array[];
   readonly version?: 1n;
 };
 

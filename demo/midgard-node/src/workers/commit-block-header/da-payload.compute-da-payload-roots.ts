@@ -250,6 +250,19 @@ export const headerCounts = (header: SDK.Header): PayloadCountSet => ({
   validationTraceCount: header.validationTraceCount,
 });
 
+// A header commits the body's roots and counts except the validation-trace
+// pair, which it pins to the empty tree while the body keeps the built members.
+export const headerCommittedRoots = (
+  roots: PayloadRootSet,
+): PayloadRootSet => ({
+  ...roots,
+  validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+});
+
+export const headerCommittedCounts = <Counts extends PayloadCountSet>(
+  counts: Counts,
+): Counts => ({ ...counts, validationTraceCount: 0n });
+
 export const rootMismatches = (
   expected: PayloadRootSet,
   actual: PayloadRootSet,

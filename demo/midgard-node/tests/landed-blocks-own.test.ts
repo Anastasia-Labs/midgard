@@ -11,15 +11,16 @@
  * replays on the journal's
  * post-state, and one that misses its header's root is never adopted.
  * The holds by retry class: the waits (DA peers, the follower's facts, a
- * revival) are retried on the driver's backoff; a verdict on the view and a
- * replay failure not known to be transient are `notRetried`, re-read on the
- * next follower change.
+ * revival) and a foreign import's local failures are retried on the
+ * driver's backoff, the local failures with the `landed_block_local_fault`
+ * alarm; a verdict on the view and a replay failure not known to be
+ * transient are `notRetried`, re-read on the next follower change.
  */
 import "./utils.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { isRetriedHold, notRetried } from "../src/l1-events/driver.js";
@@ -36,6 +37,7 @@ import {
   LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
+  LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
@@ -46,6 +48,7 @@ import {
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { blockedRebaseHold } from "../src/landed-blocks/rebase-target.js";
 import type { ReplayOutcome } from "../src/landed-blocks/replay.js";
+import { landedBlockLocalFaultCounter } from "../src/landed-blocks/replay-outcome-hold.js";
 import { Frontier, retrieveRows } from "../src/landed-blocks/store.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { hex32 } from "./helpers/state-queue-sim.fixtures.js";
@@ -275,7 +278,7 @@ describe("own landed blocks", () => {
     );
   }, 120_000);
 
-  it("retries the waits a foreign block's replay ends in and not its verdicts or unclassified failures", async () => {
+  it("retries the waits and local failures a foreign block's replay ends in and not its verdicts or unclassified failures", async () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
@@ -286,6 +289,8 @@ describe("own landed blocks", () => {
       Effect.Effect<ReplayOutcome, unknown>,
       string,
       boolean,
+      // The `landed_block_local_fault` alarm's kind, when it is raised.
+      ("local_fault" | "incomplete")?,
     ])[] = [
       [
         Effect.succeed({ kind: "missing", detail: "x" }),
@@ -308,9 +313,16 @@ describe("own landed blocks", () => {
         true,
       ],
       [
+        Effect.succeed({ kind: "local_fault", detail: "x" }),
+        LANDED_BLOCK_LOCAL_FAULT,
+        true,
+        "local_fault",
+      ],
+      [
         Effect.succeed({ kind: "incomplete", detail: "x" }),
         LANDED_BLOCK_REPLAY_INCOMPLETE,
-        false,
+        true,
+        "incomplete",
       ],
       [
         Effect.succeed({ kind: "invalid", detail: "x" }),
@@ -322,8 +334,16 @@ describe("own landed blocks", () => {
     ];
     await inNode(
       Effect.gen(function* () {
-        for (const [ends, reason, retried] of cases) {
+        const alarms = (kind: "local_fault" | "incomplete") =>
+          Metric.value(
+            Metric.tagged(landedBlockLocalFaultCounter, "kind", kind),
+          ).pipe(Effect.map(({ count }) => count));
+        for (const [ends, reason, retried, alarm] of cases) {
           state.replayEnds = ends;
+          const before = {
+            local_fault: yield* alarms("local_fault"),
+            incomplete: yield* alarms("incomplete"),
+          };
           const held = yield* processLandedQueue(
             ports(state),
             queueOf(genesisState, [a, f]),
@@ -332,6 +352,13 @@ describe("own landed blocks", () => {
             reason,
             retried,
           ]);
+          expect({
+            local_fault: (yield* alarms("local_fault")) - before.local_fault,
+            incomplete: (yield* alarms("incomplete")) - before.incomplete,
+          }).toEqual({
+            local_fault: alarm === "local_fault" ? 1n : 0n,
+            incomplete: alarm === "incomplete" ? 1n : 0n,
+          });
         }
         expect(state.replays.map((input) => input.headerHash)).toEqual(
           cases.map(() => f.hash),

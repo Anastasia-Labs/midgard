@@ -5,7 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_context_observer as observer
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1, empty_field_commitment}
 use midgard/validation_machine_field_door_v1 as door
@@ -96,14 +96,14 @@ validator main(
           staged: staged_data,
           opening,
         }
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) {
             hash == fold_script_hash && state == next
           },

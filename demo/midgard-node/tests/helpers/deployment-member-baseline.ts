@@ -11,14 +11,25 @@ import {
   publishedDeployableScripts,
 } from "../../src/deployable-scripts.js";
 
-/** Captured with the real blueprint before replacing the node catalogue. */
+/**
+ * Captured with the real blueprint before replacing the node catalogue.
+ *
+ * Re-captured when the six validation-case members and the five output-step
+ * transition-trace yields (less the three retired claim yields) joined the
+ * member owner. The pre-migration catalogue that added them is gone, so the
+ * values were taken from the member projections and checked two ways: the
+ * order pins of `deployable-catalogue-order-pins.ts` (manifest, publication
+ * and per-command orders of that catalogue) all hold, and the DA deployment
+ * fixture regenerated through the member owner is byte-identical to the one
+ * that catalogue produced (all 535 contracts, script hashes included).
+ */
 export const expectPreMigrationDeploymentBoundary = (
   contracts: MidgardValidators,
 ): void => {
   const digest = (value: unknown) =>
     createHash("sha256").update(JSON.stringify(value)).digest("hex");
   const manifest = manifestDeployableScripts(contracts);
-  expect(manifest).toHaveLength(527);
+  expect(manifest).toHaveLength(535);
   expect(
     digest(
       manifest.map(({ contract, role, purpose, commands, scriptHash }) => [
@@ -29,12 +40,12 @@ export const expectPreMigrationDeploymentBoundary = (
         scriptHash,
       ]),
     ),
-  ).toBe("d74d2af48c5c18aa32fe6ad036df27e985e6ba79d229b0bd521ef9ea801c2c84");
+  ).toBe("19f8173245564b685508ddd3bf7a3d1cfe18ca8855bf0931644c6e1197a1d6e4");
   expect(
     digest(
       publishedDeployableScripts(contracts).map(({ contract }) => contract),
     ),
-  ).toBe("2e16ed8677ba531b608efad6d920e0b1f14efae370b7083d10f928e375faad9e");
+  ).toBe("86a14198bfd22bdc3d724053383d92550df70872a6def1f10534a3975d92fd24");
 };
 
 /** Pre-migration admission rule, kept independent of the new member projections. */

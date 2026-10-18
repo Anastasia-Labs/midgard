@@ -37,6 +37,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Ref } from "effect";
 
+import * as ImportChecksDB from "../database/importChecks.js";
 import { MpfEngineStateDB } from "../database/index.js";
 import type * as Pending from "../database/pendingBlockFinalizations.js";
 import type { Globals } from "../services/globals.globals.js";
@@ -229,6 +230,9 @@ export const rebaseSql = (target: RebaseTarget) =>
     });
     yield* settleChainDeposits(chained, rebuilt.ledger, deposits);
     yield* deleteRows(removed.map((row) => row.headerHash));
+    yield* ImportChecksDB.deleteChecksOfBlocks(
+      removed.map((row) => row.headerHash),
+    );
     yield* markApplied(chained.map((row) => row.headerHash));
     yield* MpfEngineStateDB.stampLedgerMigration(roots.at(-1)!);
     return {

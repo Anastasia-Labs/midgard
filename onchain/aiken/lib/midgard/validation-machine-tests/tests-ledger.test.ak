@@ -1,31 +1,23 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/helpers.{combine}
-use aiken/merkle_patricia_forestry/merkling.{
-  null_hash, null_hash_2, null_hash_4,
-}
+use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
 use env
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
-use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_tx_input, encode_midgard_tx_output,
-}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_mint_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{midgard_transaction_to_compact}
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxInput,
-  MidgardTxOutput, MidgardValue, PubKeyCredential, native_tx_version_v1,
+  MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxOutput,
+  MidgardValue, PubKeyCredential, native_tx_version_v1,
 }
-use midgard/mpf_proof_fold_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
-use midgard/script_proof_v1
-use midgard/validation_machine/ledger_delta as vm_ledger_delta
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
@@ -36,11 +28,7 @@ use midgard/validation_machine_tests/constants.{
   validation_context_cbor, value_output_descriptor_total_length, zero,
 }
 use midgard/validation_machine_tests/fixtures_ledger.{
-  compact_ledger_delta_control, compact_ledger_delta_state,
-  compact_ledger_delta_successor, compact_ledger_output_descriptor,
   conservation_final_step_is_provable, conservation_mint_step_is_exact,
-  ledger_delta_operation_authentication_fixture,
-  ledger_delta_singleton_entry_root, ledger_delta_singleton_finalize,
   min_ada_absolute_vector_is_exact, min_ada_probe_enterprise_output,
   min_ada_probe_rich_output, mint_authorization_step_is_provable,
   target_snapshot_canonical_size, target_snapshot_min_fee_step_is_provable,
@@ -49,414 +37,11 @@ use midgard/validation_machine_tests/fixtures_ledger.{
   value_output_descriptor_rejection_evidence,
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
-  empty_mpf_proof_descriptor, empty_native_control_fixture, empty_v1_transaction,
-  forced_pending_state, inline_field_door, non_empty_claimed_delta_root,
-  one_step_evidence, singleton_root,
+  empty_native_control_fixture, empty_v1_transaction, forced_pending_state,
+  inline_field_door, one_step_evidence, singleton_root,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
-
-test ledger_delta_spend_step_authenticates_deletion_operation() {
-  ledger_delta_operation_authentication_fixture(0)
-}
-
-test ledger_delta_output_step_authenticates_insertion_operation() {
-  ledger_delta_operation_authentication_fixture(1)
-}
-
-test ledger_delta_reference_replay_authenticates_descriptor() {
-  let key = encode_midgard_tx_input(
-    MidgardTxInput { tx_id: h_a, output_index: 0 },
-  )
-  let value = compact_ledger_output_descriptor(0)
-  let next_schedule_hash = vm_witness.empty_resolution_schedule_hash()
-  let schedule_hash = vm_witness.resolution_schedule_node_hash(
-    1,
-    key,
-    next_schedule_hash,
-  )
-  let resolved_accumulator = vm_witness.resolved_input_accumulator_successor(
-    vm_witness.initial_resolution_accumulator(),
-    1,
-    key,
-    value,
-  )
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(0),
-    resolved_input_count: 1,
-    resolved_inputs_accumulator: resolved_accumulator,
-    replay_schedule_hash: schedule_hash,
-    replay_remaining_schedule_hash: schedule_hash,
-  }
-  let pre = compact_ledger_delta_state(
-    control,
-    50,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  let post = compact_ledger_delta_successor(
-    pre,
-    vm_machine_types.LedgerDeltaControlV1 {
-      ..control,
-      replay_cursor: 1,
-      replay_accumulator: resolved_accumulator,
-      replay_remaining_schedule_hash: next_schedule_hash,
-    },
-  )
-  vm_ledger_delta.verify_ledger_delta_replay_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: post,
-    },
-    1,
-    key,
-    next_schedule_hash,
-    value,
-  )
-}
-
-test ledger_delta_spend_replay_initializes_authenticated_fold() {
-  let key = encode_midgard_tx_input(
-    MidgardTxInput { tx_id: h_a, output_index: 0 },
-  )
-  let value = compact_ledger_output_descriptor(0)
-  let descriptor = empty_mpf_proof_descriptor()
-  let next_schedule_hash = vm_witness.empty_resolution_schedule_hash()
-  let schedule_hash = vm_witness.resolution_schedule_node_hash(
-    0,
-    key,
-    next_schedule_hash,
-  )
-  let resolved_accumulator = vm_witness.resolved_input_accumulator_successor(
-    vm_witness.initial_resolution_accumulator(),
-    0,
-    key,
-    value,
-  )
-  let authorized_pending = vm_witness.encode_ledger_delta_pending_mutation_v1(
-    vm_machine_types.LedgerDeltaPendingMutationV1 {
-      authorization_stage: 0,
-      operation_kind: 0,
-      key,
-      value: #"",
-      descriptor,
-      fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
-        next_frame_index: -1,
-        expected_next_cursor: 0,
-        including_root: #"",
-        excluding_root: #"",
-      },
-    },
-  )
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(0),
-    resolved_input_count: 1,
-    resolved_inputs_accumulator: resolved_accumulator,
-    replay_schedule_hash: schedule_hash,
-    replay_remaining_schedule_hash: schedule_hash,
-    current_ledger_root: singleton_root(key, value),
-    pending_mutation_cbor: authorized_pending,
-  }
-  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
-    key,
-    value,
-    descriptor,
-  )
-  let post = compact_ledger_delta_successor(
-    compact_ledger_delta_state(
-      control,
-      51,
-      validation_merkle_v1.frontier_commitment(0, []),
-    ),
-    vm_machine_types.LedgerDeltaControlV1 {
-      ..control,
-      replay_cursor: 1,
-      replay_accumulator: resolved_accumulator,
-      replay_remaining_schedule_hash: next_schedule_hash,
-      pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-        vm_machine_types.LedgerDeltaPendingMutationV1 {
-          authorization_stage: 1,
-          operation_kind: 0,
-          key,
-          value,
-          descriptor,
-          fold_control,
-        },
-      ),
-    },
-  )
-  let pre = compact_ledger_delta_state(
-    control,
-    51,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  vm_ledger_delta.verify_ledger_delta_replay_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: post,
-    },
-    0,
-    key,
-    next_schedule_hash,
-    value,
-  )
-}
-
-test ledger_delta_replay_finish_is_exact() {
-  let control = compact_ledger_delta_control(0)
-  let pre = compact_ledger_delta_state(
-    control,
-    52,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  vm_ledger_delta.verify_ledger_delta_replay_finish_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 { ..control, stage: 1 },
-      ),
-    },
-  )
-}
-
-test ledger_delta_output_authenticates_descriptor_and_initializes_fold() {
-  let output_index = 0
-  let key = encode_midgard_tx_input(MidgardTxInput { tx_id: h_a, output_index })
-  let value = compact_ledger_output_descriptor(output_index)
-  let descriptor = empty_mpf_proof_descriptor()
-  let descriptor_leaf = script_proof_v1.output_descriptor_leaf_hash(
-    output_index,
-    value,
-  )
-  let descriptor_frontier = validation_merkle_v1.build_frontier(
-    [descriptor_leaf],
-  )
-  let authorized_pending = vm_witness.encode_ledger_delta_pending_mutation_v1(
-    vm_machine_types.LedgerDeltaPendingMutationV1 {
-      authorization_stage: 0,
-      operation_kind: 1,
-      key,
-      value,
-      descriptor,
-      fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
-        next_frame_index: -1,
-        expected_next_cursor: 0,
-        including_root: #"",
-        excluding_root: #"",
-      },
-    },
-  )
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(1),
-    output_count: 1,
-    output_descriptor_peaks: descriptor_frontier.peaks,
-    current_ledger_root: null_hash,
-    pending_mutation_cbor: authorized_pending,
-  }
-  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
-    key,
-    value,
-    descriptor,
-  )
-  let pre = compact_ledger_delta_state(
-    control,
-    53,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  vm_ledger_delta.verify_ledger_delta_output_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 {
-          ..control,
-          output_cursor: 1,
-          pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-            vm_machine_types.LedgerDeltaPendingMutationV1 {
-              authorization_stage: 1,
-              operation_kind: 1,
-              key,
-              value,
-              descriptor,
-              fold_control,
-            },
-          ),
-        },
-      ),
-    },
-    output_index,
-    value,
-    [],
-  )
-}
-
-test ledger_delta_output_finish_is_exact() {
-  let control = compact_ledger_delta_control(1)
-  let pre = compact_ledger_delta_state(
-    control,
-    54,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  vm_ledger_delta.verify_ledger_delta_output_finish_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 { ..control, stage: 2 },
-      ),
-    },
-  )
-}
-
-// One terminal Branch frame of a pending mutation of `operation_kind`. The
-// claimed successor is the fold without the deletion rule (as for an
-// insertion), so the step holds exactly when that rule does not refuse it.
-fn ledger_delta_terminal_branch_frame(
-  neighbors: ByteArray,
-  operation_kind: Int,
-  opening: ByteArray,
-) -> Bool {
-  let key = #"616273656e742d6b6579"
-  let value = #"696e7365727465642d76616c7565"
-  let frame = mpf_proof_fold_v1.ProofFrameV1 {
-    version: 1,
-    frame_index: 0,
-    cursor: 0,
-    next_cursor: 1,
-    step: mpf.Branch { skip: 0, neighbors },
-  }
-  let frame_frontier = validation_merkle_v1.build_frontier(
-    [mpf_proof_fold_v1.proof_frame_leaf_hash_v1(frame)],
-  )
-  let descriptor = mpf_proof_fold_v1.ProofDescriptorV1 {
-    version: 1,
-    frame_count: 1,
-    terminal_cursor: 1,
-    peaks: frame_frontier.peaks,
-  }
-  expect Some(fold_control) = mpf_proof_fold_v1.initial_fold_control_v1(
-    key,
-    value,
-    descriptor,
-  )
-  expect Some(next_fold_control) = mpf_proof_fold_v1.fold_proof_frame_v1(
-    key,
-    descriptor,
-    fold_control,
-    frame,
-    [],
-    None,
-  )
-  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
-    authorization_stage: 1,
-    operation_kind,
-    key,
-    value,
-    descriptor,
-    fold_control,
-  }
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    ..compact_ledger_delta_control(1),
-    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-      pending,
-    ),
-  }
-  let pre = compact_ledger_delta_state(
-    control,
-    55,
-    validation_merkle_v1.frontier_commitment(0, []),
-  )
-  vm_ledger_delta.verify_ledger_delta_proof_frame_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
-      claimed_successor: compact_ledger_delta_successor(
-        pre,
-        vm_machine_types.LedgerDeltaControlV1 {
-          ..control,
-          pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
-            vm_machine_types.LedgerDeltaPendingMutationV1 {
-              ..pending,
-              fold_control: next_fold_control,
-            },
-          ),
-        },
-      ),
-    },
-    frame,
-    [],
-    opening,
-  )
-}
-
-test ledger_delta_proof_frame_advances_only_authenticated_frame() {
-  ledger_delta_terminal_branch_frame(
-    h_a
-      |> bytearray.concat(h_b)
-      |> bytearray.concat(h_c)
-      |> bytearray.concat(zero),
-    1,
-    #"",
-  )
-}
-
-// A deletion's terminal Branch frame must keep two other children
-// (`mpf_proof_v1.terminal_branch_keeps_two_children`). The lone n8 group below
-// holds h_a and h_b in slots 8 and 9 and is opened down to them; the same
-// group with one child is refused, whatever is sent. An insertion folds either
-// frame without the rule.
-test ledger_delta_deletion_frame_keeps_a_terminal_branch_with_two_children() {
-  let lone_n8 = fn(pair) {
-    combine(combine(pair, null_hash_2), null_hash_4)
-      |> bytearray.concat(null_hash_4)
-      |> bytearray.concat(null_hash_2)
-      |> bytearray.concat(null_hash)
-  }
-  let two = lone_n8(combine(h_a, h_b))
-  let one = lone_n8(combine(h_a, null_hash))
-  let opening = bytearray.concat(#"0000", bytearray.concat(h_a, h_b))
-  and {
-    ledger_delta_terminal_branch_frame(two, 0, opening),
-    !ledger_delta_terminal_branch_frame(two, 0, #""),
-    !ledger_delta_terminal_branch_frame(one, 0, #""),
-    !ledger_delta_terminal_branch_frame(
-      one,
-      0,
-      bytearray.concat(#"0000", bytearray.concat(h_a, null_hash)),
-    ),
-    ledger_delta_terminal_branch_frame(one, 1, #""),
-  }
-}
-
-// The first insertion starts from the committed empty ledger, which is named
-// only by `env.empty_merkle_tree_root`; the library's `null_hash` is not a
-// second name for it.
-test ledger_delta_finalize_applies_only_authenticated_root_transition() {
-  let inserted = ledger_delta_singleton_entry_root()
-  and {
-    ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, inserted),
-    !ledger_delta_singleton_finalize(1, null_hash, inserted),
-    !ledger_delta_singleton_finalize(1, env.empty_merkle_tree_root, h_a),
-  }
-}
-
-// Deleting the only entry leaves the committed empty ledger. The machine's
-// successor root must be the sentinel a block commits for it, never the
-// library's `null_hash`: otherwise the terminal root of an honest drain would
-// disagree with the block, and a block committing `null_hash` would agree.
-test ledger_delta_finalize_names_a_drained_ledger_by_the_committed_sentinel() {
-  let entry = ledger_delta_singleton_entry_root()
-  and {
-    ledger_delta_singleton_finalize(0, entry, env.empty_merkle_tree_root),
-    !ledger_delta_singleton_finalize(0, entry, null_hash),
-    !ledger_delta_singleton_finalize(0, h_a, env.empty_merkle_tree_root),
-  }
-}
 
 test value_and_mint_final_equation_is_enforced_on_l1() {
   let tx = empty_v1_transaction()
@@ -495,20 +80,16 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     validation_trace_v1.ValueAndMint,
     40,
     valid_work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let valid_post = validation_trace_v1.ValidationMachineStateV1 {
     ..valid_pre,
-    phase: validation_trace_v1.LedgerDelta,
+    phase: validation_trace_v1.Terminal,
     program_counter: 41,
+    verdict: validation_trace_v1.Accepted,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
+      validation_trace_v1.Terminal,
       41,
-      vm_witness.encode_ledger_delta_witness_v1(
-        native_control,
-        valid_pre.prior_ledger_root,
-        valid_control.replay_schedule_hash,
-      ),
+      vm_shared.terminal_acceptance_witness,
     ),
   }
   let invalid_control = vm_machine_types.ValueAndMintControlV1 {
@@ -531,9 +112,6 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
       42,
       invalid_work_witness_cbor,
     ),
-    // Re-based off `frontier_commitment(0, [])`: this pre-state backs a
-    // rejection proof, so it must carry the realistic non-empty claimed delta.
-    ledger_delta_root: non_empty_claimed_delta_root(),
   }
   let rejection_code = rejection_reason_v1.ValueNotPreserved
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
@@ -625,7 +203,6 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     validation_trace_v1.ValueAndMint,
     40,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -732,7 +309,6 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     validation_trace_v1.ValueAndMint,
     44,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let next_control = vm_machine_types.ValueAndMintControlV1 {
     ..control,
@@ -1128,7 +704,7 @@ test parameterized_ada_and_multi_asset_conservation_matches_typescript() {
     conservation_mint_step_is_exact(3, -3),
     // Burn vector: asset delta +2 (5 in, 3 out) plus a -2 burn settles to zero.
     conservation_mint_step_is_exact(-2, 2),
-    // Ada and every asset conserved: the step advances to LedgerDelta.
+    // Ada and every asset conserved: the step accepts.
     conservation_final_step_is_provable(1, 0, True),
     !conservation_final_step_is_provable(1, 0, False),
     // Ada short by one lovelace (outputs 5 instead of 4).
@@ -1266,7 +842,6 @@ test value_asset_output_instruction_evidence_is_bounded() {
     validation_trace_v1.ValueAndMint,
     50,
     work_witness_cbor,
-    h_b,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,

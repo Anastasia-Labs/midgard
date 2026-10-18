@@ -1,6 +1,9 @@
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 
-import { materializeMidgardNativeTxFromCanonical } from "@al-ft/midgard-core";
+import {
+  ledgerEd25519SignatureReady,
+  materializeMidgardNativeTxFromCanonical,
+} from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxWitnessSetCompact,
@@ -250,6 +253,9 @@ export const honestEvidenceFor = (
  * step for step before the suite drives it.
  */
 export const registeredContracts = async (harness: Harness) => {
+  // Evidence preparation checks witnesses with the ledger's Ed25519 verifier,
+  // which answers only once libsodium has initialised.
+  await ledgerEd25519SignatureReady();
   const addressData = await Effect.runPromise(
     addressDataFromBech32(
       harness.contracts.fraudProof.spendingScriptAddress,

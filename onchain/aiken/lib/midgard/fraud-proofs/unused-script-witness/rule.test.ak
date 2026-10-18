@@ -255,7 +255,6 @@ fn authenticate_exact_witness(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(machine_state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
@@ -638,7 +637,6 @@ fn authenticate_seam(seam: Seam) -> rule.AuthenticatedWitnessV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero32,
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(machine_state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)

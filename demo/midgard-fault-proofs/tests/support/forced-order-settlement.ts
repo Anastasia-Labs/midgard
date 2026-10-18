@@ -225,10 +225,8 @@ export const makeForcedOrderSettlementScenario = async (
     forcedTransactionCount: BigInt(wallets.length),
     totalEventCount: BigInt(wallets.length),
     transitionStepCount: BigInt(wallets.length),
-    validationTraceCount: BigInt(wallets.length),
     transitionTraceRoot: "aa".repeat(32),
     eventToStepRoot: "bb".repeat(32),
-    validationTracesRoot: "cc".repeat(32),
   };
   const setup = await submitSetupTx({
     lucid: h.funderLucid,

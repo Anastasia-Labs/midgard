@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_context_item.{ItemHashResult}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/redeemer_item_proof_v1 as item
 use midgard/script_sources_redeemer_normalization_v1.{
   CekContextItemStepVerified,
@@ -42,14 +42,14 @@ validator main(
           verified: verified_data,
           next_hash: item.hash_control_v1(verified.next),
         }
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) {
             hash == finish_script_hash && state == next
           },

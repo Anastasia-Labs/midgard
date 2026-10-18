@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_context_redeemer as redeemers
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{CekRedeemerContextControlV1}
 
 type PendingDatum =
@@ -54,14 +54,14 @@ validator main(
             next: redeemers.context_successor(staged, next_redeemers),
           },
         }
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) {
             hash == settle_script_hash && state == next
           },

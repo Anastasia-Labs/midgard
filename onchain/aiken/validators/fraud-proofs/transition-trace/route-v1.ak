@@ -8,12 +8,12 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/transition_trace/final_yield
 use midgard/fraud_proofs/transition_trace/proof as rules
 use midgard/fraud_proofs/transition_trace/proof.{
-  AcceptedTransactionTransitionMismatch, CountFault, DuplicateTraceEvent,
-  EventToStepMismatch, InvalidForcedTransactionNoOpTransition,
-  InvalidOneStepTransition, InvalidWithdrawalNoOpTransition,
-  L2TransactionTransition, OmittedDueL1Event, OutOfWindowSourceEvent,
-  SourceMembershipMismatch, TraceBoundaryFault, TraceLinkFault,
-  TransitionFaultProof, ValidDepositTransition, ValidWithdrawalTransition,
+  CountFault, DuplicateTraceEvent, EventToStepMismatch,
+  InvalidForcedTransactionNoOpTransition, InvalidOneStepTransition,
+  InvalidWithdrawalNoOpTransition, L2TransactionTransition, OmittedDueL1Event,
+  OutOfWindowSourceEvent, SourceMembershipMismatch, TraceBoundaryFault,
+  TraceLinkFault, TransitionFaultProof, ValidDepositTransition,
+  ValidForcedTransactionTransition, ValidWithdrawalTransition,
 }
 use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_state
@@ -44,9 +44,9 @@ fn route_index(proof: TransitionFaultProof) -> Int {
         InvalidWithdrawalNoOpTransition { .. } -> 2
         InvalidForcedTransactionNoOpTransition { .. } -> 3
         L2TransactionTransition { .. } -> 4
+        ValidForcedTransactionTransition { .. } -> 4
         ValidDepositTransition { .. } -> 5
       }
-    AcceptedTransactionTransitionMismatch { .. } -> 4
     OmittedDueL1Event { .. } -> 6
     OutOfWindowSourceEvent { .. } -> 6
     DuplicateTraceEvent { .. } -> 7
@@ -141,15 +141,12 @@ validator main(
                     output_state == data,
                   }
                 } else {
-                  let kind = if builtin.unconstr_index(fault) == 9 {
-                    2
-                  } else {
-                    expect builtin.unconstr_index(fault) == 4
-                    when builtin.unconstr_index(witness) is {
-                      3 -> 1
-                      4 -> 0
-                      _ -> fail
-                    }
+                  expect fault_tag == 4
+                  let kind = when builtin.unconstr_index(witness) is {
+                    3 -> 1
+                    4 -> 0
+                    5 -> 2
+                    _ -> fail
                   }
                   let index = if kind == 1 {
                     5

@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { DaLibp2pProofProtocolHandlers } from "../src/da/libp2p/proof-protocols.js";
+import { computeDaPayloadRoots } from "../src/da/payload.js";
 import type {
   DaStoredPayloadRootSet,
   Header,
@@ -31,13 +32,15 @@ export const makeHandlers = async (): Promise<{
 
 export const saveVerifiedPayload = async ({
   store,
+  payload,
   payloadCbor,
   payloadHash,
   header,
   headerHash,
-  rootSummary = rootSummaryFromHeader(header),
+  rootSummary,
 }: {
   readonly store: PostgresCommitteeStore;
+  readonly payload: SDK.DaPayload;
   readonly payloadCbor: Buffer;
   readonly payloadHash: Buffer;
   readonly header: Header;
@@ -53,7 +56,7 @@ export const saveVerifiedPayload = async ({
     sourcePeerId: "libp2p-fixture",
     fetchedAt: "2026-06-21T00:00:00.000Z",
     verifiedAt: "2026-06-21T00:00:01.000Z",
-    rootSummary,
+    rootSummary: rootSummary ?? (await verifiedRootSummary(payload)),
     validationStatus: "verified",
   });
   await store.upsertStateQueueHeader(
@@ -87,15 +90,8 @@ export const stateQueueHeaderRecord = ({
   updatedAt: "2026-06-21T00:00:02.000Z",
 });
 
-export const rootSummaryFromHeader = (
-  header: Header,
-): DaStoredPayloadRootSet => ({
-  utxosRoot: header.utxosRoot,
-  withdrawalsRoot: header.withdrawalsRoot,
-  forcedTransactionsRoot: header.forcedTransactionsRoot,
-  transactionsRoot: header.transactionsRoot,
-  depositsRoot: header.depositsRoot,
-  transitionTraceRoot: header.transitionTraceRoot,
-  eventToStepRoot: header.eventToStepRoot,
-  validationTracesRoot: header.validationTracesRoot,
-});
+// A verified payload stores the roots computed from its body, whose
+// validation-trace root is the built one rather than the header's empty tree.
+export const verifiedRootSummary = (
+  payload: SDK.DaPayload,
+): Promise<DaStoredPayloadRootSet> => computeDaPayloadRoots(payload);

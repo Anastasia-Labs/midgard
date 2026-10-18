@@ -62,7 +62,10 @@ import {
   configuredOperatorEconomicsProgram,
   retireOperatorProgram,
 } from "../transactions/operators/exit.js";
-import { OperatorFundingShortfall } from "../transactions/operators/funding-preflight.js";
+import {
+  OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
+} from "../transactions/operators/funding-preflight.js";
 import {
   planTakeoverFrom,
   resolveOwnOperatorKeyHashProgram,
@@ -378,8 +381,9 @@ export const makeOperatorWatchdogTick = <R = never>(
           const error = result.left;
           let reason: string = "submission_failed";
           let citation = "";
-          if (error instanceof OperatorFundingShortfall) {
-            reason = "insufficient_funds";
+          const unfunded = unfundedSkipReason(error);
+          if (unfunded !== undefined) {
+            reason = unfunded;
           } else if (plan.kind === "ready") {
             // The failure counts against the citation, never against the
             // funds: a later event is no cheaper to cite.
@@ -414,6 +418,19 @@ export const makeOperatorWatchdogTick = <R = never>(
       }
     }
   });
+
+/**
+ * The skip reason of a failure that says the operator wallet cannot fund the
+ * submission yet (a shortfall, or a view with no input to offer), or
+ * `undefined` for a failure that counts against the citation. An unfunded
+ * tick is skipped and retried; it says nothing about the citation.
+ */
+export const unfundedSkipReason = (error: unknown): string | undefined =>
+  error instanceof OperatorFundingShortfall
+    ? "insufficient_funds"
+    : error instanceof OperatorWalletInputsEmpty
+      ? "wallet_inputs_empty"
+      : undefined;
 
 /** The tick without a strike gate, for callers that verified the deployment
  * manifest themselves. */

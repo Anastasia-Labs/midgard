@@ -452,7 +452,6 @@ describe("watcher canonical V1 rule bundle", () => {
       "scriptIntegrity",
       "cek",
       "valueAndMint",
-      "ledgerDelta",
       "terminal",
     ]);
   });

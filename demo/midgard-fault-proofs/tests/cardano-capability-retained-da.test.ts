@@ -32,8 +32,6 @@ import {
   LedgerRootMismatchError,
 } from "../src/ledger-at.js";
 import {
-  buildCountedRoot,
-  detectTransitionTraceFaults,
   eventKeyFingerprint,
   reconstructDaPayload,
 } from "../src/transition-trace/index.js";
@@ -140,7 +138,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         depositCount: 0n,
         totalEventCount: 2n,
         transitionStepCount: 2n,
-        validationTraceCount: 2n,
+        validationTraceCount: 0n,
       });
       expect(reconstruction.roots).toEqual({
         withdrawalsRoot: fixture.header.withdrawalsRoot,
@@ -335,7 +333,8 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     ).rejects.toMatchObject({ code: "rootMismatch" });
 
     // Declared counts are not committed by the header, so a tamper of them
-    // alone still reconstructs, against the header's counts.
+    // alone still reconstructs, against the header's counts. The declared
+    // validation_trace_count is the exception: it must match the body's trie.
     const declaredCounts = fixture.payload.block_body.counts;
     const declaredOnlyPayload: SDK.DaPayload = {
       ...fixture.payload,
@@ -343,7 +342,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         ...fixture.payload.block_body,
         counts: {
           ...declaredCounts,
-          validationTraceCount: declaredCounts.validationTraceCount + 1n,
+          transitionStepCount: declaredCounts.transitionStepCount + 1n,
         },
       },
     };
@@ -355,65 +354,9 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       expectedHeaderHash: fixture.headerHash,
       committedHeader: fixture.header,
     });
-    expect(declaredOnly.counts.validationTraceCount).toBe(
-      fixture.header.validationTraceCount,
+    expect(declaredOnly.counts.transitionStepCount).toBe(
+      fixture.header.transitionStepCount,
     );
-
-    // N2 authenticates the trie with the header count; the missing-run proof
-    // then establishes the absent source member without rejecting its evidence.
-    const fewerTraces = fixture.payload.block_body.validation_traces.slice(1);
-    const fewerTracesRoot = await buildCountedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      fewerTraces.map(([key, value]) => ({
-        key: Buffer.from(key, "hex"),
-        value: Buffer.from(value, "hex"),
-      })),
-    );
-    const fewerTracesHeader: SDK.Header = {
-      ...fixture.header,
-      validationTracesRoot: await Effect.runPromise(
-        SDK.commitCountedRootProgram({
-          domain: SDK.ROOT_DOMAINS.validationTraces,
-          phasRoot: fewerTracesRoot.phasRoot,
-          count: fixture.header.validationTraceCount,
-        }),
-      ),
-    };
-    const headerHash = await Effect.runPromise(
-      SDK.hashBlockHeader(fewerTracesHeader),
-    );
-    const payload: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        header_hash: headerHash,
-        header: fewerTracesHeader,
-        validation_traces: fewerTraces,
-      },
-    };
-    const missingRun = await reconstructDaPayload({
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-        mode: "identity",
-      }),
-      expectedHeaderHash: headerHash,
-      committedHeader: fewerTracesHeader,
-    });
-    expect(missingRun.counts.validationTraceCount).toBe(
-      fixture.header.validationTraceCount,
-    );
-    expect(await detectTransitionTraceFaults(missingRun)).toEqual([
-      expect.objectContaining({
-        kind: "sourceMembershipMismatch",
-        buildable: true,
-        fault: {
-          SourceMembershipMismatch: {
-            witness: {
-              SourceEventMissingValidationRun: expect.any(Object),
-            },
-          },
-        },
-      }),
-    ]);
 
     const alternateCanonicalCborHex = corpus.entries.find(
       ({ label }) => label === "mixed-size-balanced",

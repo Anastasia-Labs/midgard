@@ -86,6 +86,13 @@ export const constructor = (
   return found!;
 };
 
+export const constructors = (
+  definitionName: string,
+): readonly BlueprintConstructor[] =>
+  [...(definition(definitionName).anyOf ?? [])].sort(
+    (left, right) => left.index - right.index,
+  );
+
 export const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
 

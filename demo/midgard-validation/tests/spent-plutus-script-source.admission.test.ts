@@ -1,5 +1,6 @@
 import {
   encodeMidgardCekProgramMaterialSidecar,
+  ledgerEd25519SignatureReady,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
@@ -20,7 +21,7 @@ import {
 } from "@harmoniclabs/uplc";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   buildMidgardCanonicalCekProgram,
@@ -41,6 +42,10 @@ import {
   plutusV3ScriptWitness,
   TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /**
  * Phase B looks a purpose's script up among the reference scripts of every

@@ -2,9 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
+import {
+  ledgerEd25519SignatureReady,
+  midgardFieldCarriageBounds,
+} from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   admitMissingSignatureForcedArtifact,
@@ -32,6 +35,10 @@ import {
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 const setupScenario = (
   shape?: Parameters<typeof transactionFor>[0],
   signerIndex?: bigint,

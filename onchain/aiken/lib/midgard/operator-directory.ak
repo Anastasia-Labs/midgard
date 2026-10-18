@@ -6,8 +6,8 @@ use aiken_design_patterns/linked_list
 use cardano/address.{Address, from_verification_key}
 use cardano/assets.{AssetName, Lovelace, PolicyId, Value}
 use cardano/transaction.{
-  Input, Mint, NoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
-  Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Transaction,
 }
 use env
 use midgard/common/types.{Empty}
@@ -15,6 +15,8 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/settlement
 use midgard/state_queue
+use midgard/validation_case_v1.{LostDefenseReceiptV1}
+use midgard/validation_dispute_v1.{NeitherClaimValid}
 
 pub type SlashingReason {
   SlashOperatorForBadState { state_queue_redeemer_index: Int }
@@ -23,6 +25,9 @@ pub type SlashingReason {
     settlement_redeemer_index: Int,
     bounty_claimant: VerificationKeyHash,
   }
+  /// The operator lost a defense of a validation case: the input at
+  /// `receipt_index` holds its lost-defense receipt, which this slash burns.
+  SlashOperatorForLostDefense { receipt_index: Int }
 }
 
 /// The operator directory whose minting policy is slashing.
@@ -182,9 +187,8 @@ pub fn fraudulent_operator_slash_economics_are_exact_v1(
 /// The address a bounty for `claimant` is paid to: the enterprise address
 /// whose payment credential is the claimant key (F04 §2.3). This is the only
 /// place the bounty address rule is stated.
-fn pays_bounty_claimant(claimant: VerificationKeyHash) -> fn(Address) -> Bool {
-  let claimant_address = from_verification_key(claimant)
-  fn(address) { address == claimant_address }
+pub fn bounty_address_v1(claimant: VerificationKeyHash) -> Address {
+  from_verification_key(claimant)
 }
 
 /// The value and attachments of a bounty output: exactly `expected_reward`
@@ -200,36 +204,35 @@ fn bounty_payload_is_exact(output: Output, expected_reward: Lovelace) -> Bool {
 }
 
 /// Whether `output` is a bounty payment of exactly `expected_reward` to
-/// `claimant`.
+/// `payee`.
 pub fn bounty_output_is_exact_v1(
   output: Output,
-  claimant: VerificationKeyHash,
+  payee: Address,
   expected_reward: Lovelace,
 ) -> Bool {
   and {
-    pays_bounty_claimant(claimant)(output.address),
+    output.address == payee,
     bounty_payload_is_exact(output, expected_reward),
   }
 }
 
 /// Exact bounty routing for a slash that consumes an operator's bond (F04
-/// §2.3): exactly one output pays the claimant's bounty address, and that
+/// §2.3): exactly one output pays `payee`, and that
 /// output is exactly `expected_reward` lovelace, ADA only, with no datum and
 /// no reference script. The slashed node pays this output and the fee that
 /// `slash_fraudulent_operator_and_get_info` (or the duplicate slash) pins,
 /// given that the slash is the only one in its transaction
 /// (`other_directory_is_untouched_v1`), so one lovelace either way is taken
-/// from the treasury's share of the bond or from the claimant's.
+/// from the treasury's share of the bond or from the payee's.
 ///
-/// No output to the claimant is accepted only while `expected_reward` is zero.
+/// No output to the payee is accepted only while `expected_reward` is zero.
 /// Every release profile compiles a nonzero reward.
 pub fn bounty_routing_is_exact_v1(
   outputs: List<Output>,
-  claimant: VerificationKeyHash,
+  payee: Address,
   expected_reward: Lovelace,
 ) -> Bool {
-  let pays_claimant = pays_bounty_claimant(claimant)
-  when list.filter(outputs, fn(output) { pays_claimant(output.address) }) is {
+  when list.filter(outputs, fn(output) { output.address == payee }) is {
     [] -> (expected_reward == 0)?
     [reward_output, ..other_claimant_outputs] -> and {
         list.is_empty(other_claimant_outputs)?,
@@ -359,12 +362,17 @@ pub fn validate_transferred_operator_insertion(
 /// - Correctness of the operator PKH against the removed node key.
 /// - Depending on slashing reason, cross validates with state queue or
 ///   settlement contract. A bad-settlement slash also requires the bounty
-///   claimant's signature and pays it exactly the fraud-prover reward.
+///   claimant's signature and pays it exactly the fraud-prover reward. A
+///   lost-defense slash burns the operator's receipt, held under
+///   `lost_defense_receipt_policy_id`, and pays the fraud-prover reward to the
+///   receipt's `bounty_claimant`, or to the treasury when neither claim of
+///   the thread was valid.
 ///
 /// Returns various info extracted from the slashing arguments, list node
 /// removal, and script context (`tx`).
 pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
+  lost_defense_receipt_policy_id: PolicyId,
   slashing_directory: SlashingDirectory,
   slashing_arguments: SlashingArguments,
   tx: Transaction,
@@ -521,9 +529,51 @@ pub fn slash_fraudulent_operator_and_get_info(
       // 8b-ii. Exactly `env.fraud_prover_reward` must reach the claimant.
       bounty_routing_is_exact_v1(
         outputs,
-        bounty_claimant,
+        bounty_address_v1(bounty_claimant),
         env.fraud_prover_reward,
       )
+    }
+    SlashOperatorForLostDefense { receipt_index } -> {
+      // 8c. The receipt input holds the receipt token named by its datum.
+      //     A receipt token is minted only by a thread close, into one output
+      //     with this datum, and that output is spent only when the token is
+      //     burned, so the token authenticates the datum.
+      expect
+          Some(Input {
+            output: Output {
+              value: receipt_value,
+              datum: InlineDatum(receipt_data),
+              ..
+            },
+            ..
+          })
+        = list.at(inputs, receipt_index)
+      expect receipt: LostDefenseReceiptV1 = receipt_data
+      let receipt_name = validation_case_v1.receipt_token_name(
+        receipt.case_id,
+        receipt.defender_vkh,
+      )
+      and {
+        assets.quantity_of(
+          receipt_value,
+          lost_defense_receipt_policy_id,
+          receipt_name,
+        ) == 1,
+        // 8c-i. The receipt names the slashed operator, and is burned.
+        receipt.defender_vkh == slashed_operator,
+        assets.quantity_of(mint, lost_defense_receipt_policy_id, receipt_name) == -1,
+        // 8c-ii. Exactly `env.fraud_prover_reward` reaches the receipt's
+        //        payee.
+        bounty_routing_is_exact_v1(
+          outputs,
+          if receipt.outcome == NeitherClaimValid {
+            validation_case_v1.treasury_address
+          } else {
+            bounty_address_v1(receipt.bounty_claimant)
+          },
+          env.fraud_prover_reward,
+        ),
+      }
     }
   }
 }
