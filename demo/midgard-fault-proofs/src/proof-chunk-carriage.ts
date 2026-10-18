@@ -9,7 +9,6 @@
  */
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   ABSENT_VALUE_HASH,
@@ -95,64 +94,26 @@ export const walletInputsExcludingChunks = ({
   );
 
 /**
- * The chunks' positions in the ledger-canonical reference-input order, which is
- * the order the on-chain `tx.reference_inputs` presents and therefore the order
- * the step's redeemer must name.
- *
- * Derived from the builder's own reference-input list before the transaction is
- * balanced; `requireBuiltChunkReferenceIndices` re-derives it from the final
- * builder context to prove the two agree.
+ * The chunks' positions in the built transaction's reference inputs: the order
+ * the on-chain `tx.reference_inputs` presents and therefore the order the
+ * step's redeemer must name. Only the builder context knows the final set.
  */
-export const derivedChunkReferenceIndices = ({
-  referenceInputs,
-  chunks,
-  label,
-}: {
-  readonly referenceInputs: readonly UTxO[];
-  readonly chunks: readonly PublishedProofChunk[];
-  readonly label: string;
-}): bigint[] => {
-  const canonical = [...referenceInputs].sort(compareOutRefs);
-  return chunks.map((chunk) => {
-    const index = canonical.findIndex(
-      (utxo) =>
-        utxo.txHash === chunk.utxo.txHash &&
-        utxo.outputIndex === chunk.utxo.outputIndex,
-    );
-    if (index < 0) {
-      throw new Error(
-        `Published proof chunk ${chunk.outRef} is not among the ${label} reference inputs.`,
-      );
-    }
-    return BigInt(index);
-  });
-};
-
-/** Re-derives the chunk order from the built transaction and requires a match. */
-export const requireBuiltChunkReferenceIndices = ({
+export const builtChunkReferenceIndices = ({
   ctx,
   chunks,
-  derived,
   label,
 }: {
   readonly ctx: RedeemerContext;
   readonly chunks: readonly PublishedProofChunk[];
-  readonly derived: readonly bigint[];
   readonly label: string;
-}): void => {
-  for (const [position, chunk] of chunks.entries()) {
-    const builtIndex = requireReferenceInputIndex(
+}): bigint[] =>
+  chunks.map((chunk) =>
+    requireReferenceInputIndex(
       ctx,
       chunk.utxo,
       `${label} published proof chunk`,
-    );
-    if (builtIndex !== derived[position]) {
-      throw new Error(
-        `Published proof chunk ${chunk.outRef} landed at reference-input index ${builtIndex.toString()}, not the derived ${String(derived[position])}.`,
-      );
-    }
-  }
-};
+    ),
+  );
 
 /**
  * The merkelized verifier's claim redeemer for one membership opening.

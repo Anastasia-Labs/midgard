@@ -1,13 +1,16 @@
-import { type UTxO } from "@lucid-evolution/lucid";
+import {
+  requireInputIndex,
+  requireReferenceInputIndex,
+} from "@al-ft/midgard-sdk";
+import { type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 export const same = (a: UTxO, b: UTxO) =>
   a.txHash === b.txHash && a.outputIndex === b.outputIndex;
 
-export const index = (inputs: readonly UTxO[], target: UTxO) => {
-  const sorted = [...inputs].sort(
-    (a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,
-  );
-  const result = sorted.findIndex((u) => same(u, target));
-  if (result < 0) throw new Error("Missing transaction input");
-  return BigInt(result);
-};
+/** Position of a spent UTxO in the builder's final transaction. */
+export const inputAt = (ctx: RedeemerContext, utxo: UTxO) =>
+  requireInputIndex(ctx, utxo, "history fixture");
+
+/** Position of a read UTxO in the builder's final transaction. */
+export const referenceAt = (ctx: RedeemerContext, utxo: UTxO) =>
+  requireReferenceInputIndex(ctx, utxo, "history fixture");

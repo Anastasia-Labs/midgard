@@ -171,8 +171,8 @@ export const resolveChunkReferenceIndices = ({
   // order they were collected in, which is a defect that appears at random.
   //
   // The caller must therefore pass the transaction's *complete* reference-input
-  // set. For a certification that is exactly the chunks, which is why the
-  // builder below can pass them directly.
+  // set: the certification builder passes `ctx.referenceInputs`, the chunks
+  // together with the policy's reference script.
   const ordered = [...referenceInputs].sort(compareOutRefs);
   // Matched positions are consumed. Two chunks of one preimage can be
   // byte-identical — the §8.4 split is positional, not content-deduplicated, so

@@ -1,4 +1,3 @@
-import { applyParamsToScript } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +5,7 @@ import {
   getCompiledScript,
   measureBlueprintValidatorBytes,
 } from "../src/runtime.js";
+import { applyExpectedScriptParams } from "./support/expected-parameter-application.js";
 
 const title = "example.main.spend";
 const compiledCode = "49480100002221200101";
@@ -26,7 +26,7 @@ describe("runtime blueprint construction", () => {
   it("preserves application bytes while keeping raw measurement separate from deployment", () => {
     expect(
       applyBlueprintParamsExact({ blueprint, title, params: [policy] }),
-    ).toBe(applyParamsToScript(compiledCode, [policy]));
+    ).toBe(applyExpectedScriptParams(compiledCode, [policy]));
     expect(
       measureBlueprintValidatorBytes({
         blueprint,

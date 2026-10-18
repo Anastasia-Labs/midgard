@@ -24,6 +24,7 @@ import {
   credentialToAddress,
   Data,
   mintingPolicyToId,
+  type RedeemerContext,
   scriptFromNative,
   toUnit,
   type UTxO,
@@ -36,11 +37,11 @@ import {
   type AdmissionFault,
   awaitProtection,
   candidateBounds,
-  index,
   records,
   type RetirementFault,
   setup,
 } from "./submit-init-emulator-event-history-list.setup.js";
+import { inputAt, referenceAt } from "./support/emulator/history-pair.index.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 /** Runs one list journey and returns its harness for follow-on checks. */
@@ -384,7 +385,6 @@ export const runJourney = async (
   const rootUtxo = beforeInsert.anchor.utxo;
   const root = Data.from(rootUtxo.datum!, EventHistoryNode);
   const b = h.bounds();
-  const inputs = [rootUtxo, ...(await h.funding())];
   const refs = [h.hub, h.script];
   const filler: EventHistoryNode = {
     position: { Key: [h.key] },
@@ -397,15 +397,13 @@ export const runJourney = async (
     await h.lucid
       .newTx()
       .collectFrom(await h.funding())
-      .collectFrom([rootUtxo], Data.to(index(inputs, rootUtxo)))
+      .collectFrom([rootUtxo], (ctx) => Data.to(inputAt(ctx, rootUtxo)))
       .readFrom(refs)
-      .withdraw(
-        h.applied.rewardAddress,
-        0n,
+      .withdraw(h.applied.rewardAddress, 0n, (ctx) =>
         Data.to(
           new Constr(1, [
-            index(refs, h.hub),
-            new Constr(0, [index(inputs, rootUtxo), 0n, 1n]),
+            referenceAt(ctx, h.hub),
+            new Constr(0, [inputAt(ctx, rootUtxo), 0n, 1n]),
           ]),
         ),
       )
@@ -534,16 +532,15 @@ export const runJourney = async (
     fundingFault === "withdrawal-refund"
   )
     orderLovelace = 10_000_000n;
-  const promotionInputs = [fillerUtxo, h.eventNonce, ...(await h.funding())];
   const promotionRefs = [
     h.hub,
     h.script,
     ...(externalRef === undefined ? [] : [externalRef]),
   ];
-  const extIndex =
+  const extIndex = (ctx: RedeemerContext) =>
     externalRef === undefined
       ? new Constr(1, [])
-      : new Constr(0, [index(promotionRefs, externalRef)]);
+      : new Constr(0, [referenceAt(ctx, externalRef)]);
   const malformedKey =
     admissionFault === "short-key"
       ? h.key.slice(0, 62)
@@ -571,20 +568,18 @@ export const runJourney = async (
     let tx = h.lucid
       .newTx()
       .collectFrom([...(await h.funding()), h.eventNonce])
-      .collectFrom([fillerUtxo], Data.to(index(promotionInputs, fillerUtxo)))
+      .collectFrom([fillerUtxo], (ctx) => Data.to(inputAt(ctx, fillerUtxo)))
       .readFrom(promotionRefs)
-      .withdraw(
-        h.applied.rewardAddress,
-        0n,
+      .withdraw(h.applied.rewardAddress, 0n, (ctx) =>
         Data.to(
           new Constr(1, [
-            index(promotionRefs, h.hub),
+            referenceAt(ctx, h.hub),
             new Constr(2, [
-              index(promotionInputs, fillerUtxo),
+              inputAt(ctx, fillerUtxo),
               0n,
               1n,
-              index(promotionInputs, h.eventNonce),
-              extIndex,
+              inputAt(ctx, h.eventNonce),
+              extIndex(ctx),
             ]),
           ]),
         ),
@@ -653,12 +648,11 @@ export const runJourney = async (
       "reclaim-rejected-data",
       await h.lucid
         .newTx()
-        .collectFrom(
-          [externalRef],
+        .collectFrom([externalRef], (ctx) =>
           Data.to(
             new Constr(0, [
-              index(reclaimRefs, fillerUtxo),
-              index(reclaimRefs, h.hub),
+              referenceAt(ctx, fillerUtxo),
+              referenceAt(ctx, h.hub),
             ]),
           ),
         )
@@ -711,7 +705,6 @@ export const runJourney = async (
   awaitProtection(h.emulator, node.protected_until);
   const continuedBounds = h.bounds();
   const successor = "ff".repeat(32);
-  const continuationInputs = [order, ...(await h.funding())];
   const continuationRefs = [h.hub, h.script];
   const continuedNode: EventHistoryNode = {
     ...node,
@@ -729,15 +722,13 @@ export const runJourney = async (
     await h.lucid
       .newTx()
       .collectFrom(await h.funding())
-      .collectFrom([order], Data.to(index(continuationInputs, order)))
+      .collectFrom([order], (ctx) => Data.to(inputAt(ctx, order)))
       .readFrom(continuationRefs)
-      .withdraw(
-        h.applied.rewardAddress,
-        0n,
+      .withdraw(h.applied.rewardAddress, 0n, (ctx) =>
         Data.to(
           new Constr(1, [
-            index(continuationRefs, h.hub),
-            new Constr(0, [index(continuationInputs, order), 0n, 1n]),
+            referenceAt(ctx, h.hub),
+            new Constr(0, [inputAt(ctx, order), 0n, 1n]),
           ]),
         ),
       )

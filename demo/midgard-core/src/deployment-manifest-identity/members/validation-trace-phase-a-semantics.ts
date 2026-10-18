@@ -13,8 +13,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_advance_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "17"],
         ["semanticResolvers", "10"],
+        ["steps", "17"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsItemSemantic: {
@@ -27,8 +27,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "18"],
         ["semanticResolvers", "11"],
+        ["steps", "18"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsTokenHeadSemantic: {
@@ -41,8 +41,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_token_head_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "19"],
         ["semanticResolvers", "12"],
+        ["steps", "19"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic:
@@ -57,8 +57,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_container_frame_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "20"],
           ["semanticResolvers", "13"],
+          ["steps", "20"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic:
@@ -73,8 +73,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_empty_container_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "21"],
           ["semanticResolvers", "14"],
+          ["steps", "21"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic:
@@ -89,8 +89,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_container_frame_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "22"],
           ["semanticResolvers", "15"],
+          ["steps", "22"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic:
@@ -105,8 +105,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_empty_container_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "23"],
           ["semanticResolvers", "16"],
+          ["steps", "23"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic: {
@@ -120,8 +120,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "24"],
         ["semanticResolvers", "17"],
+        ["steps", "24"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic:
@@ -136,8 +136,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_membership_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "25"],
           ["semanticResolvers", "18"],
+          ["steps", "25"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic: {
@@ -151,8 +151,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_empty_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "26"],
         ["semanticResolvers", "19"],
+        ["steps", "26"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic:
@@ -167,8 +167,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_below_first_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "27"],
           ["semanticResolvers", "20"],
+          ["steps", "27"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic:
@@ -183,8 +183,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_above_last_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "28"],
           ["semanticResolvers", "21"],
+          ["steps", "28"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic: {
@@ -198,8 +198,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_between_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "29"],
         ["semanticResolvers", "22"],
+        ["steps", "29"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsFrameSemantic: {
@@ -212,8 +212,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "30"],
         ["semanticResolvers", "23"],
+        ["steps", "30"],
       ],
     },
     validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic: {
@@ -227,8 +227,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "31"],
         ["semanticResolvers", "24"],
+        ["steps", "31"],
       ],
     },
     validationTraceDisputePhaseAScriptPreconditionsItemSemantic: {
@@ -241,8 +241,8 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_item_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "32"],
         ["semanticResolvers", "25"],
+        ["steps", "32"],
       ],
     },
   },

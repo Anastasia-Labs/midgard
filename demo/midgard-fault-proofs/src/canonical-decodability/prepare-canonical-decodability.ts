@@ -34,7 +34,12 @@ export type PreparedCanonicalDecodability = {
   readonly committedPreimage: string;
   readonly committedFieldHash: string;
   readonly evidence: CanonicalDecodabilityEvidence;
-  readonly claim: CommittedFieldClaim;
+  /**
+   * The wire claim over the authenticated field. Pass the §8 carriage the
+   * builder resolved against the final reference inputs; omit it only for an
+   * inline-sized preimage.
+   */
+  readonly claimWith: (carriage?: FieldCarriage) => CommittedFieldClaim;
   readonly step02State: CanonicalDecodabilityStep02State;
 };
 
@@ -137,18 +142,12 @@ export const prepareCanonicalDecodability = ({
   fieldIndex,
   committedPreimage,
   witnessSet,
-  carriage,
 }: {
   readonly badTxId: string;
   readonly nativeTxCompactCbor: string;
   readonly fieldIndex: number;
   readonly committedPreimage: Uint8Array;
   readonly witnessSet?: NativeTxWitnessSetCompact;
-  /**
-   * Exact §8 carriage resolved against the step transaction's complete
-   * reference-input set. Omit only for an inline-sized preimage.
-   */
-  readonly carriage?: FieldCarriage;
 }): PreparedCanonicalDecodability => {
   const normalizedBadTxId = requireHash32(badTxId, "bad transaction id");
   if (
@@ -195,14 +194,6 @@ export const prepareCanonicalDecodability = ({
     ...(witnessSet === undefined ? {} : { witnessSet }),
   });
   const preimage = Buffer.from(committedPreimage);
-  if (
-    carriage === undefined &&
-    preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
-  ) {
-    throw canonicalDecodabilitySubmitError(
-      `committed preimage is ${preimage.length.toString()} bytes, above the ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()}-byte inline frontier; publish a RawUtxo/Certified carriage before submission.`,
-    );
-  }
   const carriedHash = computeHash32(preimage).toString("hex");
   if (carriedHash !== committedFieldHash) {
     throw canonicalDecodabilitySubmitError(
@@ -220,22 +211,32 @@ export const prepareCanonicalDecodability = ({
       `field ${fieldIndex.toString()} has verdict 0 (grammatical); a valid block cannot be challenged.`,
     );
   }
-  const resolvedCarriage =
-    carriage ?? ({ Inline: { preimage: preimage.toString("hex") } } as const);
-  const claim: CommittedFieldClaim = isMidgardWitnessSetField(fieldIndex)
-    ? {
-        WitnessFieldClaim: {
-          field_index: BigInt(fieldIndex),
-          witness_set: witnessSet!,
-          carriage: resolvedCarriage,
-        },
-      }
-    : {
-        BodyFieldClaim: {
-          field_index: BigInt(fieldIndex),
-          carriage: resolvedCarriage,
-        },
-      };
+  const claimWith = (carriage?: FieldCarriage): CommittedFieldClaim => {
+    if (
+      carriage === undefined &&
+      preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
+    ) {
+      throw canonicalDecodabilitySubmitError(
+        `committed preimage is ${preimage.length.toString()} bytes, above the ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()}-byte inline frontier; publish a RawUtxo/Certified carriage before submission.`,
+      );
+    }
+    const resolvedCarriage =
+      carriage ?? ({ Inline: { preimage: preimage.toString("hex") } } as const);
+    return isMidgardWitnessSetField(fieldIndex)
+      ? {
+          WitnessFieldClaim: {
+            field_index: BigInt(fieldIndex),
+            witness_set: witnessSet!,
+            carriage: resolvedCarriage,
+          },
+        }
+      : {
+          BodyFieldClaim: {
+            field_index: BigInt(fieldIndex),
+            carriage: resolvedCarriage,
+          },
+        };
+  };
   return Object.freeze({
     badTxId: normalizedBadTxId,
     nativeTxCompactCbor: normalizedCompactCbor,
@@ -243,7 +244,7 @@ export const prepareCanonicalDecodability = ({
     committedPreimage: preimage.toString("hex"),
     committedFieldHash,
     evidence,
-    claim,
+    claimWith,
     step02State: canonicalDecodabilityStep02StateFromEvidence(evidence),
   });
 };

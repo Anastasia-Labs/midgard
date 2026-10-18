@@ -231,17 +231,6 @@ export const submitSpendInputSignerMissingStep04 = async ({
     family: "spend-input-signer-missing",
     stepIndex,
   });
-  const referenceInputs = [
-    ...carriageUtxos,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    stepReference,
-  ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "spend-input-signer-missing scan witnesses",
-  });
   const nextDatum = terminal
     ? Data.to(
         {
@@ -272,6 +261,12 @@ export const submitSpendInputSignerMissingStep04 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "spend-input-signer-missing scan witnesses",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

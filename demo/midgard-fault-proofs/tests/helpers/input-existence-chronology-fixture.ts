@@ -347,7 +347,9 @@ export const inputExistenceChronologyFixture = async (
     forcedTransactionCount: counts.forcedTransactionCount,
     totalEventCount: counts.totalEventCount,
     transitionStepCount: counts.transitionStepCount,
-    validationTraceCount: counts.validationTraceCount,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTraceCount: 0n,
     utxosRoot: await ledgerEntriesRoot([...entries.values()]),
     withdrawalsRoot: await root(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
     forcedTransactionsRoot: await root(
@@ -356,10 +358,7 @@ export const inputExistenceChronologyFixture = async (
     ),
     transitionTraceRoot: await root(SDK.ROOT_DOMAINS.transitionTrace, trace),
     eventToStepRoot: await root(SDK.ROOT_DOMAINS.eventToStep, events),
-    validationTracesRoot: await root(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validations,
-    ),
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
@@ -383,7 +382,7 @@ export const inputExistenceChronologyFixture = async (
         forcedTransactionCount: header.forcedTransactionCount,
         totalEventCount: header.totalEventCount,
         transitionStepCount: header.transitionStepCount,
-        validationTraceCount: header.validationTraceCount,
+        validationTraceCount: counts.validationTraceCount,
       },
     },
   };

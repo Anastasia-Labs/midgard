@@ -12,8 +12,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_non_output_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "39"],
         ["semanticResolvers", "32"],
+        ["steps", "39"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofBeginSemantic: {
@@ -27,8 +27,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_begin_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "40"],
         ["semanticResolvers", "33"],
+        ["steps", "40"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofStepSemantic: {
@@ -42,8 +42,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_step_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "41"],
         ["semanticResolvers", "34"],
+        ["steps", "41"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic: {
@@ -57,8 +57,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_finalize_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "42"],
         ["semanticResolvers", "35"],
+        ["steps", "42"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofFinishSemantic: {
@@ -72,8 +72,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "43"],
         ["semanticResolvers", "36"],
+        ["steps", "43"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroBeginSemantic: {
@@ -87,8 +87,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_begin_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "44"],
         ["semanticResolvers", "37"],
+        ["steps", "44"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroFinishSemantic: {
@@ -102,8 +102,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "45"],
         ["semanticResolvers", "38"],
+        ["steps", "45"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic: {
@@ -117,8 +117,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_block_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "46"],
         ["semanticResolvers", "39"],
+        ["steps", "46"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic: {
@@ -132,8 +132,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_advance_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "47"],
         ["semanticResolvers", "40"],
+        ["steps", "47"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic: {
@@ -147,8 +147,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_terminal_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "48"],
         ["semanticResolvers", "41"],
+        ["steps", "48"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineMismatchSemantic: {
@@ -162,8 +162,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_mismatch_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "49"],
         ["semanticResolvers", "42"],
+        ["steps", "49"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic: {
@@ -177,8 +177,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_native_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "50"],
         ["semanticResolvers", "43"],
+        ["steps", "50"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic: {
@@ -192,8 +192,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_effectful_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "51"],
         ["semanticResolvers", "44"],
+        ["steps", "51"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineMissingSemantic: {
@@ -207,8 +207,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_missing_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "52"],
         ["semanticResolvers", "45"],
+        ["steps", "52"],
       ],
     },
     validationTraceDisputeScriptSourcesStageOneFinishSemantic: {
@@ -222,8 +222,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "53"],
         ["semanticResolvers", "46"],
+        ["steps", "53"],
       ],
     },
     validationTraceDisputeScriptSourcesStageOneRedeemerSemantic: {
@@ -237,8 +237,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "54"],
         ["semanticResolvers", "47"],
+        ["steps", "54"],
       ],
     },
     validationTraceDisputeScriptSourcesStageElevenFinishSemantic: {
@@ -252,8 +252,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eleven_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "55"],
         ["semanticResolvers", "48"],
+        ["steps", "55"],
       ],
     },
     validationTraceDisputeScriptSourcesStageElevenSourceSemantic: {
@@ -267,8 +267,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eleven_source_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "56"],
         ["semanticResolvers", "49"],
+        ["steps", "56"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTwelveFinishSemantic: {
@@ -282,8 +282,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_twelve_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "57"],
         ["semanticResolvers", "50"],
+        ["steps", "57"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic: {
@@ -297,8 +297,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_twelve_redeemer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "58"],
         ["semanticResolvers", "51"],
+        ["steps", "58"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMissingSemantic: {
@@ -312,8 +312,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_missing_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "59"],
         ["semanticResolvers", "52"],
+        ["steps", "59"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMismatchSemantic: {
@@ -327,8 +327,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_mismatch_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "60"],
         ["semanticResolvers", "53"],
+        ["steps", "60"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMatchSemantic: {
@@ -342,8 +342,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "61"],
         ["semanticResolvers", "54"],
+        ["steps", "61"],
       ],
     },
     validationTraceDisputeScriptSourcesStageEightFinishSemantic: {
@@ -357,8 +357,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eight_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "62"],
         ["semanticResolvers", "55"],
+        ["steps", "62"],
       ],
     },
     validationTraceDisputeScriptSourcesStageEightPurposeSemantic: {
@@ -372,8 +372,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eight_purpose_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "63"],
         ["semanticResolvers", "56"],
+        ["steps", "63"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenObserverSemantic: {
@@ -387,8 +387,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "64"],
         ["semanticResolvers", "57"],
+        ["steps", "64"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenReceiveSemantic: {
@@ -402,8 +402,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_receive_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "65"],
         ["semanticResolvers", "58"],
+        ["steps", "65"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenFinishSemantic: {
@@ -417,8 +417,8 @@ export const validationTraceScriptSourcesSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "66"],
         ["semanticResolvers", "59"],
+        ["steps", "66"],
       ],
     },
   });

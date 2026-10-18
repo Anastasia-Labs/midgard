@@ -217,17 +217,6 @@ export const submitMissingSignatureForcedAction = async (
           label: "missing-signature forced field",
         });
   if (stage === "forcedWitness") {
-    // Finalize's builder has no reference-layout callback. Its stable layout is
-    // carriage, step, certificate, followed by the two mint references.
-    const opening = fieldOpening([
-      ...carriageUtxos,
-      referenceScriptUtxo,
-      ...extraReferenceInputs,
-      ...[
-        params.witnessReferenceScripts?.computationThreadMint,
-        params.witnessReferenceScripts?.fraudProofMint,
-      ].filter((utxo): utxo is UTxO => utxo !== undefined),
-    ]);
     const result = await submitLinearFaultFinalize({
       lucid,
       family: "missing-signature forced",
@@ -239,15 +228,14 @@ export const submitMissingSignatureForcedAction = async (
       threadUtxo,
       threadToken,
       spendRedeemerSchema: MissingSignatureForcedWitnessSpendRedeemer,
-      buildFamilyArgs: ({
-        inputIndex,
-        outputIndex,
-        fraudProofMintRedeemerIndex,
-      }) => ({
+      buildFamilyArgs: (
+        { inputIndex, outputIndex, fraudProofMintRedeemerIndex },
+        ctx,
+      ) => ({
         input_index: inputIndex,
         output_index: outputIndex,
         fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-        addr_tx_wits_opening: opening,
+        addr_tx_wits_opening: fieldOpening(ctx.referenceInputs),
         witness_index: witnessIndex === -1n ? 0n : witnessIndex,
       }),
       referenceScriptUtxo,

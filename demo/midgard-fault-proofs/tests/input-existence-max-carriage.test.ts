@@ -179,13 +179,6 @@ describe("registered maximum event/transition counted membership", () => {
           ),
           shape,
         );
-        const validationEntry =
-          small.reconstruction.payload.block_body.validation_traces[0]!;
-        const validationProof = proofFor(
-          Buffer.from(validationEntry[0], "hex"),
-          Buffer.from(validationEntry[1], "hex"),
-          shape,
-        );
         const counted = (domain: SDK.RootDomain, phasRoot: string) =>
           commitCountedRoot({ domain, phasRoot, count: MODEL_COUNT });
         const header: SDK.Header = {
@@ -193,7 +186,8 @@ describe("registered maximum event/transition counted membership", () => {
           l2TransactionCount: MODEL_COUNT,
           totalEventCount: MODEL_COUNT,
           transitionStepCount: MODEL_COUNT,
-          validationTraceCount: MODEL_COUNT,
+          // The header pins the validation-trace pair to the empty tree.
+          validationTraceCount: 0n,
           transactionsRoot: await counted(
             SDK.ROOT_DOMAINS.transactionsV1,
             sourceProof.transactionsPhasRoot,
@@ -206,10 +200,7 @@ describe("registered maximum event/transition counted membership", () => {
             SDK.ROOT_DOMAINS.transitionTrace,
             traceProof.transactionsPhasRoot,
           ),
-          validationTracesRoot: await counted(
-            SDK.ROOT_DOMAINS.validationTraces,
-            validationProof.transactionsPhasRoot,
-          ),
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         };
         const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
           "hex",

@@ -64,7 +64,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { faultProofFieldCarriage } from "../src/field-opening.js";
-import { requireLinearFaultReferenceScript } from "../src/linear-fault-family.js";
 import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/actuator.js";
 import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
 import {
@@ -390,34 +389,22 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
         ...common,
         planned,
       });
-      const stepReference = requireLinearFaultReferenceScript({
-        utxo: references[1],
-        expectedScriptHash: contracts.steps[1].spendingScriptHash,
-        family: "mint-declared-asset-limit",
-        stepIndex: 1,
-      });
-      const opening = fieldOpeningForField({
-        fieldIndex: 5,
-        nativeTxCompactCbor: input.openingCompactCbor ?? compactCbor,
-        carriage: faultProofFieldCarriage({
-          planned,
-          referenceInputs: [
-            ...carriage.carriageUtxos,
-            stepReference,
-            ...(carriage.certificateUtxo === undefined
-              ? []
-              : [carriage.certificateUtxo]),
-          ],
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: "mint declared step-02",
-        }),
-      });
       const { openingCompactCbor: _substituted, ...wire } = input;
       return await submitMintDeclaredAssetLimitStep02Raw({
         ...common,
         threadOutRef,
         evidence,
-        opening,
+        openingFor: (ctx) =>
+          fieldOpeningForField({
+            fieldIndex: 5,
+            nativeTxCompactCbor: input.openingCompactCbor ?? compactCbor,
+            carriage: faultProofFieldCarriage({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+              label: "mint declared step-02",
+            }),
+          }),
         ...carriage,
         referenceScriptUtxo: references[1],
         ...wire,
@@ -697,25 +684,20 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
           ...common,
           planned: zPlanned,
         });
-        const stepReference = requireLinearFaultReferenceScript({
-          utxo: references[1],
-          expectedScriptHash: contracts.steps[1].spendingScriptHash,
-          family: "mint-declared-asset-limit",
-          stepIndex: 1,
-        });
         return await submitMintDeclaredAssetLimitStep02Raw({
           ...common,
           threadOutRef: yStep01.nextThreadOutRef,
           evidence: yEvidence,
-          opening: fieldOpeningForField({
-            fieldIndex: 5,
-            nativeTxCompactCbor: y.compactCbor,
-            carriage: faultProofFieldCarriage({
-              planned: zPlanned,
-              referenceInputs: [...zResolved.carriageUtxos, stepReference],
-              label: "mint declared substituted carriage",
+          openingFor: (ctx) =>
+            fieldOpeningForField({
+              fieldIndex: 5,
+              nativeTxCompactCbor: y.compactCbor,
+              carriage: faultProofFieldCarriage({
+                planned: zPlanned,
+                referenceInputs: ctx.referenceInputs,
+                label: "mint declared substituted carriage",
+              }),
             }),
-          }),
           ...zResolved,
           ...yWire,
           referenceScriptUtxo: references[1],

@@ -14,6 +14,7 @@ import {
 import {
   type BuildTxWithRedeemer,
   Data,
+  type RedeemerContext,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -118,7 +119,7 @@ export const makeStep04SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  tx2SpendInputsOpening,
+  tx2SpendInputsOpeningFor,
   doubleSpentInputIndex,
   onLayout,
 }: {
@@ -127,7 +128,8 @@ export const makeStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly tx2SpendInputsOpening: FieldOpening;
+  /** Resolves the opening's carriage against the built reference inputs. */
+  readonly tx2SpendInputsOpeningFor: (ctx: RedeemerContext) => FieldOpening;
   readonly doubleSpentInputIndex: bigint;
   readonly onLayout: (layout: Step04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -162,7 +164,7 @@ export const makeStep04SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-            tx2_spend_inputs_opening: tx2SpendInputsOpening,
+            tx2_spend_inputs_opening: tx2SpendInputsOpeningFor(ctx),
             double_spent_input_index: doubleSpentInputIndex,
           },
         ],

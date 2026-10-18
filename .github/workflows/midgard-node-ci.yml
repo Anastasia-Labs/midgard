@@ -386,6 +386,13 @@ jobs:
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
+      # The withdrawal-mistag node-agreement verdicts: one JSON vector file the
+      # fault-proofs twins load and the generator renders into the step-03 and
+      # step-04 Aiken tests. Without this step an edited Aiken vector passes
+      # both suites while the node and the chain no longer judge the same case.
+      - name: Check withdrawal-mistag node-agreement vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:withdrawal-mistag-agreement
       # The canonical Data corpus: every accepted span bound to the summary the
       # TypeScript traverse twin computes, every other span to the traverse
       # stage that refuses it; the generated Aiken module runs the honest

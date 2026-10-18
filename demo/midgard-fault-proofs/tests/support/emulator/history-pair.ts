@@ -9,7 +9,7 @@ import "./protocol-parameters.js";
 import "./history-pair.index.js";
 import "./history-pair.setup-history-pair.js";
 import "./history-pair.promote-history-pair.js";
-export { index, same } from "./history-pair.index.js";
+export { inputAt, referenceAt, same } from "./history-pair.index.js";
 export {
   historyPairPayloads,
   insertHistoryFillerAfter,

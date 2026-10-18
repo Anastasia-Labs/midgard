@@ -24,6 +24,7 @@ import {
   credentialToAddress,
   Data,
   fromText,
+  type RedeemerContext,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
@@ -33,8 +34,8 @@ import {
   keyValuePhasProof,
 } from "../src/transition-trace/phas.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { inputAt, referenceAt } from "./support/emulator/history-pair.index.js";
 import {
-  index,
   promoteHistoryPair,
   setupHistoryPair,
 } from "./support/emulator/history-pair.js";
@@ -68,7 +69,6 @@ const reclaimBoth = async (
       nodes.find((u) => u.assets[h.applied[i]!.policyId + h.keys[i]!] === 1n)!,
   );
   const funding = await h.funding();
-  const inputs = [...funding, ...roots, ...fillers];
   const refs = [h.hub, ...h.scripts];
   const b = h.bounds();
   let tx = h.lucid
@@ -82,13 +82,13 @@ const reclaimBoth = async (
     const a = h.applied[i]!;
     const root = roots[i]!;
     const filler = fillers[i]!;
-    const operation: EventHistoryOperation = {
+    const operationFor = (ctx: RedeemerContext): EventHistoryOperation => ({
       ReclaimFiller: {
-        predecessor_input_index: index(inputs, root),
+        predecessor_input_index: inputAt(ctx, root),
         filler_input_index:
           attack === "hidden-filler" && i === 1
-            ? index(inputs, root)
-            : index(inputs, filler),
+            ? inputAt(ctx, root)
+            : inputAt(ctx, filler),
         predecessor_output_index: BigInt(i),
         refund_output_index:
           attack === "shared-refund" && i === 1
@@ -97,24 +97,26 @@ const reclaimBoth = async (
               ? 0n
               : BigInt(2 + i),
       },
-    };
+    });
     tx = tx
-      .collectFrom(
-        [root],
+      .collectFrom([root], (ctx) =>
         Data.to(
           attack === "wrong-own-input" && i === 1
-            ? index(inputs, filler)
-            : index(inputs, root),
+            ? inputAt(ctx, filler)
+            : inputAt(ctx, root),
         ),
       )
-      .collectFrom([filler], Data.to(index(inputs, filler)))
+      .collectFrom([filler], (ctx) => Data.to(inputAt(ctx, filler)))
       .mintAssets({ [a.policyId + h.keys[i]!]: -1n }, Data.void());
     if (!(attack === "omitted-other-withdrawal" && i === 1))
-      tx = tx.withdraw(
-        a.rewardAddress,
-        0n,
+      tx = tx.withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
-          { Apply: { hub_reference_index: index(refs, h.hub), operation } },
+          {
+            Apply: {
+              hub_reference_index: referenceAt(ctx, h.hub),
+              operation: operationFor(ctx),
+            },
+          },
           EventHistoryObserve,
         ),
       );
@@ -329,7 +331,6 @@ const retireBoth = async (
       nodes.find((u) => u.assets[h.applied[i]!.policyId + h.keys[i]!] === 1n)!,
   );
   const funding = await h.funding();
-  const inputs = [...funding, ...predecessors, ...orders];
   const refs = [
     h.hub,
     ...h.scripts,
@@ -348,16 +349,18 @@ const retireBoth = async (
     const a = h.applied[i]!;
     const predecessor = predecessors[i]!;
     const order = orders[i]!;
-    const witness: EventHistoryRetirementWitness = {
-      predecessor_input_index: index(inputs, predecessor),
-      order_input_index: index(inputs, order),
+    const witnessFor = (
+      ctx: RedeemerContext,
+    ): EventHistoryRetirementWitness => ({
+      predecessor_input_index: inputAt(ctx, predecessor),
+      order_input_index: inputAt(ctx, order),
       predecessor_output_index: BigInt(i),
       funds_output_index:
         attack === "shared-funds" && i === 1 ? 2n : BigInt(2 + i),
       structural_refund_output_index:
         i === 0 ? (attack === "structural-payment-reuse" ? 2n : 4n) : null,
-      confirmed_reference_index: index(refs, authority.confirmed),
-      settlement_reference_index: index(refs, authority.settlement),
+      confirmed_reference_index: referenceAt(ctx, authority.confirmed),
+      settlement_reference_index: referenceAt(ctx, authority.settlement),
       external_reference_index: null,
       membership: authority.memberships[i]!,
       purpose:
@@ -368,29 +371,33 @@ const retireBoth = async (
                 validity: "IncorrectWithdrawalSignature",
               },
             },
+    });
+    const operationFor = (ctx: RedeemerContext) => {
+      const operation = eventHistoryRetirementOperation(witnessFor(ctx));
+      if (attack === "declared-subset" && i === 0 && "RetireOrder" in operation)
+        operation.RetireOrder.structural_refund_output_index = null;
+      return operation;
     };
-    const operation = eventHistoryRetirementOperation(witness);
-    if (attack === "declared-subset" && i === 0 && "RetireOrder" in operation)
-      operation.RetireOrder.structural_refund_output_index = null;
     tx = tx
-      .collectFrom([predecessor], Data.to(index(inputs, predecessor)))
-      .collectFrom([order], Data.to(index(inputs, order)))
+      .collectFrom([predecessor], (ctx) => Data.to(inputAt(ctx, predecessor)))
+      .collectFrom([order], (ctx) => Data.to(inputAt(ctx, order)))
       .mintAssets({ [a.policyId + h.keys[i]!]: -1n }, Data.void())
-      .withdraw(
-        a.rewardAddress,
-        0n,
+      .withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
-          { Apply: { hub_reference_index: index(refs, h.hub), operation } },
+          {
+            Apply: {
+              hub_reference_index: referenceAt(ctx, h.hub),
+              operation: operationFor(ctx),
+            },
+          },
           EventHistoryObserve,
         ),
       )
-      .withdraw(
-        a.retirement.rewardAddress,
-        0n,
+      .withdraw(a.retirement.rewardAddress, 0n, (ctx) =>
         Data.to(
           new Constr(0, [
-            index(refs, h.hub),
-            Data.from(Data.to(witness, EventHistoryRetirementWitness)),
+            referenceAt(ctx, h.hub),
+            Data.from(Data.to(witnessFor(ctx), EventHistoryRetirementWitness)),
           ]),
         ),
       )

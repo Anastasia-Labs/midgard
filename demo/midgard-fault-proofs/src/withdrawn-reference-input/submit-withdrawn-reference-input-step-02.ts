@@ -206,12 +206,6 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: transactionReferenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "Withdrawn-reference-input step 02 reference-inputs",
-  });
   const missingReferenceInput =
     referenceInputs[Number(badReferenceInputIndex)]!;
 
@@ -241,6 +235,12 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   });
   let resolvedLayout: { inputIndex: bigint; outputIndex: bigint } | undefined;
   const redeemer = ((ctx) => {
+    const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "Withdrawn-reference-input step 02 reference-inputs",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

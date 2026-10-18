@@ -229,6 +229,37 @@
       }
     },
     {
+      "id": "withdrawal-mistag-agreement",
+      "kind": "golden",
+      "summary": "Withdrawal-mistag node-agreement verdicts (step-03 value rule, step-04 payability): one hand-labelled JSON vector file the fault-proofs TypeScript twins load, rendered into two whole Aiken test modules.",
+      "generators": [
+        "demo/midgard-fault-proofs/scripts/generate-withdrawal-mistag-agreement-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-fault-proofs:fixtures:withdrawal-mistag-agreement:sync",
+        "demo/midgard-fault-proofs:fixtures:withdrawal-mistag-agreement:check"
+      ],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-fault-proofs/tests/fixtures/withdrawal-mistag-agreement-vectors.json"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check withdrawal-mistag node-agreement vectors"
+      }
+    },
+    {
       "id": "native-tx-carriage-wire-v1",
       "kind": "golden",
       "summary": "Carriage wire (Plutus Data) surface from the SDK schemas: JSON fixture plus a whole generated Aiken module.",

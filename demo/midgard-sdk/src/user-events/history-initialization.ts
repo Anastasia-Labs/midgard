@@ -25,7 +25,7 @@ export type EventHistoryInitialization = {
   readonly nonce: UTxO;
   readonly validFrom: number;
   readonly validTo: number;
-  readonly referenceScripts?: Readonly<{ deposit: UTxO; withdrawal: UTxO }>;
+  readonly referenceScripts: Readonly<{ deposit: UTxO; withdrawal: UTxO }>;
 };
 
 /** Compose both roots into the transaction which consumes the deployment nonce.
@@ -74,11 +74,10 @@ export const appendEventHistoryInitialization = (
       throw new Error(
         "History initialization exceeds the funded protection timestamp width",
       );
-    const reference = params.referenceScripts?.[name];
+    const reference = params.referenceScripts[name];
     if (
-      reference !== undefined &&
-      (reference.scriptRef == null ||
-        validatorToScriptHash(reference.scriptRef) !== list.policyId)
+      reference.scriptRef == null ||
+      validatorToScriptHash(reference.scriptRef) !== list.policyId
     )
       throw new Error(
         "History initialization reference script differs from its policy",
@@ -129,9 +128,7 @@ export const appendEventHistoryInitialization = (
             EventHistoryObserve,
           ),
       );
-    const reference = params.referenceScripts?.[name];
-    if (reference === undefined) tx.attach.Script(list.mintingScript);
-    else tx.readFrom([reference]);
+    tx.readFrom([params.referenceScripts[name]]);
   }
   return tx;
 };

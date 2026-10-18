@@ -9,11 +9,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
 } from "../proof-chunk-carriage.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
@@ -69,37 +68,29 @@ export const prepareCountedMembershipCarriage = <K, V>({
     ...publishedProofChunks.map(({ utxo }) => utxo),
     ...validator.referenceInputs,
   ];
-  const indices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks: publishedProofChunks,
-    label,
-  });
   return {
     referenceInputs,
-    redeemer: (ctx: Parameters<BuildTxWithRedeemer>[0]) => {
-      requireBuiltChunkReferenceIndices({
-        ctx,
-        chunks: publishedProofChunks,
-        derived: indices,
-        label,
-      });
-      return carriedCountedMembership({
+    redeemer: (ctx: Parameters<BuildTxWithRedeemer>[0]) =>
+      carriedCountedMembership({
         witness,
         ctx,
         directRewardAddress: rewardAddress,
         publishedChunks: publishedProofChunks,
         label,
-      });
-    },
+      }),
     attachWithdrawal: (tx: Parameters<typeof validator.attach>[0]) =>
       validator.attach(
         published
-          ? tx.withdraw(rewardAddress, 0n, (() =>
+          ? tx.withdraw(rewardAddress, 0n, ((ctx) =>
               chunkedMembershipClaimRedeemer({
                 merkleRoot: witness.phas_root,
                 keyBytes,
                 valueBytes,
-                orderedChunkReferenceInputIndices: indices,
+                orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+                  ctx,
+                  chunks: publishedProofChunks,
+                  label,
+                }),
               })) satisfies BuildTxWithRedeemer)
           : tx.withdraw(
               rewardAddress,

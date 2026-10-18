@@ -24,16 +24,6 @@ import {
 // kebab stem contains fooBar's, so name matching must not give its tests to
 // fooBar.
 const completeTree = () => ({
-  [SOURCES.sdkCatalogue]: `
-export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
-  "fooBar",
-  "bazFooBar",
-] as const satisfies readonly (keyof FraudProofs)[];
-export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
-  fooBar: "00000040",
-  bazFooBar: "00000041",
-} as const;
-`,
   [SOURCES.coreCatalogue]: `
 export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofFooBar",
@@ -232,22 +222,10 @@ describe("family-checklist", () => {
     assert.match(result.out, /GAP\s+application-record/u);
   });
 
-  it("fails when core and SDK disagree on the ID", () => {
-    const tree = edit(
-      completeTree(),
-      SOURCES.coreCatalogue,
-      'Object.freeze({ fooBar: "00000040"',
-      'Object.freeze({ fooBar: "00000042"',
-    );
-    const result = run(writeTree(tree), "fooBar");
-    assert.equal(result.code, EXIT_GAPS);
-    assert.match(result.out, /GAP\s+core-identity.*differs from SDK ID/u);
-  });
-
   it("fails when two categories share an ID", () => {
     const tree = edit(
       completeTree(),
-      SOURCES.sdkCatalogue,
+      SOURCES.coreCatalogue,
       'bazFooBar: "00000041"',
       'bazFooBar: "00000040"',
     );
@@ -296,7 +274,7 @@ describe("family-checklist", () => {
       result.out,
       /GAP\s+deployment-members.*fraudProofFooBar has no reached deployment member/u,
     );
-    assert.match(result.out, /GAP\s+core-identity.*found 0/u);
+    assert.match(result.out, /GAP\s+first-step.*found 0/u);
   });
 
   it("rejects a reached member absent from the independent ABI", () => {
@@ -548,12 +526,19 @@ describe("family-checklist", () => {
       "../../../..",
     );
     const catalogue = readFileSync(
-      join(repository, SOURCES.sdkCatalogue),
+      join(
+        repository,
+        SOURCES.coreCatalogue.replace(/\.ts$/u, ".protocol-categories.ts"),
+      ),
       "utf8",
     );
     const order = catalogue.slice(
-      catalogue.indexOf("FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = ["),
-      catalogue.indexOf("] as const satisfies"),
+      catalogue.indexOf(
+        "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+      ),
+      catalogue.indexOf(
+        "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS",
+      ),
     );
     const categories = [...order.matchAll(/"(\w+)"/gu)].map((m) => m[1]);
     assert.ok(categories.length > 0, "found no categories in the real tree");

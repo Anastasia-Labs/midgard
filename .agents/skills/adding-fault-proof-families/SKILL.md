@@ -40,7 +40,7 @@ Decide before writing code. The authority is decision
 | A deterministic fault with its own authenticated subject shape, decisive predicate, resumable state shape or evidence frontier (0002, "Decision") | New family. Follow every step below.                                                                                                                                                                                                          |
 | An existing `RejectionReason` arm that no family serves yet, whose predicate an existing family already proves                                    | Extend that family: its rule and scan. Skip steps 2 and 3. Several arms may share one family (the witness-script arms all route to `witnessScriptDecoding`).                                                                                  |
 | A registered family missing a record, tests or docs                                                                                               | Completion. Run the script and fill each `GAP`.                                                                                                                                                                                               |
-| Reordering, renumbering or removing a catalogue category                                                                                          | Stop. The order and IDs are append-only; deployment identity and thread asset names derive from them (`catalogue.ts:90`, `classification.ts:341`). Ask the owner.                                                                             |
+| Reordering, renumbering or removing a catalogue category                                                                                          | Stop. The order and IDs are append-only; deployment identity and thread asset names derive from them (core `catalogue-roles.protocol-categories.ts`, `classification.ts:341`). Ask the owner.                                                                             |
 | A second direct family for a reason and source kind that already has one                                                                          | Stop. At most one direct category per source kind (0002). Ask the owner.                                                                                                                                                                      |
 | A new `RejectionReason` constructor                                                                                                               | Stop. It changes the forced-verdict ABI owned by `rejection-reason-v1.ak`, `midgard-sdk/src/rejection-reason.ts` and `docs/spec/midgard-tx.md` §13 ([catalogue](../../../docs/fault-proofs/rejection-reason-catalogue-v1.md)). Ask the owner. |
 | A fourth family requirement flag beyond `replayContext`, `validationChallenge`, `retainedDaSources`                                               | Stop. Issue #668 capped the set; growing it "needs a new design discussion".                                                                                                                                                                  |
@@ -157,23 +157,24 @@ by package with what enforces it. Read it before step 2, and again whenever a
    and step validators `validators/fraud-proofs/<kebab>/step-0N.ak`. Done when
    the module's tests pass with a nonzero collected count under the pinned
    fork, and `aiken fmt` leaves no diff.
-3. **Register the catalogue identity.** Append the category to
-   `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, give it an unused 8-hex ID in
-   `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` (IDs are sparse; never derive one from
-   the array position), add it to the SDK `FraudProofs` type, and register the
-   matching core protocol category and positional contract ABI. Add the family
-   members through `members.data.ts`, including auxiliary yields, roles,
-   compiler titles, aliases and ordered positions; add their token names. Done
-   when `catalogue-order`, `catalogue-id`, `deployment-members`, `core-identity`
-   and `reference-scripts` are `OK`. [review]
+3. **Register the deployment identity in core.** Add one member file in core,
+   `members/<kebab>.ts`, spread into `members.data.ts`: every member with its
+   role, title, family paths (the first is the SDK recipe's) and positions.
+   Append the category to core `DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_*`
+   order with an unused 8-hex ID (IDs are sparse; never derive one from the
+   position), and add the members to the contract ABI and token names. SDK,
+   node and watcher tables are projections; edit none. Done when
+   `catalogue-order`, `catalogue-id`, `deployment-members`, `first-step` and
+   `reference-scripts` are `OK`. [review]
 4. **Build the SDK contract chain.** `contracts/families/<kebab>.ts` reads
    titles through `deploymentValidatorTitle` and defines `build<Name>Chain`,
-   wired into `contracts/build.ts`, `index.ts` and `types.ts`. Add the typed
-   selectors to the total SDK deployment recipes. Done when `sdk-chain` is
-   `OK` and the SDK typecheck passes. [review]
+   wired into `contracts/build.ts`, `index.ts` and `types.ts`; add the
+   category to the SDK `FraudProofs` type. Done when `sdk-chain` is `OK` and
+   the SDK typecheck passes (it fails when a member's first family path does
+   not name a validator of its purpose). [review]
 5. **Wire the node and the DA fixture.** Add the `always-succeeds` chain and
    family manifest loader; deployment/publication and role maps derive from
-   core metadata and SDK recipes. Regenerate the DA fixture (see
+   core. Regenerate the DA fixture (see
    [references/verification.md](references/verification.md)). Done when the
    node typecheck and the manifest tests pass. [review]
 6. **Write the fault-proofs family.** `src/<kebab>/` (scan, replay, submit
@@ -210,7 +211,7 @@ Tick an item only when its enforcement passed or, for `[review]` items, when
 you checked it by reading.
 
 - [ ] Eligibility row chosen and no "Stop" row applies. [review]
-- [ ] Catalogue order and a unique 8-hex ID agree with core protocol identity.
+- [ ] Catalogue order and a unique 8-hex ID are registered in core.
       [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
       (`fraud-proof-catalogue-registration.test.ts`)
 - [ ] Every category-ID literal in TypeScript or Aiken is registered and is
@@ -219,8 +220,9 @@ you checked it by reading.
       [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
 - [ ] Every family contract has a reference-script role and token name.
       [ci: Midgard Node CI/Build and test Midgard core DA transport]
-- [ ] Reached deployment members cover the independent contract ABI; typed SDK
-      recipes cover every member.
+- [ ] Reached deployment members cover the independent contract ABI; each
+      member's first family path names a validator of its purpose (SDK
+      typecheck).
       [runtime: verifyDeploymentMembers]
       Blind spot: the checklist checks source presence; real-blueprint binding,
       ordering and manifest restoration need the node deployment tests.

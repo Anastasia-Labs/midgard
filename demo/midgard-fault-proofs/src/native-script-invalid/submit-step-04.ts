@@ -163,16 +163,6 @@ export const submitNativeScriptInvalidStep04 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${label} field 7`,
-  });
   const nextDatum = next.complete
     ? Data.to(
         {
@@ -211,6 +201,12 @@ export const submitNativeScriptInvalidStep04 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} field 7`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, label);
     const inputIndex = requireInputIndex(ctx, threadUtxo, label);
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);

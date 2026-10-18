@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxOutputCanonical,
-  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -116,11 +115,6 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     label: "raw reference-input-no-idx step 04",
   });
   const referenceInputs = [...published, stepReference];
-  const outputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Raw reference-input-no-idx step 04 outputs",
-  });
   const feeInput = selectFeeInput(
     (await lucid.wallet().getUtxos()).filter(
       (utxo) => utxo.datum == null && utxo.datumHash == null,
@@ -164,7 +158,11 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
               contracts.fraudProof.policyId,
               "raw reference-input-no-idx step 04 fraud-proof",
             ),
-            outputs_opening: outputsOpening,
+            outputs_opening: faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              label: "Raw reference-input-no-idx step 04 outputs",
+            }),
           },
         ],
       },

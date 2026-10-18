@@ -64,9 +64,12 @@ export {
   type AvailabilityRefusalExpectation,
   type AvailabilityRefusalPurpose,
   createAvailabilityEmulatorLucid,
+  inputAt,
   lastAvailabilityEvaluationFailure,
   measureAvailabilityTransaction,
+  mintAt,
   parseAvailabilityEvaluationFailure,
+  referenceAt,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 export {
   type AvailabilityFixture,

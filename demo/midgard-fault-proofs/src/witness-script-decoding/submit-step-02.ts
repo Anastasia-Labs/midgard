@@ -180,12 +180,6 @@ export const submitWitnessScriptDecodingStep02 = async ({
     ...(resolvedCertificateUtxo === undefined ? [] : [resolvedCertificateUtxo]),
     ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
   ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [...carriageUtxos, stepReference, ...extraReferenceInputs],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} step 02 field 6`,
-  });
   const nextState: WitnessScriptDecodingScanState = {
     bound,
     total_length: BigInt(evidence.itemLength),
@@ -210,6 +204,12 @@ export const submitWitnessScriptDecodingStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} step 02 field 6`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step 02`);
     const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step 02`);
     outputIndex = requireUniqueOutputIndex(

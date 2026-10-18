@@ -205,15 +205,14 @@ export const submitNetworkIdForcedScanAction = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const referenceInputs = [...carriage, referenceScriptUtxo, ...certificates];
-  const opening = faultProofFieldOpening({
-    planned: outputsOpeningPlan,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} outputs`,
-  });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening = faultProofFieldOpening({
+      planned: outputsOpeningPlan,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} outputs`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const inputIndex = requireInputIndex(ctx, threadUtxo, STEP_LABEL);
     outputIndex = requireUniqueOutputIndex(

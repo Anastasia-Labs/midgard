@@ -26,10 +26,10 @@ import {
   profileDigest,
   profileNames,
   readProfiles,
-  renderAiken,
   specDaBondWithdrawDelayFloorMs,
   validateProfile,
 } from "./deployment-profiles.mjs";
+import { renderAiken } from "./deployment-profile-aiken.mjs";
 
 const TTL_FLOOR =
   /event_wait_ms - 30000 ms \(the commit TTL floor\) - slot_length_ms >= 3 \(d \+ 1\) slot_length_ms \/ active_slot_coeff; the largest such d is /u;

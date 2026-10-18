@@ -27,8 +27,8 @@ import {
 } from "../../src/linear-fault-family.js";
 import { prepareNativeTxInclusionCarriage } from "../../src/native-inclusion-carriage.js";
 import {
+  builtChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
 } from "../../src/proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -208,7 +208,6 @@ export const submitRawInputExistenceStep = async ({
   let eventCarriage: InputExistenceStepCarriagePlan["eventCarriage"];
   let transitionCarriage: InputExistenceStepCarriagePlan["transitionCarriage"];
   let absenceAddress: string | undefined;
-  let absenceIndices: readonly bigint[] = [];
   let absencePublished = false;
   if (stepIndex === 0 && prepared.source.kind === "accepted") {
     if (stateQueueBlockOutRef === undefined)
@@ -249,7 +248,6 @@ export const submitRawInputExistenceStep = async ({
       eventCarriage,
       transitionCarriage,
       absenceAddress,
-      absenceIndices,
       absencePublished,
     } = prepareInputExistenceStepCarriage({
       stepIndex,
@@ -334,7 +332,7 @@ export const submitRawInputExistenceStep = async ({
         selected_input_index: prepared.inputIndex,
         inputs_opening: faultProofFieldOpening({
           planned: prepared.fieldPlan,
-          referenceInputs,
+          referenceInputs: ctx.referenceInputs,
           certificatePolicyId,
           label: family,
         }),
@@ -343,7 +341,7 @@ export const submitRawInputExistenceStep = async ({
             ? null
             : faultProofFieldOpening({
                 planned: prepared.claimedFieldPlan,
-                referenceInputs,
+                referenceInputs: ctx.referenceInputs,
                 certificatePolicyId,
                 label: `${family} claimed input`,
               }),
@@ -367,21 +365,18 @@ export const submitRawInputExistenceStep = async ({
           },
         };
       else {
-        requireBuiltChunkReferenceIndices({
-          ctx,
-          chunks: publishedProofChunks,
-          derived: absenceIndices,
-          label: family,
-        });
         ledger_evidence = {
           Absent: {
             non_membership: absencePublished
               ? {
                   PublishedChunkNonMembership: [
                     {
-                      ordered_chunk_reference_input_indices: [
-                        ...absenceIndices,
-                      ],
+                      ordered_chunk_reference_input_indices:
+                        builtChunkReferenceIndices({
+                          ctx,
+                          chunks: publishedProofChunks,
+                          label: family,
+                        }),
                     },
                   ],
                 }

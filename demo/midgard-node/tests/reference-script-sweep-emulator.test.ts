@@ -7,8 +7,6 @@ import { readFileSync } from "node:fs";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  applyDoubleCborEncoding,
-  applyParamsToScript,
   type Assets,
   Emulator,
   generateEmulatorAccount,
@@ -43,14 +41,24 @@ import {
 import { replayJournaledOnFollower } from "./helpers/intent-journal-replay.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
-const alwaysSucceedsCode = (
-  JSON.parse(
-    readFileSync(
-      new URL("../blueprints/always-succeeds/plutus.json", import.meta.url),
-      "utf8",
-    ),
-  ) as { readonly validators: readonly { readonly compiledCode: string }[] }
-).validators[0]!.compiledCode;
+const alwaysSucceedsBlueprint = JSON.parse(
+  readFileSync(
+    new URL("../blueprints/always-succeeds/plutus.json", import.meta.url),
+    "utf8",
+  ),
+) as { readonly validators: readonly { readonly compiledCode: string }[] };
+
+/** Always-succeeds with one padding parameter, applied through the guard. */
+const FILLER_TITLE = "reference_script_sweep.filler.else";
+const fillerBlueprint: SDK.FaultProofBlueprint = {
+  validators: [
+    {
+      title: FILLER_TITLE,
+      compiledCode: alwaysSucceedsBlueprint.validators[0]!.compiledCode,
+      parameters: [{ title: "padding" }],
+    },
+  ],
+};
 
 /**
  * A well-formed Plutus V3 program of roughly `bytes` bytes, unique per seed.
@@ -59,13 +67,11 @@ const alwaysSucceedsCode = (
  */
 const referenceScript = (seed: number, bytes: number): Script => ({
   type: "PlutusV3",
-  script: applyDoubleCborEncoding(
-    applyParamsToScript(alwaysSucceedsCode, [
-      Array.from({ length: Math.ceil(bytes / 66) }, () =>
-        Buffer.alloc(64, seed).toString("hex"),
-      ),
-    ]),
-  ),
+  script: SDK.applyBlueprintParams(fillerBlueprint, FILLER_TITLE, [
+    Array.from({ length: Math.ceil(bytes / 66) }, () =>
+      Buffer.alloc(64, seed).toString("hex"),
+    ),
+  ]),
 });
 
 const outRef = (utxo: UTxO): string => `${utxo.txHash}#${utxo.outputIndex}`;

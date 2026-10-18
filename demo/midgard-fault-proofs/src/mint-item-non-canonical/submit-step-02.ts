@@ -165,16 +165,6 @@ export const submitMintItemNonCanonicalStep02 = async ({
     family: "mint-item-non-canonical",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "mint-item-non-canonical field opening",
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -205,6 +195,12 @@ export const submitMintItemNonCanonicalStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "mint-item-non-canonical field opening",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "mint-item-non-canonical step-02");
     const inputIndex = requireInputIndex(
       ctx,

@@ -196,7 +196,7 @@ export const submitInputSetUniquenessStep04Advance = async ({
               output_index: outputIndex,
               field_opening: faultProofFieldOpening({
                 planned,
-                referenceInputs: [...carriageUtxos, stepReference],
+                referenceInputs: ctx.referenceInputs,
                 certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
                 label: "input-set-uniqueness step-04",
               }),

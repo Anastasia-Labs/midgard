@@ -14,6 +14,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -193,7 +194,11 @@ export const advanceStep03Thread = async ({
   readonly destinationAddress: string;
   readonly nextState: NativeScriptDecodingScanThreadState;
   readonly spendingStepIndex: 2 | 3 | 4;
-  readonly buildRedeemer: (layout: Step03Layout) => string;
+  /** The redeemer, given the resolved layout and the builder context. */
+  readonly buildRedeemer: (
+    layout: Step03Layout,
+    ctx: RedeemerContext,
+  ) => string;
   readonly carriageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -228,7 +233,7 @@ export const advanceStep03Thread = async ({
       ),
     };
     resolvedLayout = layout;
-    return buildRedeemer(layout);
+    return buildRedeemer(layout, ctx);
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,

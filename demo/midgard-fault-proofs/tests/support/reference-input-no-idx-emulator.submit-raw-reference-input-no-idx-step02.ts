@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxInputCanonical,
-  type FieldOpening,
   MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   ReferenceInputNoIdxStep02Datum,
@@ -182,11 +181,6 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
     label: "raw reference-input-no-idx step 02",
   });
   const referenceInputs = [...published, stepReference];
-  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Raw reference-input-no-idx step 02 reference-inputs",
-  });
   const feeInput = selectFeeInput(
     (await lucid.wallet().getUtxos()).filter(
       (utxo) => utxo.datum == null && utxo.datumHash == null,
@@ -224,7 +218,11 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
               step03OutputMatches,
               "raw reference-input-no-idx step 02 output",
             ),
-            reference_inputs_opening: referenceInputsOpening,
+            reference_inputs_opening: faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              label: "Raw reference-input-no-idx step 02 reference-inputs",
+            }),
             bad_reference_input_index: BigInt(badReferenceInputIndex),
           },
         ],
