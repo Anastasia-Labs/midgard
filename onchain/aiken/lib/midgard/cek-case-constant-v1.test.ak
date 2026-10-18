@@ -993,3 +993,239 @@ test case_on_a_wide_pair_refuses_the_second_component_first() {
 test case_on_a_wide_pair_with_two_branches_has_no_branch() {
   semantic_cases(wide_pair().scrutinee, no_material(), 2, missing())
 }
+
+// A committed list or pair is opened only through nodes that give exactly its
+// summary and its memory, with its top node well formed.
+
+/// The summary a data node commits.
+fn node_summary(node: cek_data_v1.DataNodeV1) -> cek_data_v1.DataSummaryV1 {
+  cek_data_v1.DataSummaryV1 {
+    root: cek_data_v1.hash_data_node_v1(node),
+    cbor_length: cek_data_v1.data_node_cbor_length_v1(node),
+    memory: cek_data_v1.data_node_memory_v1(node),
+  }
+}
+
+/// 9000 bytes of `fill`.
+fn wide_fill(fill: Int) -> ByteArray {
+  builtin.append_bytearray(
+    builtin.replicate_byte(4500, fill),
+    builtin.replicate_byte(4500, fill),
+  )
+}
+
+/// `[B <9000 bytes of fill>]` as a list of data. Its top node's CBOR length
+/// is `cbor_skew` off, and its committed memory `memory_skew` words high.
+fn skewed_wide_list(fill: Int, cbor_skew: Int, memory_skew: Int) -> WideList {
+  let blob = cek_proof_v1.bounded_blob_root_v1(wide_fill(fill))
+  let head = cek_data_v1.bytes_data_summary_v1(9000, blob)
+  let head_node = cek_data_v1.BytesData {
+    bytes_root: blob,
+    bytes_length: 9000,
+    cbor_length: head.cbor_length,
+    memory: head.memory,
+  }
+  let link = cek_data_v1.DataListNodeV1 {
+    head: head.root,
+    head_cbor_length: head.cbor_length,
+    head_memory: head.memory,
+    tail: cek_data_v1.empty_data_list_root_v1(),
+    length: 1,
+    payload_cbor_length: head.cbor_length,
+    memory: head.memory,
+  }
+  let items = cek_data_v1.prepend_data_list_summary_v1(
+    head,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  let exact = cek_data_v1.list_data_summary_v1(items)
+  let node = cek_data_v1.ListData {
+    items_count: 1,
+    items_root: items.root,
+    cbor_length: exact.cbor_length + cbor_skew,
+    memory: exact.memory,
+  }
+  WideList {
+    scrutinee: semantic(
+      data_list_type,
+      node_summary(node),
+      items.memory + memory_skew,
+    ),
+    head: semantic(data_type, head, head.memory).2nd,
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [node, head_node],
+      list_nodes: [link],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  }
+}
+
+/// A `case` with two branches on `scrutinee`, read through `list`'s nodes,
+/// selecting the first branch on `list`'s head and a tail of `tail_memory`.
+fn wide_list_cases(
+  scrutinee: Pair<cek_builtin_v1.ValueWitnessV1, ByteArray>,
+  list: WideList,
+  tail_memory: Int,
+) -> Bool {
+  semantic_cases(
+    scrutinee,
+    list.material,
+    2,
+    selects(
+      2,
+      0,
+      2,
+      values(
+        list.head,
+        cek_constant_v1.semantic_constant_root_v1(
+          data_list_type,
+          cek_data_v1.list_data_summary_v1(
+            cek_data_v1.empty_data_list_summary_v1(),
+          ),
+          tail_memory,
+        ),
+      ),
+    ),
+  )
+}
+
+test case_on_another_wide_list_applies_its_branch_to_head_and_tail() {
+  let list = skewed_wide_list(43, 0, 0)
+  wide_list_cases(list.scrutinee, list, 0)
+}
+
+test case_on_a_wide_list_refuses_the_nodes_of_another_list() fail {
+  wide_list_cases(
+    skewed_wide_list(42, 0, 0).scrutinee,
+    skewed_wide_list(43, 0, 0),
+    0,
+  )
+}
+
+test case_on_a_wide_list_refuses_a_top_node_of_another_cbor_length() fail {
+  let list = skewed_wide_list(42, 1, 0)
+  wide_list_cases(list.scrutinee, list, 0)
+}
+
+test case_on_a_wide_list_refuses_a_memory_its_nodes_do_not_give() fail {
+  let list = skewed_wide_list(42, 0, 1)
+  wide_list_cases(list.scrutinee, list, 1)
+}
+
+/// `(B <9000 bytes of fill>, I 0)` as a pair of data, its top node a
+/// constructor `constructor` whose CBOR length is `cbor_skew` off, and its
+/// committed memory `memory_skew` words high.
+fn skewed_wide_pair(
+  fill: Int,
+  constructor: Int,
+  cbor_skew: Int,
+  memory_skew: Int,
+) -> WidePair {
+  let blob = cek_proof_v1.bounded_blob_root_v1(wide_fill(fill))
+  let first = cek_data_v1.bytes_data_summary_v1(9000, blob)
+  let first_node = cek_data_v1.BytesData {
+    bytes_root: blob,
+    bytes_length: 9000,
+    cbor_length: first.cbor_length,
+    memory: first.memory,
+  }
+  let zero_cbor = cbor.serialise(builtin.i_data(0))
+  let zero_root = cek_proof_v1.bounded_blob_root_v1(zero_cbor)
+  let second = cek_data_v1.integer_data_summary_v1(0, zero_root)
+  let second_node = cek_data_v1.IntegerData {
+    cbor_root: zero_root,
+    cbor_length: second.cbor_length,
+    memory: second.memory,
+  }
+  let second_link = cek_data_v1.DataListNodeV1 {
+    head: second.root,
+    head_cbor_length: second.cbor_length,
+    head_memory: second.memory,
+    tail: cek_data_v1.empty_data_list_root_v1(),
+    length: 1,
+    payload_cbor_length: second.cbor_length,
+    memory: second.memory,
+  }
+  let first_link = cek_data_v1.DataListNodeV1 {
+    head: first.root,
+    head_cbor_length: first.cbor_length,
+    head_memory: first.memory,
+    tail: cek_data_v1.hash_data_list_node_v1(second_link),
+    length: 2,
+    payload_cbor_length: first.cbor_length + second.cbor_length,
+    memory: first.memory + second.memory,
+  }
+  let exact = cek_data_v1.small_constr_data_summary_v1(
+    0,
+    cek_data_v1.prepend_data_list_summary_v1(
+      first,
+      cek_data_v1.prepend_data_list_summary_v1(
+        second,
+        cek_data_v1.empty_data_list_summary_v1(),
+      ),
+    ),
+  )
+  let node = cek_data_v1.ConstrSmallData {
+    constructor,
+    fields_count: 2,
+    fields_root: cek_data_v1.hash_data_list_node_v1(first_link),
+    cbor_length: exact.cbor_length + cbor_skew,
+    memory: exact.memory,
+  }
+  WidePair {
+    scrutinee: semantic(
+      #"9f060808ff",
+      node_summary(node),
+      first.memory + second.memory + memory_skew,
+    ),
+    first: semantic(data_type, first, first.memory).2nd,
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [node, first_node, second_node],
+      list_nodes: [first_link, second_link],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  }
+}
+
+/// A `case` with one branch on `scrutinee`, read through `pair`'s nodes,
+/// applying it to `pair`'s components.
+fn wide_pair_cases(
+  scrutinee: Pair<cek_builtin_v1.ValueWitnessV1, ByteArray>,
+  pair: WidePair,
+) -> Bool {
+  semantic_cases(
+    scrutinee,
+    pair.material,
+    1,
+    selects(1, 0, 2, values(pair.first, root(data_type, builtin.i_data(0)))),
+  )
+}
+
+test case_on_another_wide_pair_applies_its_branch_to_both_components() {
+  let pair = skewed_wide_pair(43, 0, 0, 0)
+  wide_pair_cases(pair.scrutinee, pair)
+}
+
+test case_on_a_wide_pair_refuses_the_nodes_of_another_pair() fail {
+  wide_pair_cases(
+    skewed_wide_pair(42, 0, 0, 0).scrutinee,
+    skewed_wide_pair(43, 0, 0, 0),
+  )
+}
+
+test case_on_a_wide_pair_refuses_a_top_node_of_another_cbor_length() fail {
+  let pair = skewed_wide_pair(42, 0, 1, 0)
+  wide_pair_cases(pair.scrutinee, pair)
+}
+
+test case_on_a_wide_pair_refuses_a_constructor_other_than_zero() fail {
+  let pair = skewed_wide_pair(42, 1, 0, 0)
+  wide_pair_cases(pair.scrutinee, pair)
+}
+
+test case_on_a_wide_pair_refuses_a_memory_its_components_do_not_give() fail {
+  let pair = skewed_wide_pair(42, 0, 0, 1)
+  wide_pair_cases(pair.scrutinee, pair)
+}

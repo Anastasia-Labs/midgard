@@ -831,6 +831,65 @@ fn pair_memory(summary: Option<DataPairNodeV1>) -> Int {
   }
 }
 
+/// The checks `verify_data_node_v1` makes of a `ConstrSmallData` node, for a
+/// reader that has already matched the node's kind.
+pub fn verify_constr_small_data_node_v1(
+  constructor: Int,
+  fields_count: Int,
+  fields_root: ByteArray,
+  cbor_length: Int,
+  memory: Int,
+  list_summary: Option<DataListNodeV1>,
+  pair_summary: Option<DataPairNodeV1>,
+) -> Bool {
+  expect constructor >= 0 && constructor <= 127
+  let summary_matches = empty_or_list_summary_matches(
+    fields_root,
+    fields_count,
+    list_summary,
+  )
+  let fields_cbor_length = list_cbor_length(
+    fields_count,
+    list_payload_length(list_summary),
+  )
+  and {
+    summary_matches,
+    pair_summary == None,
+    cbor_length == if constructor <= 6 {
+      2 + fields_cbor_length
+    } else {
+      3 + fields_cbor_length
+    },
+    memory == 4 + list_memory(list_summary),
+  }
+}
+
+/// The checks `verify_data_node_v1` makes of a `ListData` node, for a reader
+/// that has already matched the node's kind.
+pub fn verify_list_data_node_v1(
+  items_count: Int,
+  items_root: ByteArray,
+  cbor_length: Int,
+  memory: Int,
+  list_summary: Option<DataListNodeV1>,
+  pair_summary: Option<DataPairNodeV1>,
+) -> Bool {
+  let summary_matches = empty_or_list_summary_matches(
+    items_root,
+    items_count,
+    list_summary,
+  )
+  and {
+    summary_matches,
+    pair_summary == None,
+    cbor_length == list_cbor_length(
+      items_count,
+      list_payload_length(list_summary),
+    ),
+    memory == 4 + list_memory(list_summary),
+  }
+}
+
 /// Verifies the local summaries of one semantic Data node. Integer canonical
 /// CBOR and large-constructor blob parsing are separate streaming steps.
 pub fn verify_data_node_v1(
@@ -845,28 +904,16 @@ pub fn verify_data_node_v1(
       fields_root,
       cbor_length,
       memory,
-    } -> {
-      expect constructor >= 0 && constructor <= 127
-      let summary_matches = empty_or_list_summary_matches(
+    } ->
+      verify_constr_small_data_node_v1(
+        constructor,
+        fields_count,
         fields_root,
-        fields_count,
+        cbor_length,
+        memory,
         list_summary,
+        pair_summary,
       )
-      let fields_cbor_length = list_cbor_length(
-        fields_count,
-        list_payload_length(list_summary),
-      )
-      and {
-        summary_matches,
-        pair_summary == None,
-        cbor_length == if constructor <= 6 {
-          2 + fields_cbor_length
-        } else {
-          3 + fields_cbor_length
-        },
-        memory == 4 + list_memory(list_summary),
-      }
-    }
     ConstrLargeData {
       constructor_cbor_root,
       constructor_cbor_length,
@@ -910,22 +957,15 @@ pub fn verify_data_node_v1(
         memory == 4 + pair_memory(pair_summary),
       }
     }
-    ListData { items_count, items_root, cbor_length, memory } -> {
-      let summary_matches = empty_or_list_summary_matches(
-        items_root,
+    ListData { items_count, items_root, cbor_length, memory } ->
+      verify_list_data_node_v1(
         items_count,
+        items_root,
+        cbor_length,
+        memory,
         list_summary,
+        pair_summary,
       )
-      and {
-        summary_matches,
-        pair_summary == None,
-        cbor_length == list_cbor_length(
-          items_count,
-          list_payload_length(list_summary),
-        ),
-        memory == 4 + list_memory(list_summary),
-      }
-    }
     IntegerData { cbor_root, cbor_length, memory } -> and {
         list_summary == None,
         pair_summary == None,

@@ -2022,6 +2022,127 @@ fn direct_case_constant_v1(
   }
 }
 
+// A `case` scrutinee read through material is always a semantic constant, so
+// the two readers below are `semantic_list_head_and_tail_v1` and
+// `semantic_pair_components_v1` without their inline-constant branches. Each
+// source's top node must be the one node kind its reader then matches, so
+// only that kind's `verify_data_node_v1` checks are made.
+fn semantic_case_list_head_and_tail_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  cek_constant_v1.ConstantTypeV1,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSequenceSummaryV1, Int>,
+  >,
+> {
+  expect [source_node, head_node] = witness.data_nodes
+  expect [first_link, ..remaining_links] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let tail_link = if first_link.length == 1 {
+    expect remaining_links == []
+    None
+  } else {
+    expect [link] = remaining_links
+    Some(link)
+  }
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.ListConstant { element } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(source_node)
+  expect cek_data_v1.ListData { items_count, items_root, cbor_length, memory } = source_node
+  expect
+    cek_data_v1.verify_list_data_node_v1(
+      items_count,
+      items_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect
+    parts.memory == constant_memory_from_payload_node_v1(
+      parts.constant_type,
+      source_node,
+    )
+  // The node check has bound `first_link.length` to `items_count`.
+  expect cek_data_v1.verify_data_list_link_v1(first_link, head_node, tail_link)
+  let head_summary = summary_from_node_v1(head_node)
+  let head_memory = constant_memory_from_payload_node_v1(element, head_node)
+  expect parts.memory >= head_memory
+  let tail = cek_data_v1.DataSequenceSummaryV1 {
+    root: first_link.tail,
+    length: first_link.length - 1,
+    payload_cbor_length: first_link.payload_cbor_length - first_link.head_cbor_length,
+    memory: first_link.memory - first_link.head_memory,
+  }
+  Pair(
+    element,
+    Pair(
+      Pair(head_summary, head_memory),
+      Pair(tail, parts.memory - head_memory),
+    ),
+  )
+}
+
+fn semantic_case_pair_components_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  Pair<cek_constant_v1.ConstantTypeV1, cek_constant_v1.ConstantTypeV1>,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+  >,
+> {
+  expect [payload_node, first_node, second_node] = witness.data_nodes
+  expect [first_link, second_link] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.PairConstant { first, second } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(payload_node)
+  expect
+      cek_data_v1.ConstrSmallData {
+        constructor,
+        fields_count,
+        fields_root,
+        cbor_length,
+        memory,
+      }
+    = payload_node
+  expect
+    cek_data_v1.verify_constr_small_data_node_v1(
+      constructor,
+      fields_count,
+      fields_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect constructor == 0
+  // The node check binds `fields_count` to `first_link.length`, and the two
+  // link checks bind that length to 2.
+  expect
+    cek_data_v1.verify_data_list_link_v1(
+      first_link,
+      first_node,
+      Some(second_link),
+    )
+  expect cek_data_v1.verify_data_list_link_v1(second_link, second_node, None)
+  let first_summary = summary_from_node_v1(first_node)
+  let second_summary = summary_from_node_v1(second_node)
+  let first_memory = constant_memory_from_payload_node_v1(first, first_node)
+  let second_memory = constant_memory_from_payload_node_v1(second, second_node)
+  expect parts.memory == first_memory + second_memory
+  Pair(
+    Pair(first, second),
+    Pair(Pair(first_summary, first_memory), Pair(second_summary, second_memory)),
+  )
+}
+
 fn semantic_case_constant_v1(
   scrutinee: ValueWitnessV1,
   type_cbor: ByteArray,
@@ -2041,7 +2162,7 @@ fn semantic_case_constant_v1(
     }
     cek_constant_v1.ListConstant { .. } ->
       if branches_count == 1 || branches_count == 2 {
-        let Pair(element, Pair(head, tail)) = semantic_list_head_and_tail_v1(
+        let Pair(element, Pair(head, tail)) = semantic_case_list_head_and_tail_v1(
           scrutinee,
           material,
         )
@@ -2062,7 +2183,7 @@ fn semantic_case_constant_v1(
       }
     cek_constant_v1.PairConstant { .. } ->
       if branches_count == 1 {
-        let Pair(types, values) = semantic_pair_components_v1(
+        let Pair(types, values) = semantic_case_pair_components_v1(
           scrutinee,
           material,
         )
