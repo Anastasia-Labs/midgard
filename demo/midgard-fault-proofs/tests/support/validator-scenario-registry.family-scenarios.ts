@@ -145,6 +145,20 @@ export const FAMILY_SCENARIOS: Readonly<
       },
     ],
   },
+  missingRedeemer: {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts",
+        test: "A-N: convicts an accepted transaction whose required observer has no redeemer and removes its block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts",
+        test: "R-F: refuses a forced rejection whose claimed observer redeemer is absent",
+      },
+    ],
+  },
   withdrawnReferenceInput: {
     passing: [
       {

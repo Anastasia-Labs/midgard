@@ -26,6 +26,23 @@ const DIRECT_SOURCE =
   "executes source field-authentication-map custody in ordinary eight-item batches";
 const DIRECT_RECEIVE =
   "executes bounded receive batches and sorted ordinal custody without trace states";
+const missingRedeemerForgedSuccessor = (
+  test: string,
+): ValidatorScenarioPair => {
+  const scenario = [
+    {
+      file: "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-forged-successor.test.ts",
+      test,
+    },
+  ];
+  return { passing: scenario, failing: scenario };
+};
+const MR_OBSERVER =
+  "refuses a forged successor at every role of the accepted observer route";
+const MR_CLAIMED =
+  "refuses a forged successor at every role of the forced claimed-redeemer route";
+const MR_VERTICALS =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-missing-redeemer-verticals.test.ts";
 const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
   passing: [
     {
@@ -378,6 +395,40 @@ export const VALIDATOR_SCENARIOS: Readonly<
     directScriptDerivationScenario(DIRECT_RECEIVE),
   "fraud_proofs/direct_script_derivation/receive_declaration.main":
     directScriptDerivationScenario(DIRECT_RECEIVE),
+  "fraud_proofs/direct_script_derivation/purpose_select.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/direct_script_derivation/source_lookup.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/family_entry.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/step_02.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/step_03.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/step_04.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/claim_start.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/claim_adjudicate.main":
+    missingRedeemerForgedSuccessor(MR_OBSERVER),
+  "fraud_proofs/missing_redeemer/claimed_redeemer_grammar.main":
+    missingRedeemerForgedSuccessor(MR_CLAIMED),
+  "fraud_proofs/missing_redeemer/claimed_redeemer_scan.main":
+    missingRedeemerForgedSuccessor(MR_CLAIMED),
+  "fraud_proofs/missing_redeemer/step_05.main": {
+    passing: [
+      {
+        file: MR_VERTICALS,
+        test: "A-N: convicts an accepted transaction whose required observer has no redeemer and removes its block",
+      },
+    ],
+    failing: [
+      {
+        file: MR_VERTICALS,
+        test: "R-F: refuses a forced rejection whose claimed observer redeemer is absent",
+      },
+    ],
+  },
   ...VALIDATION_TRACE_SCENARIOS,
   "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
     streamedReplayStep(

@@ -521,7 +521,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
-    "max": 512,
+    "max": 526,
     "reason": "FAMILY_SCENARIOS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
   },
   {
