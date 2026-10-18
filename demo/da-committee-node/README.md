@@ -85,7 +85,10 @@ Postgres connection-class error, a Cardano node socket not created yet) is
 retried with backoff for at most 15 minutes in a row, under
 `starting:<detail>`. Past that budget the process exits non-zero with
 `committee_startup_dependency_unavailable`, and the supervisor's restart is
-the backoff. Any other failure, such as a store holding another deployment's
+the backoff. The startup first waits for the ledger's Ed25519 verifier
+(libsodium) to initialise, for at most 10 s; if it does not, the process exits
+non-zero at once with `committee_startup_verifier_unavailable`, and the
+supervisor's restart is the retry. Any other failure, such as a store holding another deployment's
 state (`stale_deployment_state_requires_fresh_redeploy`), bad credentials, a
 configuration or key-material refusal or an error it does not recognise, is
 one no restart is known to repair: the process logs `committee_startup_held`

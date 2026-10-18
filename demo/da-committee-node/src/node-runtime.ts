@@ -109,8 +109,9 @@ export const openCommitteeNodeRuntime = async (
   };
   try {
     // Attestation witnesses are checked with libsodium, as on chain, and
-    // nothing here checks one before it has initialised. A failed
-    // initialisation is a startup failure no retry repairs (startOrHold).
+    // nothing here checks one before it has initialised. The wait is
+    // bounded where it is defined; its failure fails the startup at once,
+    // and the process exits non-zero (`committee_startup_verifier_unavailable`).
     await ledgerEd25519SignatureReady();
     // The stored records are checked against the L1 origin, and a stored
     // retirement floor re-bound to the member's binding, as the store opens.
