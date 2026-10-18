@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
+use aiken/primitive/bytearray
 use midgard/fraud_proofs/missing_script_source/rule
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
@@ -502,6 +503,19 @@ fn stage_nine_control(
 fn stage_nine_state(
   control: vm_machine_types.ScriptSourcesControlV1,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
+  stage_nine_state_committing(
+    vm_witness.encode_script_sources_discovery_witness(
+      control,
+      9,
+      control.discovery,
+    ),
+  )
+}
+
+/// The machine state whose work root commits the work witness `witness`.
+fn stage_nine_state_committing(
+  witness: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
   let event_key = ledger_state.L2TransactionEventKey { tx_id }
   validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
@@ -516,11 +530,7 @@ fn stage_nine_state(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptSources,
       7,
-      vm_witness.encode_script_sources_discovery_witness(
-        control,
-        9,
-        control.discovery,
-      ),
+      witness,
     ),
     execution_cpu: 0,
     execution_memory: 0,
@@ -529,11 +539,11 @@ fn stage_nine_state(
   }
 }
 
-/// The trace state step 02 hands step 03 for `control`, under a subject of
-/// `direction`.
+/// The trace state step 02 hands step 03 for `machine_state`, under a subject
+/// of `direction`.
 fn stage_nine_trace(
   direction: Int,
-  control: vm_machine_types.ScriptSourcesControlV1,
+  machine_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> rule.AuthenticatedTraceStateV1 {
   rule.AuthenticatedTraceStateV1 {
     bound: rule.bind_purpose_v1(
@@ -544,7 +554,7 @@ fn stage_nine_trace(
       0,
       0,
     ),
-    machine_state: stage_nine_state(control),
+    machine_state,
   }
 }
 
@@ -656,8 +666,48 @@ test honest_canonical_header_with_present_source_refuses_conviction() fail {
 // Step 03's witness-located prefix
 // ---------------------------------------------------------------------------
 
+/// `control`'s stage-9 work witness with `inline_source_count` written into
+/// its frame directly, so no encoder bound applies to it. The honest encodings
+/// at counts 0 and 1 differ in exactly one byte, that field's head, which
+/// locates it; the helper expects that, so the location cannot drift.
+fn witness_with_inline_count(
+  control: vm_machine_types.ScriptSourcesControlV1,
+  inline_source_count: Int,
+) -> ByteArray {
+  let encode = fn(count) {
+    vm_witness.encode_script_sources_discovery_witness(
+      vm_machine_types.ScriptSourcesControlV1 {
+        ..control,
+        inline_source_count: count,
+      },
+      9,
+      control.discovery,
+    )
+  }
+  let at_zero = encode(0)
+  let at_one = encode(1)
+  let head = first_difference(at_zero, at_one, 0)
+  expect bytearray.length(at_zero) == bytearray.length(at_one)
+  expect bytearray.drop(at_zero, head + 1) == bytearray.drop(at_one, head + 1)
+  let count_head = cbor.serialise(inline_source_count)
+  expect bytearray.length(count_head) == 1
+  bytearray.take(at_zero, head)
+    |> bytearray.concat(count_head)
+    |> bytearray.concat(bytearray.drop(at_zero, head + 1))
+}
+
+fn first_difference(left: ByteArray, right: ByteArray, index: Int) -> Int {
+  if bytearray.at(left, index) == bytearray.at(right, index) {
+    first_difference(left, right, index + 1)
+  } else {
+    index
+  }
+}
+
 /// Step 03 over the stage-9 control of `leaves`, the first `inline_count` of
-/// them inline witnesses, at lookup cursor `source_cursor`.
+/// them inline witnesses, at lookup cursor `source_cursor`. The pre-state's
+/// work root commits control bytes assembled past the encoder, so any bound
+/// on `inline_count` is step 03's own.
 fn staged_sources(
   direction: Int,
   leaves: List<ByteArray>,
@@ -666,7 +716,12 @@ fn staged_sources(
 ) -> rule.AuthenticatedTransactionSourcesV1 {
   let control = stage_nine_control(leaves, inline_count, source_cursor)
   rule.authenticate_transaction_sources_v1(
-    stage_nine_trace(direction, control),
+    stage_nine_trace(
+      direction,
+      stage_nine_state_committing(
+        witness_with_inline_count(control, inline_count),
+      ),
+    ),
     control,
     0,
     h28a,
@@ -688,6 +743,16 @@ fn staged_scan_convicts(
 /// One inline witness, then one resolved reference script; neither is `h28a`.
 fn inline_then_resolved() -> List<ByteArray> {
   [source_leaf(0, 0, h28b), source_leaf(1, 1, h28b)]
+}
+
+/// At an honest count the hand-assembled witness is the encoding itself.
+test witness_with_an_honest_inline_count_is_the_encoding() {
+  let control = stage_nine_control(inline_then_resolved(), 1, 2)
+  witness_with_inline_count(control, 1) == vm_witness.encode_script_sources_discovery_witness(
+    control,
+    9,
+    control.discovery,
+  )
 }
 
 /// The witness prefix is the control's inline count: source 0 is read at the
@@ -718,14 +783,33 @@ test wrongful_rejection_limit_within_the_witness_prefix_convicts() {
     |> staged_scan_convicts([descriptor(leaves, 0, 0, h28a)])
 }
 
-/// No work root commits more inline witnesses than sources: the control
-/// encoder that step 03 recomputes the work root with refuses it.
+/// A work root may commit more inline witnesses than sources, but step 03
+/// refuses it: the control encoder that step 03 recomputes the work root with
+/// expects the bound.
 test witness_prefix_refuses_more_inline_sources_than_sources() fail {
   let leaves = inline_then_resolved()
   staged_sources(0, leaves, 3, 2).purpose.source_count == 2
 }
 
+/// The bound's other side: every source an inline witness.
+test witness_prefix_may_hold_every_source() {
+  let leaves = [source_leaf(0, 0, h28b), source_leaf(1, 0, h28b)]
+  staged_sources(0, leaves, 2, 2)
+    |> staged_scan_convicts(
+        [descriptor(leaves, 0, 0, h28b), descriptor(leaves, 1, 0, h28b)],
+      )
+}
+
 test witness_prefix_refuses_a_negative_inline_source_count() fail {
   let leaves = inline_then_resolved()
   staged_sources(0, leaves, -1, 2).purpose.source_count == 2
+}
+
+/// The bound's other side: no inline witness, every source resolved.
+test witness_prefix_may_be_empty() {
+  let leaves = [source_leaf(0, 1, h28b), source_leaf(1, 1, h28b)]
+  staged_sources(0, leaves, 0, 2)
+    |> staged_scan_convicts(
+        [descriptor(leaves, 0, 1, h28b), descriptor(leaves, 1, 1, h28b)],
+      )
 }
