@@ -149,6 +149,12 @@ fn compare_ints(left: Int, right: Int) -> Ordering {
   }
 }
 
+/// True whenever the reader accepts `encoded`, so a refusal row passes only
+/// when the reader aborts.
+fn accepted(encoded: ByteArray) -> Bool {
+  builtin.length_of_bytearray(parse_canonical_integer_cbor_v1(encoded).argument) >= 0
+}
+
 fn segment(byte: Int) -> ByteArray {
   builtin.append_bytearray(#"5840", replicate(64, byte))
 }
@@ -260,7 +266,7 @@ test negative_growth_adds_a_memory_word() {
 // ## Canonical reading: refused
 
 test refuses_a_leading_zero() fail {
-  parse_canonical_integer_cbor_v1(#"c249000100000000000000").negative
+  accepted(#"c249000100000000000000")
 }
 
 test refuses_a_leading_zero_in_the_first_segment() fail {
@@ -276,126 +282,131 @@ test refuses_a_leading_zero_in_the_first_segment() fail {
       ),
     ),
   )
-  parse_canonical_integer_cbor_v1(tampered).negative
+  accepted(tampered)
 }
 
 test refuses_an_eight_byte_bignum() fail {
-  parse_canonical_integer_cbor_v1(#"c2480100000000000000").negative
+  accepted(#"c2480100000000000000")
 }
 
 test refuses_a_one_byte_bignum() fail {
-  parse_canonical_integer_cbor_v1(#"c24105").negative
+  accepted(#"c24105")
 }
 
 test refuses_a_definite_form_above_64_bytes() fail {
-  parse_canonical_integer_cbor_v1(
-    builtin.append_bytearray(#"c25841", replicate(65, 1)),
-  ).negative
+  accepted(builtin.append_bytearray(#"c25841", replicate(65, 1)))
 }
 
 test refuses_a_63_byte_middle_segment() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f583f",
       builtin.append_bytearray(replicate(63, 1), #"42aaaaff"),
     ),
-  ).negative
+  )
 }
 
 test refuses_an_empty_final_segment() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f",
       builtin.append_bytearray(segment(1), #"40ff"),
     ),
-  ).negative
+  )
 }
 
 test refuses_a_missing_break() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f",
       builtin.append_bytearray(segment(1), #"4101"),
     ),
-  ).negative
+  )
 }
 
 test refuses_an_indefinite_form_of_64_bytes() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f",
       builtin.append_bytearray(segment(1), #"ff"),
     ),
-  ).negative
+  )
+}
+
+test refuses_an_oversized_final_segment() fail {
+  accepted(
+    builtin.append_bytearray(
+      #"c25f5841",
+      builtin.append_bytearray(replicate(65, 1), #"ff"),
+    ),
+  )
 }
 
 test refuses_a_short_segment_before_the_last() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f4101",
       builtin.append_bytearray(segment(1), #"ff"),
     ),
-  ).negative
+  )
 }
 
 test refuses_a_non_minimal_segment_head() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f",
       builtin.append_bytearray(segment(1), #"5802aaaaff"),
     ),
-  ).negative
+  )
 }
 
 test refuses_a_long_segment_head() fail {
-  parse_canonical_integer_cbor_v1(
+  accepted(
     builtin.append_bytearray(
       #"c25f590041",
       builtin.append_bytearray(replicate(65, 1), #"ff"),
     ),
-  ).negative
+  )
 }
 
 test refuses_a_non_minimal_one_byte_head() fail {
-  parse_canonical_integer_cbor_v1(#"1805").negative
+  accepted(#"1805")
 }
 
 test refuses_a_non_minimal_two_byte_head() fail {
-  parse_canonical_integer_cbor_v1(#"1900ff").negative
+  accepted(#"1900ff")
 }
 
 test refuses_a_non_minimal_four_byte_head() fail {
-  parse_canonical_integer_cbor_v1(#"1a0000ffff").negative
+  accepted(#"1a0000ffff")
 }
 
 test refuses_a_non_minimal_eight_byte_head() fail {
-  parse_canonical_integer_cbor_v1(#"1b00000000ffffffff").negative
+  accepted(#"1b00000000ffffffff")
 }
 
 test refuses_a_non_minimal_negative_head() fail {
-  parse_canonical_integer_cbor_v1(#"3805").negative
+  accepted(#"3805")
 }
 
 test refuses_a_reserved_head() fail {
-  parse_canonical_integer_cbor_v1(#"1c").negative
+  accepted(#"1c")
 }
 
 test refuses_trailing_bytes() fail {
-  parse_canonical_integer_cbor_v1(#"0100").negative
+  accepted(#"0100")
 }
 
 test refuses_trailing_bytes_after_a_bignum() fail {
-  parse_canonical_integer_cbor_v1(
-    builtin.append_bytearray(cbor.serialise(power(64)), #"00"),
-  ).negative
+  accepted(builtin.append_bytearray(cbor.serialise(power(64)), #"00"))
 }
 
 test refuses_another_tag() fail {
-  parse_canonical_integer_cbor_v1(#"c449010000000000000000").negative
+  accepted(#"c449010000000000000000")
 }
 
 test refuses_a_byte_string() fail {
-  parse_canonical_integer_cbor_v1(#"4101").negative
+  accepted(#"4101")
 }
 
 // ## Limbs
@@ -429,7 +440,7 @@ test limbs_drop_zero_top_limbs() {
 }
 
 test limbs_refuse_a_larger_subtrahend() fail {
-  sub_limbs_v1([1], [2]) == []
+  list.length(sub_limbs_v1([1], [2])) >= 0
 }
 
 test adds_small_and_mixed_signs() {
