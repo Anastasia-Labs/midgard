@@ -1,9 +1,10 @@
 //// ## Mint-Authorization Fault Proof — Step 02 (W-C14)
 ////
 //// Binds the disputed block's header to the thread NFT, opens the committed
-//// claim (the transition step's `pre_utxos_root`, via the same
-//// `verify_committed_pre_state_v1` the decoding family uses), and reads the
-//// claimed policy id off the committed field-5 item at the accused ordinal.
+//// claim (the transition step's `pre_utxos_root`, via the shared
+//// `proof_thread_substrate_v1.event_pre_state_v1` the decoding family uses),
+//// and reads the claimed policy id off the committed field-5 item at the
+//// accused ordinal.
 ////
 //// The policy id is READ, never asserted: the §5.6 item walk enforces the
 //// 28-byte id, a non-empty asset map and non-zero quantities, so a zero-net
