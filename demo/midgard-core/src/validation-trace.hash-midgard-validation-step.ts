@@ -223,7 +223,7 @@ export const hashMidgardValidationMachineState = (
     STATE_HASH_DOMAIN.length +
       1 +
       cborHeadLength(machineVersion) +
-      8 * 34 +
+      7 * 34 +
       cborHeadLength(sourceKind) +
       cborHeadLength(phase) +
       cborHeadLength(0xffff_ffff) +
@@ -232,7 +232,7 @@ export const hashMidgardValidationMachineState = (
       cborHeadLength(verdict),
   );
   let offset = STATE_HASH_DOMAIN.copy(out, 0);
-  out[offset++] = 0x8f;
+  out[offset++] = 0x8e;
   offset = writeCborHead(out, offset, 0, machineVersion);
   offset = writeHash32(out, offset, state.eventKeyHash, "state.event_key_hash");
   offset = writeHash32(
@@ -276,12 +276,6 @@ export const hashMidgardValidationMachineState = (
     offset,
     state.rejectionCodeHash,
     "state.rejection_code_hash",
-  );
-  offset = writeHash32(
-    out,
-    offset,
-    state.ledgerDeltaRoot,
-    "state.ledger_delta_root",
   );
   return ensureHash32(
     midgardBlake2b(out.subarray(0, offset), { dkLen: 32 }),

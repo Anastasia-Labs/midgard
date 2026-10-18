@@ -511,7 +511,6 @@ pub fn value_and_mint_state_fixture(
       validation_trace_v1.ValueAndMint,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -872,7 +871,8 @@ pub fn value_and_mint_mint_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
   )
 }
 
-/// Kind 10: `finalize` (stage 5 -> LedgerDelta) on a settled accumulator.
+/// Kind 10: `finalize` (stage 5 -> accepting Terminal) on a settled
+/// accumulator.
 pub fn value_and_mint_finalize_kind_fixture() -> ValueAndMintKindFixtureV1 {
   let tx = empty_v1_transaction()
   let native_control = empty_native_control_fixture(tx)
@@ -884,16 +884,13 @@ pub fn value_and_mint_finalize_kind_fixture() -> ValueAndMintKindFixtureV1 {
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.LedgerDelta,
+    phase: validation_trace_v1.Terminal,
     program_counter: 41,
+    verdict: validation_trace_v1.Accepted,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
+      validation_trace_v1.Terminal,
       41,
-      vm_witness.encode_ledger_delta_witness_v1(
-        native_control,
-        pre.prior_ledger_root,
-        control.replay_schedule_hash,
-      ),
+      vm_shared.terminal_acceptance_witness,
     ),
   }
   ValueAndMintKindFixtureV1 {

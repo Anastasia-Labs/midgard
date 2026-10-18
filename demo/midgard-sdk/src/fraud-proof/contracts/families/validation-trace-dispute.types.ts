@@ -1,4 +1,5 @@
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 
 import {
   AuthenticatedValidator,
@@ -28,7 +29,26 @@ export type ValidationTraceDisputeFaultProofContracts = {
     readonly game: SpendingValidator;
     readonly boundary: SpendingValidator;
     readonly timeout: SpendingValidator;
-    readonly award: SpendingValidator;
+    /** Spend: awarded threads and receipts. Mint: the lost-defense receipts. */
+    readonly award: AuthenticatedValidator;
+    /**
+     * Holds each case's challenger bond apart from the case; spent only by
+     * the case's close. Not a step.
+     */
+    readonly disputeBond: SpendingValidator;
+    /**
+     * The validation case: the case NFT, the bond marker and the thread
+     * tokens, whose policy every thread holder takes as its thread policy.
+     * Not a step.
+     */
+    readonly case: AuthenticatedValidator;
+    /**
+     * The one-shot policy of the case configuration token, whose inline
+     * `CaseConfigV1` datum names the case's hand-off scripts. Not a step.
+     */
+    readonly caseConfig: MintingValidator;
+    /** The withdraw-zero script that releases threads past D_case. */
+    readonly threadExpiry: WithdrawalValidator;
     readonly proofItem: SpendingValidator;
     readonly canonicalDecodeItemStages: {
       readonly source: SpendingValidator;
@@ -48,7 +68,6 @@ export type ValidationTraceDisputeFaultProofContracts = {
     };
     readonly canonicalDecodePrepare: SpendingValidator;
     readonly prepareResolvers: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -195,17 +214,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
     ];
     readonly resolvers: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -231,4 +241,16 @@ export type BuildValidationTraceDisputeFaultProofContractsParams =
      * recorded in the deployment manifest.
      */
     readonly l1SlotConfig: L1SlotConfig;
+    /**
+     * The validation-dispute bond VerifySource locks at `dispute_bond_v1`, in
+     * lovelace: the deployment's `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`.
+     * A parameter of the source validator.
+     */
+    readonly disputeBondLovelace: bigint;
+    /**
+     * The out-ref the case configuration policy is a one-shot on: the hub
+     * oracle nonce, spent by the atomic protocol initialization that mints
+     * the configuration token.
+     */
+    readonly caseConfigInitializationNonce: OutRefLike;
   };

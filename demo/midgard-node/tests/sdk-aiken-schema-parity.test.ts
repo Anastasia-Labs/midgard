@@ -156,10 +156,27 @@ const ABI_MAPPINGS = [
     "ValidationTraceProofSchema",
     "midgard/validation_trace_v1/ValidationTraceProof",
   ],
+  ["CaseSchema", "midgard/validation_case_v1/CaseV1"],
+  ["CaseThreadSchema", "midgard/validation_case_v1/CaseThreadV1"],
+  ["ThreadHeaderSchema", "midgard/validation_case_v1/ThreadHeaderV1"],
+  ["CaseRedeemerSchema", "midgard/validation_case_v1/CaseRedeemerV1"],
+  ["CaseThreadDatumSchema", "fraud_proofs/validation_trace/timeout_v1/Datum"],
   [
-    "ValidationDisputeSchema",
-    "midgard/validation_dispute_v1/ValidationDisputeV1",
+    "ValidationTimeoutSpendRedeemerSchema",
+    "fraud_proofs/validation_trace/timeout_v1/SpendRedeemer",
   ],
+  ["ValidationDisputeTurnSchema", "midgard/validation_dispute_v1/DisputeTurn"],
+  ["DisputeWinnerSchema", "midgard/validation_dispute_v1/DisputeWinner"],
+  ["ReceiptRedeemerSchema", "midgard/validation_award_v1/ReceiptRedeemerV1"],
+  [
+    "ValidationAwardSpendRedeemerSchema",
+    "midgard/validation_award_v1/SpendRedeemer",
+  ],
+  ["SlashingReasonSchema", "midgard/operator_directory/SlashingReason"],
+  ["SlashingArgumentsSchema", "midgard/operator_directory/SlashingArguments"],
+  // `CaseConfigV1` and `LostDefenseReceiptV1` have no row: both are inline
+  // datums that no validator names in its ABI, so the blueprint publishes no
+  // definition for them.
   [
     "ValidationSourceMembershipSchema",
     "midgard/validation_claim_v1/ValidationSourceMembershipV1",
@@ -206,8 +223,8 @@ const ABI_MAPPINGS = [
   // **#597 adds no row, and that is a measured conclusion rather than an
   // omission.** #592 moved two wire surfaces this file would naturally cover —
   // four `ValidationAuxiliaryWitnessV1` constructors onto §8's `FieldCarriageV1`
-  // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 29
-  // `TransactionRedeemerItemBeginWitness`, 30 `TransactionFieldItemWitness`) and
+  // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 27
+  // `TransactionRedeemerItemBeginWitness`, 28 `TransactionFieldItemWitness`) and
   // the whole of `ValidationProofItemDatumV1` — and #597 moved both TypeScript
   // twins to match. Neither can be measured here, for two different reasons, and
   // both were checked by adding the mapping and running it rather than reasoned
@@ -316,6 +333,23 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
       );
     },
   );
+
+  // Shapes alone cannot tell apart two fields of one type, so the field names
+  // pin the order of the descriptor the node commits with this schema.
+  it("orders ValidationTraceDescriptorSchema's fields as ValidationTraceDescriptorV1 does", () => {
+    const fieldTitles = (schema: DataSchema) =>
+      (schema.anyOf ?? []).map(({ fields = [] }) =>
+        fields.map(({ title }) => title),
+      );
+    const aiken =
+      blueprint.definitions[
+        "midgard/validation_trace_v1/ValidationTraceDescriptorV1"
+      ]!;
+    expect(fieldTitles(aiken)[0]).toContain("initial_state_hash");
+    expect(
+      fieldTitles(SDK.ValidationTraceDescriptorSchema as DataSchema),
+    ).toEqual(fieldTitles(aiken));
+  });
 
   it.each(VALIDITY_VECTORS)(
     "binds raw native validity %s code %s to its Plutus constructor",

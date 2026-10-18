@@ -21,18 +21,42 @@ import {
 import type { MergePoint } from "./confirmed-merges.js";
 import { ViewMoved } from "./ports.js";
 
-/** A queue node: its header hash, header and block time (its commit time). */
+/**
+ * A queue node: its header hash, header, block time (its commit time) and
+ * availability status (whether a committee commitment binds its payload).
+ */
 export type LandedNode = Readonly<{
   headerHash: string;
   header: SDK.Header;
   blockTime: bigint;
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
 }>;
+
+/** The landed node a queue node datum carries. */
+export const landedNodeOf = (
+  headerHash: string,
+  datum: Parameters<typeof SDK.getStateQueueNodeFromStateQueueDatum>[0],
+) =>
+  Effect.map(
+    SDK.getStateQueueNodeFromStateQueueDatum(datum),
+    (node): LandedNode => ({
+      headerHash,
+      header: node.header,
+      blockTime: node.block_time,
+      daAvailability: node.da_attestation,
+    }),
+  );
 
 export type QueueHistory = Readonly<{
   /** Every header a retained queue node carried, by header hash. */
   headers: ReadonlyMap<string, SDK.Header>;
   /** The block time of each node in `headers`. */
   blockTimes: ReadonlyMap<string, bigint>;
+  /**
+   * Each node's availability status; a commitment any retained output
+   * carried is kept over Unattested.
+   */
+  statuses: ReadonlyMap<string, SDK.DaAvailabilityStateQueueStatus>;
   /** Each header's end time, from a node or a root that carried it. */
   endTimes: ReadonlyMap<string, bigint>;
   /**
@@ -71,6 +95,7 @@ export const decodeHistory = (
 ): QueueHistory => {
   const headers = new Map<string, SDK.Header>();
   const blockTimes = new Map<string, bigint>();
+  const statuses = new Map<string, SDK.DaAvailabilityStateQueueStatus>();
   const endTimes = new Map<string, bigint>();
   const roots = new Map<string, MergePoint>();
   for (const element of elements) {
@@ -95,9 +120,14 @@ export const decodeHistory = (
     if (node._tag === "Left") continue;
     headers.set(element.headerHash, node.right.header);
     blockTimes.set(element.headerHash, node.right.block_time);
+    if (
+      !statuses.has(element.headerHash) ||
+      SDK.daAvailabilityStatusBinds(node.right.da_attestation)
+    )
+      statuses.set(element.headerHash, node.right.da_attestation);
     endTimes.set(element.headerHash, node.right.header.endTime);
   }
-  return { headers, blockTimes, endTimes, roots };
+  return { headers, blockTimes, statuses, endTimes, roots };
 };
 
 /** `to` and its ancestors after the first one `stop` accepts, oldest first. */
@@ -125,7 +155,12 @@ export const lineageBack = (
       headers.length >= history.headers.size
     )
       return undefined;
-    headers.unshift({ headerHash: cursor, header, blockTime });
+    headers.unshift({
+      headerHash: cursor,
+      header,
+      blockTime,
+      daAvailability: history.statuses.get(cursor) ?? "Unattested",
+    });
     cursor = header.prevHeaderHash;
   }
   return { anchor: cursor, headers };

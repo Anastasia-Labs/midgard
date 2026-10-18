@@ -6,9 +6,9 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
     fraudProofMintDeclaredAssetLimit: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-01",
-      manifestPosition: 286,
-      publicationPosition: 192,
-      referenceRolePosition: 422,
+      manifestPosition: 292,
+      publicationPosition: 198,
+      referenceRolePosition: 430,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_01.main.spend",
@@ -17,9 +17,9 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
     fraudProofMintDeclaredAssetLimitStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-02",
-      manifestPosition: 287,
-      publicationPosition: 193,
-      referenceRolePosition: 423,
+      manifestPosition: 293,
+      publicationPosition: 199,
+      referenceRolePosition: 431,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_02.main.spend",
@@ -28,9 +28,9 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
     fraudProofMintDeclaredAssetLimitStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-03",
-      manifestPosition: 288,
-      publicationPosition: 194,
-      referenceRolePosition: 424,
+      manifestPosition: 294,
+      publicationPosition: 200,
+      referenceRolePosition: 432,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_03.main.spend",
@@ -39,9 +39,9 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
     fraudProofMintDeclaredAssetLimitStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-04",
-      manifestPosition: 289,
-      publicationPosition: 195,
-      referenceRolePosition: 425,
+      manifestPosition: 295,
+      publicationPosition: 201,
+      referenceRolePosition: 433,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",

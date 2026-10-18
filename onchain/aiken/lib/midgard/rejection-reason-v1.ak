@@ -28,9 +28,7 @@
 ////
 //// The reason itself is the rejection preimage: the machine's terminal
 //// rejection binds `validation_trace_v1.hash_rejection_code(reason)`, the
-//// domain-separated blake2b-256 of the reason's Plutus Data CBOR, and the
-//// forced-verdict check compares that hash with the descriptor's
-//// `rejection_code_hash` directly.
+//// domain-separated blake2b-256 of the reason's Plutus Data CBOR.
 ////
 //// A reserved family, not populated in V1: `GuardrailExceeded { guardrail,
 //// field_index, item_index }` — kept unpopulated per the 2026-08-24 owner

@@ -170,8 +170,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
               output,
             ),
           );
-        if (source.phase === "L2Transaction")
-          l2.push({ stepIndex: index, spentUtxos, producedUtxos });
+        l2.push({ stepIndex: index, spentUtxos, producedUtxos });
       }
     } else if (source.phase === "Withdrawal") {
       if (source.entry.value.validity === "WithdrawalIsValid") {

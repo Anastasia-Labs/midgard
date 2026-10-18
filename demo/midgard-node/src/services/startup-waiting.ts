@@ -94,6 +94,12 @@ export const AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED =
 export const RUNTIME_REFERENCE_SCRIPTS_FAILED =
   "runtime_reference_scripts_failed";
 
+/** The node-runtime reference-script preflight's submission lost an input to
+ * another transaction (a previous process's, still in flight after a
+ * restart); the preflight is built again from a fresh wallet read. */
+export const RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT =
+  "runtime_reference_scripts_input_conflict";
+
 /** The startup's protocol initialization (its transaction, the reference
  * scripts after it, or the deployment-info write) failed. */
 export const PROTOCOL_INITIALIZATION_FAILED = "protocol_initialization_failed";

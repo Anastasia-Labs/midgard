@@ -127,6 +127,11 @@ export const withRealStateQueueAndOperatorContracts = (
       realFraudProof,
       deploymentParameters.eventHistoryBounds,
       deploymentParameters.l1SlotConfig,
+      deploymentParameters.availabilityChallengeParameters
+        .challenger_bond_lovelace,
+      // The case configuration token is minted beside the hub NFT, in the
+      // init transaction that spends this nonce.
+      normalizedOneShotOutRef,
     );
     // The script-decode validator is not a proof chain: it is carried at the
     // top level, as a deployment manifest restores it.

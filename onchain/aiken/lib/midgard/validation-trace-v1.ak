@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
@@ -29,9 +28,6 @@ const rejection_code_domain =
 const validation_context_domain =
   #"4d69646761726456616c69646174696f6e436f6e746578745631"
 
-const ledger_delta_domain =
-  #"4d69646761726456616c69646174696f6e4c656467657244656c74615631"
-
 pub type ValidationPhase {
   CanonicalDecode
   CompactBinding
@@ -46,7 +42,6 @@ pub type ValidationPhase {
   ScriptIntegrity
   Cek
   ValueAndMint
-  LedgerDelta
   Terminal
 }
 
@@ -76,7 +71,6 @@ pub type ValidationMachineStateV1 {
   execution_memory: Int,
   verdict: ValidationVerdict,
   rejection_code_hash: ByteArray,
-  ledger_delta_root: ByteArray,
 }
 
 pub type ValidationTraceDescriptorV1 {
@@ -111,8 +105,7 @@ fn phase_code(phase: ValidationPhase) -> Int {
     ScriptIntegrity -> 10
     Cek -> 11
     ValueAndMint -> 12
-    LedgerDelta -> 13
-    Terminal -> 14
+    Terminal -> 13
   }
 }
 
@@ -131,7 +124,7 @@ fn source_kind_code(source_kind: ValidationSourceKind) -> Int {
   }
 }
 
-const no_rejection_code_hash =
+pub const no_rejection_code_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
 fn verdict_rejection_binding_is_valid(
@@ -162,7 +155,6 @@ pub fn machine_state_is_well_formed(state: ValidationMachineStateV1) -> Bool {
     state.execution_cpu >= 0,
     state.execution_memory >= 0,
     verdict_rejection_binding_is_valid(state.verdict, state.rejection_code_hash),
-    bytearray.length(state.ledger_delta_root) == 32,
   }
 }
 
@@ -199,7 +191,7 @@ pub fn encode_machine_state(state: ValidationMachineStateV1) -> ByteArray {
   expect
     verdict_rejection_binding_is_valid(state.verdict, state.rejection_code_hash)
 
-  #"8f"
+  #"8e"
     |> bytearray.concat(cbor.serialise(state.machine_version))
     |> bytearray.concat(encode_h32(state.event_key_hash))
     |> bytearray.concat(encode_h32(state.transaction_id))
@@ -214,7 +206,6 @@ pub fn encode_machine_state(state: ValidationMachineStateV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(state.execution_memory))
     |> bytearray.concat(cbor.serialise(verdict_code(state.verdict)))
     |> bytearray.concat(encode_h32(state.rejection_code_hash))
-    |> bytearray.concat(encode_h32(state.ledger_delta_root))
 }
 
 pub fn hash_machine_state(state: ValidationMachineStateV1) -> ByteArray {
@@ -250,12 +241,6 @@ pub fn hash_rejection_code(reason: RejectionReasonV1) -> ByteArray {
 pub fn hash_validation_context(context_cbor: ByteArray) -> ByteArray {
   validation_context_domain
     |> bytearray.concat(context_cbor)
-    |> blake2b_256
-}
-
-pub fn hash_ledger_delta(delta_cbor: ByteArray) -> ByteArray {
-  ledger_delta_domain
-    |> bytearray.concat(delta_cbor)
     |> blake2b_256
 }
 
@@ -349,39 +334,26 @@ pub fn verify_trace_proof(
   }
 }
 
-/// The canonical V1 descriptor has 145 fixed bytes plus a 1/2/3/5-byte
-/// positive uint32 step count. Match that exact wire shape without invoking
-/// the general Data decoder on arbitrary leaf bytes. This keeps the source
-/// reference script below its measured publication target.
-pub fn descriptor_bytes_are_well_formed(bytes: ByteArray) -> Bool {
-  let length = builtin.length_of_bytearray(bytes)
-  if length < 146 || length > 150 {
-    False
-  } else {
-    let count_length = length - 145
-    let count_head = builtin.index_bytearray(bytes, 39)
-    let count_is_canonical = when count_length is {
-      1 -> count_head > 0 && count_head < 24
-      2 -> count_head == 24 && builtin.index_bytearray(bytes, 40) >= 24
-      3 -> count_head == 25 && builtin.index_bytearray(bytes, 40) > 0
-      5 -> count_head == 26 && builtin.slice_bytearray(40, 2, bytes) != #"0000"
-      _ -> False
-    }
-    let suffix = 39 + count_length
-    let verdict = builtin.slice_bytearray(suffix + 68, 3, bytes)
-    let rejection = builtin.slice_bytearray(suffix + 73, 32, bytes)
-    and {
-      count_is_canonical,
-      builtin.slice_bytearray(0, 7, bytes) == #"d8799f01015820",
-      builtin.slice_bytearray(suffix, 2, bytes) == #"5820",
-      builtin.slice_bytearray(suffix + 34, 2, bytes) == #"5820",
-      builtin.slice_bytearray(suffix + 71, 2, bytes) == #"5820",
-      builtin.index_bytearray(bytes, length - 1) == 255,
-      if verdict == #"d87a80" {
-        rejection == no_rejection_code_hash
-      } else {
-        verdict == #"d87b80" && rejection != no_rejection_code_hash
-      },
-    }
+/// A trace proof against a bare trace root over states `0..step_count`: leaf
+/// `proof.state_index` holds `proof.state_hash`. A validation case commits
+/// each side to a root and its step count rather than to a descriptor.
+pub fn verify_trace_proof_against_root(
+  trace_root: ByteArray,
+  step_count: Int,
+  proof: ValidationTraceProof,
+) -> Bool {
+  and {
+    step_count >= 1,
+    step_count <= max_machine_step_count,
+    bytearray.length(trace_root) == 32,
+    proof.state_index >= 0,
+    proof.state_index <= step_count,
+    bytearray.length(proof.state_hash) == 32,
+    list.length(proof.siblings) == trace_depth(step_count),
+    fold_trace_path(
+      proof.siblings,
+      proof.state_index,
+      trace_leaf_hash(proof.state_hash),
+    ) == trace_root,
   }
 }

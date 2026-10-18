@@ -116,6 +116,12 @@ export type FetchRetainedDaPayloadOptions = {
   readonly headerHash: string;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
+  /**
+   * A further check a copy must pass once its header verified (for example
+   * against the block's attested availability commitment); a copy it refuses
+   * is a failed attempt for its peer, as one the header check refuses is.
+   */
+  readonly verifyPayload?: RetainedDaPayloadVerifier;
 };
 
 export type DaLibp2pRetainedDaSourceOptions = {

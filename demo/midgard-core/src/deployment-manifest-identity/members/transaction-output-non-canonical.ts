@@ -6,9 +6,9 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
     fraudProofTransactionOutputNonCanonical: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-01",
-      manifestPosition: 271,
-      publicationPosition: 177,
-      referenceRolePosition: 407,
+      manifestPosition: 277,
+      publicationPosition: 183,
+      referenceRolePosition: 415,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
@@ -17,9 +17,9 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
     fraudProofTransactionOutputNonCanonicalStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-02",
-      manifestPosition: 272,
-      publicationPosition: 178,
-      referenceRolePosition: 409,
+      manifestPosition: 278,
+      publicationPosition: 184,
+      referenceRolePosition: 417,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
@@ -28,9 +28,9 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
     fraudProofTransactionOutputNonCanonicalStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-03",
-      manifestPosition: 273,
-      publicationPosition: 179,
-      referenceRolePosition: 411,
+      manifestPosition: 279,
+      publicationPosition: 185,
+      referenceRolePosition: 419,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
@@ -40,9 +40,9 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole:
         "V1 fraud-proof transaction-output-non-canonical step-03 datum",
-      manifestPosition: 274,
-      publicationPosition: 180,
-      referenceRolePosition: 412,
+      manifestPosition: 280,
+      publicationPosition: 186,
+      referenceRolePosition: 420,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_03_datum.main.spend",
@@ -51,9 +51,9 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
     fraudProofTransactionOutputNonCanonicalStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-04",
-      manifestPosition: 275,
-      publicationPosition: 181,
-      referenceRolePosition: 414,
+      manifestPosition: 281,
+      publicationPosition: 187,
+      referenceRolePosition: 422,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",

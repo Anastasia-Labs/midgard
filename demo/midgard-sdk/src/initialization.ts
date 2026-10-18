@@ -41,6 +41,7 @@ import {
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
 } from "./fraud-proof/catalogue.js";
+import { appendValidationCaseConfigInitialization } from "./fraud-proof/validation-case.config-initialization.js";
 import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
@@ -85,6 +86,8 @@ export type AtomicProtocolInitReferenceScripts = {
   readonly fraudProofCatalogueMinting: UTxO;
   /** Without it the pool minting script is attached inline. */
   readonly daBondPoolMinting?: UTxO;
+  /** The case configuration mint has no inline fallback. */
+  readonly validationCaseConfigMinting: UTxO;
 };
 
 export type InitializationParams = {
@@ -436,6 +439,13 @@ export const incompleteInitializationTxProgram = (
       lovelace:
         params.daBondPoolLovelace ?? daBondPoolFloorLovelace + daBondLovelace,
       referenceScript: params.referenceScripts?.daBondPoolMinting,
+    });
+
+    // The case configuration's one-shot nonce is the same hub one-shot.
+    appendValidationCaseConfigInitialization(tx, {
+      network,
+      contracts: midgardValidators.fraudProofContracts.validationTraceDispute,
+      referenceScript: params.referenceScripts?.validationCaseConfigMinting,
     });
 
     if (params.referenceScripts !== undefined) {

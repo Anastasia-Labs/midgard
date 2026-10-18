@@ -60,5 +60,4 @@ export {
   referenceScriptPublicationFundingTarget,
   referenceScriptRoleAssets,
   resolveReferenceScriptPublicationLayout,
-  selectReferenceScriptFundingUtxos,
 } from "./reference-scripts.resolve-reference-script-publication-layout.js";

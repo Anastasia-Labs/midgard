@@ -149,12 +149,20 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const referenceInputNoIdx = nonExistentInputNoIndex;
     const invalidSignature = invalidRange;
 
+    // The case and the award mint as well as spend. The compact blueprint has
+    // no dedicated stub for either, so each pairs the `transition_trace`
+    // spend stub with the always-succeeds fraud-proof mint.
+    const validationTraceAuthenticated: SDK.AuthenticatedValidator = {
+      ...fraudProof,
+      ...transitionTrace,
+    };
+
     const validationTraceSemanticResolvers = Array.from(
-      { length: 91 },
+      { length: 83 },
       () => transitionTrace,
     );
     const validationTracePrepareResolvers = Array.from(
-      { length: 14 },
+      { length: 13 },
       () => transitionTrace,
     );
     const validationTraceCanonicalDecodeItemStages = {
@@ -271,7 +279,11 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       game: validationTraceDispute.game,
       boundary: validationTraceDispute.boundary,
       timeout: validationTraceDispute.timeout,
-      award: validationTraceDispute.award,
+      award: validationTraceAuthenticated,
+      disputeBond: transitionTrace,
+      case: validationTraceAuthenticated,
+      caseConfig: fraudProof,
+      threadExpiry: stateQueueYield,
       proofItem: transitionTrace,
       canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages:
@@ -363,11 +375,13 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         steps: [transitionTrace, ...transitionTraceFinals],
         yields: {
           l2Open: stateQueueYield,
+          l2Delete: stateQueueYield,
+          l2Outputs: stateQueueYield,
+          l2OutputStep: stateQueueYield,
+          l2OutputDescriptor: stateQueueYield,
+          l2OutputSummary: stateQueueYield,
           l2Summaries: stateQueueYield,
           l2Replay: stateQueueYield,
-          claimStructure: stateQueueYield,
-          claimSource: stateQueueYield,
-          claimEndpoints: stateQueueYield,
           depositProjection: stateQueueYield,
           l1Event: stateQueueYield,
           forcedTiming: stateQueueYield,

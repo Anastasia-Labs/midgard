@@ -144,7 +144,6 @@ const baseState: MidgardValidationMachineState = {
   executionMemory: 0n,
   verdict: "pending",
   rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  ledgerDeltaRoot: hash(7),
 };
 
 const BUDGETS = [

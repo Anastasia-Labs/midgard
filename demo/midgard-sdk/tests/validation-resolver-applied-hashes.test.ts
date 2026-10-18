@@ -84,6 +84,7 @@ describe("validation resolver production-builder parameter application", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -94,6 +95,10 @@ describe("validation resolver production-builder parameter application", () => {
         hubOraclePolicyId: "bb".repeat(28),
         fraudProofCataloguePolicyId: "cc".repeat(28),
         referenceScriptAuthPolicyId: referenceScriptAuthPolicyId,
+        caseConfigInitializationNonce: {
+          txHash: "ab".repeat(32),
+          outputIndex: 0,
+        },
       }),
     );
     const dispute = contracts.validationTraceDispute;
@@ -109,6 +114,7 @@ describe("validation resolver production-builder parameter application", () => {
       "one_step_resolver_script_hashes",
       "award_validator_script_hash",
       "computation_thread_token_policy_id",
+      "thread_expiry_script_hash",
     ]);
     // Full application is essential: an unapplied parameter produces a lambda
     // that succeeds without executing the terminal-padding refusal guards.
@@ -118,7 +124,8 @@ describe("validation resolver production-builder parameter application", () => {
       [
         dispute.resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
         dispute.award.spendingScriptHash,
-        contracts.computationThread.policyId,
+        dispute.case.policyId,
+        dispute.threadExpiry.withdrawalScriptHash,
       ],
     );
     expect(
@@ -130,8 +137,8 @@ describe("validation resolver production-builder parameter application", () => {
       [
         dispute.boundary.spendingScriptHash,
         dispute.timeout.spendingScriptHash,
-        dispute.resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
-        contracts.computationThread.policyId,
+        dispute.case.policyId,
+        dispute.threadExpiry.withdrawalScriptHash,
       ],
     );
     expect(
@@ -144,7 +151,8 @@ describe("validation resolver production-builder parameter application", () => {
     // deployment has no reviewed value for fails closed rather than defaulting.
     const bindings: Readonly<Record<string, string>> = {
       award_script_hash: dispute.award.spendingScriptHash,
-      computation_thread_policy_id: contracts.computationThread.policyId,
+      computation_thread_policy_id: dispute.case.policyId,
+      thread_expiry_script_hash: dispute.threadExpiry.withdrawalScriptHash,
       reference_script_auth_policy_id: referenceScriptAuthPolicyId,
       cek_context_control_script_hash:
         dispute.cekContextStages.control.spendingScriptHash,

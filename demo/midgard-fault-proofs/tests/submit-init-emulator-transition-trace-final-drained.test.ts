@@ -2,21 +2,12 @@ import { registerTransitionTraceFinalCases } from "./support/transition-trace-fi
 
 // A transaction that spends the ledger's only entry (the case's one output
 // shape) and produces nothing. The honest block commits the drained ledger as
-// the committed empty-ledger root and defends both routes; a block that commits
-// the MPF null root is removed by both the L2 replay route and an accepted
-// validation claim.
+// the committed empty-ledger root and defends the L2 replay route; a block that
+// commits the MPF null root is removed by it.
 registerTransitionTraceFinalCases(
   [
     { assetCount: 0, outputCount: 1, drained: true },
     { assetCount: 0, outputCount: 1, drained: true, honest: true },
-    { assetCount: 0, outputCount: 1, kind: "claim", drained: true },
-    {
-      assetCount: 0,
-      outputCount: 1,
-      kind: "claim",
-      drained: true,
-      honest: true,
-    },
   ],
   "drained",
 );

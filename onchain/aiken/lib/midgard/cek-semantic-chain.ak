@@ -6,7 +6,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_builtin_v1 as builtin_witness
 use midgard/cek_machine_v1 as machine
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{continue}
+use midgard/fraud_proofs/common.{ProverOnly, continue_validation_trace}
 
 // Prepared evidence is opaque between the binder and settle. Its typed opening
 // is required only by those two endpoints, so arm hops do not decode the VM.
@@ -56,14 +56,14 @@ pub fn continue_core(
     progress: bound.progress + 1,
     facts: next_facts,
   }
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step,
     action.input_index,
     action.output_index,
     own_out_ref,
-    tx.inputs,
-    tx.outputs,
+    tx,
+    ProverOnly,
     fn(_, _, _, _, output_hash, output_state) {
       output_hash == next_script_hash && output_state == next
     },

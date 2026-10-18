@@ -21,8 +21,8 @@ use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   NodeData, OperatorRemovalSchedulerSync, RetireOperator, ShowOperatorIsInactive,
   ShowSchedulerIsAdvancing, SlashOperator, SpendRedeemer, StrikeForInactivity,
-  UpdateBondHoldNewSettlement, UpdateBondHoldNewState, finalize_linked_list,
-  root_asset_name,
+  UpdateBondHoldNewDefense, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
+  finalize_linked_list, root_asset_name,
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
@@ -200,6 +200,59 @@ validator spend(
         // Done.
         True
       }
+      UpdateBondHoldNewDefense {
+        active_operator,
+        active_node_input_index,
+        active_node_output_index,
+      } -> {
+        let Transaction { inputs, outputs, mint, extra_signatories, .. } = self
+        {
+          let
+              _active_node_address,
+              lovelace_change,
+              m_operator,
+              active_node_input_data,
+              active_node_output_data,
+              _active_node_link
+            <- linked_list.spend_for_updating_elements_data(
+            element_input_index: active_node_input_index,
+            continued_element_output_index: active_node_output_index,
+            element_input_outref: own_out_ref,
+            inputs: inputs,
+            outputs: outputs,
+            tx_mint: mint,
+          )
+
+          // 1. The node keeps its lovelace exactly: the bond is never a fee
+          //    source.
+          expect lovelace_change == 0
+
+          // 2. The node is the signing operator's.
+          expect Some(active_operator) == m_operator
+          expect list.has(extra_signatories, active_operator)
+
+          // 3. Only the hold changes, and it never shortens.
+          expect
+              NodeData {
+                inactivity_strikes,
+                bond_unlock_time: old_bond_unlock_time,
+              }
+            = active_node_input_data
+          expect
+              NodeData {
+                inactivity_strikes: output_inactivity_strikes,
+                bond_unlock_time: Some(new_bond_unlock_time),
+              }
+            = active_node_output_data
+          expect output_inactivity_strikes == inactivity_strikes
+          expect
+            max_bond_unlock_time(new_bond_unlock_time, old_bond_unlock_time) == new_bond_unlock_time
+
+          // Done.
+          True
+        }
+          |> finalize_linked_list(active_operators_mint_script_hash)
+      }
       StrikeForInactivity {
         active_node_input_index,
         active_node_output_index,
@@ -337,6 +390,7 @@ validator mint(
   hub_oracle_script_hash: PolicyId,
   registered_operators_policy_id: PolicyId,
   retired_operators_policy_id: PolicyId,
+  lost_defense_receipt_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
@@ -559,6 +613,7 @@ validator mint(
               redeemers
             <- slash_fraudulent_operator_and_get_info(
             hub_oracle_script_hash,
+            lost_defense_receipt_policy_id,
             ActiveOperatorsDirectory,
             slashing_arguments,
             self,

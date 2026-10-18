@@ -6,9 +6,9 @@ export const spendInputSignerMissingMembers = defineDeploymentFamily(
     fraudProofSpendInputSignerMissing: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof spend-input-signer-missing step-01",
-      manifestPosition: 290,
-      publicationPosition: 196,
-      referenceRolePosition: 426,
+      manifestPosition: 296,
+      publicationPosition: 202,
+      referenceRolePosition: 434,
       commands: [],
       validatorTitle:
         "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
@@ -17,9 +17,9 @@ export const spendInputSignerMissingMembers = defineDeploymentFamily(
     fraudProofSpendInputSignerMissingStep02: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof spend-input-signer-missing step-02",
-      manifestPosition: 291,
-      publicationPosition: 197,
-      referenceRolePosition: 427,
+      manifestPosition: 297,
+      publicationPosition: 203,
+      referenceRolePosition: 435,
       commands: [],
       validatorTitle:
         "fraud_proofs/spend_input_signer_missing/step_02.main.spend",
@@ -28,9 +28,9 @@ export const spendInputSignerMissingMembers = defineDeploymentFamily(
     fraudProofSpendInputSignerMissingStep03: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof spend-input-signer-missing step-03",
-      manifestPosition: 292,
-      publicationPosition: 198,
-      referenceRolePosition: 428,
+      manifestPosition: 298,
+      publicationPosition: 204,
+      referenceRolePosition: 436,
       commands: [],
       validatorTitle:
         "fraud_proofs/spend_input_signer_missing/step_03.main.spend",
@@ -39,9 +39,9 @@ export const spendInputSignerMissingMembers = defineDeploymentFamily(
     fraudProofSpendInputSignerMissingStep04: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof spend-input-signer-missing step-04",
-      manifestPosition: 293,
-      publicationPosition: 199,
-      referenceRolePosition: 429,
+      manifestPosition: 299,
+      publicationPosition: 205,
+      referenceRolePosition: 437,
       commands: [],
       validatorTitle:
         "fraud_proofs/spend_input_signer_missing/step_04.main.spend",
@@ -50,9 +50,9 @@ export const spendInputSignerMissingMembers = defineDeploymentFamily(
     fraudProofSpendInputSignerMissingStep05: {
       purpose: "spend",
       referenceRole: "V1 fraud-proof spend-input-signer-missing step-05",
-      manifestPosition: 294,
-      publicationPosition: 200,
-      referenceRolePosition: 430,
+      manifestPosition: 300,
+      publicationPosition: 206,
+      referenceRolePosition: 438,
       commands: [],
       validatorTitle:
         "fraud_proofs/spend_input_signer_missing/step_05.main.spend",

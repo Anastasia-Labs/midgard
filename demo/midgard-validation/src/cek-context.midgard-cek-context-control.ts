@@ -192,7 +192,7 @@ export const finalizeMidgardCekObserverItems = (input: {
  * frontier; that membership (`[execution-leaf]` / `[native-execution]`) is the
  * pin, so the frontier index is derived and never named by the witness. The
  * step is a select (auxiliary constructor 17) when the leaf carries a redeemer
- * item leaf (language 3 or 128), and a skip (constructor 40) when it is a
+ * item leaf (language 3 or 128), and a skip (constructor 36) when it is a
  * native execution (language 0, empty redeemer leaf); only one can apply at a
  * given bound. Each select or skip lowers the bound by exactly one. The item
  * steps between a select and its finish walk the selected item under

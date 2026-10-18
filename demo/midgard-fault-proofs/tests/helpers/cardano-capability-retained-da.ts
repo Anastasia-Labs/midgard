@@ -247,10 +247,6 @@ export const buildStrictRetainedDaPairFixture = async ({
       transitionTrace,
     ),
     eventToStep: await countedRoot(SDK.ROOT_DOMAINS.eventToStep, eventToStep),
-    validationTraces: await countedRoot(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validationTraces,
-    ),
   };
   const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
@@ -270,8 +266,11 @@ export const buildStrictRetainedDaPairFixture = async ({
     depositsRoot: roots.deposits.root,
     transitionTraceRoot: roots.transitionTrace.root,
     eventToStepRoot: roots.eventToStep.root,
-    validationTracesRoot: roots.validationTraces.root,
     ...counts,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
     startTime: 0n,
     endTime: 1n,
     blockSlot: 0n,

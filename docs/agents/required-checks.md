@@ -534,6 +534,26 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:validation-initial-state-v1`
+
+Golden channel validation-initial-state-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-validation-initial-state-v1-goldens.mjs`
+  - `demo/flake.lock`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs`
+  - `demo/midgard-core/tests/fixtures/validation-initial-state-v1.generated.json`
+  - `demo/midgard-core/tests/fixtures/validation-initial-state-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak`
+  - `scripts/lib/aiken.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+
 ### `golden:cek-data-canonical-corpus-v1`
 
 Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).

@@ -266,8 +266,8 @@ const expectExactArray = (
 };
 
 describe("canonical validation controls V1 ABI", () => {
-  it("freezes all 41 ValidationAuxiliaryWitnessV1 tags and arities", () => {
-    expect(auxiliaryVectors).toHaveLength(41);
+  it("freezes all 37 ValidationAuxiliaryWitnessV1 tags and arities", () => {
+    expect(auxiliaryVectors).toHaveLength(37);
     for (const [vectorIndex, vector] of auxiliaryVectors.entries()) {
       expect(vector.tag).toBe(vectorIndex);
       const decoded = Data.from(vector.cbor);

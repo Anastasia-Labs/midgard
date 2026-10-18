@@ -2,37 +2,69 @@ import {
   createReferenceScriptAuthPolicy,
   type MidgardValidators,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  type Emulator,
+  type EmulatorAccount,
+  generateEmulatorAccount,
+  Lucid,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 
-/** The deployment funding wallet, independent of every fault-proof signer. */
+/**
+ * The reference-script wallet: it holds the authentication policy key, pays
+ * every authenticated publication, and is a different wallet from the funder
+ * (the operator) and every fault-proof signer.
+ */
 export type ReferenceScriptPublisher = Readonly<{
   lucid: LucidEvolution;
-  reservedInputs: readonly UTxO[];
 }>;
 
 export type ReferenceScriptPublishingContracts = MidgardValidators & {
   readonly referenceScriptPublisher?: ReferenceScriptPublisher;
 };
 
+/** The reference-script wallet's genesis account, unless the caller fixes one. */
+export const referenceScriptPublisherAccount = (
+  account?: EmulatorAccount,
+): EmulatorAccount =>
+  account ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
+
 /**
- * Reserve the contract nonce before the funding wallet publishes references.
- * The auth policy expires `timelockMs` after `now`, by default the SDK's.
+ * Reserve the contract nonce in the funder (operator) wallet, and bind the
+ * reference-script authentication policy to the separate `publisher` genesis
+ * account, which then pays every authenticated publication.
+ *
+ * The nonce stays with the funder because deployment setup spends it from
+ * there; the publisher wallet holds no reserved input. The policy's timelock
+ * is anchored at the emulator time this is called at, as before the nonce.
+ * Publication transactions carry no Plutus script, so the publisher's Lucid
+ * needs no custom evaluator. The auth policy expires `timelockMs` after that
+ * time, by default the SDK's.
  */
 export const createReferenceScriptPublisher = async (
-  lucid: LucidEvolution,
-  now: number,
+  funderLucid: LucidEvolution,
+  publisher: EmulatorAccount,
+  emulator: Emulator,
   timelockMs?: number,
 ) => {
+  const now = emulator.now();
+  const publisherLucid = await Lucid(emulator, "Custom");
+  publisherLucid.selectWallet.fromSeed(publisher.seedPhrase);
+  const funderAddress = await funderLucid.wallet().address();
+  if (funderAddress === (await publisherLucid.wallet().address())) {
+    throw new Error(
+      "The reference-script publisher must be a different wallet from the funder",
+    );
+  }
   const nonceLovelace = 10_000_000n;
-  const address = await lucid.wallet().address();
-  const unsigned = await lucid
+  const unsigned = await funderLucid
     .newTx()
-    .pay.ToAddress(address, { lovelace: nonceLovelace })
+    .pay.ToAddress(funderAddress, { lovelace: nonceLovelace })
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
-  await lucid.awaitTx(txHash);
-  const nonceCandidates = (await lucid.wallet().getUtxos()).filter(
+  await funderLucid.awaitTx(txHash);
+  const nonceCandidates = (await funderLucid.wallet().getUtxos()).filter(
     (utxo) =>
       utxo.txHash === txHash &&
       utxo.assets.lovelace === nonceLovelace &&
@@ -45,13 +77,12 @@ export const createReferenceScriptPublisher = async (
   return {
     nonceUtxo,
     referenceScriptAuth: await createReferenceScriptAuthPolicy(
-      lucid,
+      publisherLucid,
       now,
       timelockMs,
     ),
     referenceScriptPublisher: {
-      lucid,
-      reservedInputs: [nonceUtxo],
+      lucid: publisherLucid,
     } satisfies ReferenceScriptPublisher,
   };
 };

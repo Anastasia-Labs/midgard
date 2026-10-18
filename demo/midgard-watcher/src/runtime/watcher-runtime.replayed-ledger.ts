@@ -5,7 +5,10 @@ import {
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
 } from "@al-ft/midgard-sdk";
 
-import { createWatcherReplayedLedger } from "../fault-proofs/replayed-ledger.js";
+import {
+  createWatcherReplayedLedger,
+  watcherReplayAvailabilityAuthority,
+} from "../fault-proofs/replayed-ledger.js";
 import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherReplayRetention } from "../l1-follower/replay-retention.js";
 import { createWatcherFollowerReplaySource } from "../l1-follower/replay-source.js";
@@ -73,6 +76,8 @@ export const createWatcherRuntimeReplayHost = (
           journalDirectory,
           `replayed-ledger-${deploymentIdentity.manifestId}.json`,
         ),
+        availabilityAuthority:
+          watcherReplayAvailabilityAuthority(deploymentIdentity),
       });
       return { userEvents, keeper, close: () => source.close() };
     },

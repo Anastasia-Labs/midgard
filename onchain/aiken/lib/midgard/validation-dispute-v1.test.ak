@@ -1,4 +1,9 @@
 use aiken/cbor
+use aiken/interval
+use env
+use midgard/common/utils
+use midgard/validation_case_thread_v1
+use midgard/validation_case_v1
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -16,6 +21,37 @@ const h_e = #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 const h_f = #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+
+/// A case thread opened on the two descriptors' roots and terminal claims,
+/// whose turn starts at `turn_started_at`.
+fn thread_opened_on(
+  operator: validation_trace_v1.ValidationTraceDescriptorV1,
+  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+  agreed_low_hash: ByteArray,
+  turn_started_at: Int,
+) -> validation_case_v1.CaseThreadV1 {
+  validation_case_v1.CaseThreadV1 {
+    header: validation_case_v1.ThreadHeaderV1 {
+      started_at: 0,
+      defender_vkh: #"",
+    },
+    version: validation_case_v1.thread_version,
+    case_id: #"",
+    challenger_root: challenger.trace_root,
+    defender_root: operator.trace_root,
+    step_count: operator.step_count,
+    low_index: 0,
+    high_index: operator.step_count,
+    agreed_low_hash,
+    defender_high_hash: operator.terminal_state_hash,
+    challenger_high_hash: challenger.terminal_state_hash,
+    round: 0,
+    turn_started_at,
+    defender_clock_ms: validation_dispute_v1.dispute_side_clock_milliseconds,
+    challenger_clock_ms: validation_dispute_v1.dispute_side_clock_milliseconds,
+    turn: validation_dispute_v1.next_turn(0, operator.step_count),
+  }
+}
 
 fn descriptor4(
   a: ByteArray,
@@ -91,7 +127,6 @@ fn fixture_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_a,
   }
 }
 
@@ -105,7 +140,7 @@ test dispute_turn_and_winner_tags_match_typescript() {
       },
     ) == #"d87a9f015820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaff",
     cbor.serialise(validation_dispute_v1.ReadyForOneStep) == #"d87b80",
-    cbor.serialise(validation_dispute_v1.OperatorWins) == #"d87980",
+    cbor.serialise(validation_dispute_v1.DefenderWins) == #"d87980",
     cbor.serialise(validation_dispute_v1.ChallengerWins) == #"d87a80",
     cbor.serialise(validation_dispute_v1.NeitherClaimValid) == #"d87b80",
   }
@@ -114,7 +149,12 @@ test dispute_turn_and_winner_tags_match_typescript() {
 test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary() {
   let operator = descriptor4(h_a, h_b, h_c, h_d)
   let challenger = descriptor4(h_a, h_b, h_e, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let opened = thread_opened_on(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let operator_right = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_c),
     validation_trace_v1.trace_leaf_hash(h_d),
@@ -123,35 +163,39 @@ test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary(
     validation_trace_v1.trace_leaf_hash(h_e),
     validation_trace_v1.trace_leaf_hash(h_f),
   )
-  let with_operator_1 = validation_dispute_v1.reveal_operator_midpoint(
+  let with_operator_1 = validation_case_thread_v1.reveal_defender_midpoint(
     opened,
     proof4(1, h_b, h_a, operator_right),
     101,
+    101,
   )
-  let after_equal_1 = validation_dispute_v1.reveal_challenger_midpoint(
+  let after_equal_1 = validation_case_thread_v1.reveal_challenger_midpoint(
     with_operator_1,
     proof4(1, h_b, h_a, challenger_right),
+    102,
     102,
   )
   let operator_left = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_a),
     validation_trace_v1.trace_leaf_hash(h_b),
   )
-  let with_operator_2 = validation_dispute_v1.reveal_operator_midpoint(
+  let with_operator_2 = validation_case_thread_v1.reveal_defender_midpoint(
     after_equal_1,
     proof4(2, h_c, h_d, operator_left),
     103,
+    103,
   )
-  let ready = validation_dispute_v1.reveal_challenger_midpoint(
+  let ready = validation_case_thread_v1.reveal_challenger_midpoint(
     with_operator_2,
     proof4(2, h_e, h_f, operator_left),
+    104,
     104,
   )
   and {
     ready.low_index == 1,
     ready.high_index == 2,
     ready.agreed_low_hash == h_b,
-    ready.operator_high_hash == h_c,
+    ready.defender_high_hash == h_c,
     ready.challenger_high_hash == h_e,
     ready.turn == validation_dispute_v1.ReadyForOneStep,
     ready.round == 2,
@@ -159,108 +203,339 @@ test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary(
 }
 
 test timeout_assigns_loss_to_the_party_that_owes_the_move() {
+  let clock = validation_dispute_v1.dispute_side_clock_milliseconds
   let operator = descriptor4(h_a, h_b, h_c, h_d)
   let challenger = descriptor4(h_a, h_b, h_e, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let opened = thread_opened_on(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let operator_right = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_c),
     validation_trace_v1.trace_leaf_hash(h_d),
   )
-  let awaiting_challenger = validation_dispute_v1.reveal_operator_midpoint(
+  let awaiting_challenger = validation_case_thread_v1.reveal_defender_midpoint(
     opened,
     proof4(1, h_b, h_a, operator_right),
     101,
+    101,
   )
   and {
-    validation_dispute_v1.timeout_winner(opened, 300_101) == validation_dispute_v1.ChallengerWins,
-    validation_dispute_v1.timeout_winner(awaiting_challenger, 300_102) == validation_dispute_v1.OperatorWins,
+    validation_case_thread_v1.timeout_winner(opened, 100 + clock + 1) == validation_dispute_v1.ChallengerWins,
+    validation_case_thread_v1.timeout_winner(
+      awaiting_challenger,
+      101 + clock + 1,
+    ) == validation_dispute_v1.DefenderWins,
   }
 }
 
-test dispute_open_maturity_boundary_is_exact_and_fails_closed() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_open_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
+const clock = validation_dispute_v1.dispute_side_clock_milliseconds
+
+const l_d = validation_dispute_v1.dispute_max_validity_range_milliseconds
+
+const opened_at = 1_000
+
+fn clock_fixture() -> validation_case_v1.CaseThreadV1 {
+  thread_opened_on(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
+    opened_at,
+  )
+}
+
+fn operator_first_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(
+    1,
+    h_b,
+    h_a,
+    validation_trace_v1.trace_branch_hash(
+      validation_trace_v1.trace_leaf_hash(h_c),
+      validation_trace_v1.trace_leaf_hash(h_d),
+    ),
+  )
+}
+
+fn challenger_first_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(
+    1,
+    h_b,
+    h_a,
+    validation_trace_v1.trace_branch_hash(
+      validation_trace_v1.trace_leaf_hash(h_e),
+      validation_trace_v1.trace_leaf_hash(h_f),
+    ),
+  )
+}
+
+fn left_pair_root() -> ByteArray {
+  validation_trace_v1.trace_branch_hash(
+    validation_trace_v1.trace_leaf_hash(h_a),
+    validation_trace_v1.trace_leaf_hash(h_b),
+  )
+}
+
+fn operator_second_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(2, h_c, h_d, left_pair_root())
+}
+
+fn challenger_second_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(2, h_e, h_f, left_pair_root())
+}
+
+/// Operator reveal at `lower`/`upper`, then challenger reveal at the given
+/// bounds: the first round of the fixture, agreeing at index 1.
+fn first_round(
+  operator_lower: Int,
+  operator_upper: Int,
+  challenger_lower: Int,
+  challenger_upper: Int,
+) -> validation_case_v1.CaseThreadV1 {
+  validation_case_thread_v1.reveal_challenger_midpoint(
+    validation_case_thread_v1.reveal_defender_midpoint(
+      clock_fixture(),
+      operator_first_proof(),
+      operator_lower,
+      operator_upper,
+    ),
+    challenger_first_proof(),
+    challenger_lower,
+    challenger_upper,
+  )
+}
+
+fn ready_fixture() -> validation_case_v1.CaseThreadV1 {
+  let after_first = first_round(1_100, 1_200, 1_300, 1_400)
+  validation_case_thread_v1.reveal_challenger_midpoint(
+    validation_case_thread_v1.reveal_defender_midpoint(
+      after_first,
+      operator_second_proof(),
+      1_500,
+      1_600,
+    ),
+    challenger_second_proof(),
+    1_700,
+    1_800,
+  )
+}
+
+test a_reveal_is_charged_the_time_since_the_turn_started_to_its_lower_bound() {
+  let moved = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 5_000,
+    opened_at + 5_000 + l_d,
+  )
   and {
-    validation_dispute_v1.can_open_before_maturity(
-      final_open_time,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      final_open_time + 1,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      final_open_time,
-      challenged_block_end_time,
-      validation_dispute_v1.max_dispute_duration_milliseconds - 1,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      -1,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
+    moved.defender_clock_ms == clock - 5_000,
+    moved.challenger_clock_ms == clock,
+    moved.turn_started_at == opened_at + 5_000 + l_d,
   }
 }
 
-test delayed_source_verification_starts_a_fresh_bounded_operator_turn() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let source_time_upper = 200
-  let dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    100,
-    source_time_upper,
-    challenged_block_end_time,
-    maturity_duration,
+test clock_debits_accumulate_per_side_across_moves() {
+  let after_first = first_round(1_100, 1_200, 1_350, 1_400)
+  let moved = validation_case_thread_v1.reveal_defender_midpoint(
+    after_first,
+    operator_second_proof(),
+    1_470,
+    1_480,
   )
   and {
-    dispute.response_deadline == source_time_upper + validation_dispute_v1.response_window_milliseconds,
-    dispute.response_deadline != 100 + validation_dispute_v1.response_window_milliseconds,
+    moved.defender_clock_ms == clock - 100 - 70,
+    moved.challenger_clock_ms == clock - 150,
+    moved.turn_started_at == 1_480,
   }
 }
 
-test final_maturity_source_verification_boundary_remains_resolvable() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
-  let dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    100,
-    final_source_time,
-    challenged_block_end_time,
-    maturity_duration,
+test a_side_may_spend_its_clock_to_the_last_millisecond_over_several_moves() {
+  let after_first = first_round(
+    opened_at + clock - 10,
+    opened_at + clock,
+    opened_at + clock,
+    opened_at + clock,
   )
-  dispute.response_deadline == final_source_time + validation_dispute_v1.response_window_milliseconds
+  let moved = validation_case_thread_v1.reveal_defender_midpoint(
+    after_first,
+    operator_second_proof(),
+    opened_at + clock + 10,
+    opened_at + clock + 10,
+  )
+  moved.defender_clock_ms == 0
 }
 
-test stale_source_verification_after_maturity_boundary_fails_closed() fail {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
-  expect _dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    100,
-    final_source_time + 1,
-    challenged_block_end_time,
-    maturity_duration,
+test a_side_that_overdraws_its_clock_over_several_moves_is_refused() fail {
+  let after_first = first_round(
+    opened_at + clock - 10,
+    opened_at + clock,
+    opened_at + clock,
+    opened_at + clock,
+  )
+  expect _moved = validation_case_thread_v1.reveal_defender_midpoint(
+    after_first,
+    operator_second_proof(),
+    opened_at + clock + 11,
+    opened_at + clock + 11,
   )
 }
 
-test source_verification_cannot_predate_authenticated_open_time() fail {
-  expect _dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    100,
-    99,
-    1_000_000,
-    604_800_000,
+test one_long_gap_within_the_clock_is_accepted() {
+  let moved = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + clock,
+    opened_at + clock,
   )
+  moved.defender_clock_ms == 0
+}
+
+test one_gap_longer_than_the_clock_is_refused() fail {
+  expect _moved = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + clock + 1,
+    opened_at + clock + 1,
+  )
+}
+
+test a_lower_bound_before_the_turn_start_is_charged_nothing() {
+  let moved = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at - 500,
+    opened_at + 10,
+  )
+  and {
+    moved.defender_clock_ms == clock,
+    moved.turn_started_at == opened_at + 10,
+  }
+}
+
+test a_movers_upper_bound_never_overcharges_either_side() {
+  let narrow = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 100,
+    opened_at + 100,
+  )
+  let wide = validation_case_thread_v1.reveal_defender_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 100,
+    opened_at + 100 + l_d,
+  )
+  // The opponent's next move may land anywhere inside the stretched range and
+  // is charged only from the stretched turn start.
+  let answered = validation_case_thread_v1.reveal_challenger_midpoint(
+    wide,
+    challenger_first_proof(),
+    opened_at + 100 + l_d - 1,
+    opened_at + 100 + l_d,
+  )
+  and {
+    narrow.defender_clock_ms == wide.defender_clock_ms,
+    answered.challenger_clock_ms == clock,
+  }
+}
+
+test enter_resolution_charges_the_challenger_and_restarts_the_turn() {
+  let ready = ready_fixture()
+  let entered = validation_case_thread_v1.enter_resolution(ready, 1_900, 1_950)
+  and {
+    ready.turn == validation_dispute_v1.ReadyForOneStep,
+    entered.challenger_clock_ms == ready.challenger_clock_ms - 100,
+    entered.defender_clock_ms == ready.defender_clock_ms,
+    entered.turn_started_at == 1_950,
+    entered.turn == validation_dispute_v1.ReadyForOneStep,
+  }
+}
+
+test enter_resolution_refuses_a_game_still_bisecting() fail {
+  expect _entered = validation_case_thread_v1.enter_resolution(
+    clock_fixture(),
+    opened_at,
+    opened_at,
+  )
+}
+
+test enter_resolution_refuses_a_challenger_with_no_clock_left() fail {
+  let ready = ready_fixture()
+  expect _entered = validation_case_thread_v1.enter_resolution(
+    ready,
+    1_800 + ready.challenger_clock_ms + 1,
+    1_800 + ready.challenger_clock_ms + 1,
+  )
+}
+
+test timeout_lands_one_millisecond_after_the_movers_clock_runs_out() {
+  let ready = ready_fixture()
+  and {
+    validation_case_thread_v1.timeout_winner(
+      clock_fixture(),
+      opened_at + clock + 1,
+    ) == validation_dispute_v1.ChallengerWins,
+    validation_case_thread_v1.timeout_winner(
+      ready,
+      1_800 + ready.challenger_clock_ms + 1,
+    ) == validation_dispute_v1.DefenderWins,
+  }
+}
+
+test a_ready_for_one_step_timeout_is_refused_while_the_challenger_still_has_clock() fail {
+  let ready = ready_fixture()
+  validation_case_thread_v1.timeout_winner(
+    ready,
+    1_800 + ready.challenger_clock_ms,
+  ) == validation_dispute_v1.DefenderWins
+}
+
+test a_thread_charges_at_most_two_moves_per_round_and_three_more() {
+  let cap = env.max_dispute_move_fee_lovelace
+  and {
+    validation_dispute_v1.max_bisection_rounds == 32,
+    validation_dispute_v1.max_thread_charged_moves == 67,
+    validation_dispute_v1.max_dispute_duration_milliseconds == 2 * clock + 134 * l_d + validation_dispute_v1.dispute_resolution_allowance_milliseconds,
+    validation_dispute_v1.thread_fee_reserve_lovelace == 67 * cap,
+  }
+}
+
+test timeout_is_refused_while_the_mover_still_has_clock() fail {
+  expect _winner = validation_case_thread_v1.timeout_winner(
+    clock_fixture(),
+    opened_at + clock,
+  )
+}
+
+test a_dispute_move_range_of_exactly_l_d_is_accepted() {
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+    interval.between(0, l_d),
+    l_d,
+  )
+  and {
+    lower == 0,
+    upper == l_d,
+  }
+}
+
+test a_dispute_move_range_longer_than_l_d_is_refused() fail {
+  expect _bounds = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+    interval.between(0, l_d + 1),
+    l_d,
+  )
+}
+
+/// The case open guard is inclusive at `block_end + M/2` and closed one
+/// millisecond later.
+test case_open_guard_is_inclusive_at_half_maturity() {
+  let block_end = 1_000_000
+  let deadline = block_end + env.block_maturity_duration_v1 / 2
+  and {
+    validation_dispute_v1.case_open_window_milliseconds == env.block_maturity_duration_v1 / 2,
+    validation_dispute_v1.case_can_open(deadline, block_end),
+    !validation_dispute_v1.case_can_open(deadline + 1, block_end),
+  }
 }
 
 test one_step_boundary_is_authenticated_before_resolver_handoff() {
@@ -294,23 +569,13 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
   )
   let operator = descriptor2(pre_hash, operator_post_hash)
   let challenger = descriptor2(pre_hash, challenger_post_hash)
-  let ready = validation_dispute_v1.open(operator, challenger, 100)
-  let operator_post = validation_trace_v1.ValidationTraceProof {
-    state_index: 1,
-    state_hash: operator_post_hash,
-    siblings: [validation_trace_v1.trace_leaf_hash(pre_hash)],
-  }
-  let challenger_post = validation_trace_v1.ValidationTraceProof {
-    state_index: 1,
-    state_hash: challenger_post_hash,
-    siblings: [validation_trace_v1.trace_leaf_hash(pre_hash)],
-  }
-  let resolution = validation_resolution_v1.prepare(
-    ready,
-    pre,
-    operator_post,
-    challenger_post,
+  let ready = thread_opened_on(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
   )
+  let resolution = validation_resolution_v1.prepare(ready, pre)
   and {
     resolution.version == validation_resolution_v1.resolution_version,
     resolution.pre_state == pre,
@@ -319,6 +584,91 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
     validation_resolution_v1.resolver_index(pre.phase) == 1,
     validation_resolution_v1.state_is_well_formed(resolution),
   }
+}
+
+/// A ReadyForOneStep dispute on `pre` whose two high hashes are the given
+/// successors (Gap A tests).
+fn ready_for_one_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  operator_successor_hash: ByteArray,
+  challenger_successor_hash: ByteArray,
+) -> validation_case_v1.CaseThreadV1 {
+  let pre_hash = validation_trace_v1.hash_machine_state(pre)
+  thread_opened_on(
+    descriptor2(pre_hash, operator_successor_hash),
+    descriptor2(pre_hash, challenger_successor_hash),
+    pre_hash,
+    100,
+  )
+}
+
+fn compact_binding_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..fixture_pre_state(),
+    phase: validation_trace_v1.CompactBinding,
+  }
+}
+
+test gap_a_successor_hashes_come_from_the_dispute_datum() {
+  let resolution = validation_resolution_v1.prepare(
+    ready_for_one_step(compact_binding_pre_state(), h_c, h_d),
+    compact_binding_pre_state(),
+  )
+  and {
+    resolution.operator_successor_hash == h_c,
+    resolution.challenger_successor_hash == h_d,
+  }
+}
+
+test gap_a_one_pre_state_two_dispute_hash_pairs_each_prepare_their_own() {
+  let pre = compact_binding_pre_state()
+  let first = validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_c, h_d),
+    pre,
+  )
+  let second = validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_e, h_f),
+    pre,
+  )
+  and {
+    first.pre_state == second.pre_state,
+    first.operator_successor_hash == h_c,
+    second.operator_successor_hash == h_e,
+    first != second,
+  }
+}
+
+test gap_a_refuses_a_pre_state_that_is_not_the_agreed_low_state() fail {
+  let pre = compact_binding_pre_state()
+  let other = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    work_root: h_e,
+  }
+  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), other) == validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_c, h_d),
+    pre,
+  )
+}
+
+test gap_a_refuses_a_dispute_still_bisecting() fail {
+  let pre = compact_binding_pre_state()
+  let pre_hash = validation_trace_v1.hash_machine_state(pre)
+  let bisecting = thread_opened_on(
+    descriptor4(pre_hash, h_b, h_c, h_d),
+    descriptor4(pre_hash, h_b, h_c, h_e),
+    pre_hash,
+    100,
+  )
+  validation_resolution_v1.prepare(bisecting, pre).version == validation_resolution_v1.resolution_version
+}
+
+test gap_a_refuses_a_terminal_pre_state() fail {
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..fixture_pre_state(),
+    phase: validation_trace_v1.Terminal,
+    verdict: validation_trace_v1.Accepted,
+  }
+  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), pre).version == validation_resolution_v1.resolution_version
 }
 
 test resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal() {
@@ -342,9 +692,8 @@ test resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal() {
     validation_resolution_v1.resolver_index(validation_trace_v1.ScriptIntegrity) == 10,
     validation_resolution_v1.resolver_index(validation_trace_v1.Cek) == 11,
     validation_resolution_v1.resolver_index(validation_trace_v1.ValueAndMint) == 12,
-    validation_resolution_v1.resolver_index(validation_trace_v1.LedgerDelta) == 13,
     validation_resolution_v1.resolver_index(validation_trace_v1.Terminal) == -1,
-    validation_resolution_v1.resolver_count == 14,
+    validation_resolution_v1.resolver_count == 13,
   }
 }
 
@@ -384,173 +733,6 @@ test malformed_resolution_states_fail_closed() {
           phase: validation_trace_v1.Terminal,
         },
       },
-    ),
-  }
-}
-
-test challenger_resolution_requires_exact_hashes_and_a_unique_valid_successor() {
-  let pre = fixture_pre_state()
-  let operator = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: 1,
-    work_root: h_b,
-  }
-  let challenger = validation_trace_v1.ValidationMachineStateV1 {
-    ..operator,
-    work_root: h_c,
-  }
-  let state = validation_resolution_v1.ValidationResolutionStateV1 {
-    version: validation_resolution_v1.resolution_version,
-    pre_state: pre,
-    operator_successor_hash: validation_trace_v1.hash_machine_state(operator),
-    challenger_successor_hash: validation_trace_v1.hash_machine_state(
-      challenger,
-    ),
-  }
-  and {
-    validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      False,
-      True,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      True,
-      True,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      False,
-      False,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      challenger,
-      operator,
-      False,
-      True,
-    ),
-  }
-}
-
-fn terminal_padding_fixture() -> (
-  validation_dispute_v1.ValidationDisputeV1,
-  validation_trace_v1.ValidationMachineStateV1,
-) {
-  let base = fixture_pre_state()
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..base,
-    phase: validation_trace_v1.Terminal,
-    verdict: validation_trace_v1.Accepted,
-    program_counter: 2,
-  }
-  let hash = validation_trace_v1.hash_machine_state(terminal)
-  let operator = descriptor4(h_a, h_b, hash, h_d)
-  let challenger = descriptor4(h_a, h_b, hash, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
-  let right = validation_trace_v1.trace_branch_hash(
-    validation_trace_v1.trace_leaf_hash(hash),
-    validation_trace_v1.trace_leaf_hash(h_d),
-  )
-  let operator_first = validation_dispute_v1.reveal_operator_midpoint(
-    opened,
-    proof4(1, h_b, h_a, right),
-    101,
-  )
-  let challenger_right = validation_trace_v1.trace_branch_hash(
-    validation_trace_v1.trace_leaf_hash(hash),
-    validation_trace_v1.trace_leaf_hash(h_f),
-  )
-  let agreed_first = validation_dispute_v1.reveal_challenger_midpoint(
-    operator_first,
-    proof4(1, h_b, h_a, challenger_right),
-    102,
-  )
-  let left = validation_trace_v1.trace_branch_hash(
-    validation_trace_v1.trace_leaf_hash(h_a),
-    validation_trace_v1.trace_leaf_hash(h_b),
-  )
-  let operator_second = validation_dispute_v1.reveal_operator_midpoint(
-    agreed_first,
-    proof4(2, hash, h_d, left),
-    103,
-  )
-  let ready = validation_dispute_v1.reveal_challenger_midpoint(
-    operator_second,
-    proof4(2, hash, h_f, left),
-    104,
-  )
-  (ready, terminal)
-}
-
-test authenticated_terminal_before_the_operator_end_awards_padding() {
-  let (ready, terminal) = terminal_padding_fixture()
-  and {
-    ready.low_index == 2,
-    ready.high_index == 3,
-    validation_resolution_v1.terminal_padding_is_authenticated(ready, terminal),
-  }
-}
-
-test padding_refuses_a_nonterminal_authenticated_boundary() {
-  let (ready, terminal) = terminal_padding_fixture()
-  let nonterminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..terminal,
-    phase: validation_trace_v1.LedgerDelta,
-  }
-  let honest = validation_dispute_v1.ValidationDisputeV1 {
-    ..ready,
-    agreed_low_hash: validation_trace_v1.hash_machine_state(nonterminal),
-  }
-  !validation_resolution_v1.terminal_padding_is_authenticated(
-    honest,
-    nonterminal,
-  )
-}
-
-test padding_refuses_a_terminal_forged_under_an_honest_low_hash() {
-  let (ready, terminal) = terminal_padding_fixture()
-  !validation_resolution_v1.terminal_padding_is_authenticated(
-    ready,
-    validation_trace_v1.ValidationMachineStateV1 { ..terminal, work_root: h_c },
-  )
-}
-
-test padding_refuses_the_actual_final_state() {
-  let (ready, terminal) = terminal_padding_fixture()
-  !validation_resolution_v1.terminal_padding_is_authenticated(
-    validation_dispute_v1.ValidationDisputeV1 {
-      ..ready,
-      low_index: 3,
-      high_index: 4,
-    },
-    terminal,
-  )
-}
-
-test padding_refuses_a_not_ready_wrong_version_or_nonadjacent_dispute() {
-  let (ready, terminal) = terminal_padding_fixture()
-  and {
-    !validation_resolution_v1.terminal_padding_is_authenticated(
-      validation_dispute_v1.ValidationDisputeV1 {
-        ..ready,
-        turn: validation_dispute_v1.AwaitingOperator { midpoint: 2 },
-      },
-      terminal,
-    ),
-    !validation_resolution_v1.terminal_padding_is_authenticated(
-      validation_dispute_v1.ValidationDisputeV1 { ..ready, version: 2 },
-      terminal,
-    ),
-    !validation_resolution_v1.terminal_padding_is_authenticated(
-      validation_dispute_v1.ValidationDisputeV1 { ..ready, high_index: 4 },
-      terminal,
     ),
   }
 }

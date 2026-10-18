@@ -6,6 +6,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  CaseThread,
   PreparedValidationResolutionDatum,
   type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   ValidationAwardSpendRedeemer,
@@ -14,8 +15,7 @@ import {
   type ValidationBoundarySpendRedeemer as ValidationBoundarySpendRedeemerData,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
-  ValidationDispute,
-  validationDisputeDataFromCore,
+  validationCaseThreadDataFromCore,
   ValidationDisputeTurnSchema,
   ValidationGameSpendRedeemer,
   ValidationMachinePhaseSchema,
@@ -54,7 +54,6 @@ describe("validation dispute ABI", () => {
         "ScriptIntegrity",
         "Cek",
         "ValueAndMint",
-        "LedgerDelta",
         "Terminal",
       ].map((value, tag) => ({
         value,
@@ -107,7 +106,7 @@ describe("validation dispute ABI", () => {
     expect(() => Data.from("d9050f80", ValidationMachinePhaseSchema)).toThrow();
   });
 
-  it("round-trips exact descriptors, proofs, disputes, and reveal redeemers", () => {
+  it("round-trips exact descriptors, proofs, case threads, and reveal redeemers", () => {
     const operator = buildMidgardValidationTraceTree(
       [hash(1), hash(2), hash(3)],
       "accepted",
@@ -119,12 +118,17 @@ describe("validation dispute ABI", () => {
     const dispute = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 1_000,
+      sourceTimeUpper: 1_000,
     });
-    const disputeData = validationDisputeDataFromCore(dispute);
-    expect(
-      Data.from(Data.to(disputeData, ValidationDispute), ValidationDispute),
-    ).toEqual(disputeData);
+    const threadData = validationCaseThreadDataFromCore({
+      dispute,
+      caseId: "c1".repeat(32),
+      startedAt: 1_000n,
+      defenderVkh: "d1".repeat(28),
+    });
+    expect(Data.from(Data.to(threadData, CaseThread), CaseThread)).toEqual(
+      threadData,
+    );
 
     const proofData = validationTraceProofDataFromCore(operator.proofs[1]!);
     expect(
@@ -149,9 +153,9 @@ describe("validation dispute ABI", () => {
       ),
     ).toEqual(redeemer);
 
-    expect(validationTraceDescriptorDataFromCore(operator.descriptor)).toEqual(
-      disputeData.operator_descriptor,
-    );
+    expect(
+      validationTraceDescriptorDataFromCore(operator.descriptor).trace_root,
+    ).toEqual(threadData.defender_root);
   });
 
   it("round-trips staged, direct, and award resolution V1 shapes", () => {
@@ -170,7 +174,6 @@ describe("validation dispute ABI", () => {
       execution_memory: 0n,
       verdict: "Pending",
       rejection_code_hash: "00".repeat(32),
-      ledger_delta_root: "07".repeat(32),
     };
     const terminalAward: ValidationBoundarySpendRedeemerData = {
       Continue: [
@@ -308,13 +311,7 @@ describe("validation dispute ABI", () => {
     ).toEqual(winning);
 
     const award: ValidationAwardSpendRedeemerData = {
-      Continue: [
-        {
-          input_index: 0n,
-          output_index: 0n,
-          fraud_proof_mint_redeemer_index: 0n,
-        },
-      ],
+      CloseAwardedThread: { input_index: 0n, case_input_index: 1n },
     };
     expect(
       Data.from(

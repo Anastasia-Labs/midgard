@@ -3,7 +3,6 @@
  * validation-machine trace for one transaction.
  */
 import {
-  appendMidgardValidationMerkleLeaf,
   buildMidgardBoundedItemChunkProof,
   buildMidgardLedgerOutputAssetFrontier,
   buildMidgardRedeemerItemProofTrace,
@@ -13,25 +12,19 @@ import {
   decodeMidgardCekProgramEnvelope,
   decodeMidgardLedgerOutputCommitment,
   encodeCbor,
-  encodeMidgardMpfProofDescriptor,
   finalizeMidgardRedeemerItemProof,
   hashMidgardCekMachineState,
   hashMidgardMintAssetLeaf,
   hashMidgardRedeemerItemProofControl,
   hashMidgardResolvedContextItemLeaf,
-  hashMidgardValidationLedgerDeltaOperation,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   midgardBoundedItemChunkCount,
   type MidgardCekMachineState,
-  type MidgardMpfProofFoldTrace,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
 } from "@al-ft/midgard-core";
-import {
-  decodeMidgardTxOutput,
-  encodeMidgardSpendInputItem,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   encodeMidgardRejectionReasonV1Cbor,
   hashMidgardValidationRejectionReasonV1,
@@ -90,7 +83,6 @@ import {
   hash32,
   initialMidgardResolvedInputsAccumulator,
 } from "./input-resolution.js";
-import { ledgerDeltaProofFrameAuxiliary } from "./ledger-mutation.js";
 import {
   hashValidationMachineNativeScriptFrame,
   MAX_NATIVE_SCRIPT_SCAN_DEPTH,
@@ -182,15 +174,8 @@ export const completeValidationTrace = (
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      resolutionItems,
-      encodeFrontierPeaks,
-      ledgerDeltaOperationMembership,
-      authenticatedLedgerOps,
-      postLedgerRoot,
-      ledgerDeltaRoot,
       traceSink,
       recording,
-      ledgerDeltaFrontier,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,
@@ -2495,410 +2480,6 @@ export const completeValidationTrace = (
                   ),
                 );
               }
-              let ledgerReplayCursor = 0;
-              let ledgerReplayAccumulator =
-                initialMidgardResolvedInputsAccumulator();
-              let ledgerReplayRemainingScheduleHash =
-                emptyMidgardInputResolutionSchedule();
-              let currentLedgerRoot = Buffer.from(priorLedgerRoot);
-              let ledgerOutputCursor = 0;
-              let operationFrontier = emptyValidationFrontier;
-              let mutationIndex = 0;
-              let pendingMutation:
-                | {
-                    readonly status: "authorized";
-                    readonly kind: "delete" | "insert";
-                    readonly key: Buffer;
-                    readonly value: Buffer;
-                    readonly proofFoldTrace: MidgardMpfProofFoldTrace;
-                    readonly foldControl: null;
-                  }
-                | {
-                    readonly status: "folding";
-                    readonly kind: "delete" | "insert";
-                    readonly key: Buffer;
-                    readonly value: Buffer;
-                    readonly proofFoldTrace: MidgardMpfProofFoldTrace;
-                    readonly foldControl: MidgardMpfProofFoldTrace["initial"];
-                  }
-                | null = null;
-              let ledgerResolvedInputsAccumulator =
-                initialMidgardResolvedInputsAccumulator();
-              for (const node of resolutionScheduleNodes) {
-                const value = ledgerDescriptorState.get(
-                  node.key.toString("hex"),
-                );
-                if (value === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta context lost a previously authenticated ledger descriptor",
-                    ),
-                  );
-                }
-                ledgerResolvedInputsAccumulator =
-                  advanceMidgardResolvedInputsAccumulator({
-                    accumulator: ledgerResolvedInputsAccumulator,
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    value,
-                  });
-              }
-              const ledgerOutputDescriptorFrontier =
-                buildMidgardValidationMerkleFrontier(
-                  admittedOutputDescriptorLeafHashes,
-                );
-              const pendingMutationCbor = (): Buffer =>
-                pendingMutation === null
-                  ? Buffer.alloc(0)
-                  : encodeCbor([
-                      1n,
-                      pendingMutation.status === "authorized" ? 0n : 1n,
-                      pendingMutation.kind === "delete" ? 0n : 1n,
-                      pendingMutation.key,
-                      pendingMutation.value,
-                      encodeMidgardMpfProofDescriptor(
-                        pendingMutation.proofFoldTrace.descriptor,
-                      ),
-                      BigInt(pendingMutation.foldControl?.nextFrameIndex ?? -1),
-                      pendingMutation.foldControl?.includingRoot ??
-                        Buffer.alloc(0),
-                      pendingMutation.foldControl?.excludingRoot ??
-                        Buffer.alloc(0),
-                      BigInt(
-                        pendingMutation.foldControl?.expectedNextCursor ?? 0,
-                      ),
-                    ]);
-              const ledgerDeltaControlCbor = (input: {
-                readonly stage: number;
-                readonly replayScheduleHash: Buffer;
-              }): Buffer =>
-                encodeCbor([
-                  BigInt(resolutionItems.length),
-                  ledgerResolvedInputsAccumulator,
-                  BigInt(outputCbors.length),
-                  encodeFrontierPeaks(ledgerOutputDescriptorFrontier),
-                  BigInt(input.stage),
-                  input.replayScheduleHash,
-                  BigInt(ledgerReplayCursor),
-                  ledgerReplayAccumulator,
-                  ledgerReplayRemainingScheduleHash,
-                  currentLedgerRoot,
-                  BigInt(ledgerOutputCursor),
-                  BigInt(operationFrontier.count),
-                  pendingMutationCbor(),
-                  encodeFrontierPeaks(operationFrontier),
-                ]);
-              ledgerReplayRemainingScheduleHash = resolutionScheduleHash;
-              for (const node of resolutionScheduleNodes) {
-                const value = ledgerDescriptorState.get(
-                  node.key.toString("hex"),
-                );
-                if (value === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta replay lost a previously authenticated ledger descriptor",
-                    ),
-                  );
-                }
-                const mutationStep =
-                  node.sourceKind === "spend"
-                    ? (input.ledgerMutationSteps[mutationIndex] ?? null)
-                    : null;
-                if (node.sourceKind === "spend") {
-                  if (
-                    mutationStep === null ||
-                    mutationStep.operation.type !== "delete" ||
-                    !mutationStep.operation.key.equals(node.key) ||
-                    !mutationStep.preRoot.equals(currentLedgerRoot)
-                  ) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta deletion mutation does not match the authenticated spend schedule",
-                      ),
-                    );
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 0,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                    {
-                      kind: "ledgerDeltaOperation",
-                      operationKind: "delete",
-                      key: node.key,
-                      value: Buffer.alloc(0),
-                      mutationStep,
-                      operationMembership:
-                        ledgerDeltaOperationMembership(mutationIndex),
-                    },
-                  );
-                  pendingMutation = {
-                    status: "authorized",
-                    kind: "delete",
-                    key: Buffer.from(node.key),
-                    value: Buffer.alloc(0),
-                    proofFoldTrace: mutationStep.proofFoldTrace,
-                    foldControl: null,
-                  };
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 0,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaReplay",
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    nextScheduleHash: node.nextScheduleHash,
-                    value,
-                  },
-                );
-                ledgerReplayAccumulator =
-                  advanceMidgardResolvedInputsAccumulator({
-                    accumulator: ledgerReplayAccumulator,
-                    sourceKind: node.sourceKind,
-                    key: node.key,
-                    value,
-                  });
-                ledgerReplayRemainingScheduleHash = node.nextScheduleHash;
-                ledgerReplayCursor += 1;
-                if (node.sourceKind === "spend") {
-                  if (mutationStep === null || pendingMutation === null) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta deletion lost its authenticated operation",
-                      ),
-                    );
-                  }
-                  pendingMutation = {
-                    ...pendingMutation,
-                    status: "folding",
-                    kind: "delete",
-                    key: Buffer.from(node.key),
-                    value: Buffer.from(value),
-                    foldControl: mutationStep.proofFoldTrace.initial,
-                  };
-                  for (const foldStep of mutationStep.proofFoldTrace.steps) {
-                    if (
-                      pendingMutation.foldControl !== foldStep.pre &&
-                      (pendingMutation.foldControl.nextFrameIndex !==
-                        foldStep.pre.nextFrameIndex ||
-                        pendingMutation.foldControl.expectedNextCursor !==
-                          foldStep.pre.expectedNextCursor ||
-                        !pendingMutation.foldControl.includingRoot.equals(
-                          foldStep.pre.includingRoot,
-                        ) ||
-                        !pendingMutation.foldControl.excludingRoot.equals(
-                          foldStep.pre.excludingRoot,
-                        ))
-                    ) {
-                      return yield* Effect.fail(
-                        new Error(
-                          "ledger-delta deletion proof fold is not contiguous",
-                        ),
-                      );
-                    }
-                    pushWitness(
-                      "ledgerDelta",
-                      ledgerDeltaControlCbor({
-                        stage: 0,
-                        replayScheduleHash: resolutionScheduleHash,
-                      }),
-                      ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
-                    );
-                    pendingMutation = {
-                      ...pendingMutation,
-                      foldControl: foldStep.post,
-                    };
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 0,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                  );
-                  currentLedgerRoot = Buffer.from(mutationStep.postRoot);
-                  operationFrontier = appendMidgardValidationMerkleLeaf(
-                    operationFrontier,
-                    hashMidgardValidationLedgerDeltaOperation(
-                      authenticatedLedgerOps[mutationIndex]!,
-                    ),
-                  );
-                  mutationIndex += 1;
-                  pendingMutation = null;
-                }
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 0,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
-              for (
-                let outputIndex = 0;
-                outputIndex < outputCbors.length;
-                outputIndex += 1
-              ) {
-                const descriptorCbor =
-                  admittedOutputDescriptorCbors[outputIndex];
-                if (descriptorCbor === undefined) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta insertion lost an admitted output descriptor",
-                    ),
-                  );
-                }
-                const mutationStep = input.ledgerMutationSteps[mutationIndex];
-                // The ledger trie key is §5.3's fixed-index input item
-                // (`82 ‖ 58 20 tx_id ‖ 19 index_be16`, 38 bytes) — the same
-                // bytes on-chain `ledger_outref_key` derives. `encodeCbor([txId,
-                // index])` would spell indices 0–23 minimally and miss every key
-                // the trie actually holds.
-                const outputKey = encodeMidgardSpendInputItem({
-                  txId: input.transactionId,
-                  outputIndex,
-                });
-                if (
-                  mutationStep === undefined ||
-                  mutationStep.operation.type !== "insert" ||
-                  !mutationStep.operation.key.equals(outputKey) ||
-                  !mutationStep.operation.value.equals(descriptorCbor) ||
-                  !mutationStep.preRoot.equals(currentLedgerRoot)
-                ) {
-                  return yield* Effect.fail(
-                    new Error(
-                      "ledger-delta insertion mutation does not match the authenticated output frontier",
-                    ),
-                  );
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaOperation",
-                    operationKind: "insert",
-                    key: outputKey,
-                    value: descriptorCbor,
-                    mutationStep,
-                    operationMembership:
-                      ledgerDeltaOperationMembership(mutationIndex),
-                  },
-                );
-                pendingMutation = {
-                  status: "authorized",
-                  kind: "insert",
-                  key: Buffer.from(outputKey),
-                  value: Buffer.from(descriptorCbor),
-                  proofFoldTrace: mutationStep.proofFoldTrace,
-                  foldControl: null,
-                };
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                  {
-                    kind: "ledgerDeltaOutput",
-                    outputIndex,
-                    descriptorCbor,
-                    siblings: buildMidgardValidationMerkleMembership(
-                      admittedOutputDescriptorLeafHashes,
-                      outputIndex,
-                    ).siblings,
-                  },
-                );
-                ledgerOutputCursor += 1;
-                pendingMutation = {
-                  ...pendingMutation,
-                  status: "folding",
-                  foldControl: mutationStep.proofFoldTrace.initial,
-                };
-                for (const foldStep of mutationStep.proofFoldTrace.steps) {
-                  if (
-                    pendingMutation.foldControl !== foldStep.pre &&
-                    (pendingMutation.foldControl.nextFrameIndex !==
-                      foldStep.pre.nextFrameIndex ||
-                      pendingMutation.foldControl.expectedNextCursor !==
-                        foldStep.pre.expectedNextCursor ||
-                      !pendingMutation.foldControl.includingRoot.equals(
-                        foldStep.pre.includingRoot,
-                      ) ||
-                      !pendingMutation.foldControl.excludingRoot.equals(
-                        foldStep.pre.excludingRoot,
-                      ))
-                  ) {
-                    return yield* Effect.fail(
-                      new Error(
-                        "ledger-delta insertion proof fold is not contiguous",
-                      ),
-                    );
-                  }
-                  pushWitness(
-                    "ledgerDelta",
-                    ledgerDeltaControlCbor({
-                      stage: 1,
-                      replayScheduleHash: resolutionScheduleHash,
-                    }),
-                    ledgerDeltaProofFrameAuxiliary(mutationStep, foldStep),
-                  );
-                  pendingMutation = {
-                    ...pendingMutation,
-                    foldControl: foldStep.post,
-                  };
-                }
-                pushWitness(
-                  "ledgerDelta",
-                  ledgerDeltaControlCbor({
-                    stage: 1,
-                    replayScheduleHash: resolutionScheduleHash,
-                  }),
-                );
-                currentLedgerRoot = Buffer.from(mutationStep.postRoot);
-                operationFrontier = appendMidgardValidationMerkleLeaf(
-                  operationFrontier,
-                  hashMidgardValidationLedgerDeltaOperation(
-                    authenticatedLedgerOps[mutationIndex]!,
-                  ),
-                );
-                mutationIndex += 1;
-                pendingMutation = null;
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 1,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
-              if (
-                mutationIndex !== input.ledgerMutationSteps.length ||
-                !currentLedgerRoot.equals(postLedgerRoot) ||
-                commitMidgardValidationMerkleFrontier(operationFrontier).equals(
-                  ledgerDeltaRoot,
-                ) === false
-              ) {
-                return yield* Effect.fail(
-                  new Error(
-                    "ledger-delta replay did not reach its committed roots",
-                  ),
-                );
-              }
-              pushWitness(
-                "ledgerDelta",
-                ledgerDeltaControlCbor({
-                  stage: 2,
-                  replayScheduleHash: resolutionScheduleHash,
-                }),
-              );
             }
           }
         }
@@ -2954,7 +2535,7 @@ export const completeValidationTrace = (
         programCounter: traceSink.length,
         cbor: encodeValidationTerminalWitnessCbor(
           rejectionCode === null
-            ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
+            ? { verdict: "accepted" }
             : {
                 verdict: "rejected",
                 reason: rejectionReason!,

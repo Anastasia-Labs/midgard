@@ -21,7 +21,7 @@ a file can contain skipped, uncollected, or failing scenarios.
 The [installed validation workflow](validation-trace-dispute-installed-workflow.md)
 and [transition replay](transition-trace-installed-replay.md) identify current
 routing and executable acceptance surfaces. The [fit evidence index](size-plans/README.md)
-distinguishes current-blueprint gates from historical snapshot consistency tests.
+describes the gate that holds every checked-in ledger to a fresh run.
 A saved measurement, passing digest check, or a test that returned early does not
 establish current-build acceptance.
 

@@ -154,7 +154,10 @@ export const registerRetainedScriptMaterialTests = () => {
             );
             const rawFixture = yield* Effect.promise(() =>
               buildJournalFixture({
-                rootOverrides: { transactionsRoot, validationTracesRoot },
+                rootOverrides: { transactionsRoot },
+                // The journal keeps the built validation-trace pair; the
+                // header pins it to the empty tree.
+                recordRootOverrides: { validationTracesRoot },
                 utxoEntries: [[outref, output]],
                 txEntries: [[attempt.txId, attempt.txCanonicalCbor]],
                 transitionTraceEntries: [
@@ -171,7 +174,7 @@ export const registerRetainedScriptMaterialTests = () => {
                 ],
               }),
             );
-            const header = { ...rawFixture.header, validationTraceCount: 1n };
+            const header = rawFixture.header;
             const headerHash = Buffer.from(
               yield* SDK.hashBlockHeader(header),
               "hex",

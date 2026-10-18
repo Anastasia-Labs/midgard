@@ -13,6 +13,7 @@ import {
 
 import type {
   MidgardValidators,
+  MintingValidator,
   SpendingValidator,
   WithdrawalValidator,
 } from "./common.js";
@@ -141,12 +142,19 @@ export const verifyDeploymentScriptBindings = (
     throw new Error(`Missing deployment bindings: ${[...expected].join(", ")}`);
 };
 
-/** The raw projection may contain sparse arrays and omits shared-family aliases. */
+export type FamilyMemberValidator =
+  | SpendingValidator
+  | MintingValidator
+  | WithdrawalValidator;
+
+/**
+ * The raw projection may contain sparse arrays and omits shared-family aliases.
+ * Members of different purposes at one path form one validator (for example a
+ * spending script and its minting policy).
+ */
 const restoreRecordedFamilyScriptPaths = (
   family: keyof FaultProofContractChains,
-  resolve: (
-    contract: DeploymentContract,
-  ) => SpendingValidator | WithdrawalValidator,
+  resolve: (contract: DeploymentContract) => FamilyMemberValidator,
 ): Record<string, unknown> => {
   const restored: Record<string, unknown> = {};
   for (const contract of deploymentMembersForFamily(family)) {
@@ -160,7 +168,11 @@ const restoreRecordedFamilyScriptPaths = (
           target[key] = /^\d+$/u.test(path[index + 1]!) ? [] : {};
         target = target[key] as Record<string, unknown>;
       }
-      target[path[path.length - 1]!] = validator;
+      const key = path[path.length - 1]!;
+      target[key] =
+        target[key] === undefined
+          ? validator
+          : { ...(target[key] as FamilyMemberValidator), ...validator };
     }
   }
   return restored;
@@ -174,9 +186,7 @@ export const restoreFaultProofFamilyScripts = <
   >,
 >(
   family: Family,
-  resolve: (
-    contract: DeploymentContract,
-  ) => SpendingValidator | WithdrawalValidator,
+  resolve: (contract: DeploymentContract) => FamilyMemberValidator,
 ): Omit<FaultProofContractChains[Family], "history"> =>
   restoreRecordedFamilyScriptPaths(family, resolve) as Omit<
     FaultProofContractChains[Family],
@@ -204,9 +214,7 @@ export const restoreValidationTraceDisputeScripts = ({
   resolve,
   missingMember,
 }: {
-  readonly resolve: (
-    contract: DeploymentContract,
-  ) => SpendingValidator | WithdrawalValidator;
+  readonly resolve: (contract: DeploymentContract) => FamilyMemberValidator;
   readonly missingMember: (member: string) => never;
 }): ValidationTraceScripts => {
   const projection = restoreRecordedFamilyScriptPaths(

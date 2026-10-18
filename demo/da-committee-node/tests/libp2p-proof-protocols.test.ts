@@ -38,9 +38,9 @@ import {
   deploymentFingerprint,
   deploymentFingerprintBytes,
   makeHandlers,
-  rootSummaryFromHeader,
   saveVerifiedPayload,
   stateQueueHeaderRecord,
+  verifiedRootSummary,
 } from "./libp2p-proof-protocols.save-verified-payload.js";
 
 describe("DA libp2p proof protocol handlers", () => {
@@ -51,6 +51,7 @@ describe("DA libp2p proof protocol handlers", () => {
     const payloadHash = computeDaSha256Hash(payloadCbor);
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,
@@ -133,9 +134,11 @@ describe("DA libp2p proof protocol handlers", () => {
 
   it("serves event-to-step non-membership proofs for absent event keys", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash: computeDaSha256Hash(payloadCbor),
       header,
@@ -177,9 +180,11 @@ describe("DA libp2p proof protocol handlers", () => {
 
   it("rejects malformed event keys and enforces the exact inline proof-bundle limit", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash: computeDaSha256Hash(payloadCbor),
       header,
@@ -221,7 +226,8 @@ describe("DA libp2p proof protocol handlers", () => {
 
   it("fails closed for unverified payloads, root mismatches, and deployment mismatches", async () => {
     const { handlers, store } = await makeHandlers();
-    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    const { payload, payloadCbor, header, headerHash } =
+      await makePayloadFixture();
     const payloadHash = computeDaSha256Hash(payloadCbor);
     await store.saveDaPayload({
       deploymentFingerprint,
@@ -231,7 +237,7 @@ describe("DA libp2p proof protocol handlers", () => {
       payloadSha256: payloadHash.toString("hex"),
       sourcePeerId: "libp2p-fixture",
       fetchedAt: "2026-06-21T00:00:00.000Z",
-      rootSummary: rootSummaryFromHeader(header),
+      rootSummary: await verifiedRootSummary(payload),
       validationStatus: "fetched",
     });
 
@@ -248,12 +254,13 @@ describe("DA libp2p proof protocol handlers", () => {
 
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,
       headerHash,
       rootSummary: {
-        ...rootSummaryFromHeader(header),
+        ...(await verifiedRootSummary(payload)),
         transitionTraceRoot: "ff".repeat(32),
       },
     });
@@ -270,6 +277,7 @@ describe("DA libp2p proof protocol handlers", () => {
 
     await saveVerifiedPayload({
       store,
+      payload,
       payloadCbor,
       payloadHash,
       header,

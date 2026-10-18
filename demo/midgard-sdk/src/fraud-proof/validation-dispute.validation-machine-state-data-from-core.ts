@@ -1,12 +1,17 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import type {
-  MidgardValidationMachineState,
-  MidgardValidationTraceDescriptor,
-  MidgardValidationTraceProof,
+import {
+  decodeMidgardValidationTraceDescriptor,
+  encodeMidgardValidationTraceDescriptor,
+  type MidgardValidationMachineState,
+  type MidgardValidationTraceDescriptor,
+  type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core/validation-trace";
 import { Data } from "@lucid-evolution/lucid";
 
-import { ValidationTraceDescriptorSchema } from "../ledger-state.js";
+import {
+  ValidationTraceDescriptor,
+  ValidationTraceDescriptorSchema,
+} from "../ledger-state.js";
 import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
 import {
   cancelActionSchema,
@@ -106,60 +111,6 @@ export const ValidationCanonicalDecodePrepareSelectedSpendRedeemer =
     ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
   );
 
-export const ValidationAwardArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-});
-
-export type ValidationAwardArgs = Data.Static<typeof ValidationAwardArgsSchema>;
-
-export const ValidationAwardArgs = asDataType<ValidationAwardArgs>(
-  ValidationAwardArgsSchema,
-);
-
-export const ValidationAwardSpendRedeemerSchema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({
-    Continue: Data.Tuple([ValidationAwardArgsSchema]),
-  }),
-]);
-
-export type ValidationAwardSpendRedeemer = Data.Static<
-  typeof ValidationAwardSpendRedeemerSchema
->;
-
-export const ValidationAwardSpendRedeemer =
-  asDataType<ValidationAwardSpendRedeemer>(ValidationAwardSpendRedeemerSchema);
-
-export const ValidationTimeoutActionSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-});
-
-export type ValidationTimeoutAction = Data.Static<
-  typeof ValidationTimeoutActionSchema
->;
-
-export const ValidationTimeoutAction = asDataType<ValidationTimeoutAction>(
-  ValidationTimeoutActionSchema,
-);
-
-export const ValidationTimeoutSpendRedeemerSchema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({ Continue: Data.Tuple([ValidationTimeoutActionSchema]) }),
-]);
-
-export type ValidationTimeoutSpendRedeemer = Data.Static<
-  typeof ValidationTimeoutSpendRedeemerSchema
->;
-
-export const ValidationTimeoutSpendRedeemer =
-  asDataType<ValidationTimeoutSpendRedeemer>(
-    ValidationTimeoutSpendRedeemerSchema,
-  );
-
 export const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
@@ -220,6 +171,57 @@ export const validationTraceDescriptorCoreFromData = (
   rejectionCodeHash: Buffer.from(descriptor.rejection_code_hash, "hex"),
 });
 
+/** Which stage refused a `validation_traces` value. */
+export class ValidationTraceDescriptorDecodeError extends Error {
+  constructor(
+    /** `data`: not canonical Plutus Data; `bounds`: not a bounded V1 descriptor. */
+    readonly stage: "data" | "bounds",
+    message: string,
+    readonly cause: unknown,
+  ) {
+    super(message);
+    this.name = "ValidationTraceDescriptorDecodeError";
+  }
+}
+
+/**
+ * Decodes one `validation_traces` value: the canonical Plutus Data form of
+ * `ValidationTraceDescriptorV1` (re-encoding must give back exactly
+ * `valueHex`), held to the frozen V1 bounds (versions, step-count cap,
+ * terminal verdict, verdict/rejection binding) by a core-codec round trip.
+ * The hex is taken as given: a caller that admits other spellings normalises
+ * it first.
+ */
+export const decodeCanonicalValidationTraceDescriptorData = (
+  valueHex: string,
+): MidgardValidationTraceDescriptor => {
+  let data: Data.Static<typeof ValidationTraceDescriptorSchema>;
+  try {
+    data = Data.from(valueHex, ValidationTraceDescriptor);
+    if (Data.to(data, ValidationTraceDescriptor) !== valueHex)
+      throw new Error("re-encoding gives other bytes");
+  } catch (cause) {
+    throw new ValidationTraceDescriptorDecodeError(
+      "data",
+      `validation descriptor is not canonical for its schema: ${String(cause)}`,
+      cause,
+    );
+  }
+  try {
+    return decodeMidgardValidationTraceDescriptor(
+      encodeMidgardValidationTraceDescriptor(
+        validationTraceDescriptorCoreFromData(data),
+      ),
+    );
+  } catch (cause) {
+    throw new ValidationTraceDescriptorDecodeError(
+      "bounds",
+      `validation descriptor is not a bounded V1 descriptor: ${String(cause)}`,
+      cause,
+    );
+  }
+};
+
 export const validationTraceProofDataFromCore = (
   proof: MidgardValidationTraceProof,
 ): ValidationTraceProof => ({
@@ -273,9 +275,7 @@ export const validationMachineStateDataFromCore = (
                             ? "Cek"
                             : state.phase === "valueAndMint"
                               ? "ValueAndMint"
-                              : state.phase === "ledgerDelta"
-                                ? "LedgerDelta"
-                                : "Terminal",
+                              : "Terminal",
   program_counter: BigInt(state.programCounter),
   work_root: bytesHex(state.workRoot),
   execution_cpu: state.executionCpu,
@@ -287,5 +287,4 @@ export const validationMachineStateDataFromCore = (
         ? "Accepted"
         : "Rejected",
   rejection_code_hash: bytesHex(state.rejectionCodeHash),
-  ledger_delta_root: bytesHex(state.ledgerDeltaRoot),
 });

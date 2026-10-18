@@ -116,6 +116,7 @@ env:
   L1_BLOCKFROST_KEY: test-key
   L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
   NETWORK: Preprod
   RUN_GENESIS_ON_STARTUP: "false"
   POSTGRES_HOST: 127.0.0.1
@@ -376,6 +377,12 @@ jobs:
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
+      # State 0 of a validation trace: the TypeScript twin's derivation, which
+      # the generated Aiken module asserts against
+      # validation_claim_v1.derive_initial_state.
+      - name: Check validation initial-state golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-initial-state-v1
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1

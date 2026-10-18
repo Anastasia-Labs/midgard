@@ -171,6 +171,9 @@ export const publishDepositFlowReferenceScripts = async ({
       retiredOperatorsMinting: requireRef("retired-operators minting"),
       fraudProofCatalogueMinting: requireRef("fraud-proof-catalogue minting"),
       daBondPoolMinting: requireRef("da-bond-pool minting"),
+      validationCaseConfigMinting: requireRef(
+        "V1 validation-trace case configuration minting",
+      ),
     },
     deposit: {
       depositMinting: requireRef("deposit minting"),

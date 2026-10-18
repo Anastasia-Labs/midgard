@@ -35,8 +35,7 @@ export const validationMachineStateData = (
         scriptIntegrity: 10,
         cek: 11,
         valueAndMint: 12,
-        ledgerDelta: 13,
-        terminal: 14,
+        terminal: 13,
       }[state.phase],
       [],
     ),
@@ -49,7 +48,6 @@ export const validationMachineStateData = (
       [],
     ),
     bytes(state.rejectionCodeHash),
-    bytes(state.ledgerDeltaRoot),
   ]);
 
 export const validationOneStepWitnessData = ({

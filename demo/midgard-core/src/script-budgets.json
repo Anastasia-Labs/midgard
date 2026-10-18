@@ -84,13 +84,6 @@
         "cpu": 2152316783
       }
     },
-    "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault": {
-      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault",
-      "ceiling": {
-        "mem": 7811185,
-        "cpu": 3376431212
-      }
-    },
     "midgard/fraud_proofs/transition_trace/proof.test/accepts_late_forced_order_as_out_of_window_source_event": {
       "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_late_forced_order_as_out_of_window_source_event",
       "ceiling": {
@@ -273,8 +266,8 @@
     "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor": {
       "test": "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor",
       "ceiling": {
-        "mem": 2633027,
-        "cpu": 1079816537
+        "mem": 2633128,
+        "cpu": 1079832697
       },
       "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
     },
@@ -288,18 +281,18 @@
     "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal": {
       "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal",
       "ceiling": {
-        "mem": 3927334,
-        "cpu": 1603443615
+        "mem": 3920048,
+        "cpu": 1602924355
       },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+      "raisedBecause": "The shared fraud-proof thread continue now delegates to its value-rule form, which validation-trace moves share: one more function application per continued step, +100 mem / +16,000 cpu."
     },
     "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_a_direction_a_refusal": {
       "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_a_direction_a_refusal",
       "ceiling": {
-        "mem": 3051026,
-        "cpu": 1281767953
+        "mem": 3039897,
+        "cpu": 1280389508
       },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+      "raisedBecause": "The shared fraud-proof thread continue now delegates to its value-rule form, which validation-trace moves share: one more function application per continued step, +100 mem / +16,000 cpu."
     },
     "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_acceptance": {
       "test": "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_acceptance",
@@ -1295,22 +1288,6 @@
         "cpu": 2485587384
       }
     },
-    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm": {
-      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 10696141,
-        "cpu": 4614921122
-      }
-    },
-    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm_fixture_only": {
-      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm_fixture_only",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 6532809,
-        "cpu": 2885365267
-      }
-    },
     "testnet:midgard/ledger_output_descriptor_v1.test/builds_no_reference_output_exactly": {
       "test": "midgard/ledger_output_descriptor_v1.test/builds_no_reference_output_exactly",
       "env": "testnet",
@@ -1379,30 +1356,6 @@
       },
       "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
     },
-    "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault": {
-      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 7811185,
-        "cpu": 3376431212
-      }
-    },
-    "testnet:midgard/fraud_proofs/transition_trace/proof.test/l2_descriptor_dispute_over_a_descriptor_ledger_mints": {
-      "test": "midgard/fraud_proofs/transition_trace/proof.test/l2_descriptor_dispute_over_a_descriptor_ledger_mints",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 10626070,
-        "cpu": 4592487982
-      }
-    },
-    "testnet:midgard/fraud_proofs/transition_trace/proof.test/rejects_l2_transaction_when_trace_matches_expected_post_root": {
-      "test": "midgard/fraud_proofs/transition_trace/proof.test/rejects_l2_transaction_when_trace_matches_expected_post_root",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 10682593,
-        "cpu": 4609822931
-      }
-    },
     "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault": {
       "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault",
       "env": "testnet",
@@ -1418,16 +1371,6 @@
         "mem": 689594,
         "cpu": 400875312
       }
-    },
-    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm - l2_no_op_arm_fixture_only": {
-      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm",
-      "minusControl": "l2_no_op_arm_fixture_only",
-      "env": "testnet",
-      "ceiling": {
-        "mem": 4220764,
-        "cpu": 1741601267
-      },
-      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
     },
     "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent - deposit_arm_datum_absent_fixture_only": {
       "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent",

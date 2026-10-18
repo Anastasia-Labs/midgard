@@ -38,6 +38,7 @@ import {
 } from "./helpers/l1-events-chain.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
+import { AVAILABILITY } from "./landed-blocks-replay-foreign.availability.js";
 import {
   clock,
   depositBlock,
@@ -465,6 +466,7 @@ describe("the node's landed ports at a follower view", () => {
       },
       // Not reached: no landed row asks for a rebase here.
       () => Effect.succeed(undefined),
+      () => AVAILABILITY,
     );
     await admitDeposit(chain);
     const before = (await store.currentView())!;
