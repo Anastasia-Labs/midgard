@@ -20,7 +20,6 @@ export const verifyMatchingExperiment = (reports) => {
     "minimumAcceptedTps",
     "reuseDatabases",
     "shortAssert",
-    "signatureVerifier",
     "expectedNodeImageId",
     "nodeImage",
     "nodeImageId",
@@ -270,7 +269,6 @@ export const verifyMatchingChunkAbExperiment = (reports) => {
     "disableTxDeltaWriteBehindDiagnostic",
     "replicaCount",
     "shortAssert",
-    "signatureVerifier",
   ]) {
     for (let index = 1; index < reports.length; index += 1) {
       equal(

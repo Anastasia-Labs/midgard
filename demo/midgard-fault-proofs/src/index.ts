@@ -1,4 +1,5 @@
 export * from "./aiken-blueprint-data.js";
+export * from "./block-replay.faults.js";
 export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";
 export * from "./evidence/index.js";
@@ -101,6 +102,7 @@ export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
 export * from "./value-not-preserved/index.js";
+export * from "./withdrawal-classification-fault.js";
 export * from "./withdrawal-mistag/index.js";
 export * from "./withdrawal-mistag/workflow.js";
 export * from "./withdrawn-input/index.js";

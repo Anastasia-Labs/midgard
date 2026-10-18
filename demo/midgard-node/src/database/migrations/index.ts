@@ -26,6 +26,7 @@ import dropValidationTraceWitnessesSql from "./sql/0024_drop_validation_trace_wi
 import blockTimeSql from "./sql/0025_block_time.sql";
 import dropUtxoPayloadAggregateSql from "./sql/0026_drop_utxo_payload_aggregate.sql";
 import publicHttpReadIndexesSql from "./sql/0027_public_http_read_indexes.sql";
+import importChecksSql from "./sql/0028_import_checks.sql";
 
 export type Migration = {
   readonly version: number;
@@ -225,6 +226,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: publicHttpReadIndexesSql,
     transactional: true,
   },
+  {
+    version: 28,
+    name: "import_checks",
+    checksumSha256: sha256Hex(importChecksSql),
+    sql: importChecksSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -305,6 +313,9 @@ export const APPLICATION_TABLE_NAMES = [
   "intent_refusal_holds",
   "node_follower_write_gate",
   "node_deployment",
+  "node_import_check_blocks",
+  "node_import_checks",
+  "node_import_check_outputs",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -360,6 +371,8 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_mempool_included_by",
   "idx_processed_mempool_included_by",
   "idx_node_confirmed_merges_merge_slot",
+  "idx_node_import_checks_deadline",
+  "idx_node_import_checks_state_deadline",
 ] as const;
 
 export const migrationByVersion = new Map(

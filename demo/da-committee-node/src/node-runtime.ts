@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import type { DaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 
 import { deferredAvailabilityResponder } from "./availability/deferred-responder.js";
@@ -107,6 +108,10 @@ export const openCommitteeNodeRuntime = async (
     }
   };
   try {
+    // Attestation witnesses are checked with libsodium, as on chain, and
+    // nothing here checks one before it has initialised. A failed
+    // initialisation is a startup failure no retry repairs (startOrHold).
+    await ledgerEd25519SignatureReady();
     // The stored records are checked against the L1 origin, and a stored
     // retirement floor re-bound to the member's binding, as the store opens.
     const retirementBinding = await configuredRetirementBinding(config);

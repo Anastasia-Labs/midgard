@@ -1,3 +1,5 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+
 import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
 import {
   WATCHER_STARTUP_FAILED,
@@ -211,8 +213,12 @@ export const runWatcherCommand = async (
   command: WatcherCommand,
   configPath: string,
   io: WatcherCommandIo,
-): Promise<number> =>
-  await execute(command, configPath, io, productionDependencies);
+): Promise<number> => {
+  // The watcher's replay verifies Ed25519 signatures with libsodium, which
+  // answers only once it has initialised.
+  await ledgerEd25519SignatureReady();
+  return await execute(command, configPath, io, productionDependencies);
+};
 
 /** Test-only process seam; it cannot change production dependency selection. */
 export const unsafeRunWatcherCommandForTest = async (
