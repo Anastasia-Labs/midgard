@@ -233,6 +233,10 @@ export type RetainedPlutusFixtureOptions = Readonly<{
   blockSlot?: bigint;
   /** The disputed transaction's native validity interval, in slots. */
   validityInterval?: Readonly<{ start: bigint; end: bigint }>;
+  /** Carry the program as the created output's reference script. */
+  outputReferenceScript?: boolean;
+  /** Further field-6 items after the program's own witness. */
+  extraScriptWitnesses?: readonly Buffer[];
   /**
    * The default predecessor's header operator and times, so it can be
    * committed as an ordinary first block on an emulator state queue.
