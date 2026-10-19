@@ -51,48 +51,26 @@ export const pinsWithoutReferenceLeg = (pins: TxRowPins): TxRowPins => ({
 export const TX_FIXED_SET_PINS: TxRowPins = {
   seeds: {
     "14876674": { known: { blsTagNumbering: 1 } },
-    "14876681": { known: { startupCharge: 1 } },
     "14876682": { known: { blsTagNumbering: 1 } },
     "14876683": { known: { blsTagNumbering: 1 } },
     "14876686": { known: { blsTagNumbering: 1 } },
-    "14876687": { known: { costBeforeC1: 1 } },
-    "14876691": { known: { startupCharge: 1 } },
     "14876693": { known: { blsTagNumbering: 1 } },
-    "14876695": { known: { costBeforeC1: 1 } },
     "14876701": { known: { blsTagNumbering: 1 } },
-    "14876704": { known: { startupCharge: 1 } },
     "14876709": { known: { blsTagNumbering: 1 } },
-    "14876711": { known: { costBeforeC1: 1 } },
-    "14876712": { known: { nonUnitReturn: 1 } },
     "14876718": { known: { blsTagNumbering: 1 } },
-    "14876721": { known: { nonUnitReturn: 1 } },
     "14876725": { known: { blsTagNumbering: 1 } },
-    "14876729": { known: { costBeforeC1: 1 } },
     "14876730": { known: { blsTagNumbering: 1 } },
     "14876731": { known: { blsTagNumbering: 1 } },
-    "14876734": { known: { costBeforeC1: 1 } },
-    "14876735": { known: { costBeforeC1: 1 } },
   },
-  known: {
-    blsTagNumbering: 11,
-    costBeforeC1: 6,
-    nonUnitReturn: 2,
-    startupCharge: 3,
-  },
+  known: { blsTagNumbering: 11 },
   catalogued: {},
 };
 
 /** The corpus seeds' pins. */
 export const TX_CORPUS_PINS: TxRowPins = {
   seeds: {
-    "322290577": { known: { costBeforeC1: 1 } },
-    "1088032817": { known: { costBeforeC1: 1 } },
     "1405241274": { known: { blsTagNumbering: 1 } },
-    "1479182247": { known: { costBeforeC1: 1 } },
   },
-  known: {
-    blsTagNumbering: 1,
-    costBeforeC1: 3,
-  },
+  known: { blsTagNumbering: 1 },
   catalogued: {},
 };

@@ -23,12 +23,13 @@ import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardan
 /**
  * The reference leg of the transaction differential: a UPLC evaluator outside
  * this repository, `<bin> uplc eval`, given by `MIDGARD_TX_FUZZ_UPLC_BIN`.
- * The leg and its known classes were written against the PV 11 fork build of
- * the Aiken CLI, `aiken v1.1.24+510bb90`; another build may report other
- * spends. It runs the script applied to the script context the trace builder
- * derived, under its default budget (the Cardano per-transaction maximum),
- * and reports the result and the spent budget. Its verdict under the declared
- * ex-units is: the result is unit (PlutusV3) and the spend is within them.
+ * The leg and its pins are taken against the PV 11 fork build of the Aiken
+ * CLI the repository pins (`demo/flake.lock`, `aiken v1.1.24+28e4288`, the
+ * binary `scripts/aiken` runs); another build may report other spends. It
+ * runs the script applied to the script context the trace builder derived,
+ * under its default budget (the Cardano per-transaction maximum), and reports
+ * the result and the spent budget. Its verdict under the declared ex-units
+ * is: the result is unit (PlutusV3) and the spend is within them.
  * Opt-in only: CI never sets the variable and never depends on the binary.
  */
 

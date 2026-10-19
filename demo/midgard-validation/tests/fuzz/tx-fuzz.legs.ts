@@ -47,35 +47,15 @@ import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
  */
 export type TxKnownClass =
   /**
-   * A PlutusV3 script that Phase B accepts and the reference does not, in
-   * budget. Owner: C1. Pending the C1 unit halt rule.
-   */
-  | "nonUnitReturn"
-  /**
    * A script naming a BLS builtin of flat tags 58–60 or 65–67, which the
    * reference leg skips. Owner: C1. Pending the C1 builtin tag numbering
    * (SH-2).
    */
-  | "blsTagNumbering"
-  /**
-   * A script both sides run to unit whose spend is the reference's less
-   * exactly 100 / 100, within the declared budget or either side of it.
-   * Owner: C1. Pending the C1 machine startup charge.
-   */
-  | "startupCharge"
-  /**
-   * A script both sides run to unit whose spend differs otherwise, within the
-   * declared budget or either side of it. Owner: C1. Pending the C1 cost
-   * model updates.
-   */
-  | "costBeforeC1";
+  "blsTagNumbering";
 
 /** The known classes only the opt-in reference leg reports. */
 export const REFERENCE_LEG_CLASSES: ReadonlySet<TxKnownClass> = new Set([
-  "nonUnitReturn",
   "blsTagNumbering",
-  "startupCharge",
-  "costBeforeC1",
 ]);
 
 export type TxCaseResult = {
@@ -89,9 +69,6 @@ export type TxCaseResult = {
   /** The proof run's steps for the step oracle, when the script ran. */
   readonly steps: PreparedCase | null;
 };
-
-/** The ledger's machine startup charge. */
-const MACHINE_STARTUP = { cpu: 100n, memory: 100n } as const;
 
 const CARDANO_RENUMBERED_BLS_TAGS = [58, 59, 60, 65, 66, 67];
 
@@ -158,23 +135,12 @@ const referenceLeg = (
   const referenceReturnsUnit =
     run.kind === "result" && run.result === "(con unit ())";
   const referenceAccepts = inBudget && referenceReturnsUnit;
+  const phaseB = JSON.stringify(evaluation.result, (_key, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
   if (midgard !== referenceAccepts) {
-    // In budget, the reference refuses only a result other than unit.
-    if (midgard && inBudget) {
-      known.push("nonUnitReturn");
-      return;
-    }
-    // Both ran to unit: only the spends differ, on either side of the budget.
-    if (
-      referenceReturnsUnit &&
-      evaluation.result.kind === "accepted" &&
-      run.kind === "result"
-    ) {
-      known.push(costClass(run, evaluation.result.budget));
-      return;
-    }
     divergences.push(
-      `reference ${run.kind === "result" ? `${run.result.slice(0, 80)} at ${run.cpu.toString()}/${run.memory.toString()}` : run.kind}, Phase B ${midgard ? "accepts" : "rejects"} (${JSON.stringify(evaluation.result, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value))})`,
+      `reference ${run.kind === "result" ? `${run.result.slice(0, 80)} at ${run.cpu.toString()}/${run.memory.toString()}` : run.kind}, Phase B ${midgard ? "accepts" : "rejects"} (${phaseB})`,
     );
     return;
   }
@@ -185,18 +151,11 @@ const referenceLeg = (
     (run.cpu !== evaluation.result.budget.cpu ||
       run.memory !== evaluation.result.budget.memory)
   ) {
-    known.push(costClass(run, evaluation.result.budget));
+    divergences.push(
+      `reference spends ${run.cpu.toString()}/${run.memory.toString()}, Phase B (${phaseB})`,
+    );
   }
 };
-
-type Spend = { readonly cpu: bigint; readonly memory: bigint };
-
-/** The known class of two runs to the same result that spend differently. */
-const costClass = (reference: Spend, phaseB: Spend): TxKnownClass =>
-  reference.cpu - phaseB.cpu === MACHINE_STARTUP.cpu &&
-  reference.memory - phaseB.memory === MACHINE_STARTUP.memory
-    ? "startupCharge"
-    : "costBeforeC1";
 
 /**
  * Runs one leg to its result or its stop. A leg that dies (a throw inside it,
