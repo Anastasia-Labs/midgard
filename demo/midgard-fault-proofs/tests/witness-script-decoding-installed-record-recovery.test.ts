@@ -75,6 +75,13 @@ const SCENARIO = {
 const ADA = 1_000_000n;
 /** Confirmation polls a run may take before it counts as spinning. */
 const POLL_CAP = 5_000;
+/**
+ * Confirmation polls one process of the restart row may take, and turns
+ * each of its runs may take: each run convicts well inside both, so a run
+ * that spins within a turn or across turns fails fast.
+ */
+const RECOVERY_POLL_CAP = 100;
+const RECOVERY_TURN_CAP = 10;
 
 type Harness = InstalledTurnContext["harness"];
 
@@ -121,13 +128,18 @@ const topUpProver = async (harness: Harness, lovelace: bigint) => {
 
 describe("script-decode record recovery in the installed watcher application", () => {
   it("resumes a record its stopped process began from the journal, taking no record action twice", async () => {
-    const uninterrupted = await runInstalled(SCENARIO, hooks);
+    const uninterrupted = await runInstalled(SCENARIO, hooks, {
+      maxPolls: RECOVERY_POLL_CAP,
+      maxTurns: RECOVERY_TURN_CAP,
+    });
     expect(uninterrupted.convicted).toBe(true);
 
     let stops = 0;
+    let engineered = false;
     const restarted = await runInstalled(SCENARIO, hooks, {
+      maxPolls: RECOVERY_POLL_CAP,
+      maxTurns: RECOVERY_TURN_CAP,
       beforeTurns: ({ harness, clock }) => {
-        clock.state.crashAfterPolls = undefined;
         const address = recordAddress(harness);
         const seen = new Set<string>();
         let bound = false;
@@ -141,17 +153,23 @@ describe("script-decode record recovery in the installed watcher application", (
           if (!bound || (submission.withdraws && !walked)) {
             if (bound) walked = true;
             bound = true;
+            engineered = true;
             clock.state.crashAfterPolls = clock.state.polls;
           }
           return "accept";
         }).restore;
       },
-      onStopped: async (error, { application }) => {
+      onStopped: async (error, { application, clock }) => {
         expect(String(error)).toContain(
           "installed application process stopped",
         );
+        expect(engineered, "a stop the row engineered, not the poll cap").toBe(
+          true,
+        );
+        engineered = false;
         stops += 1;
         await application.restart();
+        clock.state.crashAfterPolls = clock.state.polls + RECOVERY_POLL_CAP;
       },
     });
 

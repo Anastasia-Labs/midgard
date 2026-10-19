@@ -665,6 +665,11 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      # The transaction differential again with its reference leg on: each
+      # generated spend is also evaluated by the pinned aiken (`uplc eval`).
+      - name: Check the transaction differential against the pinned aiken
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run tx-fuzz-reference
 
   # The fault-proof package's build and typecheck, once per run. The test
   # shards below resolve every workspace package from source through the

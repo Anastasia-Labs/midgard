@@ -37,7 +37,7 @@ import "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-
 import "./authenticated-workflow.create-manifest-bound-output-reference-script-decoding-submission.js";
 import "./authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 import "./authenticated-workflow.output-reference-script-decoding-family-definition.js";
-import "./authenticated-workflow.run-or-resume-manifest-bound-output-reference-script-decoding-workflow.js";
+import "./authenticated-workflow.execute-manifest-bound-output-reference-script-decoding-workflow.js";
 export {
   bindOutputReferenceScriptDecodingReferenceScripts,
   type LoadManifestBoundOutputReferenceScriptDecodingConfig,
@@ -62,14 +62,12 @@ export {
   prepareOutputReferenceScriptDecodingRecoveryMaterial,
 } from "./authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 export {
+  createOutputReferenceScriptDecodingRecoveryAdapter,
+  executeManifestBoundOutputReferenceScriptDecodingWorkflow,
+} from "./authenticated-workflow.execute-manifest-bound-output-reference-script-decoding-workflow.js";
+export {
   createManifestBoundOutputReferenceScriptDecodingWorkflow,
-  loadManifestBoundOutputReferenceScriptDecodingConfig,
   type ManifestBoundOutputReferenceScriptDecodingWorkflow,
   type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
 } from "./authenticated-workflow.output-reference-script-decoding-family-definition.js";
-export {
-  createOutputReferenceScriptDecodingRecoveryAdapter,
-  executeManifestBoundOutputReferenceScriptDecodingWorkflow,
-  runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow,
-} from "./authenticated-workflow.run-or-resume-manifest-bound-output-reference-script-decoding-workflow.js";

@@ -74,9 +74,10 @@ export const projectRetainedProverFundingLeases = ({
     const legacyOutRefs = new Set(
       retainedProverFundingInputs({
         record: { ...record, activeInputs: [] },
-        submissions: readAttempts(record.reservationId).filter(
-          ({ transactionHash }) => unverified.has(transactionHash),
-        ),
+        submissions: (unverified.size === 0
+          ? []
+          : readAttempts(record.reservationId)
+        ).filter(({ transactionHash }) => unverified.has(transactionHash)),
         abandonedTransactionHashes: new Set(),
         completed: false,
       }).map(({ outRef }) => outRef),

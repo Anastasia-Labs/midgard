@@ -86,6 +86,50 @@ export const goldenChecks = (root, packages, ciText) =>
     };
   });
 
+// --- the transaction differential's reference leg --------------------------
+
+// The tx-fuzz rows again with the reference leg on: every generated spend is
+// also evaluated by the pinned aiken's `uplc eval`, which the step oracle
+// resolves through scripts/lib/aiken.mjs. With the leg on, each row's pins
+// include the leg's own classes per seed, so its verdicts are pinned too.
+const VALIDATION = "@al-ft/midgard-validation";
+const TX_FUZZ_TEST = "tests/fuzz/tx-fuzz.test.ts";
+
+export const txFuzzReferenceCheck = (packages) => {
+  const dependencies = workspaceDependencyClosure(packages, [VALIDATION]);
+  const validation = packages.find((pkg) => pkg.name === VALIDATION);
+  const command = step(
+    [
+      "pnpm",
+      "--dir",
+      validation.directory,
+      "exec",
+      "vitest",
+      "run",
+      TX_FUZZ_TEST,
+    ],
+    { env: { MIDGARD_TX_FUZZ_UPLC_BIN: "pinned" } },
+  );
+  return {
+    id: "tx-fuzz-reference",
+    title: "Transaction differential with the pinned aiken reference leg",
+    triggers: [
+      ...packages
+        .filter((candidate) => dependencies.has(candidate.name))
+        .map((candidate) => `${candidate.directory}/src/**`),
+      `${validation.directory}/tests/fuzz/**`,
+      `${validation.directory}/vitest.config.ts`,
+      `${AIKEN_PROJECT}/lib/**`,
+      `${AIKEN_PROJECT}/aiken.toml`,
+      "scripts/lib/aiken.mjs",
+      "demo/flake.lock",
+    ],
+    capabilities: ["node-modules", "aiken", "blueprint"],
+    display: formatCommand(command),
+    plan: () => [command],
+  };
+};
+
 // --- independent documentation and devnet validation ----------------------
 
 const docsSiteTriggers = [

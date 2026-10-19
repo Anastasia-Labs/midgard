@@ -1226,6 +1226,32 @@ Blueprint rebuild into a temporary file (never the tracked plutus.json).
   - `onchain/aiken/**/*.ak`
 - Needs: `aiken`
 
+### `tx-fuzz-reference`
+
+Transaction differential with the pinned aiken reference leg.
+
+- Command: `MIDGARD_TX_FUZZ_UPLC_BIN=pinned pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/tx-fuzz.test.ts`
+- Runs on:
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+  - `demo/midgard-validation/tests/fuzz/**`
+  - `demo/midgard-validation/vitest.config.ts`
+  - `onchain/aiken/lib/**`
+  - `onchain/aiken/aiken.toml`
+  - `scripts/lib/aiken.mjs`
+  - `demo/flake.lock`
+- Needs: `node-modules`, `aiken`, `blueprint`
+
 ### `tx-preparation:node`
 
 Transaction preparation node acceptance lane.

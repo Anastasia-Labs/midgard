@@ -25,14 +25,16 @@ import { txFuzzScenario } from "./tx-fuzz.scenario.js";
  * The transaction differential: generated PlutusV3 spends over generated
  * ledger fields, each through the verdict leg, the full trace builder in
  * both directions, the cost check across modes and, when
- * `MIDGARD_TX_FUZZ_UPLC_BIN` names an evaluator, the reference leg
- * (`tx-fuzz.legs.ts`). The proof run's sampled steps go to the on-chain
+ * `MIDGARD_TX_FUZZ_UPLC_BIN` names an evaluator (`pinned`: the pinned
+ * aiken), the reference leg (`tx-fuzz.legs.ts`). The proof run's sampled steps go to the on-chain
  * machine through the step oracle, as in the step differential.
  *
  * - CI: the fixed seed set and the corpus seeds, with zero divergences. Each
  *   known disagreement and catalogued step is pinned to its seed: the counts
  *   of each class per seed, and per class over the row, must equal
  *   `tx-fuzz.pins.ts` (less the reference leg's classes when it is off).
+ *   The package suite runs it with the leg off; the `tx-fuzz-reference`
+ *   check runs it again with the leg on, against the pinned aiken.
  * - Release: `MIDGARD_TX_FUZZ_SECONDS=<n>` adds a random run of about n
  *   seconds.
  */
@@ -166,8 +168,15 @@ describe("transaction differential", () => {
       `tx fuzz ${name}: ${JSON.stringify({ ...summary, divergences: summary.divergences.length, perSeed: undefined })}`,
     );
 
-  /** The row's pins, less the reference leg's classes when it is off. */
+  /**
+   * The row's pins, less the reference leg's classes when it is off. A row
+   * run with the leg configured must have referenced some spend: otherwise a
+   * leg that never ran would match the leg-off pins.
+   */
   const expectPinned = (summary: TxRunSummary, pins: TxRowPins): void => {
+    if (process.env.MIDGARD_TX_FUZZ_UPLC_BIN !== undefined) {
+      expect(summary.referenced).toBeGreaterThan(0);
+    }
     const expected =
       reference === undefined ? pinsWithoutReferenceLeg(pins) : pins;
     expect(summary.perSeed).toStrictEqual(expected.seeds);

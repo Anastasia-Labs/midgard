@@ -19,6 +19,7 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
+import { aikenBinary } from "./cek-step-fuzz.oracle.js";
 
 /**
  * The reference leg of the transaction differential: a UPLC evaluator outside
@@ -30,11 +31,17 @@ import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardan
  * under its default budget (the Cardano per-transaction maximum), and reports
  * the result and the spent budget. Its verdict under the declared ex-units
  * is: the result is unit (PlutusV3) and the spend is within them.
- * Opt-in only: CI never sets the variable and never depends on the binary.
+ * The value `pinned` names that build, resolved as the step oracle resolves
+ * it; CI runs the leg so (the `tx-fuzz-reference` preflight check). Unset,
+ * the leg is off.
  */
 
-export const referenceBinary = (): string | undefined =>
-  process.env.MIDGARD_TX_FUZZ_UPLC_BIN;
+const PINNED_REFERENCE = "pinned";
+
+export const referenceBinary = (): string | undefined => {
+  const configured = process.env.MIDGARD_TX_FUZZ_UPLC_BIN;
+  return configured === PINNED_REFERENCE ? aikenBinary() : configured;
+};
 
 export type ReferenceRun =
   | {

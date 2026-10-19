@@ -1,12 +1,8 @@
 import {
   type ForcedInclusionTxV1,
-  FraudProofComputationThreadStepDatum,
   type Header,
   type OutputReference,
   type RootMembershipProof,
-  WitnessScriptDecodingStep02DatumSchema,
-  WitnessScriptDecodingStep03DatumSchema,
-  WitnessScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
@@ -15,12 +11,7 @@ import { PLUTUS_SCRIPT_REFUSED_RESULT_BASE } from "../script-decode/item-record.
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-  type FraudProofWorkflowDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { WitnessScriptDecodingContracts } from "./contracts.js";
 import {
   type WitnessScriptDecodingJournalEntry,
@@ -110,105 +101,6 @@ export type LoadManifestBoundWitnessScriptDecodingConfig = Readonly<{
   headerHash: string;
   referenceScripts: WitnessScriptDecodingReferenceScripts;
 }>;
-
-const bindReference = ({
-  binding,
-  contractName,
-  utxo,
-}: {
-  readonly binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
-  readonly contractName: string;
-  readonly utxo: UTxO;
-}): UTxO =>
-  requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
-
-export const bindWitnessScriptDecodingReferenceScripts = ({
-  binding,
-  referenceScripts,
-}: {
-  readonly binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;
-  readonly referenceScripts: WitnessScriptDecodingReferenceScripts;
-}): WitnessScriptDecodingReferenceScripts => {
-  const names = WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS;
-  return Object.freeze({
-    step01: bindReference({
-      binding,
-      contractName: names.step01,
-      utxo: referenceScripts.step01,
-    }),
-    step02: bindReference({
-      binding,
-      contractName: names.step02,
-      utxo: referenceScripts.step02,
-    }),
-    step03: bindReference({
-      binding,
-      contractName: names.step03,
-      utxo: referenceScripts.step03,
-    }),
-    step04: bindReference({
-      binding,
-      contractName: names.step04,
-      utxo: referenceScripts.step04,
-    }),
-    fieldPreimageCertificateMint: bindReference({
-      binding,
-      contractName: names.fieldPreimageCertificateMint,
-      utxo: referenceScripts.fieldPreimageCertificateMint,
-    }),
-    witnesses: Object.freeze({
-      ...referenceScripts.witnesses,
-      computationThreadMint: bindReference({
-        binding,
-        contractName: names.computationThreadMint,
-        utxo: referenceScripts.witnesses.computationThreadMint,
-      }),
-      fraudProofMint: bindReference({
-        binding,
-        contractName: names.fraudProofMint,
-        utxo: referenceScripts.witnesses.fraudProofMint,
-      }),
-      phasMembershipWithdraw: bindReference({
-        binding,
-        contractName: names.phasMembershipWithdraw,
-        utxo: referenceScripts.witnesses.phasMembershipWithdraw,
-      }),
-    }),
-  });
-};
-
-export const loadManifestBoundWitnessScriptDecodingConfig = async (
-  input: LoadManifestBoundWitnessScriptDecodingConfig,
-): Promise<ManifestBoundWitnessScriptDecodingConfig> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: input.manifest,
-    blueprintJson: input.blueprintJson,
-    deploymentInfo: input.deploymentInfo,
-    category: "witnessScriptDecoding",
-    headerHash: input.headerHash,
-    proverCredential: input.signer.paymentKeyHash,
-    stepDatumSchemas: [
-      FraudProofComputationThreadStepDatum,
-      WitnessScriptDecodingStep02DatumSchema,
-      WitnessScriptDecodingStep03DatumSchema,
-      WitnessScriptDecodingStep04DatumSchema,
-    ],
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: input.signer.address,
-    paymentKeyHash: input.signer.paymentKeyHash,
-  });
-  const referenceScripts = bindWitnessScriptDecodingReferenceScripts({
-    binding,
-    referenceScripts: input.referenceScripts,
-  });
-  return witnessScriptDecodingConfigFromBinding({
-    ...input,
-    binding,
-    referenceScripts,
-  });
-};
 
 export const witnessScriptDecodingConfigFromBinding = (input: {
   binding: FraudProofWorkflowDeploymentBinding<"witnessScriptDecoding">;

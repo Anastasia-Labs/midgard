@@ -89,6 +89,11 @@ export type InstalledRunOptions = Readonly<{
    * inside one turn fails instead of hanging.
    */
   maxPolls?: number;
+  /**
+   * Turns the run may take to convict (at most the harness budget): a run
+   * that spins across turns fails fast instead of after the whole budget.
+   */
+  maxTurns?: number;
   /** Runs once before the first turn; may return its cleanup. */
   beforeTurns?: (
     context: Omit<InstalledTurnContext, "result" | "turn">,
@@ -199,7 +204,7 @@ export const runInstalled = async (
       expect(
         turns,
         `conviction within the turn budget (last: ${reasons.at(-1) ?? "none"})`,
-      ).toBeLessThan(MAX_TURNS);
+      ).toBeLessThan(Math.min(options.maxTurns ?? MAX_TURNS, MAX_TURNS));
       if (stopped !== undefined) {
         if (options.onStopped === undefined) throw stopped.error;
         await options.onStopped(stopped.error, {
