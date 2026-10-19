@@ -289,4 +289,23 @@ describe("network-id Certified-tier field certificate", () => {
       WorkflowActionChangedError,
     );
   });
+
+  it("schedules only a certificate output that holds nothing but ada and the certificate token", async () => {
+    const certificates: UTxO[] = [];
+    const { harness, certificate } = await certifiedOpening({
+      certificateUtxos: certificates,
+    });
+    certificates.push(
+      certificate("00".repeat(32), {
+        lovelace: 5_000_000n,
+        [CERTIFICATE_UNIT]: 1n,
+        [`${"ab".repeat(28)}01`]: 1n,
+      }),
+      certificate(h32(0x61)),
+    );
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected the forced scan action");
+    expect(selected.action.input.certificateOutRef).toBe(`${h32(0x61)}#0`);
+  });
 });

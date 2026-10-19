@@ -62,7 +62,13 @@ export const resolveFaultProofFieldPreimageCertificate = async ({
         candidate.datum === certification.datumCbor &&
         candidate.datumHash == null &&
         candidate.scriptRef == null &&
-        candidate.assets[unit] === 1n,
+        candidate.assets[unit] === 1n &&
+        // Only ada and the certificate token: the steps reference this
+        // output, so any other asset would ride into their script context.
+        Object.entries(candidate.assets).every(
+          ([asset, quantity]) =>
+            asset === "lovelace" || asset === unit || quantity === 0n,
+        ),
     )
     .sort((left, right) =>
       left.txHash === right.txHash
