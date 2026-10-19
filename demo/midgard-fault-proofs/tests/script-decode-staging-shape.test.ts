@@ -85,4 +85,37 @@ describe("script-decode staged-chunk lookup", () => {
 
     expect(staged.map(outRef)).toEqual([`${"ff".repeat(32)}#0`, undefined]);
   });
+
+  it("skips an output that also names a datum hash", async () => {
+    const real = datums.map((datum, index) => output("ff", index, datum));
+    const held = [
+      output("00", 0, datums[0]!, { datumHash: "ee".repeat(32) }),
+      ...real,
+    ];
+
+    const staged = await findStagedScriptDecodeChunks({
+      lucid: lucidHolding(held),
+      scriptBytes,
+      address: ADDRESS,
+    });
+
+    expect(staged.map(outRef)).toEqual(real.map(outRef));
+  });
+
+  it("takes an output that lists another asset at quantity zero as plain staging", async () => {
+    const held = [
+      output("00", 0, datums[0]!, {
+        assets: { lovelace: 50_000_000n, [FOREIGN_UNIT]: 0n },
+      }),
+      output("ff", 1, datums[1]!),
+    ];
+
+    const staged = await findStagedScriptDecodeChunks({
+      lucid: lucidHolding(held),
+      scriptBytes,
+      address: ADDRESS,
+    });
+
+    expect(staged.map(outRef)).toEqual(held.map(outRef));
+  });
 });
