@@ -469,7 +469,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           expectedMissing === undefined ||
           requested.input.publicationDatumCbor !== expectedMissing.datumCbor
         ) {
-          throw new Error(
+          throw new WorkflowActionChangedError(
             "field publication action does not match the next missing plan chunk",
           );
         }

@@ -252,4 +252,30 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       WorkflowActionChangedError,
     );
   });
+  it("treats a field chunk published since scheduling as a changed publication action", async () => {
+    const { artifact, publications } = certifiedOpening();
+    const [first, ...rest] = publications;
+    const wallet: UTxO[] = [...rest];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const publish = await harness.next();
+    expect(publish.input).toMatchObject({
+      stage: "publish-field",
+      publicationDatumCbor: first!.datum,
+    });
+
+    // The scheduled chunk is on chain before the action runs.
+    wallet.unshift(first!);
+    await expect(harness.preflight(publish)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
 });
