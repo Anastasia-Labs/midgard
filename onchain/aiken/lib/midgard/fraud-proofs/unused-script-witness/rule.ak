@@ -170,6 +170,8 @@ fn decode_terminal_control(
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_witness_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
@@ -177,13 +179,12 @@ pub fn bind_witness_v1(
   script_index: Int,
 ) -> BoundWitnessV1 {
   expect and {
-      substrate.subject_is_canonical_v1(subject),
       bytearray.length(validation_traces_root) == 32,
       validation_trace_count > 0,
       script_index >= 0,
     }
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    expect UnusedScriptWitness { script_index: actual } = substrate.rejection_reason_of_v1(
+    expect UnusedScriptWitness { script_index: actual } = substrate.opened_rejection_reason_v1(
       subject,
     )
     expect actual == script_index

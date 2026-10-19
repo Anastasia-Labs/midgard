@@ -37,18 +37,19 @@ pub type AuthenticatedReceiveLanguageV1 {
   script_hash: ByteArray,
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_execution_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
   validation_trace_count: Int,
   execution_index: Int,
 ) -> BoundExecutionV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(validation_traces_root) == 32
   expect validation_trace_count > 0
   expect execution_index >= 0
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
-    let reason = substrate.rejection_reason_of_v1(subject)
+    let reason = substrate.opened_rejection_reason_v1(subject)
     expect ReceivePurposePlutusV3Forbidden { .. } = reason
     Some(reason)
   } else {

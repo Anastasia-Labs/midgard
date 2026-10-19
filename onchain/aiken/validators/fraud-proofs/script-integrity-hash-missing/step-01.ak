@@ -39,12 +39,12 @@ validator main(
       ct.Continue(BindAccepted { carriage }) -> {
         let
             _,
-            subject_thread_name,
+            _,
             _,
             input_state,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             _,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -57,13 +57,7 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == step_02_validator_script_hash
-        let subject = substrate.open_subject_v1(
-          subject_thread_name,
-          substrate.AcceptedSource {
-            header: subject_header,
-            tx_inclusion: verified,
-          },
-        )
+        let subject = substrate.open_accepted_subject_v1(verified)
         let expected: Data = BoundAccepted {
           subject,
           witness_set_hash: verified.tx_compact.witness_set_hash,

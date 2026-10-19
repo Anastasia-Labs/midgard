@@ -118,7 +118,11 @@ fn summarised(
 /// walk, or phase 3 with the summaries once the datum is summarised. An output
 /// without an inline datum is summarised at once.
 pub fn step(state: State, bytes: ByteArray, witness: WalkWitness) -> State {
-  let facts = scan.decode_control_v1(state.scan_cbor)
+  // The scan yield is the only writer of `scan_cbor` (every other step
+  // carries it over or resets it to empty), and it writes it with
+  // `encode_control_v1`, which refuses a malformed control. Read it back
+  // without repeating those checks.
+  let facts = scan.decode_written_control_v1(state.scan_cbor)
   if facts.datum_offset == -1 {
     summarised(state, facts, bytes, None)
   } else {

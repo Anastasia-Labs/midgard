@@ -35,11 +35,12 @@ pub type DecisionStateV1 {
   violation: Bool,
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_observer_v1(
   subject: substrate.VerdictSubjectV1,
   observer_index: Int,
 ) -> BoundObserverV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect observer_index >= 0
   expect
     if subject.direction == substrate.direction_wrongful_rejection {
@@ -47,7 +48,7 @@ pub fn bind_observer_v1(
       // can name is admissible here: a rejection naming ordinal 0, or an
       // ordinal the field never reaches, names no offending later item, and
       // the walk contradicts it by exhausting the field strictly ordered.
-      expect _reason = substrate.bind_exact_rejection_reason_v1(
+      expect _reason = substrate.bind_opened_rejection_reason_v1(
         subject,
         ObserverOrderInvalid { observer_index },
       )

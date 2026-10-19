@@ -848,6 +848,44 @@ test case_constant_arm_refuses_a_wrong_successor() fail {
   )
 }
 
+// The arm verifies only the witness the core step bound: an honest witness
+// for the same step is refused when the bound hash is another witness's,
+// though both carry the case-constant constructor.
+test case_constant_arm_refuses_a_witness_the_core_step_did_not_bind() fail {
+  let witness_data: Data = integer_case_witness()
+  let other = builtin.constr_data(41, [])
+  let bound = core_chain.CoreBound {
+    prepared: builtin.constr_data(0, []),
+    pre: integer_case_pre(),
+    post: selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
+    witness_hash: blake2b_256(cbor.serialise(other)),
+    arm: 41,
+    group: 11,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
+  core_case_constant.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    ct.Continue(
+      core_chain.VerifyArm {
+        input_index: 0,
+        output_index: 0,
+        witness: witness_data,
+      },
+    ),
+    fixture.own_out_ref(),
+    prover_continue_tx(next),
+  )
+}
+
 // The case-constant arm verifies only `ReturnCaseConstant` witnesses.
 test case_constant_arm_refuses_a_constructor_step() fail {
   let empty = cek_proof_v1.empty_sequence_root_v1
@@ -891,14 +929,4 @@ test core_group_routes_a_constructor_case_step_to_group_1() {
     tail: cek_proof_v1.empty_continuation_root_v1,
   }
   core_chain.core_group(cek_machine_v1.mode_return, witness) == 1
-}
-
-// The case-constant arm requires the bound group to be its own.
-test case_constant_arm_refuses_another_group() fail {
-  run_case_constant_bound(
-    1,
-    integer_case_pre(),
-    selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
-    integer_case_witness(),
-  )
 }

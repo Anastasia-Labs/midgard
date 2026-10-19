@@ -39,17 +39,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, execution_index }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_script_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_script_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -67,10 +57,7 @@ validator main(
         let source_data <- cbor_deserialise.expect_deserialise(source_cbor)
         expect source: L2TransactionSourceV1 = source_data
         let expected: Data = bind_execution_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
@@ -97,12 +84,13 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_asset_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let leaf = membership.value
-        // open_subject_v1 already verified this exact source.
+        // open_forced_subject_v1 already verified this exact source.
         let expected: Data = bind_execution_v1(
           subject,
           header.validation_traces_root,

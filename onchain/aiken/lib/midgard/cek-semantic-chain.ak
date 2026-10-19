@@ -31,11 +31,13 @@ pub type ArmAction {
 pub type ArmRedeemer =
   ct.StepRedeemer<ArmAction>
 
+/// The witness is the one the core step bound. The binder in
+/// `cek-core-step-semantic-v1` is the only writer of a `CoreBound` (every arm
+/// carries it on with `..bound`), and it sets `witness_hash` and `arm` from
+/// the same witness, so a witness that hashes to `witness_hash` also carries
+/// constructor `arm`; that is not checked again.
 pub fn witness_is_bound(bound: CoreBound, witness: Data) -> Bool {
-  and {
-    blake2b_256(cbor.serialise(witness)) == bound.witness_hash,
-    builtin.un_constr_data(witness).1st == bound.arm,
-  }
+  blake2b_256(cbor.serialise(witness)) == bound.witness_hash
 }
 
 pub fn continue_core(

@@ -314,6 +314,30 @@ pub fn anchored_native_tx(
   }
 }
 
+/// Exactly `anchored_native_tx` on a `BodyTxOpening`, kept as its own copy so
+/// the steps that already call `anchored_native_tx` compile unchanged. A step
+/// whose thread can only hold a body anchor calls this so the witness-set arm,
+/// which would refuse that anchor, is not linked into it.
+pub fn anchored_body_tx(
+  native_tx_compact_cbor: ByteArray,
+  anchor: NativeTxAnchorV1,
+) -> AnchoredNativeTxV1 {
+  // 1. The thread anchored a body dispute. A `WitnessAnchor` here would mean
+  //    the family's own step-01 recorded a witness-set anchor and this step
+  //    is opening it without the witness set that anchor names, so the two
+  //    §2.5 halves have to agree before any byte is read.
+  expect BodyAnchor { tx_id, source_kind } = anchor
+  AnchoredNativeTxV1 {
+    verified: verify_tx_compact_cbor_v1(
+      source_kind_of_anchor(source_kind),
+      tx_id,
+      native_tx_compact_cbor,
+    ),
+    witness_set: unread_witness_set(),
+    opens_witness_set_fields: False,
+  }
+}
+
 /// The native-transaction version the anchored compact structure was committed
 /// under.
 ///

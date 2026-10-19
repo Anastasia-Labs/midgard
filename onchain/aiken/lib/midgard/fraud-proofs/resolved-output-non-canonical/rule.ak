@@ -49,19 +49,20 @@ pub type DatumStepV1 {
   FinishDatum { verdict: CanonicalVerdictV1 }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_input_v1(
   subject: substrate.VerdictSubjectV1,
   source_kind: Int,
   input_index: Int,
   prior_root: ByteArray,
 ) -> BoundInputV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect source_kind == 0 || source_kind == 1
   expect input_index >= 0
   expect bytearray.length(prior_root) == 32
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     let expected = InputSpentOutputNonCanonical { source_kind, input_index }
-    Some(substrate.bind_exact_rejection_reason_v1(subject, expected))
+    Some(substrate.bind_opened_rejection_reason_v1(subject, expected))
   } else {
     None
   }

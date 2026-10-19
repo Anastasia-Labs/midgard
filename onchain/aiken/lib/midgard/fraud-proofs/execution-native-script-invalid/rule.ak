@@ -71,6 +71,8 @@ fn class_is_fault(value: Int) -> Bool {
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_execution_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
@@ -79,14 +81,13 @@ pub fn bind_execution_v1(
   prior_ledger_root: ByteArray,
   compact_cbor: ByteArray,
 ) -> BoundExecutionV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(validation_traces_root) == 32
   expect validation_trace_count > 0
   expect execution_index >= 0
   expect bytearray.length(prior_ledger_root) == 32
   expect bytearray.length(compact_cbor) > 0
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
-    when substrate.rejection_reason_of_v1(subject) is {
+    when substrate.opened_rejection_reason_v1(subject) is {
       ExecutionNativeScriptFalse { .. } -> result_pending
       _ -> fail @"reason outside execution-native-script-invalid"
     }

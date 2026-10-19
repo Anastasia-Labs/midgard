@@ -55,17 +55,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, output_index }) -> {
-        let
-            _own,
-            subject_thread_name,
-            _prover,
-            _prior,
-            next_hash,
-            next_data,
-            subject_header,
-            _id,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _own, _, _prover, _prior, next_hash, next_data, _, _id, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_policy,
           hub_oracle,
           datum,
@@ -74,13 +64,7 @@ validator main(
           tx,
         )
         let bound = bind_output_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource {
-              header: subject_header,
-              tx_inclusion: verified,
-            },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           output_index,
         )
         let expected: Data = step_02.State {
@@ -112,15 +96,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           name,
-          substrate.ForcedSource { header, membership },
-        )
-        let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
-          membership.value.tx_id,
-          membership.value.submitted_source.compact_cbor,
-          membership.value.submitted_source.witness_set_compact_cbor,
-          membership.value.submitted_source.field_preimage_lengths_cbor,
+          header,
+          membership,
         )
         let expected: Data = step_02.State {
           bound: bind_output_v1(subject, output_index),

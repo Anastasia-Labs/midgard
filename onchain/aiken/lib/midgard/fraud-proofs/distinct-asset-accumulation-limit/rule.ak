@@ -59,13 +59,14 @@ pub fn coordinate_is_well_formed_v1(coordinate: CoordinateV1) -> Bool {
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_coordinate_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
   validation_trace_count: Int,
   coordinate: CoordinateV1,
 ) -> BoundV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(validation_traces_root) == 32
   expect validation_trace_count > 0
   expect coordinate_is_well_formed_v1(coordinate)
@@ -83,7 +84,7 @@ pub fn bind_coordinate_v1(
         }
       _ -> MintAssetAccumulationLimit { mint_index: coordinate.primary_index }
     }
-    Some(substrate.bind_exact_rejection_reason_v1(subject, expected))
+    Some(substrate.bind_opened_rejection_reason_v1(subject, expected))
   } else {
     None
   }

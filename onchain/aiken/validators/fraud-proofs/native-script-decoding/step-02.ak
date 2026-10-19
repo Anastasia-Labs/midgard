@@ -150,9 +150,10 @@ validator main(
             // The opener checks that the header hashes to the thread NFT's
             // name tail, then authenticates the leaf under that header. Its
             // direction is the leaf's verdict, so the verdict selects it here.
-            let subject = substrate.open_subject_v1(
+            let Pair(subject, _) = substrate.open_forced_subject_v1(
               computation_thread_token_asset_name,
-              substrate.ForcedSource { header, membership: forced },
+              header,
+              forced,
             )
             let leaf = forced.value
             when leaf.verdict is {

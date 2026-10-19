@@ -34,10 +34,10 @@ validator main(
       ct.Continue(action) -> {
         expect Some(step) = datum
         expect Some(bound) = step.data
-        // `core_group` binds group 11 only to a return step with witness
-        // constructor 41, and `continue_core` checks the witness against the
-        // bound constructor and hash.
-        expect bound.group == 11
+        // The core step routes a bound step to the arm its group names, and
+        // only group 11 names this arm; `core_group` gives group 11 only to a
+        // return step with witness constructor 41, and `continue_core` checks
+        // the witness against the bound hash.
         let fields = builtin.un_constr_data(action.witness).2nd
         expect [scrutinee,
               material, count, branches, environment, tail] = fields
