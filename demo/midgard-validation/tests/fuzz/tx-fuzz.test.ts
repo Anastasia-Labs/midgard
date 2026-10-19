@@ -168,8 +168,15 @@ describe("transaction differential", () => {
       `tx fuzz ${name}: ${JSON.stringify({ ...summary, divergences: summary.divergences.length, perSeed: undefined })}`,
     );
 
-  /** The row's pins, less the reference leg's classes when it is off. */
+  /**
+   * The row's pins, less the reference leg's classes when it is off. A row
+   * run with the leg configured must have referenced some spend: otherwise a
+   * leg that never ran would match the leg-off pins.
+   */
   const expectPinned = (summary: TxRunSummary, pins: TxRowPins): void => {
+    if (process.env.MIDGARD_TX_FUZZ_UPLC_BIN !== undefined) {
+      expect(summary.referenced).toBeGreaterThan(0);
+    }
     const expected =
       reference === undefined ? pinsWithoutReferenceLeg(pins) : pins;
     expect(summary.perSeed).toStrictEqual(expected.seeds);
