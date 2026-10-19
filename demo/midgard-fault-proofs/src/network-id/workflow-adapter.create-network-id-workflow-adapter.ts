@@ -973,7 +973,7 @@ export const createNetworkIdWorkflowAdapter = (
               missing === undefined ||
               context.action.input.publicationDatumCbor !== missing.datumCbor
             ) {
-              throw new Error(
+              throw new WorkflowActionChangedError(
                 "network-id publication action is not the next missing plan chunk",
               );
             }

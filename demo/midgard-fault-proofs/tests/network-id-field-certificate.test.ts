@@ -2,7 +2,8 @@
  * The network-id outputs opening at Certified tier: how the production adapter
  * settles its own field-certificate transaction and binds the certificate the
  * final step references, when the certificate address holds more than one
- * output that carries the same certification datum.
+ * output that carries the same certification datum, and how it treats carriage
+ * that changed after an action was scheduled.
  */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
@@ -322,5 +323,48 @@ describe("network-id Certified-tier field certificate", () => {
     if (selected.kind !== "action_required")
       throw new Error("expected the forced scan action");
     expect(selected.action.input.certificateOutRef).toBe(`${h32(0x61)}#0`);
+  });
+
+  it("treats a field chunk published since scheduling as a changed publication action", async () => {
+    const { headerHash, artifact, opening } = outputNetworkOpening();
+    const [first, ...rest] = opening.plan.publications.map(
+      (publication, index) =>
+        utxo({
+          txHash: h32(0x20 + index),
+          datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+        }),
+    );
+    const wallet: UTxO[] = [...rest];
+    const harness = forcedHarness({
+      prepared: { headerHash, artifact },
+      stage: {
+        kind: "step",
+        step: 2,
+        threadOutRef: `${h32(0x72)}#0`,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected a field publication");
+    expect(selected.action.input).toMatchObject({
+      kind: "publish_field",
+      publicationDatumCbor: first!.datum,
+    });
+
+    // The scheduled chunk is on chain before the action runs.
+    wallet.unshift(first!);
+    await expect(
+      harness.adapter.preflight({
+        identity: workflowIdentity(headerHash),
+        workflowId: h32(0x51),
+        artifact,
+        entries: [],
+        action: selected.action,
+      }),
+    ).rejects.toBeInstanceOf(WorkflowActionChangedError);
   });
 });
