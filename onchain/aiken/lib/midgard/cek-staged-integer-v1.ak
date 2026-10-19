@@ -197,6 +197,12 @@ fn encode_segments(
 
 /// The canonical CBOR of an Integer, the inverse of
 /// `parse_canonical_integer_cbor_v1`.
+///
+/// Precondition: `integer.argument` is minimal, with no leading zero byte, as
+/// `parse_canonical_integer_cbor_v1` and `from_limbs_v1` return it. The writer
+/// does not check this; an argument with a leading zero yields bytes that are
+/// not the canonical CBOR of any Integer. Never pass it an argument taken from
+/// a witness without reading it through one of those first.
 pub fn encode_canonical_integer_cbor_v1(
   integer: CanonicalIntegerV1,
 ) -> ByteArray {

@@ -219,6 +219,10 @@ fn segments(
 
 /// The canonical CBOR of an Integer as pieces whose concatenation is
 /// `cek_staged_integer_v1.encode_canonical_integer_cbor_v1(integer)`.
+///
+/// Precondition, as for that writer: `integer.argument` is minimal, with no
+/// leading zero byte, as the readers and `from_limbs_v1` return it. It is not
+/// checked here; an argument with a leading zero yields non-canonical CBOR.
 pub fn encode_integer_cbor_pieces_v1(
   integer: CanonicalIntegerV1,
 ) -> List<ByteArray> {
