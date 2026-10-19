@@ -222,12 +222,11 @@ describe("missing-redeemer consensus-maximum observer shape", () => {
         prover: harness.proverSigner.paymentKeyHash,
       }),
     ).rejects.toThrow(MissingRedeemerHonestLeaf);
-    const observedIndex = BigInt(dimensions.count - 1);
     const run = await driveMissingRedeemerThread({
       harness,
       scenario,
       references,
-      observedIndex,
+      observed: { kind: 2n, index: BigInt(dimensions.count - 1) },
     });
     expect(run.prepared.convicts).toBe(false);
     expect(run.prepared.final.context.observed?.redeemer_missing).toBe(false);

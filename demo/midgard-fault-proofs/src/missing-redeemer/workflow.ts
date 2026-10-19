@@ -29,6 +29,7 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
+import { MISSING_REDEEMER_FIELDS } from "./custody.js";
 import {
   missingRedeemerSourceInclusion,
   planMissingRedeemerArtifact,
@@ -213,7 +214,7 @@ export const MISSING_REDEEMER_FAMILY_DEFINITION = defineFamily({
         ),
       }),
   },
-  fieldCarriage: [0, 1, 3, 6, 8].map(fieldCarriage),
+  fieldCarriage: MISSING_REDEEMER_FIELDS.map(fieldCarriage),
   proofChunk: async (context, input) => {
     if (input.action.input.stage !== "step_01") return null;
     const { admitted } = await planned(context, input);

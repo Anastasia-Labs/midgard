@@ -1,11 +1,11 @@
 /** Committed `missingRedeemer` subjects for genuine-Init emulator runs: a
- * transaction whose required observers resolve to field-6 script witnesses
- * (and optionally ledger reference scripts), committed in a block whose
- * predecessor ledger root the event pre-root names. */
+ * transaction whose required observers, mints, protected outputs and spends
+ * resolve to field-6 script witnesses (and optionally ledger reference
+ * scripts), committed in a block whose predecessor ledger root the event
+ * pre-root names. */
 import {
   computeMidgardNativeTxId,
   EMPTY_NULL_ROOT,
-  encodeMidgardRedeemerWitnessItem,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
@@ -34,6 +34,12 @@ import {
   type LedgerEntry,
 } from "../../src/ledger-at.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
+import {
+  missingRedeemerPurposeFields,
+  type MissingRedeemerPurposeScript,
+  type MissingRedeemerPurposeShape,
+  redeemerItem,
+} from "./missing-redeemer-emulator.purposes.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 import {
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
@@ -62,14 +68,9 @@ export const nativeScript = (slot: bigint): MidgardVersionedScript => ({
   nativeScript: { type: "after", slot },
 });
 
-export type MissingRedeemerObserver = {
-  readonly script: MidgardVersionedScript;
-  /** Carry the script as a field-6 witness; otherwise it must resolve elsewhere. */
-  readonly witness?: boolean;
-  readonly redeemer: boolean;
-};
+export type MissingRedeemerObserver = MissingRedeemerPurposeScript;
 
-export type MissingRedeemerSubjectShape = {
+export type MissingRedeemerSubjectShape = MissingRedeemerPurposeShape & {
   readonly observers: readonly MissingRedeemerObserver[];
   /** Committed predecessor outputs; spent and referenced by the subject. */
   readonly spend?: readonly LedgerEntry[];
@@ -81,14 +82,6 @@ export type MissingRedeemerSubjectShape = {
   /** Signs the body with one address witness. */
   readonly signer?: CML.PrivateKey;
 };
-
-const redeemerItem = (index: bigint, data: Buffer) =>
-  encodeMidgardRedeemerWitnessItem({
-    purpose: "Reward",
-    index,
-    redeemerCbor: data,
-    executionUnits: { memory: 1_000n, steps: 1_000n },
-  });
 
 /** The subject and its observer coordinates in canonical (hash) order. */
 export const buildMissingRedeemerSubject = (
@@ -110,13 +103,20 @@ export const buildMissingRedeemerSubject = (
     BigInt(ordered.indexOf(observer)),
   );
   const data = shape.redeemerData ?? (() => Buffer.from(Data.to(0n), "hex"));
+  const purposes = missingRedeemerPurposeFields(shape, data(0));
+  // In purpose-tag order: Spend, Mint, Reward, Receive.
   const redeemers = [
+    ...purposes.spendRedeemers,
+    ...purposes.mintRedeemers,
     ...ordered.flatMap((observer, index) =>
-      observer.redeemer ? [redeemerItem(BigInt(index), data(index))] : [],
+      observer.redeemer
+        ? [redeemerItem("Reward", BigInt(index), data(index))]
+        : [],
     ),
     ...(shape.paddingRedeemers ?? []).map((item, index) =>
-      redeemerItem(BigInt(ordered.length + index), item),
+      redeemerItem("Reward", BigInt(ordered.length + index), item),
     ),
+    ...purposes.receiveRedeemers,
   ];
   const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeCbor(
@@ -125,7 +125,7 @@ export const buildMissingRedeemerSubject = (
     referenceInputsPreimageCbor: encodeCbor(
       (shape.reference ?? []).map((entry) => entry.outRef),
     ),
-    outputsPreimageCbor: encodeCbor([]),
+    outputsPreimageCbor: purposes.outputsPreimageCbor,
     fee: 0n,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
@@ -133,7 +133,7 @@ export const buildMissingRedeemerSubject = (
       ordered.map((observer) => observer.hash),
     ),
     requiredSignersPreimageCbor: encodeCbor([]),
-    mintPreimageCbor: encodeCbor([]),
+    mintPreimageCbor: purposes.mintPreimageCbor,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     // Observers are admitted only on a tagged network.
@@ -164,9 +164,12 @@ export const buildMissingRedeemerSubject = (
             ],
       ),
       scriptTxWitsPreimageCbor: encodeCbor(
-        hashed
-          .filter((observer) => observer.witness ?? true)
-          .map((observer) => encodeMidgardVersionedScript(observer.script)),
+        [
+          ...hashed
+            .filter((observer) => observer.witness ?? true)
+            .map((observer) => observer.script),
+          ...purposes.witnesses,
+        ].map(encodeMidgardVersionedScript),
       ),
       redeemerTxWitsPreimageCbor: encodeCbor(redeemers),
     },

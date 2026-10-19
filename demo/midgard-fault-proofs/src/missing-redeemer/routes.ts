@@ -3,14 +3,13 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { directPurposeAt } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { missingRedeemerClaimDomain } from "./claim-domains.js";
 import { type MissingRedeemerTransition, stepDatum } from "./custody.js";
-import { pointerScan, type RouteInputs } from "./pointer-scan.js";
+import { boundIndex, pointerScan, type RouteInputs } from "./pointer-scan.js";
+import { missingRedeemerObservedSelection } from "./purpose-routes.js";
 
 type Coordinate = SDK.DirectPurposeCoordinate;
-
-const OBSERVE = 2n;
 
 export const isRedeemerBearingLanguage = (tag: bigint): boolean =>
   tag === 3n || tag === 128n;
@@ -26,32 +25,24 @@ export const missingRedeemerLeafCoordinate = (
   return reason === null ? null : SDK.purposeCoordinateOfReason(reason);
 };
 
-const boundIndex = (inputs: RouteInputs) => ({
-  bound: inputs.material.bound,
-  source_index: inputs.evidence.index,
-});
-
-/** Observe route over required observer `index`: the purpose, its source
- * lookup and its exhausted field-8 pointer scan, ending at claim start. */
+/** Observed route over the purpose at `coordinate`: its kind's selection
+ * domain, its source lookup and its exhausted field-8 pointer scan, ending at
+ * claim start. */
 export const missingRedeemerObservedRoute = async (
   inputs: RouteInputs,
-  index: bigint,
+  coordinate: Coordinate,
 ) => {
-  const { material, evidence, prover } = inputs;
-  const coordinate = { kind: OBSERVE, index };
-  const purpose = directPurposeAt(material, coordinate);
-  if (purpose === null)
-    throw new Error("missing-redeemer: observed purpose is absent");
+  const { evidence, prover } = inputs;
+  const {
+    selection,
+    purpose,
+    transitions: selected,
+  } = await missingRedeemerObservedSelection(inputs, coordinate);
   const { selected: source, proof } = await evidence.lookup(
     purpose.script_hash,
   );
   if (source === null || !isRedeemerBearingLanguage(source.language_tag))
     throw new Error("missing-redeemer: observed purpose has no redeemer");
-  const selection: SDK.DirectPurposeSelection = {
-    ...boundIndex(inputs),
-    coordinate,
-    purpose,
-  };
   const authenticated = { selection, source };
   const scan = pointerScan(inputs, {
     label: "observed",
@@ -87,24 +78,7 @@ export const missingRedeemerObservedRoute = async (
           SDK.MissingRedeemerEntryRedeemer,
         ),
     },
-    {
-      label: "observe select",
-      role: "purposeSelect",
-      next: "sourceLookup",
-      datum: stepDatum(prover, selection, SDK.DirectSourceLookupDatum),
-      fields: [3],
-      redeemer: ({ indices, open }) =>
-        Data.to(
-          {
-            Continue: [
-              {
-                Observe: { ...indices, purpose_index: index, opening: open(3) },
-              },
-            ],
-          },
-          SDK.DirectPurposeSelectRedeemer,
-        ),
-    },
+    ...selected,
     {
       label: "observe lookup",
       role: "sourceLookup",
@@ -169,9 +143,8 @@ export const missingRedeemerClaimEntry = (
   };
 };
 
-/** Claim start and adjudication for the supported leaf shapes: no coordinate,
- * an invalid coordinate, the observed coordinate, or a distinct observer
- * coordinate. Spend, mint and receive coordinates fail closed. */
+/** Claim start and adjudication: no coordinate, an invalid coordinate, the
+ * observed coordinate, or a distinct coordinate of any purpose kind. */
 export const missingRedeemerClaimRoute = async (
   inputs: RouteInputs,
   context: SDK.MissingRedeemerClaimContext,
@@ -255,33 +228,15 @@ export const missingRedeemerClaimRoute = async (
       final: resolved.final,
     };
   }
-  if (coordinate.kind !== OBSERVE)
-    throw new Error(
-      `missing-redeemer: purpose kind ${coordinate.kind.toString()} claim custody is not supported by this prover`,
-    );
-  const purpose = directPurposeAt(material, coordinate);
-  const fact: SDK.MissingRedeemerClaimedPurposeFact =
-    purpose === null
-      ? { ImpossiblePurpose: { coordinate } }
-      : { ExistingPurpose: { purpose } };
-  const start: MissingRedeemerTransition = {
-    label: "claim observe",
-    role: "claimStart",
-    next: "claimAdjudicate",
-    datum: adjudicateDatum(fact),
-    fields: [3],
-    redeemer: ({ indices, open }) =>
-      Data.to(
-        { Continue: [{ Observe: { ...indices, opening: open(3) } }] },
-        SDK.MissingRedeemerClaimStartRedeemer,
-      ),
-  };
+  const domain = await missingRedeemerClaimDomain(inputs, context, coordinate);
+  const purpose = domain.purpose;
   if (purpose === null) {
-    const resolved = resolve(
-      fact,
-      fact as SDK.MissingRedeemerClaimedPredicateFact,
-    );
-    return { transitions: [start, resolved.transition], final: resolved.final };
+    const fact = { ImpossiblePurpose: { coordinate } };
+    const resolved = resolve(fact, fact);
+    return {
+      transitions: [...domain.transitions, resolved.transition],
+      final: resolved.final,
+    };
   }
   const { selected: source, proof } = await evidence.lookup(
     purpose.script_hash,
@@ -300,7 +255,7 @@ export const missingRedeemerClaimRoute = async (
     };
     return {
       transitions: [
-        start,
+        ...domain.transitions,
         {
           label: "adjudicate lookup",
           role: "claimAdjudicate",
@@ -345,7 +300,7 @@ export const missingRedeemerClaimRoute = async (
   });
   return {
     transitions: [
-      start,
+      ...domain.transitions,
       {
         label: "adjudicate lookup scan",
         role: "claimAdjudicate",

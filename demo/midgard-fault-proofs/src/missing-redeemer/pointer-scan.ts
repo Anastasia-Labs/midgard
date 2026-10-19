@@ -24,6 +24,14 @@ export type RouteInputs = {
   readonly batch?: number;
 };
 
+/** The bound source and its source index, as the family entry carries them. */
+export const boundIndex = (
+  inputs: RouteInputs,
+): SDK.DirectSourceBoundIndex => ({
+  bound: inputs.material.bound,
+  source_index: inputs.evidence.index,
+});
+
 /** Certify then walk field 8 for one purpose's pointer. The start transition
  * (observed start or claimed lookup) is the caller's. */
 export const pointerScan = (

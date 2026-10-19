@@ -9,6 +9,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
+  MISSING_REDEEMER_FIELDS,
   missingRedeemerContractRoles,
   type MissingRedeemerCustody,
   type MissingRedeemerProofPlan,
@@ -117,7 +118,7 @@ export const publishMissingRedeemerCarriage = async ({
     measurement: CompleteSignedTransactionMeasurement;
   }[] = [];
   let certificateReference: UTxO | undefined;
-  for (const field of [0, 1, 3, 6, 8]) {
+  for (const field of MISSING_REDEEMER_FIELDS) {
     const planned = plan(field).openingPlan;
     const tier = planned.plan.tier;
     if (tier === "Inline") continue;
@@ -183,13 +184,13 @@ export const driveMissingRedeemerThread = async ({
   harness,
   scenario,
   references,
-  observedIndex,
+  observed,
   transitions,
 }: {
   readonly harness: MissingRedeemerHarness;
   readonly scenario: MissingRedeemerScenario;
   readonly references: ReadonlyMap<MissingRedeemerRole, RoleReference>;
-  readonly observedIndex?: bigint;
+  readonly observed?: SDK.DirectPurposeCoordinate;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (
     prepared: MissingRedeemerProofPlan,
@@ -201,7 +202,7 @@ export const driveMissingRedeemerThread = async ({
     material: scenario.material,
     contracts: missingRedeemer,
     prover: proverSigner.paymentKeyHash,
-    ...(observedIndex === undefined ? {} : { observedIndex }),
+    ...(observed === undefined ? {} : { observed }),
   });
   const { carriage, measurements: carriageMeasurements } =
     await publishMissingRedeemerCarriage({
@@ -288,14 +289,15 @@ export const driveMissingRedeemerThread = async ({
     start,
     transitions?.(prepared) ?? prepared.transitions,
   );
-  const terminal = (requireConviction = true) =>
+  /** `at` is the terminal's input when the caller advanced the thread. */
+  const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitMissingRedeemerTerminal({
         lucid: proverLucid,
         contracts: missingRedeemer,
         categoryId: harness.category.categoryId,
         signer: proverSigner,
-        threadOutRef: `${thread.txHash}#${thread.outputIndex.toString()}`,
+        threadOutRef: `${at.txHash}#${at.outputIndex.toString()}`,
         referenceScriptUtxo: reference("terminal"),
         witnessReferenceScripts: harness.witnessReferenceScripts,
         requireConviction,

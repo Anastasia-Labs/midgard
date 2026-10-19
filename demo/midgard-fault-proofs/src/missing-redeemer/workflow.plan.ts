@@ -49,9 +49,7 @@ const plan = async (
     material: admitted.material,
     contracts,
     prover,
-    ...(admitted.observedIndex === null
-      ? {}
-      : { observedIndex: admitted.observedIndex }),
+    ...(admitted.observed === null ? {} : { observed: admitted.observed }),
   });
   const fields = new Map<MissingRedeemerRole, Set<number>>();
   for (const transition of proof.transitions) {

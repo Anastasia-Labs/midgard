@@ -25,7 +25,8 @@ export type MissingRedeemerSourceEvidence = Awaited<
   ReturnType<typeof buildDirectSourceIndexEvidence>
 >;
 
-const membershipRedeemer = (
+/** The PHAS membership withdrawal's redeemer for one key/value under a root. */
+export const membershipRedeemer = (
   proof: { readonly phas_root: string; readonly proof: SDK.Proof },
   key: string,
   value: string,

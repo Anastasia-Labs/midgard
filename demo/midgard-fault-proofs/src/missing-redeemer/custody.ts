@@ -36,13 +36,17 @@ export type MissingRedeemerTransition = {
 
 export type MissingRedeemerFieldPlan = ReturnType<typeof createDirectFieldPlan>;
 
+/** Every field a thread transition can open: the input, output, observer,
+ * mint, witness and redeemer fields. */
+export const MISSING_REDEEMER_FIELDS: readonly number[] = [0, 1, 2, 3, 5, 6, 8];
+
 /** Every field the thread opens, planned once from the bound source. */
 export const missingRedeemerFieldPlans = (
   material: DirectScriptMaterial,
   prover: string,
 ): ((field: number) => MissingRedeemerFieldPlan) => {
   const plans = new Map(
-    [0, 1, 3, 6, 8].map((field) => [
+    MISSING_REDEEMER_FIELDS.map((field) => [
       field,
       createDirectFieldPlan(material, field, prover),
     ]),
@@ -73,6 +77,24 @@ export const pages = (
     result.push([start, Math.min(size, count - start)]);
   return result;
 };
+
+/** One bounded page's progress arguments at `start` of `phase`. */
+export const progressArgs =
+  (
+    plan: MissingRedeemerFieldPlan,
+    phase: "Certifying" | "Walking",
+    start: number,
+    budget: number,
+  ) =>
+  ({
+    indices,
+    open,
+  }: Pick<MissingRedeemerRedeemerArgs, "indices" | "open">) => ({
+    ...indices,
+    opening: open(plan.fieldIndex),
+    checkpoint_bytes: plan.position(phase, start).checkpointBytes,
+    budget: BigInt(budget),
+  });
 
 /** Grammar certification always takes at least one bounded step, even over
  * an empty field, because the certify worker requires a positive budget. */

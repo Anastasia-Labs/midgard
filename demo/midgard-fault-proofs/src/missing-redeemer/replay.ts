@@ -1,6 +1,7 @@
 /** Complete `missingRedeemer` replay of one block: every accepted or
- * forced-valid transaction with a required observer, and every forced
- * `RedeemerMissing` rejection, is planned through the prover's verdict. */
+ * forced-valid transaction that can carry a script purpose (a spend, an
+ * output, a required observer or a mint), and every forced `RedeemerMissing`
+ * rejection, is planned through the prover's verdict. */
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -25,19 +26,29 @@ export type MissingRedeemerCoordinate = Readonly<{
   sourceIndex: number;
 }>;
 
+/** `<source kind>:<source index>:` then the observed purpose's
+ * `<kind>:<index>`, or `claim` for a rejection's claim verdict. */
 export const missingRedeemerDetectionId = (
   coordinate: MissingRedeemerCoordinate,
-  observedIndex: bigint | null,
+  observed: SDK.DirectPurposeCoordinate | null,
 ): string =>
-  `${MISSING_REDEEMER_VIOLATION_ID}:${coordinate.sourceKind.toString()}:${coordinate.sourceIndex.toString()}:${observedIndex === null ? "claim" : observedIndex.toString()}`;
+  `${MISSING_REDEEMER_VIOLATION_ID}:${coordinate.sourceKind.toString()}:${coordinate.sourceIndex.toString()}:${observed === null ? "claim" : `${observed.kind.toString()}:${observed.index.toString()}`}`;
 
-const hasRequiredObserver = (fullTransactionCbor: Buffer, forced: boolean) =>
-  decodeMidgardFieldPreimage(
-    (forced
+const PURPOSE_NAMES = ["spend", "mint", "required observer", "receive"];
+
+const hasPurposeField = (fullTransactionCbor: Buffer, forced: boolean) => {
+  const { body } = (
+    forced
       ? decodeMidgardForcedTxFullFromCanonicalCbor
-      : decodeMidgardNativeTxFullFromCanonicalCbor)(fullTransactionCbor).body
-      .requiredObserversPreimageCbor,
-  ).length > 0;
+      : decodeMidgardNativeTxFullFromCanonicalCbor
+  )(fullTransactionCbor);
+  return [
+    body.spendInputsPreimageCbor,
+    body.outputsPreimageCbor,
+    body.requiredObserversPreimageCbor,
+    body.mintPreimageCbor,
+  ].some((preimage) => decodeMidgardFieldPreimage(preimage).length > 0);
+};
 
 const redeemerMissingReason = (verdict: SDK.OperatorVerdict) =>
   verdict !== "ForcedTxValid" &&
@@ -86,11 +97,8 @@ export const prepareMissingRedeemerReplay = async ({
         coordinate,
         eventKey,
         material,
-        observedIndex: detection.observedIndex,
-        detectionId: missingRedeemerDetectionId(
-          coordinate,
-          detection.observedIndex,
-        ),
+        observed: detection.observed,
+        detectionId: missingRedeemerDetectionId(coordinate, detection.observed),
       };
 };
 
@@ -104,12 +112,12 @@ export const detectMissingRedeemerReplay = async ({
   const current = block.reconstruction;
   const candidates: MissingRedeemerCoordinate[] = [];
   for (const [sourceIndex, entry] of current.transactions.entries())
-    if (hasRequiredObserver(entry.fullTransactionCbor, false))
+    if (hasPurposeField(entry.fullTransactionCbor, false))
       candidates.push({ sourceKind: 0, sourceIndex });
   for (const [sourceIndex, entry] of current.forcedTransactions.entries())
     if (
       entry.value.verdict === "ForcedTxValid"
-        ? hasRequiredObserver(entry.fullTransactionCbor, true)
+        ? hasPurposeField(entry.fullTransactionCbor, true)
         : redeemerMissingReason(entry.value.verdict)
     )
       candidates.push({ sourceKind: 1, sourceIndex });
@@ -129,9 +137,9 @@ export const detectMissingRedeemerReplay = async ({
             violationId: MISSING_REDEEMER_VIOLATION_ID,
             position: BigInt(coordinate.sourceIndex),
             diagnostic:
-              prepared.observedIndex === null
+              prepared.observed === null
                 ? "the forced rejection claims a missing redeemer the transaction does not lack"
-                : `required observer ${prepared.observedIndex.toString()} has a redeemer-bearing source and no redeemer`,
+                : `${PURPOSE_NAMES[Number(prepared.observed.kind)]!} purpose ${prepared.observed.index.toString()} has a redeemer-bearing source and no redeemer`,
             prepared,
           };
     }),

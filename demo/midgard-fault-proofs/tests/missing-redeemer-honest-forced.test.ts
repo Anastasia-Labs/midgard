@@ -75,7 +75,7 @@ describe("missingRedeemer honest forced rejection", () => {
 
   it("is detected when the same transaction is committed as admitted", async () => {
     await expect(replayUnder("ForcedTxValid")).resolves.toEqual([
-      "redeemer-missing:1:0:0",
+      "redeemer-missing:1:0:2:0",
     ]);
   });
 

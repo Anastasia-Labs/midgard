@@ -1,16 +1,17 @@
 /** Plans a whole `missingRedeemer` proof from the bound source and predicts
  * its conviction before any transaction is spent. An honest leaf is refused.
  *
- * Supported: an accepted leaf convicted through an observer purpose whose
- * redeemer-bearing source has no reward redeemer; a rejected leaf whose
- * `RedeemerMissing` reason names an invalid or observer coordinate. Spend,
- * mint and receive coordinates fail closed. */
+ * Supported: an accepted leaf convicted through a spend, mint, observer or
+ * receive purpose whose redeemer-bearing source has no redeemer; a rejected
+ * leaf whose `RedeemerMissing` reason names any purpose coordinate. */
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
   buildDirectSourceIndexEvidence,
   directPurposeAt,
+  directReceiveCredentials,
   directRedeemerAt,
+  directSpendInputAt,
 } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
@@ -42,23 +43,59 @@ export class MissingRedeemerHonestLeaf extends Error {
   }
 }
 
-/** Observer purposes whose redeemer-bearing source has no reward redeemer. */
+type Coordinate = SDK.DirectPurposeCoordinate;
+
+/** Whether the spend at canonical rank `index` has a predecessor descriptor;
+ * without one no purpose or membership can be shown for it. */
+const spendDescriptorPresent = (
+  material: DirectScriptMaterial,
+  index: bigint,
+): boolean => {
+  const spend = directSpendInputAt(material, index);
+  return (
+    spend !== null &&
+    material.ledger.root.entries.some((entry) => entry.key.equals(spend.item))
+  );
+};
+
+const coordinates = (kind: bigint, count: number): Coordinate[] =>
+  Array.from({ length: count }, (_, index) => ({
+    kind,
+    index: BigInt(index),
+  }));
+
+/** Every script purpose the leaf carries, observers first, then mints,
+ * receives and spends; key-locked spends and spends with no predecessor
+ * descriptor carry none. */
+const missingRedeemerScriptPurposes = (
+  material: DirectScriptMaterial,
+): readonly SDK.DirectPurpose[] =>
+  [
+    ...coordinates(2n, material.fields[3]!.length),
+    ...coordinates(1n, material.fields[5]!.length),
+    ...coordinates(3n, directReceiveCredentials(material.fields[2]!).length),
+    ...coordinates(0n, material.fields[0]!.length).filter(({ index }) =>
+      spendDescriptorPresent(material, index),
+    ),
+  ].flatMap((coordinate) => directPurposeAt(material, coordinate) ?? []);
+
+/** Script purposes whose redeemer-bearing source has no redeemer. */
 export const missingRedeemerObservedCandidates = async (
   material: DirectScriptMaterial,
   evidence: MissingRedeemerSourceEvidence,
-): Promise<readonly bigint[]> => {
-  const out: bigint[] = [];
-  for (let index = 0n; index < BigInt(material.fields[3]!.length); index++) {
-    const coordinate = { kind: 2n, index };
-    const purpose = directPurposeAt(material, coordinate);
-    if (purpose === null) continue;
+  purposes: readonly SDK.DirectPurpose[] = missingRedeemerScriptPurposes(
+    material,
+  ),
+): Promise<readonly Coordinate[]> => {
+  const out: Coordinate[] = [];
+  for (const purpose of purposes) {
     const { selected } = await evidence.lookup(purpose.script_hash);
     if (
       selected !== null &&
       isRedeemerBearingLanguage(selected.language_tag) &&
-      directRedeemerAt(material.fields[8]!, coordinate) === null
+      directRedeemerAt(material.fields[8]!, purpose.coordinate) === null
     )
-      out.push(index);
+      out.push(purpose.coordinate);
   }
   return out;
 };
@@ -76,13 +113,13 @@ export const prepareMissingRedeemerProof = async ({
   material,
   contracts,
   prover,
-  observedIndex,
+  observed,
 }: {
   readonly material: DirectScriptMaterial;
   readonly contracts: MissingRedeemerContracts;
   readonly prover: string;
-  /** Accepted leaves only: the observer to scan; the first candidate otherwise. */
-  readonly observedIndex?: bigint;
+  /** Accepted leaves only: the purpose to scan; the first candidate otherwise. */
+  readonly observed?: Coordinate;
 }): Promise<MissingRedeemerProofPlan> => {
   const roles = missingRedeemerContractRoles(contracts);
   const evidence = await buildDirectSourceIndexEvidence(material);
@@ -103,16 +140,19 @@ export const prepareMissingRedeemerProof = async ({
   let route: readonly MissingRedeemerTransition[];
   let claim: Awaited<ReturnType<typeof missingRedeemerClaimRoute>>;
   if (reason === null) {
-    const index =
-      observedIndex ??
+    const coordinate =
+      observed ??
       (await missingRedeemerObservedCandidates(material, evidence))[0];
-    if (index === undefined)
+    if (coordinate === undefined)
       throw new MissingRedeemerHonestLeaf(
-        "every observer purpose with a redeemer-bearing source has a redeemer",
+        "every script purpose with a redeemer-bearing source has a redeemer",
       );
-    const observed = await missingRedeemerObservedRoute(inputs, index);
-    claim = await missingRedeemerClaimRoute(inputs, observed.context);
-    route = observed.transitions;
+    const observedRoute = await missingRedeemerObservedRoute(
+      inputs,
+      coordinate,
+    );
+    claim = await missingRedeemerClaimRoute(inputs, observedRoute.context);
+    route = observedRoute.transitions;
   } else {
     if (typeof reason === "string" || !("RedeemerMissing" in reason))
       throw new Error(
@@ -148,33 +188,37 @@ export const requireConvictingMissingRedeemerProof = async (
 const DETECTION_PROVER = "00".repeat(28);
 
 /**
- * Whether the bound leaf convicts on a shape this prover can carry, without
- * planning custody: an accepted leaf yields its first convicting observer; a
- * `RedeemerMissing` rejection naming no valid purpose or an observer purpose
- * yields its claim verdict. Every other leaf is `null`.
+ * Whether the bound leaf convicts, without planning custody: an accepted leaf
+ * yields its first convicting purpose; a `RedeemerMissing` rejection yields
+ * its claim verdict. Every other leaf, and a claimed spend with no
+ * predecessor descriptor to show, is `null`.
  */
 export const missingRedeemerDetection = async (
   material: DirectScriptMaterial,
-): Promise<{ readonly observedIndex: bigint | null } | null> => {
+): Promise<{ readonly observed: Coordinate | null } | null> => {
   const reason = material.bound.subject.rejection_reason;
-  if (reason === null && material.fields[3]!.length === 0) return null;
-  if (
-    reason !== null &&
-    (typeof reason === "string" || !("RedeemerMissing" in reason))
-  )
-    return null;
-  const evidence = await buildDirectSourceIndexEvidence(material);
   if (reason === null) {
-    const [index] = await missingRedeemerObservedCandidates(material, evidence);
-    return index === undefined ? null : { observedIndex: index };
+    const purposes = missingRedeemerScriptPurposes(material);
+    if (purposes.length === 0) return null;
+    const evidence = await buildDirectSourceIndexEvidence(material);
+    const [coordinate] = await missingRedeemerObservedCandidates(
+      material,
+      evidence,
+      purposes,
+    );
+    return coordinate === undefined ? null : { observed: coordinate };
   }
+  if (typeof reason === "string" || !("RedeemerMissing" in reason)) return null;
   const coordinate = SDK.purposeCoordinateOfReason(reason);
   if (
     coordinate !== null &&
     SDK.purposeCoordinateIsValid(coordinate) &&
-    coordinate.kind !== 2n
+    coordinate.kind === 0n &&
+    coordinate.index < BigInt(material.fields[0]!.length) &&
+    !spendDescriptorPresent(material, coordinate.index)
   )
     return null;
+  const evidence = await buildDirectSourceIndexEvidence(material);
   const inputs = {
     material,
     evidence,
@@ -185,5 +229,5 @@ export const missingRedeemerDetection = async (
     inputs,
     missingRedeemerClaimEntry(inputs).context,
   );
-  return missingRedeemerConvicts(claim.final) ? { observedIndex: null } : null;
+  return missingRedeemerConvicts(claim.final) ? { observed: null } : null;
 };
