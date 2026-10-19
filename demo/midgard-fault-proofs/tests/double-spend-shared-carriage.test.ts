@@ -470,4 +470,30 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       input: { stage: "publish-proof" },
     });
   });
+
+  it("treats a change in the observed field publications as a changed certification action", async () => {
+    const { artifact, publications } = certifiedOpening();
+    const wallet: UTxO[] = [...publications];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const certify = await harness.next();
+    expect(certify.input).toMatchObject({
+      stage: "certify-field",
+      chunkOutRefs: publications.map(outRef),
+    });
+
+    // The first chunk is now also at an out-ref that sorts first.
+    wallet.unshift({ ...publications[0]!, txHash: LOWEST_TX_HASH });
+    await expect(harness.preflight(certify)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
 });

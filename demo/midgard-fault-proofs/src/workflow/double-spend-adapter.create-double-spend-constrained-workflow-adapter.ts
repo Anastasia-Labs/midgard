@@ -423,7 +423,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         JSON.stringify(requested.input.chunkOutRefs) !==
         JSON.stringify(observedOutRefs)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           "field certification action does not match the observed chunk UTxOs",
         );
       }
