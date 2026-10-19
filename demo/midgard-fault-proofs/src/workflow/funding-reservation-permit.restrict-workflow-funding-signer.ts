@@ -24,8 +24,9 @@ import {
 
 /**
  * Returns a signer whose wallet API exposes exactly the currently reserved
- * ordinary and collateral UTxOs. Signing and submission still delegate to the
- * original enterprise-key wallet.
+ * collateral and the reserved ordinary UTxOs carrying no datum or script.
+ * Signing and submission still delegate to the original enterprise-key
+ * wallet.
  */
 export const restrictWorkflowFundingSigner = ({
   signer,
@@ -67,13 +68,25 @@ export const restrictWorkflowFundingSigner = ({
             : state.currentCollateralOutRefs;
         return outRefs.map((outRef) => state.resolvedInputs.get(outRef)!);
       };
+      // Only reserved funding with no datum or script is offered, the same
+      // outputs the planner reserves from a fresh wallet. An action's own
+      // datum output at the wallet (staged bytes a later action reads) stays
+      // reserved, so no builder needs a preset that would hide the reserved
+      // collateral from Lucid (which takes collateral only from a preset).
+      const selectable = (): readonly UTxO[] =>
+        inputs("funding").filter(
+          (utxo) =>
+            utxo.datum == null &&
+            utxo.datumHash == null &&
+            utxo.scriptRef == null,
+        );
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
         getNetworkId: async () =>
           CML.Address.from_bech32(signer.address).to_raw_bytes()[0]! & 0x0f,
         getUtxos: async () =>
-          inputs("funding").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
-        getBalance: async () => balanceCbor(inputs("funding")),
+          selectable().map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+        getBalance: async () => balanceCbor(selectable()),
         getUsedAddresses: async () => [addressHex],
         getUnusedAddresses: async () => [],
         getChangeAddress: async () => addressHex,

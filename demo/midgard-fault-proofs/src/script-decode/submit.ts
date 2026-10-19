@@ -4,12 +4,12 @@
  * run and withdraws zero from each class staker that steps one of its
  * segments; each staker's redeemer carries its segments and their links.
  *
- * Every transaction is funded from the wallet's plain-Ada UTxOs only, so a
- * staged chunk (which sits at the wallet address with a datum) or a token is
- * never spent by coin selection. Each `build*Tx` signs without submitting, so
- * a journaled caller can record the exact transaction before it is sent; an
- * optional `validTo` (POSIX ms) makes a transaction the ledger never takes
- * expire instead of staying pending.
+ * Coin selection never spends a wallet UTxO carrying a datum or a script, so
+ * a staged chunk (at the wallet address, read by Bind and Walk) stays put.
+ * Each `build*Tx` signs without submitting, so a journaled caller can record
+ * the exact transaction before it is sent; an optional `validTo` (POSIX ms)
+ * makes a transaction the ledger never takes expire instead of staying
+ * pending.
  */
 import {
   requireReferenceInputIndex,
@@ -77,21 +77,24 @@ export type ScriptDecodeStake = Readonly<{
 /** The execution units a built transaction's redeemers declare, summed. */
 export type ScriptDecodeExUnits = Readonly<{ mem: bigint; steps: bigint }>;
 
-const isPlainAda = (utxo: UTxO): boolean =>
-  utxo.datum == null &&
-  utxo.datumHash == null &&
-  utxo.scriptRef == null &&
-  Object.keys(utxo.assets).every((unit) => unit === "lovelace");
+const isSpendable = (utxo: UTxO): boolean =>
+  utxo.datum == null && utxo.datumHash == null && utxo.scriptRef == null;
 
 /**
- * The wallet's UTxOs that hold only Ada and carry no datum or script, read
- * fresh: a view pinned by an earlier submission is dropped first.
+ * `complete`'s wallet inputs, read fresh. With no datum or script UTxO in the
+ * wallet there is no preset, so a wallet's own collateral (the watcher's
+ * reserved one, never among its funding UTxOs) survives: Lucid takes
+ * collateral only from among preset inputs.
  */
-export const plainAdaWalletUtxos = async (
+export const scriptDecodeWalletInputs = async (
   lucid: LucidEvolution,
-): Promise<UTxO[]> => {
+): Promise<{ presetWalletInputs?: UTxO[] }> => {
   lucid.clearUTxOOverride();
-  return (await lucid.wallet().getUtxos()).filter(isPlainAda);
+  const utxos = await lucid.wallet().getUtxos();
+  const spendable = utxos.filter(isSpendable);
+  return spendable.length === utxos.length
+    ? {}
+    : { presetWalletInputs: spendable };
 };
 
 export const transactionExUnits = (txCbor: string): ScriptDecodeExUnits => {
@@ -244,7 +247,7 @@ export const buildScriptDecodeStageTx = async ({
       .newTx()
       .pay.ToAddressWithData(address, { kind: "inline", value: datum }, {}),
     validTo,
-  ).complete({ presetWalletInputs: await plainAdaWalletUtxos(lucid) });
+  ).complete(await scriptDecodeWalletInputs(lucid));
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address,
@@ -322,7 +325,7 @@ export const buildScriptDecodeBindTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+    ...(await scriptDecodeWalletInputs(lucid)),
   });
   return {
     signed: await unsigned.sign.withWallet().complete(),
@@ -402,7 +405,7 @@ export const buildScriptDecodeWalkTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+    ...(await scriptDecodeWalletInputs(lucid)),
   });
   const signed = await unsigned.sign.withWallet().complete();
   const cbor = signed.toCBOR();
@@ -480,7 +483,7 @@ export const buildScriptDecodeFinishTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    presetWalletInputs: await plainAdaWalletUtxos(lucid),
+    ...(await scriptDecodeWalletInputs(lucid)),
   });
   return {
     signed: await unsigned.sign.withWallet().complete(),
