@@ -49,45 +49,36 @@ pub fn select_step_v1(
         tx.inputs,
         tx.outputs,
       )
-      expect Some(state) = input_state
-      let index = selected_index_v1(
-        state.subject,
-        field_index,
-        selected_input_index,
-      )
+      expect Some(SourceStateV1 { subject, header, compact }) = input_state
+      let index = selected_index_v1(subject, field_index, selected_input_index)
       let view = opened_field_view(
         inputs_opening,
         BodyAnchor {
-          tx_id: state.subject.transaction_id,
-          source_kind: state.subject.source_kind,
+          tx_id: subject.transaction_id,
+          source_kind: subject.source_kind,
         },
         field_index,
         tx.reference_inputs,
         certificate_policy,
       )
       let expected: Data = SelectedInputStateV1 {
-        subject: state.subject,
-        header: state.header,
-        compact: state.compact,
+        subject,
+        header,
+        compact,
         source_kind: field_index,
         input_index: index,
         claimed_input: claimed_input_v1(
-          state.subject,
+          subject,
           field_index,
           view,
           claimed_inputs_opening,
           tx.reference_inputs,
           certificate_policy,
         ),
-        selected_input: selected_input_v1(
-          state.subject,
-          field_index,
-          view,
-          index,
-        ),
+        selected_input: selected_input_v1(subject, field_index, view, index),
         step_index: substrate.subject_event_step_index_v1(
-          state.header,
-          state.subject,
+          header,
+          subject,
           event_membership,
           tx.reference_inputs,
           tx.redeemers,

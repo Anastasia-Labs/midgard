@@ -41,6 +41,7 @@ import {
   hex,
   makeHarness,
   nodeTransaction,
+  nodeTransactionSpendingHeldInput,
   NON_CANONICAL_DATUM,
   scanToDatum,
   stepCommon,
@@ -77,13 +78,15 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
   it("upholds an honest forced rejection of a non-canonical inline datum read across chunk boundaries and transactions, refusing every forged datum checkpoint, the early verdicts and the proof mint", async () => {
     const output = outputWithInlineDatum(NON_CANONICAL_DATUM);
     expect(isCanonicalMidgardDataStream(NON_CANONICAL_DATUM)).toBe(false);
-    const transaction = nodeTransaction(output);
-    // The node writes this rejection for the forced order.
+    const { transaction, ledger } = nodeTransactionSpendingHeldInput(output);
+    // The node writes this rejection for the forced order over a ledger that
+    // holds the spent input.
     const forcedTx = materializeMidgardForcedTxFromCanonical(transaction);
     expect(
       await nodeForcedVerdict({
         transactionId: computeMidgardNativeTxId(forcedTx),
         forcedCanonicalCbor: encodeMidgardForcedTxCanonical(forcedTx),
+        ledger,
       }),
     ).toStrictEqual({
       ForcedTxInvalid: { reason: { OutputNonCanonical: { output_index: 0n } } },
