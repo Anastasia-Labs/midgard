@@ -410,7 +410,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         planned: plan,
       });
       if (publications === undefined) {
-        throw new Error("tier-3 field publications are not observable on L1");
+        // Observation scheduled this action only once every chunk was on L1,
+        // so a chunk gone now (a rollback or a spend) changes the next action.
+        throw new WorkflowActionChangedError(
+          "tier-3 field publications are no longer observable on L1",
+        );
       }
       await authenticatePublications({
         headerHash: artifact.headerHash,

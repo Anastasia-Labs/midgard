@@ -252,6 +252,36 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       WorkflowActionChangedError,
     );
   });
+
+  it("treats a field chunk gone from L1 since scheduling as a changed certification action", async () => {
+    const { artifact, publications } = certifiedOpening();
+    const wallet: UTxO[] = [...publications];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const certify = await harness.next();
+    expect(certify.input).toMatchObject({ stage: "certify-field" });
+
+    // A rollback or a spend removes a chunk before the action runs.
+    wallet.splice(wallet.indexOf(publications[0]!), 1);
+    await expect(harness.preflight(certify)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    expect(await harness.next()).toMatchObject({
+      input: {
+        stage: "publish-field",
+        publicationDatumCbor: publications[0]!.datum,
+      },
+    });
+  });
+
   it("treats a field chunk published since scheduling as a changed publication action", async () => {
     const { artifact, publications } = certifiedOpening();
     const [first, ...rest] = publications;
