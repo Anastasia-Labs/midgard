@@ -18,34 +18,53 @@ export const WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS = 1_800;
 
 const POLL_MS = 1_000;
 
+type JournalEvent = Readonly<Record<string, unknown>>;
+
+const eventOf = (entry: unknown): JournalEvent | undefined =>
+  typeof entry === "object" &&
+  entry !== null &&
+  "event" in entry &&
+  typeof entry.event === "object" &&
+  entry.event !== null
+    ? (entry.event as JournalEvent)
+    : undefined;
+
 /**
- * Journaled progress of a result: its entries other than the pending
- * reconciliation every unconfirmed poll appends. Absent entries are none.
+ * Journaled progress of a result: the number of distinct milestones its
+ * entries reach. Every confirmation is one, and so is every entry that names
+ * no action. Everything else an action journals (its preflight, intents,
+ * submissions, pending or missing reconciliations and re-observations) counts
+ * once for that action however often it repeats, and a retired attempt counts
+ * for nothing: resubmitting an action whose last attempt never landed is not
+ * progress. Absent entries are none.
  */
-const journaledProgress = (result: object): number =>
-  "entries" in result && Array.isArray(result.entries)
-    ? result.entries.filter(
-        (entry: unknown) =>
-          !(
-            typeof entry === "object" &&
-            entry !== null &&
-            "event" in entry &&
-            typeof entry.event === "object" &&
-            entry.event !== null &&
-            "kind" in entry.event &&
-            entry.event.kind === "reconciled" &&
-            "outcome" in entry.event &&
-            entry.event.outcome === "pending"
-          ),
-      ).length
-    : -1;
+const journaledProgress = (result: object): number => {
+  if (!("entries" in result) || !Array.isArray(result.entries)) return -1;
+  const milestones = new Set<string>();
+  result.entries.forEach((entry: unknown, index) => {
+    const event = eventOf(entry);
+    const kind = event?.kind;
+    if (kind === "signed_attempt_retired") return;
+    const confirmed =
+      kind === "confirmed" ||
+      (kind === "reconciled" && event?.outcome === "confirmed");
+    milestones.add(
+      typeof event?.actionId === "string" && !confirmed
+        ? `action:${event.actionId}`
+        : `entry:${index.toString()}`,
+    );
+  });
+  return milestones.size;
+};
 
 /**
  * Keep one admitted runner session alive while its durable intent is pending.
  * A session that journals no progress within the quiet bound returns its last
  * pending result to resume on the next observation, with a reason naming
  * `FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED`, so the caller can run other
- * work and raise an alarm. It is a hold, never a refusal.
+ * work and raise an alarm. It is a hold, never a refusal: an action that is
+ * resubmitted every validity window and never lands, as under sustained
+ * congestion, is held the same way and runs again on its next observation.
  */
 export const continuePendingWorkflow = async <Result>({
   invocation,

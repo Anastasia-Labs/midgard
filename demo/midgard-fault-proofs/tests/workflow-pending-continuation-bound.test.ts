@@ -65,6 +65,41 @@ const recordJournal = () => {
         entries: [...entries],
       };
     },
+    /** The last attempt expired unseen; the same action is submitted again. */
+    resubmit: () => {
+      const attempt = entries.filter(
+        ({ event }) => event.kind === "submitted",
+      ).length;
+      const txHash = (attempt + 1).toString(16).padStart(2, "0");
+      entries.push(
+        {
+          event: { kind: "reconciled", actionId: "walk", outcome: "not_found" },
+        },
+        { event: { kind: "signed_attempt_retired", txHash: "aa" } },
+        { event: { kind: "preflight_passed", actionId: "walk", txHash } },
+        {
+          event: {
+            kind: "submission_intent",
+            actionId: "walk",
+            attempt: attempt + 1,
+            txHash,
+          },
+        },
+        {
+          event: {
+            kind: "submitted",
+            actionId: "walk",
+            attempt: attempt + 1,
+            txHash,
+          },
+        },
+      );
+      return {
+        kind: "pending",
+        reason: "transaction for walk is pending",
+        entries: [...entries],
+      };
+    },
     confirm: (actionId: string) => {
       entries.push({ event: { kind: "confirmed", actionId, txHash: "bb" } });
       return {
@@ -154,17 +189,49 @@ describe("bounded pending continuation", () => {
     expect(runner.close).toHaveBeenCalledOnce();
   });
 
+  it("stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const journal = recordJournal();
+    // Accepted at submission but never included: every 3 min validity window
+    // the attempt is reconciled missing, retired and submitted again.
+    const execute = vi.fn(async () =>
+      execute.mock.calls.length % 180 === 0
+        ? journal.resubmit()
+        : journal.pollPending(),
+    );
+    const runner = await runnerFor(execute);
+    const startedAtMs = Date.now();
+    const running = settledFlag(runner.runOrResume("run"));
+    await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
+    await waitFor(() => running.settled);
+    expect(Date.now() - startedAtMs).toBeLessThanOrEqual(
+      WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
+    );
+    expect(running.value).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: expect.stringContaining(
+        FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+      ),
+    });
+    expect(
+      journal.entries.filter(({ event }) => event.kind === "submitted").length,
+    ).toBeGreaterThan(5);
+    expect(runner.close).toHaveBeenCalledOnce();
+  });
+
   it("keeps a session that journals progress past the bound until it completes", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const journal = recordJournal();
-    // One confirmation every 20 polls, for three bounds' worth of time.
+    // One confirmation every 20 polls, for three bounds' worth of time. Every
+    // confirmation is progress, even one of an action confirmed before.
     const polls = (3 * WORKFLOW_CONTINUATION_QUIET_BOUND_MS) / 1_000;
     const completed = { kind: "completed", workflowId: "long-record" };
     const execute = vi.fn(async () =>
       execute.mock.calls.length > polls
         ? completed
         : execute.mock.calls.length % 20 === 0
-          ? journal.confirm(`walk-${execute.mock.calls.length.toString()}`)
+          ? journal.confirm("walk")
           : journal.pollPending(),
     );
     const runner = await runnerFor(execute);
