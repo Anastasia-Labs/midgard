@@ -1,0 +1,1010 @@
+{
+  "sourceCommit": "b93726aa444dd0f2d6a323b266cbf21ca7d63b5d",
+  "compiledEnvironment": "default",
+  "plutarchSourceSha256": "248217fcac995dbfaa9fc2bfefed171b8c73125f63717fdff3536763bbbf98dc",
+  "basis": {
+    "cpu": 8000000000,
+    "memory": 13200000
+  },
+  "verificationFilesSha256": {
+    "tests/Testing/ExecutionFrontiers.hs": "80f9fa23dbbaad5450d5141b2c7274b716ddf2579b9b5865247e31f21946dd0c",
+    "tests/Testing/AikenSplitVectors.hs": "7c060aaf781ad4638f8df4ce830a8258f294613d2cd4e9a18c346c3b1957871b",
+    "tests/fixtures/aiken-split-validators.json": "3d0229f6ec5b176fcaf3d0213bb197df3700014e09f18752bc7ec48587e41f48"
+  },
+  "measurement": "evalScriptHuge, NoTracing, InternalConfig False False; host-built inputs; whole compiled call",
+  "logs": [
+    {
+      "path": "/tmp/plutarch-warning-regressions.log",
+      "sha256": "b9a616822f8b1eff6c458689ad0258455d544f04e0570ceef22e0151d55eee7c"
+    }
+  ],
+  "measuredRows": {
+    "worst_case_wide_predicate_refuses_a_malformed_payload": {
+      "cpu": 8655931,
+      "memory": 40673,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "inspect_refuses_malformed_native_tag": {
+      "cpu": 16228266,
+      "memory": 80526,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cbor_accepts_non_native_tag": {
+      "cpu": 11471652,
+      "memory": 56454,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cbor_refuses_truncated_array": {
+      "cpu": 4121446,
+      "memory": 20162,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "derivation_refuses_truncated_output_bytes": {
+      "cpu": 50178525,
+      "memory": 240917,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "derivation_accepts_an_empty_inline_datum": {
+      "cpu": 1818335092,
+      "memory": 4437360,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "derivation_accepts_a_one_byte_inline_datum": {
+      "cpu": 1830152130,
+      "memory": 4492902,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_wide_64": {
+      "cpu": 1676397855,
+      "memory": 6878702,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_wide_256": {
+      "cpu": 6632887444,
+      "memory": 27205959,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_wide_1024": {
+      "cpu": 26458252468,
+      "memory": 108512583,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_wide_4096": {
+      "cpu": 105759712564,
+      "memory": 433739079,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_deep_64": {
+      "cpu": 1941306701,
+      "memory": 7973221,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_deep_256": {
+      "cpu": 7713315149,
+      "memory": 31657573,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_deep_1024": {
+      "cpu": 30801348941,
+      "memory": 126394981,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "worst_case_wide_predicate": {
+      "cpu": 140583172743,
+      "memory": 576555011,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cmp_inspect_wide_00064": {
+      "cpu": 2000124133,
+      "memory": 7780220,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "curve_deep_4096": {
+      "cpu": 123153484109,
+      "memory": 505344613,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cmp_inspect_wide_01024": {
+      "cpu": 31578899599,
+      "memory": 122782166,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cmp_cbor_wide_00064": {
+      "cpu": 729622935,
+      "memory": 3530549,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cmp_inspect_deep_01024": {
+      "cpu": 34483260785,
+      "memory": 142219441,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_575": {
+      "cpu": 2122291401,
+      "memory": 5364676,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_839": {
+      "cpu": 2264213870,
+      "memory": 5799586,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1103": {
+      "cpu": 2406158747,
+      "memory": 6234624,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1367": {
+      "cpu": 2548126032,
+      "memory": 6669790,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1499": {
+      "cpu": 2619122499,
+      "memory": 6887422,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cmp_cbor_wide_01024": {
+      "cpu": 11474048324,
+      "memory": 55514254,
+      "withinBasis": false,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1631": {
+      "cpu": 2690115725,
+      "memory": 7105084,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1763": {
+      "cpu": 2761123394,
+      "memory": 7322780,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_1895": {
+      "cpu": 2832127826,
+      "memory": 7540506,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_2159": {
+      "cpu": 2974162335,
+      "memory": 7976056,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_2423": {
+      "cpu": 3116219252,
+      "memory": 8411734,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_2687": {
+      "cpu": 3258298577,
+      "memory": 8847540,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_2753": {
+      "cpu": 3293827856,
+      "memory": 8956509,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_2819": {
+      "cpu": 3329351054,
+      "memory": 9065492,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "descriptor_3083": {
+      "cpu": 3471463989,
+      "memory": 9501490,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log"
+    },
+    "cek/prepare_routes_the_finish_kind_to_slot_zero": {
+      "cpu": 235332399,
+      "memory": 519460,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/prepare_routes_the_execution_selection_kind_to_slot_one": {
+      "cpu": 269741136,
+      "memory": 508988,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/prepare_routes_the_context_step_kind_to_slot_two": {
+      "cpu": 266217050,
+      "memory": 511430,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/prepare_routes_the_core_step_kind_to_slot_three": {
+      "cpu": 269876410,
+      "memory": 513424,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/prepare_refuses_the_retired_single_resolver_group": {
+      "cpu": 31680637,
+      "memory": 104127,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/prepare_refuses_a_fifth_semantic_resolver_index": {
+      "cpu": 32073388,
+      "memory": 104135,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/prepare_refuses_a_widened_resolver_group": {
+      "cpu": 32085469,
+      "memory": 104135,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/prepare_refuses_a_misrouted_index": {
+      "cpu": 230954174,
+      "memory": 520962,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/prepare_refuses_a_value_and_mint_phase_state": {
+      "cpu": 228927690,
+      "memory": 500725,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_wins_the_hand_off": {
+      "cpu": 1927961383,
+      "memory": 7090123,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/execution_selection_validator_wins_with_direct_material": {
+      "cpu": 2846534011,
+      "memory": 10183549,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/core_step_validator_wins_the_application_step": {
+      "cpu": 1870976996,
+      "memory": 6595125,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/execution_selection_validator_refuses_a_missing_material_route": {
+      "cpu": 173680302,
+      "memory": 371394,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/execution_selection_validator_refuses_a_truncated_sidecar": {
+      "cpu": 194527528,
+      "memory": 471738,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_an_execution_selection": {
+      "cpu": 2179516931,
+      "memory": 8138760,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_context_step": {
+      "cpu": 2115080137,
+      "memory": 7795779,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_core_step": {
+      "cpu": 2107778513,
+      "memory": 7815386,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/execution_selection_validator_refuses_the_hand_off": {
+      "cpu": 2186374011,
+      "memory": 8217867,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/execution_selection_validator_refuses_a_context_step": {
+      "cpu": 2375735588,
+      "memory": 8965640,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/execution_selection_validator_refuses_a_core_step": {
+      "cpu": 2368442320,
+      "memory": 8985247,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/context_step_validator_refuses_the_hand_off": {
+      "cpu": 1082721846,
+      "memory": 4040227,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/context_step_validator_refuses_an_execution_selection": {
+      "cpu": 1213775419,
+      "memory": 4585838,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/context_step_validator_wins_the_mint_context_initialisation": {
+      "cpu": 3090327891,
+      "memory": 11067537,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/context_step_validator_refuses_a_core_step": {
+      "cpu": 1181908719,
+      "memory": 4424184,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/core_step_validator_refuses_the_hand_off": {
+      "cpu": 1460425938,
+      "memory": 5459150,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/core_step_validator_refuses_an_execution_selection": {
+      "cpu": 1643470850,
+      "memory": 6246753,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/core_step_validator_refuses_a_context_step": {
+      "cpu": 1604765166,
+      "memory": 6004828,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_foreign_evidence_commitment": {
+      "cpu": 1923174857,
+      "memory": 7068125,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_wrong_award_output": {
+      "cpu": 1927657383,
+      "memory": 7088223,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_swapped_claimed_successor": {
+      "cpu": 1923174857,
+      "memory": 7068125,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_hand_off_with_pending_executions": {
+      "cpu": 2179569264,
+      "memory": 8138761,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/execution_selection_validator_wins_a_native_only_selection": {
+      "cpu": 2395537070,
+      "memory": 8742346,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "cek/finish_validator_refuses_a_foreign_transaction_commitment": {
+      "cpu": 698147271,
+      "memory": 2420479,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_cek_cursor_past_the_execution_count": {
+      "cpu": 554986246,
+      "memory": 2191915,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "cek/finish_validator_refuses_a_native_only_selection": {
+      "cpu": 2179569264,
+      "memory": 8138761,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/prepare_routes_replay_begin_to_slot_one": {
+      "cpu": 247655037,
+      "memory": 523839,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_begin_to_slot_zero": {
+      "cpu": 247149496,
+      "memory": 521636,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_replay_input_to_slot_two": {
+      "cpu": 262446201,
+      "memory": 526235,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_replay_asset_to_slot_three": {
+      "cpu": 276910841,
+      "memory": 528579,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_replay_finish_to_slot_four": {
+      "cpu": 249171660,
+      "memory": 530448,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_output_descriptor_to_slot_five": {
+      "cpu": 262898513,
+      "memory": 532847,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_output_asset_to_slot_six": {
+      "cpu": 276945404,
+      "memory": 535190,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_output_finish_to_slot_seven": {
+      "cpu": 250688283,
+      "memory": 537057,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_mint_asset_to_slot_eight": {
+      "cpu": 262851558,
+      "memory": 539398,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_routes_mint_finish_to_slot_nine": {
+      "cpu": 251699365,
+      "memory": 541463,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_refuses_the_retired_single_resolver_group": {
+      "cpu": 31735195,
+      "memory": 104127,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/prepare_routes_finalize_to_slot_ten": {
+      "cpu": 255394227,
+      "memory": 557380,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/prepare_refuses_a_widened_resolver_group": {
+      "cpu": 32848483,
+      "memory": 104149,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/prepare_refuses_a_twelfth_semantic_resolver_index": {
+      "cpu": 32836402,
+      "memory": 104149,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/prepare_refuses_a_misrouted_index": {
+      "cpu": 242419271,
+      "memory": 520938,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/prepare_refuses_a_cek_phase_state": {
+      "cpu": 240880563,
+      "memory": 521167,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_begin_validator_wins_the_stage_one_step": {
+      "cpu": 963209937,
+      "memory": 3047608,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/begin_validator_wins_the_schedule_installation": {
+      "cpu": 983129361,
+      "memory": 3103763,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/replay_input_validator_wins_an_asset_free_input_replay": {
+      "cpu": 1383112372,
+      "memory": 4536802,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/replay_finish_validator_wins_the_exhausted_schedule": {
+      "cpu": 974856523,
+      "memory": 3087540,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/replay_asset_validator_wins_a_single_asset_fold": {
+      "cpu": 1477749544,
+      "memory": 4822976,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/output_descriptor_validator_wins_the_min_ada_rejection": {
+      "cpu": 1290283768,
+      "memory": 4507997,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/output_descriptor_validator_wins_the_descriptor_step": {
+      "cpu": 1420507560,
+      "memory": 4690817,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/output_finish_validator_wins_the_exhausted_outputs": {
+      "cpu": 977686503,
+      "memory": 3097434,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/output_asset_validator_wins_the_output_asset_fold": {
+      "cpu": 1499320401,
+      "memory": 4927686,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/mint_asset_validator_wins_the_signed_burn": {
+      "cpu": 1059776510,
+      "memory": 3340970,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/mint_finish_validator_wins_the_exhausted_mints": {
+      "cpu": 976331915,
+      "memory": 3092634,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/begin_validator_refuses_replay_begin": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_begin_validator_refuses_begin": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_begin_validator_refuses_replay_finish": {
+      "cpu": 817988337,
+      "memory": 2808708,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_input_validator_refuses_replay_asset": {
+      "cpu": 862188711,
+      "memory": 2931113,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_input_validator_refuses_replay_finish": {
+      "cpu": 835905555,
+      "memory": 2829950,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_asset_validator_refuses_replay_input": {
+      "cpu": 882082190,
+      "memory": 2952413,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_asset_validator_refuses_replay_finish": {
+      "cpu": 855440567,
+      "memory": 2851179,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_finish_validator_refuses_replay_input": {
+      "cpu": 845689070,
+      "memory": 2910298,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_finish_validator_refuses_replay_asset": {
+      "cpu": 845323560,
+      "memory": 2910227,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/replay_finish_validator_refuses_output_finish": {
+      "cpu": 817988337,
+      "memory": 2808708,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_descriptor_validator_refuses_output_asset": {
+      "cpu": 892704469,
+      "memory": 3053103,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_descriptor_validator_refuses_output_finish": {
+      "cpu": 837883243,
+      "memory": 2850648,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_asset_validator_refuses_output_descriptor": {
+      "cpu": 905946285,
+      "memory": 3054198,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_asset_validator_refuses_output_finish": {
+      "cpu": 853010220,
+      "memory": 2851708,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_finish_validator_refuses_output_descriptor": {
+      "cpu": 877144207,
+      "memory": 3032446,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_finish_validator_refuses_output_asset": {
+      "cpu": 882222498,
+      "memory": 3052412,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/output_finish_validator_refuses_mint_finish": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/mint_asset_validator_refuses_mint_finish": {
+      "cpu": 838949319,
+      "memory": 2851010,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/mint_finish_validator_refuses_mint_asset": {
+      "cpu": 850710615,
+      "memory": 2931183,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/mint_finish_validator_refuses_finalize": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/finalize_validator_refuses_mint_finish": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/finalize_validator_wins_the_ledger_delta_hand_off": {
+      "cpu": 899103816,
+      "memory": 3007701,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "value-and-mint/finalize_validator_refuses_begin": {
+      "cpu": 817839153,
+      "memory": 2808643,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/begin_validator_refuses_a_foreign_evidence_commitment": {
+      "cpu": 978214835,
+      "memory": 3080965,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/mint_asset_validator_refuses_a_retargeted_quantity": {
+      "cpu": 888400714,
+      "memory": 3034225,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/begin_validator_refuses_a_swapped_claimed_successor": {
+      "cpu": 978214835,
+      "memory": 3080965,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/begin_validator_refuses_a_wrong_award_output": {
+      "cpu": 982697361,
+      "memory": 3101063,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "value-and-mint/begin_validator_refuses_a_foreign_transaction_commitment": {
+      "cpu": 817682926,
+      "memory": 2808578,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "pexcludes/exclusion_accepts_genuine_non_membership": {
+      "cpu": 4309328,
+      "memory": 18530,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "pexcludes/exclusion_rejects_unproven_root": {
+      "cpu": 1445328,
+      "memory": 630,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "pexcludes/exclusion_accepts_the_no_input_step_04_fixture_claim": {
+      "cpu": 7157074,
+      "memory": 28393,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "pexcludes/exclusion_accepts_the_no_input_step_03_genesis_claim": {
+      "cpu": 4317684,
+      "memory": 18530,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "pexcludes/exclusion_accepts_the_no_input_step_03_populated_claim": {
+      "cpu": 7165430,
+      "memory": 28393,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "pexcludes/exclusion_rejects_the_retired_empty_proof_fixture_shape": {
+      "cpu": 1445328,
+      "memory": 630,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "pexcludes/exclusion_accepts_non_membership_over_a_populated_trie": {
+      "cpu": 32794797,
+      "memory": 116452,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_1_byte": {
+      "cpu": 2621820481,
+      "memory": 6468424,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_absent": {
+      "cpu": 2396179886,
+      "memory": 5840511,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_16_bytes": {
+      "cpu": 2623862988,
+      "memory": 6468498,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_8_bytes": {
+      "cpu": 2621868042,
+      "memory": 6468446,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_24_bytes": {
+      "cpu": 2642230248,
+      "memory": 6509402,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_32_bytes": {
+      "cpu": 2644224818,
+      "memory": 6509452,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_48_bytes": {
+      "cpu": 2648213958,
+      "memory": 6509552,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_64_bytes": {
+      "cpu": 2652203098,
+      "memory": 6509652,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_128_bytes": {
+      "cpu": 2702779520,
+      "memory": 6672547,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/deposit_arm_datum_256_bytes": {
+      "cpu": 2788126766,
+      "memory": 6907808,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/l2_no_op_arm": {
+      "cpu": 1971062967,
+      "memory": 5020350,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "accepted"
+    },
+    "transition-frontier/l2_arm_refuses_full_output_replay": {
+      "cpu": 1813337700,
+      "memory": 4629829,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "aborted"
+    },
+    "transition-frontier/deposit_arm_rejects_arbitrary_projected_value": {
+      "cpu": 2395010064,
+      "memory": 5839214,
+      "withinBasis": true,
+      "evidenceLog": "/tmp/plutarch-warning-regressions.log",
+      "expectedOutcome": "returned False"
+    }
+  },
+  "derivedMaximalDeepScan": {
+    "cpu": 163737918509,
+    "memory": 671875213,
+    "nodes": 5447,
+    "containers": 5446,
+    "method": "Linear extrapolation from the 1024/4096-container rows; not a live measurement"
+  }
+}
