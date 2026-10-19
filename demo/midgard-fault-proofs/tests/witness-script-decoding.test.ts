@@ -24,7 +24,6 @@ import {
   nextWitnessScriptDecodingAction,
   prepareWitnessScriptDecodingEvidence,
   reconcileWitnessScriptDecodingJournal,
-  runOrResumeManifestBoundWitnessScriptDecodingWorkflow,
   runWitnessScriptDecodingProof,
   witnessScriptDecodingCheckpoint,
   witnessScriptDecodingEvidenceCloses,
@@ -340,17 +339,6 @@ describe("witnessScriptDecoding V1 evidence", () => {
 });
 
 describe("witnessScriptDecoding V1 durable workflow", () => {
-  it("refuses caller-authored evidence at the manifest-bound production boundary", async () => {
-    await expect(
-      runOrResumeManifestBoundWitnessScriptDecodingWorkflow({
-        workflow: {},
-        sources: [],
-        journal: {},
-        evidence: {},
-      } as never),
-    ).rejects.toThrow(/rejects caller-authored evidence/u);
-  });
-
   it("selects Init, every physical step, resume, final mint, and removal", () => {
     expect(
       (

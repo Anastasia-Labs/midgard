@@ -5,12 +5,10 @@ import {
   WitnessScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import { defineFamily } from "../workflow/family-definition.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
@@ -21,28 +19,19 @@ import {
   SCRIPT_DECODE_REFERENCE_SCRIPTS,
   scriptDecodeDeploymentFromReferences,
 } from "../workflow/script-decode-prerequisite.js";
-import { type WitnessScriptDecodingStage } from "./witness-script-decoding.js";
 import {
   type BoundContext,
-  createManifestBoundWitnessScriptDecodingRuntime,
   createWitnessScriptDecodingRecoveryPorts,
   type ManifestBoundWitnessScriptDecodingWorkflow,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   type RunContext,
   runs,
   WITNESS_ROLES,
-  witnessScriptDecodingObservationFromL1,
 } from "./workflow.create-witness-script-decoding-recovery-ports.js";
-import {
-  deriveWitnessScriptDecodingAuthenticatedSource,
-  deriveWitnessScriptDecodingEvidenceFromCanonicalBlock,
-} from "./workflow.derive-witness-script-decoding-authenticated-source.js";
-import { createWitnessScriptDecodingRawL1StageResolver } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 import {
   WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   WITNESS_SCRIPT_DECODING_WORKFLOW,
   witnessScriptDecodingConfigFromBinding,
-  type WitnessScriptDecodingJournal,
 } from "./workflow.witness-script-decoding-config-from-binding.js";
 import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "./workflow-spec.js";
 
@@ -97,52 +86,6 @@ export const createManifestBoundWitnessScriptDecodingWorkflow = async (
     decisionDigest: input.decisionDigest,
   });
 };
-
-/**
- * Watcher-facing runner. Evidence is always reconstructed from authenticated
- * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
- */
-export const runOrResumeManifestBoundWitnessScriptDecodingWorkflow =
-  async (input: {
-    readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
-    readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: WitnessScriptDecodingJournal;
-  }): Promise<WitnessScriptDecodingStage> => {
-    if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
-      throw new Error(
-        "witnessScriptDecoding runner rejects caller-authored evidence inputs",
-      );
-    }
-    const headerHash = input.workflow.binding.definition.headerHash;
-    const observation = await observeFraudProofWorkflowHeader(
-      input.workflow.l1,
-      { headerHash },
-    );
-    const canonical = await fetchCanonicalBlockEvidence({
-      observation,
-      sources: input.sources,
-    });
-    const evidence =
-      deriveWitnessScriptDecodingEvidenceFromCanonicalBlock(canonical);
-    const source = await deriveWitnessScriptDecodingAuthenticatedSource({
-      block: canonical,
-      evidence,
-    });
-    const runtime = createManifestBoundWitnessScriptDecodingRuntime({
-      config: input.workflow.config,
-      journal: input.journal,
-      observe: async () =>
-        witnessScriptDecodingObservationFromL1(
-          (await input.workflow.l1.observe({ headerHash })).stage,
-        ),
-      resolveStage: createWitnessScriptDecodingRawL1StageResolver({
-        config: input.workflow.config,
-        l1: input.workflow.l1,
-        source,
-      }),
-    });
-    return await runtime.runOrResume(evidence);
-  };
 
 const runFor = (context: BoundContext) => {
   const existing = runs.get(context);

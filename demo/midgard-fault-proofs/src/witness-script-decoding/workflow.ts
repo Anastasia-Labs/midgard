@@ -38,12 +38,9 @@ export {
   createManifestBoundWitnessScriptDecodingWorkflow,
   createWitnessScriptDecodingRecoveryAdapter,
   executeManifestBoundWitnessScriptDecodingWorkflow,
-  runOrResumeManifestBoundWitnessScriptDecodingWorkflow,
   WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
 } from "./workflow.create-manifest-bound-witness-script-decoding-workflow.js";
 export {
-  createManifestBoundWitnessScriptDecodingRuntime,
-  loadWitnessScriptDecodingRuntime,
   type ManifestBoundWitnessScriptDecodingWorkflow,
   type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   prepareWitnessScriptDecodingRecoveryMaterial,
@@ -59,9 +56,7 @@ export {
   type WitnessScriptDecodingRuntimeLoader,
 } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 export {
-  bindWitnessScriptDecodingReferenceScripts,
   type LoadManifestBoundWitnessScriptDecodingConfig,
-  loadManifestBoundWitnessScriptDecodingConfig,
   type ManifestBoundWitnessScriptDecodingConfig,
   WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   WITNESS_SCRIPT_DECODING_VIOLATION_IDS,
