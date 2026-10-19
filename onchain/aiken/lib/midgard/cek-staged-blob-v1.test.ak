@@ -484,6 +484,12 @@ test staged_references_out_of_ledger_order_are_refused() fail {
   bind_operand_v1(collected, list.range(0, list.length(runs) - 1)).length >= 0
 }
 
+test staged_reference_named_twice_is_refused() fail {
+  let Pair(inputs, refs) = staged([[pattern(100, 23)]])
+  expect [first] = refs
+  bind_operand_v1(collect_runs_v1(inputs, [first, first]), [0]).length >= 0
+}
+
 test staged_operand_index_outside_the_runs_is_refused() fail {
   completes([[pattern(100, 20)]], [1])
 }
