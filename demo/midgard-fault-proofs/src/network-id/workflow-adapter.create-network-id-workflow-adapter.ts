@@ -1342,19 +1342,10 @@ export const createNetworkIdWorkflowAdapter = (
           });
           advanced = observation.kind === "confirmed";
         } else {
-          const certificate = await resolveFaultProofFieldPreimageCertificate({
-            lucid: config.lucid,
-            network: config.network,
-            planned: opening,
-            certificatePolicyId:
-              config.contracts.fieldPreimageCertificatePolicyId,
-          });
-          if (
-            certificate === undefined ||
-            certificate.txHash !== context.txHash
-          ) {
-            return await unconfirmed();
-          }
+          // The certification transaction pays its certificate at output 0.
+          // Confirm that exact output: another valid certificate for the same
+          // opening may sort first at the address, and selecting by order
+          // would never settle this transaction.
           const certification = deriveFieldPreimageCertification(opening.plan);
           const observation = await observer.observeExact({
             headerHash: prepared.headerHash,
@@ -1364,7 +1355,7 @@ export const createNetworkIdWorkflowAdapter = (
               certificatePolicyId:
                 config.contracts.fieldPreimageCertificatePolicyId,
             }),
-            expectedOutRef: outRefLabel(certificate),
+            expectedOutRef: `${context.txHash}#0`,
             expectedDatumCbor: certification.datumCbor,
             expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
           });

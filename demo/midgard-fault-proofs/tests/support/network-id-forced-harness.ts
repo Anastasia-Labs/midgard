@@ -16,6 +16,7 @@ import {
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   encodeHeaderCbor,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   ForcedInclusionTxV1Schema,
   type NetworkIdFault,
   NetworkIdForcedScanDatumSchema,
@@ -31,6 +32,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
+import { fieldPreimageCertificateAddress } from "../../src/field-opening.js";
 import {
   createNetworkIdWorkflowAdapter,
   networkIdForcedArtifactFromPrepared,
@@ -72,6 +74,11 @@ const FORCED_STEP_ADDRESS = "network-forced-step";
 const FORCED_SCAN_ADDRESS = "network-forced-scan";
 const STEP_02_ADDRESS = "network-step-02";
 const STATE_QUEUE_ADDRESS = "state-queue";
+export const CERTIFICATE_ADDRESS = fieldPreimageCertificateAddress({
+  network: "Preview",
+  certificatePolicyId: POLICY_ID,
+});
+export const CERTIFICATE_UNIT = `${POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
 export const STATE_QUEUE_OUT_REF = `${h32(0x73)}#0`;
 
 export const utxo = ({
@@ -236,6 +243,7 @@ export const forcedHarness = ({
   forcedDoorOccupied,
   forcedScanDatum,
   walletUtxos = [],
+  certificateUtxos,
   observeSignedTransaction,
 }: {
   readonly prepared: PreparedNetworkIdWrongfulRejection;
@@ -244,6 +252,12 @@ export const forcedHarness = ({
   /** Inline datum of the live scan thread, absent when the scan is empty. */
   readonly forcedScanDatum?: string;
   readonly walletUtxos?: readonly UTxO[];
+  /**
+   * Live view of the field-certificate address. When present, the exact
+   * observer confirms a certificate out-ref only if it is served here with
+   * the expected datum and token; absent, every exact observation confirms.
+   */
+  readonly certificateUtxos?: readonly UTxO[];
   /** Canonical signed-transaction recovery; absent in the bare raw-L1 stub. */
   readonly observeSignedTransaction?: (input: {
     readonly transactionHash: string;
@@ -270,7 +284,11 @@ export const forcedHarness = ({
             ? [utxo({ txHash: h32(0x73), address: STATE_QUEUE_ADDRESS })]
             : [],
     utxosAt: async (address: string) =>
-      address === SIGNER.address ? walletUtxos : [],
+      address === SIGNER.address
+        ? walletUtxos
+        : address === CERTIFICATE_ADDRESS
+          ? (certificateUtxos ?? [])
+          : [],
   } as unknown as LucidEvolution;
   const step = {
     spendingScript: SCRIPT,
@@ -323,10 +341,24 @@ export const forcedHarness = ({
         observerVersion:
           "midgard-fraud-proof-authenticated-publication-observer-v1",
         observeExact: vi.fn(
-          async (input: { readonly expectedOutRef: string }) => ({
-            kind: "confirmed" as const,
-            outRef: input.expectedOutRef,
-          }),
+          async (input: {
+            readonly address: string;
+            readonly expectedOutRef: string;
+            readonly expectedDatumCbor: string;
+            readonly expectedUnit?: string;
+          }) =>
+            certificateUtxos === undefined ||
+            input.address !== CERTIFICATE_ADDRESS ||
+            certificateUtxos.some(
+              (candidate) =>
+                `${candidate.txHash}#${candidate.outputIndex}` ===
+                  input.expectedOutRef &&
+                candidate.datum === input.expectedDatumCbor &&
+                (input.expectedUnit === undefined ||
+                  candidate.assets[input.expectedUnit] === 1n),
+            )
+              ? { kind: "confirmed" as const, outRef: input.expectedOutRef }
+              : { kind: "not_found" as const },
         ),
       },
       transactionConfirmed: async () => true,
