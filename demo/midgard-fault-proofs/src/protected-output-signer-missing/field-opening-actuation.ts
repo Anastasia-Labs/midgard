@@ -6,10 +6,10 @@ import type {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
@@ -66,22 +66,22 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   const certificate =
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo,
-            chunkUtxos: carriage,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificateBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          lucid,
+          network: lucid.config().network!,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "protected-output-signer-missing: certified opening requires certificate reference script",
+          chunkUtxos: carriage,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificateBoundary,
+        })
       : undefined);
   const referenceInputs = [
     ...carriage,
