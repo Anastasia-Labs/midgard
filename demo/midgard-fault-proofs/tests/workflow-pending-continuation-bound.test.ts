@@ -200,6 +200,53 @@ describe("bounded pending continuation", () => {
     expect(runner.close).toHaveBeenCalledOnce();
   });
 
+  it("stalls on the clock when every poll is slow, long before the poll backstop", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const journal = recordJournal();
+    // Each poll's L1 reads take 9 s, so one poll ends every 10 s.
+    const execute = vi.fn(async () => {
+      vi.setSystemTime(Date.now() + 9_000);
+      return journal.pollPending();
+    });
+    const runner = await runnerFor(execute);
+    const running = settledFlag(runner.runOrResume("run"));
+    for (let poll = 0; poll < 200 && !running.settled; poll++)
+      await vi.advanceTimersByTimeAsync(1_000);
+    await waitFor(() => running.settled);
+    expect(running.value).toMatchObject({
+      resumeOnObservation: true,
+      reason: expect.stringContaining(
+        FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+      ),
+    });
+    expect(execute.mock.calls.length).toBeLessThanOrEqual(
+      WORKFLOW_CONTINUATION_QUIET_BOUND_MS / 10_000 + 1,
+    );
+  });
+
+  it("stalls on the poll backstop when the clock stands still", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const journal = recordJournal();
+    const frozenAtMs = Date.now();
+    const execute = vi.fn(async () => {
+      vi.setSystemTime(frozenAtMs);
+      return journal.pollPending();
+    });
+    const runner = await runnerFor(execute);
+    const running = settledFlag(runner.runOrResume("run"));
+    const polls = WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS;
+    for (let poll = 0; poll < polls + 100 && !running.settled; poll++)
+      await vi.advanceTimersByTimeAsync(1_000);
+    await waitFor(() => running.settled);
+    expect(running.value).toMatchObject({
+      resumeOnObservation: true,
+      reason: expect.stringContaining(
+        `no journaled progress for 0 ms over ${polls.toString()} polls`,
+      ),
+    });
+    expect(execute).toHaveBeenCalledTimes(polls + 1);
+  });
+
   it("stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const journal = recordJournal();
