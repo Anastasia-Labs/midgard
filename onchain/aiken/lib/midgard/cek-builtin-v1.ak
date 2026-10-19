@@ -2146,7 +2146,6 @@ fn semantic_case_pair_components_v1(
 fn semantic_case_constant_v1(
   scrutinee: ValueWitnessV1,
   type_cbor: ByteArray,
-  payload: cek_data_v1.DataSummaryV1,
   memory: Int,
   material: SemanticBuiltinWitnessV1,
   branches_count: Int,
@@ -2222,7 +2221,6 @@ pub fn case_constant_selection_v1(
         semantic_case_constant_v1(
           scrutinee,
           type_cbor,
-          payload,
           memory,
           material,
           branches_count,
