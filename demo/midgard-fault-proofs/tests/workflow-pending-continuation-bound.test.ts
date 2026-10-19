@@ -171,6 +171,94 @@ const settledFlag = <T>(promise: Promise<T>) => {
   return state;
 };
 
+/**
+ * A deadline fault whose L1 never confirms until a second fault queued behind
+ * it has convicted, re-observed while its session waits; `later` also queues
+ * a third fault with a later deadline. Resolves once every run has finished.
+ */
+const queueBehindStall = async (later: boolean) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  const stalledHeader = "0a".repeat(28);
+  const secondHeader = "fb".repeat(28);
+  const offset =
+    MIDGARD_RETENTION_WINDOW.maturityMs -
+    MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
+  const deadline = (headerHash: string, blockTimeMs: number) => ({
+    headerHash,
+    headerBlockTimeMs: blockTimeMs.toString(),
+    maturityAtMs: (
+      blockTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
+    ).toString(),
+    latestSafeStartAtMs: (blockTimeMs + offset).toString(),
+  });
+  const job = (headerHash: string, blockTimeMs: number, revision: string) =>
+    ({
+      mode: "run",
+      category: "doubleSpend",
+      headerHash,
+      decisionDigest: "cd".repeat(32),
+      rollbackGeneration: "0",
+      observationRevision: revision,
+      deadline: deadline(headerHash, blockTimeMs),
+    }) as const;
+  const journal = recordJournal();
+  let secondConvicted = false;
+  const completed = { kind: "completed", workflowId: "first-objective" };
+  const execute = vi.fn(async () =>
+    secondConvicted ? completed : journal.pollPending(),
+  );
+  const first = await runnerFor(execute);
+  const order: string[] = [];
+  const outcomes: unknown[] = [];
+  const run = vi.fn(async (scheduled: { headerHash: string }) => {
+    if (scheduled.headerHash !== stalledHeader) {
+      secondConvicted ||= scheduled.headerHash === secondHeader;
+      order.push(scheduled.headerHash === secondHeader ? "second" : "later");
+      return { kind: "completed", result: { kind: "completed" } };
+    }
+    order.push("first");
+    const result = (await first.runOrResume("run")) as {
+      kind: string;
+      reason?: string;
+    };
+    outcomes.push(result);
+    return result.kind === "pending"
+      ? { kind: "pending", resume: "await_observation", reason: result.reason }
+      : { kind: "completed", result };
+  });
+  const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+    journalRoot: await scratch(),
+    deploymentFingerprint: "dd".repeat(32),
+    run,
+  });
+  let failure: unknown;
+  void supervisor.done.catch((error: unknown) => {
+    failure = error;
+  });
+  await supervisor.recoverExisting(null);
+  await supervisor.unsafeScheduleForTest(job(stalledHeader, 0, "first"));
+  await waitFor(() => execute.mock.calls.length === 1);
+  // The second fault arrives behind it, and the first is observed again
+  // while its session still waits.
+  await supervisor.unsafeScheduleForTest(job(secondHeader, 60_000, "first"));
+  await supervisor.unsafeScheduleForTest(job(stalledHeader, 0, "second"));
+  if (later)
+    await supervisor.unsafeScheduleForTest(
+      job("fc".repeat(28), 120_000, "first"),
+    );
+  expect(order).toEqual(["first"]);
+  await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
+  const runs = later ? 4 : 3;
+  await waitFor(
+    () =>
+      failure !== undefined ||
+      (order.length === runs && supervisor.status().activeJob === null),
+  );
+  if (failure !== undefined) throw failure;
+  await supervisor.close();
+  return { order, outcomes, completed, run };
+};
+
 describe("bounded pending continuation", () => {
   it("hands a pending that never confirms back as a typed stall within its bound, and closes the session", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
@@ -344,84 +432,7 @@ describe("bounded pending continuation", () => {
   });
 
   it("lets a second objective queued behind a stalled one run to conviction, then resumes the stalled one on its next observation", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const stalledHeader = "0a".repeat(28);
-    const secondHeader = "fb".repeat(28);
-    const offset =
-      MIDGARD_RETENTION_WINDOW.maturityMs -
-      MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
-    const deadline = (headerHash: string, blockTimeMs: number) => ({
-      headerHash,
-      headerBlockTimeMs: blockTimeMs.toString(),
-      maturityAtMs: (
-        blockTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
-      ).toString(),
-      latestSafeStartAtMs: (blockTimeMs + offset).toString(),
-    });
-    const job = (headerHash: string, blockTimeMs: number, revision: string) =>
-      ({
-        mode: "run",
-        category: "doubleSpend",
-        headerHash,
-        decisionDigest: "cd".repeat(32),
-        rollbackGeneration: "0",
-        observationRevision: revision,
-        deadline: deadline(headerHash, blockTimeMs),
-      }) as const;
-    const journal = recordJournal();
-    // The first objective's L1 never confirms until the second has convicted.
-    let secondConvicted = false;
-    const completed = { kind: "completed", workflowId: "first-objective" };
-    const execute = vi.fn(async () =>
-      secondConvicted ? completed : journal.pollPending(),
-    );
-    const first = await runnerFor(execute);
-    const order: string[] = [];
-    const outcomes: unknown[] = [];
-    const run = vi.fn(async (scheduled: { headerHash: string }) => {
-      if (scheduled.headerHash === secondHeader) {
-        order.push("second");
-        secondConvicted = true;
-        return { kind: "completed", result: { kind: "completed" } };
-      }
-      order.push("first");
-      const result = (await first.runOrResume("run")) as {
-        kind: string;
-        reason?: string;
-      };
-      outcomes.push(result);
-      return result.kind === "pending"
-        ? {
-            kind: "pending",
-            resume: "await_observation",
-            reason: result.reason,
-          }
-        : { kind: "completed", result };
-    });
-    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
-      journalRoot: await scratch(),
-      deploymentFingerprint: "dd".repeat(32),
-      run,
-    });
-    let failure: unknown;
-    void supervisor.done.catch((error: unknown) => {
-      failure = error;
-    });
-    await supervisor.recoverExisting(null);
-    await supervisor.unsafeScheduleForTest(job(stalledHeader, 0, "first"));
-    await waitFor(() => execute.mock.calls.length === 1);
-    // The second fault arrives behind it, and the first is observed again
-    // while its session still waits.
-    await supervisor.unsafeScheduleForTest(job(secondHeader, 60_000, "first"));
-    await supervisor.unsafeScheduleForTest(job(stalledHeader, 0, "second"));
-    expect(order).toEqual(["first"]);
-    await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
-    await waitFor(
-      () =>
-        failure !== undefined ||
-        (order.length === 3 && supervisor.status().activeJob === null),
-    );
-    if (failure !== undefined) throw failure;
+    const { order, outcomes, completed, run } = await queueBehindStall(false);
     expect(order).toEqual(["first", "second", "first"]);
     expect(outcomes).toEqual([
       expect.objectContaining({
@@ -434,6 +445,10 @@ describe("bounded pending continuation", () => {
       completed,
     ]);
     expect(run).toHaveBeenCalledTimes(3);
-    await supervisor.close();
+  });
+
+  it("yields a stalled objective for one pick only, so a later fault still waits behind it", async () => {
+    const { order } = await queueBehindStall(true);
+    expect(order).toEqual(["first", "second", "first", "later"]);
   });
 });
