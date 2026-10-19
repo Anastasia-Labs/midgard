@@ -236,31 +236,39 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    fails, inspect `docker compose logs midgard-node-migrate`.
 
 6. One-time protocol bring-up. Run these from `demo/midgard-node` against the
-   healthy L1; each verb runs a wallet funding preflight and refuses locally
+   healthy L1, inside the `midgard-node` container: it has `.env`, the
+   overlay's `L1_NODE_*` settings, the in-stack node's socket and config, the
+   `midgard-l1-node-transport` binary, and `deploymentInfo/` mounted, which
+   `prepare-hub-oracle-one-shot-nonce` and `init` read the local node's chain
+   through. Each verb runs a wallet funding preflight and refuses locally
    before it spends anything. Full detail is in
    [Export Contract Deployment Info](#export-contract-deployment-info) and the
    docs-site page `docs-site/content/docs/operators/node/initialization-deployment.mdx`.
 
    ```sh
-   node dist/index.js prepare-hub-oracle-one-shot-nonce
+   midgard() {
+     docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+       run --rm midgard-node node dist/index.js "$@"
+   }
+   midgard prepare-hub-oracle-one-shot-nonce
    #   -> copy HUB_ORACLE_ONE_SHOT_TX_HASH / _OUTPUT_INDEX into .env; the
    #      printed L1_ORIGIN is recorded in the run state and the finalized
    #      manifest, so .env needs no L1_ORIGIN
-   node dist/index.js deploy-reference-script-node-runtime
-   node dist/index.js init \
+   midgard deploy-reference-script-node-runtime
+   midgard init \
      --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
-   node dist/index.js da-libp2p-generate-manifest --target producer \
+   midgard da-libp2p-generate-manifest --target producer \
      --out deploymentInfo/da-libp2p-producer-manifest.json ...
    #   -> the --out path must equal MIDGARD_DEPLOYMENT_MANIFEST_PATH in .env
-   node dist/index.js register-operator
-   node dist/index.js activate-operator
+   midgard register-operator
+   midgard activate-operator
    ```
 
    `listen` fails closed without `deploymentInfo/contract-deployment-info.json`
    and the DA producer manifest. `deploymentInfo/` is gitignored and mounted
    into the container, so the files written here are the ones the node reads.
-   Run `node dist/index.js deployment-status` to reconcile an existing identity
-   before repeating any of these.
+   Run `midgard deployment-status` to reconcile an existing identity before
+   repeating any of these.
 
    `init` also creates the pooled DA committee bond and funds it with the pool
    floor plus one DA bond from the `init` wallet: 505 ADA on the testing
@@ -667,7 +675,9 @@ node dist/index.js prepare-hub-oracle-one-shot-nonce
 
 Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
-publishing reference scripts or running `init`.
+publishing reference scripts or running `init`. Run it, and `init`, where the
+`L1_NODE_*` settings and the transport binary exist: in the compose stack,
+inside the `midgard-node` container (step 6 of the quick start).
 
 Before it signs a fresh nonce, the command reads the local node's tip
 (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`)
@@ -685,11 +695,19 @@ without leading zeros, a dot, then the 64-character lowercase hex block hash)
 and is not part of the profile or manifest. An override after the recorded
 `l1Origin` leaves the follower unready (`origin_after_protocol_init`), since
 its store may lack outputs created between the two points; an earlier one is
-accepted. For a manifest without `l1Origin`, `L1_ORIGIN` is the origin: run
-`midgard-l1-follower find-origin --tx <HUB_ORACLE_ONE_SHOT_TX_HASH>
---network-magic <n>` (see the
-[follower README](../midgard-l1-follower/README.md#origin)) and set the
-printed `l1Origin`.
+accepted. For a manifest without `l1Origin`, `L1_ORIGIN` is the origin: print
+the point before the nonce's block with `find-origin` in the `midgard-node`
+container (see the [follower README](../midgard-l1-follower/README.md#origin);
+network magic 1 preprod, 2 preview, 764824073 mainnet) and set the printed
+`l1Origin`:
+
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml \
+  run --rm --no-deps midgard-node \
+  node node_modules/@al-ft/midgard-l1-follower/dist/cli.js find-origin \
+  --tx <HUB_ORACLE_ONE_SHOT_TX_HASH> --network-magic 1 \
+  --socket /ipc/node.socket --sidecar /usr/local/bin/midgard-l1-node-transport
+```
 
 The node's L1 follower runs only with an origin (`L1_ORIGIN` or the
 manifest's `l1Origin`), the hub-oracle one-shot and the local node
