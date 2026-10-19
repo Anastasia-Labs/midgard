@@ -166,6 +166,11 @@ describe("canonical integer CBOR", () => {
       ]),
     ],
     ["a non-minimal one-byte head", Buffer.from("1805", "hex")],
+    ["a non-minimal one-byte head at the boundary", Buffer.from("1817", "hex")],
+    [
+      "a non-minimal negative one-byte head at the boundary",
+      Buffer.from("3817", "hex"),
+    ],
     ["a non-minimal two-byte head", Buffer.from("1900ff", "hex")],
     ["a non-minimal four-byte head", Buffer.from("1a0000ffff", "hex")],
     ["a non-minimal eight-byte head", Buffer.from("1b00000000ffffffff", "hex")],

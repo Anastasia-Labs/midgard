@@ -378,6 +378,15 @@ test refuses_a_non_minimal_one_byte_head() fail {
   accepted(#"1805")
 }
 
+/// 23 under the one-byte head: the largest value it may not carry.
+test refuses_a_non_minimal_one_byte_head_at_the_boundary() fail {
+  accepted(#"1817")
+}
+
+test refuses_a_non_minimal_negative_one_byte_head_at_the_boundary() fail {
+  accepted(#"3817")
+}
+
 test refuses_a_non_minimal_negative_head() fail {
   accepted(#"3805")
 }
