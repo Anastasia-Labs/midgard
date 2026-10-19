@@ -9,11 +9,13 @@ import {
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   fieldPreimagePublicationDatumCbor,
   MIDGARD_FIELD_INDEX,
+  Proof,
 } from "@al-ft/midgard-sdk";
-import type {
-  LucidEvolution,
-  MintingPolicy,
-  UTxO,
+import {
+  Data,
+  type LucidEvolution,
+  type MintingPolicy,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -21,6 +23,7 @@ import {
   fieldPreimageCertificateAddress,
   planFaultProofFieldOpening,
 } from "../src/field-opening.js";
+import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
@@ -261,6 +264,53 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     // Without its own output the transaction is not confirmed by the other.
     certificates.splice(0, certificates.length, other);
     await expect(harness.reconcile(certify, ownTxHash)).resolves.toEqual({
+      kind: "pending",
+      txHash: ownTxHash,
+    });
+  });
+
+  it("confirms its own proof-chunk publication by its own outputs, whatever else sits at the prover's address", async () => {
+    const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
+    const [chunkDatum] = splitProofIntoChunkDatums(proofCbor);
+    const chunk = (txHash: string): UTxO => ({
+      txHash,
+      outputIndex: 0,
+      address: SIGNER.address,
+      assets: { lovelace: 2_000_000n },
+      datum: chunkDatum!,
+    });
+    const { artifact } = certifiedOpening(proofCbor);
+    const wallet: UTxO[] = [];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_01",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const publish = await harness.next();
+    expect(publish.input.stage).toBe("publish-proof");
+    const ownTxHash = h32(0x6d);
+    const confirmed = { kind: "confirmed", txHash: ownTxHash };
+
+    wallet.push(chunk(ownTxHash));
+    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual(
+      confirmed,
+    );
+
+    // Another output with the same chunk datum, ordered first.
+    const other = chunk(LOWEST_TX_HASH);
+    wallet.unshift(other);
+    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual(
+      confirmed,
+    );
+
+    // Without its own outputs the transaction is not confirmed by the other.
+    wallet.splice(0, wallet.length, other);
+    await expect(harness.reconcile(publish, ownTxHash)).resolves.toEqual({
       kind: "pending",
       txHash: ownTxHash,
     });

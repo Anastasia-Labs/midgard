@@ -849,15 +849,16 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           };
         }
         if (actionStage === "publish-proof") {
-          const chunks = await proofChunks(
-            requireJournalString(requested.input.proofCbor, "action.proofCbor"),
-          );
-          if (
-            chunks === undefined ||
-            chunks.some((chunk) => chunk.utxo.txHash !== txHash)
-          ) {
-            return await unconfirmed();
-          }
+          const chunks = await resolvePublishedProofChunks({
+            lucid: config.lucid,
+            address: config.signer.address,
+            proofCbor: requireJournalString(
+              requested.input.proofCbor,
+              "action.proofCbor",
+            ),
+            fromTransaction: txHash,
+          });
+          if (chunks === undefined) return await unconfirmed();
           for (const chunk of chunks) {
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
