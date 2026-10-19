@@ -69,7 +69,12 @@ describe("operator watchdog wallet selection", () => {
     const mergeAddress = walletFromSeed(mergeSeed, {
       network: "Custom",
     }).address;
-    const shared = await makeLucid(fixture.emulator, "Custom");
+    // Like the node's, it carries the chain's slot mapping: a Lucid created
+    // from the emulator without one takes its creation slot as slot zero and
+    // cannot evaluate a strike whose validity range starts before that slot.
+    const shared = await makeLucid(fixture.emulator, "Custom", {
+      slotConfig: fixture.lucid.config().slotConfig,
+    });
     const lucidService = {
       api: shared,
       operatorMainAddress: successor.address,
