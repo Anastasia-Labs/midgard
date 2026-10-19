@@ -59,6 +59,21 @@ suites also require their documented PostgreSQL test setup.
 
 Exact flags, heap limits, and formatting exclusions live in `demo/package.json`.
 
+### Build runs out of memory
+
+If a build fails with `ERR_WORKER_OUT_OF_MEMORY` or `JavaScript heap out of
+memory`, retry with an 8 GiB heap limit if enough RAM is available. From the
+repository root:
+
+```sh
+NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192" pnpm --dir demo build
+```
+
+This preserves existing Node options and raises the limit only for this build
+and its child processes. Concurrent Node processes and workers can use substantial
+RAM, and total memory use can exceed the heap limit. Use this as a troubleshooting
+step; a global shell setting is not required.
+
 ### Targeted transaction-preparation tests
 
 `demo/package.json` also defines focused test scripts:

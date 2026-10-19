@@ -166,6 +166,9 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
    Resolve dependency or lockfile drift through the workspace package manifests
    and pnpm. Do not manually replace integrity hashes in the lockfile.
 
+   For `ERR_WORKER_OUT_OF_MEMORY` or heap exhaustion, see
+   [Build runs out of memory](../../docs-site/content/docs/getting-started/local-dev.mdx#build-runs-out-of-memory).
+
 3. Prepare your `.env` from `.env.example`:
 
    ```sh
@@ -179,7 +182,11 @@ Bringing up a node is three phases: build, one-time protocol bring-up, run.
 
    `.env` values override the image pins in the compose files. Keep the
    `*_IMAGE_TAG` / `CARDANO_NODE_IMAGE_DIGEST` lines in step with
-   `docker-compose.kupmios.yaml` when you bump one.
+   `docker-compose.kupmios.yaml` when you bump one. The default image lists
+   let Docker select native ARM64 or AMD64 images. For an existing `.env`,
+   copy the updated `CARDANO_NODE_IMAGE_DIGEST` and `KUPO_IMAGE_TAG` values
+   from `.env.example`; older pins still select AMD64-only images. Keep
+   `CARDANO_NODE_IMAGE_TAG` matched to the release in `.env.example`.
 
 4. Start the L1 and PostgreSQL first and wait until they are healthy:
 

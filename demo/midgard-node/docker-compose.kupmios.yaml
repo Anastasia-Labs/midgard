@@ -11,9 +11,9 @@
 # and its stop-kupo/stop-ogmios drills, and the fault-proofs prover CLI
 # (--ogmios-url, --kupo-url). Kupo follows Ogmios's ChainSync.
 #
-# Image pins: every image below is pinned by tag AND digest, with one default
-# per image shared by every service that names it. Change the tag and digest
-# together (see .env.example). CARDANO_NODE_IMAGE_TAG must stay a bare
+# Image pins: every image below is pinned by tag AND an immutable image-list
+# digest supporting ARM64 and AMD64. Keep the tag and digest matched and the
+# defaults in sync with .env.example. CARDANO_NODE_IMAGE_TAG must stay a bare
 # version because the Mithril bootstrap compares it against the certified
 # snapshot's cardano_node_version.
 
@@ -78,7 +78,7 @@ services:
       midgard_net:
 
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a}
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:78a3a5113b5989115a21bba74b8a990799aa43e5f9165641b9f0c062c266b58a}
     entrypoint:
       - /bin/sh
       - /bootstrap/run-cardano-node.sh
@@ -109,7 +109,7 @@ services:
   # watcher's MIDGARD_L1_CONFIG_DIR) see the same files. Reruns on every up,
   # so an image bump refreshes them.
   cardano-config-export:
-    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a}
+    image: ghcr.io/intersectmbo/cardano-node:${CARDANO_NODE_IMAGE_TAG:-11.1.0}@${CARDANO_NODE_IMAGE_DIGEST:-sha256:78a3a5113b5989115a21bba74b8a990799aa43e5f9165641b9f0c062c266b58a}
     entrypoint:
       - /bin/sh
       - /bootstrap/export-cardano-config.sh
@@ -148,7 +148,7 @@ services:
       midgard_net:
 
   kupo:
-    image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e}
+    image: cardanosolutions/kupo:${KUPO_IMAGE_TAG:-v2.11.0@sha256:e7671142cfea29f43faf1a549c85cf2b28938e77bceddbf0f0b5cca07d493465}
     # No --prune-utxo: the Kupo readers named at the top read spent outputs,
     # which a pruning index deletes. The official Kupo snapshot restored by
     # kupo-bootstrap was itself built pruned, so outputs spent before the
