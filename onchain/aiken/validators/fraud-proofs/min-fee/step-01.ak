@@ -10,12 +10,20 @@ use midgard/fraud_proofs/min_fee/step_01.{
 }
 use midgard/fraud_proofs/min_fee/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_compact_cbor_v1, verify_native_tx_compact_cbor_v1,
+  decode_forced_tx_compact_v1, verify_forced_tx_compact_cbor_v1,
+  verify_native_tx_compact_cbor_v1,
 }
-use midgard/fraud_proofs/native_tx/types.{ForcedTxCompact}
+use midgard/fraud_proofs/native_tx/types.{
+  ForcedTxCompact, MidgardTransaction, TxIsInvalid,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/rejection_reason_v1.{FeeBelowMinimum}
+use midgard/ledger_state
+use midgard/rejection_reason_v1.{
+  FeeBelowMinimum, ForcedTxInvalid, ForcedTxValid, InputNotFound,
+  OperatorVerdictV1,
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -59,8 +67,6 @@ validator main(
           own_out_ref,
           tx,
         )
-
-        expect bad_tx_view.tx_compact.validity_code == Some(0)
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    verified native compact transaction, its inline body fee, the
@@ -112,22 +118,25 @@ validator main(
           thread_name,
           substrate.ForcedSource { header, membership },
         )
-        expect _reason = substrate.bind_reason_or_coordinate_v1(
-          subject,
-          FeeBelowMinimum,
-        )
-        let verified = verify_forced_tx_compact_cbor_v1(
-          membership.value.tx_id,
-          membership.value.submitted_source.compact_cbor,
+        // The opener built this subject from the authenticated leaf, so it is
+        // canonical by construction and a reason is present exactly on a
+        // rejecting leaf. A rejection must name this family's reason.
+        expect
+          when subject.rejection_reason is {
+            None -> True
+            Some(reason) -> reason == FeeBelowMinimum
+          }
+        // The opener also verified that these compact bytes hash to the
+        // leaf's transaction id, so they are only decoded here.
+        let leaf = membership.value
+        let bad_tx = decode_forced_tx_compact_v1(
+          leaf.submitted_source.compact_cbor,
         )
         let expected: Data = step_02.State {
           subject,
-          bad_tx: ForcedTxCompact {
-            body: verified.tx_compact.body,
-            witness_set_hash: verified.tx_compact.witness_set_hash,
-          },
-          bad_tx_body_fee: verified.tx_compact.body.fee,
-          bad_tx_id: verified.tx_id,
+          bad_tx,
+          bad_tx_body_fee: bad_tx.body.fee,
+          bad_tx_id: leaf.tx_id,
           min_fee_a: header.min_fee_a,
           min_fee_b: header.min_fee_b,
         }
@@ -255,4 +264,93 @@ test min_fee_step_01_rejects_a_forged_fee_schedule_in_state() fail {
     min_fee_b: block.header.min_fee_b + 1,
   }
   run_continue(block, forged_state)
+}
+
+// ## Forced source
+
+fn forced_transaction(verdict: OperatorVerdictV1) -> MidgardTransaction {
+  when verdict is {
+    ForcedTxValid -> fixture.valid_native_tx_v1()
+    ForcedTxInvalid { .. } ->
+      MidgardTransaction {
+        ..fixture.valid_native_tx_v1(),
+        validity: TxIsInvalid,
+      }
+  }
+}
+
+/// Runs the forced arm over a one-leaf forced root whose header carries a
+/// non-zero fee schedule. `written_verdict` is the verdict the forced leaf
+/// carries; the expected state is built from the same leaf.
+fn run_forced_continue(written_verdict: OperatorVerdictV1) -> Bool {
+  let leaf = tf.forced_leaf_v1(
+    forced_transaction(written_verdict),
+    written_verdict,
+  )
+  let membership = tf.forced_leaf_membership_v1(tf.forced_order_key_v1(), leaf)
+  let header = ledger_state.HeaderV1 {
+    ..fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
+    forced_transactions_root: membership.root,
+    forced_transaction_count: 1,
+    min_fee_a: 44,
+    min_fee_b: 155_381,
+  }
+  let thread_name = tf.header_asset_name_v1(header)
+  let verified = verify_forced_tx_compact_cbor_v1(
+    leaf.tx_id,
+    leaf.submitted_source.compact_cbor,
+  )
+  let expected_state: Data = step_02.State {
+    subject: substrate.open_subject_v1(
+      thread_name,
+      substrate.ForcedSource { header, membership },
+    ),
+    bad_tx: ForcedTxCompact {
+      body: verified.tx_compact.body,
+      witness_set_hash: verified.tx_compact.witness_set_hash,
+    },
+    bad_tx_body_fee: verified.tx_compact.body.fee,
+    bad_tx_id: leaf.tx_id,
+    min_fee_a: 44,
+    min_fee_b: 155_381,
+  }
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(
+      Args {
+        source: ForcedSource {
+          input_index: 0,
+          output_index: 0,
+          header,
+          membership,
+        },
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(thread_name, expected_state),
+  )
+}
+
+/// A forced leaf the operator accepted opens a wrongful-acceptance thread and
+/// forwards the leaf's own compact transaction, fee, id and the header's fee
+/// schedule.
+test min_fee_step_01_binds_a_forced_acceptance() {
+  run_forced_continue(ForcedTxValid)
+}
+
+/// A forced leaf rejected as `FeeBelowMinimum` opens a wrongful-rejection
+/// thread for this family.
+test min_fee_step_01_binds_a_forced_fee_below_minimum_rejection() {
+  run_forced_continue(ForcedTxInvalid { reason: FeeBelowMinimum })
+}
+
+/// A forced leaf rejected for any other reason is not this family's dispute:
+/// the leaf's exact reason must be `FeeBelowMinimum`.
+test min_fee_step_01_rejects_a_forced_rejection_for_another_reason() fail {
+  run_forced_continue(
+    ForcedTxInvalid { reason: InputNotFound { source_kind: 0, input_index: 0 } },
+  )
 }
