@@ -30,6 +30,10 @@ import {
   verifyDeploymentManifestAgainstConfig,
 } from "./contract-deployment-info.build-deployment-manifest.js";
 import { buildDeploymentManifestIdentityContextProgram } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
+import {
+  localNodeManifestL1OriginProver,
+  provenManifestL1Origin,
+} from "./contract-deployment-info.manifest-l1-origin.js";
 
 const buildLiveDeploymentManifestProgram = (
   outputPath: string,
@@ -70,6 +74,27 @@ const buildLiveDeploymentManifestProgram = (
         ),
       );
     }
+    const l1Origin =
+      existingManifest === undefined
+        ? yield* Effect.scoped(
+            Effect.gen(function* () {
+              const runState = yield* Effect.tryPromise({
+                try: () =>
+                  loadDeploymentRunState(defaultDeploymentRunStatePath()),
+                catch: (cause) =>
+                  new Error(
+                    "Failed to read the deployment run state's recorded L1 origin",
+                    { cause },
+                  ),
+              });
+              return yield* provenManifestL1Origin({
+                recordedOrigin: runState?.identity.l1Origin,
+                nonceTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                prover: yield* localNodeManifestL1OriginProver(nodeConfig),
+              });
+            }),
+          )
+        : existingManifest.l1Origin;
     const lucidService = yield* Lucid;
     const liveContracts = yield* MidgardContracts;
     const availabilityAccounts = yield* Effect.forEach(
@@ -120,6 +145,7 @@ const buildLiveDeploymentManifestProgram = (
       existingManifest,
       steps: requestedSteps,
       hubOracleOneShotStatus: options.hubOracleOneShotStatus,
+      ...(l1Origin === undefined ? {} : { l1Origin }),
     });
     const verification = verifyDeploymentManifestAgainstConfig(
       deploymentManifest,

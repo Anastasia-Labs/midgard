@@ -171,6 +171,9 @@ upsert_private_env MIDGARD_PHASE4_PHAS_REWARD_ADDRESS "$phas_reward_address" "$n
 upsert_private_env MIDGARD_PHASE4_PHAS_SCRIPT_HASH "$phas_script_hash" "$node_env"
 upsert_private_env MIDGARD_PHASE4_PHAS_REGISTRATION_TX_HASH "$phas_registration_tx_hash" "$node_env"
 node dist/index.js reconcile reference-scripts-complete --scope node-runtime --json
-node dist/index.js init --contract-deployment-info-output "$manifest"
+# Finalizing the manifest proves the L1 origin the nonce command recorded in
+# this run's state on the run's own node.
+MIDGARD_RUN_STATE_PATH="$run_state" L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
+  node dist/index.js init --contract-deployment-info-output "$manifest"
 node dist/index.js register-active-operator
 [ -s "$manifest" ] || die "protocol bootstrap did not create deployment manifest"

@@ -178,18 +178,20 @@ export const l1NodeOriginSource = (
   depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
 });
 
+/** The node settings that name its local node. */
+export type LocalNodeConfig = Readonly<{
+  L1_NATIVE_LEDGER?: NativeLedgerSettings | undefined;
+  NETWORK: NativeLedgerNetwork;
+}>;
+
 /**
- * The origin source of the node's configured local node, open for the scope,
- * or undefined when no local node is configured (the nonce command then
- * refuses before signing).
+ * The transport to the node's configured local node, open for the scope, or
+ * undefined when no local node is configured.
  */
-export const nodeHubOracleNonceOriginSource = (
-  config: Readonly<{
-    L1_NATIVE_LEDGER?: NativeLedgerSettings | undefined;
-    NETWORK: NativeLedgerNetwork;
-  }>,
+export const openLocalNodeTransport = (
+  config: LocalNodeConfig,
 ): Effect.Effect<
-  HubOracleNonceOriginSource | undefined,
+  L1NodeTransport | undefined,
   HubOracleNonceOriginError,
   Scope.Scope
 > =>
@@ -216,5 +218,21 @@ export const nodeHubOracleNonceOriginSource = (
       }),
       (opened) => Effect.promise(() => opened.close()),
     );
-    return l1NodeOriginSource(transport);
+    return transport;
   });
+
+/**
+ * The origin source of the node's configured local node, open for the scope,
+ * or undefined when no local node is configured (the nonce command then
+ * refuses before signing).
+ */
+export const nodeHubOracleNonceOriginSource = (
+  config: LocalNodeConfig,
+): Effect.Effect<
+  HubOracleNonceOriginSource | undefined,
+  HubOracleNonceOriginError,
+  Scope.Scope
+> =>
+  Effect.map(openLocalNodeTransport(config), (transport) =>
+    transport === undefined ? undefined : l1NodeOriginSource(transport),
+  );
