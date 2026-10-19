@@ -152,8 +152,9 @@ a cursor at O, an intervention (R4, or `origin_mismatch` below) or a
   while an output it created is live; it can be wrong only after the hub
   oracle NFT is burned and the init tx pruned. With a `recordedOrigin`, a
   store whose origin is after it (a later slot, or another block at the same
-  slot) is R3 from the first check, the protocol-init spend seen or not: it
-  may lack outputs created between the two points. Its detail names both
+  slot) is R3 from the loop's first status, restarts included, so no status
+  reads at the tip without it, the protocol-init spend seen or not: it may
+  lack outputs created between the two points. Its detail names both
   points and the recovery: set `l1Origin` at or before the recorded one and
   `reset --to-origin`. An origin at or before the recorded one is checked as
   without it.

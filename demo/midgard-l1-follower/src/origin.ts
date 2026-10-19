@@ -203,6 +203,25 @@ const atOrBefore = (point: Point, recorded: Point): boolean =>
   point.slot < recorded.slot ||
   (point.slot === recorded.slot && point.hash.equals(recorded.hash));
 
+/**
+ * R3 for a store that follows from `origin` when the deployment recorded an
+ * origin (`recordedOrigin`) before it: the store may lack outputs created
+ * between them. Null when it is at or before the recorded origin, or when
+ * none is recorded. It needs no chain data, so the follow loop reports it
+ * from its first status (`followChain`).
+ */
+export const recordedOriginHold = (
+  origin: Point,
+  config: OriginConfig,
+): Intervention | null =>
+  config.recordedOrigin === undefined ||
+  atOrBefore(origin, config.recordedOrigin)
+    ? null
+    : intervention(
+        "origin_after_protocol_init",
+        `the store follows from l1Origin ${describePoint(origin)}, after the deployment's recorded l1Origin ${describePoint(config.recordedOrigin)}, so it may lack outputs created between them; set l1Origin at or before ${describePoint(config.recordedOrigin)} and run midgard-l1-follower reset --to-origin`,
+      );
+
 /** Whether the store was initialized at the configured origin. */
 export const originMatches = (cursor: Cursor, origin: Point): boolean =>
   cursor.origin.slot === origin.slot && cursor.origin.hash.equals(origin.hash);
@@ -220,10 +239,10 @@ export type ProtocolInitStatus =
  * the node tip the answer is `pending`; at the tip without the fact it is
  * R3. It is not sticky: a later call that finds the fact answers `seen`.
  *
- * With a `recordedOrigin`, a store whose origin is after it is R3 from the
- * first check, before the spend is looked at, so a seen spend never clears
- * it; only resetting the store to an origin at or before the recorded one
- * does. Without one, the answer is the spend check alone.
+ * With a `recordedOrigin`, a store whose origin is after it is R3
+ * (`recordedOriginHold`) before the spend is looked at, so a seen spend
+ * never clears it; only resetting the store to an origin at or before the
+ * recorded one does. Without one, the answer is the spend check alone.
  *
  * The fact is class A and outlives the init tx: the tx row is pruned once
  * the outputs it created are spent and k deep, but prune never removes the
@@ -238,14 +257,9 @@ export const protocolInitStatus = async (
   try {
     if (config.recordedOrigin !== undefined) {
       const started = await store.cursor();
-      if (
-        started !== null &&
-        !atOrBefore(started.origin, config.recordedOrigin)
-      )
-        return intervention(
-          "origin_after_protocol_init",
-          `the store follows from l1Origin ${describePoint(started.origin)}, after the deployment's recorded l1Origin ${describePoint(config.recordedOrigin)}, so it may lack outputs created between them; set l1Origin at or before ${describePoint(config.recordedOrigin)} and run midgard-l1-follower reset --to-origin`,
-        );
+      const hold =
+        started === null ? null : recordedOriginHold(started.origin, config);
+      if (hold !== null) return hold;
     }
     const spend = await store.protocolInit(config.hubOracleOneShot);
     if (spend !== null) return { kind: "seen", ...spend };

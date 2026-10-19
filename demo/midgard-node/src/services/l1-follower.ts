@@ -109,9 +109,9 @@ import { followerOperatorSet } from "./l1-follower.operator-set.js";
 import { type L1FollowerPlan, l1FollowerPlan } from "./l1-follower.plan.js";
 import { nodeFollowerProjections } from "./l1-follower.projections.js";
 import {
-  cursorKey,
   followerCaughtUp,
   type L1FollowerHandle,
+  landedBlockTrigger,
   planCurrentView,
   startingStatus,
 } from "./l1-follower.readiness.js";
@@ -354,7 +354,7 @@ const followL1 = <R>(
           }),
       },
     );
-    let lastCursor: string | null = null;
+    const onLanded = landedBlockTrigger(trigger);
     const handle: L1FollowerHandle = {
       kind: "running",
       status: () => status,
@@ -377,13 +377,7 @@ const followL1 = <R>(
       },
       onStatus: (next) => {
         status = next;
-        // The driver applies only views at the node's tip: until then a key
-        // the follower lacks may be one it has not reached, not an orphan.
-        const key = cursorKey(next);
-        if (key !== null && key !== lastCursor && followerCaughtUp(next)) {
-          lastCursor = key;
-          trigger();
-        }
+        onLanded(next);
       },
     });
     // A follower whose transient store failures outlived their bound stops
