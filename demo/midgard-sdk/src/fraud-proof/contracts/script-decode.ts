@@ -5,7 +5,6 @@
  * decoder controls, whose hashes the validator takes as its parameter.
  */
 
-import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type Data, type Network } from "@lucid-evolution/lucid";
 
 import {
@@ -67,7 +66,7 @@ export const buildScriptDecodeValidator = (
       makeWithdrawalValidator(
         getUnappliedScript(
           blueprint,
-          deployedTitle(SCRIPT_DECODE_STAKER_MEMBERS[name]),
+          FAULT_PROOF_SHARED_TITLES[SCRIPT_DECODE_STAKER_MEMBERS[name]],
         ),
       ),
     ]),
