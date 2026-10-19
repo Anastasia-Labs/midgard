@@ -478,18 +478,32 @@ pub fn bind_exact_rejection_reason_v1(
   actual
 }
 
-/// A wrongful acceptance chooses the decisive family coordinate. A wrongful
-/// rejection copies the complete typed reason from its authenticated leaf.
-pub fn bind_reason_or_coordinate_v1(
+/// The typed reason of a wrongful-rejection subject that `open_subject_v1`
+/// returned in the same validator run. Family Step 01 binds use this instead
+/// of `rejection_reason_of_v1`: the opener builds every subject canonical, so
+/// `subject_is_canonical_v1` would only repeat it. An accepted source gets
+/// version 1, wrongful acceptance, an empty key and no reason, and a 32-byte
+/// id (`bind_accepted_subject_v1`'s `is_h32`). A forced source gets version
+/// 1, a non-empty CBOR key, the direction and reason from one match on the
+/// leaf verdict, and an id equal to the verified blake2b-256 body hash
+/// (`verify_forced_tx_compact_cbor_v1`). A subject read from a datum must
+/// use the checked accessors instead.
+pub fn opened_rejection_reason_v1(
+  subject: VerdictSubjectV1,
+) -> RejectionReasonV1 {
+  expect Some(reason) = subject.rejection_reason
+  reason
+}
+
+/// `bind_exact_rejection_reason_v1` for a subject `open_subject_v1` returned
+/// in the same validator run; see `opened_rejection_reason_v1`.
+pub fn bind_opened_rejection_reason_v1(
   subject: VerdictSubjectV1,
   expected: RejectionReasonV1,
 ) -> RejectionReasonV1 {
-  expect subject_is_canonical_v1(subject)
-  if subject.direction == direction_wrongful_rejection {
-    bind_exact_rejection_reason_v1(subject, expected)
-  } else {
-    expected
-  }
+  let actual = opened_rejection_reason_v1(subject)
+  expect cbor.serialise(actual) == cbor.serialise(expected)
+  actual
 }
 
 /// Shared terminal polarity. `decisive_fault_holds` must be computed on-chain

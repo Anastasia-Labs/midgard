@@ -137,6 +137,23 @@ test proof_thread_subject_rejects_an_accepted_transaction_with_invalid_scalar() 
   )
 }
 
+/// Family Step 01 binds no longer re-check canonicity, so the accepted opener
+/// itself must refuse an id that is not 32 bytes.
+test proof_thread_subject_rejects_an_accepted_transaction_with_a_short_id() fail {
+  substrate.open_subject_v1(
+    tf.header_asset_name_v1(
+      fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
+    ),
+    substrate.AcceptedSource {
+      header: fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
+      tx_inclusion: native_types.VerifiedTxSourceView {
+        ..accepted_verified_v1(),
+        tx_id: bytearray.drop(accepted_verified_v1().tx_id, 1),
+      },
+    },
+  ).source_kind == substrate.source_kind_accepted
+}
+
 test proof_thread_subject_binds_a_forced_acceptance() {
   let subject = forced_accepted_subject_v1()
   and {
@@ -300,6 +317,22 @@ test proof_thread_subject_rejects_a_substituted_transaction_id() fail {
         value: substituted_leaf,
       },
     },
+  )
+  True
+}
+
+/// The leaf is honestly committed: its membership and header are re-derived
+/// from the leaf that carries the foreign id. Only the body-hash check in
+/// `verify_forced_tx_compact_cbor_v1` can refuse it.
+test proof_thread_subject_rejects_a_committed_leaf_with_a_foreign_transaction_id() fail {
+  let leaf = ledger_state.ForcedInclusionTxV1 {
+    ..tf.forced_leaf_v1(fixture.valid_native_tx_v1(), ForcedTxValid),
+    tx_id: prior_root,
+  }
+  let (header, membership) = forced_claim_v1(leaf)
+  expect _ = substrate.open_subject_v1(
+    tf.header_asset_name_v1(header),
+    substrate.ForcedSource { header, membership },
   )
   True
 }
