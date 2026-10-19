@@ -33,9 +33,14 @@ import {
   scriptDecodeStagingDatums,
 } from "../../src/script-decode/submit.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
+import { honestScript } from "./script-decode-plutus-max-shape.js";
 
-/** A small Plutus V3 script, carried as a reference script by a shape plant. */
-const REFERENCE_SCRIPT = "4e4d01000033222220051200120011";
+/**
+ * A Plutus V3 script of over 2 KB, carried as a reference script by a shape
+ * plant: a transaction that read the plant would pay its reference-script
+ * fee (15 lovelace a byte), well past the fee spread the cost check allows.
+ */
+const REFERENCE_SCRIPT = honestScript(2_048).toString("hex");
 
 /** Outputs per transaction of the mass plant. */
 const MASS_BATCH = 25;
