@@ -87,7 +87,11 @@ MIDGARD_PHASE4_GENESIS_BOOTSTRAP=phase4-local-devnet-l2-genesis-v1 \
 MIDGARD_PHASE4_PROCESS_TARGET=local-devnet \
   node "$tools_root/dist/index.js" phase4-genesis-ledger --seed
 nonce_output="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.json"
-node dist/index.js prepare-hub-oracle-one-shot-nonce --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
+# The nonce command reads the deployment's L1 origin from the run's own node
+# before it signs, so it gets the local node settings; node.env gets them only
+# once the origin is derived below.
+L1_NODE_SOCKET_PATH="$cardano_socket" L1_NODE_CONFIG_PATH="$host_config" L1_NODE_TRANSPORT_BINARY_PATH="$transport_binary" \
+  node dist/index.js prepare-hub-oracle-one-shot-nonce --run-state "$run_state" --fresh-redeploy --fresh-redeploy-reason "isolated Phase 4 process devnet $MIDGARD_PHASE4_RUN_ID" --json >"$nonce_output"
 # The CLI keeps human-readable progress logs on stdout even with --json. Keep
 # the complete transcript for evidence, but parse only the final JSON object.
 nonce_json="$MIDGARD_PHASE4_RUN_DIR/work/hub-oracle-nonce.parsed.json"

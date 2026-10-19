@@ -119,7 +119,7 @@ const bootstrapUntilReferenceScripts = async (findOrigin) => {
         "  dist/index.js)",
         `    echo "operator $2" >>"${calls}"`,
         '    case "$2" in',
-        `      prepare-hub-oracle-one-shot-nonce) echo '{"txHash":"${NONCE_TX_HASH}","outputIndex":0}' ;;`,
+        `      prepare-hub-oracle-one-shot-nonce) echo "nonce local node $L1_NODE_SOCKET_PATH $L1_NODE_CONFIG_PATH $L1_NODE_TRANSPORT_BINARY_PATH" >>"${calls}"; echo '{"txHash":"${NONCE_TX_HASH}","outputIndex":0}' ;;`,
         `      deploy-reference-script-node-runtime) exit ${String(STOPPED_AFTER_ORIGIN)} ;;`,
         "    esac",
         "    exit 0 ;;",
@@ -179,6 +179,13 @@ test("protocol bootstrap derives L1_ORIGIN from the nonce and writes the followe
     assert.ok(
       build <
         result.calls.indexOf("operator prepare-hub-oracle-one-shot-nonce"),
+      result.calls,
+    );
+    // The nonce command reads its L1 origin from the run's own node.
+    assert.ok(
+      result.calls.includes(
+        `nonce local node ${runDir}/cardano/ipc/node.socket ${runDir}/config/host-config.json ${runDir}/bin/midgard-l1-node-transport\n`,
+      ),
       result.calls,
     );
     for (const line of [

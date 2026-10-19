@@ -11,7 +11,9 @@ import {
 } from "./commands/cli-runtime.js";
 import { formatJson } from "./commands/command-utils.js";
 import * as DeploymentRunStateCommand from "./commands/deployment-run-state.js";
+import { hubOracleNonceCliOutput } from "./commands/prepare-hub-oracle-nonce.cli-output.js";
 import * as PrepareHubOracleNonce from "./commands/prepare-hub-oracle-nonce.js";
+import { nodeHubOracleNonceOriginSource } from "./commands/prepare-hub-oracle-nonce.l1-origin.js";
 import { hubOracleNonceRunStateHooks } from "./commands/prepare-hub-oracle-nonce.run-state-hooks.js";
 import { program } from "./index.registration.js";
 import * as Services from "./services/index.js";
@@ -107,19 +109,11 @@ program
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
-              if (opts.json) {
-                writeJson(result);
-                return;
-              }
               process.stdout.write(
-                [
-                  `reconciled hub-oracle one-shot nonce: ${result.outRef}`,
-                  `HUB_ORACLE_ONE_SHOT_TX_HASH=${result.txHash}`,
-                  `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX=${result.outputIndex.toString()}`,
-                  `confirmationStatus=${result.confirmationStatus}`,
-                  `address=${result.address}`,
-                  `lovelace=${result.lovelace}`,
-                ].join("\n") + "\n",
+                hubOracleNonceCliOutput(result, {
+                  json: opts.json === true,
+                  verb: "reconciled",
+                }),
               );
             }),
           ),
@@ -170,11 +164,18 @@ program
     const mainEffect = provideLucidOnlyServices(
       Effect.gen(function* () {
         const nodeConfig = yield* Services.NodeConfig;
-        const result =
-          yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
-            amountLovelace,
-            hubOracleNonceRunStateHooks(runOptions, nodeConfig.NETWORK),
-          );
+        const result = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const l1Origin = yield* nodeHubOracleNonceOriginSource(nodeConfig);
+            return yield* PrepareHubOracleNonce.prepareHubOracleOneShotNonceProgram(
+              amountLovelace,
+              {
+                ...hubOracleNonceRunStateHooks(runOptions, nodeConfig.NETWORK),
+                ...(l1Origin === undefined ? {} : { l1Origin }),
+              },
+            );
+          }),
+        );
         yield* Effect.tryPromise({
           try: () =>
             DeploymentRunStateCommand.recordHubOracleNonce({
@@ -195,19 +196,11 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            if (opts.json) {
-              writeJson(result);
-              return;
-            }
             process.stdout.write(
-              [
-                `prepared hub-oracle one-shot nonce: ${result.outRef}`,
-                `HUB_ORACLE_ONE_SHOT_TX_HASH=${result.txHash}`,
-                `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX=${result.outputIndex.toString()}`,
-                `confirmationStatus=${result.confirmationStatus}`,
-                `address=${result.address}`,
-                `lovelace=${result.lovelace}`,
-              ].join("\n") + "\n",
+              hubOracleNonceCliOutput(result, {
+                json: opts.json === true,
+                verb: "prepared",
+              }),
             );
           }),
         ),

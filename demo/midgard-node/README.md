@@ -337,9 +337,10 @@ pnpm listen
 ## Key Entry Points
 
 - `pnpm listen`: build and start the HTTP server plus background fibers.
-- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: create a fresh marked
-  operator-wallet UTxO and print the `HUB_ORACLE_ONE_SHOT_*` values needed for a
-  clean protocol deployment.
+- `node dist/index.js prepare-hub-oracle-one-shot-nonce`: record the
+  deployment's L1 origin from the local node, then create a fresh marked
+  operator-wallet UTxO and print `L1_ORIGIN` and the `HUB_ORACLE_ONE_SHOT_*`
+  values needed for a clean protocol deployment.
 - `node dist/index.js deploy-reference-script-node-runtime`: generate the
   reference-script auth timelock policy, publish the node-runtime reference
   scripts with role tokens, and write the deployment-info manifest.
@@ -671,6 +672,14 @@ node dist/index.js prepare-hub-oracle-one-shot-nonce
 Copy the printed `HUB_ORACLE_ONE_SHOT_TX_HASH` and
 `HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX` into the deployment environment before
 publishing reference scripts or running `init`.
+
+Before it signs a fresh nonce, the command reads the local node's tip
+(`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`)
+and waits until the profile's `confirmationDepth` blocks extend it; a tip that
+leaves the chain first is read again. It records that point with the signed
+transaction in the run state and prints it as `L1_ORIGIN`. A resumed nonce
+keeps the recorded point; `--fresh-redeploy` reads a new one. Without a local
+node configured the command refuses before it signs anything.
 
 `HUB_ORACLE_ONE_SHOT_TX_HASH` is also the tx that fixes the deployment's L1
 origin: the point immediately before the block holding it, where the L1
