@@ -101,10 +101,14 @@ output_index=$(jq -er '(.outputIndex // (.outRef | split("#")[1] | tonumber))' "
 export HUB_ORACLE_ONE_SHOT_TX_HASH="$tx_hash" HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX="$output_index"
 upsert_private_env HUB_ORACLE_ONE_SHOT_TX_HASH "$tx_hash" "$node_env"
 upsert_private_env HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX "$output_index" "$node_env"
-# L1_ORIGIN is the point immediately before the nonce tx's block, scanned from
-# this run's genesis; find-origin exits non-zero unless it found the tx.
+# L1_ORIGIN is the origin the nonce command recorded before it signed;
+# find-origin --recorded scans from it and exits non-zero unless it is on this
+# run's chain and precedes the nonce tx's block.
+recorded_origin=$(jq -er 'select(.l1Origin != null) | .l1Origin | "\(.slot).\(.blockHash)"' "$nonce_json") \
+  || die "the nonce command recorded no L1 origin for the hub-oracle nonce tx $tx_hash"
 origin_output="$MIDGARD_PHASE4_RUN_DIR/work/l1-origin.find-origin.json"
 node "$follower_cli" find-origin --tx "$(printf '%s' "$tx_hash" | tr 'A-F' 'a-f')" \
+  --recorded "$recorded_origin" \
   --network-magic "$MIDGARD_PHASE4_NETWORK_MAGIC" \
   --socket "$cardano_socket" --sidecar "$transport_binary" >"$origin_output" \
   || die "cannot derive L1_ORIGIN from the hub-oracle nonce tx $tx_hash"

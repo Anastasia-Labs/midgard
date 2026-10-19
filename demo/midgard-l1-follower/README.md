@@ -165,15 +165,24 @@ meant for rare checks such as R3.
 ```sh
 midgard-l1-follower find-origin --tx <prepareHubOracleNonce tx id> \
   --network-magic <n> [--socket <node socket>] [--sidecar <binary>] \
-  [--from <slot>.<block hash>]
+  [--from <slot>.<block hash> | --recorded <slot>.<block hash>]
 ```
 
 Scans the node's chain from `--from` (default genesis) for the tx and prints
-`{ l1Origin, origin, prepareHubOracleNonceBlock, txIndex, depth }` as JSON.
+`{ l1Origin, origin, prepareHubOracleNonceBlock, txIndex, depth }` as JSON,
+where `l1Origin` is the point immediately before the tx's block.
+
+`--recorded` takes the origin the deployment recorded before it signed the tx
+(the nonce command's `L1_ORIGIN`, run state `identity.l1Origin`). The scan
+starts there, so finding the tx proves the recorded origin is on the node's
+chain and precedes the tx's block; the JSON then carries the recorded origin
+as `l1Origin` and `origin`. It excludes `--from`.
+
 `--socket` defaults to `CARDANO_NODE_SOCKET_PATH`, `--sidecar` to
 `MIDGARD_L1_NODE_TRANSPORT_BINARY`. Exit codes: 0 found, 1 failed, 2 usage, 3
-not found (absent, `--from` not on the chain, or the tx in the chain's first
-block). The same scan is `findOrigin({ transport, txHash, from? })`.
+not found (absent after the start point, the start point not on the chain, or
+the tx in the chain's first block). The same scan is
+`findOrigin({ transport, txHash, from? })`.
 
 ### `midgard-l1-follower reset --to-origin`
 

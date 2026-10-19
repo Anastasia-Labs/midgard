@@ -178,6 +178,97 @@ describe("midgard-l1-follower find-origin", SCAN_BOUND, () => {
     expect(result.stderr).toMatch(/not on the node's chain/u);
   });
 
+  describe("--recorded", () => {
+    const recorded = async (
+      point: (blocks: readonly FakeBlock[]) => string,
+      extra: readonly string[] = [],
+    ) => {
+      const blocks = makeChain();
+      const sidecar = await fakes.sidecar("origin", blocks);
+      return {
+        blocks,
+        result: await run(
+          [
+            "find-origin",
+            "--tx",
+            PREPARE_ID,
+            "--network-magic",
+            "42",
+            "--recorded",
+            point(blocks),
+            ...extra,
+          ],
+          {
+            CARDANO_NODE_SOCKET_PATH: join(sidecar, "..", "node.socket"),
+            MIDGARD_L1_NODE_TRANSPORT_BINARY: sidecar,
+          },
+        ),
+      };
+    };
+    const at = (index: number) => (blocks: readonly FakeBlock[]) =>
+      `${blocks[index]!.slot}.${blocks[index]!.hash}`;
+
+    it.each([
+      ["an earlier block", 0],
+      ["the block just before the nonce's block", 1],
+    ])(
+      "FO-a: prints the recorded origin when it is %s on the node's chain",
+      async (_name, index) => {
+        const { blocks, result } = await recorded(at(index));
+        expect(result.stderr).toBe("");
+        expect(result.code).toBe(0);
+        const point = blocks[index]!;
+        expect(JSON.parse(result.stdout)).toEqual({
+          l1Origin: `${point.slot}.${point.hash}`,
+          origin: { slot: point.slot, blockHash: point.hash },
+          prepareHubOracleNonceBlock: {
+            slot: 30,
+            blockHash: blocks[2]!.hash,
+            height: 3,
+          },
+          txIndex: 1,
+          depth: 2,
+        });
+      },
+    );
+
+    it.each([
+      ["is the nonce's block", at(2), /does not precede the tx's block/u],
+      ["follows the nonce's block", at(3), /does not precede the tx's block/u],
+      [
+        "is not on the node's chain",
+        () => `20.${"ee".repeat(32)}`,
+        /--recorded is not on the node's chain/u,
+      ],
+    ])(
+      "FO-b: exits 3, printing nothing, when the recorded origin %s",
+      async (_name, point, message) => {
+        const { result } = await recorded(point);
+        expect(result.code).toBe(EXIT_NOT_FOUND);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toMatch(message);
+      },
+    );
+
+    it.each([
+      [
+        "with --from",
+        at(0),
+        ["--from", `20.${"ee".repeat(32)}`],
+        /^--recorded and --from exclude each other/u,
+      ],
+      ["malformed", () => "20", [], /^--recorded: expected/u],
+    ])(
+      "FO-b: refuses --recorded %s with exit 2",
+      async (_name, point, extra, message) => {
+        const { result } = await recorded(point, extra);
+        expect(result.code).toBe(2);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toMatch(message);
+      },
+    );
+  });
+
   const WIRED = [
     "find-origin",
     "--tx",

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import * as SDK from "@al-ft/midgard-sdk";
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
@@ -206,13 +207,15 @@ export class DaBondPoolCommitteeUnavailableError extends Error {
 
 /**
  * The run's own node, which the committee's L1 follower reads, and the
- * deployment's origin on it: the point before its hub-oracle nonce's block.
- * Refuses when the run has no node to follow.
+ * deployment's origin on it: the manifest's recorded l1Origin, proven to
+ * precede its hub-oracle nonce's block. Refuses when the run has no node to
+ * follow or the manifest records no origin.
  */
 export const daBondPoolCommitteeL1 = async (input: {
   readonly runDirectory: string;
   readonly networkMagic: number;
-  readonly nonceTxHash: string;
+  /** The finalized deployment manifest: its hub-oracle nonce and `l1Origin`. */
+  readonly manifest: Pick<DeploymentManifest, "hubOracleOneShot" | "l1Origin">;
 }): Promise<
   Readonly<{
     nativeLedger: Readonly<{ socket: string; config: string; binary: string }>;
@@ -229,13 +232,19 @@ export const daBondPoolCommitteeL1 = async (input: {
     throw new DaBondPoolCommitteeUnavailableError(
       `its L1 follower needs the run's node: ${missing.join(", ")}`,
     );
+  const recorded = input.manifest.l1Origin;
+  if (recorded === undefined)
+    throw new DaBondPoolCommitteeUnavailableError(
+      "its L1 follower starts at the deployment manifest's l1Origin, which this manifest does not record",
+    );
   const { origin } = await deriveL1Origin({
     node: {
       socketPath: nativeLedger.socket,
       binaryPath: nativeLedger.binary,
       networkMagic: input.networkMagic,
     },
-    nonceTxHash: input.nonceTxHash,
+    nonceTxHash: input.manifest.hubOracleOneShot.txHash,
+    recorded,
   });
   return { nativeLedger, l1Origin: origin };
 };

@@ -41,6 +41,7 @@ const STOPPED_AFTER_ORIGIN = 74;
 const bootstrapUntilReferenceScripts = async (
   findOrigin,
   stop = "deploy-reference-script-node-runtime",
+  recordedOrigin = L1_ORIGIN,
 ) => {
   const checkout = scratch("bootstrap");
   const tools = join(checkout, "demo/midgard-node-tools");
@@ -111,10 +112,11 @@ const bootstrapUntilReferenceScripts = async (
         mode: 0o755,
       });
     stub("pnpm", `echo "pnpm $*" >>"${calls}"`);
-    // The script parses the nonce transcript with jq; answer by filter.
+    // The script parses the nonce transcript with jq; answer by filter. A
+    // nonce with no recorded origin has no l1Origin, which `jq -e` fails on.
     stub(
       "jq",
-      `case "$2" in *txHash*) echo ${NONCE_TX_HASH} ;; *outputIndex*) echo 0 ;; *) echo stub ;; esac`,
+      `case "$2" in *l1Origin*) ${recordedOrigin === null ? "exit 4" : `echo ${recordedOrigin}`} ;; *txHash*) echo ${NONCE_TX_HASH} ;; *outputIndex*) echo 0 ;; *) echo stub ;; esac`,
     );
     stub(
       "node",
@@ -175,7 +177,7 @@ test("protocol bootstrap derives L1_ORIGIN from the nonce and writes the followe
     const { runDir } = result;
     assert.ok(
       result.calls.includes(
-        `follower find-origin --tx ${NONCE_TX_HASH} --network-magic 424242 --socket ${runDir}/cardano/ipc/node.socket --sidecar ${runDir}/bin/midgard-l1-node-transport\n`,
+        `follower find-origin --tx ${NONCE_TX_HASH} --recorded ${L1_ORIGIN} --network-magic 424242 --socket ${runDir}/cardano/ipc/node.socket --sidecar ${runDir}/bin/midgard-l1-node-transport\n`,
       ),
       result.calls,
     );
@@ -242,7 +244,30 @@ test("protocol bootstrap finalizes the manifest with the run state and the local
   }
 });
 
-test("protocol bootstrap stops, with no origin, when find-origin does not find the nonce", async () => {
+test("protocol bootstrap stops, with no origin, when the nonce command recorded none", async () => {
+  const result = await bootstrapUntilReferenceScripts(
+    `echo '${JSON.stringify(FIND_ORIGIN_OUTPUT)}'; exit 0`,
+    "deploy-reference-script-node-runtime",
+    null,
+  );
+  try {
+    assert.notEqual(result.status, 0);
+    assert.notEqual(result.status, STOPPED_AFTER_ORIGIN);
+    assert.match(
+      result.stderr,
+      new RegExp(
+        `the nonce command recorded no L1 origin for the hub-oracle nonce tx ${NONCE_TX_HASH}`,
+      ),
+    );
+    assert.doesNotMatch(result.calls, /follower find-origin/);
+    assert.match(result.nodeEnv, /^L1_ORIGIN=$/m);
+    assert.equal(existsSync(join(result.runDir, "work/l1-origin.json")), false);
+  } finally {
+    cleanUp(result.runDir);
+  }
+});
+
+test("protocol bootstrap stops, with no origin, when find-origin does not prove the recorded origin", async () => {
   const result = await bootstrapUntilReferenceScripts(
     "echo 'the tx is not on the node chain' >&2; exit 3",
   );

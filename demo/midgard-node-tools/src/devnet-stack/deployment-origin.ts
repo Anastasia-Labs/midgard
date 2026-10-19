@@ -4,6 +4,8 @@ import {
   type DerivedL1Origin,
   deriveL1Origin,
   L1OriginUndeterminedError,
+  runStateL1Origin,
+  sameL1Origin,
 } from "../l1-origin.js";
 import type { DeployContext } from "./deploy.js";
 import { Journal } from "./journal.js";
@@ -36,17 +38,24 @@ const recordFor = (
 
 /**
  * Records the run's L1 origin once its hub-oracle nonce is on chain: the
- * point immediately before the nonce tx's block, found by scanning the run's
- * own chain from genesis (`find-origin`). A record for another nonce is
- * replaced. `derive` replaces the scan in tests.
+ * origin T the nonce command recorded in the run state before it signed,
+ * proven on the run's own chain to precede the nonce tx's block
+ * (`find-origin --recorded`). A record for another nonce or another origin
+ * is replaced; a run state without T is refused. `derive` replaces the scan
+ * in tests.
  */
 export const ensureL1Origin = async (
   context: Pick<DeployContext, "layout" | "run" | "artifacts">,
   oneShot: HubOracleOneShot,
   derive: typeof deriveL1Origin = deriveL1Origin,
 ): Promise<L1Origin> => {
+  const runOrigin = await runStateL1Origin(
+    context.layout.deploymentRunState,
+    oneShot.txHash,
+  );
   const recorded = recordFor(context.layout, oneShot);
-  if (recorded !== undefined) return recorded.origin;
+  if (recorded !== undefined && sameL1Origin(recorded.origin, runOrigin))
+    return recorded.origin;
   const derived = await derive({
     node: {
       socketPath: context.layout.cardanoSocket,
@@ -54,6 +63,7 @@ export const ensureL1Origin = async (
       networkMagic: context.run.networkMagic,
     },
     nonceTxHash: oneShot.txHash,
+    recorded: runOrigin,
   });
   new Journal(context.layout.journal).set(JOURNAL_KEY, {
     ...derived,

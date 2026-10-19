@@ -695,12 +695,13 @@ The node's L1 follower runs only with `L1_ORIGIN`, the hub-oracle one-shot and
 the local node (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`,
 `L1_NODE_TRANSPORT_BINARY_PATH`). Without any of them the node reports
 `l1_follower_unconfigured` and ingests no deposits or withdrawals. The devnet
-and full-stack builders in `midgard-node-tools` derive `L1_ORIGIN` from the
-deployment's nonce tx on their own local node, record it with the run, and
-refuse to write a node environment that leaves the follower unconfigured. For
-the full stack on preprod, an `L1_ORIGIN` in the stack env file must equal the
-derived origin; a run whose nonce was signed before it recorded a scan start
-needs one there.
+and full-stack builders in `midgard-node-tools` take `L1_ORIGIN` from the
+deployment run state's recorded origin, prove it on their own local node
+precedes the nonce tx's block (`find-origin --recorded`), record it with the
+run, and refuse to write a node environment that leaves the follower
+unconfigured. A run state without a recorded origin is refused. For the full
+stack on preprod, an `L1_ORIGIN` in the stack env file must equal the recorded
+origin.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime
