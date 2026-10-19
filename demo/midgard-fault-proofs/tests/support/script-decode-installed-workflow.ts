@@ -331,91 +331,102 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  const runner = WORKFLOW_RUNNER_FACTORIES[category](async ({ invocation }) => {
-    // The watcher's loader body (`buildCommonInfrastructure`).
-    const execution = invocation as Partial<
-      Parameters<typeof runner.runOrResume>[0]
-    >;
-    // The deployment's genesis slot mapping, as the watcher's Lucid takes
-    // it from the manifest (a bare emulator Lucid starts its mapping now).
-    const lucid = await Lucid(emulator, "Custom", { slotConfig });
-    const restricted =
-      execution.fundingReservationPermit === undefined
-        ? signer
-        : restrictWorkflowFundingSigner({
-            signer,
-            permit: execution.fundingReservationPermit,
-          });
-    restricted.selectWallet(lucid);
-    return {
-      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-      infrastructure: {
-        manifest: {},
-        blueprintJson: binding.blueprintJson,
-        deploymentInfo,
-        headerHash: invocation.headerHash,
-        ...(execution.decisionDigest === undefined
-          ? {}
-          : { decisionDigest: execution.decisionDigest }),
-        lucid,
-        signer: restricted,
-        l1Source: {} as never,
-        stateQueueMutationLeaseCoordinator,
-      },
-      resolveReferenceScript: async ({
-        contractName,
-      }: {
-        readonly contractName: string;
-      }) => {
-        const utxo = roster.get(contractName);
-        if (utxo === undefined)
-          throw new Error(`no published reference for ${contractName}`);
-        return utxo;
-      },
-      retainedDaSources: sources,
-      close: async () => undefined,
-    } as never;
-  });
-  const funding = await openInstalledProverFunding({
-    emulator,
-    identity,
-    category,
-    runner,
-    economics: releaseEconomics,
-    protocolParameters,
-    fundingPaymentKeyHash: signer.paymentKeyHash,
-    walletAddress: signer.address,
-    scriptHashes: Object.fromEntries([
-      ...Object.entries(deploymentInfo.contracts)
-        .filter(
-          ([name]) =>
-            ROSTERED_MINT_OR_WITHDRAW.has(name) ||
-            !(name.endsWith("Mint") || name.endsWith("Withdraw")),
-        )
-        .map(([name, entry]) => [
-          name,
-          (entry as { readonly scriptHash: string }).scriptHash,
-        ]),
-      [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.validator.spendingScriptHash],
-    ]),
-    referenceUtxos: [
-      ...roster.values(),
-      ...Object.values(committed.removal.published),
-    ],
-  });
   const directory = await mkdtemp(join(homedir(), "script-decode-installed-"));
   const journalDirectory = join(directory, "journal");
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
+  /**
+   * The watcher process's in-memory part: the admitted runner and the open
+   * reservation store. Booting again over the same directory is a restart.
+   */
+  const boot = async () => {
+    const runner = WORKFLOW_RUNNER_FACTORIES[category](
+      async ({ invocation }) => {
+        // The watcher's loader body (`buildCommonInfrastructure`).
+        const execution = invocation as Partial<
+          Parameters<typeof runner.runOrResume>[0]
+        >;
+        // The deployment's genesis slot mapping, as the watcher's Lucid takes
+        // it from the manifest (a bare emulator Lucid starts its mapping now).
+        const lucid = await Lucid(emulator, "Custom", { slotConfig });
+        const restricted =
+          execution.fundingReservationPermit === undefined
+            ? signer
+            : restrictWorkflowFundingSigner({
+                signer,
+                permit: execution.fundingReservationPermit,
+              });
+        restricted.selectWallet(lucid);
+        return {
+          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+          infrastructure: {
+            manifest: {},
+            blueprintJson: binding.blueprintJson,
+            deploymentInfo,
+            headerHash: invocation.headerHash,
+            ...(execution.decisionDigest === undefined
+              ? {}
+              : { decisionDigest: execution.decisionDigest }),
+            lucid,
+            signer: restricted,
+            l1Source: {} as never,
+            stateQueueMutationLeaseCoordinator,
+          },
+          resolveReferenceScript: async ({
+            contractName,
+          }: {
+            readonly contractName: string;
+          }) => {
+            const utxo = roster.get(contractName);
+            if (utxo === undefined)
+              throw new Error(`no published reference for ${contractName}`);
+            return utxo;
+          },
+          retainedDaSources: sources,
+          close: async () => undefined,
+        } as never;
+      },
+    );
+    const funding = await openInstalledProverFunding({
+      emulator,
+      identity,
+      category,
+      runner,
+      economics: releaseEconomics,
+      protocolParameters,
+      fundingPaymentKeyHash: signer.paymentKeyHash,
+      walletAddress: signer.address,
+      scriptHashes: Object.fromEntries([
+        ...Object.entries(deploymentInfo.contracts)
+          .filter(
+            ([name]) =>
+              ROSTERED_MINT_OR_WITHDRAW.has(name) ||
+              !(name.endsWith("Mint") || name.endsWith("Withdraw")),
+          )
+          .map(([name, entry]) => [
+            name,
+            (entry as { readonly scriptHash: string }).scriptHash,
+          ]),
+        [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.validator.spendingScriptHash],
+      ]),
+      referenceUtxos: [
+        ...roster.values(),
+        ...Object.values(committed.removal.published),
+      ],
+      directory,
+    });
+    return { runner, funding } as const;
+  };
+  let instance = await boot();
   let turns = 0;
   /** One watcher application turn for the objective. */
   const turn = async () => {
-    const fundingReservationPermit = await funding.mintPermit({
+    const fundingReservationPermit = await instance.funding.mintPermit({
       actuationPermit: permit,
       decisionDigest: decision.decisionDigest,
     });
     const mode = turns === 0 ? "run" : "resume";
     turns += 1;
-    return (await runner.runOrResume({
+    return (await instance.runner.runOrResume({
       mode,
       category,
       deploymentFingerprint: fingerprint,
@@ -435,11 +446,15 @@ export const installScriptDecodeApplication = async ({
     decision,
     l1,
     fingerprint,
-    journalDirectory,
     turn,
-    readReservations: funding.readReservations,
+    /** Stops the watcher process and starts another over its durable state. */
+    restart: async () => {
+      instance.funding.close();
+      instance = await boot();
+    },
+    readReservations: async () => await instance.funding.readReservations(),
     close: async () => {
-      await funding.close();
+      instance.funding.close();
       await rm(directory, { recursive: true, force: true });
     },
   } as const;

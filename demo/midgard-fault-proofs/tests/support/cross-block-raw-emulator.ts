@@ -22,7 +22,7 @@ import {
 } from "../../src/workflow/raw-l1-snapshot.js";
 // Emulator exposes no native header hash. This encoder belongs only to this
 // mocked raw-authority test domain; height/slot come from its real public API.
-const syntheticEmulatorPoint = (blockHeight: number, slot: number) => {
+export const syntheticEmulatorPoint = (blockHeight: number, slot: number) => {
   const value = {
     slot: String(slot),
     blockNo: String(blockHeight),

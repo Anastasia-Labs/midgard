@@ -98,7 +98,9 @@ export const withScriptDecodePrerequisite = <
         artifact: context.artifact,
         entries: context.entries,
       });
-      if (inspection.kind === "required") {
+      // A held action is still the one required: its preflight pauses the
+      // workflow until a fresh observation instead of polling the hold.
+      if (inspection.kind === "required" || inspection.kind === "held") {
         return { kind: "action_required", action: inspection.action };
       }
       return inspection.kind === "pending"
@@ -114,7 +116,11 @@ export const withScriptDecodePrerequisite = <
           artifact: context.artifact,
           entries: context.entries,
         });
-        if (inspection.kind === "required" || inspection.kind === "pending") {
+        if (
+          inspection.kind === "required" ||
+          inspection.kind === "held" ||
+          inspection.kind === "pending"
+        ) {
           throw new WorkflowActionChangedError(
             `${category} proof step cannot bypass its script decode record`,
           );
@@ -133,6 +139,12 @@ export const withScriptDecodePrerequisite = <
         artifact: context.artifact,
         entries: context.entries,
       });
+      if (
+        inspection.kind === "held" &&
+        sameJson(inspection.action, context.action)
+      ) {
+        throw new WorkflowActionChangedError(inspection.reason);
+      }
       if (
         inspection.kind !== "required" ||
         !sameJson(inspection.action, context.action)

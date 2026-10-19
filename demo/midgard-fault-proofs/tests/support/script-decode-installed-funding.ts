@@ -9,8 +9,6 @@
  * emulator deployment's, mapped to custody roles exactly as the factory maps
  * them.
  */
-import { mkdtemp, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -114,9 +112,9 @@ const outRefOf = (outRef: string) => {
 };
 
 /**
- * Opens the reservation store and returns the supervisor's per-turn permit
- * mint (`mintWatcherProverFundingReservationPermit`'s body) for one
- * objective.
+ * Opens the reservation store in `directory` and returns the supervisor's
+ * per-turn permit mint (`mintWatcherProverFundingReservationPermit`'s body)
+ * for one objective. Reopening the same directory is a watcher restart.
  */
 export const openInstalledProverFunding = async ({
   emulator,
@@ -129,6 +127,7 @@ export const openInstalledProverFunding = async ({
   walletAddress,
   scriptHashes,
   referenceUtxos,
+  directory,
 }: {
   readonly emulator: Emulator;
   readonly identity: VerifiedWatcherDeploymentIdentity;
@@ -144,6 +143,8 @@ export const openInstalledProverFunding = async ({
   readonly scriptHashes: Readonly<Record<string, string>>;
   /** Every published reference UTxO a workflow transaction may read. */
   readonly referenceUtxos: readonly UTxO[];
+  /** Durable home of the SQLite reservation store. */
+  readonly directory: string;
 }) => {
   const fundingContracts = new Map<
     string,
@@ -190,7 +191,6 @@ export const openInstalledProverFunding = async ({
     protocolParameters,
     policy,
   });
-  const directory = await mkdtemp(join(homedir(), "script-decode-funding-"));
   const opened = await openWatcherSqliteProverFundingReservationStore({
     path: join(directory, "watcher.sqlite"),
     protocolParameterHistory: {
@@ -250,9 +250,8 @@ export const openInstalledProverFunding = async ({
   return {
     mintPermit,
     readReservations: async () => await opened.store.readAll(),
-    close: async () => {
+    close: () => {
       opened.close();
-      await rm(directory, { recursive: true, force: true });
     },
   } as const;
 };

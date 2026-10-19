@@ -68,7 +68,16 @@ export type ScriptDecodeItemForAction = (
 export type ScriptDecodeInspection =
   | { readonly kind: "not_required" | "satisfied" }
   | { readonly kind: "pending"; readonly reason: string }
-  | { readonly kind: "required"; readonly action: FraudProofWorkflowAction };
+  | { readonly kind: "required"; readonly action: FraudProofWorkflowAction }
+  | {
+      /**
+       * `action` was rejected on all its bounded attempts: the record holds
+       * there, pausing until a fresh observation, and submits it no more.
+       */
+      readonly kind: "held";
+      readonly action: FraudProofWorkflowAction;
+      readonly reason: string;
+    };
 
 export interface ScriptDecodePrerequisitePort<
   Category extends FraudProofCatalogueCategoryName,

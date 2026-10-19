@@ -22,6 +22,7 @@ import {
   readWorkflowFundingRecovery,
   reconcileWorkflowFundingSubmissionHandoff,
   releaseIdleWorkflowFundingReservation,
+  releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
@@ -821,10 +822,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         headerHash,
         checkpoint: "before_preflight",
       });
-      await beginWorkflowFundingReservationAction({
-        journal,
-        action,
-      });
+      await beginWorkflowFundingReservationAction({ journal, action });
       assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint,
@@ -837,6 +835,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         captured = await adapter.preflight({ ...context, action });
       } catch (cause) {
         adapterPreflightFailed = true;
+        await releaseUnfundedWorkflowFundingInputs({ journal, cause });
         throw cause;
       }
       preflight = validatePreflight({ action, preflight: captured });

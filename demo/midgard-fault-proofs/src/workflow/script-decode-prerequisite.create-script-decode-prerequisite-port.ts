@@ -182,7 +182,8 @@ export const createScriptDecodePrerequisitePort = <
           maxAttempts,
         )
           ? ({
-              kind: "pending",
+              kind: "held",
+              action,
               reason: `${SCRIPT_DECODE_RECORD_HELD}: ${action.actionId} was rejected on all ${maxAttempts.toString()} attempts`,
             } as const)
           : ({ kind: "required", action } as const);

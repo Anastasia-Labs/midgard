@@ -14,6 +14,7 @@ import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workf
 import {
   type WorkflowFundingAbandonmentHandoff,
   type WorkflowFundingCompletionHandoff,
+  WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
@@ -185,6 +186,36 @@ export const releaseIdleWorkflowFundingReservation = async (input: {
         (workflowActuationPermitIsReconciliationOnly(state.actuationPermit) ||
           event.txHash === latestIntent.txHash),
     )
+  )
+    return;
+  assertWorkflowActuationPermitIdentity({
+    permit: state.actuationPermit,
+    category: state.category,
+    rollbackGeneration: state.snapshot.rollbackGeneration,
+  });
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.releaseIdle({
+      expectedRevision: state.snapshot.revision,
+    }),
+  );
+};
+
+/**
+ * Releases the inputs of an idle reservation that could not fund the action
+ * it was begun for (`cause` is that shortfall), so the next action reserves
+ * the wallet as it is then: a top-up resumes the workflow. Idleness is the
+ * journal's, read when this iteration began (no attempt is unresolved).
+ */
+export const releaseUnfundedWorkflowFundingInputs = async (input: {
+  readonly journal: object;
+  readonly cause: unknown;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (
+    !(input.cause instanceof WorkflowFundingReservationUnavailableError) ||
+    state?.port.releaseIdle === undefined ||
+    !state.idleReleaseAuthorized
   )
     return;
   assertWorkflowActuationPermitIdentity({

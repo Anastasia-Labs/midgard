@@ -22,6 +22,7 @@ export {
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
   releaseIdleWorkflowFundingReservation,
+  releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
   reobserveWorkflowFundingReservationTransaction,
 } from "./funding-reservation-permit.apply-transition.js";
