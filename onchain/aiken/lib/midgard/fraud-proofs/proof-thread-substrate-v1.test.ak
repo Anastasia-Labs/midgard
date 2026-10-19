@@ -597,6 +597,31 @@ test proof_thread_event_door_rejects_a_root_committing_another_count() fail {
   ) == 0
 }
 
+// The event door refuses a non-canonical accepted-source subject even when its
+// event key and counted membership are otherwise genuine.
+
+test proof_thread_event_door_rejects_an_accepted_source_wrongful_rejection() fail {
+  event_door_v1(
+    0,
+    substrate.VerdictSubjectV1 {
+      ..event_door_subject_v1(),
+      direction: substrate.direction_wrongful_rejection,
+    },
+    honest_event_to_step_root_v1,
+  ) == 0
+}
+
+test proof_thread_event_door_rejects_an_accepted_source_with_a_source_key() fail {
+  event_door_v1(
+    0,
+    substrate.VerdictSubjectV1 {
+      ..event_door_subject_v1(),
+      source_key: cbor.serialise(tf.forced_order_key_v1()),
+    },
+    honest_event_to_step_root_v1,
+  ) == 0
+}
+
 test proof_thread_subject_rejects_a_leaf_outside_the_header_forced_root() fail {
   let honest = tf.forced_leaf_v1(fixture.valid_native_tx_v1(), ForcedTxValid)
   let (header, _honest_membership) = forced_claim_v1(honest)
