@@ -246,7 +246,10 @@ export const forcedHarness = ({
   certificateUtxos,
   observeSignedTransaction,
 }: {
-  readonly prepared: PreparedNetworkIdWrongfulRejection;
+  /** The forced contradiction, or another direction's durable artifact. */
+  readonly prepared:
+    | PreparedNetworkIdWrongfulRejection
+    | { readonly headerHash: string; readonly artifact: JournalJsonObject };
   readonly stage: FraudProofRawL1FamilyStage;
   readonly forcedDoorOccupied: boolean;
   /** Inline datum of the live scan thread, absent when the scan is empty. */
@@ -371,9 +374,12 @@ export const forcedHarness = ({
       throw new Error("terminal state is outside this test");
     },
   } as unknown as NetworkIdWorkflowAdapterConfig;
-  const artifact = networkIdForcedArtifactFromPrepared(
-    prepared,
-  ) as unknown as JournalJsonObject;
+  const artifact =
+    "artifact" in prepared
+      ? prepared.artifact
+      : (networkIdForcedArtifactFromPrepared(
+          prepared,
+        ) as unknown as JournalJsonObject);
   return {
     artifact,
     scanUtxos,

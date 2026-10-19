@@ -923,7 +923,7 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.certificateOutRef !==
                 outRefLabel(certificate))
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id forced scan does not bind the observed field certificate",
             );
           }
@@ -1062,7 +1062,7 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.certificateOutRef !==
                 outRefLabel(certificate))
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id final step does not bind the observed field certificate",
             );
           }

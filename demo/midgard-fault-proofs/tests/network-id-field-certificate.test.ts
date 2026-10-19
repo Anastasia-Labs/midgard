@@ -4,6 +4,7 @@
  * final step references, when the certificate address holds more than one
  * output that carries the same certification datum.
  */
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
@@ -11,8 +12,18 @@ import {
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
-import { h32 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  planNetworkIdOutputsOpening,
+  type PreparedNetworkIdProof,
+} from "../src/network-id/prepare.js";
+import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import type { JournalJsonObject } from "../src/workflow/journal.js";
+import {
+  buildFixtureTransaction,
+  h28,
+  h32,
+} from "./helpers/canonical-block-evidence-fixture.js";
 import { signedRecoveryObservationFixture } from "./helpers/signed-recovery-observation-fixture.js";
 import {
   CERTIFICATE_ADDRESS,
@@ -68,6 +79,67 @@ const certifiedOpening = async ({
     datum: deriveFieldPreimageCertification(opening.plan).datumCbor,
   });
   return { prepared, harness, certificate };
+};
+
+/**
+ * An output-network fault whose outputs field (440 items) opens at Certified
+ * tier through the final step rather than the forced scan.
+ */
+const outputNetworkOpening = () => {
+  const outputs = Array.from({ length: 440 }, () =>
+    encodeMidgardTxOutput({
+      address: Buffer.concat([Buffer.from([0x61]), Buffer.alloc(28, 0x55)]),
+      value: { lovelace: 1n, assets: new Map() },
+    }),
+  );
+  const transaction = buildFixtureTransaction({
+    spendInputs: [],
+    outputs,
+    fee: 1n,
+    networkId: 0n,
+  });
+  const headerHash = h28(0x71);
+  const l2TransactionSourceCbor = deriveL2TransactionSourceCbor(
+    transaction.canonicalCbor,
+  );
+  const prepared = {
+    headerHash,
+    expectedNetworkId: 0n,
+    badTxId: transaction.txId,
+    nativeTxCanonicalCbor: transaction.canonicalCbor.toString("hex"),
+    nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
+    outputsItemCbors: outputs.map((item) => item.toString("hex")),
+    faultClaim: { kind: "output-network", outputIndex: 0n },
+    fault: { OutputNetwork: { output_index: 0n } },
+    txInclusion: {
+      nativeTxId: transaction.txId,
+      nativeTx: {} as never,
+      nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
+      l2TransactionSourceCbor,
+      transactionsPhasRoot: h32(0x31),
+      txMembershipProofCbor: "d87980",
+    },
+  } satisfies PreparedNetworkIdProof;
+  const opening = planNetworkIdOutputsOpening({
+    prepared,
+    owner: SIGNER.paymentKeyHash,
+  });
+  expect(opening.plan.tier).toBe("Certified");
+  const artifact = {
+    schemaVersion: "midgard-network-id-workflow-artifact-v1",
+    headerHash,
+    expectedNetworkId: "0",
+    badTxId: transaction.txId,
+    nativeTxCanonicalCbor: prepared.nativeTxCanonicalCbor,
+    nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+    l2TransactionSourceCbor,
+    outputsItemCbors: prepared.outputsItemCbors,
+    faultKind: "output-network",
+    outputIndex: "0",
+    transactionsPhasRoot: h32(0x31),
+    txMembershipProofCbor: "d87980",
+  } as JournalJsonObject;
+  return { headerHash, artifact, opening };
 };
 
 /** A signed transaction the canonical recovery port can authenticate. */
@@ -138,5 +210,83 @@ describe("network-id Certified-tier field certificate", () => {
       kind: "pending",
       txHash: signed.transactionHash,
     });
+  });
+
+  it("treats a certificate other than the scheduled one as a changed action", async () => {
+    const { headerHash, artifact, opening } = outputNetworkOpening();
+    const certification = deriveFieldPreimageCertification(opening.plan);
+    const certificate = (txHash: string): UTxO => ({
+      txHash,
+      outputIndex: 0,
+      address: CERTIFICATE_ADDRESS,
+      assets: { lovelace: 5_000_000n, [CERTIFICATE_UNIT]: 1n },
+      datum: certification.datumCbor,
+    });
+    const scheduled = certificate(h32(0x61));
+    const certificates: UTxO[] = [scheduled];
+    const harness = forcedHarness({
+      prepared: { headerHash, artifact },
+      stage: {
+        kind: "step",
+        step: 2,
+        threadOutRef: `${h32(0x72)}#0`,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      walletUtxos: opening.plan.publications.map((publication, index) =>
+        utxo({
+          txHash: h32(0x20 + index),
+          datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+        }),
+      ),
+      certificateUtxos: certificates,
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected the final step");
+    expect(selected.action.input).toMatchObject({
+      kind: "step02",
+      certificateOutRef: `${h32(0x61)}#0`,
+    });
+    const preflight = () =>
+      harness.adapter.preflight({
+        identity: workflowIdentity(headerHash),
+        workflowId: h32(0x51),
+        artifact,
+        entries: [],
+        action: selected.action,
+      });
+    certificates.unshift(certificate("00".repeat(32)));
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    certificates.splice(0, certificates.length);
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
+
+  it("treats a certificate other than the scheduled one as a changed forced-scan action", async () => {
+    const certificates: UTxO[] = [];
+    const { prepared, harness, certificate } = await certifiedOpening({
+      certificateUtxos: certificates,
+    });
+    certificates.push(certificate(h32(0x61)));
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected the forced scan action");
+    expect(selected.action.input.certificateOutRef).toBe(`${h32(0x61)}#0`);
+    const preflight = () =>
+      harness.adapter.preflight({
+        identity: workflowIdentity(prepared.headerHash),
+        workflowId: h32(0x51),
+        artifact: harness.artifact,
+        entries: [],
+        action: selected.action,
+      });
+    certificates.unshift(certificate("00".repeat(32)));
+    await expect(preflight()).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
   });
 });
