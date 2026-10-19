@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import {
   fieldPreimageCertificateAddress,
   planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
@@ -61,6 +62,16 @@ const CERTIFICATE_ADDRESS = fieldPreimageCertificateAddress({
 const CERTIFICATE_UNIT = `${POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
 /** Sorts before every hash the adapter or the fixture produces. */
 const LOWEST_TX_HASH = "00".repeat(32);
+const OTHER_UNIT = `${"92".repeat(28)}6f74686572`;
+
+/** The same output under another out-ref, with one more asset on it. */
+const withOtherAsset = (utxo: UTxO, txHash: string): UTxO => ({
+  ...utxo,
+  txHash,
+  assets: { ...utxo.assets, [OTHER_UNIT]: 1n },
+});
+const CONTENT_IDENTITY_REFUSAL =
+  "authenticated publication output differs from its journaled content identity";
 
 const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
@@ -108,13 +119,14 @@ const certifiedOpening = (proofCbor = "80") => {
       datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
   );
-  return { artifact, certificate, publications };
+  return { artifact, certificate, publications, plan };
 };
 
 /**
  * The adapter over a chain that holds exactly `walletUtxos` and
- * `certificateUtxos`; the authenticated observer confirms an output only when
- * that exact out-ref carries the expected datum (and unit) at the address.
+ * `certificateUtxos`. The authenticated observer finds an output only by its
+ * exact out-ref at the address and, like the production observer, refuses one
+ * whose content differs from the expected datum and value shape.
  */
 const doubleSpendHarness = ({
   artifact,
@@ -133,6 +145,7 @@ const doubleSpendHarness = ({
       : address === CERTIFICATE_ADDRESS
         ? certificateUtxos
         : [];
+  const authenticated: string[] = [];
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],
@@ -167,16 +180,29 @@ const doubleSpendHarness = ({
           readonly expectedOutRef: string;
           readonly expectedDatumCbor: string;
           readonly expectedUnit?: string;
-        }) =>
-          at(input.address).some(
-            (candidate) =>
-              outRef(candidate) === input.expectedOutRef &&
-              candidate.datum === input.expectedDatumCbor &&
-              (input.expectedUnit === undefined ||
-                candidate.assets[input.expectedUnit] === 1n),
-          )
-            ? { kind: "confirmed" as const, outRef: input.expectedOutRef }
-            : { kind: "not_found" as const },
+        }) => {
+          const candidate = at(input.address).find(
+            (utxo) => outRef(utxo) === input.expectedOutRef,
+          );
+          if (candidate === undefined) return { kind: "not_found" as const };
+          if (
+            candidate.datum !== input.expectedDatumCbor ||
+            candidate.datumHash != null ||
+            candidate.scriptRef != null ||
+            (input.expectedUnit !== undefined &&
+              candidate.assets[input.expectedUnit] !== 1n) ||
+            Object.entries(candidate.assets).some(
+              ([unit, quantity]) =>
+                unit !== "lovelace" &&
+                unit !== input.expectedUnit &&
+                quantity !== 0n,
+            )
+          ) {
+            throw new Error(CONTENT_IDENTITY_REFUSAL);
+          }
+          authenticated.push(input.expectedOutRef);
+          return { kind: "confirmed" as const, outRef: input.expectedOutRef };
+        },
       },
       observe: async () => ({
         provenance: {
@@ -228,7 +254,17 @@ const doubleSpendHarness = ({
       entries: [],
       action,
     });
-  return { next, reconcile, preflight };
+  /** Runs preflight and returns the out-refs it authenticated. */
+  const authenticatedBy = async (action: FraudProofWorkflowAction) => {
+    authenticated.splice(0, authenticated.length);
+    // Past authentication, preflight builds the transaction, which this chain
+    // cannot do; only an authentication refusal matters here.
+    await expect(preflight(action)).rejects.not.toThrow(
+      CONTENT_IDENTITY_REFUSAL,
+    );
+    return [...authenticated];
+  };
+  return { next, reconcile, preflight, authenticatedBy };
 };
 
 describe("double-spend carriage shared with other on-chain objects", () => {
@@ -345,5 +381,93 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     await expect(harness.preflight(step)).rejects.toBeInstanceOf(
       WorkflowActionChangedError,
     );
+  });
+
+  it("selects its own field publications over another output of a different shape with the same datum", async () => {
+    const { artifact, publications } = certifiedOpening();
+    const [first] = publications;
+    const wallet: UTxO[] = [
+      withOtherAsset(first!, LOWEST_TX_HASH),
+      ...publications,
+    ];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const certify = await harness.next();
+    expect(certify.input).toMatchObject({
+      stage: "certify-field",
+      chunkOutRefs: publications.map(outRef),
+    });
+    await expect(harness.authenticatedBy(certify)).resolves.toEqual(
+      publications.map(outRef),
+    );
+
+    // With only the other output for the first chunk, that chunk is still to
+    // be published.
+    wallet.splice(wallet.indexOf(first!), 1);
+    await expect(harness.next()).resolves.toMatchObject({
+      input: { stage: "publish-field", publicationDatumCbor: first!.datum },
+    });
+  });
+
+  it("publishes a field chunk whose only output at the prover's address has a different shape", async () => {
+    const { plan, publications } = certifiedOpening();
+    const [first, ...rest] = publications;
+    const wallet = [withOtherAsset(first!, LOWEST_TX_HASH), ...rest];
+    class PublicationStarted extends Error {}
+    await expect(
+      publishFaultProofFieldCarriage({
+        lucid: {
+          utxosAt: async () => [...wallet],
+        } as unknown as LucidEvolution,
+        signer: SIGNER,
+        planned: plan,
+        publisherAddress: SIGNER.address,
+        label: "double-spend shared carriage test",
+        beforePublication: async () => {
+          throw new PublicationStarted();
+        },
+      }),
+    ).rejects.toBeInstanceOf(PublicationStarted);
+  });
+
+  it("selects its own proof chunks over another output of a different shape with the same datum", async () => {
+    const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
+    const [chunkDatum] = splitProofIntoChunkDatums(proofCbor);
+    const own: UTxO = {
+      txHash: h32(0x6e),
+      outputIndex: 0,
+      address: SIGNER.address,
+      assets: { lovelace: 2_000_000n },
+      datum: chunkDatum!,
+    };
+    const { artifact } = certifiedOpening(proofCbor);
+    const wallet: UTxO[] = [withOtherAsset(own, LOWEST_TX_HASH), own];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_01",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const step = await harness.next();
+    expect(step.input.stage).toBe("step_01");
+    await expect(harness.authenticatedBy(step)).resolves.toEqual([outRef(own)]);
+
+    // With only the other output, the proof is still to be published.
+    wallet.splice(wallet.indexOf(own), 1);
+    await expect(harness.next()).resolves.toMatchObject({
+      input: { stage: "publish-proof" },
+    });
   });
 });

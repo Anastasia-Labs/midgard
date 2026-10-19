@@ -34,6 +34,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
 import {
   type PublishedProofChunk,
   splitProofIntoChunkDatums,
@@ -90,9 +91,7 @@ export const resolvePublishedProofChunks = async ({
       return (
         (fromTransaction === undefined || utxo.txHash === fromTransaction) &&
         !claimed.has(label) &&
-        typeof utxo.datum === "string" &&
-        utxo.datumHash == null &&
-        utxo.scriptRef == null &&
+        isAdaOnlyInlineDatumOutput(utxo) &&
         canonicalPlutusDataCbor(utxo.datum) === datum
       );
     });
