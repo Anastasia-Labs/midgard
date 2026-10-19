@@ -174,3 +174,34 @@ export const certifyFaultProofFieldCarriage = async ({
   });
   return { txHash, certificateUtxo };
 };
+
+/**
+ * The certificate a step's opening references: the one already on chain for
+ * this exact opening and owner (the workflow's certify action, or an earlier
+ * turn, minted it), and a newly minted one only when none is there. Minting
+ * again would put a second certificate transaction ahead of the step.
+ */
+export const reuseOrCertifyFaultProofFieldCarriage = async ({
+  certificateReferenceScriptUtxo,
+  missingReferenceScript,
+  ...input
+}: Omit<
+  Parameters<typeof certifyFaultProofFieldCarriage>[0],
+  "certificateReferenceScriptUtxo"
+> & {
+  /** Read only when a certificate has to be minted. */
+  readonly certificateReferenceScriptUtxo: UTxO | undefined;
+  /** The refusal when minting is needed and the reference script is absent. */
+  readonly missingReferenceScript: string;
+}): Promise<UTxO> => {
+  const onChain = await resolveFaultProofFieldPreimageCertificate(input);
+  if (onChain !== undefined) return onChain;
+  if (certificateReferenceScriptUtxo === undefined)
+    throw new Error(missingReferenceScript);
+  return (
+    await certifyFaultProofFieldCarriage({
+      ...input,
+      certificateReferenceScriptUtxo,
+    })
+  ).certificateUtxo;
+};

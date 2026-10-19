@@ -53,6 +53,7 @@ export {
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
   resolveFaultProofFieldPreimageCertificate,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "./field-opening.certify-fault-proof-field-carriage.js";
 export {
   type FaultProofFieldOpeningPlan,
