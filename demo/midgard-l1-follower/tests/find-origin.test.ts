@@ -1,8 +1,16 @@
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { writeFakeSidecar } from "@al-ft/l1-node-transport/testing/fake-sidecar";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 
-import { EXIT_NOT_FOUND, runFollowerCli } from "../src/cli/run.js";
+import {
+  EXIT_NOT_FOUND,
+  EXIT_NOT_READY,
+  runFollowerCli,
+} from "../src/cli/run.js";
 import { blake2b256, findOrigin } from "../src/index.js";
 import {
   type FakeBlock,
@@ -302,4 +310,75 @@ describe("midgard-l1-follower find-origin", SCAN_BOUND, () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toMatch(message);
   });
+});
+
+describe("midgard-l1-follower find-origin on a node transport that never becomes ready", () => {
+  const notReady = async (sidecar: (directory: string) => Promise<string>) => {
+    const directory = await realpath(
+      await mkdtemp(join(tmpdir(), "l1-follower-not-ready-")),
+    );
+    onTestFinished(() => rm(directory, { recursive: true, force: true }));
+    const out: string[] = [];
+    const err: string[] = [];
+    const startedAt = Date.now();
+    const code = await runFollowerCli(
+      [
+        "find-origin",
+        "--tx",
+        PREPARE_ID,
+        "--network-magic",
+        "42",
+        "--socket",
+        join(directory, "node.socket"),
+        "--sidecar",
+        await sidecar(directory),
+      ],
+      {},
+      { stdout: (text) => out.push(text), stderr: (text) => err.push(text) },
+      { readyTimeoutMs: 3_000 },
+    );
+    return {
+      code,
+      stdout: out.join(""),
+      stderr: err.join(""),
+      elapsedMs: Date.now() - startedAt,
+    };
+  };
+
+  it("R-1: exits 5 naming sidecar_unavailable when the sidecar binary is missing", async () => {
+    const result = await notReady(async (directory) =>
+      join(directory, "missing-sidecar"),
+    );
+    expect(result.code).toBe(EXIT_NOT_READY);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(
+      /not ready within 3 s \(sidecar_unavailable: .*--sidecar/u,
+    );
+    expect(result.elapsedMs).toBeLessThan(10_000);
+  }, 20_000);
+
+  it("R-1: exits 5 naming node_unreachable when the node socket does not accept", async () => {
+    const result = await notReady(async (directory) => {
+      const lostPath = join(directory, "node-lost");
+      await writeFile(lostPath, "lost");
+      return writeFakeSidecar({
+        path: join(directory, "sidecar"),
+        handlerModule: fileURLToPath(
+          new URL("./fixtures/node-loss-handler.mjs", import.meta.url),
+        ),
+        options: {
+          base: "origin",
+          blocks: makeChain(),
+          lostPath,
+          backPath: join(directory, "node-back"),
+        },
+      });
+    });
+    expect(result.code).toBe(EXIT_NOT_READY);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(
+      /not ready within 3 s \(node_unreachable: .*--socket/u,
+    );
+    expect(result.elapsedMs).toBeLessThan(10_000);
+  }, 20_000);
 });

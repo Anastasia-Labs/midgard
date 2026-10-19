@@ -10,6 +10,10 @@ import {
   IntersectNotFoundError,
   L1NodeTransport,
   ORIGIN,
+  TransportFailedError,
+  type TransportFailedReason,
+  TransportUnavailableError,
+  type TransportUnreadyReason,
 } from "@al-ft/l1-node-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
@@ -239,14 +243,44 @@ export type LocalNodeConfig = Readonly<{
 }>;
 
 /**
- * The transport to the node's configured local node, open for the scope, or
- * undefined when no local node is configured.
+ * How long a one-shot command waits for its local node transport to be
+ * ready: over the sidecar's 30 s handshake bound, so a slow handshake is not
+ * cut short.
+ */
+export const LOCAL_NODE_READY_TIMEOUT_MS = 60_000;
+
+/** The local node transport was not ready within the bound. */
+export class LocalNodeNotReadyError extends Data.TaggedError(
+  "LocalNodeNotReadyError",
+)<{
+  readonly reason: TransportUnreadyReason | TransportFailedReason;
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/** What an operator checks for each reason the transport is not ready. */
+const notReadyHint = (reason: string): string => {
+  switch (reason) {
+    case "sidecar_unavailable":
+      return "check that L1_NODE_TRANSPORT_BINARY_PATH names the midgard-l1-node-transport binary";
+    case "node_unreachable":
+      return "check that the cardano-node is running and that L1_NODE_SOCKET_PATH names its socket";
+    default:
+      return "check the cardano-node and the node transport";
+  }
+};
+
+/**
+ * The transport to the node's configured local node, open and ready for the
+ * scope, or undefined when no local node is configured. A transport not ready
+ * within `readyTimeoutMs` fails with `LocalNodeNotReadyError`.
  */
 export const openLocalNodeTransport = (
   config: LocalNodeConfig,
+  readyTimeoutMs: number = LOCAL_NODE_READY_TIMEOUT_MS,
 ): Effect.Effect<
   L1NodeTransport | undefined,
-  HubOracleNonceOriginError,
+  HubOracleNonceOriginError | LocalNodeNotReadyError,
   Scope.Scope
 > =>
   Effect.gen(function* () {
@@ -272,6 +306,21 @@ export const openLocalNodeTransport = (
       }),
       (opened) => Effect.promise(() => opened.close()),
     );
+    yield* Effect.tryPromise({
+      try: () => transport.whenReady(readyTimeoutMs),
+      catch: (cause) =>
+        cause instanceof TransportUnavailableError ||
+        cause instanceof TransportFailedError
+          ? new LocalNodeNotReadyError({
+              reason: cause.reason,
+              message: `The local node transport was not ready within ${Math.ceil(readyTimeoutMs / 1000).toString()} s (${cause.reason}: ${cause.detail}); ${notReadyHint(cause.reason)}`,
+              cause,
+            })
+          : new HubOracleNonceOriginError({
+              message: `Failed to wait for the local node's transport: ${formatUnknownError(cause)}`,
+              cause,
+            }),
+    });
     return transport;
   });
 
@@ -282,11 +331,12 @@ export const openLocalNodeTransport = (
  */
 export const nodeHubOracleNonceOriginSource = (
   config: LocalNodeConfig,
+  readyTimeoutMs?: number,
 ): Effect.Effect<
   HubOracleNonceOriginSource | undefined,
-  HubOracleNonceOriginError,
+  HubOracleNonceOriginError | LocalNodeNotReadyError,
   Scope.Scope
 > =>
-  Effect.map(openLocalNodeTransport(config), (transport) =>
+  Effect.map(openLocalNodeTransport(config, readyTimeoutMs), (transport) =>
     transport === undefined ? undefined : l1NodeOriginSource(transport),
   );

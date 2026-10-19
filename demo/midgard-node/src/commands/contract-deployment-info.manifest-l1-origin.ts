@@ -135,14 +135,16 @@ export const runStateManifestL1Origin = ({
   });
 
 /**
- * The prover over the node's configured local node, open for the scope, or
- * undefined when no local node is configured.
+ * The prover over the node's configured local node, open and ready for the
+ * scope (`LocalNodeNotReadyError` otherwise), or undefined when no local node
+ * is configured.
  */
 export const localNodeManifestL1OriginProver = (
   config: LocalNodeConfig,
+  readyTimeoutMs?: number,
 ): Effect.Effect<ManifestL1OriginProver | undefined, Error, Scope.Scope> =>
   Effect.map(
-    openLocalNodeTransport(config),
+    openLocalNodeTransport(config, readyTimeoutMs),
     (transport): ManifestL1OriginProver | undefined =>
       transport === undefined
         ? undefined

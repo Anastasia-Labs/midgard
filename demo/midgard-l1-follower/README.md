@@ -195,7 +195,10 @@ as `l1Origin` and `origin`. It excludes `--from`.
 `--socket` defaults to `CARDANO_NODE_SOCKET_PATH`, `--sidecar` to
 `MIDGARD_L1_NODE_TRANSPORT_BINARY`. Exit codes: 0 found, 1 failed, 2 usage, 3
 not found (absent after the start point, the start point not on the chain, or
-the tx in the chain's first block). The same scan is
+the tx in the chain's first block), 5 not ready (the node transport was not
+ready within 60 s; stderr names the reason: `sidecar_unavailable`, the
+`--sidecar` binary does not start, or `node_unreachable`, the `--socket` does
+not accept). The same scan is
 `findOrigin({ transport, txHash, from? })`.
 
 ### `midgard-l1-follower reset --to-origin`

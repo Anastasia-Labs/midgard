@@ -7,6 +7,8 @@
 // placeholder bytes 0x80 and type 7. An open from origin (the tip read) serves no
 // events, or the `genesis` script ({events: [...]}) when one is given. With
 // `journal` (a path), each open from a block appends "open <slot>.<hash>".
+// With `unreachable: true`, every handshake is refused as the sidecar refuses
+// it when the node socket does not accept (`node_unreachable`).
 import { Buffer } from "node:buffer";
 import { appendFileSync } from "node:fs";
 
@@ -41,7 +43,17 @@ export default (options) => {
     }
   };
   return {
-    hello: () => ({ nodeToClientVersion: 32784 }),
+    hello: () =>
+      options.unreachable === true
+        ? {
+            fatal: {
+              code: "node_unreachable",
+              message:
+                "dial unix node.socket: connect: no such file or directory",
+              status: 69,
+            },
+          }
+        : { nodeToClientVersion: 32784 },
     openStream: ({ points }, stream) => {
       const at = points[0];
       if (at === "origin") {
