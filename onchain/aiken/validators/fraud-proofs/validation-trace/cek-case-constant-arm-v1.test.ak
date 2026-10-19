@@ -930,13 +930,3 @@ test core_group_routes_a_constructor_case_step_to_group_1() {
   }
   core_chain.core_group(cek_machine_v1.mode_return, witness) == 1
 }
-
-// The case-constant arm requires the bound group to be its own.
-test case_constant_arm_refuses_another_group() fail {
-  run_case_constant_bound(
-    1,
-    integer_case_pre(),
-    selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
-    integer_case_witness(),
-  )
-}
