@@ -1,7 +1,7 @@
 /**
- * Finds what an earlier, interrupted record of a script left on chain: its
- * staged bytes, and its open run with the walk cursor at that run, so a rerun
- * continues the run instead of binding a new one.
+ * Finds the open run an earlier, interrupted record of a script left on
+ * chain, with the walk cursor at that run, so a rerun continues the run
+ * instead of binding a new one.
  */
 import {
   nextScriptDecodeChainedWalk,
@@ -16,12 +16,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { isAdaOnlyInlineDatumOutput } from "../ada-only-carriage-output.js";
 import { scriptDecodeRunDatum, scriptDecodeRunTokenName } from "./data.js";
-import {
-  type ScriptDecodeDeployment,
-  scriptDecodeStagingDatums,
-} from "./submit.js";
+import { type ScriptDecodeDeployment } from "./submit.js";
 
 /** Ticks the replay first tries in one Walk while it moves to a run. */
 const REPLAY_INITIAL_FUEL = 1_024;
@@ -34,60 +30,6 @@ export type ScriptDecodeRunPosition = Readonly<{
   runUtxo: UTxO;
   cursor: ScriptDecodeWalkCursor;
 }>;
-
-/**
- * For each staging datum of `scriptBytes` in order, a UTxO at the staging
- * address holding it (the first in out-ref order), or undefined where none
- * does. Staging carries no token, so any ada-only UTxO with the right inline
- * datum serves: a Walk checks the staged bytes against the run's script hash.
- * Outputs that also carry a reference script or other assets are skipped, so
- * the steps that read the staging pay only for the bytes they need.
- */
-export const findStagedScriptDecodeChunks = async ({
-  lucid,
-  scriptBytes,
-  address,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly scriptBytes: Uint8Array;
-  /** Where the bytes were staged; the wallet's address by default. */
-  readonly address?: string;
-}): Promise<(UTxO | undefined)[]> => {
-  const held = (
-    await lucid.utxosAt(address ?? (await lucid.wallet().address()))
-  ).sort((left, right) => {
-    const a = `${left.txHash}#${left.outputIndex.toString().padStart(10, "0")}`;
-    const b = `${right.txHash}#${right.outputIndex.toString().padStart(10, "0")}`;
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
-  const staged: (UTxO | undefined)[] = [];
-  for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
-    staged.push(
-      held.find(
-        (utxo) =>
-          utxo.datum === datum &&
-          isAdaOnlyInlineDatumOutput(utxo) &&
-          !staged.includes(utxo),
-      ),
-    );
-  }
-  return staged;
-};
-
-/**
- * The staged UTxOs at the wallet's address that hold `scriptBytes`, one per
- * staging datum in order, or undefined while any is missing.
- */
-export const findStagedScriptDecodeBytes = async (input: {
-  readonly lucid: LucidEvolution;
-  readonly scriptBytes: Uint8Array;
-  readonly address?: string;
-}): Promise<UTxO[] | undefined> => {
-  const staged = await findStagedScriptDecodeChunks(input);
-  return staged.every((utxo) => utxo !== undefined)
-    ? (staged as UTxO[])
-    : undefined;
-};
 
 /** The machine's bit cursor a run datum carries, if it parses as a run. */
 const runBitCursor = (datum: string): number | undefined => {

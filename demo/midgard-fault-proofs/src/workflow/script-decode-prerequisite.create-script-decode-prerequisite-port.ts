@@ -23,7 +23,6 @@ import {
   SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   scriptDecodeLedgerLimits,
 } from "../script-decode/record.js";
-import { findStagedScriptDecodeChunks } from "../script-decode/resume.js";
 import {
   buildScriptDecodeBindTx,
   buildScriptDecodeFinishTx,
@@ -57,6 +56,7 @@ import {
   ScriptDecodeRecordHeldError,
   ScriptDecodeRecordUnderfundedError,
 } from "./script-decode-prerequisite.port.js";
+import { scriptDecodeStagedChunks } from "./script-decode-prerequisite.staged-chunks.js";
 import {
   rememberScriptDecodeCursor,
   scriptDecodeCursorAtRun,
@@ -148,6 +148,20 @@ export const createScriptDecodePrerequisitePort = <
     `${deployment().validator.policyId}${scriptDecodeRunTokenName(scriptHashHex)}`;
   const runAt = async (outRef: string): Promise<UTxO | undefined> =>
     (await lucid.utxosByOutRef([parseOutRef(outRef)]))[0];
+  const stagedChunks = (input: {
+    readonly entries: Parameters<
+      typeof confirmedScriptDecodeOutputs
+    >[0]["entries"];
+    readonly scriptHashHex: string;
+    readonly scriptBytes: Uint8Array;
+  }) =>
+    scriptDecodeStagedChunks({
+      ...input,
+      lucid,
+      category,
+      address: signer.address,
+      recent,
+    });
 
   const port: ScriptDecodePrerequisitePort<Category> = {
     portVersion: SCRIPT_DECODE_PREREQUISITE,
@@ -203,24 +217,19 @@ export const createScriptDecodePrerequisitePort = <
           stages,
         });
 
-      const datums = scriptDecodeStagingDatums(scriptBytes);
-      const chunks = await findStagedScriptDecodeChunks({
-        lucid,
+      const staged = await stagedChunks({
+        entries,
+        scriptHashHex,
         scriptBytes,
-        address: signer.address,
       });
-      const missing = chunks.findIndex((chunk) => chunk === undefined);
-      if (missing >= 0) {
-        const replaced = confirmed(["script_decode_stage"])
-          .filter(({ action }) => action.chunkIndex === missing)
-          .at(-1);
-        if (replaced !== undefined && recent(replaced.confirmedAt)) {
-          return lagging(replaced.recovery.outRef);
-        }
+      if (staged.kind === "pending") return lagging(staged.outRef);
+      if (staged.kind === "publish") {
         return required("script_decode_stage", {
-          chunkIndex: missing,
-          datumCborSha256: scriptDecodeDatumDigest(datums[missing]!),
-          replacesOutRef: replaced?.recovery.outRef ?? null,
+          chunkIndex: staged.ordinal,
+          datumCborSha256: scriptDecodeDatumDigest(
+            scriptDecodeStagingDatums(scriptBytes)[staged.ordinal]!,
+          ),
+          replacesOutRef: staged.replaces,
         });
       }
 
@@ -287,15 +296,13 @@ export const createScriptDecodePrerequisitePort = <
       const validTo =
         lucid.slotToUnixTime(lucid.currentSlot()) + SCRIPT_DECODE_VALIDITY_MS;
       const staging = async () => {
-        const chunks = await findStagedScriptDecodeChunks({
-          lucid,
+        const staged = await stagedChunks({
+          entries,
+          scriptHashHex,
           scriptBytes,
-          address: signer.address,
         });
-        if (chunks.some((chunk) => chunk === undefined)) {
-          throw changed("staging");
-        }
-        return chunks as UTxO[];
+        if (staged.kind !== "ready") throw changed("staging");
+        return [...staged.utxos];
       };
       const run = async () => {
         const runUtxo = await runAt(parsed.runOutRef!);

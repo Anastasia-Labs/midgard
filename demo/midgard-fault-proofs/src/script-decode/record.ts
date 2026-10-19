@@ -15,19 +15,19 @@ import {
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import { plutusItemScript } from "./item-record.js";
 import {
-  findStagedScriptDecodeBytes,
   resumeScriptDecodeRun,
   type ScriptDecodeRunPosition,
 } from "./resume.js";
+import { stageScriptDecodeBytes } from "./stage.js";
 import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
   finishScriptDecodeRun,
   type ScriptDecodeDeployment,
   type ScriptDecodeExUnits,
-  stageScriptDecodeBytes,
 } from "./submit.js";
 
 /** Ticks the first Walk tries before the budget it uses is measured. */
@@ -222,7 +222,9 @@ export const fitScriptDecodeWalk = async (
 /**
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
  * yet. An open run of the script (an interrupted earlier record) is resumed
- * from its on-chain cursor; staged bytes already at the wallet are reused.
+ * from its on-chain cursor. The bytes are staged afresh unless `ownOutputs`
+ * holds chunks an earlier call staged and journaled there, still live; they
+ * are found by their out-refs, never by a search of the wallet's address.
  * Each Walk takes the most ticks that build within the ledger's limits
  * (`fitScriptDecodeWalk`). A Walk the ledger rejects is refitted after
  * `refreshLedgerParameters` (by default, re-reading them from the provider),
@@ -239,6 +241,7 @@ export const recordScriptDecode = async ({
   maxWalks = Number.POSITIVE_INFINITY,
   maxSubmitAttempts = SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS,
   refreshLedgerParameters = refreshScriptDecodeLedgerParameters(lucid),
+  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
@@ -248,6 +251,8 @@ export const recordScriptDecode = async ({
   readonly maxWalks?: number;
   readonly maxSubmitAttempts?: number;
   readonly refreshLedgerParameters?: () => Promise<void>;
+  /** Where the staged chunks are journaled, for a later call to reuse. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
   readonly recordUtxo: UTxO;
   readonly record: ScriptDecodeRecord | undefined;
@@ -271,9 +276,11 @@ export const recordScriptDecode = async ({
       scriptHashHex,
     });
   let limits = scriptDecodeLedgerLimits(lucid);
-  const staging =
-    (await findStagedScriptDecodeBytes({ lucid, scriptBytes })) ??
-    (await stageScriptDecodeBytes({ lucid, scriptBytes }));
+  const staging = await stageScriptDecodeBytes({
+    lucid,
+    scriptBytes,
+    ...(ownOutputs === undefined ? {} : { ownOutputs }),
+  });
   const bind = async (): Promise<ScriptDecodeRunPosition> => {
     const cursor = startScriptDecodeWalk(language, scriptBytes);
     const runUtxo = await bindScriptDecodeRun({

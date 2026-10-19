@@ -4,9 +4,9 @@
  * run and withdraws zero from each class staker that steps one of its
  * segments; each staker's redeemer carries its segments and their links.
  *
- * Coin selection never spends a wallet UTxO carrying a datum or a script, so
- * a staged chunk (at the wallet address, read by Bind and Walk) stays put.
- * Each `build*Tx` signs without submitting, so a journaled caller can record
+ * Coin selection spends only plain coins (no datum, no script, nothing but
+ * ada), so a staged chunk (at the wallet address, read by Bind and Walk)
+ * stays put. Each `build*Tx` signs without submitting, so a journaled caller can record
  * the exact transaction before it is sent; an optional `validTo` (POSIX ms)
  * makes a transaction the ledger never takes expire instead of staying
  * pending.
@@ -35,7 +35,13 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
+import {
+  claimOwnOutputs,
+  inlineDatumCarriageSlot,
+  readOwnOutputs,
+} from "../workflow/own-outputs.js";
 import {
   SCRIPT_DECODE_CLOSE_REDEEMER,
   scriptDecodeBindRedeemer,
@@ -77,21 +83,18 @@ export type ScriptDecodeStake = Readonly<{
 /** The execution units a built transaction's redeemers declare, summed. */
 export type ScriptDecodeExUnits = Readonly<{ mem: bigint; steps: bigint }>;
 
-const isSpendable = (utxo: UTxO): boolean =>
-  utxo.datum == null && utxo.datumHash == null && utxo.scriptRef == null;
-
 /**
- * `complete`'s wallet inputs, read fresh. With no datum or script UTxO in the
- * wallet there is no preset, so a wallet's own collateral (the watcher's
- * reserved one, never among its funding UTxOs) survives: Lucid takes
- * collateral only from among preset inputs.
+ * `complete`'s wallet inputs, read fresh: the plain coins only. With nothing
+ * but plain coins in the wallet there is no preset, so a wallet's own
+ * collateral (the watcher's reserved one, never among its funding UTxOs)
+ * survives: Lucid takes collateral only from among preset inputs.
  */
 export const scriptDecodeWalletInputs = async (
   lucid: LucidEvolution,
 ): Promise<{ presetWalletInputs?: UTxO[] }> => {
   lucid.clearUTxOOverride();
   const utxos = await lucid.wallet().getUtxos();
-  const spendable = utxos.filter(isSpendable);
+  const spendable = utxos.filter(isPlainFundingOutput);
   return spendable.length === utxos.length
     ? {}
     : { presetWalletInputs: spendable };
@@ -195,20 +198,27 @@ export type ScriptDecodeSignedTx = Readonly<{
 const until = (tx: TxBuilder, validTo: number | undefined): TxBuilder =>
   validTo === undefined ? tx : tx.validTo(validTo);
 
-/** Submits `built`, awaits it, and returns the output it was built for. */
+/**
+ * Submits `built`, awaits it, and returns the output it was built for: read
+ * by the out-ref its signed body gives that output, never by a search of
+ * the address.
+ */
 export const submitScriptDecodeTx = async (
   lucid: LucidEvolution,
   { signed, address, matches, label }: ScriptDecodeSignedTx,
 ): Promise<UTxO> => {
+  const [claim] = claimOwnOutputs({ signed, slots: [{ address, matches }] });
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  const found = (await lucid.utxosAt(address)).filter(
-    (utxo) => utxo.txHash === txHash && matches(utxo),
+  const found = await readOwnOutputs(
+    (outRefs) => lucid.utxosByOutRef([...outRefs]),
+    [claim!.outRef],
   );
-  if (found.length !== 1) {
+  const output = found.get(claim!.outRef);
+  if (output === undefined || !matches(output)) {
     throw new Error(`script decode: ${label} output not found`);
   }
-  return found[0]!;
+  return output;
 };
 
 /** The staging datums of `scriptBytes`, in order: one per staged UTxO. */
@@ -251,35 +261,9 @@ export const buildScriptDecodeStageTx = async ({
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address,
-    matches: (output) => output.datum === datum,
+    matches: inlineDatumCarriageSlot(address, datum).matches,
     label: "staging",
   };
-};
-
-/**
- * Stages `scriptBytes` in order across UTxOs at `address` (the wallet's own by
- * default, so their Ada stays reclaimable), one transaction each.
- */
-export const stageScriptDecodeBytes = async ({
-  lucid,
-  scriptBytes,
-  address,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly scriptBytes: Uint8Array;
-  readonly address?: string;
-}): Promise<UTxO[]> => {
-  const target = address ?? (await lucid.wallet().address());
-  const staged: UTxO[] = [];
-  for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
-    staged.push(
-      await submitScriptDecodeTx(
-        lucid,
-        await buildScriptDecodeStageTx({ lucid, datum, address: target }),
-      ),
-    );
-  }
-  return staged;
 };
 
 type BindInput = {
