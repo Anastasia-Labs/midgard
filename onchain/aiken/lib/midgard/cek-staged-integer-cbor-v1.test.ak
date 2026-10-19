@@ -268,6 +268,11 @@ test refuses_a_definite_form_above_64_bytes() fail {
   accepted(builtin.append_bytearray(#"c25841", replicate(65, 1)))
 }
 
+/// A 10-byte argument under the two-byte definite head `58 0a`.
+test refuses_a_non_minimal_definite_head() fail {
+  accepted(builtin.append_bytearray(#"c2580a", replicate(10, 1)))
+}
+
 test refuses_a_63_byte_middle_segment() fail {
   accepted(
     builtin.append_bytearray(

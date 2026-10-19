@@ -98,6 +98,10 @@ describe("canonical integer CBOR", () => {
       Buffer.concat([Buffer.from("c25841", "hex"), Buffer.alloc(65, 1)]),
     ],
     [
+      "a non-minimal definite head",
+      Buffer.concat([Buffer.from("c2580a", "hex"), Buffer.alloc(10, 1)]),
+    ],
+    [
       "a 63-byte middle segment",
       Buffer.concat([
         Buffer.from("c25f583f", "hex"),
