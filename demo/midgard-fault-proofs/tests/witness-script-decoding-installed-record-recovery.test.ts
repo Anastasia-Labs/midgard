@@ -6,10 +6,16 @@
  * again over its journal and reservation store and finishes the record it
  * began: it leaves exactly the outputs an uninterrupted run leaves, so no
  * record action is taken twice. A wallet that cannot pay for the next record
- * action pauses the objective with the typed underfunded reason, and a
- * top-up resumes it to conviction. A Walk the ledger rejects on every one of
+ * action pauses the objective with the typed underfunded reason, which names
+ * the wallet's coins left out of funding for holding tokens, and a top-up
+ * resumes it to conviction. A Walk the ledger rejects on every one of
  * its bounded attempts holds the objective instead of refitting it forever.
  */
+import {
+  getAddressDetails,
+  mintingPolicyToId,
+  scriptFromNative,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({
@@ -126,6 +132,25 @@ const topUpProver = async (harness: Harness, lovelace: bigint) => {
   harness.emulator.awaitBlock();
 };
 
+/** The funder pays the prover wallet one coin of `lovelace` and a token. */
+const sendTokenCoin = async (harness: Harness, lovelace: bigint) => {
+  const funder = harness.funderLucid;
+  const policy = scriptFromNative({
+    type: "sig",
+    keyHash: getAddressDetails(await funder.wallet().address())
+      .paymentCredential!.hash,
+  });
+  const unit = `${mintingPolicyToId(policy)}cafe`;
+  const sent = await funder
+    .newTx()
+    .mintAssets({ [unit]: 1n })
+    .attach.MintingPolicy(policy)
+    .pay.ToAddress(harness.proverSigner.address, { lovelace, [unit]: 1n })
+    .complete();
+  await (await sent.sign.withWallet().complete()).submit();
+  harness.emulator.awaitBlock();
+};
+
 describe("script-decode record recovery in the installed watcher application", () => {
   it("resumes a record its stopped process began from the journal, taking no record action twice", async () => {
     const uninterrupted = await runInstalled(SCENARIO, hooks, {
@@ -211,6 +236,39 @@ describe("script-decode record recovery in the installed watcher application", (
     expect(pausedReasons).toHaveLength(2);
     expect(toppedUp).toBe(true);
     expect(run.convicted).toBe(true);
+  }, 1_800_000);
+
+  it("names the wallet's coins holding tokens, left out of funding, when it pauses a record it cannot fund", async () => {
+    let drained = false;
+    const pausedReasons: string[] = [];
+    const run = await runInstalled(SCENARIO, hooks, {
+      maxTurns: RECOVERY_TURN_CAP,
+      beforeTurns: ({ harness, clock }) => {
+        clock.state.crashAfterPolls = POLL_CAP;
+        clock.state.onPoll = async () => {
+          if (drained || (await stagingOutputsOf(harness)).length === 0) return;
+          drained = true;
+          await drainProver(harness, 1_500_000n);
+          // The wallet's ada now sits in a coin that also holds a token.
+          await sendTokenCoin(harness, 5_000n * ADA);
+        };
+      },
+      afterTurn: ({ result }) => {
+        if (!drained) return;
+        if (
+          result.reason?.startsWith(SCRIPT_DECODE_RECORD_UNDERFUNDED) !== true
+        )
+          return;
+        pausedReasons.push(result.reason);
+        return "stop";
+      },
+    });
+
+    expect(run.convicted).toBe(false);
+    expect(pausedReasons).toHaveLength(1);
+    expect(pausedReasons[0]).toContain(
+      "from plain-ADA coins (1 wallet coin(s) holding tokens are not spent)",
+    );
   }, 1_800_000);
 
   it("holds a Walk the ledger rejects on every bounded attempt, submitting it no more", async () => {

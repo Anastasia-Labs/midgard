@@ -26,15 +26,23 @@ export const SCRIPT_DECODE_RECORD_UNDERFUNDED =
 /**
  * The prover wallet cannot pay for the next record transaction. The
  * workflow pauses on it, and resumes on a later observation once funded.
+ * Record transactions are funded from plain-ADA coins only, so the reason
+ * names the wallet's coins left out for holding tokens, if any.
  */
 export class ScriptDecodeRecordUnderfundedError extends WorkflowFundingReservationUnavailableError {
   constructor(
     readonly stage: string,
     override readonly cause: unknown,
+    /** Wallet coins left out of funding for holding tokens. */
+    readonly tokenCoinsLeftOut = 0,
   ) {
     super();
     this.name = "ScriptDecodeRecordUnderfundedError";
-    this.message = `${SCRIPT_DECODE_RECORD_UNDERFUNDED}: the prover wallet cannot fund ${stage}: ${cause instanceof Error ? cause.message : String(cause)}`;
+    const leftOut =
+      tokenCoinsLeftOut === 0
+        ? ""
+        : ` from plain-ADA coins (${tokenCoinsLeftOut.toString()} wallet coin(s) holding tokens are not spent)`;
+    this.message = `${SCRIPT_DECODE_RECORD_UNDERFUNDED}: the prover wallet cannot fund ${stage}${leftOut}: ${cause instanceof Error ? cause.message : String(cause)}`;
   }
 }
 
