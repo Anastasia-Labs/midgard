@@ -308,4 +308,19 @@ describe("network-id Certified-tier field certificate", () => {
       throw new Error("expected the forced scan action");
     expect(selected.action.input.certificateOutRef).toBe(`${h32(0x61)}#0`);
   });
+
+  it("schedules only an output that holds the certificate token", async () => {
+    const certificates: UTxO[] = [];
+    const { harness, certificate } = await certifiedOpening({
+      certificateUtxos: certificates,
+    });
+    certificates.push(
+      certificate("00".repeat(32), { lovelace: 5_000_000n }),
+      certificate(h32(0x61)),
+    );
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected the forced scan action");
+    expect(selected.action.input.certificateOutRef).toBe(`${h32(0x61)}#0`);
+  });
 });
