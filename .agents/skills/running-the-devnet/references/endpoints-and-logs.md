@@ -668,6 +668,16 @@ degradations added for the L1 follower; the full set is
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
+- `fault_proof_continuation_stalled`: an objective's proof session journaled
+  no progress (no confirmation and no new action) for 30 min, or for 1,800
+  polls if the clock stands still. A transaction the submit endpoint accepts
+  but that never lands, resubmitted each validity window, is the usual cause.
+  The session hands its turn back so other objectives run, logs the hold at
+  error level and resumes on the next observation; it is never a refusal. It
+  clears at the first progress of a later run of the objective. Check the
+  `last pending:` reason in the detail, then the L1 submit endpoint and
+  provider. On the testing profiles (15 min maturity) the bound is longer
+  than maturity, so there it is an alarm only.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands

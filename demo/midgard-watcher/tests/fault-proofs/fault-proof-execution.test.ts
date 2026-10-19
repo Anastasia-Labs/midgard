@@ -2,6 +2,8 @@ import { join } from "node:path";
 
 import {
   createWorkflowActuationPermitController,
+  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
   type WorkflowAdapterRunnerInput,
@@ -9,6 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
@@ -182,6 +185,62 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     expect(test.setAlert).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
+  });
+
+  it("names a stalled session on readiness and logs it at error level until a later run journals progress", async () => {
+    const test = await setup();
+    const reason = `${FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED}: no journaled progress for 1800000 ms over 1800 polls; last pending: transaction for walk is pending`;
+    const detail = `doubleSpend/${test.input.job.headerHash}: ${reason}`;
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason,
+    });
+    const logged: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((line) => logged.push(String(line)) > 0);
+    try {
+      expect(await test.execution.execute(test.input)).toEqual({
+        kind: "pending",
+        resume: "await_observation",
+        reason,
+      });
+    } finally {
+      stderr.mockRestore();
+    }
+    const stalled = {
+      reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+      detail,
+    };
+    expect(test.execution.readiness()).toEqual([stalled]);
+    expect(logged).toContain(
+      `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...stalled })}\n`,
+    );
+    // The next run waits on L1 at first, then its first journaled progress
+    // clears the alarm before the run ends.
+    const during: unknown[] = [];
+    const progressThenPend = async (invocation: WorkflowAdapterRunnerInput) => {
+      during.push(test.execution.readiness());
+      invocation.onProgress?.();
+      during.push(test.execution.readiness());
+      return { kind: "pending", reason: "transaction for walk is pending" };
+    };
+    test.runOrResume.mockImplementationOnce(progressThenPend);
+    await test.execution.execute(test.input);
+    // A hold under another name is left to the run's outcome.
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
+    });
+    await test.execution.execute(test.input);
+    test.runOrResume.mockImplementationOnce(progressThenPend);
+    await test.execution.execute(test.input);
+    const resubmission = expect.objectContaining({
+      reason: "fault_proof_resubmission_required",
+    });
+    expect(during).toEqual([[stalled], [], [resubmission], [resubmission]]);
+    expect(test.execution.readiness()).toEqual([]);
   });
 
   it.each([
