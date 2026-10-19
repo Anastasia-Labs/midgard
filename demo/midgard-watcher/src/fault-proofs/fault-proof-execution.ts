@@ -30,11 +30,11 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import { holdWatcherFaultProofPending } from "./fault-proof-continuation-stall.js";
 import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
-import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -77,10 +77,10 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
-   * Objectives held on an L1 read the source refused
-   * (`fault_proof_l1_refused:<reason>`) or need a new submission after their
-   * latest safe start (`fault_proof_resubmission_required`), until the next run
-   * or completion check meets something else, or the objective is settled.
+   * Objectives held on a refused L1 read, a resubmission due after the latest
+   * safe start or a stalled session (`fault_proof_l1_refused:<reason>`,
+   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`),
+   * until a run or completion check meets something else, or it is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -424,7 +424,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
               result.kind === "awaiting_counterparty" ||
               isWatcherPreflightStalledResult(result))
           ) {
-            held = holdWatcherFaultProofForResubmission(holds, job, result);
+            held = holdWatcherFaultProofPending(holds, job, result);
             record("reconciling");
             return {
               kind: "pending",

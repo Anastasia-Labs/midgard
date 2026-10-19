@@ -45,6 +45,14 @@ export const latestSubmissionIntent = (
 export const FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED =
   "Canonical workflow requires fresh submission authority";
 
+/**
+ * The prefix of the `pending` reason of a run whose session journaled no
+ * progress within the continuation bound. The run hands its turn back and
+ * resumes on the next observation; it never refuses for this.
+ */
+export const FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED =
+  "Canonical workflow journaled no progress within its continuation bound";
+
 export type FraudProofWorkflowRunResult =
   | {
       readonly kind: "no_fault_detected" | "unprovable_gap";
