@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { DataB, DataI } from "@harmoniclabs/plutus-data";
 import {
   Application,
@@ -30,6 +27,7 @@ import {
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import { listConstructSemanticWitness } from "./cek-machine.list-construct-witness.js";
+import VECTORS from "./fixtures/cek-builtin-step-evidence-vectors.json" with { type: "json" };
 
 // mkCons (32) is proved as a semantic step only over a list whose element
 // type the split list hop can read. The split roots hop compacts the source
@@ -42,7 +40,7 @@ import { listConstructSemanticWitness } from "./cek-machine.list-construct-witne
 const DATA = { kind: "data" } as const;
 const INTEGER = { kind: "integer" } as const;
 
-/** The element types of the matrix pinned in the Aiken module. */
+/** The element types of the pinned matrix the Aiken module proves. */
 const ROWS: readonly {
   readonly pin: string;
   readonly element: MidgardCekConstantType;
@@ -276,20 +274,14 @@ const directWitnessOf = (
   };
 };
 
-const AIKEN_MODULE = fileURLToPath(
-  new URL(
-    "../../../onchain/aiken/lib/midgard/cek-direct-list-construct.test.ak",
-    import.meta.url,
-  ),
-);
-
+/**
+ * The pinned mkCons evidence, by label. The vector file is the one source:
+ * the Aiken module `cek-direct-list-construct.test.ak` imports the same bytes
+ * from the module generated from it, and proves each step.
+ */
 const pinnedEvidence = (): ReadonlyMap<string, string> =>
   new Map(
-    [
-      ...readFileSync(AIKEN_MODULE, "utf8").matchAll(
-        /^const (\w+)_evidence =\s+#"([0-9a-f]+)"/gm,
-      ),
-    ].map((match) => [match[1]!, match[2]!]),
+    VECTORS.directListConstruct.map(({ name, evidence }) => [name, evidence]),
   );
 
 /**
@@ -337,7 +329,7 @@ describe("mkCons emission by element type", () => {
     },
   );
 
-  it("each row's evidence is pinned in the Aiken module", () => {
+  it("each row's evidence is pinned in the vector file", () => {
     const pinned = pinnedEvidence();
     for (const { pin, element, semantic } of ROWS) {
       const { step, evidence } = mkConsStep(element);
@@ -398,7 +390,7 @@ describe("mkCons step acceptance by witness kind", () => {
     },
   );
 
-  it("the integer row's direct witness is pinned in the Aiken module", () => {
+  it("the integer row's direct witness is pinned in the vector file", () => {
     const built = mkConsStep(INTEGER);
     expect(pinnedEvidence().get("mk_cons_integer_direct")).toBe(
       Buffer.from(

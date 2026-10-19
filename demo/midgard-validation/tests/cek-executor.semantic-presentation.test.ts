@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
@@ -16,6 +13,7 @@ import {
   SHAPES,
   unit,
 } from "./cek-executor.semantic-presentation.shapes.js";
+import VECTORS from "./fixtures/cek-builtin-step-evidence-vectors.json" with { type: "json" };
 
 // A semantic builtin step (tags 29 to 50 except mapData and unMapData)
 // presents each Data argument, each list or pair argument whose memory the
@@ -114,23 +112,13 @@ const MAX_SHAPES: readonly {
 ];
 
 /**
- * The evidence the Aiken presentation module pins, by label. The module
- * proves each step and refuses each presented value moved by one word.
+ * The pinned evidence, by label. The vector file is the one source: the Aiken
+ * presentation module imports the same bytes from the module generated from
+ * it, proves each step and refuses each presented value moved by one word.
  */
-const AIKEN_MODULE = fileURLToPath(
-  new URL(
-    "../../../onchain/aiken/lib/midgard/cek-semantic-presentation.test.ak",
-    import.meta.url,
-  ),
-);
-
 const pinnedEvidence = (): ReadonlyMap<string, string> =>
   new Map(
-    [
-      ...readFileSync(AIKEN_MODULE, "utf8").matchAll(
-        /^const ([a-z0-9_]+)_evidence =\s*#"([0-9a-f]+)"/gmu,
-      ),
-    ].map(([, label, evidence]) => [label!, evidence!]),
+    VECTORS.semanticPresentation.map(({ name, evidence }) => [name, evidence]),
   );
 
 const PINNED = [...SHAPES, ...MAX_SHAPES].flatMap(({ pinned, term }) =>
@@ -154,7 +142,7 @@ describe("semantic builtin steps present Data, list and pair values by summary",
     },
   );
 
-  it("pins the steps the executor emits in the Aiken presentation module", () => {
+  it("pins the steps the executor emits in the vector file", () => {
     const pinned = pinnedEvidence();
     expect([...pinned.keys()].sort()).toEqual(
       PINNED.map((row) => row.pinned).sort(),

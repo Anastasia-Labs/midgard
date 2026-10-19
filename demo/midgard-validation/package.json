@@ -177,6 +177,8 @@
     "fixtures:cek-cost-v1-aiken:check": "pnpm run build && node scripts/generate-cek-cost-v1-aiken-goldens.mjs --check",
     "fixtures:cek-builtin-cardano-v1:sync": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs",
     "fixtures:cek-builtin-cardano-v1:check": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs --check",
+    "fixtures:cek-builtin-step-evidence:sync": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs",
+    "fixtures:cek-builtin-step-evidence:check": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs --check",
     "test": "node ../scripts/package-test.mjs",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"

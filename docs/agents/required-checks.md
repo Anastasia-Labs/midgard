@@ -1007,6 +1007,31 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:cek-builtin-step-evidence`
+
+Golden channel cek-builtin-step-evidence (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-builtin-step-evidence-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-builtin-step-evidence-vectors.json`
+  - `onchain/aiken/lib/midgard/cek-direct-list-construct-evidence-generated.ak`
+  - `onchain/aiken/lib/midgard/cek-semantic-presentation-evidence-generated.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:transition-trace-abi`
 
 Golden channel transition-trace-abi (midgard-node).
