@@ -15,6 +15,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -200,9 +201,17 @@ export const publishFaultProofFieldCarriage = async ({
     // Compared byte-for-byte against the datum, exactly as
     // `resolveChunkReferenceIndices` does when it locates the same UTxO at the
     // door. Matching on anything looser here would reuse a publication the
-    // resolver then fails to find.
+    // resolver then fails to find. Two chunks with the same bytes need two
+    // outputs, so an output already used for an earlier chunk is skipped.
     const existing = (await lucid.utxosAt(publisherAddress)).find(
-      (utxo) => utxo.datum === datumCbor,
+      (utxo) =>
+        !published.some(
+          (used) =>
+            used.txHash === utxo.txHash &&
+            used.outputIndex === utxo.outputIndex,
+        ) &&
+        utxo.datum === datumCbor &&
+        isAdaOnlyInlineDatumOutput(utxo),
     );
     if (existing !== undefined) {
       await publicationConfirmed?.(existing.txHash);
@@ -278,7 +287,11 @@ export const resolveFaultProofFieldCarriagePublications = async ({
     const expectedDatum = fieldPreimagePublicationDatumCbor(publication.bytes);
     const match = candidates.find((candidate) => {
       const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
-      return !claimed.has(label) && candidate.datum === expectedDatum;
+      return (
+        !claimed.has(label) &&
+        candidate.datum === expectedDatum &&
+        isAdaOnlyInlineDatumOutput(candidate)
+      );
     });
     if (match === undefined) return undefined;
     claimed.add(`${match.txHash}#${match.outputIndex.toString()}`);
@@ -309,7 +322,11 @@ export const findMissingFaultProofFieldPublication = async ({
     const datumCbor = fieldPreimagePublicationDatumCbor(publication.bytes);
     const match = candidates.find((candidate) => {
       const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
-      return !claimed.has(label) && candidate.datum === datumCbor;
+      return (
+        !claimed.has(label) &&
+        candidate.datum === datumCbor &&
+        isAdaOnlyInlineDatumOutput(candidate)
+      );
     });
     if (match === undefined) {
       return {

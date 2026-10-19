@@ -16,6 +16,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isAdaOnlyInlineDatumOutput } from "../ada-only-carriage-output.js";
 import { scriptDecodeRunDatum, scriptDecodeRunTokenName } from "./data.js";
 import {
   type ScriptDecodeDeployment,
@@ -37,8 +38,10 @@ export type ScriptDecodeRunPosition = Readonly<{
 /**
  * For each staging datum of `scriptBytes` in order, a UTxO at the staging
  * address holding it (the first in out-ref order), or undefined where none
- * does. Staging carries no token, so any UTxO with the right datum serves:
- * a Walk checks the staged bytes against the run's script hash.
+ * does. Staging carries no token, so any ada-only UTxO with the right inline
+ * datum serves: a Walk checks the staged bytes against the run's script hash.
+ * Outputs that also carry a reference script or other assets are skipped, so
+ * the steps that read the staging pay only for the bytes they need.
  */
 export const findStagedScriptDecodeChunks = async ({
   lucid,
@@ -60,7 +63,12 @@ export const findStagedScriptDecodeChunks = async ({
   const staged: (UTxO | undefined)[] = [];
   for (const datum of scriptDecodeStagingDatums(scriptBytes)) {
     staged.push(
-      held.find((utxo) => utxo.datum === datum && !staged.includes(utxo)),
+      held.find(
+        (utxo) =>
+          utxo.datum === datum &&
+          isAdaOnlyInlineDatumOutput(utxo) &&
+          !staged.includes(utxo),
+      ),
     );
   }
   return staged;

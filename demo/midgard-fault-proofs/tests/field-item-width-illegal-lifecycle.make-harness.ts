@@ -22,6 +22,7 @@ import {
 } from "../src/field-item-width-illegal/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
+import type { FraudProofPreSubmitBoundary } from "../src/workflow/transaction-boundary.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -241,6 +242,32 @@ export const makeHarness = async () => {
         certificateReferenceScriptUtxo: requireCertificateReference(),
       }),
     );
+  /** One step-02 turn with every pre-submit boundary set to `boundary`. */
+  const step02Turn = (
+    threadOutRef: string,
+    evidence: FieldItemWidthEvidence,
+    shape: WidthShape,
+    boundary: FraudProofPreSubmitBoundary,
+  ) =>
+    submitFieldItemWidthIllegalStep02({
+      lucid: harness.proverLucid,
+      contracts,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef,
+      evidence,
+      nativeTxCompactCbor: compactCborHex(
+        shape.nativeTx,
+        evidence.subject.source_kind,
+      ),
+      witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+      publishCarriage: evidence.carriage === "RawUtxo",
+      referenceScriptUtxo: references[1]!,
+      certificateReferenceScriptUtxo: requireCertificateReference(),
+      publicationPreSubmitBoundary: boundary,
+      certificatePreSubmitBoundary: boundary,
+      preSubmitBoundary: boundary,
+    });
   const step02Raw = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
@@ -361,6 +388,7 @@ export const makeHarness = async () => {
     step01Forced,
     step02,
     step02Raw,
+    step02Turn,
     step03,
     step03Raw,
     cancel,

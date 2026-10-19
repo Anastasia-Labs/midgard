@@ -13,11 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-  resolveFaultProofFieldPreimageCertificate,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -248,34 +247,21 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   const certificateUtxo =
     suppliedCertificate ??
     (planned.plan.tier === "Certified"
-      ? ((await resolveFaultProofFieldPreimageCertificate({
+      ? await reuseOrCertifyFaultProofFieldCarriage({
           lucid,
           network: lucid.config().network!,
+          signer,
           planned,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-        })) ??
-        (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  `${FAMILY}: certified opening requires certificate reference`,
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificatePreSubmitBoundary,
-          })
-        ).certificateUtxo)
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript: `${FAMILY}: certified opening requires certificate reference`,
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificatePreSubmitBoundary,
+        })
       : undefined);
   return await submitOutputReferenceScriptDecodingStep02Raw({
     lucid,

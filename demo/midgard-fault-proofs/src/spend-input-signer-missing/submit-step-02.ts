@@ -16,9 +16,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -154,28 +154,22 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  "spend-input-signer-missing: certified input opening requires certificate reference script",
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificateBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          lucid,
+          network,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "spend-input-signer-missing: certified input opening requires certificate reference script",
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificateBoundary,
+        })
       : undefined;
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({

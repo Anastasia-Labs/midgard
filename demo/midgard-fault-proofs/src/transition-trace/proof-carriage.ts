@@ -2,6 +2,7 @@ import { compactPlutusDataCarriageCbor } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { isAdaOnlyInlineDatumOutput } from "../ada-only-carriage-output.js";
 import {
   readTransitionProof,
   transitionProofCbor,
@@ -62,6 +63,13 @@ export const resolveTransitionTraceByteCarriage = async ({
     publish,
   });
 };
+/**
+ * The carriage at the prover's address for each of `datums`, in order. Only an
+ * ada-only output with the datum inline serves: an output that also carries a
+ * reference script or other assets holds the same bytes but makes the step
+ * that reads it pay for more than the chunk. With `publish`, a chunk no such
+ * output holds is paid to the prover's address first.
+ */
 export const resolveTransitionTraceDataCarriage = async ({
   lucid,
   datums,
@@ -75,7 +83,9 @@ export const resolveTransitionTraceDataCarriage = async ({
   let candidates = await lucid.utxosAt(address);
   const result: UTxO[] = [];
   for (const datum of datums) {
-    let candidate = candidates.find((utxo) => utxo.datum === datum);
+    let candidate = candidates.find(
+      (utxo) => utxo.datum === datum && isAdaOnlyInlineDatumOutput(utxo),
+    );
     if (candidate === undefined) {
       if (!publish)
         throw new Error(
@@ -95,7 +105,9 @@ export const resolveTransitionTraceDataCarriage = async ({
         .complete();
       await lucid.awaitTx(await signed.submit());
       candidates = await lucid.utxosAt(address);
-      candidate = candidates.find((utxo) => utxo.datum === datum);
+      candidate = candidates.find(
+        (utxo) => utxo.datum === datum && isAdaOnlyInlineDatumOutput(utxo),
+      );
       if (candidate === undefined)
         throw new Error("submitted transition-trace proof chunk disappeared");
     }

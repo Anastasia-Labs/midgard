@@ -903,8 +903,8 @@ export const createNetworkIdWorkflowAdapter = (
             },
           );
           if (publications === undefined) {
-            throw new Error(
-              "network-id forced scan carriage is not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id forced scan carriage is no longer observable on L1",
             );
           }
           const certificate =
@@ -923,7 +923,7 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.certificateOutRef !==
                 outRefLabel(certificate))
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id forced scan does not bind the observed field certificate",
             );
           }
@@ -973,7 +973,7 @@ export const createNetworkIdWorkflowAdapter = (
               missing === undefined ||
               context.action.input.publicationDatumCbor !== missing.datumCbor
             ) {
-              throw new Error(
+              throw new WorkflowActionChangedError(
                 "network-id publication action is not the next missing plan chunk",
               );
             }
@@ -1000,8 +1000,8 @@ export const createNetworkIdWorkflowAdapter = (
             },
           );
           if (publications === undefined) {
-            throw new Error(
-              "network-id tier-3 publications are not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id tier-3 publications are no longer observable on L1",
             );
           }
           await authenticateFieldInputs({ prepared, publications });
@@ -1042,8 +1042,8 @@ export const createNetworkIdWorkflowAdapter = (
                   planned: opening,
                 });
           if (publications === undefined) {
-            throw new Error(
-              "network-id field publications are not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id field publications are no longer observable on L1",
             );
           }
           const certificate =
@@ -1062,7 +1062,7 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.certificateOutRef !==
                 outRefLabel(certificate))
           ) {
-            throw new Error(
+            throw new WorkflowActionChangedError(
               "network-id final step does not bind the observed field certificate",
             );
           }
@@ -1342,19 +1342,10 @@ export const createNetworkIdWorkflowAdapter = (
           });
           advanced = observation.kind === "confirmed";
         } else {
-          const certificate = await resolveFaultProofFieldPreimageCertificate({
-            lucid: config.lucid,
-            network: config.network,
-            planned: opening,
-            certificatePolicyId:
-              config.contracts.fieldPreimageCertificatePolicyId,
-          });
-          if (
-            certificate === undefined ||
-            certificate.txHash !== context.txHash
-          ) {
-            return await unconfirmed();
-          }
+          // The certification transaction pays its certificate at output 0.
+          // Confirm that exact output: another valid certificate for the same
+          // opening may sort first at the address, and selecting by order
+          // would never settle this transaction.
           const certification = deriveFieldPreimageCertification(opening.plan);
           const observation = await observer.observeExact({
             headerHash: prepared.headerHash,
@@ -1364,7 +1355,7 @@ export const createNetworkIdWorkflowAdapter = (
               certificatePolicyId:
                 config.contracts.fieldPreimageCertificatePolicyId,
             }),
-            expectedOutRef: outRefLabel(certificate),
+            expectedOutRef: `${context.txHash}#0`,
             expectedDatumCbor: certification.datumCbor,
             expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
           });
