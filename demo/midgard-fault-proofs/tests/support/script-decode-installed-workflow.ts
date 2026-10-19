@@ -407,6 +407,12 @@ export const installScriptDecodeApplication = async ({
             (entry as { readonly scriptHash: string }).scriptHash,
           ]),
         [SCRIPT_DECODE_SPEND_ROLE, scriptDecode.validator.spendingScriptHash],
+        // The manifest's certificate spend member: the same validator as its
+        // mint, which the legacy deployment info names only as a mint.
+        [
+          "fieldPreimageCertificateSpend",
+          contracts.fieldPreimageCertificate.policyId,
+        ],
       ]),
       referenceUtxos: [
         ...roster.values(),
