@@ -32,7 +32,7 @@ import {
 import { buildDeploymentManifestIdentityContextProgram } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
 import {
   localNodeManifestL1OriginProver,
-  provenManifestL1Origin,
+  runStateManifestL1Origin,
 } from "./contract-deployment-info.manifest-l1-origin.js";
 
 const buildLiveDeploymentManifestProgram = (
@@ -78,17 +78,9 @@ const buildLiveDeploymentManifestProgram = (
       existingManifest === undefined
         ? yield* Effect.scoped(
             Effect.gen(function* () {
-              const runState = yield* Effect.tryPromise({
-                try: () =>
-                  loadDeploymentRunState(defaultDeploymentRunStatePath()),
-                catch: (cause) =>
-                  new Error(
-                    "Failed to read the deployment run state's recorded L1 origin",
-                    { cause },
-                  ),
-              });
-              return yield* provenManifestL1Origin({
-                recordedOrigin: runState?.identity.l1Origin,
+              return yield* runStateManifestL1Origin({
+                runStatePath:
+                  options.runStatePath ?? defaultDeploymentRunStatePath(),
                 nonceTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
                 prover: yield* localNodeManifestL1OriginProver(nodeConfig),
               });
@@ -182,7 +174,8 @@ export const writeLiveContractDeploymentInfoProgram = (
       options,
     );
     const marker = makeDeploymentMarker(deploymentManifest.manifestId);
-    const runStatePath = defaultDeploymentRunStatePath();
+    const runStatePath =
+      options.runStatePath ?? defaultDeploymentRunStatePath();
     const runState = yield* Effect.tryPromise({
       try: () => loadDeploymentRunState(runStatePath),
       catch: (cause) =>
@@ -258,6 +251,8 @@ export const writeLiveContractDeploymentInfoProgram = (
 export type ReconcileInitializedDeploymentManifestOptions = {
   readonly outputPath: string;
   readonly initTxHash: string;
+  /** The deployment run state (`--run-state`); by default `MIDGARD_RUN_STATE_PATH` or deploymentInfo/midgard-run-state.json. */
+  readonly runStatePath?: string;
 };
 
 export type ReconcileInitializedDeploymentManifestSummary = {
@@ -272,6 +267,7 @@ export type ReconcileInitializedDeploymentManifestSummary = {
 export const reconcileInitializedDeploymentManifestProgram = ({
   outputPath,
   initTxHash,
+  runStatePath,
 }: ReconcileInitializedDeploymentManifestOptions): Effect.Effect<
   ReconcileInitializedDeploymentManifestSummary,
   Error,
@@ -319,6 +315,7 @@ export const reconcileInitializedDeploymentManifestProgram = ({
     }
 
     const path = yield* writeLiveContractDeploymentInfoProgram(outputPath, {
+      ...(runStatePath === undefined ? {} : { runStatePath }),
       hubOracleOneShotStatus: "consumed_by_init",
       steps: {
         initProtocol: {

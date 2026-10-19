@@ -210,6 +210,8 @@ export const writeContractDeploymentInfoFileProgram = (
 export type LiveContractDeploymentInfoWriteOptions = {
   readonly steps?: Partial<DeploymentManifest["steps"]>;
   readonly hubOracleOneShotStatus?: DeploymentManifest["hubOracleOneShot"]["status"];
+  /** The deployment run state (`--run-state`); by default `MIDGARD_RUN_STATE_PATH` or deploymentInfo/midgard-run-state.json. */
+  readonly runStatePath?: string;
 };
 
 export const formatDeploymentManifestVerificationReport = (

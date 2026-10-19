@@ -147,9 +147,17 @@ reconcile
     "--init-tx-hash <hex>",
     "32-byte protocol initialization transaction hash",
   )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path the deployment's prepare-hub-oracle-one-shot-nonce wrote (default: MIDGARD_RUN_STATE_PATH or deploymentInfo/midgard-run-state.json)",
+  )
   .option("--json", "Print machine-readable JSON output", true)
   .action(
-    async (options: { readonly out: string; readonly initTxHash: string }) => {
+    async (options: {
+      readonly out: string;
+      readonly initTxHash: string;
+      readonly runState?: string;
+    }) => {
       let initTxHash: string;
       try {
         initTxHash = parseHexBytes(
@@ -166,6 +174,9 @@ reconcile
         ContractDeploymentInfo.reconcileInitializedDeploymentManifestProgram({
           outputPath: options.out,
           initTxHash,
+          ...(options.runState === undefined
+            ? {}
+            : { runStatePath: options.runState }),
         }).pipe(tapJson()),
       );
 

@@ -689,8 +689,14 @@ node configured the command refuses before it signs anything.
 
 The finalized deployment manifest records that point as `l1Origin`, once
 finalization has proved it on the local node's chain and before the block
-holding `HUB_ORACLE_ONE_SHOT_TX_HASH`. The node's L1 follower starts there.
-`L1_ORIGIN=<slot>.<block hash>` overrides it; it is strict (a decimal slot
+holding `HUB_ORACLE_ONE_SHOT_TX_HASH`. Finalization (`init`,
+`reconcile deployment-manifest`, `export-contract-deployment-info`) reads it
+from the run state `--run-state` names (default `MIDGARD_RUN_STATE_PATH` or
+`deploymentInfo/midgard-run-state.json`) and refuses a run state for another
+hub-oracle nonce. A run state that records no origin cannot be finalized:
+start a new deployment with `prepare-hub-oracle-one-shot-nonce
+--fresh-redeploy`. The node's L1 follower starts at the manifest's
+`l1Origin`. `L1_ORIGIN=<slot>.<block hash>` overrides it; it is strict (a decimal slot
 without leading zeros, a dot, then the 64-character lowercase hex block hash)
 and is not part of the profile or manifest. An override after the recorded
 `l1Origin` leaves the follower unready (`origin_after_protocol_init`), since

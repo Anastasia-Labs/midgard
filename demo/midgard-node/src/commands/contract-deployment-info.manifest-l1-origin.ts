@@ -9,6 +9,7 @@ import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { findOrigin, type FindOriginResult } from "@al-ft/midgard-l1-follower";
 import { Effect, type Scope } from "effect";
 
+import { loadDeploymentRunState } from "../e2e/run-state.js";
 import { NATIVE_LEDGER_SETTING_NAMES } from "../services/native-ledger.js";
 import {
   type LocalNodeConfig,
@@ -60,7 +61,7 @@ export const provenManifestL1Origin = ({
     if (recordedOrigin === undefined)
       return yield* Effect.fail(
         new Error(
-          `Cannot finalize the deployment manifest: the deployment run state records no L1 origin for the hub-oracle nonce ${txHash} (the nonce command records it before it signs)`,
+          `Cannot finalize the deployment manifest: the deployment run state records no L1 origin for the hub-oracle nonce ${txHash}. The nonce command records it before it signs and none can be recorded afterwards, so start a new deployment with prepare-hub-oracle-one-shot-nonce --fresh-redeploy --fresh-redeploy-reason <reason>`,
         ),
       );
     if (prover === undefined)
@@ -84,6 +85,53 @@ export const provenManifestL1Origin = ({
         ),
       );
     return recordedOrigin;
+  });
+
+/**
+ * The L1 origin a first finalized manifest records, from the deployment run
+ * state at `runStatePath` (the deploy flow's `--run-state`), proved by
+ * `provenManifestL1Origin`. Refuses, with no manifest written, when there
+ * is no run state there or when it belongs to another hub-oracle nonce than
+ * `nonceTxHash`: an origin recorded for another nonce says nothing about
+ * when this one was signed.
+ */
+export const runStateManifestL1Origin = ({
+  runStatePath,
+  nonceTxHash,
+  prover,
+}: Readonly<{
+  runStatePath: string;
+  nonceTxHash: string;
+  prover: ManifestL1OriginProver | undefined;
+}>): Effect.Effect<L1Origin, Error> =>
+  Effect.gen(function* () {
+    const txHash = nonceTxHash.toLowerCase();
+    const runState = yield* Effect.tryPromise({
+      try: () => loadDeploymentRunState(runStatePath),
+      catch: (cause) =>
+        new Error(
+          `Cannot finalize the deployment manifest: failed to read the deployment run state ${runStatePath}: ${formatUnknownError(cause)}`,
+          { cause },
+        ),
+    });
+    if (runState === null)
+      return yield* Effect.fail(
+        new Error(
+          `Cannot finalize the deployment manifest: there is no deployment run state at ${runStatePath}; pass the run state the deployment's prepare-hub-oracle-one-shot-nonce wrote with --run-state`,
+        ),
+      );
+    const recordedNonce = runState.identity.hubOracleOneShot?.txHash;
+    if (recordedNonce?.toLowerCase() !== txHash)
+      return yield* Effect.fail(
+        new Error(
+          `Cannot finalize the deployment manifest: the deployment run state ${runStatePath} ${recordedNonce === undefined ? "records no hub-oracle nonce" : `belongs to hub-oracle nonce ${recordedNonce.toLowerCase()}`}, not HUB_ORACLE_ONE_SHOT_TX_HASH ${txHash}; pass this deployment's run state with --run-state`,
+        ),
+      );
+    return yield* provenManifestL1Origin({
+      recordedOrigin: runState.identity.l1Origin,
+      nonceTxHash: txHash,
+      prover,
+    });
   });
 
 /**
