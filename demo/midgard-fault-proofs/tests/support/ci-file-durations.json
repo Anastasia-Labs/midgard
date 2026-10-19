@@ -159,7 +159,6 @@
     "tests/output-reference-script-decoding-authenticated-workflow.test.ts": 2.7,
     "tests/output-reference-script-decoding-lifecycle.test.ts": 27.9,
     "tests/output-reference-script-decoding-publication-fit.test.ts": 3,
-    "tests/output-reference-script-decoding-workflow.test.ts": 2.2,
     "tests/output-reference-script-decoding.test.ts": 3,
     "tests/phas-membership-batch.test.ts": 1.6,
     "tests/predecessor-replay.test.ts": 1.8,

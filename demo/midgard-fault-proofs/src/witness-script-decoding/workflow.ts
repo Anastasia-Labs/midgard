@@ -33,7 +33,6 @@ import "./workflow.detect-witness-script-decoding-complete-replay.js";
 import "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
 import "./workflow.create-witness-script-decoding-recovery-ports.js";
 import "./workflow.create-manifest-bound-witness-script-decoding-workflow.js";
-export { createManifestBoundWitnessScriptDecodingSubmission } from "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
 export {
   createManifestBoundWitnessScriptDecodingWorkflow,
   createWitnessScriptDecodingRecoveryAdapter,
