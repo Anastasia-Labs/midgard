@@ -5,12 +5,17 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "midgard-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { installWorkflowApplicationRegistry } from "../src/workflow/adapters.js";
+import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.js";
 import {
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
   WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS,
 } from "../src/workflow/pending-continuation.js";
-import { createManifestBoundWorkflowRunner } from "../src/workflow/runtime.js";
+import {
+  createManifestBoundWorkflowRunner,
+  WORKFLOW_RUNNER_FACTORIES,
+} from "../src/workflow/runtime.js";
 import {
   admittedActuation,
   DEPLOYMENT,
@@ -115,7 +120,10 @@ const recordJournal = () => {
  * A manifest-bound runner for one record. Each call is one admitted session
  * with its own permits, as the watcher mints them for every run.
  */
-const runnerFor = async (execute: () => Promise<unknown>) => {
+const runnerFor = async (
+  execute: () => Promise<unknown>,
+  onProgress?: () => void,
+) => {
   let actuation = await admittedActuation();
   const close = vi.fn(async () => undefined);
   const runner = createManifestBoundWorkflowRunner({
@@ -148,6 +156,7 @@ const runnerFor = async (execute: () => Promise<unknown>) => {
       fundingReservationPermit: actuation.fundingReservationPermit,
       journalDirectory,
       runtimeConfigPath: "/etc/midgard/runtime.json",
+      onProgress,
     });
   };
   return { runOrResume, close };
@@ -167,7 +176,8 @@ describe("bounded pending continuation", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const journal = recordJournal();
     const execute = vi.fn(async () => journal.pollPending());
-    const runner = await runnerFor(execute);
+    const onProgress = vi.fn();
+    const runner = await runnerFor(execute, onProgress);
     const running = settledFlag(runner.runOrResume("run"));
     await vi.advanceTimersByTimeAsync(0);
     expect(execute).toHaveBeenCalledOnce();
@@ -186,6 +196,7 @@ describe("bounded pending continuation", () => {
     expect(execute.mock.calls.length).toBeLessThanOrEqual(
       WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS + 1,
     );
+    expect(onProgress).not.toHaveBeenCalled();
     expect(runner.close).toHaveBeenCalledOnce();
   });
 
@@ -199,7 +210,8 @@ describe("bounded pending continuation", () => {
         ? journal.resubmit()
         : journal.pollPending(),
     );
-    const runner = await runnerFor(execute);
+    const onProgress = vi.fn();
+    const runner = await runnerFor(execute, onProgress);
     const startedAtMs = Date.now();
     const running = settledFlag(runner.runOrResume("run"));
     await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
@@ -217,6 +229,7 @@ describe("bounded pending continuation", () => {
     expect(
       journal.entries.filter(({ event }) => event.kind === "submitted").length,
     ).toBeGreaterThan(5);
+    expect(onProgress).not.toHaveBeenCalled();
     expect(runner.close).toHaveBeenCalledOnce();
   });
 
@@ -234,12 +247,53 @@ describe("bounded pending continuation", () => {
           ? journal.confirm("walk")
           : journal.pollPending(),
     );
-    const runner = await runnerFor(execute);
+    const onProgress = vi.fn();
+    const runner = await runnerFor(execute, onProgress);
     const running = settledFlag(runner.runOrResume("run"));
     await vi.advanceTimersByTimeAsync(polls * 1_000 + 1_000);
     await waitFor(() => running.settled);
     expect(running.value).toBe(completed);
     expect(execute).toHaveBeenCalledTimes(polls + 1);
+    // Each confirmation is reported as it lands, before the session ends.
+    expect(onProgress).toHaveBeenCalledTimes(polls / 20);
+  });
+
+  it("hands the caller's progress callback through the CLI to the installed runner", async () => {
+    const actuation = await admittedActuation();
+    const onProgress = vi.fn();
+    const received: unknown[] = [];
+    const runner = WORKFLOW_RUNNER_FACTORIES.doubleSpend(
+      async ({ invocation }) => {
+        received.push(invocation);
+        throw new Error("runtime loader reached");
+      },
+    );
+    await expect(
+      runFraudProofWorkflowCli({
+        mode: "run",
+        category: "doubleSpend",
+        deploymentFingerprint: DEPLOYMENT,
+        headerHash: actuation.headerHash,
+        decisionDigest: actuation.decisionDigest,
+        actuationPermit: actuation.actuationPermit,
+        fundingReservationPermit: actuation.fundingReservationPermit,
+        journalDirectory: await scratch(),
+        runtimeConfigPath: "/etc/midgard/runtime.json",
+        onProgress,
+        applicationRegistry: installWorkflowApplicationRegistry({
+          deploymentFingerprint: DEPLOYMENT,
+          requiredInstalledCategories: ["doubleSpend"],
+          installations: [
+            {
+              category: "doubleSpend",
+              deploymentFingerprint: DEPLOYMENT,
+              runner,
+            },
+          ],
+        }),
+      }),
+    ).rejects.toThrow("runtime loader reached");
+    expect(received).toEqual([expect.objectContaining({ onProgress })]);
   });
 
   it("lets a second objective queued behind a stalled one run to conviction, then resumes the stalled one on its next observation", async () => {

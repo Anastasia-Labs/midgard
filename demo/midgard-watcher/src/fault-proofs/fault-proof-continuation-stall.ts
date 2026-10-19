@@ -7,7 +7,7 @@ import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission
 /**
  * An objective whose runner session journaled no progress within its
  * continuation bound. It resumes on the next observation; the hold is the
- * operator's alarm until a run moves on.
+ * operator's alarm until a later run journals progress.
  */
 export const WATCHER_FAULT_PROOF_CONTINUATION_STALLED =
   "fault_proof_continuation_stalled";
@@ -51,3 +51,21 @@ export const holdWatcherFaultProofPending = (
   );
   return { kind: "pending", reason: result.reason };
 };
+
+/**
+ * The progress callback of an objective's run: its first journaled progress
+ * clears a stall hold left by an earlier run, without waiting for this run to
+ * end. Any other hold is left to the run's outcome.
+ */
+export const releaseWatcherFaultProofStallOnProgress =
+  (
+    holds: Map<string, Readonly<{ reason: string; detail: string }>>,
+    job: WatcherProofObjective,
+  ) =>
+  (): void => {
+    const objective = `${job.category}/${job.headerHash}`;
+    if (
+      holds.get(objective)?.reason === WATCHER_FAULT_PROOF_CONTINUATION_STALLED
+    )
+      holds.delete(objective);
+  };

@@ -2,7 +2,7 @@ import {
   assertWorkflowJournalActuation,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
-import type { WorkflowAdapterReadinessInput } from "./adapters.js";
+import type { WorkflowAdapterRunnerInput } from "./adapters.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "./orchestrator.fraud-proof-workflow-run-result.js";
 
@@ -62,7 +62,8 @@ const journaledProgress = (result: object): number => {
  * A session that journals no progress within the quiet bound returns its last
  * pending result to resume on the next observation, with a reason naming
  * `FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED`, so the caller can run other
- * work and raise an alarm. It is a hold, never a refusal: an action that is
+ * work and raise an alarm; its later progress is reported through
+ * `onProgress`. It is a hold, never a refusal: an action that is
  * resubmitted every validity window and never lands, as under sustained
  * congestion, is held the same way and runs again on its next observation.
  */
@@ -72,8 +73,8 @@ export const continuePendingWorkflow = async <Result>({
   execute,
 }: {
   readonly invocation: Pick<
-    WorkflowAdapterReadinessInput,
-    "mode" | "deploymentFingerprint" | "category" | "headerHash"
+    WorkflowAdapterRunnerInput,
+    "mode" | "deploymentFingerprint" | "category" | "headerHash" | "onProgress"
   >;
   readonly journal: FraudProofWorkflowJournalStore;
   readonly execute: (mode: "run" | "resume") => Promise<Result>;
@@ -103,6 +104,8 @@ export const continuePendingWorkflow = async <Result>({
     }
     const journaled = journaledProgress(result);
     if (journaled > progress) {
+      // The first poll only sets the session's baseline.
+      if (progress >= 0) invocation.onProgress?.();
       progress = journaled;
       quietSinceMs = Date.now();
       quietPolls = 0;
