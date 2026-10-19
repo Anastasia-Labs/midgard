@@ -14,10 +14,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -155,28 +155,22 @@ export const submitFieldItemWidthIllegalStep02 = async ({
       ? undefined
       : (suppliedCertificateUtxo ??
         (planned.plan.tier === "Certified"
-          ? (
-              await certifyFaultProofFieldCarriage({
-                lucid,
-                network: lucid.config().network!,
-                signer,
-                planned,
-                certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-                certificateMintingScript:
-                  contracts.fieldPreimageCertificateMintingScript,
-                certificateReferenceScriptUtxo:
-                  certificateReferenceScriptUtxo ??
-                  (() => {
-                    throw new Error(
-                      "field-item-width-illegal: certified opening requires certificate reference script",
-                    );
-                  })(),
-                chunkUtxos: carriageUtxos,
-                compactCbor: nativeTxCompactCbor,
-                witnessSetCompactCbor,
-                preSubmitBoundary: certificatePreSubmitBoundary,
-              })
-            ).certificateUtxo
+          ? await reuseOrCertifyFaultProofFieldCarriage({
+              lucid,
+              network: lucid.config().network!,
+              signer,
+              planned,
+              certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+              certificateMintingScript:
+                contracts.fieldPreimageCertificateMintingScript,
+              certificateReferenceScriptUtxo,
+              missingReferenceScript:
+                "field-item-width-illegal: certified opening requires certificate reference script",
+              chunkUtxos: carriageUtxos,
+              compactCbor: nativeTxCompactCbor,
+              witnessSetCompactCbor,
+              preSubmitBoundary: certificatePreSubmitBoundary,
+            })
           : undefined));
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
