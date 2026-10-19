@@ -25,6 +25,7 @@ import {
 } from "../src/field-opening.js";
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -314,5 +315,35 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       kind: "pending",
       txHash: ownTxHash,
     });
+  });
+
+  it("treats a certificate other than the scheduled one as a changed proof-step action", async () => {
+    const { artifact, certificate, publications } = certifiedOpening();
+    const certificates: UTxO[] = [certificate(h32(0x61))];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: publications,
+      certificateUtxos: certificates,
+    });
+    const step = await harness.next();
+    expect(step.input).toMatchObject({
+      stage: "step_03",
+      certificateOutRef: `${h32(0x61)}#0`,
+    });
+
+    // Another valid certificate for the same opening, ordered first.
+    certificates.unshift(certificate(LOWEST_TX_HASH));
+    await expect(harness.preflight(step)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+    certificates.splice(0, certificates.length);
+    await expect(harness.preflight(step)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
   });
 });

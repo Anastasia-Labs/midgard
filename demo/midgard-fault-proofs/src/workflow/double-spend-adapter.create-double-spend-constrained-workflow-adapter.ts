@@ -27,6 +27,7 @@ import {
 } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
+import { WorkflowActionChangedError } from "./action-changed.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import { createDoubleSpendFieldOpeningPlan } from "./double-spend-adapter.field-opening-plan.js";
 import {
@@ -500,7 +501,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           requested.input.certificateOutRef !==
             `${certificate.txHash}#${certificate.outputIndex.toString()}`)
       ) {
-        throw new Error(
+        throw new WorkflowActionChangedError(
           "tier-3 proof step does not bind the observed field certificate",
         );
       }
