@@ -301,6 +301,45 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
   }
 });
 
+it("serves an adopted attempt under the handoff its adoption recorded", async () => {
+  const opened = await openStore();
+  const { store } = opened.runtime;
+  try {
+    const owner = twoFundingPlan();
+    await store.reserve(owner);
+    const a = signedTransition({
+      inputHash: "11".repeat(32),
+      validityUpperBound: 100n,
+    });
+    const attemptOf = {
+      plan: owner,
+      expectedRevision: "0",
+      actionKind: "proof.init",
+      ...a,
+      consumedOutRefs: [first],
+    };
+    const pa = await prepareTransition(store, attemptOf);
+    const recordedAttempt = async () =>
+      (
+        (await store.readPendingHandoff({
+          reservationId: owner.reservationId,
+        })) as { handoff: ReturnType<typeof submissionHandoff> } | null
+      )?.handoff.submissionIntent.attempt;
+    expect(await recordedAttempt()).toBe(1);
+    // A expires unconfirmed, then lands after all: it is adopted under the
+    // handoff that re-records its intent as a second attempt.
+    const ka = await supersedePending(store, owner, pa, "proof.init");
+    const original = submissionHandoff(attemptOf);
+    await reobserve(store, owner, ka.revision, a.transactionHash, {
+      ...original,
+      submissionIntent: { ...original.submissionIntent, attempt: 2 },
+    });
+    expect(await recordedAttempt()).toBe(2);
+  } finally {
+    opened.runtime.close();
+  }
+});
+
 it("expands each superseded attempt through the recorded attempts whose outputs it spends", () => {
   // p spends funding a1; its child c spends p's output and nothing else.
   const p = attempt([hash("a1")], [ref("a1")]);
