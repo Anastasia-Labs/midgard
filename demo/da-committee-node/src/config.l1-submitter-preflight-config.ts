@@ -8,6 +8,7 @@ import {
   parseDeploymentManifestAvailabilityChallenge,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 
 import {
   type CommitteeConfig,
@@ -301,6 +302,7 @@ export const contractDeploymentManifestConfig = (
   readonly finalityDepth: number;
   readonly automaticRecoveryMaxDepth: number;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  readonly l1Origin?: L1Origin;
 } => {
   const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
   return {
@@ -315,5 +317,6 @@ export const contractDeploymentManifestConfig = (
     availabilityChallenge: parseDeploymentManifestAvailabilityChallenge(
       verified.availabilityChallenge,
     ),
+    ...(verified.l1Origin === undefined ? {} : { l1Origin: verified.l1Origin }),
   };
 };

@@ -49,12 +49,15 @@ export const loadPendingHubOracleNonceAttempt = async ({
       `Pending hub-oracle nonce attempt in ${options.runStatePath} is missing recovery details.`,
     );
   }
+  // The origin was recorded with the signed bytes; a resume reuses it.
+  const l1Origin = state?.identity.l1Origin;
   return {
     txHash,
     address,
     lovelace,
     inlineDatum,
     ...(signedTxCbor === undefined ? {} : { signedTxCbor }),
+    ...(l1Origin === undefined ? {} : { l1Origin }),
   };
 };
 

@@ -1,9 +1,10 @@
 /**
  * The operator compose stack (docker-compose.yaml plus
  * docker-compose.kupmios.yaml) sets the node's three local-node keys and
- * leaves L1_ORIGIN to the operator's .env. Read with the node's own parsers,
- * that environment must keep the node up but unready by name until the
- * operator sets L1_ORIGIN, and run the follower once it is set.
+ * leaves L1_ORIGIN, an override of the manifest's recorded l1Origin, to the
+ * operator's .env. Read with the node's own parsers, that environment must
+ * keep the node up but unready by name with no origin (no L1_ORIGIN and a
+ * manifest without l1Origin), and run the follower once one is set.
  * scripts/operator-compose.test.mjs checks the rendered mounts and keys.
  */
 import { readFileSync } from "node:fs";
@@ -38,7 +39,7 @@ const ONE_SHOT = {
 };
 
 describe("operator compose and the node's L1 follower", () => {
-  it("ships an empty L1_ORIGIN in .env.example for the operator to fill", () => {
+  it("ships L1_ORIGIN empty in .env.example, an override of the manifest's recorded l1Origin", () => {
     expect(operatorFile(".env.example")).toMatch(/^L1_ORIGIN=$/mu);
   });
 
@@ -50,7 +51,8 @@ describe("operator compose and the node's L1 follower", () => {
     });
     expect(plan).toEqual({
       kind: "unconfigured",
-      detail: "L1_ORIGIN is not set",
+      detail:
+        "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
     });
     if (plan.kind !== "unconfigured") throw new Error("unreachable");
     expect(l1FollowerReadiness(plan).reasons).toEqual([

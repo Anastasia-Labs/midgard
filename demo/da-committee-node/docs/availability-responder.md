@@ -42,9 +42,12 @@ from the challenger's protected on-chain fee shares. The responder does not
 automatically fund itself from the operator wallet.
 
 The follower and the withdrawal-registration query use the local node through
-these three absolute paths, set all together, and `L1_ORIGIN`, the
-deployment's origin point (`<slot>.<block hash>`, as
-`midgard-l1-follower find-origin` prints it):
+these three absolute paths, set all together. The follower starts at the
+deployment manifest's recorded `l1Origin`; `L1_ORIGIN` (`<slot>.<block hash>`)
+overrides it, and an override after the recorded one leaves the follower
+unready (`origin_after_protocol_init`). For a manifest without `l1Origin`,
+`L1_ORIGIN` is the origin, as `midgard-l1-follower find-origin` prints it. The
+three paths:
 
 ```sh
 CARDANO_LOCAL_NODE_SOCKET_PATH=/run/cardano/node.socket

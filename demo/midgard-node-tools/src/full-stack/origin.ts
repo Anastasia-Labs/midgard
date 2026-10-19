@@ -10,20 +10,19 @@ import { loadDeploymentRunState } from "midgard-node/e2e/run-state";
 import {
   type DerivedL1Origin,
   L1OriginUndeterminedError,
+  runStateL1Origin,
+  sameL1Origin,
 } from "../l1-origin.js";
 import { readJsonIfPresent, writeDurableJson } from "./journal.js";
 import type { StackProcesses } from "./process.js";
 import type { StackStep } from "./workflow.js";
 
 /**
- * The run's L1 origin record. `startHint` is the local node's tip read before
- * the hub-oracle nonce was first signed ("genesis" at genesis): a point
- * before the nonce block, so the origin scan need not start at genesis.
- * `origin` is the point immediately before the nonce block.
+ * The run's L1 origin record: the origin T the deployment run state recorded
+ * before the hub-oracle nonce was first signed, once proven to precede the
+ * nonce's block, with that block.
  */
-type OriginRecord = {
-  startHint?: L1Origin | "genesis";
-} & Partial<DerivedL1Origin>;
+type OriginRecord = Partial<DerivedL1Origin>;
 
 const originPath = (processes: StackProcesses) =>
   join(processes.config.runDirectory, "l1-origin.json");
@@ -32,22 +31,6 @@ const statePath = (processes: StackProcesses) =>
 
 const readRecord = async (processes: StackProcesses) =>
   ((await readJsonIfPresent(originPath(processes))) ?? {}) as OriginRecord;
-
-/**
- * Reads the local node's tip as the origin scan start, once, while nothing
- * has been signed: the node records its run state before it signs the nonce,
- * so no run state means the nonce block is still to come.
- */
-export async function recordOriginStartHint(processes: StackProcesses) {
-  const record = await readRecord(processes);
-  if (record.startHint !== undefined) return;
-  if ((await loadDeploymentRunState(statePath(processes))) !== null) return;
-  const tip = await processes.l1NodeTip();
-  await writeDurableJson(originPath(processes), {
-    ...record,
-    startHint: tip ?? "genesis",
-  });
-}
 
 const recordedOrigin = (record: OriginRecord, nonceTxHash: string) =>
   record.origin !== undefined &&
@@ -90,9 +73,10 @@ const requireNonce = (processes: StackProcesses) => {
 };
 
 /**
- * Derives and records the run's L1 origin once its nonce landed, and refuses
- * when it cannot. An operator `L1_ORIGIN` in the stack env file must be that
- * exact origin; otherwise the scan starts at the recorded start hint.
+ * Proves and records the run's L1 origin once its nonce landed: the origin T
+ * the deployment run state recorded before the nonce was signed. Refuses when
+ * the run state records no T or the chain does not prove it. An operator
+ * `L1_ORIGIN` in the stack env file must be T itself.
  */
 export function originStep(
   processes: StackProcesses,
@@ -113,7 +97,14 @@ export function originStep(
       await restoreDeployment();
       const nonceTxHash = requireNonce(processes);
       const origin = recordedOrigin(await readRecord(processes), nonceTxHash);
-      if (origin === undefined) return { status: "retry" };
+      const runOrigin = (await loadDeploymentRunState(statePath(processes)))
+        ?.identity.l1Origin;
+      if (
+        origin === undefined ||
+        runOrigin === undefined ||
+        !sameL1Origin(origin, runOrigin)
+      )
+        return { status: "retry" };
       const operator = configured();
       if (
         operator !== undefined &&
@@ -127,27 +118,17 @@ export function originStep(
     },
     execute: async () => {
       const nonceTxHash = requireNonce(processes);
-      const record = await readRecord(processes);
-      const operator = configured();
-      const hint = record.startHint;
-      if (operator === undefined && hint === undefined)
-        throw new L1OriginUndeterminedError(
-          `the hub-oracle nonce ${nonceTxHash} was signed before this run recorded an origin scan start; ` +
-            `set L1_ORIGIN in ${processes.config.envFile} to the l1Origin that ` +
-            `midgard-l1-follower find-origin --tx ${nonceTxHash} --network-magic 1 prints`,
-        );
-      const derived = await processes.deriveL1Origin(
+      const recorded = await runStateL1Origin(
+        statePath(processes),
         nonceTxHash,
-        operator ?? (hint === "genesis" ? undefined : hint),
       );
-      if (
-        operator !== undefined &&
-        formatL1Origin(derived.origin) !== formatL1Origin(operator)
-      )
+      const operator = configured();
+      if (operator !== undefined && !sameL1Origin(operator, recorded))
         throw new L1OriginUndeterminedError(
-          `L1_ORIGIN ${formatL1Origin(operator)} in ${processes.config.envFile} is not the origin of the hub-oracle nonce ${nonceTxHash}; find-origin gives ${formatL1Origin(derived.origin)}`,
+          `L1_ORIGIN ${formatL1Origin(operator)} in ${processes.config.envFile} is not the origin ${formatL1Origin(recorded)} the deployment run state recorded for the hub-oracle nonce ${nonceTxHash}`,
         );
-      await writeDurableJson(originPath(processes), { ...record, ...derived });
+      const derived = await processes.deriveL1Origin(nonceTxHash, recorded);
+      await writeDurableJson(originPath(processes), derived);
       return { l1Origin: formatL1Origin(derived.origin) };
     },
   };

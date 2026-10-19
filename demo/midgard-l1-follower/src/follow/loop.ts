@@ -3,12 +3,12 @@ import {
   type ChainSyncStream,
   IntersectNotFoundError,
   type StreamInterruption,
-  type TransportReadiness,
 } from "@al-ft/l1-node-transport";
 
 import {
   intersectionFailure,
   protocolInitStatus,
+  recordedOriginHold,
   startFromOrigin,
 } from "../origin.js";
 import { FollowerMigrationError } from "../schema/migrate.js";
@@ -23,6 +23,7 @@ import {
   storePoint,
 } from "./chain-sync.js";
 import { classifyFailure, classifyStreamFailure } from "./failure.js";
+import { initialFollowStatus, nodeOf } from "./initial-status.js";
 import { watchNodeBehind } from "./node-behind.js";
 import { startWhenFree } from "./start.js";
 import {
@@ -55,11 +56,6 @@ const sleep = (ms: number, signal: AbortSignal): Promise<void> =>
     signal.addEventListener("abort", done, { once: true });
   });
 
-const nodeOf = (readiness: TransportReadiness): FollowStatus["node"] =>
-  readiness.ready
-    ? null
-    : { reason: readiness.reason, detail: readiness.detail };
-
 const describeEvent = (event: ChainSyncEvent): string =>
   event.point.kind === "point"
     ? `${event.kind} ${event.point.slot}.${event.point.hash}`
@@ -73,6 +69,8 @@ type Handled = "continue" | "relock" | "backoff" | "intervention";
  * the writer lease), starts from the configured origin or resumes from the
  * store's own points, applies chain-sync events and acknowledges each one
  * the store settled, checks `protocolInitStatus` at every tip, and prunes.
+ * A configured origin after the deployment's recorded one is R3 from the
+ * first status (`recordedOriginHold`), before any status reads at the tip.
  * It never throws and never exits the process. A transient failure
  * (`classifyFailure`; for the chain-sync stream `classifyStreamFailure`; a
  * held writer lease) backs off (capped exponential) and starts again: a
@@ -99,29 +97,10 @@ export const followChain = async (
     options.transientBudgetMs ?? FOLLOWER_TRANSIENT_BUDGET_MS;
   const pruneBudget = options.prune?.budget ?? LOOP_PRUNE_BUDGET;
   const pruneEvery = options.prune?.everyEvents ?? LOOP_PRUNE_EVERY;
-  const initial: Omit<FollowStatus, "readiness"> = {
-    state: "starting",
-    interventions: [],
-    waiting: null,
-    stuck: null,
-    protocolInit: "unknown",
-    cursor: null,
-    node: nodeOf(options.transport.readiness),
-    tip: null,
-    nodeBehind: null,
-    atTip: false,
-    replaying: false,
-    events: 0,
-    lastError: null,
-    prune: {
-      steps: 0,
-      prunedThroughSlot: null,
-      lastError: null,
-      floorLags: [],
-      failures: 0,
-    },
-  };
-  let status: FollowStatus = { ...initial, readiness: readinessOf(initial) };
+  let status = initialFollowStatus(
+    options.transport.readiness,
+    recordedOriginHold(options.origin.origin, options.origin),
+  );
   const publish = async (
     change: Partial<Omit<FollowStatus, "readiness">>,
   ): Promise<void> => {

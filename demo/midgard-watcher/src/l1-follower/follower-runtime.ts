@@ -58,7 +58,10 @@ import { readWatcherQueueView } from "./view.js";
  * `readiness()` with a detail.
  */
 
-/** The configured L1 origin is missing: the follower has no start point. */
+/**
+ * Neither `l1.origin` nor the manifest's `l1Origin` is set: the follower has
+ * no start point.
+ */
 export const L1_ORIGIN_NOT_CONFIGURED = "l1_origin_not_configured";
 
 /**
@@ -369,7 +372,7 @@ export const openWatcherFollowerRuntime = (
         {
           reason: L1_ORIGIN_NOT_CONFIGURED,
           detail:
-            "l1.origin is not set: the follower needs the point immediately before the prepareHubOracleNonce block",
+            "l1.origin is not set and the deployment manifest records no l1Origin: the follower needs a point before the prepareHubOracleNonce block",
         },
       ];
     const reasons: WatcherFollowerReadiness[] = [];

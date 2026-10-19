@@ -30,6 +30,10 @@ import {
   verifyDeploymentManifestAgainstConfig,
 } from "./contract-deployment-info.build-deployment-manifest.js";
 import { buildDeploymentManifestIdentityContextProgram } from "./contract-deployment-info.exact-protocol-parameter-snapshot.js";
+import {
+  localNodeManifestL1OriginProver,
+  runStateManifestL1Origin,
+} from "./contract-deployment-info.manifest-l1-origin.js";
 
 const buildLiveDeploymentManifestProgram = (
   outputPath: string,
@@ -41,18 +45,6 @@ const buildLiveDeploymentManifestProgram = (
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const identityContext =
-      yield* buildDeploymentManifestIdentityContextProgram;
-    const referenceScriptAuthPolicy = yield* Effect.tryPromise({
-      try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
-      catch: (cause) =>
-        new Error(
-          `Failed to read existing reference-script auth policy metadata: ${String(cause)}`,
-        ),
-    });
-    const deploymentInfo = yield* resolveLiveContractDeploymentInfoProgram(
-      referenceScriptAuthPolicy,
-    );
     const existingManifest = yield* Effect.sync(() => {
       try {
         return readDeploymentManifestFile(outputPath);
@@ -70,6 +62,34 @@ const buildLiveDeploymentManifestProgram = (
         ),
       );
     }
+    // The first manifest's L1 origin needs only the run state and the local
+    // node, so a run state that cannot be finalized is refused before the L1
+    // provider or the contracts are touched.
+    const l1Origin =
+      existingManifest === undefined
+        ? yield* Effect.scoped(
+            Effect.gen(function* () {
+              return yield* runStateManifestL1Origin({
+                runStatePath:
+                  options.runStatePath ?? defaultDeploymentRunStatePath(),
+                nonceTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
+                prover: yield* localNodeManifestL1OriginProver(nodeConfig),
+              });
+            }),
+          )
+        : existingManifest.l1Origin;
+    const identityContext =
+      yield* buildDeploymentManifestIdentityContextProgram;
+    const referenceScriptAuthPolicy = yield* Effect.tryPromise({
+      try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
+      catch: (cause) =>
+        new Error(
+          `Failed to read existing reference-script auth policy metadata: ${String(cause)}`,
+        ),
+    });
+    const deploymentInfo = yield* resolveLiveContractDeploymentInfoProgram(
+      referenceScriptAuthPolicy,
+    );
     const lucidService = yield* Lucid;
     const liveContracts = yield* MidgardContracts;
     const availabilityAccounts = yield* Effect.forEach(
@@ -120,6 +140,7 @@ const buildLiveDeploymentManifestProgram = (
       existingManifest,
       steps: requestedSteps,
       hubOracleOneShotStatus: options.hubOracleOneShotStatus,
+      ...(l1Origin === undefined ? {} : { l1Origin }),
     });
     const verification = verifyDeploymentManifestAgainstConfig(
       deploymentManifest,
@@ -156,7 +177,8 @@ export const writeLiveContractDeploymentInfoProgram = (
       options,
     );
     const marker = makeDeploymentMarker(deploymentManifest.manifestId);
-    const runStatePath = defaultDeploymentRunStatePath();
+    const runStatePath =
+      options.runStatePath ?? defaultDeploymentRunStatePath();
     const runState = yield* Effect.tryPromise({
       try: () => loadDeploymentRunState(runStatePath),
       catch: (cause) =>
@@ -232,6 +254,8 @@ export const writeLiveContractDeploymentInfoProgram = (
 export type ReconcileInitializedDeploymentManifestOptions = {
   readonly outputPath: string;
   readonly initTxHash: string;
+  /** The deployment run state (`--run-state`); by default `MIDGARD_RUN_STATE_PATH` or deploymentInfo/midgard-run-state.json. */
+  readonly runStatePath?: string;
 };
 
 export type ReconcileInitializedDeploymentManifestSummary = {
@@ -246,6 +270,7 @@ export type ReconcileInitializedDeploymentManifestSummary = {
 export const reconcileInitializedDeploymentManifestProgram = ({
   outputPath,
   initTxHash,
+  runStatePath,
 }: ReconcileInitializedDeploymentManifestOptions): Effect.Effect<
   ReconcileInitializedDeploymentManifestSummary,
   Error,
@@ -293,6 +318,7 @@ export const reconcileInitializedDeploymentManifestProgram = ({
     }
 
     const path = yield* writeLiveContractDeploymentInfoProgram(outputPath, {
+      ...(runStatePath === undefined ? {} : { runStatePath }),
       hubOracleOneShotStatus: "consumed_by_init",
       steps: {
         initProtocol: {
