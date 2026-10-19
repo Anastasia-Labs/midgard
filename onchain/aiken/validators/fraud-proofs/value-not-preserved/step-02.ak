@@ -17,7 +17,8 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, opened_field_view, spend_inputs_field_index,
+  BodyAnchor, BodyFieldOpening, FieldOpeningV1, anchored_body_tx,
+  anchored_field_view, spend_inputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
@@ -85,10 +86,16 @@ validator main(
         // Both continuations authenticate the same thread and field. Sharing
         // that work keeps the applied script publishable with the L1 reserve;
         // the branch-specific cursor and successor checks remain below.
-        let spend_inputs_view = opened_field_view(
-          spend_inputs_opening,
-          BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
+        // The anchor is a body anchor, so a witness-set opening could only
+        // be refused; open the body half directly.
+        expect BodyFieldOpening { native_tx_compact_cbor, carriage } = spend_inputs_opening
+        let spend_inputs_view = anchored_field_view(
+          anchored_body_tx(
+            native_tx_compact_cbor,
+            BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
+          ),
           spend_inputs_field_index,
+          carriage,
           tx.reference_inputs,
           field_preimage_certificate_policy_id,
         )
@@ -163,6 +170,22 @@ fn run_fold(
   value_witness: SpentInputValueWitnessV1,
   expected_quantity: Int,
 ) -> Bool {
+  run_fold_opened(
+    block,
+    spend_inputs_opening_of(block),
+    claimed_asset,
+    value_witness,
+    expected_quantity,
+  )
+}
+
+fn run_fold_opened(
+  block: tf.ValueBlockV1,
+  spend_inputs_opening: FieldOpeningV1,
+  claimed_asset: ClaimedAssetV1,
+  value_witness: SpentInputValueWitnessV1,
+  expected_quantity: Int,
+) -> Bool {
   let state = initial_state(block, claimed_asset)
   let expected_output_state: Data = State {
     ..state,
@@ -185,7 +208,7 @@ fn run_fold(
         FoldArgs {
           input_index: 0,
           output_index: 0,
-          spend_inputs_opening: spend_inputs_opening_of(block),
+          spend_inputs_opening,
           value_witness,
         },
       ),
@@ -266,6 +289,24 @@ test value_not_preserved_step_02_folds_an_ada_spent_input() {
     AdaAsset,
     tf.spent_input_value_witness_v1(block, AdaAsset),
     10_000_000,
+  )
+}
+
+/// The thread anchors the transaction body, so the spend inputs are opened
+/// through the body half only: the same items carried through a witness-set
+/// opening are refused.
+test value_not_preserved_step_02_rejects_a_witness_set_opening() fail {
+  let block = token_block()
+  run_fold_opened(
+    block,
+    fixture.inline_witness_opening(
+      block.block.compact_cbor,
+      block.block.witness_set_compact,
+      list.map(block.block.tx.body.inputs, encode_midgard_tx_input),
+    ),
+    tf.claimed_token_v1(),
+    tf.spent_input_value_witness_v1(block, tf.claimed_token_v1()),
+    40,
   )
 }
 
