@@ -95,6 +95,7 @@ vi.mock(
               settle: async () => "settled" as const,
             },
             depth: 10,
+            settleBoundMs: 60_000,
           };
         }),
     };

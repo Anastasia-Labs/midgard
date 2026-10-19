@@ -17,4 +17,5 @@ export const settledOriginSource = (
     settle: async () => "settled",
   },
   depth: 10,
+  settleBoundMs: 60_000,
 });

@@ -174,6 +174,7 @@ describe("the L1 origin the nonce command records", () => {
         l1Origin: {
           observer: scriptedObserver(journal, [TIP], ["settled"]),
           depth: 30,
+          settleBoundMs: 60_000,
         },
       }),
     ).rejects.toThrow("submission refused");
@@ -329,6 +330,7 @@ describe("the L1 origin the nonce command records", () => {
             ["rolled_back", "settled"],
           ),
           depth: 10,
+          settleBoundMs: 60_000,
         },
       }),
     ).rejects.toThrow("submission refused");
@@ -354,6 +356,7 @@ describe("the L1 origin the nonce command records", () => {
         l1Origin: {
           observer: scriptedObserver(journal, [TIP], ["rolled_back"]),
           depth: 10,
+          settleBoundMs: 60_000,
         },
       }),
     ).rejects.toThrow(
@@ -365,4 +368,33 @@ describe("the L1 origin the nonce command records", () => {
     expect(signSubmitTransactionMock).not.toHaveBeenCalled();
     expect(await loadDeploymentRunState(runStatePath)).toBeNull();
   });
+
+  it("D-h: a tip the node does not extend by depth blocks within the settle bound is refused, with the wait stopped and nothing signed or broadcast", async () => {
+    const runStatePath = await runStateFile();
+    const { journal, service } = operator();
+    failingSubmission(journal, runStatePath);
+    let stopped = false;
+    await expect(
+      prepare(service, runStatePath, {
+        l1Origin: {
+          observer: {
+            tip: async () => TIP,
+            settle: (_point, _depth, signal) =>
+              new Promise(() =>
+                signal?.addEventListener("abort", () => {
+                  stopped = true;
+                }),
+              ),
+          },
+          depth: 10,
+          settleBoundMs: 50,
+        },
+      }),
+    ).rejects.toThrow(
+      `did not extend its tip ${TIP.slot.toString()}.${TIP.blockHash} by 10 blocks within 1 s; no hub-oracle nonce was signed`,
+    );
+    expect(stopped).toBe(true);
+    expect(signSubmitTransactionMock).not.toHaveBeenCalled();
+    expect(await loadDeploymentRunState(runStatePath)).toBeNull();
+  }, 20_000);
 });

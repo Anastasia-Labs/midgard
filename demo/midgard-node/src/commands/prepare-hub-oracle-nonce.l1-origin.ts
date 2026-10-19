@@ -12,10 +12,11 @@ import {
   ORIGIN,
 } from "@al-ft/l1-node-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import type { NativeLedgerNetwork } from "@al-ft/midgard-core/native-reward-account";
-import { Data, Effect, type Scope } from "effect";
+import { Data, Duration, Effect, type Scope } from "effect";
 
 import {
   NATIVE_LEDGER_SETTING_NAMES,
@@ -30,18 +31,50 @@ export type L1ChainObserver = Readonly<{
   /**
    * Follows the node's chain from `point` until `depth` blocks extend it
    * (`settled`), or until the chain no longer holds `point` (`rolled_back`).
+   * Stops following once `signal` aborts.
    */
   settle: (
     point: L1Origin,
     depth: number,
+    signal?: AbortSignal,
   ) => Promise<"settled" | "rolled_back">;
 }>;
 
-/** Where the nonce command reads the origin, and how deep it settles it. */
+/**
+ * Where the nonce command reads the origin, how deep it settles it, and how
+ * long it waits for the node to extend a tip by `depth` blocks.
+ */
 export type HubOracleNonceOriginSource = Readonly<{
   observer: L1ChainObserver;
   depth: number;
+  settleBoundMs: number;
 }>;
+
+/**
+ * The settle wait's factor over the expected time for the blocks it waits
+ * for. The deployment profiles' chain-growth bound already allows three
+ * expected block intervals per block; ten leaves a slow or briefly
+ * disconnected local node room on top of it.
+ */
+export const ORIGIN_SETTLE_BOUND_FACTOR = 10;
+
+/**
+ * The bound on the settle wait for `depth` blocks: `depth` × the profile's
+ * expected block interval (`slot_length_ms / active_slot_coeff`, 20 s on
+ * every current profile) × `ORIGIN_SETTLE_BOUND_FACTOR`; 2,000 s at the
+ * testing profiles' depth of 10 and 6,000 s at the public profiles' 30.
+ */
+export const originSettleBoundMs = (
+  depth: number,
+  l1Finality: Readonly<{
+    slot_length_ms: number;
+    active_slot_coeff: string;
+  }> = SELECTED_DEPLOYMENT_PROFILE.l1_finality,
+): number =>
+  Math.ceil(
+    (depth * l1Finality.slot_length_ms * ORIGIN_SETTLE_BOUND_FACTOR) /
+      Number(l1Finality.active_slot_coeff),
+  );
 
 /** Tips read before the command gives up with nothing signed. */
 export const ORIGIN_SETTLE_ATTEMPTS = 5;
@@ -56,7 +89,10 @@ export const noLocalNodeOriginError = (): HubOracleNonceOriginError =>
     message: `No local node is configured (${NATIVE_LEDGER_SETTING_NAMES.join(", ")}): the deployment's L1 origin is read from it before the hub-oracle nonce is signed, so no nonce was signed`,
   });
 
-const observing = <A>(what: string, read: () => Promise<A>) =>
+const observing = <A>(
+  what: string,
+  read: (signal: AbortSignal) => Promise<A>,
+) =>
   Effect.tryPromise({
     try: read,
     catch: (cause) =>
@@ -70,10 +106,13 @@ const observing = <A>(what: string, read: () => Promise<A>) =>
  * Reads the node's tip and follows its chain until `depth` blocks extend it.
  * A tip that leaves the chain first is read again; after
  * `ORIGIN_SETTLE_ATTEMPTS` such tips the command fails with nothing signed.
+ * A tip the node does not extend by `depth` blocks within `settleBoundMs`
+ * fails the command too, with nothing signed.
  */
 export const settledL1Origin = ({
   observer,
   depth,
+  settleBoundMs,
 }: HubOracleNonceOriginSource): Effect.Effect<
   L1Origin,
   HubOracleNonceOriginError
@@ -90,7 +129,15 @@ export const settledL1Origin = ({
         );
       const settled = yield* observing(
         `follow the local node's chain from ${formatL1Origin(tip)}`,
-        () => observer.settle(tip, depth),
+        (signal) => observer.settle(tip, depth, signal),
+      ).pipe(
+        Effect.timeoutFail({
+          duration: Duration.millis(settleBoundMs),
+          onTimeout: () =>
+            new HubOracleNonceOriginError({
+              message: `The local node did not extend its tip ${formatL1Origin(tip)} by ${depth.toString()} blocks within ${Math.ceil(settleBoundMs / 1000).toString()} s; no hub-oracle nonce was signed. Check that the local node is synced and following the network, then run the command again`,
+            }),
+        }),
       );
       if (settled === "settled") return tip;
       yield* Effect.logWarning(
@@ -125,12 +172,14 @@ export const l1NodeChainObserver = (
       await stream.close();
     }
   },
-  settle: async (point, depth) => {
+  settle: async (point, depth, signal) => {
     const stream = transport.openChainSync({
       points: [chainPoint(BigInt(point.slot), point.blockHash)],
       credit: SETTLE_CREDIT,
       resume: false,
     });
+    const stop = () => void stream.close();
+    signal?.addEventListener("abort", stop, { once: true });
     try {
       try {
         await stream.opened;
@@ -162,6 +211,7 @@ export const l1NodeChainObserver = (
       }
       return "settled";
     } finally {
+      signal?.removeEventListener("abort", stop);
       await stream.close();
     }
   },
@@ -169,13 +219,17 @@ export const l1NodeChainObserver = (
 
 /**
  * The production origin source: the local node's chain, settled under the
- * deployment's confirmation depth (the depth its manifest records).
+ * deployment's confirmation depth (the depth its manifest records) within
+ * `originSettleBoundMs` of that depth.
  */
 export const l1NodeOriginSource = (
   transport: Pick<L1NodeTransport, "openChainSync">,
 ): HubOracleNonceOriginSource => ({
   observer: l1NodeChainObserver(transport),
   depth: DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+  settleBoundMs: originSettleBoundMs(
+    DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+  ),
 });
 
 /** The node settings that name its local node. */

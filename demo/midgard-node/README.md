@@ -682,7 +682,12 @@ inside the `midgard-node` container (step 6 of the quick start).
 Before it signs a fresh nonce, the command reads the local node's tip
 (`L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH`, `L1_NODE_TRANSPORT_BINARY_PATH`)
 and waits until the profile's `confirmationDepth` blocks extend it; a tip that
-leaves the chain first is read again. It records that point with the signed
+leaves the chain first is read again. The wait is bounded at ten times the
+expected time for those blocks, `confirmationDepth × slot_length_ms /
+active_slot_coeff × 10` from the profile (2,000 s at depth 10, 6,000 s at
+depth 30). A node that does not extend its tip within the bound fails the
+command with nothing signed; check that the local node is synced, then run it
+again. It records that point with the signed
 transaction in the run state and prints it as `L1_ORIGIN`. A resumed nonce
 keeps the recorded point; `--fresh-redeploy` reads a new one. Without a local
 node configured the command refuses before it signs anything.

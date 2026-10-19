@@ -127,6 +127,17 @@ describe("the local node's chain, as the origin record reads it", () => {
     ).resolves.toBe("rolled_back");
   });
 
+  it("stops following the chain once the wait for the point to settle is abandoned", async () => {
+    const { transport } = await node([{ events: [forward(1)] }]);
+    await expect(
+      l1NodeChainObserver(transport).settle(
+        origin,
+        3,
+        AbortSignal.timeout(200),
+      ),
+    ).rejects.toThrow("the chain-sync stream ended before the origin settled");
+  }, 20_000);
+
   it("D-f: over the node, a tip that left the chain is read again and settles on the next read", async () => {
     const { transport, opens } = await node([
       { notFound: true },
@@ -137,6 +148,7 @@ describe("the local node's chain, as the origin record reads it", () => {
         settledL1Origin({
           observer: l1NodeChainObserver(transport),
           depth: 2,
+          settleBoundMs: 60_000,
         }),
       ),
     ).resolves.toEqual(origin);
@@ -150,16 +162,66 @@ describe("the local node's chain, as the origin record reads it", () => {
         settledL1Origin({
           observer: l1NodeChainObserver(transport),
           depth: 2,
+          settleBoundMs: 60_000,
         }),
       ),
     ).rejects.toThrow("no hub-oracle nonce was signed");
     expect(opens()).toHaveLength(ORIGIN_SETTLE_ATTEMPTS);
   });
 
-  it("settles under the deployment's confirmation depth", async () => {
+  it("settles under the deployment's confirmation depth, waiting ten expected 20 s block intervals per block", async () => {
     const { transport } = await node([{ events: [] }]);
-    expect(l1NodeOriginSource(transport).depth).toBe(
-      DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+    expect(l1NodeOriginSource(transport)).toMatchObject({
+      depth,
+      settleBoundMs: depth * 10 * 20_000,
+    });
+  });
+
+  it("D-h: over the node, fewer than depth blocks on the tip do not settle it: the wait ends at the bound with nothing signed", async () => {
+    const { transport, opens } = await node([
+      { events: [forward(1), forward(2)] },
+    ]);
+    await expect(
+      Effect.runPromise(
+        settledL1Origin({
+          observer: l1NodeChainObserver(transport),
+          depth: 3,
+          settleBoundMs: 300,
+        }),
+      ),
+    ).rejects.toThrow(
+      `did not extend its tip ${T.slot.toString()}.${T.hash} by 3 blocks within 1 s; no hub-oracle nonce was signed`,
     );
+    expect(opens()).toHaveLength(1);
+  }, 20_000);
+
+  const blocks = (count: number) =>
+    Array.from({ length: count }, (_, n) => forward(n + 1));
+
+  it("over the node, one block short of the deployment's confirmation depth does not settle the tip", async () => {
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+    const { transport } = await node([{ events: blocks(depth - 1) }]);
+    await expect(
+      Effect.runPromise(
+        settledL1Origin({
+          ...l1NodeOriginSource(transport),
+          settleBoundMs: 300,
+        }),
+      ),
+    ).rejects.toThrow(`by ${depth.toString()} blocks within 1 s`);
+  }, 20_000);
+
+  it("over the node, the deployment's confirmation depth of blocks settles the tip", async () => {
+    const depth = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;
+    const { transport } = await node([{ events: blocks(depth) }]);
+    await expect(
+      Effect.runPromise(
+        settledL1Origin({
+          ...l1NodeOriginSource(transport),
+          settleBoundMs: 5_000,
+        }),
+      ),
+    ).resolves.toEqual(origin);
   });
 });
