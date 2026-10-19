@@ -129,11 +129,14 @@ pub fn subject_is_canonical_v1(subject: VerdictSubjectV1) -> Bool {
     subject.version == version,
     is_h32(subject.transaction_id),
     when subject.source_kind is {
-      0 -> and {
-          subject.direction == direction_wrongful_acceptance,
-          subject.source_key == #"",
-          subject.rejection_reason == None,
+      0 -> {
+        let VerdictSubjectV1 { direction, source_key, rejection_reason, .. } = subject
+        and {
+          direction == direction_wrongful_acceptance,
+          source_key == #"",
+          rejection_reason == None,
         }
+      }
       1 -> and {
           bytearray.length(subject.source_key) > 0,
           if subject.direction == direction_wrongful_acceptance {
@@ -206,24 +209,34 @@ pub fn open_forced_leaf_raw_v1(
   phas_root: ByteArray,
   proof: Proof,
 ) -> ByteArray {
-  // The domain, root, and count come from the header itself, so only the
-  // counted-root consistency and the raw membership remain to be checked.
-  expect and {
-      transition_trace.counted_root_is_consistent(
-        transition_trace.ForcedTransactionsV1RootDomain,
-        header.forced_transactions_root,
-        phas_root,
-        header.forced_transaction_count,
-      ),
-      transition_trace.verify_root_membership_raw(
-        phas_root,
-        header.forced_transaction_count,
-        raw_key,
-        raw_value,
-        proof,
-      ),
-    }
+  expect forced_leaf_is_member_v1(header, raw_key, raw_value, phas_root, proof)
   raw_value
+}
+
+/// The domain, root, and count come from the header itself, so only the
+/// counted-root consistency and the raw membership remain to be checked.
+fn forced_leaf_is_member_v1(
+  header: ledger_state.HeaderV1,
+  raw_key: ByteArray,
+  raw_value: ByteArray,
+  phas_root: ByteArray,
+  proof: Proof,
+) -> Bool {
+  and {
+    transition_trace.counted_root_is_consistent(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      phas_root,
+      header.forced_transaction_count,
+    ),
+    transition_trace.verify_root_membership_raw(
+      phas_root,
+      header.forced_transaction_count,
+      raw_key,
+      raw_value,
+      proof,
+    ),
+  }
 }
 
 /// The authenticated leaf's verdict, including the exact rejection reason.
@@ -266,6 +279,7 @@ fn bind_forced_subject_v1(
   >,
 ) -> VerdictSubjectV1 {
   let leaf = membership.value
+  let source_key = cbor.serialise(membership.key)
   let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
     leaf.submitted_source.compact_cbor,
@@ -276,13 +290,13 @@ fn bind_forced_subject_v1(
       membership.domain == transition_trace.ForcedTransactionsV1RootDomain,
       membership.root == header.forced_transactions_root,
       membership.count == header.forced_transaction_count,
-      open_forced_leaf_raw_v1(
+      forced_leaf_is_member_v1(
         header,
-        cbor.serialise(membership.key),
+        source_key,
         cbor.serialise(leaf),
         membership.phas_root,
         membership.proof,
-      ) == cbor.serialise(leaf),
+      ),
       verified.version == native_tx_version_v1,
       verified.tx_id == leaf.tx_id,
     }
@@ -296,7 +310,7 @@ fn bind_forced_subject_v1(
     direction,
     source_kind: source_kind_forced,
     transaction_id: leaf.tx_id,
-    source_key: cbor.serialise(membership.key),
+    source_key,
     rejection_reason,
   }
 }
