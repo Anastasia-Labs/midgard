@@ -8,7 +8,11 @@
  * turn whose captured transaction spends the thread input is the step; it is
  * submitted and the drive ends.
  */
-import type { Emulator, LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  coreToTxOutput,
+  type Emulator,
+  type LucidEvolution,
+} from "@lucid-evolution/lucid";
 
 import { fieldPreimageCertificateAddress } from "../../src/field-opening.js";
 import {
@@ -81,3 +85,16 @@ export const fieldPreimageCertificateCount = async ({
         .reduce((sum, [, quantity]) => sum + quantity, 0n),
     0n,
   );
+
+/** The out-ref of the captured transaction's output holding `unit`. */
+export const capturedOutputHolding = (
+  captured: LocallyEvaluatedTransaction,
+  unit: string,
+): string => {
+  const outputs = captured.signed.toTransaction().body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    if ((coreToTxOutput(outputs.get(index)).assets[unit] ?? 0n) > 0n)
+      return `${captured.txHash}#${index.toString()}`;
+  }
+  throw new Error(`captured transaction ${captured.txHash} holds no ${unit}`);
+};
