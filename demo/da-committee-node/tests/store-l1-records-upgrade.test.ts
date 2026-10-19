@@ -208,7 +208,7 @@ describe("a committee store the BASE build wrote, opened by this build", () => {
     );
     expect(startupReason(refused)).toMatch(
       new RegExp(
-        `^starting:committee_store_point_before_l1_origin: the .+ names slot ${BASE_POINT_SLOT.toString()}, before L1_ORIGIN slot ${(BASE_POINT_SLOT + 1).toString()}; L1_ORIGIN must be the deployment's init point$`,
+        `^starting:committee_store_point_before_l1_origin: the .+ names slot ${BASE_POINT_SLOT.toString()}, before L1_ORIGIN slot ${(BASE_POINT_SLOT + 1).toString()}; L1_ORIGIN must be at or before the deployment's origin: unset it to follow the manifest's l1Origin, or lower it$`,
         "u",
       ),
     );
