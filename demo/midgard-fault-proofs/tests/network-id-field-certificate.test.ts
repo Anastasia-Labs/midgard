@@ -37,6 +37,7 @@ import {
   utxo,
   workflowIdentity,
 } from "./support/network-id-forced-harness.js";
+import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
 
 /** A Certified-tier opening (600 outputs), its carriage, and the harness. */
 const certifiedOpening = async ({
@@ -83,19 +84,21 @@ const certifiedOpening = async ({
 };
 
 /**
- * An output-network fault whose outputs field (440 items) opens at Certified
- * tier through the final step rather than the forced scan.
+ * An output-network fault whose outputs field (440 items unless `outputs`
+ * names others) opens at Certified tier through the final step rather than
+ * the forced scan.
  */
-const outputNetworkOpening = () => {
-  const outputs = Array.from({ length: 440 }, () =>
+const outputNetworkOpening = (
+  outputs: readonly Buffer[] = Array.from({ length: 440 }, () =>
     encodeMidgardTxOutput({
       address: Buffer.concat([Buffer.from([0x61]), Buffer.alloc(28, 0x55)]),
       value: { lovelace: 1n, assets: new Map() },
     }),
-  );
+  ),
+) => {
   const transaction = buildFixtureTransaction({
     spendInputs: [],
-    outputs,
+    outputs: [...outputs],
     fee: 1n,
     networkId: 0n,
   });
@@ -142,6 +145,20 @@ const outputNetworkOpening = () => {
   } as JournalJsonObject;
   return { headerHash, artifact, opening };
 };
+
+/**
+ * 800 outputs whose outputs field repeats its first chunk as its second. Only
+ * address payload bytes vary, so the first output still names network 1.
+ */
+const repeatedFirstChunkOutputs = () =>
+  repeatedFirstChunkItems({
+    count: 800,
+    item: (fill) =>
+      encodeMidgardTxOutput({
+        address: Buffer.concat([Buffer.from([0x61]), Buffer.alloc(28, fill)]),
+        value: { lovelace: 1n, assets: new Map() },
+      }),
+  });
 
 /** A signed transaction the canonical recovery port can authenticate. */
 const signedTransaction = () => {
@@ -366,5 +383,88 @@ describe("network-id Certified-tier field certificate", () => {
         action: selected.action,
       }),
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+  });
+
+  it("publishes every field chunk when two chunks are identical", async () => {
+    const { headerHash, artifact, opening } = outputNetworkOpening(
+      repeatedFirstChunkOutputs(),
+    );
+    const chunks = opening.plan.publications.map(
+      (publication, index): UTxO =>
+        utxo({
+          txHash: h32(0x20 + index),
+          datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+        }),
+    );
+    expect(chunks.map((chunk) => chunk.datum)).toEqual([
+      chunks[0]!.datum,
+      chunks[0]!.datum,
+      chunks[2]!.datum,
+    ]);
+    // One output carries the repeated chunk's bytes; the plan needs two.
+    const harness = forcedHarness({
+      prepared: { headerHash, artifact },
+      stage: {
+        kind: "step",
+        step: 2,
+        threadOutRef: `${h32(0x72)}#0`,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      walletUtxos: [chunks[0]!, chunks[2]!],
+      certificateUtxos: [],
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected a field publication");
+    expect(selected.action.input).toMatchObject({
+      kind: "publish_field",
+      publicationDatumCbor: chunks[1]!.datum,
+    });
+    // The stub chain holds no funding, so building the publication is as far
+    // as the action can get here.
+    await expect(
+      harness.adapter.preflight({
+        identity: workflowIdentity(headerHash),
+        workflowId: h32(0x51),
+        artifact,
+        entries: [],
+        action: selected.action,
+      }),
+    ).rejects.toThrow("Failed to publish field-preimage carriage");
+  });
+
+  it("certifies two identical field chunks from two different outputs", async () => {
+    const { headerHash, artifact, opening } = outputNetworkOpening(
+      repeatedFirstChunkOutputs(),
+    );
+    const chunks = opening.plan.publications.map(
+      (publication, index): UTxO =>
+        utxo({
+          txHash: h32(0x20 + index),
+          datum: fieldPreimagePublicationDatumCbor(publication.bytes),
+        }),
+    );
+    const harness = forcedHarness({
+      prepared: { headerHash, artifact },
+      stage: {
+        kind: "step",
+        step: 2,
+        threadOutRef: `${h32(0x72)}#0`,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      forcedDoorOccupied: false,
+      walletUtxos: chunks,
+      certificateUtxos: [],
+    });
+    const selected = await harness.observe();
+    if (selected.kind !== "action_required")
+      throw new Error("expected the certification action");
+    expect(selected.action.input).toMatchObject({
+      kind: "certify_field",
+      chunkOutRefs: chunks
+        .map((chunk) => `${chunk.txHash}#${chunk.outputIndex.toString()}`)
+        .join(","),
+    });
   });
 });

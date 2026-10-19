@@ -71,12 +71,20 @@ const CONTENT_IDENTITY_REFUSAL =
 export const outRef = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-/** A Certified-tier spend-inputs opening (440 inputs) and its artifact. */
-export const certifiedOpening = (proofCbor = "80") => {
-  const spendInputs = Array.from({ length: 440 }, (_, index) =>
+/**
+ * A Certified-tier spend-inputs opening (440 inputs unless `spendInputs` names
+ * others) and its artifact.
+ */
+export const certifiedOpening = (
+  proofCbor = "80",
+  spendInputs: readonly Buffer[] = Array.from({ length: 440 }, (_, index) =>
     outRefCbor((index % 200) + 1, BigInt(Math.floor(index / 200))),
-  );
-  const transaction = buildFixtureTransaction({ spendInputs, fee: 1n });
+  ),
+) => {
+  const transaction = buildFixtureTransaction({
+    spendInputs: [...spendInputs],
+    fee: 1n,
+  });
   const plan = planFaultProofFieldOpening({
     anchorSourceKind: 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,

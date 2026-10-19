@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { publishFaultProofFieldCarriage } from "../src/field-opening.js";
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { h32 } from "./helpers/canonical-block-evidence-fixture.js";
+import { h32, outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   certifiedOpening,
   doubleSpendHarness,
@@ -22,6 +22,14 @@ import {
   THREAD_OUT_REF,
   withOtherAsset,
 } from "./support/double-spend-shared-carriage-harness.js";
+import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
+
+/** 800 spend inputs whose field repeats its first chunk as its second. */
+const repeatedFirstChunkSpendInputs = () =>
+  repeatedFirstChunkItems({
+    count: 800,
+    item: (fill) => outRefCbor(fill, 0n),
+  });
 
 describe("double-spend carriage shared with other on-chain objects", () => {
   it("confirms its own certificate transaction by its exact output, whatever else sits at the certificate address", async () => {
@@ -307,5 +315,56 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     await expect(harness.preflight(publish)).rejects.toBeInstanceOf(
       WorkflowActionChangedError,
     );
+  });
+
+  it("publishes every field chunk when two chunks are identical", async () => {
+    const { plan, publications } = certifiedOpening(
+      undefined,
+      repeatedFirstChunkSpendInputs(),
+    );
+    expect(publications.map((utxo) => utxo.datum)).toEqual([
+      publications[0]!.datum,
+      publications[0]!.datum,
+      publications[2]!.datum,
+    ]);
+    // One output carries the repeated chunk's bytes; the plan needs two.
+    const wallet = [publications[0]!, publications[2]!];
+    class PublicationStarted extends Error {}
+    await expect(
+      publishFaultProofFieldCarriage({
+        lucid: {
+          utxosAt: async () => [...wallet],
+        } as unknown as LucidEvolution,
+        signer: SIGNER,
+        planned: plan,
+        publisherAddress: SIGNER.address,
+        label: "double-spend shared carriage test",
+        beforePublication: async () => {
+          throw new PublicationStarted();
+        },
+      }),
+    ).rejects.toBeInstanceOf(PublicationStarted);
+  });
+
+  it("uses a different output for each of two identical field chunks", async () => {
+    const { plan, publications } = certifiedOpening(
+      undefined,
+      repeatedFirstChunkSpendInputs(),
+    );
+    const wallet = [...publications];
+    await expect(
+      publishFaultProofFieldCarriage({
+        lucid: {
+          utxosAt: async () => [...wallet],
+        } as unknown as LucidEvolution,
+        signer: SIGNER,
+        planned: plan,
+        publisherAddress: SIGNER.address,
+        label: "double-spend shared carriage test",
+        beforePublication: async () => {
+          throw new Error("every chunk is already on chain");
+        },
+      }).then((utxos) => utxos.map(outRef)),
+    ).resolves.toEqual(publications.map(outRef));
   });
 });

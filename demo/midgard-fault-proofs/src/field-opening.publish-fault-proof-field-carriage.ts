@@ -201,9 +201,17 @@ export const publishFaultProofFieldCarriage = async ({
     // Compared byte-for-byte against the datum, exactly as
     // `resolveChunkReferenceIndices` does when it locates the same UTxO at the
     // door. Matching on anything looser here would reuse a publication the
-    // resolver then fails to find.
+    // resolver then fails to find. Two chunks with the same bytes need two
+    // outputs, so an output already used for an earlier chunk is skipped.
     const existing = (await lucid.utxosAt(publisherAddress)).find(
-      (utxo) => utxo.datum === datumCbor && isAdaOnlyInlineDatumOutput(utxo),
+      (utxo) =>
+        !published.some(
+          (used) =>
+            used.txHash === utxo.txHash &&
+            used.outputIndex === utxo.outputIndex,
+        ) &&
+        utxo.datum === datumCbor &&
+        isAdaOnlyInlineDatumOutput(utxo),
     );
     if (existing !== undefined) {
       await publicationConfirmed?.(existing.txHash);
