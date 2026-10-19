@@ -8,9 +8,10 @@
  * confirmed before the record or landing beside the application's own, a
  * mass of outputs, and another party's run of the same script leave the
  * record's transactions and their fees as they are with nothing planted.
- * A stopped process sends the stage transaction it signed; a read that lags
- * the chunk is waited out on the same out-ref; a chunk that is gone for good
- * is staged again, replacing it, and never served by a copy.
+ * A stopped process sends the stage transaction it signed, or reconciles the
+ * one it sent; a read that lags the chunk, or a rollback that includes the
+ * stage transaction again, is waited out on the same out-ref; a chunk that
+ * is gone for good is staged again, replacing it, and never served by a copy.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -70,6 +71,7 @@ import {
   INSTALLED_WITNESS,
   type InstalledTurnContext,
   runInstalled,
+  stopsOnceAndRestarts,
 } from "./support/script-decode-installed-run.js";
 import {
   delayChainScript,
@@ -308,14 +310,10 @@ describe("script-decode staging found by the out-refs it published, in the insta
 
   it("sends the stage transaction its stopped process signed but never sent, and reads the chunk it staged", async () => {
     let withheld: string | undefined;
-    let stops = 0;
-    const context: {
-      harness?: Harness;
-      clock?: InstalledTurnContext["clock"];
-    } = {};
+    const stopping = stopsOnceAndRestarts(POLL_CAP);
     const { run, watch, harness, cost } = await runWith(() => [], {
       decide: (transaction) => {
-        const { staging } = rolesOf(context.harness!);
+        const { staging } = rolesOf(stopping.harness());
         if (
           withheld !== undefined ||
           stagedChunkOf(transaction, staging) === undefined
@@ -324,23 +322,13 @@ describe("script-decode staging found by the out-refs it published, in the insta
         // Signed and journaled, lost before the ledger saw it; the process
         // stops at its next poll.
         withheld = transaction.txHash;
-        context.clock!.state.crashAfterPolls = context.clock!.state.polls;
+        stopping.stopAtNextPoll();
         return "withhold";
       },
-      during: ({ harness, clock }) => {
-        context.harness = harness;
-        context.clock = clock;
-      },
-      onStopped: async (error, { application, clock }) => {
-        expect(String(error)).toContain(
-          "installed application process stopped",
-        );
-        stops += 1;
-        await application.restart();
-        clock.state.crashAfterPolls = clock.state.polls + POLL_CAP;
-      },
+      during: stopping.during,
+      onStopped: stopping.onStopped,
     });
-    expect(stops).toBe(1);
+    expect(stopping.stops()).toBe(1);
     expect(run.convicted).toBe(true);
     const stages = stagesOf(watch, harness);
     expect(stages.map(({ transaction }) => transaction.txHash)).toEqual([
@@ -349,6 +337,34 @@ describe("script-decode staging found by the out-refs it published, in the insta
     expect(readersOf(watch, harness)[0]!.referenceInputs).toContain(
       stages[0]!.chunk,
     );
+    expectBaselineCost(cost, baseline);
+  }, 900_000);
+
+  it("reconciles the stage transaction its stopped process sent, and reads the chunk it staged", async () => {
+    let sent: string | undefined;
+    const stopping = stopsOnceAndRestarts(POLL_CAP);
+    const { run, watch, harness, cost } = await runWith(() => [], {
+      decide: (transaction) => {
+        const { staging } = rolesOf(stopping.harness());
+        if (
+          sent === undefined &&
+          stagedChunkOf(transaction, staging) !== undefined
+        ) {
+          // The ledger takes it; the process stops at its next poll.
+          sent = transaction.txHash;
+          stopping.stopAtNextPoll();
+        }
+        return "accept";
+      },
+      during: stopping.during,
+      onStopped: stopping.onStopped,
+    });
+    expect(stopping.stops()).toBe(1);
+    expect(run.convicted).toBe(true);
+    const stages = stagesOf(watch, harness);
+    expect(stages.map(({ transaction }) => transaction.txHash)).toEqual([sent]);
+    for (const reader of readersOf(watch, harness))
+      expect(reader.referenceInputs).toContain(stages[0]!.chunk);
     expectBaselineCost(cost, baseline);
   }, 900_000);
 
@@ -379,6 +395,44 @@ describe("script-decode staging found by the out-refs it published, in the insta
         return lag.restore;
       },
     });
+    expect(context.reads!()).toBeGreaterThan(0);
+    expect(run.convicted).toBe(true);
+    const stages = stagesOf(watch, harness);
+    expect(stages.map(({ chunk }) => chunk)).toEqual([hidden]);
+    for (const reader of readersOf(watch, harness))
+      expect(reader.referenceInputs).toContain(hidden);
+    expectBaselineCost(cost, baseline);
+  }, 900_000);
+
+  it("continues from the same out-ref when its chunk drops out of reads after the Bind and is included again", async () => {
+    let hidden: string | undefined;
+    let shownFrom = 0;
+    const context: { reads?: () => number } = {};
+    const { run, watch, harness, cost } = await runWith(() => [], {
+      during: ({ harness, clock }, watch) => {
+        clock.state.onPoll = async () => {
+          if (hidden !== undefined) return;
+          const [first] = stagesOf(watch, harness);
+          const bind = readersOf(watch, harness)[0];
+          if (first === undefined || bind === undefined) return;
+          const status = await harness.emulator.getTransactionStatus(
+            bind.txHash,
+          );
+          if (status.status !== "confirmed") return;
+          // Rolled back once the run is bound, and the same stage
+          // transaction included again a minute later: well inside the
+          // provider grace.
+          hidden = first.chunk;
+          shownFrom = harness.emulator.now() + LAG_MS;
+        };
+        const lag = lagReadsOf(harness.emulator, () =>
+          harness.emulator.now() < shownFrom ? hidden : undefined,
+        );
+        context.reads = lag.hiddenReads;
+        return lag.restore;
+      },
+    });
+    expect(hidden).toBeDefined();
     expect(context.reads!()).toBeGreaterThan(0);
     expect(run.convicted).toBe(true);
     const stages = stagesOf(watch, harness);

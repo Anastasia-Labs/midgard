@@ -264,3 +264,32 @@ export const stagingOutputsOf = async (harness: Harness) =>
   (await harness.proverLucid.utxosAt(harness.proverSigner.address)).filter(
     isStaging,
   );
+
+/**
+ * A process that stops once, at the poll after `stopAtNextPoll()`, and is
+ * restarted with `pollCap` more polls. `during` takes the run's context,
+ * `onStopped` restarts it, `stops()` counts the stops.
+ */
+export const stopsOnceAndRestarts = (pollCap: number) => {
+  let context: Omit<InstalledTurnContext, "result" | "turn"> | undefined;
+  let stops = 0;
+  return {
+    during: (run: Omit<InstalledTurnContext, "result" | "turn">) => {
+      context = run;
+    },
+    harness: () => context!.harness,
+    stopAtNextPoll: () => {
+      context!.clock.state.crashAfterPolls = context!.clock.state.polls;
+    },
+    onStopped: async (
+      error: unknown,
+      { application, clock }: Omit<InstalledTurnContext, "result">,
+    ) => {
+      expect(String(error)).toContain("installed application process stopped");
+      stops += 1;
+      await application.restart();
+      clock.state.crashAfterPolls = clock.state.polls + pollCap;
+    },
+    stops: () => stops,
+  };
+};
