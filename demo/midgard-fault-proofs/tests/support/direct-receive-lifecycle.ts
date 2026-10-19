@@ -17,7 +17,10 @@ import {
   buildDirectSourceIndexEvidence,
   createDirectFieldPlan,
 } from "../../src/direct-script-derivation/index.js";
-import { publishDirectReceiveFieldCarriage } from "./direct-receive-field-carriage.js";
+import {
+  directCarriagePublisherFunding,
+  publishDirectReceiveFieldCarriage,
+} from "./direct-receive-field-carriage.js";
 import { directReceiveLifecycleMaterial } from "./direct-receive-max-fixture.js";
 import { createDirectReceiveStepper } from "./direct-receive-stepper.js";
 import {
@@ -123,6 +126,7 @@ export const driveDirectReceiveLifecycle = async (
   const emulator = new Emulator(
     [
       account,
+      ...directCarriagePublisherFunding(account),
       {
         ...account,
         // Seed only the completed source prefix. Source Finish and the new
