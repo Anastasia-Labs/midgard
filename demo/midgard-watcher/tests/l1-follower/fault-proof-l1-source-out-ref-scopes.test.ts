@@ -10,6 +10,7 @@ import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-pro
 import type { FollowerRawReads } from "../../src/l1-follower/raw-reads.types.js";
 import {
   bech32,
+  C,
   type Fixture,
   fixture,
   hex,
@@ -101,6 +102,20 @@ describe("snapshot authority: out-ref scopes", () => {
         observationDepth: "inclusion",
       }),
     ).toEqual(snapshot);
+  });
+
+  it("leaves out a live out-ref that sits at another tracked address", async () => {
+    const { fx } = await extended();
+    const g = `${fx.hashes.g}#0`;
+    // G#0 is live at C, which the follower tracks by credential.
+    const atC = await capture(
+      fx,
+      fx.reads(),
+      scopedRequest(fx.header, [g], bech32(C)),
+    );
+    expect(atC.scopes[0]!.utxos.map(({ outRef }) => outRef)).toEqual([g]);
+    const atT = await capture(fx, fx.reads(), scopedRequest(fx.header, [g]));
+    expect(atT.scopes[0]!.utxos).toEqual([]);
   });
 
   it("refuses an out-ref scope of an address the follower does not track", async () => {
