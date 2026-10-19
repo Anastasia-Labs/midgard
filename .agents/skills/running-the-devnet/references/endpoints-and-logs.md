@@ -410,9 +410,14 @@ L1 follower and follower-change driver
   `midgard-l1-follower reset --to-origin`.
 - `origin_after_protocol_init`: the follower reached the node tip without
   seeing the transaction that spends `hubOracleOneShot`, so `l1Origin` is
-  after protocol init. The loop keeps following. Correct `l1Origin` to a
-  point before the `prepareHubOracleNonce` block and reset the follower to
-  its origin.
+  after protocol init; or the store's origin is after the `l1Origin` the
+  deployment manifest records (the detail names both points), so the store
+  may lack outputs created between them, whether it saw that spend or not.
+  The loop keeps following. Set `l1Origin` at or before the manifest's
+  recorded one (drop the `L1_ORIGIN` or `l1.origin` override to use it;
+  for a manifest without one, a point before the `prepareHubOracleNonce`
+  block) and reset the follower to its origin
+  (`midgard-l1-follower reset --to-origin`).
 - `l1_follower_migration_failed`: the follower store refused its migrations
   at start (a recorded migration whose text changed, a duplicate id, or one
   the schema lint refuses). The follow loop stops; the node stays up and
@@ -565,10 +570,12 @@ reason=landed_block_forced_order_pending`); a restart meets the same bound
   origin. The detail then names the referenced outputs absent from the
   facts (`<tx hash>#<index>`), one of which is that retention output. The
   facts cannot judge the block, and the block is never blamed for it. A
-  store whose `l1Origin` is the documented point before the
-  `prepareHubOracleNonce` block holds the protocol-init tx (the tx that
+  store at the deployment manifest's recorded `l1Origin` (or, for a
+  manifest without one, at the documented point before the
+  `prepareHubOracleNonce` block) holds the protocol-init tx (the tx that
   spends `hubOracleOneShot`), so no event is admitted before its origin
-  and no node output predates it. Not retried: the node exits non-zero at
+  and no node output predates it; it also holds every output created
+  between that origin and the `prepareHubOracleNonce` block. Not retried: the node exits non-zero at
   once (`node_transient_budget_exhausted source=driver
 reason=landed_block_origin_after_frontier`); a restart on the same store
   exits again. Reset the follower store with an earlier `l1Origin`, then
@@ -578,7 +585,9 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
   `<tx hash>`, `midgard-l1-follower find-origin --tx <tx hash>
 --network-magic <n>` prints the `l1Origin` immediately before the block
   holding that tx; use the earliest of them (or any earlier point) as
-  `l1Origin`. Otherwise, before the `prepareHubOracleNonce` block.
+  `l1Origin`. Otherwise, at or before the manifest's recorded `l1Origin`
+  (by dropping the override), or for a manifest without one, before the
+  `prepareHubOracleNonce` block.
 - `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
   a foreign block failed in this node's own computation (hashing, the payload
   roots, a library the replay runs), or its Ed25519 verifier could not

@@ -1,5 +1,6 @@
 // What the committee's follower runs on, read from the committee's
 // configuration: the run plan, the tracked set and the own wallets.
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { type OriginConfig } from "@al-ft/midgard-l1-follower";
 import {
   CML,
@@ -42,10 +43,17 @@ const hubOracleOneShot = (
   return { txHash: Buffer.from(txHash, "hex"), index: outputIndex };
 };
 
+const point = (origin: L1Origin) => ({
+  slot: origin.slot,
+  hash: Buffer.from(origin.blockHash, "hex"),
+});
+
 /**
- * How the committee's follower runs. It needs the configured origin
- * (`L1_ORIGIN`), the local node (the native ledger's socket and transport
- * binary) and the manifest's `hubOracleOneShot`. Its tables share the
+ * How the committee's follower runs. It needs an origin (`L1_ORIGIN`, else
+ * the manifest's recorded `l1Origin`), the local node (the native ledger's
+ * socket and transport binary) and the manifest's `hubOracleOneShot`. A
+ * recorded origin is also the point the store's origin must be at or before
+ * (R3). Its tables share the
  * committee store's database. Anything missing leaves the committee unready
  * with `l1_follower_unconfigured`; it never fails startup.
  */
@@ -56,7 +64,12 @@ export const committeeL1FollowerPlan = (
     kind: "unconfigured",
     reason,
   });
-  if (config.l1Origin === undefined) return missing("L1_ORIGIN is not set");
+  const recordedOrigin = config.recordedL1Origin;
+  const origin = config.l1Origin ?? recordedOrigin;
+  if (origin === undefined)
+    return missing(
+      "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
+    );
   if (config.nativeLedger === undefined)
     return missing("no local node ledger is configured");
   const oneShot = hubOracleOneShot(config.contractDeploymentInfo);
@@ -69,11 +82,11 @@ export const committeeL1FollowerPlan = (
     binaryPath: config.nativeLedger.binaryPath,
     networkMagic: config.cardanoL1Source.networkMagic,
     origin: {
-      origin: {
-        slot: config.l1Origin.slot,
-        hash: Buffer.from(config.l1Origin.blockHash, "hex"),
-      },
+      origin: point(origin),
       hubOracleOneShot: oneShot,
+      ...(recordedOrigin === undefined
+        ? {}
+        : { recordedOrigin: point(recordedOrigin) }),
     },
   };
 };

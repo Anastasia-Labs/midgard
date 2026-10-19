@@ -206,7 +206,7 @@ export type NodeConfigDep = {
   L1_VIEW_FATAL_MS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
-  /** The operator-configured L1 origin point; null when `L1_ORIGIN` is unset. */
+  /** The operator's L1 origin override; null when `L1_ORIGIN` is unset (the manifest's `l1Origin` applies). */
   L1_ORIGIN: L1Origin | null;
   /** URL templates (`{txId}`) for by-id L1 tx fetches; empty when unset. */
   L1_TX_CONTENT_SOURCES: readonly string[];

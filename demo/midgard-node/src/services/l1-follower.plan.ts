@@ -2,6 +2,8 @@
  * Whether and how the node's L1 follower runs (N1), from the node's
  * configuration and its deployment.
  */
+import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import type { OriginConfig } from "@al-ft/midgard-l1-follower";
 import {
   type EventProjectionConfig,
@@ -49,7 +51,17 @@ export type L1FollowerPlan =
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
-/** Whether and how the node's follower runs, from its configuration. */
+const point = (origin: L1Origin) => ({
+  slot: origin.slot,
+  hash: Buffer.from(origin.blockHash, "hex"),
+});
+
+/**
+ * Whether and how the node's follower runs, from its configuration and its
+ * deployment manifest. The follower starts at `L1_ORIGIN` when set, else at
+ * the manifest's recorded `l1Origin`; a recorded origin is also the point the
+ * store's origin must be at or before (R3).
+ */
 export const l1FollowerPlan = (input: {
   readonly config: Pick<
     NodeConfigDep,
@@ -71,6 +83,8 @@ export const l1FollowerPlan = (input: {
     Readonly<{
       stateQueue: Readonly<{ spendingScriptAddress: string; policyId: string }>;
     }>;
+  /** The node's verified deployment manifest; undefined without one. */
+  readonly manifest: Pick<DeploymentManifest, "l1Origin"> | undefined;
   readonly securityParameter: number;
 }): L1FollowerPlan => {
   const { config } = input;
@@ -82,7 +96,12 @@ export const l1FollowerPlan = (input: {
     return missing(
       "no local node is configured (L1_NODE_SOCKET_PATH, L1_NODE_CONFIG_PATH, L1_NODE_TRANSPORT_BINARY_PATH)",
     );
-  if (config.L1_ORIGIN === null) return missing("L1_ORIGIN is not set");
+  const recordedOrigin = input.manifest?.l1Origin;
+  const origin = config.L1_ORIGIN ?? recordedOrigin;
+  if (origin === undefined)
+    return missing(
+      "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
+    );
   const oneShotTx = config.HUB_ORACLE_ONE_SHOT_TX_HASH.toLowerCase();
   const oneShotIndex = config.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX;
   if (
@@ -122,14 +141,14 @@ export const l1FollowerPlan = (input: {
     binaryPath: config.L1_NATIVE_LEDGER.binaryPath,
     nodeConfigPath: config.L1_NATIVE_LEDGER.nodeConfigPath,
     origin: {
-      origin: {
-        slot: config.L1_ORIGIN.slot,
-        hash: Buffer.from(config.L1_ORIGIN.blockHash, "hex"),
-      },
+      origin: point(origin),
       hubOracleOneShot: {
         txHash: Buffer.from(oneShotTx, "hex"),
         index: oneShotIndex,
       },
+      ...(recordedOrigin === undefined
+        ? {}
+        : { recordedOrigin: point(recordedOrigin) }),
     },
     securityParameter: input.securityParameter,
     projection,

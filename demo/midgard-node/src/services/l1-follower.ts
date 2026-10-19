@@ -442,6 +442,7 @@ export const startL1Follower = <R = never>(
     const plan = l1FollowerPlan({
       config,
       contracts,
+      manifest: identity.manifest,
       securityParameter: finality.automaticRecoveryMaxDepth,
     });
     if (plan.kind === "unconfigured")

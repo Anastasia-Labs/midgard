@@ -37,9 +37,10 @@ export type WatcherL1SourceConfig = Readonly<{
 export type WatcherL1Config = Readonly<{
   source: WatcherL1SourceConfig;
   /**
-   * The deployment's L1 origin: the point immediately before the block
-   * holding the prepareHubOracleNonce tx, where the L1 follower starts.
-   * Absent holds the follower unready (`l1_origin_not_configured`).
+   * An operator override of the deployment's L1 origin, where the L1
+   * follower starts. Absent, it starts at the manifest's recorded
+   * `l1Origin`; with neither, the follower is unready
+   * (`l1_origin_not_configured`).
    */
   origin?: L1Origin;
   requestTimeoutMs: number;

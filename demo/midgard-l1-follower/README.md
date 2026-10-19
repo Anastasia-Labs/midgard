@@ -110,19 +110,26 @@ until `start()` reloads the tracked-outref set.
 
 ## Origin
 
-The origin O (`l1Origin`, `<slot>.<block hash>`) is the point immediately
-before the block holding the deployment's `prepareHubOracleNonce` tx. An
-operator may override it per role: `L1_ORIGIN` for the node and the
+The origin is where a role's follower starts. The deployment records it:
+before it signs the hub-oracle nonce, the nonce command reads the local
+node's tip T, and the finalized manifest carries T as its optional root key
+`l1Origin` (`{ slot, blockHash }`). Finalization refuses unless T is on the
+local node's chain and before the block holding the deployment's
+`prepareHubOracleNonce` tx. Each role starts at T unless the operator
+overrides it: `L1_ORIGIN` (`<slot>.<block hash>`) for the node and the
 committee, `$.l1.origin` in the watcher config. The override never enters a
-profile or manifest. `parseL1Origin`, `formatL1Origin` and
-`checkL1OriginBeforeHubOracleNonceBlock` live in
-`@al-ft/midgard-core/l1-origin`. `find-origin` applies that invariant to its
-own result; `deployment:check` will enforce it once the manifest carries
-`l1Origin` (with the redeploy).
+profile or manifest. A role whose manifest records `l1Origin` passes it as
+`recordedOrigin`, and a store whose origin is after it is R3 (below). A
+manifest without `l1Origin` leaves the override as the only origin, and
+the role is unconfigured without one; the documented value is then O, the
+point immediately before the `prepareHubOracleNonce` block. `parseL1Origin`,
+`formatL1Origin` and `checkL1OriginBeforeHubOracleNonceBlock` live in
+`@al-ft/midgard-core/l1-origin`; `find-origin` applies that invariant to its
+own result.
 
 ```ts
 startFromOrigin({ store, transport, origin, credit }): Promise<OriginStart>
-protocolInitStatus(store, { origin, hubOracleOneShot }, tip): Promise<ProtocolInitStatus>
+protocolInitStatus(store, { origin, hubOracleOneShot, recordedOrigin? }, tip): Promise<ProtocolInitStatus>
 ```
 
 `startFromOrigin` opens chain-sync at `[O]` on a fresh store, takes O's height
@@ -143,7 +150,13 @@ a cursor at O, an intervention (R4, or `origin_mismatch` below) or a
   stored. It is not sticky. It needs the role's tracked set to qualify the
   init tx (the hub oracle policy), and relies on the init tx staying stored
   while an output it created is live; it can be wrong only after the hub
-  oracle NFT is burned and the init tx pruned.
+  oracle NFT is burned and the init tx pruned. With a `recordedOrigin`, a
+  store whose origin is after it (a later slot, or another block at the same
+  slot) is R3 from the first check, the protocol-init spend seen or not: it
+  may lack outputs created between the two points. Its detail names both
+  points and the recovery: set `l1Origin` at or before the recorded one and
+  `reset --to-origin`. An origin at or before the recorded one is checked as
+  without it.
 - `origin_mismatch`: the store was initialized at another origin than the
   configured one, for example after the operator corrected `l1Origin` to
   clear R3. The store is never reset silently; it stays as it is until the
@@ -579,7 +592,7 @@ own concern (the loop never makes the process unhealthy). Its reasons:
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rollback_beyond_k` (R1)            | a rewind deeper than k or below `prunedThroughSlot`, or a roll-backward to the genesis. Stops the loop.                                                                                                                                                                                                                                                                                                                                               |
 | `intersection_outside_history` (R2) | the node has none of a resumed store's intersection points. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                           |
-| `origin_after_protocol_init` (R3)   | at the tip without the protocol-init spend. The loop keeps following; cleared once the spend is stored.                                                                                                                                                                                                                                                                                                                                               |
+| `origin_after_protocol_init` (R3)   | at the tip without the protocol-init spend, or a store origin after the deployment's recorded `l1Origin`. The loop keeps following; cleared once the spend is stored, except for a store origin after the recorded one, which needs `reset --to-origin`.                                                                                                                                                                                              |
 | `origin_not_on_chain` (R4)          | a fresh store's origin is not on the node's chain. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                    |
 | `store_integrity` (R5)              | the store fails INV1–INV6 at start or after a rewind. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                 |
 | `origin_mismatch`                   | the store was initialized at another origin. Stops the loop.                                                                                                                                                                                                                                                                                                                                                                                          |
