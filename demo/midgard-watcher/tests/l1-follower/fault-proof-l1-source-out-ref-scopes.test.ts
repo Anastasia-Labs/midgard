@@ -1,7 +1,9 @@
 import {
   admitFraudProofRawL1Snapshot,
   type FraudProofRawL1Snapshot,
+  fraudProofSignedTransactionRecovery,
 } from "@al-ft/midgard-fault-proofs";
+import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.js";
@@ -10,12 +12,16 @@ import {
   bech32,
   type Fixture,
   fixture,
+  hex,
+  K,
+  pruneFixture,
   T,
   X,
 } from "../support/l1-follower-raw-reads-fixture.js";
 import {
   RELEASE,
   requestFor,
+  signedOf,
   sourceOver,
 } from "../support/l1-follower-raw-source-fixture.js";
 
@@ -36,6 +42,8 @@ const capture = async (
       observationDepth: "inclusion",
     })
     .capture(request)) as FraudProofRawL1Snapshot;
+
+const OUR_DATUM = Buffer.from("d87980", "hex");
 
 /** The fixture with one empty block above b5. */
 const extended = async () => {
@@ -110,22 +118,106 @@ describe("snapshot authority: out-ref scopes", () => {
     });
   });
 
-  it("refuses an out-ref whose row pruning may have removed, never reading it as absent", async () => {
-    const { fx } = await extended();
-    const pruned: FollowerRawReads = {
-      ...fx.reads(),
-      utxosByOutRefAtPoint: async (outRefs) => ({
-        kind: "ok",
-        value: {
-          outputs: [],
-          spends: [],
-          unknown: [],
-          beyondRetention: [...outRefs],
-        },
-      }),
+  /** The scope's utxos at `observationDepth`, by out-ref. */
+  const heldAt = async (
+    fx: Fixture,
+    outRefs: readonly string[],
+    observationDepth: "inclusion" | "recovery_finality" = "inclusion",
+  ) =>
+    (
+      (await sourceOver(fx, fx.reads())
+        .snapshotAuthority({ releaseFinality: RELEASE, observationDepth })
+        .capture(scopedRequest(fx.header, outRefs))) as FraudProofRawL1Snapshot
+    ).scopes[0]!.utxos.map(({ outRef }) => outRef);
+
+  /** One of our transactions: spends V#0 (live at T) and pays T a datum. */
+  const ours = (fx: Fixture, invalidAfter?: number): SimTx => ({
+    inputs: [{ txHash: Buffer.from(fx.hashes.v, "hex"), index: 0 }],
+    outputs: [{ address: T, lovelace: 2_500_000n, datum: OUR_DATUM }],
+    ...(invalidAfter === undefined ? {} : { invalidAfter }),
+    nonce: fx.chain.nonce(),
+  });
+
+  // Each case: how our transaction stands once the follower has pruned.
+  it.each([
+    ["not yet landed", "rebroadcast"],
+    ["dropped", "rebroadcast"],
+    ["expired", "expired"],
+    ["rolled back for good", "rebroadcast"],
+  ] as const)(
+    "after pruning, reads the output of our transaction %s as absent, and signed recovery goes ahead",
+    async (state, recovered) => {
+      const fx = await fixture();
+      const tx = ours(
+        fx,
+        state === "expired" ? Number(fx.points.p5.slot) : undefined,
+      );
+      const txHash = hex(simTxHash(tx));
+      if (state === "rolled back for good") {
+        await fx.forward([tx]);
+        expect(await heldAt(fx, [`${txHash}#0`])).toEqual([`${txHash}#0`]);
+        await fx.backward(1);
+      }
+      await pruneFixture(fx);
+      expect(await heldAt(fx, [`${txHash}#0`])).toEqual([]);
+      const recovery = fraudProofSignedTransactionRecovery(
+        sourceOver(fx, fx.reads()),
+        RELEASE,
+      );
+      expect(
+        (await recovery.observeSignedTransaction(signedOf(tx))).status,
+      ).toBe(recovered);
+      if (state === "not yet landed") {
+        await fx.forward([tx]);
+        expect(await heldAt(fx, [`${txHash}#0`])).toEqual([`${txHash}#0`]);
+      }
+    },
+  );
+
+  it("after pruning, reads a spent output the pruning removed as absent", async () => {
+    const fx = await fixture();
+    await pruneFixture(fx);
+    // A#0 was spent in b2 and pruned; B#0 is still live at T.
+    expect(await heldAt(fx, [`${fx.hashes.a}#0`, `${fx.hashes.b}#0`])).toEqual([
+      `${fx.hashes.b}#0`,
+    ]);
+  });
+
+  it("refuses an out-ref pruning may have removed at a capture point below the prune boundary", async () => {
+    const fx = await fixture();
+    // Q#0 is unspent in its block (kept: R#0 is live there), spent in the
+    // next block, which the pruning then reaches.
+    const q: SimTx = {
+      inputs: [fx.chain.outsideInput()],
+      outputs: [{ address: T, lovelace: 2_000_000n }],
+      nonce: fx.chain.nonce(),
     };
-    await expect(
-      capture(fx, pruned, scopedRequest(fx.header, [`${fx.hashes.v}#0`])),
-    ).rejects.toMatchObject({ reason: "beyond_retention" });
+    const r: SimTx = {
+      inputs: [fx.chain.outsideInput()],
+      outputs: [{ address: T, lovelace: 3_000_000n }],
+      nonce: fx.chain.nonce(),
+    };
+    const created = await fx.forward([q, r]);
+    const qHash = created.hashes[0]!;
+    expect(await heldAt(fx, [`${qHash}#0`])).toEqual([`${qHash}#0`]);
+    const spent = await fx.forward([
+      {
+        inputs: [{ txHash: Buffer.from(qHash, "hex"), index: 0 }],
+        outputs: [{ address: X, lovelace: 1_500_000n }],
+        nonce: fx.chain.nonce(),
+      },
+    ]);
+    for (let i = 0; i < K; i += 1) await fx.forward([]);
+    const prunedThrough = await fx.pruneAll();
+    expect(prunedThrough).toBeGreaterThanOrEqual(Number(spent.point.slot));
+    expect(Number(created.point.slot)).toBeLessThan(prunedThrough);
+    // The recovery-final point (5 deep) is Q's block, below the boundary.
+    const refused = heldAt(fx, [`${qHash}#0`], "recovery_finality");
+    await expect(refused).rejects.toBeInstanceOf(
+      WatcherFaultProofL1RefusedError,
+    );
+    await expect(refused).rejects.toMatchObject({
+      reason: "beyond_retention",
+    });
   });
 });

@@ -101,7 +101,8 @@ const outputAddressHex = (outputCbor: string): string => {
  * A scope's outputs at `point`. An address scope reads the whole address; an
  * out-ref scope reads only its out-refs, by out-ref, keeping those unspent
  * at the point that sit at the scope's address, whatever else the address
- * holds. Both refuse an address the follower does not track.
+ * holds; an out-ref without a row is refused only at a point below the
+ * prune boundary. Both refuse an address the follower does not track.
  */
 const scopeUtxos = async (
   store: FactStore,
@@ -126,7 +127,17 @@ const scopeUtxos = async (
   const read = required(
     await rawReads.utxosByOutRefAtPoint(scope.outRefs, point),
   );
-  if (read.beyondRetention.length > 0)
+  // Pruning deletes only outputs spent at or below its boundary, so at a
+  // point at or above the boundary a missing row is an output not unspent
+  // there: absent, as an address scope reads it. Below the boundary it may
+  // have been unspent at the point. The cursor is read after the rows, so
+  // its boundary is at least the one they were read under.
+  const cursor =
+    read.beyondRetention.length === 0 ? null : await store.cursor();
+  if (
+    read.beyondRetention.length > 0 &&
+    (cursor === null || Number(point.slot) < cursor.prunedThroughSlot)
+  )
     throw new WatcherFaultProofL1RefusedError(
       "beyond_retention",
       `pruning may have removed ${read.beyondRetention.join(", ")}`,
