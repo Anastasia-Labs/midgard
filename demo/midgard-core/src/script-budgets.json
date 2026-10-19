@@ -211,8 +211,8 @@
         "cpu": 1386589910
       }
     },
-    "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction": {
-      "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction",
+    "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_pending_forced_source": {
+      "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_pending_forced_source",
       "ceiling": {
         "mem": 2413416,
         "cpu": 1063482490
