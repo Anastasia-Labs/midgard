@@ -77,6 +77,21 @@ describe("the PV11 evaluator", () => {
     );
   });
 
+  it("runs a script under its declared budget, to the unit", () => {
+    const unit = script(new Lambda(UPLCConst.unit));
+    const spent = evaluate(unit);
+    expect(spent.kind).toBe("accepted");
+    if (spent.kind !== "accepted") return;
+    expect(evaluate(unit, spent.budget).kind).toBe("accepted");
+    expectInvalid(
+      evaluate(unit, {
+        cpu: spent.budget.cpu,
+        memory: spent.budget.memory - 1n,
+      }),
+      "execution failed (1)",
+    );
+  });
+
   it("fails a PlutusV3 script returning something other than unit", () => {
     expectInvalid(
       evaluate(script(new Lambda(UPLCConst.int(1)))),

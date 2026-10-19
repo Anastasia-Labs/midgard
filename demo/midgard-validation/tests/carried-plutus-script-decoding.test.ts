@@ -20,6 +20,7 @@ import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  REJECT_SOURCE_KIND_REFERENCE,
   RejectCodes,
   runPhaseBValidationWithPatch,
   validatePhaseASingle,
@@ -80,6 +81,7 @@ const envelopeShaped: MidgardVersionedScript = {
 const nativeFalse = nativeScriptWitness({ type: "any", scripts: [] });
 
 const spent = outRefFromByte(0x11);
+const unheldReference = outRefFromByte(0x12);
 const funded = (scriptRef?: MidgardVersionedScript): Buffer =>
   encodeMidgardTxOutput({
     address: TEST_ADDRESS_BYTES,
@@ -93,12 +95,17 @@ type Spelling = Readonly<{
   forced?: boolean;
   minFeeB?: bigint;
   inputPresent?: boolean;
+  /** References an output the state does not hold. */
+  missingReference?: boolean;
 }>;
 
 /** Phase A, then Phase B over a state holding the spent input: the verdict. */
 const admit = async (spelling: Spelling) => {
   const fixture = makeNativeTx({
     spendInputs: [spent],
+    ...(spelling.missingReference === true
+      ? { referenceInputs: [unheldReference] }
+      : {}),
     outputs: [funded(spelling.outputScript)],
     ...(spelling.witnesses === undefined
       ? {}
@@ -293,6 +300,18 @@ describe("carried Plutus decoding takes its machine phase", () => {
     ).toMatchObject({
       code: RejectCodes.InputNotFound,
       subject: { arm: "InputNotFound" },
+    });
+  });
+
+  it("reports a missing reference input before an undecodable output reference script", async () => {
+    expect(
+      await admit({ outputScript: undecodable, missingReference: true }),
+    ).toMatchObject({
+      code: RejectCodes.InputNotFound,
+      subject: {
+        arm: "InputNotFound",
+        sourceKind: REJECT_SOURCE_KIND_REFERENCE,
+      },
     });
   });
 
