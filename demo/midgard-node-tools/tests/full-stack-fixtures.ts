@@ -38,26 +38,10 @@ export class RecordingProcesses extends StackProcesses {
       ? await response(call)
       : (response ?? null);
   }
-  override async l1NodeTip() {
-    this.calls.push({
-      id: "l1-node-tip",
-      args: [],
-      overrides: {},
-      env: { ...this.env },
-      scope: "host",
-    });
-    return this.responses["l1-node-tip"] as L1Origin | undefined;
-  }
-  override async deriveL1Origin(
-    nonceTxHash: string,
-    from: L1Origin | undefined,
-  ) {
+  override async deriveL1Origin(nonceTxHash: string, recorded: L1Origin) {
     const call = {
       id: "l1-origin-derive",
-      args: [
-        nonceTxHash,
-        from === undefined ? "genesis" : formatL1Origin(from),
-      ],
+      args: [nonceTxHash, formatL1Origin(recorded)],
       overrides: {},
       env: { ...this.env },
       scope: "host" as const,

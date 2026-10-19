@@ -10,6 +10,7 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
   verifyDeploymentProfileBinding,
 } from ".././deployment-profile.js";
+import { parseL1OriginRecord } from ".././l1-origin.js";
 import {
   formatL1SlotConfig,
   l1SlotConfigsEqual,
@@ -23,6 +24,7 @@ import {
 } from "./availability.js";
 import { requireRecord } from "./primitives.js";
 import {
+  DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS,
   DEPLOYMENT_MANIFEST_ROOT_KEYS,
   type DeploymentManifestJsonValue,
 } from "./types.js";
@@ -120,7 +122,10 @@ export const computeDeploymentManifestJsonDigest = (value: unknown): string => {
 };
 
 const exactRoot = (candidate: Record<string, unknown>): void => {
-  const expected = new Set<string>(DEPLOYMENT_MANIFEST_ROOT_KEYS);
+  const expected = new Set<string>([
+    ...DEPLOYMENT_MANIFEST_ROOT_KEYS,
+    ...DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS,
+  ]);
   for (const key of Object.keys(candidate)) {
     if (!expected.has(key)) {
       throw new Error(`Deployment manifest value.${key} is unexpected`);
@@ -204,6 +209,9 @@ export const verifyDeploymentManifestIdentity = (
     candidate.network,
     candidate.l1SlotConfig,
   );
+  if (Object.prototype.hasOwnProperty.call(candidate, "l1Origin")) {
+    parseL1OriginRecord(candidate.l1Origin, "Deployment manifest l1Origin");
+  }
   if (
     typeof candidate.manifestId !== "string" ||
     !/^[0-9a-f]{64}$/u.test(candidate.manifestId)

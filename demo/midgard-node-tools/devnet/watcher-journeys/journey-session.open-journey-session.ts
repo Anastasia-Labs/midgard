@@ -129,8 +129,11 @@ export const openJourneySession = async (runDirectory: string) => {
     const nativeQuery = await journeyNativeNodeQuery(context.runDirectory);
     if (nativeQuery.watcherConfig.l1.source.sourceMode !== "local_node")
       throw new Error("Native node source required");
-    // The run watcher follows from the deployment's origin, the point before
-    // its hub-oracle nonce's block.
+    // The run watcher follows from the deployment's origin: the manifest's
+    // recorded l1Origin, proven to precede its hub-oracle nonce's block.
+    const recordedOrigin = deployment.manifest.l1Origin;
+    if (recordedOrigin === undefined)
+      throw new Error("The deployment manifest records no l1Origin");
     const { origin } = await stage("deployment L1 origin", () =>
       deriveL1Origin({
         node: {
@@ -139,6 +142,7 @@ export const openJourneySession = async (runDirectory: string) => {
           networkMagic: context.customNetwork.networkMagic,
         },
         nonceTxHash: deployment.manifest.hubOracleOneShot.txHash,
+        recorded: recordedOrigin,
       }),
     );
     const { input: watcherInput, config: watcherConfig } = buildWatcherConfig(

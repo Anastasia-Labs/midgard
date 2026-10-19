@@ -640,8 +640,11 @@ waiting:
   deployment, or perform the fresh redeploy the detail names; the next attempt
   then starts.
 - `starting:committee_store_point_before_l1_origin`: a stored record names an
-  L1 point before the configured `L1_ORIGIN`, so the configured origin is
-  wrong. Set `L1_ORIGIN` to the deployment's origin and restart.
+  L1 point before the configured `L1_ORIGIN`, so the override starts too late.
+  When the deployment manifest records `l1Origin`, remove `L1_ORIGIN` (the node
+  then follows from the manifest's origin) or lower it to at or before that
+  origin, and restart. For a manifest without `l1Origin`, set `L1_ORIGIN` to
+  the deployment's origin and restart.
 - `starting:committee_retirement_binding_changed`: the stored retirement floor
   is bound to another member binding than the configured one. Restore the
   configuration the store was adopted under, or start this member on a fresh

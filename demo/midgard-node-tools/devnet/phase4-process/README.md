@@ -62,11 +62,13 @@ builds `midgard-l1-node-transport` (`pnpm --dir ../l1-node-transport run
 native:build`, which needs Go), copies it to `bin/`, and writes
 `config/host-config.json`, the node config with its `/genesis/` paths rewritten
 to the run's `genesis/`. After the nonce it runs `midgard-l1-follower
-find-origin` on the nonce tx against the run's node socket, scanning from
-genesis, records the result in `work/l1-origin.json`, and sets `L1_ORIGIN`,
+find-origin --recorded` on the nonce tx against the run's node socket, from
+the origin the nonce command recorded before it signed, records the result in
+`work/l1-origin.json`, and sets `L1_ORIGIN` (that recorded origin),
 `L1_NODE_SOCKET_PATH`, `L1_NODE_CONFIG_PATH` and
 `L1_NODE_TRANSPORT_BINARY_PATH` in `node.env`. It clears an earlier run's
-`L1_ORIGIN` first and stops if find-origin does not find the tx.
+`L1_ORIGIN` first, and stops if the nonce command recorded no origin or
+find-origin does not prove it precedes the nonce tx's block.
 `write-acceptance-env.sh` copies the six inputs (those four and the one-shot)
 into `acceptance.env`, and refuses with `Phase4L1FollowerInputError`, naming
 the input, when one is missing, when a local-node path is not the run's own or

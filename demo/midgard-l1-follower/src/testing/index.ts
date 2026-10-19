@@ -36,6 +36,7 @@ export {
   type ForkStep,
   type ScenarioTraffic,
 } from "./episodes.js";
+export { simProtocolInitChain } from "./protocol-init-chain.js";
 export {
   diffDumps,
   dumpStore,

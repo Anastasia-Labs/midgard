@@ -74,6 +74,13 @@ export type CommitteeConfig = {
   readonly nativeLedger?: NativeLedgerConfig;
   /** The operator-configured L1 origin point (`L1_ORIGIN`); absent when unset. */
   readonly l1Origin?: L1Origin;
+  /**
+   * The verified deployment manifest's `l1Origin`: the local node tip the
+   * deployer recorded before it signed the hub-oracle nonce. The follower
+   * starts there when `L1_ORIGIN` is unset, and a store origin after it is
+   * R3. Absent for a manifest without `l1Origin`.
+   */
+  readonly recordedL1Origin?: L1Origin;
   readonly finalityDepth: number;
   /** Signed recovery horizon, distinct from confirmation admission. */
   readonly automaticRecoveryMaxDepth: number;

@@ -33,10 +33,17 @@ program
     "--out <path>",
     "Destination filepath for the contract deployment info JSON",
   )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path the deployment's prepare-hub-oracle-one-shot-nonce wrote (default: MIDGARD_RUN_STATE_PATH or deploymentInfo/midgard-run-state.json)",
+  )
   .action(async (_args, options) => {
-    const { out } = options.opts();
+    const { out, runState } = options.opts();
     const mainEffect = provideTxServices(
-      ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(out).pipe(
+      ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
+        out,
+        typeof runState === "string" ? { runStatePath: runState } : {},
+      ).pipe(
         Effect.tap((outputPath) =>
           Effect.logInfo(
             `export-contract-deployment-info completed: ${outputPath}`,

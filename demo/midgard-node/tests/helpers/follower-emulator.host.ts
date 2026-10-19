@@ -133,6 +133,7 @@ export const bindNodeFollower = (
       POSTGRES_DB: "",
     },
     contracts: input.contracts,
+    manifest: undefined,
     securityParameter,
   });
   if (plan.kind !== "run")

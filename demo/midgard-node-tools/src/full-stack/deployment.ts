@@ -12,11 +12,7 @@ import {
 } from "./initialization-recovery.js";
 import { readJsonIfPresent } from "./journal.js";
 import { exportLocalCardanoConfig } from "./native-ledger.js";
-import {
-  originStep,
-  recordOriginStartHint,
-  restoreL1Origin,
-} from "./origin.js";
+import { originStep, restoreL1Origin } from "./origin.js";
 import { StackProcesses } from "./process.js";
 import {
   assertHostDatabaseIsStackDatabase,
@@ -206,7 +202,6 @@ export function deploymentSteps(processes: StackProcesses): StackStep[] {
           : { status: "pending" };
       },
       execute: async () => {
-        await recordOriginStartHint(processes);
         await processes.node("nonce-create-or-resume", [
           "prepare-hub-oracle-one-shot-nonce",
           "--run-state",

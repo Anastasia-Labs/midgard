@@ -26,7 +26,11 @@ vi.mock("./live-context.js", async (original) => ({
   loadJourneyContext: async () => ({
     runDirectory: state.runDirectory,
     deployment: {
-      manifest: { manifestId: "ab".repeat(32), hubOracleOneShot: {} },
+      manifest: {
+        manifestId: "ab".repeat(32),
+        hubOracleOneShot: {},
+        l1Origin: { slot: 7, blockHash: "34" },
+      },
       contracts: { computationThread: { policyId: "cd".repeat(28) } },
     },
     provider: {},

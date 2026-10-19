@@ -45,6 +45,7 @@ export const hubOracleNonceRunStateHooks = (
           network,
           ...nonceFields(attempt),
           signedTxCbor: attempt.signedTxCbor,
+          l1Origin: attempt.l1Origin,
         }),
       ),
     onSubmitted: (attempt) =>

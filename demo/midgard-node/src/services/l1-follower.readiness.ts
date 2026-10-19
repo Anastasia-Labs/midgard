@@ -191,6 +191,25 @@ export type L1FollowerState =
 export const followerCaughtUp = (status: FollowStatus): boolean =>
   status.atTip && status.interventions.length === 0 && status.stuck === null;
 
+/**
+ * The follower's `onStatus` hook that starts landed-block processing: it
+ * calls `trigger` once per cursor position the follower reaches while caught
+ * up. The driver applies only views at the node's tip; until then a key the
+ * follower lacks may be one it has not reached, not an orphan.
+ */
+export const landedBlockTrigger = (
+  trigger: () => void,
+): ((next: FollowStatus) => void) => {
+  let lastCursor: string | null = null;
+  return (next) => {
+    const key = cursorKey(next);
+    if (key !== null && key !== lastCursor && followerCaughtUp(next)) {
+      lastCursor = key;
+      trigger();
+    }
+  };
+};
+
 /** The running follower, when it is caught up. */
 export const caughtUpFollower = (
   state: L1FollowerState,

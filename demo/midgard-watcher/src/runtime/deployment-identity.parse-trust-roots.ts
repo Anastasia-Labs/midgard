@@ -11,6 +11,7 @@ import {
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import {
   type FraudProofReleaseEconomicsAuthority,
   type FraudProofReleaseFinalityAuthority,
@@ -226,6 +227,13 @@ export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
   deploymentFingerprint: string;
   network: "Mainnet" | "Preprod" | "Preview" | "Custom";
   hubOracleOneShotOutRef: string;
+  /**
+   * The manifest's `l1Origin`: the local node tip the deployer recorded
+   * before it signed the hub-oracle nonce. The follower starts there when
+   * `l1.origin` is unset, and a store origin after it is R3. Absent for a
+   * manifest without `l1Origin`.
+   */
+  recordedL1Origin?: L1Origin;
   protocolScriptHashes: Readonly<{
     hubOracleMint: string;
     stateQueueSpend: string;
