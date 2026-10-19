@@ -23,9 +23,16 @@ describe("minFee wrongful rejection registered lifecycle", () => {
           state: { ...s.state, min_fee_b: minimum + 1n },
         }),
       ).rejects.toThrow();
+      // A header that does not hash to the thread's challenged block.
       await expect(
         s.bind(initial.nextThreadOutRef, {
-          forcedSource: { ...s.forcedSource, direction: 0n },
+          forcedSource: {
+            ...s.forcedSource,
+            header: {
+              ...s.forcedSource.header,
+              prevHeaderHash: "ff".repeat(28),
+            },
+          },
         }),
       ).rejects.toThrow();
       if (minimum === 1_000n) {

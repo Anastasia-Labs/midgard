@@ -147,8 +147,27 @@ describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
         },
       }),
     ).rejects.toThrow();
+    // A source leaf the header's forced root does not hold, with the state's
+    // subject moved to match it so only the leaf's membership can refuse it.
+    const otherKey = {
+      ...f.source.membership.key,
+      outputIndex: f.source.membership.key.outputIndex + 1n,
+    };
     await expect(
-      f.bind(outRef, { forcedSource: { ...f.source, direction: 0n } }),
+      f.bind(outRef, {
+        forcedSource: {
+          ...f.source,
+          membership: { ...f.source.membership, key: otherKey },
+        },
+        state: {
+          ...f.state,
+          subject: SDK.forcedVerdictSubject({
+            transactionId: f.state.bad_tx_id,
+            sourceKey: otherKey,
+            rejectionReason: f.state.subject.rejection_reason,
+          }),
+        },
+      }),
     ).rejects.toThrow();
     const bound = await f.bind(outRef);
     await expect(
