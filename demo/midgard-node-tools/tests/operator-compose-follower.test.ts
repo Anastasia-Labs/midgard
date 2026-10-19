@@ -50,7 +50,8 @@ describe("operator compose and the node's L1 follower", () => {
     });
     expect(plan).toEqual({
       kind: "unconfigured",
-      detail: "L1_ORIGIN is not set",
+      detail:
+        "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
     });
     if (plan.kind !== "unconfigured") throw new Error("unreachable");
     expect(l1FollowerReadiness(plan).reasons).toEqual([
