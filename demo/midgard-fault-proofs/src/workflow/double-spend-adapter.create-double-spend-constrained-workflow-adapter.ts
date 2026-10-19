@@ -900,17 +900,10 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             });
             if (observed.kind !== "confirmed") return await unconfirmed();
           } else {
-            const certificate = await resolveFaultProofFieldPreimageCertificate(
-              {
-                lucid: config.lucid,
-                network: config.network,
-                planned: plan,
-                certificatePolicyId: config.fieldPreimageCertificate.policyId,
-              },
-            );
-            if (certificate === undefined || certificate.txHash !== txHash) {
-              return await unconfirmed();
-            }
+            // The certification transaction pays its certificate at output 0.
+            // Confirm that exact output: another valid certificate for the same
+            // opening may sort first at the address, and selecting by order
+            // would never settle this transaction.
             const certification = deriveFieldPreimageCertification(plan.plan);
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
@@ -919,7 +912,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
                 network: config.network,
                 certificatePolicyId: config.fieldPreimageCertificate.policyId,
               }),
-              expectedOutRef: `${certificate.txHash}#${certificate.outputIndex.toString()}`,
+              expectedOutRef: `${txHash}#0`,
               expectedDatumCbor: certification.datumCbor,
               expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
             });
