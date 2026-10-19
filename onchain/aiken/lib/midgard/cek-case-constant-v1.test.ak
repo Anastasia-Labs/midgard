@@ -782,14 +782,22 @@ fn summary_link(
   }
 }
 
-/// A `case` with two branches on `items` (at least two) in committed form,
-/// against the head and tail roots of the same list carried inline.
-fn committed_case(
+type CommittedList {
+  scrutinee: Pair<cek_builtin_v1.ValueWitnessV1, ByteArray>,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+  head: ByteArray,
+  tail: ByteArray,
+}
+
+/// `items` (at least two) in committed form, read through its top node, its
+/// head node and its first two links, with the roots of its head and tail as
+/// the same values carried inline.
+fn committed_list(
   type_cbor: ByteArray,
   element_cbor: ByteArray,
   items: List<Data>,
   head_node: cek_data_v1.DataNodeV1,
-) -> Bool {
+) -> CommittedList {
   expect [head, second, ..rest] = items
   let rest_items = cek_data_v1.commit_data_list(rest)
   let second_summary = cek_data_v1.semantic_data_summary_v1(second)
@@ -813,9 +821,9 @@ fn committed_case(
     ),
   )
   expect scrutinee.2nd == root(type_cbor, list)
-  semantic_cases(
+  CommittedList {
     scrutinee,
-    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
       data_nodes: [
         cek_data_v1.ListData {
           items_count: all_items.length,
@@ -832,16 +840,25 @@ fn committed_case(
       pair_nodes: [],
       scalar_preimages: [],
     },
+    head: root(element_cbor, head),
+    tail: root(type_cbor, builtin.list_data([second, ..rest])),
+  }
+}
+
+/// A `case` with two branches on `items` (at least two) in committed form,
+/// against the head and tail roots of the same list carried inline.
+fn committed_case(
+  type_cbor: ByteArray,
+  element_cbor: ByteArray,
+  items: List<Data>,
+  head_node: cek_data_v1.DataNodeV1,
+) -> Bool {
+  let list = committed_list(type_cbor, element_cbor, items, head_node)
+  semantic_cases(
+    list.scrutinee,
+    list.material,
     2,
-    selects(
-      2,
-      0,
-      2,
-      values(
-        root(element_cbor, head),
-        root(type_cbor, builtin.list_data([second, ..rest])),
-      ),
-    ),
+    selects(2, 0, 2, values(list.head, list.tail)),
   )
 }
 
@@ -893,6 +910,110 @@ test case_on_a_committed_boolean_list_applies_its_branch_to_head_and_tail() {
 
 test case_on_a_committed_unit_list_applies_its_branch_to_head_and_tail() {
   committed_case(#"9f0503ff", unit_type, [unit(), unit()], tag_node(0))
+}
+
+// A `case` with one branch on a non-empty list selects that branch with the
+// head and the tail, as one with two branches does.
+
+/// `count` integers, counting down to 1.
+fn countdown(count: Int) -> List<Data> {
+  if count == 0 {
+    []
+  } else {
+    [builtin.i_data(count), ..countdown(count - 1)]
+  }
+}
+
+/// The node of an integer item.
+fn integer_node(item: Data) -> cek_data_v1.DataNodeV1 {
+  let summary = cek_data_v1.semantic_data_summary_v1(item)
+  cek_data_v1.IntegerData {
+    cbor_root: cek_data_v1.bounded_blob_root_v1(cbor.serialise(item)),
+    cbor_length: summary.cbor_length,
+    memory: summary.memory,
+  }
+}
+
+/// `countdown(count)` as a list of integers in committed form.
+fn committed_countdown(count: Int) -> CommittedList {
+  let items = countdown(count)
+  expect [head, ..] = items
+  committed_list(integer_list_type, integer_type, items, integer_node(head))
+}
+
+test case_on_a_committed_list_with_one_branch_applies_it_to_head_and_tail() {
+  let list = committed_countdown(3)
+  semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(1, 0, 2, values(list.head, list.tail)),
+  )
+}
+
+test case_on_a_committed_list_with_one_branch_refuses_a_missing_branch() {
+  let list = committed_countdown(3)
+  !semantic_cases(list.scrutinee, list.material, 1, missing())
+}
+
+test case_on_a_long_committed_list_with_one_branch_applies_it_to_head_and_tail() {
+  let list = committed_countdown(1500)
+  semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(1, 0, 2, values(list.head, list.tail)),
+  )
+}
+
+test case_on_a_long_committed_list_with_one_branch_refuses_a_missing_branch() {
+  let list = committed_countdown(1500)
+  !semantic_cases(list.scrutinee, list.material, 1, missing())
+}
+
+test case_on_a_long_committed_list_with_one_branch_refuses_a_second_branch() {
+  let list = committed_countdown(1500)
+  !semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(1, 1, 2, values(list.head, list.tail)),
+  )
+}
+
+test case_on_a_long_committed_list_with_one_branch_refuses_tail_before_head() {
+  let list = committed_countdown(1500)
+  !semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(1, 0, 2, values(list.tail, list.head)),
+  )
+}
+
+test case_on_a_long_committed_list_with_one_branch_refuses_another_head() {
+  let list = committed_countdown(1500)
+  !semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(
+      1,
+      0,
+      2,
+      values(root(integer_type, builtin.i_data(1499)), list.tail),
+    ),
+  )
+}
+
+test case_on_a_long_committed_list_with_one_branch_refuses_the_whole_list_as_its_tail() {
+  let list = committed_countdown(1500)
+  !semantic_cases(
+    list.scrutinee,
+    list.material,
+    1,
+    selects(1, 0, 2, values(list.head, list.scrutinee.2nd)),
+  )
 }
 
 type WidePair {

@@ -607,6 +607,136 @@ test case_constant_arm_committed_unit_list_vector_alone() {
   list.focus_root != list.post.focus_root
 }
 
+// A `case` with one branch on a committed list selects that branch with the
+// head and the tail.
+
+/// One branch, `h_01`, closed over the empty environment and returning to the
+/// empty stack.
+fn one_branch() -> ByteArray {
+  cek_proof_v1.hash_sequence_node_v1(
+    h_01,
+    cek_proof_v1.empty_sequence_root_v1,
+    1,
+  )
+}
+
+fn selecting_one(
+  values_root: ByteArray,
+  tag: Int,
+) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_case_select,
+    one_branch(),
+    values_root,
+    cek_proof_v1.hash_case_select_continuation_v1(
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      2,
+    ),
+    tag,
+  )
+}
+
+/// The case step on `list` through a one-branch frame, ending in `post`.
+fn run_one_branch(
+  list: CommittedList,
+  post: cek_machine_v1.MachineStateV1,
+) -> Bool {
+  run_case_constant_arm(
+    state(
+      cek_machine_v1.mode_return,
+      list.focus_root,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.hash_case_continuation_v1(
+        1,
+        one_branch(),
+        cek_proof_v1.empty_environment_root_v1,
+        cek_proof_v1.empty_continuation_root_v1,
+      ),
+      0,
+    ),
+    post,
+    cek_machine_v1.ReturnCaseConstant {
+      scrutinee: list.scrutinee,
+      material: list.material,
+      branches_count: 1,
+      branches_root: one_branch(),
+      captured_environment: cek_proof_v1.empty_environment_root_v1,
+      tail: cek_proof_v1.empty_continuation_root_v1,
+    },
+  )
+}
+
+/// `count` integers, counting down to 1.
+fn countdown(count: Int) -> List<Data> {
+  if count == 0 {
+    []
+  } else {
+    [builtin.i_data(count), ..countdown(count - 1)]
+  }
+}
+
+fn committed_countdown(count: Int) -> CommittedList {
+  committed_list(#"9f00ff", #"9f0500ff", countdown(count))
+}
+
+test case_constant_arm_applies_one_branch_to_a_committed_list() {
+  let list = committed_countdown(3)
+  run_one_branch(list, selecting_one(list.post.environment_root, 0))
+}
+
+test case_constant_arm_refuses_a_missing_branch_on_a_committed_list() fail {
+  run_one_branch(
+    committed_countdown(3),
+    halting(cek_machine_v1.error_case_branch_missing),
+  )
+}
+
+test case_constant_arm_applies_one_branch_to_a_long_committed_list() {
+  let list = committed_countdown(1500)
+  run_one_branch(list, selecting_one(list.post.environment_root, 0))
+}
+
+test case_constant_arm_refuses_a_missing_branch_on_a_long_committed_list() fail {
+  run_one_branch(
+    committed_countdown(1500),
+    halting(cek_machine_v1.error_case_branch_missing),
+  )
+}
+
+test case_constant_arm_refuses_a_second_branch_on_a_long_committed_list() fail {
+  let list = committed_countdown(1500)
+  run_one_branch(list, selecting_one(list.post.environment_root, 1))
+}
+
+test case_constant_arm_refuses_another_head_of_a_long_committed_list() fail {
+  let list = committed_countdown(1500)
+  run_one_branch(
+    list,
+    selecting_one(
+      values(
+        root(#"9f00ff", builtin.i_data(1499)),
+        root(#"9f0500ff", builtin.list_data(countdown(1499))),
+      ),
+      0,
+    ),
+  )
+}
+
+test case_constant_arm_refuses_tail_before_head_of_a_long_committed_list() fail {
+  let list = committed_countdown(1500)
+  run_one_branch(
+    list,
+    selecting_one(
+      values(
+        root(#"9f0500ff", builtin.list_data(countdown(1499))),
+        root(#"9f00ff", builtin.i_data(1500)),
+      ),
+      0,
+    ),
+  )
+}
+
 test case_constant_arm_halts_on_a_pair_with_two_branches() {
   run_inline(
     #"9f060004ff",
