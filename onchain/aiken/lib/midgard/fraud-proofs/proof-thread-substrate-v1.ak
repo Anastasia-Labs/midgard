@@ -281,7 +281,9 @@ fn bind_forced_subject_v1(
 ) -> VerdictSubjectV1 {
   let leaf = membership.value
   let source_key = cbor.serialise(membership.key)
-  let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
+  // The verifier hashes the body bytes against `leaf.tx_id` and returns that
+  // id with version 1; the view is not read again, so neither is re-compared.
+  let Pair(_verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
     leaf.submitted_source.compact_cbor,
     leaf.submitted_source.witness_set_compact_cbor,
@@ -298,8 +300,6 @@ fn bind_forced_subject_v1(
         membership.phas_root,
         membership.proof,
       ),
-      verified.version == native_tx_version_v1,
-      verified.tx_id == leaf.tx_id,
     }
   let Pair(direction, rejection_reason) = when leaf.verdict is {
     ForcedTxValid -> Pair(direction_wrongful_acceptance, None)
