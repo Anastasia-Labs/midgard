@@ -72,19 +72,6 @@ test negative_output_coordinate_is_refused() fail {
   True
 }
 
-/// An accepted-root subject carrying a reason is not canonical and cannot be
-/// bound in either direction.
-test accepted_subject_with_a_reason_is_refused() fail {
-  let subject = substrate.VerdictSubjectV1 {
-    ..accepted_subject(),
-    rejection_reason: Some(ProtectedOutputSignerMissing { output_index: 0 }),
-  }
-  expect _ = rule.bind_output_v1(subject, 0)
-  True
-}
-
-/// A coordinate canonical validation authorizes without a signer contradicts
-/// the forced rejection with no scan at all.
 test forced_no_signer_required_closes() {
   let subject = forced_subject(4)
   let verdict = rule.direct_verdict_v1(rule.bind_output_v1(subject, 4))

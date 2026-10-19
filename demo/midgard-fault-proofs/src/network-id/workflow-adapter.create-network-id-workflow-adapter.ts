@@ -903,8 +903,8 @@ export const createNetworkIdWorkflowAdapter = (
             },
           );
           if (publications === undefined) {
-            throw new Error(
-              "network-id forced scan carriage is not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id forced scan carriage is no longer observable on L1",
             );
           }
           const certificate =
@@ -1000,8 +1000,8 @@ export const createNetworkIdWorkflowAdapter = (
             },
           );
           if (publications === undefined) {
-            throw new Error(
-              "network-id tier-3 publications are not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id tier-3 publications are no longer observable on L1",
             );
           }
           await authenticateFieldInputs({ prepared, publications });
@@ -1042,8 +1042,8 @@ export const createNetworkIdWorkflowAdapter = (
                   planned: opening,
                 });
           if (publications === undefined) {
-            throw new Error(
-              "network-id field publications are not observable on L1",
+            throw new WorkflowActionChangedError(
+              "network-id field publications are no longer observable on L1",
             );
           }
           const certificate =

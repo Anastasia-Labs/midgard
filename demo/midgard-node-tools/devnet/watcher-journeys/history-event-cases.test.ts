@@ -17,6 +17,8 @@ import {
   prepareWithdrawnReferenceInput,
   resolveProverSigner,
   WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { prepareFabricatedDepositFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-deposit";
@@ -233,9 +235,23 @@ it("ordinary history admission and withdrawn-input honest control stay healthy",
   });
 }, 1_800_000);
 
-it.each(["withdrawnInput", "withdrawnReferenceInput"] as const)(
-  "%s is selected against its real published withdrawal and its honest control passes",
-  async (category) => {
+// Withdrawals run first, so the withdrawn output is absent from the spender's
+// pre-state: the installed catalogue proves it as input existence, and the
+// family's own replay still selects the fixture as exactly its fault.
+it.each([
+  {
+    category: "withdrawnInput",
+    proved: "nonExistentInput",
+    replayer: WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  },
+  {
+    category: "withdrawnReferenceInput",
+    proved: "noReferenceInput",
+    replayer: WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  },
+] as const)(
+  "$category against its real published withdrawal is proved as $proved by the installed catalogue and its honest control passes",
+  async ({ category, proved, replayer }) => {
     const { predecessor, history } = await openFamilyWindow(2);
     const body = journeyWithdrawalBody({
       predecessor,
@@ -255,7 +271,8 @@ it.each(["withdrawnInput", "withdrawnReferenceInput"] as const)(
         ledgerOwnerSeedPhrase: stage.ownerSeedPhrase,
         honest,
       });
-      await select({ category, block, predecessor, history, honest });
+      await select({ category: proved, block, predecessor, history, honest });
+      await select({ category, block, predecessor, history, honest, replayer });
       const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
         observation: authenticatedHeaderObservation(block),
         payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),

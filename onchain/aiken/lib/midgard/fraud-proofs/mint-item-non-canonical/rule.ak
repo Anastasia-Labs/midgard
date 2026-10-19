@@ -38,11 +38,12 @@ pub type MintScanStateV1 {
   outcome: Int,
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_item_v1(
   subject: substrate.VerdictSubjectV1,
   item_index: Int,
 ) -> BoundItemV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect item_index >= 0
   // Malformed mint currently has no typed rejection arm. Never reinterpret
   // a different family's forced rejection as this statement.

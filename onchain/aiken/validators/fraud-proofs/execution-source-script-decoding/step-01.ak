@@ -11,9 +11,7 @@ use midgard/fraud_proofs/execution_source_script_decoding/rule.{
 use midgard/fraud_proofs/execution_source_script_decoding/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 
 validator main(
@@ -38,17 +36,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, execution_index }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_script_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_script_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -57,10 +45,7 @@ validator main(
           tx,
         )
         let expected: Data = bind_execution_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           execution_index,
@@ -85,16 +70,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_asset_name,
-          substrate.ForcedSource { header, membership },
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
+          header,
+          membership,
         )
         expect verified.tx_id == subject.transaction_id
         let expected: Data = bind_execution_v1(

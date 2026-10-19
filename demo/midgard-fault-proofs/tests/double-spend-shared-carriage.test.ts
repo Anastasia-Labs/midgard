@@ -367,4 +367,59 @@ describe("double-spend carriage shared with other on-chain objects", () => {
       }).then((utxos) => utxos.map(outRef)),
     ).resolves.toEqual(publications.map(outRef));
   });
+
+  it("treats a proof chunk gone from L1 since scheduling as a changed proof-step action", async () => {
+    const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
+    const [chunkDatum] = splitProofIntoChunkDatums(proofCbor);
+    const chunk: UTxO = {
+      txHash: h32(0x6e),
+      outputIndex: 0,
+      address: SIGNER.address,
+      assets: { lovelace: 2_000_000n },
+      datum: chunkDatum!,
+    };
+    const { artifact } = certifiedOpening(proofCbor);
+    const wallet: UTxO[] = [chunk];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_01",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [],
+    });
+    const step = await harness.next();
+    expect(step.input.stage).toBe("step_01");
+
+    // A rollback or a spend removes the chunk before the action runs.
+    wallet.splice(0, wallet.length);
+    await expect(harness.preflight(step)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
+
+  it("treats a field chunk gone from L1 since scheduling as a changed proof-step action", async () => {
+    const { artifact, certificate, publications } = certifiedOpening();
+    const wallet: UTxO[] = [...publications];
+    const harness = doubleSpendHarness({
+      artifact,
+      stage: {
+        kind: "step_03",
+        threadOutRef: THREAD_OUT_REF,
+        stateQueueBlockOutRef: STATE_QUEUE_OUT_REF,
+      },
+      walletUtxos: wallet,
+      certificateUtxos: [certificate(h32(0x61))],
+    });
+    const step = await harness.next();
+    expect(step.input.stage).toBe("step_03");
+
+    // A rollback or a spend removes a chunk before the action runs.
+    wallet.splice(wallet.indexOf(publications[0]!), 1);
+    await expect(harness.preflight(step)).rejects.toBeInstanceOf(
+      WorkflowActionChangedError,
+    );
+  });
 });

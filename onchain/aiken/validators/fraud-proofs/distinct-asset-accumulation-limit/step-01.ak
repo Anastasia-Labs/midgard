@@ -35,17 +35,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, coordinate }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_script_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_script_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -54,10 +44,7 @@ validator main(
           tx,
         )
         let expected: Data = bind_coordinate_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           header.validation_traces_root,
           header.validation_trace_count,
           coordinate,
@@ -82,9 +69,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         // The substrate already verified the immutable source and its body ID.
         let expected: Data = bind_coordinate_v1(

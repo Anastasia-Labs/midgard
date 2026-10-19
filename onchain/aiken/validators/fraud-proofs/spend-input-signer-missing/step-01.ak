@@ -5,9 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/native_tx/compact.{
-  decode_forced_tx_compact_v1, decode_native_tx_compact_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{decode_native_tx_compact_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/spend_input_signer_missing/rule.{bind_spend_input_v1}
 use midgard/fraud_proofs/spend_input_signer_missing/step_01.{
@@ -36,17 +34,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, input_index }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           thread_policy,
           hub_oracle,
           datum,
@@ -55,10 +43,7 @@ validator main(
           tx,
         )
         let state = bind_spend_input_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           input_index,
           header.prev_utxos_root,
           verified.tx_compact.witness_set_hash,
@@ -89,17 +74,16 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let state = bind_spend_input_v1(
           subject,
           input_index,
           header.prev_utxos_root,
-          decode_forced_tx_compact_v1(
-            membership.value.submitted_source.compact_cbor,
-          ).witness_set_hash,
+          verified.tx_compact.witness_set_hash,
         )
         let expected: Data = state
         and {

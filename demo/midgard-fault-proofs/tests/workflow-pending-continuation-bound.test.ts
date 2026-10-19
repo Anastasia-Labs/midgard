@@ -105,6 +105,26 @@ const recordJournal = () => {
         entries: [...entries],
       };
     },
+    /** The next action is preflighted, intended and submitted. */
+    startAction: (actionId: string) => {
+      entries.push(
+        { event: { kind: "preflight_passed", actionId, txHash: "cc" } },
+        {
+          event: {
+            kind: "submission_intent",
+            actionId,
+            attempt: 1,
+            txHash: "cc",
+          },
+        },
+        { event: { kind: "submitted", actionId, attempt: 1, txHash: "cc" } },
+      );
+      return {
+        kind: "pending",
+        reason: `transaction for ${actionId} is pending`,
+        entries: [...entries],
+      };
+    },
     confirm: (actionId: string) => {
       entries.push({ event: { kind: "confirmed", actionId, txHash: "bb" } });
       return {
@@ -391,6 +411,32 @@ describe("bounded pending continuation", () => {
     expect(execute).toHaveBeenCalledTimes(polls + 1);
     // Each confirmation is reported as it lands, before the session ends.
     expect(onProgress).toHaveBeenCalledTimes(polls / 20);
+  });
+
+  it("counts a new action's first submission as progress, so a session that moves on to it is not stalled", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const journal = recordJournal();
+    // The first action confirms at once; the next is submitted at minute 20
+    // and confirms at minute 45, 25 min later but 45 min after the first.
+    const minute = 60;
+    const polls = 46 * minute;
+    const completed = { kind: "completed", workflowId: "two-actions" };
+    const execute = vi.fn(async () => {
+      const poll = execute.mock.calls.length;
+      if (poll > polls) return completed;
+      if (poll === 2) return journal.confirm("walk");
+      if (poll === 20 * minute) return journal.startAction("seal");
+      if (poll === 45 * minute) return journal.confirm("seal");
+      return journal.pollPending();
+    });
+    const onProgress = vi.fn();
+    const runner = await runnerFor(execute, onProgress);
+    const running = settledFlag(runner.runOrResume("run"));
+    await vi.advanceTimersByTimeAsync(polls * 1_000 + 1_000);
+    await waitFor(() => running.settled);
+    expect(running.value).toBe(completed);
+    expect(execute).toHaveBeenCalledTimes(polls + 1);
+    expect(onProgress).toHaveBeenCalledTimes(3);
   });
 
   it("hands the caller's progress callback through the CLI to the installed runner", async () => {

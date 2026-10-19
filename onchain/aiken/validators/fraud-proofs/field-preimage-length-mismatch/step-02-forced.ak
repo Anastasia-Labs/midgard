@@ -10,9 +10,7 @@ use midgard/fraud_proofs/field_preimage_length_mismatch/step_02.{
   AuthenticateForced, Datum, PendingForced, SpendRedeemer,
 }
 use midgard/fraud_proofs/field_preimage_length_mismatch/step_03
-use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/rejection_reason_v1.{FieldPreimageLengthMismatch}
 
@@ -64,17 +62,12 @@ validator main(
         )
         expect output_script_hash == step_03_validator_script_hash
         expect Some(PendingForced) = input_state
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_asset_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
-        )
         let evidence = authenticated_length_evidence_v1(
           verified,
           leaf.submitted_source.field_preimage_lengths_cbor,

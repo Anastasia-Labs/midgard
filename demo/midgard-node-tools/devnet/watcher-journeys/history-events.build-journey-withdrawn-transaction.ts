@@ -263,15 +263,17 @@ export const buildJourneyWithdrawnTransaction = async (
     root(SDK.ROOT_DOMAINS.eventToStep, mappings),
     root(SDK.ROOT_DOMAINS.transitionTrace, transitions),
   ]);
-  const counts = {
-    ...transactions.payload.block_body.counts,
+  const eventCounts = {
     withdrawalCount: 1n,
     totalEventCount: 2n,
     transitionStepCount: 2n,
   };
+  const counts = { ...transactions.payload.block_body.counts, ...eventCounts };
+  // The header keeps the base header's pinned validation-trace pair; only the
+  // body declares its validation-trace members.
   const header: SDK.Header = {
     ...transactions.header,
-    ...counts,
+    ...eventCounts,
     prevHeaderHash: input.predecessor.headerHash,
     prevUtxosRoot: input.predecessor.header.utxosRoot,
     withdrawalsRoot: withdrawalBlock.header.withdrawalsRoot,

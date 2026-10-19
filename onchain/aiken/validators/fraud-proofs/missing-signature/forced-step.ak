@@ -15,9 +15,7 @@ use midgard/fraud_proofs/missing_signature/forced_step.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{
-  decode_forced_tx_compact_v1, verify_forced_tx_proof_source_v1,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -61,18 +59,15 @@ validator main(
           outputs,
         )
         expect Some(1) = input_state
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         expect Some(RequiredSignerUnsigned { signer_index }) = subject.rejection_reason
-        // The opener authenticated this compact source against the leaf tx id.
-        let compact = decode_forced_tx_compact_v1(
-          membership.value.submitted_source.compact_cbor,
-        )
         let expected: Data = State {
           verified_tx_id: subject.transaction_id,
-          verified_witness_set_hash: compact.witness_set_hash,
+          verified_witness_set_hash: verified.tx_compact.witness_set_hash,
           forced_source_key: subject.source_key,
           signer_index,
         }

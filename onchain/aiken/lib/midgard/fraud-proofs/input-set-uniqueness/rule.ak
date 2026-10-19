@@ -29,6 +29,8 @@ pub type UniqueScanStateV1 {
   checkpoint_hash: ByteArray,
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_forced_duplicate_reason_v1(
   subject: substrate.VerdictSubjectV1,
 ) -> BoundDuplicateInputV1 {
@@ -41,7 +43,7 @@ pub fn bind_forced_duplicate_reason_v1(
         second_field_index,
         second_item_index,
       }
-    = substrate.rejection_reason_of_v1(subject)
+    = substrate.opened_rejection_reason_v1(subject)
   BoundDuplicateInputV1 {
     subject,
     first_field_index,

@@ -346,7 +346,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         ),
       );
       if (chunks === undefined) {
-        throw new Error(`${stage} proof chunks are not observable on L1`);
+        throw new WorkflowActionChangedError(`${stage} chunks gone from L1`);
       }
       await authenticatePublications({
         headerHash: artifact.headerHash,
@@ -487,7 +487,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               planned: plan,
             });
       if (stage !== "publish-field" && publications === undefined) {
-        throw new Error("field carriage publications are not observable on L1");
+        throw new WorkflowActionChangedError("field chunks gone from L1");
       }
       const certificate =
         stage !== "publish-field" && plan.plan.tier === "Certified"

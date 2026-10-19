@@ -13,138 +13,22 @@ import {
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  planNetworkIdOutputsOpening,
-  type PreparedNetworkIdProof,
-} from "../src/network-id/prepare.js";
-import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import type { JournalJsonObject } from "../src/workflow/journal.js";
-import {
-  buildFixtureTransaction,
-  h28,
-  h32,
-} from "./helpers/canonical-block-evidence-fixture.js";
+import { h32 } from "./helpers/canonical-block-evidence-fixture.js";
 import { signedRecoveryObservationFixture } from "./helpers/signed-recovery-observation-fixture.js";
+import {
+  certifiedOpening,
+  outputNetworkOpening,
+} from "./support/network-id-certified-opening.js";
 import {
   CERTIFICATE_ADDRESS,
   CERTIFICATE_UNIT,
   forcedHarness,
-  forcedPrepared,
-  scanDatum,
-  SIGNER,
   STATE_QUEUE_OUT_REF,
   utxo,
   workflowIdentity,
 } from "./support/network-id-forced-harness.js";
 import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
-
-/** A Certified-tier opening (600 outputs), its carriage, and the harness. */
-const certifiedOpening = async ({
-  certificateUtxos,
-  observeSignedTransaction,
-}: Pick<
-  Parameters<typeof forcedHarness>[0],
-  "certificateUtxos" | "observeSignedTransaction"
->) => {
-  const prepared = await forcedPrepared({
-    outputNetworkIds: Array.from({ length: 600 }, () => 0),
-  });
-  const opening = planNetworkIdOutputsOpening({
-    prepared,
-    owner: SIGNER.paymentKeyHash,
-    publish: true,
-  });
-  expect(opening.plan.tier).toBe("Certified");
-  const harness = forcedHarness({
-    prepared,
-    stage: { kind: "not_started", stateQueueBlockOutRef: STATE_QUEUE_OUT_REF },
-    forcedDoorOccupied: false,
-    forcedScanDatum: scanDatum(prepared, "ready"),
-    walletUtxos: opening.plan.publications.map((publication, index) =>
-      utxo({
-        txHash: h32(0x20 + index),
-        datum: fieldPreimagePublicationDatumCbor(publication.bytes),
-      }),
-    ),
-    certificateUtxos,
-    observeSignedTransaction,
-  });
-  const certificate = (
-    txHash: string,
-    assets: UTxO["assets"] = { lovelace: 5_000_000n, [CERTIFICATE_UNIT]: 1n },
-  ): UTxO => ({
-    txHash,
-    outputIndex: 0,
-    address: CERTIFICATE_ADDRESS,
-    assets,
-    datum: deriveFieldPreimageCertification(opening.plan).datumCbor,
-  });
-  return { prepared, harness, certificate };
-};
-
-/**
- * An output-network fault whose outputs field (440 items unless `outputs`
- * names others) opens at Certified tier through the final step rather than
- * the forced scan.
- */
-const outputNetworkOpening = (
-  outputs: readonly Buffer[] = Array.from({ length: 440 }, () =>
-    encodeMidgardTxOutput({
-      address: Buffer.concat([Buffer.from([0x61]), Buffer.alloc(28, 0x55)]),
-      value: { lovelace: 1n, assets: new Map() },
-    }),
-  ),
-) => {
-  const transaction = buildFixtureTransaction({
-    spendInputs: [],
-    outputs: [...outputs],
-    fee: 1n,
-    networkId: 0n,
-  });
-  const headerHash = h28(0x71);
-  const l2TransactionSourceCbor = deriveL2TransactionSourceCbor(
-    transaction.canonicalCbor,
-  );
-  const prepared = {
-    headerHash,
-    expectedNetworkId: 0n,
-    badTxId: transaction.txId,
-    nativeTxCanonicalCbor: transaction.canonicalCbor.toString("hex"),
-    nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
-    outputsItemCbors: outputs.map((item) => item.toString("hex")),
-    faultClaim: { kind: "output-network", outputIndex: 0n },
-    fault: { OutputNetwork: { output_index: 0n } },
-    txInclusion: {
-      nativeTxId: transaction.txId,
-      nativeTx: {} as never,
-      nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
-      l2TransactionSourceCbor,
-      transactionsPhasRoot: h32(0x31),
-      txMembershipProofCbor: "d87980",
-    },
-  } satisfies PreparedNetworkIdProof;
-  const opening = planNetworkIdOutputsOpening({
-    prepared,
-    owner: SIGNER.paymentKeyHash,
-  });
-  expect(opening.plan.tier).toBe("Certified");
-  const artifact = {
-    schemaVersion: "midgard-network-id-workflow-artifact-v1",
-    headerHash,
-    expectedNetworkId: "0",
-    badTxId: transaction.txId,
-    nativeTxCanonicalCbor: prepared.nativeTxCanonicalCbor,
-    nativeTxCompactCbor: prepared.nativeTxCompactCbor,
-    l2TransactionSourceCbor,
-    outputsItemCbors: prepared.outputsItemCbors,
-    faultKind: "output-network",
-    outputIndex: "0",
-    transactionsPhasRoot: h32(0x31),
-    txMembershipProofCbor: "d87980",
-  } as JournalJsonObject;
-  return { headerHash, artifact, opening };
-};
 
 /**
  * 800 outputs whose outputs field repeats its first chunk as its second. Only
