@@ -59,6 +59,12 @@ export type FraudProofRawL1SnapshotRequest = {
   readonly scopes: readonly {
     readonly role: FraudProofRawL1ScopeRole;
     readonly address: string;
+    /**
+     * When present, the scope reads only these outputs of the address: the
+     * snapshot holds those of them unspent at its point, never the rest of
+     * the address.
+     */
+    readonly outRefs?: readonly string[];
   }[];
   /** Exact units whose create/spend history must be returned. */
   readonly historyUnits: readonly string[];
@@ -121,6 +127,8 @@ export type FraudProofRawL1Snapshot = {
   readonly scopes: readonly {
     readonly role: FraudProofRawL1ScopeRole;
     readonly address: string;
+    /** The out-refs the request scoped this address to, echoed exactly. */
+    readonly outRefs?: readonly string[];
     readonly utxos: readonly FraudProofRawL1Utxo[];
   }[];
   readonly historyUnits: readonly string[];
@@ -157,6 +165,10 @@ export const computeFraudProofRawL1SnapshotEvidenceDigest = (
       .map((scope) => ({
         role: scope.role,
         address: scope.address,
+        // An out-ref scope covers less than its address: its digest says so.
+        ...(scope.outRefs === undefined
+          ? {}
+          : { outRefs: [...scope.outRefs].sort() }),
         utxos: orderedUtxos(scope.utxos),
       }))
       .sort((left, right) => left.role.localeCompare(right.role)),

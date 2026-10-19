@@ -14,6 +14,7 @@ import {
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
+import { CML } from "@lucid-evolution/lucid";
 
 import {
   blockAtDepth,
@@ -26,6 +27,7 @@ import {
 } from "./fault-proof-l1-source.chain.js";
 import { createSignedTransactionRecovery } from "./fault-proof-l1-source.signed.js";
 import type { WatcherProofRetention } from "./proof-retention.js";
+import { isTrackedAddress } from "./raw-reads.facts.js";
 import {
   type FollowerRawReads,
   rawPointOf,
@@ -78,6 +80,62 @@ type SnapshotSource = Readonly<{
   proofRetention?: WatcherProofRetention;
 }>;
 
+const rawAddressHex = (address: CML.Address): string =>
+  Buffer.from(address.to_raw_bytes()).toString("hex");
+
+const outputAddressHex = (outputCbor: string): string => {
+  const output = CML.TransactionOutput.from_cbor_hex(outputCbor);
+  try {
+    const address = output.address();
+    try {
+      return rawAddressHex(address);
+    } finally {
+      address.free();
+    }
+  } finally {
+    output.free();
+  }
+};
+
+/**
+ * A scope's outputs at `point`. An address scope reads the whole address; an
+ * out-ref scope reads only its out-refs, by out-ref, keeping those unspent
+ * at the point that sit at the scope's address, whatever else the address
+ * holds. Both refuse an address the follower does not track.
+ */
+const scopeUtxos = async (
+  store: FactStore,
+  rawReads: FollowerRawReads,
+  scope: FraudProofRawL1SnapshotRequest["scopes"][number],
+  point: FraudProofRawL1Point,
+) => {
+  if (scope.outRefs === undefined)
+    return required(await rawReads.addressUtxosAtPoint(scope.address, point));
+  const parsed = CML.Address.from_bech32(scope.address);
+  let addressHex: string;
+  try {
+    if (!isTrackedAddress(store.trackedSet(), parsed))
+      throw new WatcherFaultProofL1RefusedError(
+        "untracked_address",
+        `${scope.address} is not in the tracked set`,
+      );
+    addressHex = rawAddressHex(parsed);
+  } finally {
+    parsed.free();
+  }
+  const read = required(
+    await rawReads.utxosByOutRefAtPoint(scope.outRefs, point),
+  );
+  if (read.beyondRetention.length > 0)
+    throw new WatcherFaultProofL1RefusedError(
+      "beyond_retention",
+      `pruning may have removed ${read.beyondRetention.join(", ")}`,
+    );
+  return read.outputs.filter(
+    ({ outputCbor }) => outputAddressHex(outputCbor) === addressHex,
+  );
+};
+
 /** One capture at one view; throws `FraudProofL1CheckpointChangedError` when the chain moved under it. */
 const captureOnce = async (
   { store, rawReads, sourceId, proofRetention }: SnapshotSource,
@@ -97,7 +155,7 @@ const captureOnce = async (
   for (const scope of request.scopes)
     scopes.push({
       ...scope,
-      utxos: required(await rawReads.addressUtxosAtPoint(scope.address, point)),
+      utxos: await scopeUtxos(store, rawReads, scope, point),
     });
   // A pinned objective's followed units stay readable past k (E1 ruling);
   // a history pruning removed first is refused, never read partially. An
