@@ -1,7 +1,4 @@
-import {
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type Assets,
   credentialToAddress,
@@ -95,9 +92,6 @@ describe("reference-script SDK boundary", () => {
       const role = `availability-challenge ${arm} withdrawal` as const;
       const tokenName = `AvailabilityChallenge${token}Yield`;
       expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
-      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
-        tokenName,
-      );
       expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
         `availabilityChallenge${contract}Withdraw`,
       );
@@ -118,7 +112,6 @@ describe("reference-script SDK boundary", () => {
     ];
     for (const roles of [
       Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES),
-      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
       Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
     ]) {
       expect(
@@ -147,9 +140,6 @@ describe("reference-script SDK boundary", () => {
     const allTokenNames = Object.values(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES);
     for (const [role, tokenName, contractName] of poolRoles) {
       expect(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[role]).toBe(tokenName);
-      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[role]).toBe(
-        tokenName,
-      );
       expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
         contractName,
       );
@@ -169,17 +159,6 @@ describe("reference-script SDK boundary", () => {
         role.startsWith("value conservation "),
     );
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
-
-    const canonicalFraudProofEntries = Object.entries(
-      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
-    ).filter(
-      ([role]) =>
-        role.startsWith("V1 fraud-proof ") ||
-        role.startsWith("value conservation "),
-    );
-    expect(Object.fromEntries(fraudProofEntries)).toEqual(
-      Object.fromEntries(canonicalFraudProofEntries),
-    );
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,

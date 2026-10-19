@@ -23,11 +23,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -182,11 +181,6 @@ export const neSubmitStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: "non-existent-input step 04",
-  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -242,10 +236,9 @@ export const neSubmitStep04 = async ({
     spendLayout = layout;
     // The prover chooses the carriage for the absence opening exactly as
     // step-01 does for the membership one (issue #545).
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: "non-existent-input step 04",
     });
     const carriage: NonMembershipCarriage = carriedByChunks
@@ -323,11 +316,15 @@ export const neSubmitStep04 = async ({
       ? collected
       : collected.readFrom(referenceInputs);
   const withCarriage = carriedByChunks
-    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
         chunkedNonMembershipClaimRedeemer({
           merkleRoot: inputDatum.data.blocks_transactions_root,
           keyBytes: inputDatum.data.missing_input_tx_id,
-          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+            ctx,
+            chunks,
+            label: "non-existent-input step 04",
+          }),
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
         pexcludesRewardAddress,

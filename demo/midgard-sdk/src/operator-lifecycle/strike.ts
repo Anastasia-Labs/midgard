@@ -66,6 +66,7 @@ export {
 export {
   type BuildStrikeInactiveOperatorTxConfig,
   planInactivityTakeover,
+  STRIKE_VALID_FROM_BACKOFF_MS,
   type StrikeInactiveOperatorAdversarialOverrides,
   type StrikeInactiveOperatorLayout,
   type StrikeInactiveOperatorTxResult,

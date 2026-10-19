@@ -190,10 +190,12 @@ export const requireFieldPreimageCertificateReferenceScript = ({
 };
 
 export type FieldPreimageCertificationReferenceLayout = {
-  /** Complete reference-input set used by the certification transaction. */
+  /**
+   * Complete reference-input set the certification transaction reads. The
+   * Certify redeemer's chunk indices resolve against the builder's final
+   * order, never against this list.
+   */
   readonly referenceInputs: readonly UTxO[];
-  /** Indices into that complete, ledger-sorted set for the Certify redeemer. */
-  readonly chunkRefInputIndices: readonly number[];
 };
 
 export const resolveFieldPreimageCertificationReferenceLayout = ({
@@ -226,11 +228,5 @@ export const resolveFieldPreimageCertificationReferenceLayout = ({
     }
     labels.add(label);
   }
-  return {
-    referenceInputs,
-    chunkRefInputIndices: resolveChunkReferenceIndices({
-      plan,
-      referenceInputs,
-    }),
-  };
+  return { referenceInputs };
 };

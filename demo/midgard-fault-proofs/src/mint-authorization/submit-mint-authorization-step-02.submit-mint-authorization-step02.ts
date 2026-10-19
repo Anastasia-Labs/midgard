@@ -291,12 +291,6 @@ export const submitMintAuthorizationStep02 = async ({
     ...carriageUtxos,
     ...stepCarriage.referenceInputs,
   ];
-  const mintOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} mint`,
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = referenceInputs.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
@@ -324,6 +318,12 @@ export const submitMintAuthorizationStep02 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const mintOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} mint`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

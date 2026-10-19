@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxOutputCanonical,
-  type FieldOpening,
   FraudProofTokenDatum,
   isInputNoIdxViolation,
   MIDGARD_FIELD_INDEX,
@@ -166,12 +165,6 @@ export const submitInputNoIdxStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const outputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-    label: "Input-no-idx step 04 outputs",
-  });
   // §5.2: the count the verdict rests on is the door's authenticated one.
   const producingTxOutputCount = planned.itemCount;
   if (
@@ -222,7 +215,13 @@ export const submitInputNoIdxStep04 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        outputsOpening,
+        outputsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+            label: "Input-no-idx step 04 outputs",
+          }),
         onLayout: (layout) => {
           spendLayout = layout;
         },

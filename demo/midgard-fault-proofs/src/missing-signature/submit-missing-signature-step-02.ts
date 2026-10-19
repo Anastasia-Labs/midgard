@@ -163,15 +163,6 @@ export const submitMissingSignatureStep02 = async ({
       stepIndex: 1,
     }),
   ];
-  const requiredSignersOpening = faultProofFieldOpening({
-    planned,
-    // §8.7 indices are into the complete reference-input set, including the
-    // step's own reference script; resolving against carriage alone is only
-    // accidentally correct for some out-ref orderings.
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} required-signers`,
-  });
 
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
@@ -197,6 +188,15 @@ export const submitMissingSignatureStep02 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const requiredSignersOpening = faultProofFieldOpening({
+      planned,
+      // §8.7 indices are into the complete reference-input set, including the
+      // step's own reference script; resolving against carriage alone is only
+      // accidentally correct for some out-ref orderings.
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} required-signers`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

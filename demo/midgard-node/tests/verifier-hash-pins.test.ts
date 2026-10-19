@@ -2,11 +2,13 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { VERIFIER_SCRIPT_HASHES } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
 /**
  * The deployment environment pins the script hashes of the MPF verifiers that
- * other validators delegate to by withdrawal. Those verifiers are compiled in
+ * other validators delegate to by withdrawal (`VERIFIER_SCRIPT_HASHES`,
+ * generated from `config/deployments/env.ak.template`). Those verifiers are compiled in
  * this project, so every pin must equal the hash the fresh blueprint gives the
  * validator it names. A stale pin makes every delegating validator demand a
  * withdrawal no deployed script can satisfy.
@@ -34,24 +36,6 @@ const blueprint = JSON.parse(
   readFileSync(resolve(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
 ) as Blueprint;
 
-const envTemplate = readFileSync(
-  resolve(repoRoot, "config/deployments/env.ak.template"),
-  "utf8",
-);
-
-const pinIn = (source: string, name: string): string => {
-  const matches = [
-    ...source.matchAll(
-      new RegExp(
-        `^pub const ${name}: ScriptHash =\\s*#"([0-9a-f]{56})"`,
-        "gmu",
-      ),
-    ),
-  ];
-  expect(matches, `exactly one ${name} pin`).toHaveLength(1);
-  return matches[0]![1]!;
-};
-
 const blueprintHashOf = (title: string): string => {
   const matches = blueprint.validators.filter(
     (validator) => validator.title === title,
@@ -64,7 +48,7 @@ describe("verifier hash pins", () => {
   it.each(pinnedVerifiers)(
     "pins %s to the blueprint hash of %s",
     (pin, title) => {
-      expect(pinIn(envTemplate, pin)).toBe(blueprintHashOf(title));
+      expect(VERIFIER_SCRIPT_HASHES[pin]).toBe(blueprintHashOf(title));
     },
   );
 });

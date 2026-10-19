@@ -67,16 +67,11 @@ export const appendValidationCaseConfigInitialization = (
   params: {
     readonly network: Network;
     readonly contracts: ValidationCaseConfigSource;
-    readonly referenceScript: UTxO | undefined;
+    readonly referenceScript: UTxO;
   },
 ): TxBuilder => {
   const { caseConfig } = params.contracts;
   const { referenceScript } = params;
-  if (referenceScript === undefined) {
-    throw new Error(
-      "The case configuration is minted through its published reference script",
-    );
-  }
   if (
     referenceScript.scriptRef == null ||
     validatorToScriptHash(referenceScript.scriptRef) !== caseConfig.policyId

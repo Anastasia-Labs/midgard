@@ -212,13 +212,13 @@ export const submitInputSetUniquenessStep03 = async ({
             native_tx_compact_cbor: nativeTxCompactCbor,
             spend_inputs_carriage: faultProofFieldCarriage({
               planned: spendPlan,
-              referenceInputs: [...carriageUtxos, stepReference],
+              referenceInputs: ctx.referenceInputs,
               certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
               label: "input-set-uniqueness step-03 spend",
             }),
             reference_inputs_carriage: faultProofFieldCarriage({
               planned: referencePlan,
-              referenceInputs: [...carriageUtxos, stepReference],
+              referenceInputs: ctx.referenceInputs,
               certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
               label: "input-set-uniqueness step-03 reference",
             }),

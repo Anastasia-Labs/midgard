@@ -224,8 +224,6 @@ export const submitNetworkIdStep02 = async ({
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  // Every positional opening index is derived only after the transaction's
-  // complete reference-input set has been assembled.
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
@@ -233,15 +231,6 @@ export const submitNetworkIdStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ]);
-  const outputsOpening =
-    planned === undefined
-      ? null
-      : faultProofFieldOpening({
-          planned,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} outputs`,
-        });
 
   const feeInput = selectFeeInput(
     referenceInputs.reduce<readonly UTxO[]>(
@@ -293,7 +282,18 @@ export const submitNetworkIdStep02 = async ({
             output_index: spendLayout.outputIndex,
             fraud_proof_mint_redeemer_index:
               spendLayout.fraudProofMintRedeemerIndex,
-            outputs_opening: outputsOpening,
+            // Opening indices name positions in the builder's final
+            // reference-input order.
+            outputs_opening:
+              planned === undefined
+                ? null
+                : faultProofFieldOpening({
+                    planned,
+                    referenceInputs: ctx.referenceInputs,
+                    certificatePolicyId:
+                      contracts.fieldPreimageCertificatePolicyId,
+                    label: `${STEP_LABEL} outputs`,
+                  }),
           },
         ],
       } as never,

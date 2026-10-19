@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -12,8 +12,7 @@ import {
 } from "./availability-challenge-emulator.create-fixture.js";
 import {
   AVAILABILITY_ATTESTATION_OUTPUT_LOVELACE,
-  type AvailabilityLayout,
-  mintIndex,
+  mintAt,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 import { type AvailabilityFixture } from "./availability-challenge-emulator.open-availability.js";
 
@@ -204,8 +203,10 @@ export const attestAvailability = async (
   return { queue, commitment: f.commitment, commitmentHash };
 };
 
-export const coordinate = (ctx: AvailabilityLayout, policy: string) =>
-  Data.to(
-    { Coordinate: { mint_redeemer_index: mintIndex(ctx, policy) } },
-    SDK.DaAvailabilitySpendRedeemer,
-  );
+export const coordinate =
+  (policy: string): BuildTxWithRedeemer =>
+  (ctx) =>
+    Data.to(
+      { Coordinate: { mint_redeemer_index: mintAt(ctx, policy) } },
+      SDK.DaAvailabilitySpendRedeemer,
+    );

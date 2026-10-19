@@ -2,11 +2,9 @@
 
 The demo workspace's ESLint config loads a local plugin,
 `demo/scripts/lib/eslint-plugin-midgard/`, whose rules check owner rulings
-that can be read from the syntax tree. `pnpm --dir demo run lint` runs them
-with every other rule, and Midgard Node CI runs that command. Each message
-ends with a `Fix:` that says what to write instead. The rules are syntactic:
-they follow values through local constants and parameter defaults in one
-file, not across files or through types.
+readable from the syntax tree; `pnpm --dir demo run lint` runs them, and so
+does Midgard Node CI. Each message ends with a `Fix:`. The rules follow values
+through local constants and parameter defaults in one file, not across files.
 
 ## The Baseline
 
@@ -116,3 +114,7 @@ every stale site and adds none (`--check` only reports).
   pass. Blind spot: a parameter under another name (`finalityDepth`) or from
   another module is not seen; block-mining loop counters are flagged (the
   baselined test drivers). [eslint: midgard/depth-through-heads]
+- **Tests observe behaviour, not source text or stringified values.** Scope
+  and blind spots: the rule file's header. [eslint: midgard/tests-observe-behavior]
+- **Redeemer ledger indices come from the builder callback.** Scope and blind
+  spots: the rule file's header. [eslint: midgard/redeemer-index-from-builder]

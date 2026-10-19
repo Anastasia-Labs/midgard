@@ -1,6 +1,5 @@
 import {
   encodeMidgardAddressWitnessCanonical,
-  type FieldOpening,
   FraudProofTokenDatum,
   invalidSignatureTerminalContradiction,
   MIDGARD_FIELD_INDEX,
@@ -182,8 +181,8 @@ export const submitInvalidSignatureStep02 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "invalid-signature step 02 fraud-proof mint",
   });
-  // The complete reference-input set, built before the field opening derives
-  // any carriage indices from it.
+  // The reference inputs the transaction reads. Opening indices resolve
+  // against the builder's final order inside the redeemer callback.
   const referenceInputs = [
     ...published,
     ...certificateUtxos,
@@ -191,12 +190,6 @@ export const submitInvalidSignatureStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const addrTxWitsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Invalid-signature step 02 address-witnesses",
-  });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
   if (inputDatum.data.subject.direction === 0n && badAddrTxWit === undefined) {
     throw new Error(
@@ -251,7 +244,15 @@ export const submitInvalidSignatureStep02 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        addrTxWitsOpening,
+        addrTxWitsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            ...(certificatePolicyId === undefined
+              ? {}
+              : { certificatePolicyId }),
+            label: "Invalid-signature step 02 address-witnesses",
+          }),
         badAddrTxWitIndex,
         onLayout: (layout) => {
           spendLayout = layout;

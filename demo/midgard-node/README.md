@@ -322,7 +322,7 @@ With a properly setup database, the following set of commands should start the
 most up to date `midgard-node`:
 
 ```sh
-# Optional
+# Optional: Node, pnpm, PostgreSQL and the Cardano services (docs/toolchain.md)
 nix develop
 
 # Build the blueprint once (gitignored): cd onchain/aiken && aiken build --env testnet

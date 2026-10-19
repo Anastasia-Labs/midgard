@@ -35,11 +35,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -253,11 +252,6 @@ export const submitStep01 = async ({
     ...stepScriptCarriage.referenceInputs,
     ...inclusionCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: "double-spend step 01",
-  });
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -306,12 +300,9 @@ export const submitStep01 = async ({
     // The prover chooses the carriage. Published chunks are the route for a
     // proof the 16,384-byte envelope cannot carry (issue #545); the redeemer
     // route stays the cheaper one for every proof that fits.
-    // The canonical order derived above is the order the ledger will present;
-    // re-deriving it from the builder context here proves the two agree.
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: "double-spend step 01",
     });
     const carriage: NativeTxInclusionCarriage = carriedByChunks
@@ -353,12 +344,16 @@ export const submitStep01 = async ({
   // along with the proof: the step verifies the reassembled proof itself.
   const tx = (
     carriedByChunks
-      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
           chunkedMembershipClaimRedeemer({
             merkleRoot: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
             valueBytes: txInclusion.l2TransactionSourceCbor,
-            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+            orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+              ctx,
+              chunks,
+              label: "double-spend step 01",
+            }),
           })) satisfies BuildTxWithRedeemer)
       : base.withdraw(
           phasRewardAddress,

@@ -31,6 +31,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import {
+  nextTransitionTracePhase,
   type TransitionTraceField,
   transitionTraceOutputStepIsWhole,
   transitionTracePhaseField,
@@ -42,6 +43,7 @@ import {
   type TransitionProofInput,
   transitionReplayedTransaction,
 } from "./proof-material.js";
+import { type transitionTraceYieldData } from "./yield-data.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 /** One field's planned opening and the reference inputs that carry it. */
@@ -161,11 +163,13 @@ type TransitionOutputVerifier = {
 export type TransitionFieldStep = {
   /** The step's complete reference inputs: the base, field carriage and verifiers. */
   readonly referenceInputs: readonly UTxO[];
-  /** The opening callbacks against those reference inputs. */
-  readonly openings: {
-    readonly fieldOpening: (field: TransitionTraceField) => SDK.FieldOpening;
-    readonly fieldCarriage: (field: TransitionTraceField) => SDK.FieldCarriage;
-  };
+  /**
+   * The checkpoint's next step, its field openings resolved against
+   * `referenceInputs`. The openings are positions in the final transaction's
+   * sorted reference inputs and only the step redeemer carries them, so a
+   * redeemer is planned against the builder's `ctx.referenceInputs`.
+   */
+  readonly plan: (referenceInputs: readonly UTxO[]) => TransitionTracePhaseStep;
   /** Add the verifier withdrawals a whole output replay names. */
   readonly withdraw: (
     builder: TxBuilder,
@@ -187,6 +191,7 @@ export const prepareTransitionFieldStep = async ({
   contracts,
   proof,
   state,
+  yields,
   outputCbors,
   publish,
   fieldCertificateReferenceScript,
@@ -199,6 +204,7 @@ export const prepareTransitionFieldStep = async ({
   readonly contracts: TransitionTraceFaultProofContracts;
   readonly proof: TransitionProofInput;
   readonly state: SDK.TransitionTraceFinalState;
+  readonly yields: ReturnType<typeof transitionTraceYieldData>;
   readonly outputCbors: readonly string[] | undefined;
   readonly publish: boolean;
   readonly fieldCertificateReferenceScript?: UTxO;
@@ -249,31 +255,32 @@ export const prepareTransitionFieldStep = async ({
       throw new Error("transition checkpoint opens another field");
     return carriage.planned;
   };
-  // Opening indices are positions in the transaction's complete, sorted
-  // reference-input set, so they are resolved against all of it.
-  const referenceInputs = distinctUtxos([
-    ...baseReferences,
-    ...(carriage?.references ?? []),
-    ...verifiers.map((verifier) => verifier.reference),
-  ]);
   return {
-    referenceInputs,
-    openings: {
-      fieldOpening: (requested) =>
-        faultProofFieldOpening({
-          planned: requireCarriage(requested),
-          referenceInputs,
-          certificatePolicyId,
-          label: "transition-trace field opening",
-        }),
-      fieldCarriage: (requested) =>
-        faultProofFieldCarriage({
-          planned: requireCarriage(requested),
-          referenceInputs,
-          certificatePolicyId,
-          label: "transition-trace field carriage",
-        }),
-    },
+    referenceInputs: distinctUtxos([
+      ...baseReferences,
+      ...(carriage?.references ?? []),
+      ...verifiers.map((verifier) => verifier.reference),
+    ]),
+    plan: (referenceInputs) =>
+      nextTransitionTracePhase({
+        state,
+        proof,
+        yields,
+        fieldOpening: (requested) =>
+          faultProofFieldOpening({
+            planned: requireCarriage(requested),
+            referenceInputs,
+            certificatePolicyId,
+            label: "transition-trace field opening",
+          }),
+        fieldCarriage: (requested) =>
+          faultProofFieldCarriage({
+            planned: requireCarriage(requested),
+            referenceInputs,
+            certificatePolicyId,
+            label: "transition-trace field carriage",
+          }),
+      }),
     withdraw: (builder, planned) => {
       if ((planned.verifiers === undefined) !== (verifiers.length === 0))
         throw new Error("transition output step disagrees on its verifiers");

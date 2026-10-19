@@ -16,7 +16,11 @@ import {
   resolveChunkReferenceIndices,
   retireFieldPreimageCertificateRedeemer,
 } from "@al-ft/midgard-sdk";
-import { type UTxO } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  scriptHashToCredential,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -74,6 +78,35 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
 
     const { policy, policyId, address } = standInCertificatePolicy();
     harness.lucid.selectWallet.fromPrivateKey(PUBLISHER_KEY.to_bech32());
+    // The policy is carried by a published reference script, as in
+    // production. It is parked at an unspendable address so no later coin
+    // selection consumes it.
+    const policyReferenceAddress = credentialToAddress(
+      "Custom",
+      scriptHashToCredential("2f".repeat(28)),
+    );
+    const policyReferenceTxHash = await (
+      await (
+        await harness.lucid
+          .newTx()
+          .pay.ToAddressWithData(
+            policyReferenceAddress,
+            undefined,
+            { lovelace: 10_000_000n },
+            policy,
+          )
+          .complete({ localUPLCEval: true })
+      ).sign
+        .withWallet()
+        .complete()
+    ).submit();
+    await harness.lucid.awaitTx(policyReferenceTxHash);
+    const certificatePolicyReferenceUtxo = (
+      await harness.lucid.utxosAt(policyReferenceAddress)
+    ).find((utxo) => utxo.txHash === policyReferenceTxHash);
+    if (certificatePolicyReferenceUtxo === undefined) {
+      throw new Error("certificate policy reference UTxO was not found");
+    }
 
     // The SDK's certification builder, driven end to end. It derives the
     // manifest, the asset name, the min-Ada, the redeemer and — through
@@ -84,10 +117,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
         plan,
         certificatePolicyId: policyId,
         certificateAddress: address,
-        certificateWitness: {
-          kind: "inline_emulator_only",
-          certificateScript: policy,
-        },
+        certificatePolicyReferenceUtxo,
         // Deliberately out of ledger order: the indices the redeemer carries
         // must be indices into the *sorted* reference-input list, and a builder
         // that used the order it was handed would be right until the first

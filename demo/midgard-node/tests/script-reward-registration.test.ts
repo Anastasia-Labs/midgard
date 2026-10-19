@@ -20,10 +20,8 @@ import { Effect, Either } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../src/transactions/availability-challenge-registration.js";
-import {
-  ensureEventHistoryRewardAccountsRegisteredProgram,
-  EventHistoryRegistrationUnfunded,
-} from "../src/transactions/script-reward-registration.js";
+import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
+import { RewardRegistrationUnfunded } from "../src/transactions/utils.reward-registration-funding.js";
 import { refOf } from "./helpers/builder-wallet-view.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
@@ -288,7 +286,7 @@ it("refuses by name a wallet whose only funds sit in reference-script outputs, s
   const error = Either.isLeft(result) ? result.left : undefined;
   expect(error).toBeInstanceOf(SDK.LucidError);
   expect((error as InstanceType<typeof SDK.LucidError>).cause).toBeInstanceOf(
-    EventHistoryRegistrationUnfunded,
+    RewardRegistrationUnfunded,
   );
   for (const utxo of published) expect(await unspent(lucid, utxo)).toBe(true);
 });

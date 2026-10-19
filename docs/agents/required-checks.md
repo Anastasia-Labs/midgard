@@ -241,6 +241,24 @@ Registries name only files that exist.
 - Runs on: every change
 - Mode: runs in the pre-push hook
 
+### `toolchain-pins`
+
+Docker, compose and CI version pins match demo/toolchain.json.
+
+- Command: `node scripts/release/toolchain.mjs`
+- Runs on:
+  - `demo/toolchain.json`
+  - `demo/.nvmrc`
+  - `demo/*/Dockerfile`
+  - `demo/**/docker-compose*.yaml`
+  - `demo/midgard-node/.env.example`
+  - `demo/l1-node-transport/native/go.mod`
+  - `demo/midgard-node-tools/src/full-stack/prerequisites.ts`
+  - `demo/midgard-node-tools/devnet/phase4-process/**`
+  - `.github/workflows/**`
+  - `scripts/release/toolchain.mjs`
+- Mode: runs in the pre-push hook
+
 ### `repo-tooling-tests`
 
 Repository tooling self-tests (the checks that prove the other checks can fail).
@@ -631,6 +649,31 @@ Golden channel rejection-reason-v1 (@al-ft/midgard-core).
 - Needs: `node-modules`, `aiken`
 - Mode: warns only (no workflow runs this channel, so a red check does not block)
 
+### `golden:withdrawal-mistag-agreement`
+
+Golden channel withdrawal-mistag-agreement (@al-ft/midgard-fault-proofs).
+
+- Command: `pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:check`
+- Fix: `pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:sync`
+- Runs on:
+  - `demo/midgard-fault-proofs/scripts/generate-withdrawal-mistag-agreement-goldens.mjs`
+  - `demo/midgard-fault-proofs/tests/fixtures/withdrawal-mistag-agreement-vectors.json`
+  - `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak`
+  - `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:ordered-collection-boundary-aiken`
 
 Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
@@ -974,7 +1017,6 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
-  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`

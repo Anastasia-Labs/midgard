@@ -140,7 +140,7 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
     stepIndex: 2,
     nextStepIndex: 3,
     nextDatum,
-    opening: actuated.opening,
+    openingFor: actuated.openingFor,
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,
     redeemerSchema: ProtectedOutputSignerStep03RedeemerSchema as never,

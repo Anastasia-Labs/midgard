@@ -171,6 +171,39 @@ describe("stalled-operator strike and takeover", () => {
     );
   }, 420_000);
 
+  it("lands a strike planned by a node whose clock runs ahead of the chain", async () => {
+    const fixture = await initOperatorInactivityFixture(3);
+    const appointed = await appointFirstSchedulerOperator(fixture);
+    const neglectedEvent = await submitNeglectedDeposit(fixture);
+    const snapshot = await fetchInactivityDirectorySnapshot(fixture);
+    const threshold = SDK.computeInactivityThreshold({
+      shiftStartMs: appointed.startTime,
+      stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
+      neglectedEvent,
+    });
+    if (threshold.kind !== "threshold") {
+      throw new Error(`Inactivity threshold is ${threshold.kind}`);
+    }
+    // Well past the threshold, so only the planner's clock decides the lower
+    // bound, and the planner reads a clock 20 seconds ahead of the ledger's.
+    advanceEmulatorPastUnixTime(
+      fixture.emulator,
+      threshold.thresholdMs + 90_000n,
+    );
+    const submission = await submitInactivityStrike(fixture, {
+      skipThresholdWait: true,
+      planNowMs: BigInt(fixture.emulator.now()) + 20_000n,
+    });
+    expect(submission.result.struckInactivityStrikes).toBe(1n);
+    expect(
+      (await activeNodeDatum(fixture, appointed.operatorKeyHash))
+        .inactivity_strikes,
+    ).toBe(1n);
+    expect((await requireActiveOperatorShift(fixture)).startTime).toBe(
+      submission.plan.newStartTime,
+    );
+  }, 420_000);
+
   it("hops shift by shift through dead successors and then rewinds to the tail", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     const tail = requireOperator(fixture, 2);

@@ -214,7 +214,7 @@ export const submitNonExistentInputForcedStep = async ({
                       prepared,
                       signer.paymentKeyHash,
                     ),
-                    referenceInputs: [...carriageUtxos, stepReference],
+                    referenceInputs: ctx.referenceInputs,
                     certificatePolicyId,
                     label: family,
                   }),

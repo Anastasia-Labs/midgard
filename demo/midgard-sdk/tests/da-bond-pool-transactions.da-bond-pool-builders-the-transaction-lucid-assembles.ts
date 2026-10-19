@@ -49,13 +49,13 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
         parameters,
         pool: { utxo: pool },
         amount: MIN_TOP_UP,
-        referenceScripts: { daBondPoolSpending: scene.spendingReference },
+        referenceScripts: { daBondPoolSpending: scene.poolReference },
       }),
     );
     let signed = await (await topUp.complete()).sign.withWallet().complete();
     let view = assembled(signed);
     expect(view.inlineScripts).toBe(0);
-    expect(view.referenceInputs).toContain(outRefKey(scene.spendingReference));
+    expect(view.referenceInputs).toContain(outRefKey(scene.poolReference));
     await submit(scene, signed);
     const toppedUp = await poolAt(scene);
     expect(redeemerOf(view, SPEND)).toEqual(
@@ -120,7 +120,7 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
         pool: { utxo: pool },
         daParamsUtxo: scene.daParamsUtxo,
         signerKeyHashes: [scene.walletKeyHash],
-        referenceScripts: { daBondPoolSpending: scene.spendingReference },
+        referenceScripts: { daBondPoolSpending: scene.poolReference },
       }),
     );
     signed = await (await cancel.complete()).sign.withWallet().complete();
@@ -133,7 +133,7 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
     // sorted order is fixed by output index: params second, although the
     // builder reads it first and the body lists it first.
     expect(view.referenceInputs).toEqual([
-      outRefKey(scene.spendingReference),
+      outRefKey(scene.poolReference),
       outRefKey(scene.daParamsUtxo),
     ]);
     expect(redeemerOf(view, SPEND)).toEqual(
@@ -206,6 +206,7 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
           poolValidator: scene.pool,
           floorLovelace: FLOOR,
           lovelace: FLOOR,
+          referenceScript: scene.poolReference,
           ...(outputIndex === undefined ? {} : { outputIndex }),
         },
       );
@@ -226,6 +227,7 @@ describe("DA bond pool builders: the transaction Lucid assembles", () => {
         poolValidator: scene.pool,
         floorLovelace: FLOOR,
         lovelace: FLOOR - 1n,
+        referenceScript: scene.poolReference,
       }),
     ).toThrow(DaBondPoolBuildError);
   }, 300_000);

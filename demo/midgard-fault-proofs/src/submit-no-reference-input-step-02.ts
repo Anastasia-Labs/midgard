@@ -264,19 +264,13 @@ export const submitNoReferenceInputStep02 = async ({
     referenceUtxo: referenceScriptUtxo,
     label: "no-reference-input step 02 validator",
   });
-  // The complete reference-input set the built transaction will declare, in
-  // build order — the opening derivation must see all of it (bug fc635c8f).
+  // The reference inputs the transaction reads. Opening indices resolve
+  // against the builder's final order inside the redeemer callback.
   const referenceInputs = [
     ...published,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "No-reference-input step 02 reference-inputs",
-  });
   const missingReferenceInput =
     midgardReferenceInputs[Number(badReferenceInputIndex)]!;
 
@@ -304,6 +298,12 @@ export const submitNoReferenceInputStep02 = async ({
   });
   let resolvedLayout: { inputIndex: bigint; outputIndex: bigint } | undefined;
   const redeemer = ((ctx) => {
+    const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
+      label: "No-reference-input step 02 reference-inputs",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "no-reference-input step 02");
     const layout = {
       inputIndex: requireInputIndex(

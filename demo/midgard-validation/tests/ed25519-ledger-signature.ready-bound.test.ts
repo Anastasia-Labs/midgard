@@ -18,9 +18,14 @@ import {
   signerSeed,
 } from "./ed25519-ledger-vectors.js";
 
-/** libsodium's initialisation, as the next load of the verifier sees it. */
+/**
+ * libsodium's initialisation, as the next load of the verifier sees it. Until
+ * a row sets it, that is libsodium's own: the file's first load (through the
+ * vectors' imports) hashes at module load, so it must not see libsodium as
+ * initialised before it is.
+ */
 const sodiumInit = vi.hoisted(() => ({
-  ready: Promise.resolve() as Promise<void>,
+  ready: undefined as Promise<void> | undefined,
   own: Promise.resolve() as Promise<void>,
   release: (): void => undefined,
 }));
@@ -36,7 +41,7 @@ vi.mock(
       default: new Proxy(actual, {
         get: (target, key, receiver) =>
           key === "ready"
-            ? sodiumInit.ready
+            ? (sodiumInit.ready ?? sodiumInit.own)
             : (Reflect.get(target, key, receiver) as unknown),
       }),
     };

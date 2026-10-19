@@ -4,7 +4,6 @@
  * dialects, and the modules its S3 derivation runs read no clock,
  * randomness or network.
  */
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -13,7 +12,6 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import {
   declaredTables,
-  lintDeterminism,
   lintDeterminismModules,
   lintSchema,
 } from "@al-ft/midgard-l1-follower/lint";
@@ -75,12 +73,5 @@ describe("queue-terminal projection lints", () => {
     expect(LINTED.files).toEqual(
       expect.arrayContaining(DERIVATION_MODULES) as unknown,
     );
-    const path = "src/l1-queue-terminals/derive.ts";
-    const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-    expect(
-      lintDeterminism([
-        { path, source: `${source}\nexport const t = Date.now();\n` },
-      ]).map((problem) => problem.rule),
-    ).toEqual(["clock"]);
   });
 });

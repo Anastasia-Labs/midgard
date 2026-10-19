@@ -16,6 +16,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -160,16 +161,6 @@ export const submitNativeScriptInvalidStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${label} field 6`,
-  });
   const requiresScan =
     planned.plan.tier === "Certified" || scriptWitnessItems.length > 32;
   let nextStep = 2;
@@ -182,9 +173,16 @@ export const submitNativeScriptInvalidStep02 = async ({
     validity_interval_end: state.validity_interval_end,
   };
   const actionFor = (
+    ctx: RedeemerContext,
     input_index: bigint,
     output_index: bigint,
   ): Extract<Step02Redeemer, { Continue: unknown }>["Continue"][0] => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} field 6`,
+    });
     const indices = { input_index, output_index };
     if (!requiresScan)
       return {
@@ -333,7 +331,7 @@ export const submitNativeScriptInvalidStep02 = async ({
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);
     return Data.to(
       {
-        Continue: [actionFor(inputIndex, outputIndex)],
+        Continue: [actionFor(ctx, inputIndex, outputIndex)],
       },
       Step02Redeemer,
     );

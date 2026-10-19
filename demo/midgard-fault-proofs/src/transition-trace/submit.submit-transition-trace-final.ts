@@ -58,7 +58,6 @@ import {
 } from "./history-opening.js";
 import {
   initialTransitionTraceState,
-  nextTransitionTracePhase,
   transitionTracePhaseIsTerminal,
   transitionTracePhaseYield,
 } from "./phases.js";
@@ -450,6 +449,7 @@ const submitTransitionTraceFinalStep = async ({
       contracts,
       proof: proofInput,
       state: checkpoint.data,
+      yields: allYieldData,
       outputCbors,
       publish: preSubmitBoundary === undefined,
       fieldCertificateReferenceScript,
@@ -462,12 +462,9 @@ const submitTransitionTraceFinalStep = async ({
         ...outputReferences,
       ],
     });
-    const planned = nextTransitionTracePhase({
-      state: checkpoint.data,
-      proof: proofInput,
-      yields: allYieldData,
-      ...fieldStep.openings,
-    });
+    // The next state and the verifier claims read no opening; the step
+    // redeemer is re-planned below against the final reference inputs.
+    const planned = fieldStep.plan(fieldStep.referenceInputs);
     const nextDatum = Data.to(
       { fraud_prover: signer.paymentKeyHash, data: planned.state },
       TransitionTraceProofCommitmentDatum,
@@ -583,7 +580,9 @@ const submitTransitionTraceFinalStep = async ({
       checkpointBuilder = checkpointBuilder.withdraw(
         validatorToRewardAddress(network, semantic.validator.withdrawalScript),
         0n,
-        planned.redeemer,
+        ((ctx) =>
+          fieldStep.plan(ctx.referenceInputs)
+            .redeemer) satisfies BuildTxWithRedeemer,
       );
     checkpointBuilder = fieldStep.withdraw(checkpointBuilder, planned);
     const completed = await checkpointBuilder.pay

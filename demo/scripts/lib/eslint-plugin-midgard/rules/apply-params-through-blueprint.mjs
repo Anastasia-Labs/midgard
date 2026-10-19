@@ -8,6 +8,14 @@
 // `applyBlueprintParams` in midgard-sdk/src/fraud-proof/contracts/blueprint.ts
 // refuses a list whose arity or shape does not match the blueprint, and it is
 // the one place allowed to apply parameters.
+//
+// A test's independent oracle is the other: a module named
+// `expected-parameter-application.ts` (or `<prefix>.expected-parameter-application.ts`)
+// under a package's `tests/` tree recomputes an applied script outside the
+// guard on purpose, so that a test can compare the guarded result against it.
+// Nothing deploys from it. Every other test file is held to the rule, since a
+// script a test deploys to the emulator with the wrong arity makes that test
+// vacuous in the same way.
 
 import { defineRule } from "../baseline.mjs";
 import { calleeName, calleeNameNode, staticName } from "../ast.mjs";
@@ -18,6 +26,11 @@ export const APPLY_FUNCTIONS = new Set([
 ]);
 export const BLUEPRINT_MODULE =
   "midgard-sdk/src/fraud-proof/contracts/blueprint.ts";
+export const TEST_ORACLE_MODULE =
+  /^[^/]+\/tests\/(?:[^/]+\/)*(?:[^/]+\.)?expected-parameter-application\.ts$/u;
+
+const allowedToApply = (file) =>
+  file === BLUEPRINT_MODULE || TEST_ORACLE_MODULE.test(file);
 
 export default defineRule({
   meta: {
@@ -29,13 +42,13 @@ export default defineRule({
     schema: [],
     messages: {
       rawApplication:
-        "Raw parameter application skips the arity and shape guard: too few parameters deploy an always-succeeds script (#609), too many a script with the wrong hash. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts, the only module allowed to apply parameters.",
+        "Raw parameter application skips the arity and shape guard: too few parameters deploy an always-succeeds script (#609), too many a script with the wrong hash. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts, the only production module allowed to apply parameters. A test that needs an independent oracle imports it from its package's tests/**/expected-parameter-application.ts.",
       aliased:
         "Renaming a raw parameter-application function hides every later call from this rule. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts instead of importing the raw function.",
     },
   },
   create: (_context, report, file) =>
-    file === BLUEPRINT_MODULE
+    allowedToApply(file)
       ? {}
       : {
           CallExpression(node) {

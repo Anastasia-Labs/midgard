@@ -150,17 +150,6 @@ export const submitSpendInputSignerMissingStep03 = async ({
     family: "spend-input-signer-missing",
     stepIndex,
   });
-  const referenceInputs = [
-    ...carriageUtxos,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    stepReference,
-  ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "spend-input-signer-missing address witnesses",
-  });
   const initial = missingSignatureFieldWalkCheckpoint({
     txId: evidence.subject.transaction_id,
     itemCount: planned.itemCount,
@@ -189,6 +178,12 @@ export const submitSpendInputSignerMissingStep03 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "spend-input-signer-missing address witnesses",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

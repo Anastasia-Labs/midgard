@@ -25,59 +25,6 @@ export const checkFamily = (root, category) => {
   const results = [];
   const record = (id, status, detail) => results.push({ id, status, detail });
 
-  const sdkCatalogue = readSource(root, "sdkCatalogue");
-  const sdkOrder = arrayStrings(
-    extractLiteral(
-      sdkCatalogue,
-      "FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
-      SOURCES.sdkCatalogue,
-    ),
-  );
-  const sdkIds = objectStringPairs(
-    extractLiteral(
-      sdkCatalogue,
-      "FRAUD_PROOF_CATALOGUE_CATEGORY_IDS",
-      SOURCES.sdkCatalogue,
-    ),
-  );
-  if (sdkOrder.length === 0 || sdkIds.size === 0) {
-    throw new CannotLook(`${SOURCES.sdkCatalogue}: catalogue tables are empty`);
-  }
-
-  if (sdkOrder.includes(category)) {
-    record("catalogue-order", "ok", "in FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER");
-  } else {
-    record(
-      "catalogue-order",
-      "gap",
-      `not in FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER (${SOURCES.sdkCatalogue}); check the spelling if the family already exists`,
-    );
-  }
-
-  const id = sdkIds.get(category);
-  if (id === undefined) {
-    record(
-      "catalogue-id",
-      "gap",
-      "no FRAUD_PROOF_CATALOGUE_CATEGORY_IDS entry",
-    );
-  } else if (!/^[0-9a-f]{8}$/u.test(id)) {
-    record("catalogue-id", "gap", `ID "${id}" is not 8 lowercase hex digits`);
-  } else {
-    const sharers = [...sdkIds].filter(
-      ([other, value]) => value === id && other !== category,
-    );
-    if (sharers.length > 0) {
-      record(
-        "catalogue-id",
-        "gap",
-        `ID ${id} is also used by ${sharers.map(([name]) => name).join(", ")}`,
-      );
-    } else {
-      record("catalogue-id", "ok", `ID ${id}`);
-    }
-  }
-
   const core = readSource(root, "coreCatalogue");
   const coreOrder = arrayStrings(
     extractLiteral(
@@ -114,6 +61,45 @@ export const checkFamily = (root, category) => {
   ) {
     throw new CannotLook(`${SOURCES.coreCatalogue}: identity tables are empty`);
   }
+
+  if (coreOrder.includes(category)) {
+    record(
+      "catalogue-order",
+      "ok",
+      "in DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
+    );
+  } else {
+    record(
+      "catalogue-order",
+      "gap",
+      `not in DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER (${SOURCES.coreCatalogue}); check the spelling if the family already exists`,
+    );
+  }
+
+  const id = coreIds.get(category);
+  if (id === undefined) {
+    record(
+      "catalogue-id",
+      "gap",
+      "no DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS entry",
+    );
+  } else if (!/^[0-9a-f]{8}$/u.test(id)) {
+    record("catalogue-id", "gap", `ID "${id}" is not 8 lowercase hex digits`);
+  } else {
+    const sharers = [...coreIds].filter(
+      ([other, value]) => value === id && other !== category,
+    );
+    if (sharers.length > 0) {
+      record(
+        "catalogue-id",
+        "gap",
+        `ID ${id} is also used by ${sharers.map(([name]) => name).join(", ")}`,
+      );
+    } else {
+      record("catalogue-id", "ok", `ID ${id}`);
+    }
+  }
+
   const members = readDeploymentMembers(root);
   const expected = new Set(contractNames);
   const missingMembers = contractNames.filter(
@@ -146,32 +132,12 @@ export const checkFamily = (root, category) => {
     .map(([contract]) => contract);
   const firstContract =
     firstContracts.length === 1 ? firstContracts[0] : undefined;
-  const coreProblems = [];
-  if (!coreOrder.includes(category)) {
-    coreProblems.push(
-      "not in DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER",
-    );
-  }
-  if (coreIds.get(category) === undefined) {
-    coreProblems.push(
-      "no DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS entry",
-    );
-  } else if (id !== undefined && coreIds.get(category) !== id) {
-    coreProblems.push(
-      `core ID ${coreIds.get(category)} differs from SDK ID ${id}`,
-    );
-  }
-  if (firstContract === undefined) {
-    coreProblems.push(
-      `expected one firstStep member for ${category}, found ${firstContracts.length}`,
-    );
-  }
   record(
-    "core-identity",
-    coreProblems.length === 0 ? "ok" : "gap",
-    coreProblems.length === 0
-      ? `first-step contract ${firstContract}`
-      : `${coreProblems.join("; ")} (${SOURCES.coreCatalogue})`,
+    "first-step",
+    firstContract === undefined ? "gap" : "ok",
+    firstContract === undefined
+      ? `expected one firstStep member for ${category}, found ${firstContracts.length} (${SOURCES.coreMembers})`
+      : `first-step contract ${firstContract}`,
   );
 
   if (firstContract !== undefined) {
@@ -409,7 +375,7 @@ export const checkFamily = (root, category) => {
       );
     }
     const index = rows.indexOf(category);
-    const position = sdkOrder.indexOf(category);
+    const position = coreOrder.indexOf(category);
     if (index < 0) {
       record(
         id,
@@ -420,7 +386,7 @@ export const checkFamily = (root, category) => {
       record(
         id,
         "gap",
-        `${constName} row ${index} but catalogue position ${position}; rows follow FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`,
+        `${constName} row ${index} but catalogue position ${position}; rows follow DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`,
       );
     } else {
       record(id, "ok", `${constName} row ${index}, in catalogue order`);
@@ -536,7 +502,7 @@ export const checkFamily = (root, category) => {
     ...new Set([kebab(category), familyFileStem, ...validatorDirectories]),
   ].filter((stem) => stem !== undefined && stem.length > 0);
   const otherStems = [
-    ...sdkOrder.filter((other) => other !== category).map(kebab),
+    ...coreOrder.filter((other) => other !== category).map(kebab),
     ...[
       ...build.matchAll(
         /const (\w+)\s*=\s*yield\*\s*build\w+Chain[\s\S]*?(?=const \w+\s*=\s*yield\*|$)/gu,

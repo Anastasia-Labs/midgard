@@ -163,16 +163,6 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${label} staged field 7`,
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -198,6 +188,12 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} staged field 7`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, label);
     const inputIndex = requireInputIndex(ctx, threadUtxo, label);
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);

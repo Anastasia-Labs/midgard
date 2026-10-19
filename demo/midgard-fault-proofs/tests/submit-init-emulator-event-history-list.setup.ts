@@ -32,6 +32,7 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { inputAt } from "./support/emulator/history-pair.index.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
@@ -45,17 +46,6 @@ export const records: unknown[] = [];
 
 const same = (a: UTxO, b: UTxO) =>
   a.txHash === b.txHash && a.outputIndex === b.outputIndex;
-
-const sorted = (xs: UTxO[]) =>
-  [...xs].sort(
-    (a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,
-  );
-
-export const index = (xs: UTxO[], x: UTxO) => {
-  const result = sorted(xs).findIndex((v) => same(v, x));
-  if (result < 0) throw new Error("Missing indexed UTxO");
-  return BigInt(result);
-};
 
 // Lucid's emulator advances one second per slot. Preserve at least the original
 // two-block confirmation interval and cross the actual node protection boundary.
@@ -273,10 +263,8 @@ export const setup = async (
       .newTx()
       .collectFrom(inputs)
       .readFrom([script])
-      .withdraw(
-        applied.rewardAddress,
-        0n,
-        Data.to(new Constr(0, [index(inputs, initNonce), 0n])),
+      .withdraw(applied.rewardAddress, 0n, (ctx) =>
+        Data.to(new Constr(0, [inputAt(ctx, initNonce), 0n])),
       )
       .mintAssets({ [applied.policyId]: 1n }, Data.void())
       .pay.ToContract(

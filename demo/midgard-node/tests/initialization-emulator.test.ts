@@ -187,6 +187,7 @@ describe("initialization emulator", () => {
         99,
         contracts.fraudProofCatalogue.mintingScript,
       ),
+      daBondPoolMinting: reference(101, contracts.daBondPool.mintingScript),
       validationCaseConfigMinting: reference(
         100,
         contracts.fraudProofContracts.validationTraceDispute.caseConfig
@@ -287,19 +288,6 @@ describe("initialization emulator", () => {
       await expect(
         withPoolLovelace(daBondPoolFloorLovelace - 1n),
       ).rejects.toThrow(/below the pool floor/u);
-      // The case configuration mint has no inline fallback.
-      await expect(
-        Effect.runPromise(
-          SDK.incompleteInitializationTxProgram(fakeLucid, {
-            midgardValidators: contracts,
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-            fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
-            daParams: TEST_DA_PARAMS,
-            oneShotNonceUTxO: nonceUtxo,
-            validityRange: { validFrom, validTo },
-          }),
-        ),
-      ).rejects.toThrow(/published reference script/u);
     } finally {
       dateNowSpy.mockRestore();
     }

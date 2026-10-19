@@ -1,6 +1,5 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { faultProofFieldOpening } from "../field-opening.js";
 import { submitInit } from "../submit-init.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -208,20 +207,11 @@ export const createScriptIntegrityHashMissingTransactionPort = (
               },
             },
           }),
-          buildArgs: ({ input_index, output_index }) => ({
+          buildArgs: ({ input_index, output_index }, ctx) => ({
             StartStaged: {
               input_index,
               output_index,
-              script_witnesses_opening: faultProofFieldOpening({
-                planned: admitted.scriptPlan,
-                referenceInputs: [
-                  ...field.carriage,
-                  config.references.steps[2],
-                ],
-                certificatePolicyId:
-                  config.contracts.fieldPreimageCertificatePolicyId,
-                label: "scriptIntegrityHashMissing script opening",
-              }),
+              script_witnesses_opening: field.opening(ctx),
               item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
             },
           }),
@@ -247,12 +237,6 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const current = admitted.staged.grammar[index]!;
       const next = admitted.staged.grammar[index + 1];
       const closes = next === undefined;
-      const opening = faultProofFieldOpening({
-        planned: admitted.scriptPlan,
-        referenceInputs: [...field.carriage, config.references.steps[3]],
-        certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
-        label: "scriptIntegrityHashMissing script opening",
-      });
       return await captured(async (preSubmitBoundary) => {
         await submitScriptIntegrityHashMissingScriptGrammar({
           lucid: config.lucid,
@@ -280,13 +264,13 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                   },
                 },
           }),
-          buildArgs: ({ input_index, output_index }) =>
+          buildArgs: ({ input_index, output_index }, ctx) =>
             closes
               ? {
                   StartScan: {
                     input_index,
                     output_index,
-                    opening,
+                    opening: field.opening(ctx),
                     checkpoint_bytes:
                       encodeScriptIntegrityGrammarCheckpoint(current).toString(
                         "hex",
@@ -300,7 +284,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                   Resume: {
                     input_index,
                     output_index,
-                    opening,
+                    opening: field.opening(ctx),
                     checkpoint_bytes:
                       encodeScriptIntegrityGrammarCheckpoint(current).toString(
                         "hex",
@@ -361,16 +345,10 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                   },
                 },
           }),
-          buildArgs: ({ input_index, output_index }) => ({
+          buildArgs: ({ input_index, output_index }, ctx) => ({
             input_index,
             output_index,
-            opening: faultProofFieldOpening({
-              planned: admitted.scriptPlan,
-              referenceInputs: [...field.carriage, config.references.steps[4]],
-              certificatePolicyId:
-                config.contracts.fieldPreimageCertificatePolicyId,
-              label: "scriptIntegrityHashMissing script opening",
-            }),
+            opening: field.opening(ctx),
             checkpoint_bytes:
               encodeScriptIntegritySemanticCheckpoint(current).toString("hex"),
             item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
@@ -385,12 +363,6 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const field = await resolveField(config, admitted.redeemerPlan);
       const state = await threadDatum(config, threadOutRef(), 6);
       const phase = state.data.phase as Record<string, unknown>;
-      const opening = faultProofFieldOpening({
-        planned: admitted.redeemerPlan,
-        referenceInputs: [...field.carriage, config.references.steps[5]],
-        certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
-        label: "scriptIntegrityHashMissing redeemer opening",
-      });
       if ("ScriptComplete" in phase) {
         const first = admitted.staged.redeemerGrammar[0]!;
         return await captured(async (preSubmitBoundary) => {
@@ -412,11 +384,11 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                 },
               },
             }),
-            buildArgs: ({ input_index, output_index }) => ({
+            buildArgs: ({ input_index, output_index }, ctx) => ({
               Start: {
                 input_index,
                 output_index,
-                opening,
+                opening: field.opening(ctx),
                 item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
               },
             }),
@@ -467,13 +439,13 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                   },
                 },
           ),
-          buildArgs: ({ input_index, output_index }) =>
+          buildArgs: ({ input_index, output_index }, ctx) =>
             closes
               ? {
                   Finish: {
                     input_index,
                     output_index,
-                    opening,
+                    opening: field.opening(ctx),
                     checkpoint_bytes:
                       encodeScriptIntegrityField8Checkpoint(current).toString(
                         "hex",
@@ -484,7 +456,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                   Resume: {
                     input_index,
                     output_index,
-                    opening,
+                    opening: field.opening(ctx),
                     checkpoint_bytes:
                       encodeScriptIntegrityField8Checkpoint(current).toString(
                         "hex",

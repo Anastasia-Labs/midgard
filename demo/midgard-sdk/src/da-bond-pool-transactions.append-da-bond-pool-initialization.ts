@@ -26,8 +26,9 @@ import { requireUniqueOutputIndex } from "./tx-context-redeemer.js";
  * `validators/da-bond-pool.ak`): the one-shot `InitPool` mint, the open
  * `TopUp`, and the owner-quorum `BeginWithdraw` / `CancelWithdraw` /
  * `CompleteWithdraw` steps. Every builder returns an incomplete `TxBuilder`;
- * the caller funds, completes, signs and submits it. Without reference-script
- * UTxOs a builder attaches the pool script inline.
+ * the caller funds, completes, signs and submits it. `InitPool` reads the pool
+ * minting script from its published reference script. Without reference-script
+ * UTxOs a spending builder attaches the pool script inline.
  *
  * Timing is never a constant here: the withdraw delay a `BeginWithdraw`
  * writes is the deployment profile's `timing.da_bond_withdraw_delay_ms`, which
@@ -67,7 +68,7 @@ export class DaBondPoolBuildError extends EffectData.TaggedError(
  * the same script.
  */
 export type DaBondPoolReferenceScripts = {
-  readonly daBondPoolMinting?: UTxO;
+  readonly daBondPoolMinting: UTxO;
   readonly daBondPoolSpending?: UTxO;
 };
 
@@ -204,7 +205,7 @@ export const appendDaBondPoolInitialization = (
     readonly floorLovelace: bigint;
     readonly lovelace: bigint;
     readonly outputIndex?: bigint;
-    readonly referenceScript?: UTxO;
+    readonly referenceScript: UTxO;
   },
 ): TxBuilder => {
   const { poolValidator } = params;
@@ -223,7 +224,7 @@ export const appendDaBondPoolInitialization = (
       params.outputIndex.toString(),
     );
   }
-  const reference = requireReferenceScript(
+  requireReferenceScript(
     params.referenceScript,
     poolValidator.policyId,
     "DA bond pool minting",
@@ -250,17 +251,14 @@ export const appendDaBondPoolInitialization = (
     );
   }) satisfies BuildTxWithRedeemer;
 
-  tx.mintAssets({ [unit]: 1n }, initRedeemer).pay.ToContract(
-    poolAddress,
-    { kind: "inline", value: encodeDaBondPoolDatum("Bonded") },
-    { lovelace: params.lovelace, [unit]: 1n },
-  );
-  if (reference === undefined) {
-    tx.attach.Script(poolValidator.mintingScript);
-  } else {
-    tx.readFrom([reference]);
-  }
-  return tx;
+  return tx
+    .mintAssets({ [unit]: 1n }, initRedeemer)
+    .pay.ToContract(
+      poolAddress,
+      { kind: "inline", value: encodeDaBondPoolDatum("Bonded") },
+      { lovelace: params.lovelace, [unit]: 1n },
+    )
+    .readFrom([params.referenceScript]);
 };
 
 /**
@@ -275,7 +273,7 @@ export const buildInitDaBondPoolTxProgram = (
     readonly initUtxo: UTxO;
     readonly lovelace: bigint;
     readonly outputIndex?: bigint;
-    readonly referenceScripts?: Pick<
+    readonly referenceScripts: Pick<
       DaBondPoolReferenceScripts,
       "daBondPoolMinting"
     >;
@@ -290,7 +288,7 @@ export const buildInitDaBondPoolTxProgram = (
           floorLovelace: config.parameters.da_bond_pool_floor_lovelace,
           lovelace: config.lovelace,
           outputIndex: config.outputIndex,
-          referenceScript: config.referenceScripts?.daBondPoolMinting,
+          referenceScript: config.referenceScripts.daBondPoolMinting,
         },
       ),
     "invalid_pool",

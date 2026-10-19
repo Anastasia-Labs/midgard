@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
-  type FieldOpening,
   MIDGARD_FIELD_INDEX,
   missingSignatureVkeyHash,
   NativeScriptInvalidStep03DatumSchema,
@@ -155,23 +154,6 @@ export const submitNativeScriptInvalidStep03 = async ({
       label: `${FAMILY} final field 7`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const referenceInputs = [
-    ...carriageUtxos,
-    referenceScriptUtxo,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ...(witnessReferenceScripts.computationThreadMint === undefined
-      ? []
-      : [witnessReferenceScripts.computationThreadMint]),
-    ...(witnessReferenceScripts.fraudProofMint === undefined
-      ? []
-      : [witnessReferenceScripts.fraudProofMint]),
-  ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} final field 7`,
-  });
   return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
@@ -183,13 +165,18 @@ export const submitNativeScriptInvalidStep03 = async ({
     threadUtxo,
     threadToken,
     spendRedeemerSchema: Redeemer,
-    buildFamilyArgs: (layout) => ({
+    buildFamilyArgs: (layout, ctx) => ({
       DirectFinalize: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
         fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
         script_item_cbor: Buffer.from(scriptItemCbor).toString("hex"),
-        addr_tx_wits_opening: opening,
+        addr_tx_wits_opening: faultProofFieldOpening({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: `${FAMILY} final field 7`,
+        }),
       },
     }),
     referenceScriptUtxo,

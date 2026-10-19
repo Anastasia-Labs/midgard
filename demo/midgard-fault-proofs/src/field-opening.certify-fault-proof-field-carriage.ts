@@ -128,10 +128,7 @@ export const certifyFaultProofFieldCarriage = async ({
       plan: planned.plan,
       certificatePolicyId,
       certificateAddress,
-      certificateWitness: {
-        kind: "reference_script",
-        referenceUtxo: certificateReferenceScriptUtxo,
-      },
+      certificatePolicyReferenceUtxo: certificateReferenceScriptUtxo,
       chunkUtxos,
       compactCbor,
       witnessSetCompactCbor,
