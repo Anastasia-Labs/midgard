@@ -30,11 +30,11 @@ import type {
   WatcherFaultProofApplication,
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import * as stall from "./fault-proof-continuation-stall.js";
 import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
-import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -77,10 +77,11 @@ export type WatcherFaultProofExecution = Readonly<{
     readonly admission: WatcherFaultProofExecutionAdmission;
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
-   * Objectives held on an L1 read the source refused
-   * (`fault_proof_l1_refused:<reason>`) or need a new submission after their
-   * latest safe start (`fault_proof_resubmission_required`), until the next run
-   * or completion check meets something else, or the objective is settled.
+   * Objectives held on a refused L1 read, a resubmission due after the latest
+   * safe start or a stalled session (`fault_proof_l1_refused:<reason>`,
+   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`),
+   * until a run or completion check meets something else, a stalled one's
+   * later run journals progress, or it is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -91,10 +92,9 @@ export type WatcherFaultProofExecution = Readonly<{
   objectiveSettled(objective: WatcherProofObjective): void;
 }>;
 
-// Only failures from this adapter's read-only provider calls receive transport
-// retry semantics. Arbitrary runner exceptions and authentication errors do not.
-// It is an L1 unavailability, so the workflow hands it back from any step
-// instead of stalling on it.
+// Only this adapter's read-only provider failures get transport retry; runner
+// exceptions and authentication errors do not. As an L1 unavailability, the
+// workflow hands it back from any step instead of stalling on it.
 class FundingProviderTransportUnavailable extends FraudProofL1UnavailableError {}
 
 /** How far down a `cause` chain a wrapped refusal is still recognised. */
@@ -404,6 +404,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           fundingReservationPermit,
           journalDirectory,
           runtimeConfigPath: dependencies.runtimeConfigPath,
+          onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });
         if (typeof result === "object" && result !== null && "kind" in result) {
           if (
@@ -413,10 +414,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
             record(result.kind === "completed" ? "completed" : "confirmed");
             return { kind: result.kind, result };
           }
-          // A dispute that has made its move and now waits for the other
-          // party's response (`awaiting_counterparty`) is healthy: it is
-          // re-driven on each new observation until the response lands or the
-          // response deadline lets this side move again.
+          // A dispute that made its move and awaits the other party's response
+          // (`awaiting_counterparty`) is healthy: each observation re-drives it
+          // until the response lands or its deadline lets this side move again.
           if (
             "reason" in result &&
             typeof result.reason === "string" &&
@@ -424,7 +424,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
               result.kind === "awaiting_counterparty" ||
               isWatcherPreflightStalledResult(result))
           ) {
-            held = holdWatcherFaultProofForResubmission(holds, job, result);
+            held = stall.holdWatcherFaultProofPending(holds, job, result);
             record("reconciling");
             return {
               kind: "pending",
