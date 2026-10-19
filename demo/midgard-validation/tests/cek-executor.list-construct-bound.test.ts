@@ -1,15 +1,26 @@
 import { createHash } from "node:crypto";
 
 import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
-import { constT, UPLCConst } from "@harmoniclabs/uplc";
+import { constT, type ConstType, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { midgardCekDirectBuiltinFits } from "../src/cek-builtin.evaluate-reference-builtin.js";
+import { type MidgardCekDirectValueWitness } from "../src/cek-builtin.js";
+import {
+  encodeMidgardCekCanonicalConstant,
+  encodeMidgardCekCanonicalDataConstant,
+} from "../src/cek-constant.js";
 import {
   type MidgardCekExecutionMode,
   type MidgardCekStructuralExecution,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
-import { program } from "./helpers/cek-differential-builders.js";
+import {
+  DIRECT_BOUND,
+  I,
+  L,
+  program,
+} from "./helpers/cek-differential-builders.js";
 import { MIDGARD_CEK_DIFFERENTIAL_CORPUS } from "./helpers/cek-differential-corpus.js";
 import { mkCons, runMidgardCekProgram } from "./helpers/cek-uplc-terms.js";
 
@@ -133,4 +144,131 @@ describe("mkCons over integer lists at the direct payload bound", () => {
       );
     },
   );
+});
+
+// The direct witness of mkCons carries the head, the source and the result,
+// so over a non-empty source its payload is twice the arguments' and always
+// even. Over the empty source it is odd, which reaches the bound exactly.
+// Lists of integer lists are revealed at any size, so each side of the bound
+// is reached with revealed arguments.
+
+/** `lengths.length` lists of zeros, one payload byte per zero. */
+const zeroLists = (lengths: readonly number[]): bigint[][] =>
+  lengths.map((length) => Array.from({ length }, () => 0n));
+
+/** 209 lists of twenty zeros, then one of `last` zeros: `4,602 + last` bytes. */
+const grownLists = (last: number): bigint[][] =>
+  zeroLists([...Array.from({ length: 209 }, () => 20), last]);
+
+const INTEGER_LIST = constT.listOf(constT.int);
+
+type ConsShape = {
+  readonly headType: ConstType;
+  readonly head: unknown;
+  readonly source: readonly unknown[];
+};
+
+const consConstants = ({ headType, head, source }: ConsShape) => ({
+  head: UPLCConst.listOf(headType)(head as never),
+  source: UPLCConst.listOf(constT.listOf(headType))(source as never),
+});
+
+/** The payload bytes of the direct witness of `mkCons head source`. */
+const consPayloadBytes = (shape: ConsShape): number => {
+  const { head, source } = consConstants(shape);
+  const result = UPLCConst.listOf(constT.listOf(shape.headType))([
+    shape.head,
+    ...shape.source,
+  ] as never);
+  return [head, source, result].reduce(
+    (total, constant) =>
+      total + encodeMidgardCekCanonicalConstant(constant).payloadCbor.length,
+    0,
+  );
+};
+
+const consOnto = (shape: ConsShape, mode: MidgardCekExecutionMode) => {
+  const { head, source } = consConstants(shape);
+  const run = runMidgardCekProgram(
+    program(
+      "mkCons at the direct payload bound",
+      mkCons(head, source),
+    ).prepare(),
+    mode,
+  );
+  const steps = "steps" in run ? run.steps : [];
+  return {
+    run,
+    step: steps.find(
+      (step) =>
+        step.witness.kind === "executeBuiltinDirect" ||
+        step.witness.kind === "executeBuiltinSemantic",
+    ),
+  };
+};
+
+describe("mkCons whose direct witness is at the payload bound", () => {
+  it.each([
+    {
+      at: "one byte under",
+      shape: { headType: constT.int, head: [7n], source: grownLists(2) },
+      bytes: DIRECT_BOUND - 1,
+      kind: "executeBuiltinDirect",
+    },
+    {
+      at: "exactly",
+      shape: { headType: INTEGER_LIST, head: grownLists(4), source: [] },
+      bytes: DIRECT_BOUND,
+      kind: "executeBuiltinDirect",
+    },
+    {
+      at: "one byte over",
+      shape: { headType: constT.int, head: [7n], source: grownLists(3) },
+      bytes: DIRECT_BOUND + 1,
+      kind: "executeBuiltinSemantic",
+    },
+  ])(
+    "a witness $at the bound is proved by $kind in both modes",
+    ({ shape, bytes, kind }) => {
+      expect(consPayloadBytes(shape)).toBe(bytes);
+      const proof = consOnto(shape, "proof");
+      expect(proof.step?.witness.kind).toBe(kind);
+      expect(proof.run.stopReason).toBe("halted");
+      expect(
+        "steps" in proof.run &&
+          proof.run.steps.every((each) =>
+            verifyMidgardCekCoreStep(each.pre, each.post, each.witness),
+          ),
+      ).toBe(true);
+      const verdict = consOnto(shape, "verdict").run;
+      expect(verdict.stopReason).toBe("halted");
+      expect(hashMidgardCekMachineState(verdict.terminalState)).toEqual(
+        hashMidgardCekMachineState(proof.run.terminalState),
+      );
+    },
+  );
+});
+
+/** A Data list of `count` zeros: `count + 2` payload bytes. */
+const dataListArgument = (count: number): MidgardCekDirectValueWitness => {
+  const { typeCbor, payloadCbor } = encodeMidgardCekCanonicalDataConstant(
+    L(Array.from({ length: count }, () => I(0n))),
+  );
+  return { kind: "constant", witness: { typeCbor, payloadCbor } };
+};
+
+// A builtin that fails has no result, so its witness fits exactly when its
+// arguments do. unIData (45) fails on a list.
+describe("a failing builtin whose arguments are at the payload bound", () => {
+  it.each([
+    { at: "one byte under", count: DIRECT_BOUND - 3, fits: true },
+    { at: "exactly", count: DIRECT_BOUND - 2, fits: true },
+    { at: "one byte over", count: DIRECT_BOUND - 1, fits: false },
+  ])("arguments $at the bound fit: $fits", ({ count, fits }) => {
+    const argument = dataListArgument(count);
+    expect(
+      argument.kind === "constant" && argument.witness.payloadCbor.length,
+    ).toBe(count + 2);
+    expect(midgardCekDirectBuiltinFits(45n, [argument])).toBe(fits);
+  });
 });
