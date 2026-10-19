@@ -235,7 +235,7 @@ describe("V1 CEK core-step golden vectors", () => {
     expect(uncovered).toEqual([
       ...vectors.CEK_CORE_STEP_WITNESS_KINDS_UNCOVERED,
     ]);
-    expect(vectors.CEK_CORE_STEP_WITNESS_KINDS).toHaveLength(41);
+    expect(vectors.CEK_CORE_STEP_WITNESS_KINDS).toHaveLength(42);
     for (const kind of recomputedKinds) {
       expect(vectors.CEK_CORE_STEP_WITNESS_KINDS).toContain(kind);
     }

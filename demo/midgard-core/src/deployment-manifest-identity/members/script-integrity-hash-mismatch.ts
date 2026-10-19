@@ -8,7 +8,7 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-01",
       manifestPosition: 358,
       publicationPosition: 277,
-      referenceRolePosition: 509,
+      referenceRolePosition: 510,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
@@ -19,7 +19,7 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-02",
       manifestPosition: 359,
       publicationPosition: 278,
-      referenceRolePosition: 510,
+      referenceRolePosition: 511,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
@@ -30,7 +30,7 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-03",
       manifestPosition: 360,
       publicationPosition: 279,
-      referenceRolePosition: 511,
+      referenceRolePosition: 512,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
@@ -41,7 +41,7 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-04",
       manifestPosition: 361,
       publicationPosition: 280,
-      referenceRolePosition: 512,
+      referenceRolePosition: 513,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
@@ -52,7 +52,7 @@ export const scriptIntegrityHashMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof script-integrity-hash-mismatch step-05",
       manifestPosition: 362,
       publicationPosition: 281,
-      referenceRolePosition: 513,
+      referenceRolePosition: 514,
       commands: [],
       validatorTitle:
         "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",

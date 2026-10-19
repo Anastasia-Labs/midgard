@@ -766,6 +766,37 @@
       }
     },
     {
+      "id": "cek-builtin-step-evidence",
+      "kind": "golden",
+      "summary": "Pinned CEK builtin step evidence (mkCons by element type, semantic builtin presentation): one JSON vector file the validation TypeScript executor twins load, rendered into two generated Aiken constant modules the step tests import.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-builtin-step-evidence-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-builtin-step-evidence:sync",
+        "demo/midgard-validation:fixtures:cek-builtin-step-evidence:check"
+      ],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-step-evidence-vectors.json"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/cek-direct-list-construct-evidence-generated.ak",
+        "onchain/aiken/lib/midgard/cek-semantic-presentation-evidence-generated.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check CEK builtin step evidence vectors"
+      }
+    },
+    {
       "id": "cek-program-large-integer",
       "kind": "golden",
       "summary": "Canonical CEK program envelope and material for a program that adds a 65-byte integer, decoded and executed by the material-execution vitest suite.",

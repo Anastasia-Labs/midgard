@@ -121,8 +121,8 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 573,
-    "reason": "One frozen declarative contract-name catalogue (573 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Adds the six script-decode class staker withdraw names. Exact formatter-final line count; no transaction budget changes."
+    "max": 574,
+    "reason": "One frozen declarative contract-name catalogue (574 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Adds the six script-decode class staker withdraw names and the case-on-constant CEK core executor name. Exact formatter-final line count; no transaction budget changes."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
@@ -1116,8 +1116,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 1776,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. Variable lookup refuses Cardano's unbound index 0 at the step it occurs."
+    "max": 1781,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. Variable lookup refuses Cardano's unbound index 0 at the step it occurs. Case on a constant delegates to cek-executor.case-constant.ts through a host that carries the semantic store; builtin argument presentation is presentMidgardCekDirectArgument in cek-builtin.argument-kinds.ts; a semantic step's arguments and result are presented, and whether a builtin step is semantic is decided, in cek-executor.semantic-presentation.ts."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
@@ -1131,8 +1131,8 @@
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
-    "max": 844,
-    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 848,
+    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. The nested headList step's list result is checked by its semantic summary."
   },
   {
     "file": "midgard-validation/tests/data-breadth-boundary.test.ts",

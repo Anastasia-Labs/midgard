@@ -2,6 +2,10 @@ import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
+  type MidgardCekDirectValueWitness,
+  semanticizeMidgardCekDirectConstant,
+} from "../src/cek-builtin.js";
+import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
 } from "../src/cek-constant.js";
@@ -209,14 +213,23 @@ describe("Data that is, or ends in, an empty byte string", () => {
         if (
           builtinStep === undefined ||
           (builtinStep.witness.kind !== "executeBuiltinDirect" &&
-            builtinStep.witness.kind !== "executeBuiltinSemantic") ||
-          builtinStep.witness.result.kind !== "constant"
+            builtinStep.witness.kind !== "executeBuiltinSemantic")
         ) {
           throw new Error("the builtin did not return a constant");
         }
-        const witness = builtinStep.witness.result.witness;
-        expect(`${hex(witness.typeCbor)}:${hex(witness.payloadCbor)}`).toBe(
-          result,
+        // A semantic step presents its result by its committed summary.
+        const [typeHex, payloadHex] = result.split(":");
+        const expected: MidgardCekDirectValueWitness = {
+          kind: "constant",
+          witness: {
+            typeCbor: bytes(typeHex!),
+            payloadCbor: bytes(payloadHex!),
+          },
+        };
+        expect(builtinStep.witness.result).toEqual(
+          builtinStep.witness.kind === "executeBuiltinSemantic"
+            ? semanticizeMidgardCekDirectConstant(expected)
+            : expected,
         );
       }
       expect(

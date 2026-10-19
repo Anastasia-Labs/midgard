@@ -8,7 +8,7 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-01",
       manifestPosition: 292,
       publicationPosition: 198,
-      referenceRolePosition: 430,
+      referenceRolePosition: 431,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_01.main.spend",
@@ -19,7 +19,7 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-02",
       manifestPosition: 293,
       publicationPosition: 199,
-      referenceRolePosition: 431,
+      referenceRolePosition: 432,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_02.main.spend",
@@ -30,7 +30,7 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-03",
       manifestPosition: 294,
       publicationPosition: 200,
-      referenceRolePosition: 432,
+      referenceRolePosition: 433,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_03.main.spend",
@@ -41,7 +41,7 @@ export const mintDeclaredAssetLimitMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof mint-declared-asset-limit step-04",
       manifestPosition: 295,
       publicationPosition: 201,
-      referenceRolePosition: 433,
+      referenceRolePosition: 434,
       commands: [],
       validatorTitle:
         "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",

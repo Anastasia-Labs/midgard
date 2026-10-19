@@ -504,6 +504,14 @@ jobs:
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
+      # The pinned CEK builtin step evidence: one JSON vector file the
+      # validation executor twins load and the generator renders into the
+      # constant modules the mkCons and semantic-presentation Aiken tests
+      # import. Without this step an edited vector passes the TypeScript twins
+      # while the Aiken tests still prove the old bytes.
+      - name: Check CEK builtin step evidence vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-builtin-step-evidence
       # The V1 CEK builtin cost channel: every builtin's budget at a spread of
       # argument sizes, from the pinned 350-entry cost vector, run against the
       # on-chain cost table as a generated Aiken module.

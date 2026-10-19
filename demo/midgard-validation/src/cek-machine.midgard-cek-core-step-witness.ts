@@ -310,7 +310,16 @@ export type MidgardCekCoreStepWitness =
       readonly rightExpression: MidgardCekBlsExpressionWitness;
       readonly result: MidgardCekDirectValueWitness;
     }
-  | { readonly kind: "computeContextConstant"; readonly valueRoot: Bytes };
+  | { readonly kind: "computeContextConstant"; readonly valueRoot: Bytes }
+  | {
+      readonly kind: "returnCaseConstant";
+      readonly scrutinee: MidgardCekDirectValueWitness;
+      readonly material: MidgardCekSemanticBuiltinWitness;
+      readonly branchesCount: bigint;
+      readonly branchesRoot: Bytes;
+      readonly capturedEnvironment: Bytes;
+      readonly tail: Bytes;
+    };
 
 export const sameBytes = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));

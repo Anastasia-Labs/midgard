@@ -7,7 +7,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context settle",
       manifestPosition: 431,
-      publicationPosition: 464,
+      publicationPosition: 465,
       referenceRolePosition: 304,
       commands: [],
       validatorTitle:
@@ -21,7 +21,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context control",
       manifestPosition: 432,
-      publicationPosition: 465,
+      publicationPosition: 466,
       referenceRolePosition: 305,
       commands: [],
       validatorTitle:
@@ -35,7 +35,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context reference",
       manifestPosition: 433,
-      publicationPosition: 466,
+      publicationPosition: 467,
       referenceRolePosition: 306,
       commands: [],
       validatorTitle:
@@ -49,7 +49,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context spend",
       manifestPosition: 434,
-      publicationPosition: 467,
+      publicationPosition: 468,
       referenceRolePosition: 307,
       commands: [],
       validatorTitle:
@@ -63,7 +63,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context output",
       manifestPosition: 435,
-      publicationPosition: 468,
+      publicationPosition: 469,
       referenceRolePosition: 308,
       commands: [],
       validatorTitle:
@@ -77,7 +77,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context signer",
       manifestPosition: 436,
-      publicationPosition: 469,
+      publicationPosition: 470,
       referenceRolePosition: 309,
       commands: [],
       validatorTitle:
@@ -91,7 +91,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context observer authenticate",
       manifestPosition: 437,
-      publicationPosition: 470,
+      publicationPosition: 471,
       referenceRolePosition: 310,
       commands: [],
       validatorTitle:
@@ -105,7 +105,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context observer fold",
       manifestPosition: 438,
-      publicationPosition: 471,
+      publicationPosition: 472,
       referenceRolePosition: 311,
       commands: [],
       validatorTitle:
@@ -119,7 +119,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context mint init",
       manifestPosition: 439,
-      publicationPosition: 472,
+      publicationPosition: 473,
       referenceRolePosition: 312,
       commands: [],
       validatorTitle:
@@ -133,7 +133,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context mint item",
       manifestPosition: 440,
-      publicationPosition: 473,
+      publicationPosition: 474,
       referenceRolePosition: 313,
       commands: [],
       validatorTitle:
@@ -147,7 +147,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context assemble",
       manifestPosition: 441,
-      publicationPosition: 474,
+      publicationPosition: 475,
       referenceRolePosition: 314,
       commands: [],
       validatorTitle:
@@ -161,7 +161,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context tx info",
       manifestPosition: 442,
-      publicationPosition: 475,
+      publicationPosition: 476,
       referenceRolePosition: 315,
       commands: [],
       validatorTitle:
@@ -175,7 +175,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context seed",
       manifestPosition: 443,
-      publicationPosition: 476,
+      publicationPosition: 477,
       referenceRolePosition: 316,
       commands: [],
       validatorTitle:
@@ -189,7 +189,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize authenticate",
       manifestPosition: 444,
-      publicationPosition: 477,
+      publicationPosition: 478,
       referenceRolePosition: 317,
       commands: [],
       validatorTitle:
@@ -203,7 +203,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize spend",
       manifestPosition: 445,
-      publicationPosition: 478,
+      publicationPosition: 479,
       referenceRolePosition: 318,
       commands: [],
       validatorTitle:
@@ -217,7 +217,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize mint",
       manifestPosition: 446,
-      publicationPosition: 479,
+      publicationPosition: 480,
       referenceRolePosition: 319,
       commands: [],
       validatorTitle:
@@ -231,7 +231,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize withdraw",
       manifestPosition: 447,
-      publicationPosition: 480,
+      publicationPosition: 481,
       referenceRolePosition: 320,
       commands: [],
       validatorTitle:
@@ -245,7 +245,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize observe",
       manifestPosition: 448,
-      publicationPosition: 481,
+      publicationPosition: 482,
       referenceRolePosition: 321,
       commands: [],
       validatorTitle:
@@ -259,7 +259,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context finalize midgard",
       manifestPosition: 449,
-      publicationPosition: 482,
+      publicationPosition: 483,
       referenceRolePosition: 322,
       commands: [],
       validatorTitle:
@@ -273,7 +273,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context redeemer begin",
       manifestPosition: 450,
-      publicationPosition: 483,
+      publicationPosition: 484,
       referenceRolePosition: 323,
       commands: [],
       validatorTitle:
@@ -288,7 +288,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace CEK context redeemer select authenticate",
       manifestPosition: 451,
-      publicationPosition: 484,
+      publicationPosition: 485,
       referenceRolePosition: 324,
       commands: [],
       validatorTitle:
@@ -303,7 +303,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace CEK context redeemer select initialize",
       manifestPosition: 452,
-      publicationPosition: 485,
+      publicationPosition: 486,
       referenceRolePosition: 325,
       commands: [],
       validatorTitle:
@@ -317,7 +317,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context redeemer select hash",
       manifestPosition: 453,
-      publicationPosition: 486,
+      publicationPosition: 487,
       referenceRolePosition: 326,
       commands: [],
       validatorTitle:
@@ -331,7 +331,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context redeemer select finish",
       manifestPosition: 454,
-      publicationPosition: 487,
+      publicationPosition: 488,
       referenceRolePosition: 327,
       commands: [],
       validatorTitle:
@@ -345,7 +345,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item bind",
       manifestPosition: 455,
-      publicationPosition: 488,
+      publicationPosition: 489,
       referenceRolePosition: 328,
       commands: [],
       validatorTitle:
@@ -359,7 +359,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item return",
       manifestPosition: 456,
-      publicationPosition: 489,
+      publicationPosition: 490,
       referenceRolePosition: 329,
       commands: [],
       validatorTitle:
@@ -373,7 +373,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item selection hash",
       manifestPosition: 457,
-      publicationPosition: 490,
+      publicationPosition: 491,
       referenceRolePosition: 330,
       commands: [],
       validatorTitle:
@@ -387,7 +387,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item data hash",
       manifestPosition: 458,
-      publicationPosition: 491,
+      publicationPosition: 492,
       referenceRolePosition: 331,
       commands: [],
       validatorTitle:
@@ -401,7 +401,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item finalize",
       manifestPosition: 459,
-      publicationPosition: 492,
+      publicationPosition: 493,
       referenceRolePosition: 332,
       commands: [],
       validatorTitle:
@@ -415,7 +415,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item selection continue",
       manifestPosition: 460,
-      publicationPosition: 493,
+      publicationPosition: 494,
       referenceRolePosition: 333,
       commands: [],
       validatorTitle:
@@ -429,7 +429,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item selection finish",
       manifestPosition: 461,
-      publicationPosition: 494,
+      publicationPosition: 495,
       referenceRolePosition: 334,
       commands: [],
       validatorTitle:
@@ -443,7 +443,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item data continue",
       manifestPosition: 462,
-      publicationPosition: 495,
+      publicationPosition: 496,
       referenceRolePosition: 335,
       commands: [],
       validatorTitle:
@@ -458,7 +458,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace CEK context item data finish descriptor",
       manifestPosition: 463,
-      publicationPosition: 496,
+      publicationPosition: 497,
       referenceRolePosition: 336,
       commands: [],
       validatorTitle:
@@ -472,7 +472,7 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item data finish value",
       manifestPosition: 464,
-      publicationPosition: 497,
+      publicationPosition: 498,
       referenceRolePosition: 337,
       commands: [],
       validatorTitle:

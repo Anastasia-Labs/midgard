@@ -339,6 +339,25 @@ const directFailureIsCharged = (
   (tag === 59n && directByteLength(arguments_[0]!) === 48) ||
   (tag === 66n && directByteLength(arguments_[0]!) === 96);
 
+/**
+ * Whether the direct witness of builtin `tag` over these arguments fits the
+ * aggregate direct payload bound with its result. A builtin that fails has no
+ * result, so its witness fits when its arguments do. The answer depends only
+ * on the tag and the arguments.
+ */
+export const midgardCekDirectBuiltinFits = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  const bound = BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES);
+  if (directWitnessPayloadBytes(arguments_) > bound) return false;
+  const result = evaluateReferenceBuiltin(tag, arguments_);
+  return (
+    result === "failure" ||
+    directWitnessPayloadBytes([...arguments_, result]) <= bound
+  );
+};
+
 export const evaluateMidgardCekDirectBuiltin = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],

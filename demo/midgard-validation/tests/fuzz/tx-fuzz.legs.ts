@@ -2,7 +2,6 @@ import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import { parseUPLC } from "@harmoniclabs/uplc";
 import { Effect, Either } from "effect";
 
-import { MidgardCekErrorCodes } from "../../src/cek-machine.js";
 import {
   type LocalScriptEvalResult,
   type LocalScriptEvaluation,
@@ -69,12 +68,7 @@ export type TxKnownClass =
    * declared budget or either side of it. Owner: C1. Pending the C1 cost
    * model updates.
    */
-  | "costBeforeC1"
-  /**
-   * A case Phase B halts on as an invalid case scrutinee and the reference
-   * runs to unit. Owner: C13a. Pending case on constants.
-   */
-  | "caseOnConstant";
+  | "costBeforeC1";
 
 /** The known classes only the opt-in reference leg reports. */
 export const REFERENCE_LEG_CLASSES: ReadonlySet<TxKnownClass> = new Set([
@@ -82,7 +76,6 @@ export const REFERENCE_LEG_CLASSES: ReadonlySet<TxKnownClass> = new Set([
   "blsTagNumbering",
   "startupCharge",
   "costBeforeC1",
-  "caseOnConstant",
 ]);
 
 export type TxCaseResult = {
@@ -148,7 +141,6 @@ const referenceLeg = (
   reference: Reference,
   divergences: string[],
   known: TxKnownClass[],
-  haltErrorCode: bigint | null,
 ): void => {
   const tags = builtinTagsOf(parseUPLC(scenario.scriptFlat, "flat").body);
   if (CARDANO_RENUMBERED_BLS_TAGS.some((tag) => tags.has(tag))) {
@@ -170,13 +162,6 @@ const referenceLeg = (
     // In budget, the reference refuses only a result other than unit.
     if (midgard && inBudget) {
       known.push("nonUnitReturn");
-      return;
-    }
-    if (
-      referenceAccepts &&
-      haltErrorCode === MidgardCekErrorCodes.InvalidCaseScrutinee
-    ) {
-      known.push("caseOnConstant");
       return;
     }
     // Both ran to unit: only the spends differ, on either side of the budget.
@@ -213,13 +198,6 @@ const costClass = (reference: Spend, phaseB: Spend): TxKnownClass =>
     ? "startupCharge"
     : "costBeforeC1";
 
-type Execution = NonNullable<LocalScriptEvaluation["execution"]>;
-
-const haltErrorCodeOf = (execution: Execution | null | undefined) =>
-  execution?.terminalState.mode === "haltError"
-    ? execution.terminalState.auxiliary
-    : null;
-
 /**
  * Runs one leg to its result or its stop. A leg that dies (a throw inside it,
  * such as the commit-mode golden check refusing what the proof build
@@ -230,24 +208,6 @@ const settle = <A, E>(leg: Effect.Effect<A, E>) =>
   Effect.runPromise(
     Effect.either(Effect.catchAllDefect(leg, (defect) => Effect.fail(defect))),
   );
-
-/**
- * The error code Phase B's proof-mode run halts with, for a case whose trace
- * replay stopped before handing its run back.
- */
-const proofHaltErrorCode = async (
-  scenario: TxFuzzScenario,
-): Promise<bigint | null> => {
-  const proof = await settle(
-    replayValidationVerdictEvent({
-      ...scenario.event,
-      cekExecutionMode: "proof",
-    }),
-  );
-  return Either.isRight(proof)
-    ? haltErrorCodeOf(proof.right.scriptEvaluations[0]?.execution)
-    : null;
-};
 
 /** Runs every leg of one case. */
 export const runTxCase = async (
@@ -279,10 +239,8 @@ export const runTxCase = async (
   const rejectionCode = verdict.rejection?.code ?? null;
   const replay = await settle(replayValidationMachineEvent(scenario.event));
   let steps: PreparedCase | null = null;
-  let haltErrorCode: bigint | null = null;
   if (Either.isLeft(replay)) {
     divergences.push(`trace replay stopped: ${String(replay.left)}`);
-    haltErrorCode = await proofHaltErrorCode(scenario);
   } else {
     const { replayInput } = replay.right;
     const independent = await settle(
@@ -331,7 +289,6 @@ export const runTxCase = async (
       }
     });
     const execution = proofEvaluations[0]?.execution;
-    haltErrorCode = haltErrorCodeOf(execution);
     if (execution != null) {
       steps = prepareExecution(
         {
@@ -348,14 +305,7 @@ export const runTxCase = async (
   const evaluation = verdict.scriptEvaluations[0];
   const referenced = reference !== undefined && evaluation !== undefined;
   if (referenced) {
-    referenceLeg(
-      scenario,
-      evaluation,
-      reference,
-      divergences,
-      known,
-      haltErrorCode,
-    );
+    referenceLeg(scenario, evaluation, reference, divergences, known);
   }
   return {
     label: scenario.label,

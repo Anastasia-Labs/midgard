@@ -86,19 +86,13 @@ export const TX_FIXED_SET_PINS: TxRowPins = {
 export const TX_CORPUS_PINS: TxRowPins = {
   seeds: {
     "322290577": { known: { costBeforeC1: 1 } },
-    "330470803": { known: { caseOnConstant: 1 } },
-    "590911258": { known: { caseOnConstant: 1 } },
     "1088032817": { known: { costBeforeC1: 1 } },
-    "1405241274": {
-      known: { blsTagNumbering: 1 },
-      catalogued: { nestedConstantCost: 1 },
-    },
+    "1405241274": { known: { blsTagNumbering: 1 } },
     "1479182247": { known: { costBeforeC1: 1 } },
   },
   known: {
     blsTagNumbering: 1,
-    caseOnConstant: 2,
     costBeforeC1: 3,
   },
-  catalogued: { nestedConstantCost: 1 },
+  catalogued: {},
 };
