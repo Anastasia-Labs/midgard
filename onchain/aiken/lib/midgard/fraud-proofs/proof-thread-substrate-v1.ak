@@ -254,14 +254,15 @@ pub fn event_key_matches_subject_v1(
   subject: VerdictSubjectV1,
 ) -> Bool {
   expect subject_is_canonical_v1(subject)
+  let VerdictSubjectV1 { source_kind, transaction_id, source_key, .. } = subject
   when key is {
     ledger_state.L2TransactionEventKey { tx_id } -> and {
-        subject.source_kind == source_kind_accepted,
-        tx_id == subject.transaction_id,
+        source_kind == source_kind_accepted,
+        tx_id == transaction_id,
       }
     ledger_state.ForcedTransactionEventKey { tx_order_id } -> and {
-        subject.source_kind == source_kind_forced,
-        cbor.serialise(tx_order_id) == subject.source_key,
+        source_kind == source_kind_forced,
+        cbor.serialise(tx_order_id) == source_key,
       }
     _ -> False
   }
@@ -390,24 +391,33 @@ pub fn subject_event_step_index_v1(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Int {
-  let event = event_membership.value
+  let
+      ledger_state.HeaderV1 {
+        event_to_step_root,
+        total_event_count,
+        transition_step_count,
+        ..
+      }
+    = header
+  let CarriedCountedMembershipV1 { key, value, .. } = event_membership
+  let ledger_state.EventToStepValue { step_index, phase } = value
   expect and {
-      event_key_matches_subject_v1(event_membership.key, subject),
+      event_key_matches_subject_v1(key, subject),
       verify_carried_counted_membership_v1(
         event_membership,
         transition_trace.EventToStepRootDomain,
-        header.event_to_step_root,
-        header.total_event_count,
-        cbor.serialise(event_membership.key),
-        cbor.serialise(event),
+        event_to_step_root,
+        total_event_count,
+        cbor.serialise(key),
+        cbor.serialise(value),
         reference_inputs,
         redeemers,
       ),
-      event.phase == phase_for_event_key_v1(event_membership.key),
-      event.step_index >= 0,
-      event.step_index < header.transition_step_count,
+      phase == phase_for_event_key_v1(key),
+      step_index >= 0,
+      step_index < transition_step_count,
     }
-  event.step_index
+  step_index
 }
 
 /// Physical transition door. `selected_step_index` must be carried from the
