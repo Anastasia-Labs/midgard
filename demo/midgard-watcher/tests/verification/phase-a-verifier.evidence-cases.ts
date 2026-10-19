@@ -165,7 +165,9 @@ export const EVIDENCE_CASES: readonly EvidenceCase[] = [
   evidenceCase(
     "Plutus witness does not contain a CBOR-wrapped Flat program",
     RejectCodes.ScriptProgramEncoding,
-    "canonicalDecode",
+    // Decoded where the machine decodes it: at the witness-script phase, in
+    // item order with the native witnesses.
+    "phaseANativeScripts",
     fromNativeTx({
       scriptWitnesses: [plutusV3ScriptWitness(Buffer.from([0x00]))],
     }),

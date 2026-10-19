@@ -1196,7 +1196,7 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-supervisor.create-supervisor.ts",
-    "max": 1107,
+    "max": 1115,
     "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

@@ -137,24 +137,74 @@ describe("#604 per-family mutation negatives", () => {
   });
 
   /**
-   * Positive controls for the two sweep entries whose only positive coverage
-   * lives in a fault-proofs emulator leg — and `no-input`'s leg is red at
-   * step-03 (#608). Without these, a schema that rejected *everything* would
-   * satisfy their throw-style negatives above, which is exactly the vacuity
-   * class this file's header disclaims. Each round-trips the honest #604 state
-   * and checks the decoded fields, so the negative's refusal is a refusal of
-   * the retired shape rather than of all shapes.
+   * Positive controls for the two input-existence sweep entries. Without these,
+   * a schema that rejected *everything* would satisfy their throw-style
+   * negatives above, which is exactly the vacuity class this file's header
+   * disclaims. Each round-trips the current step-02 state, the event-relative
+   * source state (`input_existence_v1/types.SourceStateV1`: subject, header,
+   * compact view), and checks the decoded value, so the negative's refusal is a
+   * refusal of the retired shape rather than of all shapes.
    */
-  it("no-input-02 and no-reference-input-02 round-trip their honest #604 state", () => {
+  it("no-input-02 and no-reference-input-02 round-trip their source state", () => {
     const cases: readonly [string, unknown][] = [
       ["no-input-02", SDK.NonExistentInputStep02Datum],
       ["no-reference-input-02", SDK.NoReferenceInputStep02Datum],
     ];
     const fraudProver = "aa".repeat(28);
-    const honestState = {
-      bad_tx_id: h32(0x11),
-      blocks_prev_utxos_root: h32(0x22),
-      blocks_transactions_root: h32(0x33),
+    const honestState: SDK.InputExistenceSourceState = {
+      subject: {
+        version: 1n,
+        direction: 0n,
+        source_kind: 0n,
+        transaction_id: h32(0x11),
+        source_key: "",
+        rejection_reason: null,
+      },
+      header: {
+        prevUtxosRoot: h32(0x21),
+        utxosRoot: h32(0x22),
+        withdrawalsRoot: h32(0x23),
+        forcedTransactionsRoot: h32(0x24),
+        transactionsRoot: h32(0x25),
+        depositsRoot: h32(0x26),
+        transitionTraceRoot: h32(0x27),
+        eventToStepRoot: h32(0x28),
+        validationTracesRoot: h32(0x29),
+        withdrawalCount: 0n,
+        forcedTransactionCount: 0n,
+        l2TransactionCount: 1n,
+        depositCount: 0n,
+        totalEventCount: 1n,
+        transitionStepCount: 1n,
+        validationTraceCount: 1n,
+        startTime: 0n,
+        endTime: 1n,
+        blockSlot: 0n,
+        expectedNetworkId: 0n,
+        minFeeA: 0n,
+        minFeeB: 0n,
+        prevHeaderHash: "2a".repeat(28),
+        operatorVkey: "2b".repeat(28),
+        protocolVersion: 1n,
+      },
+      compact: {
+        body: {
+          spend_inputs_hash: h32(0x31),
+          reference_inputs_hash: h32(0x32),
+          outputs_hash: h32(0x33),
+          fee: 4n,
+          validity_interval_start: 5n,
+          validity_interval_end: 6n,
+          required_observers_hash: h32(0x37),
+          required_signers_hash: h32(0x38),
+          mint_hash: h32(0x39),
+          script_integrity_hash: h32(0x3a),
+          auxiliary_data_hash: h32(0x3b),
+          network_id: 1n,
+        },
+        witness_set_hash: h32(0x3c),
+        validity_code: null,
+      },
     };
     for (const [label, schema] of cases) {
       const encoded = Data.to(

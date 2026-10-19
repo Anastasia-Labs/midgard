@@ -142,7 +142,7 @@ describe("import checker backlog lane", () => {
 
   /** A cached script (its first transaction hung twice), then a block of
    * `FLOOD` transactions hanging under it and one rejected, last, due
-   * `deadlineInMs` after it is processed. */
+   * `deadlineInMs` after `processedAtMs`, when it is processed. */
   const floodUnderCachedScript = async (deadlineInMs: number) => {
     const seed = await blockOf(["accept"]);
     const flood = await blockOf(accepts(FLOOD + 1), { firstByte: 0x60 });
@@ -159,14 +159,15 @@ describe("import checker backlog lane", () => {
     expect(named(await check.importPass(), "uplc_import_fault")).toHaveLength(
       1,
     );
-    const deadlineMs = Date.now() + deadlineInMs;
+    const processedAtMs = Date.now();
+    const deadlineMs = processedAtMs + deadlineInMs;
     await processBlock(flood, {
       parentHeaderHash: seed.headerHash,
       deadlineMs,
     });
     expect(await check.importPass()).toEqual([]);
     expect(await entries(["cache_skipped"])).toHaveLength(FLOOD + 1);
-    return { check, flood, deadlineMs };
+    return { check, flood, deadlineMs, processedAtMs };
   };
 
   it("gets a transaction under a flooded cached script its verdict before its deadline", async () => {
@@ -182,10 +183,12 @@ describe("import checker backlog lane", () => {
   }, 60_000);
 
   it("raises the projected alarm before the deadline when the flood cannot be served in time", async () => {
-    // Two kills of each of the five entries take about a second.
-    const { check, deadlineMs } = await floodUnderCachedScript(600);
-    const alarms = await check.sweep();
-    expect(Date.now()).toBeLessThan(deadlineMs);
+    // Two kills of each of the five entries take about a second. The sweep
+    // runs on a virtual clock at the instant the flood is processed, 600 ms
+    // before its deadline, however long the setup took.
+    const { check, deadlineMs, processedAtMs } =
+      await floodUnderCachedScript(600);
+    const alarms = await check.sweep(processedAtMs);
     expect(alarms).toEqual([
       expect.objectContaining({
         alarm: "unverified_near_deadline",

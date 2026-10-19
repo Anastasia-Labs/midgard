@@ -94,7 +94,7 @@
           inherit pkgs nodejs pnpm l1NodeTransport architectureGOwner;
           # The digest of the packages pnpm-lock.yaml names; a lockfile change
           # prints the new one.
-          pnpmDepsHash = "sha256-JtErwNf5hfl7B32barebFWm6azcnrVtFdeHdBDUjpUc=";
+          pnpmDepsHash = "sha256-wTnmQy5ePuLhioTf/Sj7EJaU0i7Gpea6MTLYNgNyfyM=";
           # Flakes copy only tracked files, so dist/ and node_modules/ stay out.
           src = lib.fileset.toSource {
             root = ./.;

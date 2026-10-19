@@ -61,9 +61,12 @@ it.each(["dispatch", "authenticate"] as const)(
     });
     expect(result.transaction).toBe(transaction);
     expect(submit).toHaveBeenCalledOnce();
+    expect(Object.keys(submit.mock.calls[0]![0])).not.toContain("direction");
+    // The forced dispatch carries no direction since the substrate port: step
+    // 02 derives it from the authenticated leaf.
     expect(submit.mock.calls[0]![0]).toMatchObject(
       selected === "dispatch"
-        ? { direction: 0n }
+        ? { threadOutRef: stage.threadOutRef }
         : {
             prepared: { sourceKind: "forced", direction: "wrongfulAcceptance" },
             membership: { value: { verdict: "ForcedTxValid" } },

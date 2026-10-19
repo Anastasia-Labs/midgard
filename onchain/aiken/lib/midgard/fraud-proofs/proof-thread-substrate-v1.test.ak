@@ -476,7 +476,41 @@ test proof_thread_event_key_binds_source_and_identity() {
 // The event door is the only bound on the selected step index: an event
 // committed against a step past the header's last transition step is refused.
 
+fn event_door_subject_v1() -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: fixture.challenged_block_v1().tx_id,
+    source_key: #"",
+    rejection_reason: None,
+  }
+}
+
+fn honest_event_to_step_root_v1(phas_root: ByteArray) -> ByteArray {
+  transition_trace.commit_counted_root(
+    transition_trace.EventToStepRootDomain,
+    phas_root,
+    1,
+  )
+}
+
 fn event_door_step_index_v1(step_index: Int) -> Int {
+  event_door_v1(
+    step_index,
+    event_door_subject_v1(),
+    honest_event_to_step_root_v1,
+  )
+}
+
+// The prover carries a genuine one-leaf PHAS membership and the header's own
+// counted root, so only `header_root_of` decides whether that root commits to
+// the carried `phas_root` and count.
+fn event_door_v1(
+  step_index: Int,
+  subject: substrate.VerdictSubjectV1,
+  header_root_of: fn(ByteArray) -> ByteArray,
+) -> Int {
   let tx_id = fixture.challenged_block_v1().tx_id
   let key = ledger_state.L2TransactionEventKey { tx_id }
   let claim = tf.thread_claim_v1(
@@ -494,19 +528,7 @@ fn event_door_step_index_v1(step_index: Int) -> Int {
   )
   let header = ledger_state.HeaderV1 {
     ..claim.header,
-    event_to_step_root: transition_trace.commit_counted_root(
-      transition_trace.EventToStepRootDomain,
-      phas_root,
-      1,
-    ),
-  }
-  let subject = substrate.VerdictSubjectV1 {
-    version: 1,
-    direction: 0,
-    source_kind: 0,
-    transaction_id: tx_id,
-    source_key: #"",
-    rejection_reason: None,
+    event_to_step_root: header_root_of(phas_root),
   }
   substrate.subject_event_step_index_v1(
     header,
@@ -541,6 +563,63 @@ test proof_thread_event_door_rejects_a_step_past_the_last_transition_step() fail
 
 test proof_thread_event_door_rejects_a_negative_step() fail {
   event_door_step_index_v1(-1) < 1
+}
+
+// A carried counted membership must commit its PHAS root and count to the
+// header root it claims; a genuine PHAS membership under a header root that
+// commits some other PHAS root, or another count, is refused.
+
+test proof_thread_event_door_rejects_a_root_committing_another_phas_root() fail {
+  event_door_v1(
+    0,
+    event_door_subject_v1(),
+    fn(_phas_root) {
+      transition_trace.commit_counted_root(
+        transition_trace.EventToStepRootDomain,
+        prior_root,
+        1,
+      )
+    },
+  ) == 0
+}
+
+test proof_thread_event_door_rejects_a_root_committing_another_count() fail {
+  event_door_v1(
+    0,
+    event_door_subject_v1(),
+    fn(phas_root) {
+      transition_trace.commit_counted_root(
+        transition_trace.EventToStepRootDomain,
+        phas_root,
+        2,
+      )
+    },
+  ) == 0
+}
+
+// The event door refuses a non-canonical accepted-source subject even when its
+// event key and counted membership are otherwise genuine.
+
+test proof_thread_event_door_rejects_an_accepted_source_wrongful_rejection() fail {
+  event_door_v1(
+    0,
+    substrate.VerdictSubjectV1 {
+      ..event_door_subject_v1(),
+      direction: substrate.direction_wrongful_rejection,
+    },
+    honest_event_to_step_root_v1,
+  ) == 0
+}
+
+test proof_thread_event_door_rejects_an_accepted_source_with_a_source_key() fail {
+  event_door_v1(
+    0,
+    substrate.VerdictSubjectV1 {
+      ..event_door_subject_v1(),
+      source_key: cbor.serialise(tf.forced_order_key_v1()),
+    },
+    honest_event_to_step_root_v1,
+  ) == 0
 }
 
 test proof_thread_subject_rejects_a_leaf_outside_the_header_forced_root() fail {
