@@ -45,18 +45,6 @@ const buildLiveDeploymentManifestProgram = (
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const identityContext =
-      yield* buildDeploymentManifestIdentityContextProgram;
-    const referenceScriptAuthPolicy = yield* Effect.tryPromise({
-      try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
-      catch: (cause) =>
-        new Error(
-          `Failed to read existing reference-script auth policy metadata: ${String(cause)}`,
-        ),
-    });
-    const deploymentInfo = yield* resolveLiveContractDeploymentInfoProgram(
-      referenceScriptAuthPolicy,
-    );
     const existingManifest = yield* Effect.sync(() => {
       try {
         return readDeploymentManifestFile(outputPath);
@@ -74,6 +62,9 @@ const buildLiveDeploymentManifestProgram = (
         ),
       );
     }
+    // The first manifest's L1 origin needs only the run state and the local
+    // node, so a run state that cannot be finalized is refused before the L1
+    // provider or the contracts are touched.
     const l1Origin =
       existingManifest === undefined
         ? yield* Effect.scoped(
@@ -87,6 +78,18 @@ const buildLiveDeploymentManifestProgram = (
             }),
           )
         : existingManifest.l1Origin;
+    const identityContext =
+      yield* buildDeploymentManifestIdentityContextProgram;
+    const referenceScriptAuthPolicy = yield* Effect.tryPromise({
+      try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
+      catch: (cause) =>
+        new Error(
+          `Failed to read existing reference-script auth policy metadata: ${String(cause)}`,
+        ),
+    });
+    const deploymentInfo = yield* resolveLiveContractDeploymentInfoProgram(
+      referenceScriptAuthPolicy,
+    );
     const lucidService = yield* Lucid;
     const liveContracts = yield* MidgardContracts;
     const availabilityAccounts = yield* Effect.forEach(
