@@ -1,4 +1,3 @@
-import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LedgerEntry } from "@al-ft/midgard-validation";
 
@@ -82,8 +81,6 @@ export type LocalValidationPreStateSource =
 
 export type CompleteOptions = {
   readonly fee?: bigint | number;
-  /** Exact canonical V1 material for already-enveloped reference scripts. */
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly changeAddress?: Address;
   readonly presetWalletInputs?: readonly MidgardUtxo[];
   readonly localValidation?: "none" | "phase-a" | "phase-b";

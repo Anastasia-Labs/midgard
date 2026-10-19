@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -53,7 +50,6 @@ export const forcedProjectionEntry = (
       verdict: "ForcedTxValid",
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     }).pipe(Effect.orDie);
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
     return {
       tx_order_id: deterministicFixtureOutputReferenceId(
         `step-down.f${seconds}`,
@@ -68,10 +64,6 @@ export const forcedProjectionEntry = (
       consensus_profile_id: MIDGARD_CONSENSUS_PROFILE.profileId,
       native_tx_cbor: nativeTxCbor,
       transaction_commitment: encoded.transactionCommitment,
-      cek_program_material_sidecar_cbor: sidecar,
-      cek_program_material_sidecar_sha256: createHash("sha256")
-        .update(sidecar)
-        .digest(),
       inclusion_time: inclusionTime,
       projected_header_hash: null,
       status: ForcedTransactionsDB.Status.Awaiting,

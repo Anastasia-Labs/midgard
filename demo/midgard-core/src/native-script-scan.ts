@@ -3,7 +3,10 @@ import "./codec/cbor.js";
 import "./native-script-scan.is-well-formed-midgard-native-script-structure-control.js";
 import "./native-script-scan.read-token.js";
 import "./native-script-scan.build-midgard-native-script-structure-trace.js";
-export { buildMidgardNativeScriptStructureTrace } from "./native-script-scan.build-midgard-native-script-structure-trace.js";
+export {
+  buildMidgardNativeScriptStructureTrace,
+  traceMidgardNativeScriptStructure,
+} from "./native-script-scan.build-midgard-native-script-structure-trace.js";
 export {
   decodeMidgardNativeScriptStructureControl,
   encodeMidgardNativeScriptStructureControl,

@@ -1,156 +1,21 @@
-import {
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-  verifyMidgardCekProgramMaterial,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxCompact,
-  encodeMidgardFieldPreimage,
-  encodeMidgardSpendInputItem,
-  encodeMidgardTxOutput,
-} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { Columns as LedgerColumns } from "../src/database/utils/ledger.js";
 import { commitDaSourceContributions } from "../src/workers/commit-block-header.plan-additive-da.js";
 import { commitDaPayloadForSizing } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import { selectAdditiveCommitFrame } from "../src/workers/utils/commit-block-planner.additive-frame.js";
-import {
-  additiveDaFixedBytes,
-  daEntryTupleBytes,
-} from "../src/workers/utils/commit-da-material.encoding.js";
-import {
-  type DaMaterialTransaction,
-  potentialCommitProgramSources,
-  potentialEventProgramBytes,
-  potentialEventProgramEnvelopes,
-  potentialProgramSourceBytes,
-  programMaterialDaTupleBytesUpperBound,
-} from "../src/workers/utils/commit-da-material.program-sources.js";
+import { additiveDaFixedBytes } from "../src/workers/utils/commit-da-material.encoding.js";
 import {
   blockContentFor,
-  CANONICAL_TX,
   header,
   mkCandidate,
 } from "./helpers/commit-da-frame-fixtures.js";
 
-const canonical = decodeMidgardNativeTxFullFromCanonicalCbor(CANONICAL_TX);
-const termNode = { kind: "error" } as const;
-const term = {
-  kind: "term",
-  root: hashMidgardCekTermNode(termNode),
-  preimage: encodeMidgardCekTermNode(termNode),
-} as const;
-const envelope = {
-  uplcVersion: [1n, 1n, 0n] as const,
-  termRoot: term.root,
-  nodeCount: 1n,
-  materialByteLength: BigInt(term.preimage.length),
-};
-const ref = encodeMidgardSpendInputItem({
-  txId: Buffer.alloc(32, 7),
-  outputIndex: 0,
-});
-const withReferences = (refs: readonly Buffer[]): DaMaterialTransaction => {
-  const body = {
-    ...canonical.body,
-    referenceInputsPreimageCbor: encodeMidgardFieldPreimage(refs),
-  };
-  return {
-    canonical: {
-      ...canonical,
-      body,
-      compact: deriveMidgardNativeTxCompact(
-        body,
-        canonical.witnessSet,
-        canonical.validity,
-      ),
-    },
-    sourceKind: "normal",
-  };
-};
-const scriptOutput = encodeMidgardTxOutput({
-  address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 7)]),
-  value: { lovelace: 2_000_000n, assets: new Map() },
-  script_ref: {
-    language: "PlutusV3",
-    scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
-  },
-});
-
-it("charges a parent program which the largest withdrawal window hides", () => {
-  verifyMidgardCekProgramMaterial(envelope, [term]);
-  const event = withReferences([ref]);
-  const base = [
-    { [LedgerColumns.OUTREF]: ref, [LedgerColumns.OUTPUT]: scriptOutput },
-  ];
-  const largestPrograms = collectMidgardEventProgramEnvelopes(
-    event.canonical,
-    () => undefined,
-    "normal",
-  );
-  expect(largestPrograms).toEqual([]);
-  const sources = potentialCommitProgramSources(base, [event]);
-  const charged = potentialEventProgramEnvelopes(event, sources);
-  const smallerPrefixPrograms = collectMidgardEventProgramEnvelopes(
-    event.canonical,
-    () => scriptOutput,
-    "normal",
-  );
-  expect(charged).toEqual(smallerPrefixPrograms);
-  expect(programMaterialDaTupleBytesUpperBound(charged)).toBeGreaterThanOrEqual(
-    daEntryTupleBytes(term.root, encodeMidgardCekProgramMaterialDaValue(term)),
-  );
-});
-
-it("charges candidate-created reference programs without an earlier-supplier or deduplication credit", () => {
-  const body = {
-    ...canonical.body,
-    outputsPreimageCbor: encodeMidgardFieldPreimage([scriptOutput]),
-  };
-  const creator: DaMaterialTransaction = {
-    canonical: {
-      ...canonical,
-      body,
-      compact: deriveMidgardNativeTxCompact(
-        body,
-        canonical.witnessSet,
-        canonical.validity,
-      ),
-    },
-    sourceKind: "normal",
-  };
-  const createdRef = encodeMidgardSpendInputItem({
-    txId: computeMidgardNativeTxId(creator.canonical.compact),
-    outputIndex: 0,
-  });
-  const event = withReferences([createdRef]);
-  const sources = potentialCommitProgramSources([], [creator, event]);
-  expect(potentialEventProgramEnvelopes(event, sources)).toEqual([envelope]);
-  const expected = programMaterialDaTupleBytesUpperBound([envelope]);
-  const weights = potentialProgramSourceBytes(sources);
-  expect(potentialEventProgramBytes(creator, weights)).toBe(expected);
-  expect(potentialEventProgramBytes(event, weights)).toBe(expected);
-  const triple = programMaterialDaTupleBytesUpperBound([
-    envelope,
-    envelope,
-    envelope,
-  ]);
-  expect(triple).toBe(3n * programMaterialDaTupleBytesUpperBound([envelope]));
-});
-
 it("the additive full source budget covers real canonical DA encoding", async () => {
   const candidates = [mkCandidate(1), mkCandidate(2), mkCandidate(3)];
   const budget = commitDaSourceContributions({
-    base: [],
     deposits: [],
     withdrawals: [],
     forced: [],
@@ -169,7 +34,6 @@ it("the additive full source budget covers real canonical DA encoding", async ()
         transitionStepCount: 3n,
         validationTraceCount: 3n,
       },
-      cekProgramMaterial: [],
     }),
   );
   expect(

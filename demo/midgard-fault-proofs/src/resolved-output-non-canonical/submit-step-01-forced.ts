@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   type ForcedInclusionTxV1,
   type Header,
@@ -44,7 +45,6 @@ import {
 export type ResolvedOutputForcedSource = Readonly<{
   header: Header;
   membership: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
-  direction: bigint;
 }>;
 
 /**
@@ -60,7 +60,8 @@ export const requireResolvedOutputForcedSource = (
   };
   if (
     finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION ||
-    source.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !==
+      PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
   )
     return fail("forced source direction is not a wrongful rejection");
   const leaf = source.membership.value;

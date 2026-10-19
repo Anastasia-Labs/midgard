@@ -16,8 +16,6 @@ export {
   encodeMidgardCekCardanoFlatProgram,
 } from "./cek-program.cardano-flat.js";
 export {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
   type MidgardCanonicalCekProgram,
   type MidgardCanonicalScriptArtifact,
   type MidgardCanonicalScriptArtifactInput,

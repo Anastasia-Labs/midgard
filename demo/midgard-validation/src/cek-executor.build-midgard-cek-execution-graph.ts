@@ -10,7 +10,6 @@ import {
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   type MidgardCekMachineState,
-  type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
   type MidgardCekTermNode,
   type MidgardCekValueNode,
@@ -150,17 +149,17 @@ export type MidgardCekStructuralExecution = {
 
 /**
  * Builds the deterministic runtime application root
- * `program scriptContext`. The source envelope remains the script identity;
+ * `program scriptContext`. The term root is derived locally from carried Flat;
  * the context nodes are derived from already-authenticated transaction data
  * and are therefore runtime material rather than a second script payload.
  */
 export const buildMidgardCekExecutionGraph = (
-  envelope: MidgardCekProgramEnvelope,
+  termRoot: Uint8Array,
   sourceMaterial: Iterable<MidgardCekProgramMaterialEntry>,
   contextCbor: Uint8Array,
 ): MidgardCekExecutionGraph => {
   const source = [...sourceMaterial];
-  const verifiedSource = verifyMidgardCekProgramMaterial(envelope, source, {
+  const verifiedSource = verifyMidgardCekProgramMaterial(termRoot, source, {
     allowUnreachable: true,
   });
 
@@ -321,7 +320,7 @@ export const buildMidgardCekExecutionGraph = (
   });
   const root = addTerm({
     kind: "application",
-    function: envelope.termRoot,
+    function: termRoot,
     argument: contextTermRoot,
   });
   return Object.freeze({

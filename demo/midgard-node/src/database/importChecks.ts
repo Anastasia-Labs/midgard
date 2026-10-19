@@ -6,7 +6,7 @@
  * accepting local verdict, its block's removal, or its deadline.
  *
  * Storage is linear in the block: each entry holds its transaction's bytes
- * and sidecar once, each output the block's entries spend or reference is
+ * once, each output the block's entries spend or reference is
  * held once per block (`node_import_check_outputs`), and the block's
  * validation context once (`node_import_check_blocks`). No run's context
  * is stored; the checker rebuilds them one at a time.
@@ -66,7 +66,6 @@ export type ImportCheckEntry = ImportCheckKey &
 /** What an entry's runs are rebuilt from. */
 export type ImportCheckMaterial = Readonly<{
   transactionCbor: Buffer;
-  programMaterialSidecarCbor: Buffer;
   context: ImportCheckContext;
   /** Each output the transaction spends or references. */
   outputs: readonly Readonly<{ outRef: Buffer; output: Buffer }>[];
@@ -137,16 +136,12 @@ export const recordChecks = (
       deadline_ms: deadlineMs,
       state: "pending",
       tx_cbor: check.transactionCbor,
-      program_material_sidecar: check.programMaterialSidecarCbor,
       runs: check.runs,
       budget_cpu: check.cpu.toString(),
       run_bytes: check.runBytes,
       script_hashes: Buffer.concat(check.scriptHashes),
     }));
-    for (const batch of batches(
-      rows,
-      (row) => row.tx_cbor.byteLength + row.program_material_sidecar.byteLength,
-    ))
+    for (const batch of batches(rows, (row) => row.tx_cbor.byteLength))
       yield* sql`INSERT INTO node_import_checks ${sql.insert(batch)}
         ON CONFLICT (header_hash, tx_id) DO NOTHING`;
     const outputs = [...block.outputs].map(([outRef, output]) => ({
@@ -254,8 +249,8 @@ export const expireChecks = (
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to expire import checks"));
 
 /** What the entries due at one deadline cost the checker: their count,
- * and their runs' count, declared cpu and bytes (script, context and the
- * sidecar once per run). */
+ * and their runs' count, declared cpu and bytes (script and context per
+ * run). */
 export type ImportCheckLoad = Readonly<{
   deadlineMs: number;
   entries: number;
@@ -343,7 +338,7 @@ export const retrieveChecks = (
       SELECT * FROM (
         SELECT c.header_hash, c.tx_id, c.block_position, c.deadline_ms,
           c.state, c.script_hashes,
-          SUM(octet_length(c.tx_cbor) + octet_length(c.program_material_sidecar))
+          SUM(octet_length(c.tx_cbor))
             OVER (ORDER BY c.deadline_ms, c.header_hash, c.block_position
               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
             AS preceding_bytes
@@ -451,7 +446,6 @@ export const retrieveCheckMaterial = (
     const header = Buffer.from(key.headerHash, "hex");
     const [row] = yield* sql<{
       tx_cbor: Buffer;
-      program_material_sidecar: Buffer;
       block_time_ms: string;
       block_slot: string;
       network_id: string;
@@ -461,7 +455,7 @@ export const retrieveCheckMaterial = (
       slot_zero_slot: string;
       slot_length: string;
     }>`
-      SELECT c.tx_cbor, c.program_material_sidecar, b.block_time_ms,
+      SELECT c.tx_cbor, b.block_time_ms,
         b.block_slot, b.network_id, b.min_fee_a, b.min_fee_b,
         b.slot_zero_time, b.slot_zero_slot, b.slot_length
       FROM node_import_checks c
@@ -479,7 +473,6 @@ export const retrieveCheckMaterial = (
             AND out_ref = ANY(${pg.array(hashBytes(wanted.map(hexOf)))}::bytea[])`;
     return {
       transactionCbor,
-      programMaterialSidecarCbor: Buffer.from(row.program_material_sidecar),
       context: {
         blockTimeMs: Number(row.block_time_ms),
         blockSlot: BigInt(row.block_slot),

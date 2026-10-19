@@ -3,6 +3,11 @@ import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
+  type MidgardCekDirectValueWitness,
+  semanticizeMidgardCekDirectConstant,
+} from "../../src/cek-builtin.js";
+import { encodeMidgardCekConstantTypeCbor } from "../../src/cek-constant.js";
+import {
   executeMidgardCekStructuralProgram,
   type MidgardCekExecutionStep,
 } from "../../src/cek-executor.js";
@@ -155,9 +160,19 @@ describe("catalogued classes of a step revealing an empty byte string", () => {
   it("bData of the empty byte string: the step reveals Data ending in an empty byte string", () => {
     const { witness } = step();
     const result = "result" in witness ? witness.result : undefined;
-    expect(result?.kind).toBe("constant");
-    if (result?.kind !== "constant") return;
-    expect(Buffer.from(result.witness.payloadCbor).toString("hex")).toBe("40");
+    const expected: MidgardCekDirectValueWitness = {
+      kind: "constant",
+      witness: {
+        typeCbor: encodeMidgardCekConstantTypeCbor({ kind: "data" }),
+        payloadCbor: Buffer.from("40", "hex"),
+      },
+    };
+    // A semantic step presents its result by its committed summary.
+    expect(result).toEqual(
+      witness.kind === "executeBuiltinSemantic"
+        ? semanticizeMidgardCekDirectConstant(expected)
+        : expected,
+    );
   });
 
   it("bData of the empty byte string: a failure or a refusal is in no class", () => {

@@ -4,16 +4,16 @@ import {
   uniqueProgramMaterialRoots,
 } from "./cek-proof.decode-midgard-cek-program-blob-preimage.js";
 import {
-  encodeMidgardCekProgramMaterialEntry,
-  type MidgardCekProgramMaterialEntry,
-} from "./cek-proof.decode-midgard-cek-program-envelope.js";
-import { decodeMidgardCekProgramMaterialEntry } from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
-import {
   decodeMidgardCekProgramSequencePreimage,
   decodeMidgardCekProgramTermPreimage,
   decodeMidgardCekProgramValuePreimage,
 } from "./cek-proof.decode-midgard-cek-program-term-preimage.js";
+import { decodeMidgardCekProgramMaterialEntry } from "./cek-proof.decode-program-material-entry.js";
 import { MIDGARD_CEK_EMPTY_SEQUENCE_ROOT } from "./cek-proof.encode-midgard-cek-value-node.js";
+import {
+  encodeMidgardCekProgramMaterialEntry,
+  type MidgardCekProgramMaterialEntry,
+} from "./cek-proof.program-material.js";
 import {
   decodeMidgardCekDataListNode,
   decodeMidgardCekDataNode,

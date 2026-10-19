@@ -1,6 +1,3 @@
-import { createHash } from "node:crypto";
-
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -48,7 +45,7 @@ const submitted = materializeMidgardForcedTxFromCanonical({
   },
 });
 const bytes = encodeMidgardForcedTxCanonical(submitted);
-const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
+
 const key = (label: number) =>
   Buffer.from(
     Data.to(
@@ -83,10 +80,6 @@ const entry = async (label: number): Promise<DB.Entry> => {
     consensus_profile_id: MIDGARD_CONSENSUS_PROFILE.profileId,
     native_tx_cbor: bytes,
     transaction_commitment: encoded.transactionCommitment,
-    cek_program_material_sidecar_cbor: sidecar,
-    cek_program_material_sidecar_sha256: createHash("sha256")
-      .update(sidecar)
-      .digest(),
     inclusion_time: new Date(1_750_000_000_000),
     projected_header_hash: null,
     status: DB.Status.Awaiting,
@@ -97,7 +90,6 @@ const read = async (id: Buffer) =>
 const classify = (id: Buffer) => ({
   txOrderId: id,
   verdict: rejected,
-  programMaterialSidecarCbor: sidecar,
 });
 
 beforeEach(async () => {
@@ -154,7 +146,6 @@ describe("forced submission persistence and recovery", () => {
     const journal = DB.encodeForcedTransactionJournalMember({
       sourceValueCbor: stored.forced_inclusion_value,
       canonicalTransactionCbor: stored.native_tx_cbor,
-      programMaterialSidecarCbor: stored.cek_program_material_sidecar_cbor,
     });
     const reopened = DB.decodeForcedTransactionJournalMember(journal);
     expect(reopened.canonicalTransactionCbor).toEqual(bytes);

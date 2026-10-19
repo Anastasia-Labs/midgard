@@ -4,34 +4,32 @@ import {
 } from "./cek-proof.commit-semantic-data.js";
 import { decodeMidgardCekProgramBlobPreimage } from "./cek-proof.decode-midgard-cek-program-blob-preimage.js";
 import {
-  type MidgardCekProgramMaterialEntry,
-  type MidgardCekProgramMaterialKind,
-} from "./cek-proof.decode-midgard-cek-program-envelope.js";
-import {
-  type MidgardCekDecodedProgramBlob,
-  type MidgardCekDecodedProgramValue,
-} from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
-import {
   decodeMidgardCekProgramSequencePreimage,
   decodeMidgardCekProgramTermPreimage,
   decodeMidgardCekProgramValuePreimage,
 } from "./cek-proof.decode-midgard-cek-program-term-preimage.js";
-import { type MidgardCekProgramEnvelope } from "./cek-proof.encode-midgard-cek-continuation-frame.js";
+import {
+  type MidgardCekDecodedProgramBlob,
+  type MidgardCekDecodedProgramValue,
+} from "./cek-proof.decode-program-material-entry.js";
 import {
   exactHash,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
   MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES,
-  MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES,
 } from "./cek-proof.encode-midgard-cek-term-node.js";
 import { MIDGARD_CEK_EMPTY_SEQUENCE_ROOT } from "./cek-proof.encode-midgard-cek-value-node.js";
 import { encodeSemanticData } from "./cek-proof.encode-semantic-data.js";
+import {
+  type MidgardCekProgramMaterialEntry,
+  type MidgardCekProgramMaterialKind,
+} from "./cek-proof.program-material.js";
 import {
   greatestPowerOfTwoBelow,
   type MidgardCekProgramConstantMaterial,
   MidgardCekProgramMaterialMissingRootError,
   type MidgardCekProgramMaterialVerification,
   type NormalizedProgramMaterial,
-  type ProgramMaterialBundleCache,
+  type ProgramMaterialCache,
   type ProgramMaterialTask,
 } from "./cek-proof.program-material-task.js";
 import { makeSemanticDataReconstructor } from "./cek-proof.reconstruct-semantic-data.js";
@@ -60,9 +58,9 @@ const payloadLengthMismatch = (valueKey: string): string =>
   `CEK constant value ${valueKey} payload length does not match its semantic tree`;
 
 export const verifyOneProgramMaterial = (
-  envelope: MidgardCekProgramEnvelope,
+  termRoot: Uint8Array,
   material: NormalizedProgramMaterial,
-  cache: ProgramMaterialBundleCache,
+  cache: ProgramMaterialCache,
   options: {
     readonly includeConstants: boolean;
     readonly onBlobMaterialized?: (rootHex: string, byteLength: bigint) => void;
@@ -87,7 +85,7 @@ export const verifyOneProgramMaterial = (
   const tasks: ProgramMaterialTask[] = [
     {
       kind: "term",
-      root: exactHash(envelope.termRoot, "cek_program.root") as Hash32,
+      root: exactHash(termRoot, "cek_program.root") as Hash32,
     },
   ];
 
@@ -250,14 +248,6 @@ export const verifyOneProgramMaterial = (
       if (!Buffer.from(value.payloadRoot).equals(value.semanticRoot)) {
         throw new Error(
           "CEK constant payload root must equal its canonical semantic root",
-        );
-      }
-      if (
-        value.payloadLength >
-        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES)
-      ) {
-        throw new Error(
-          `CEK source constant payload exceeds the ${MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES.toString()}-byte L1 proof envelope`,
         );
       }
       addDependency(key, value.typeRoot);
@@ -890,17 +880,6 @@ export const verifyOneProgramMaterial = (
     (total, key) => total + BigInt(material.get(key)!.preimage.length),
     0n,
   );
-  if (BigInt(reachable.size) !== envelope.nodeCount) {
-    throw new Error(
-      `CEK program reaches ${reachable.size.toString()} material nodes, envelope declares ${envelope.nodeCount.toString()}`,
-    );
-  }
-  if (materialByteLength !== envelope.materialByteLength) {
-    throw new Error(
-      `CEK program reaches ${materialByteLength.toString()} material bytes, envelope declares ${envelope.materialByteLength.toString()}`,
-    );
-  }
-
   const constants = options.includeConstants
     ? [...decodedValues.entries()].map(
         ([valueKey, value]): MidgardCekProgramConstantMaterial => {

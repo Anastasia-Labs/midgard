@@ -17,7 +17,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  encodeMidgardCekProgramEnvelope,
+  encodeCbor,
   encodeMidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core";
 import {
@@ -60,12 +60,10 @@ const flat = encodeMidgardCekCardanoFlatProgram(
     ),
   ),
 );
-const program = buildMidgardCanonicalCekProgram(flat);
+const program = buildMidgardCanonicalCekProgram(encodeCbor(flat));
 
 const fixture = {
-  envelopeCbor: Buffer.from(
-    encodeMidgardCekProgramEnvelope(program.envelope),
-  ).toString("hex"),
+  termRoot: Buffer.from(program.termRoot).toString("hex"),
   material: [...program.material.values()].map((entry) =>
     Buffer.from(encodeMidgardCekProgramMaterialEntry(entry)).toString("hex"),
   ),

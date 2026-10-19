@@ -110,23 +110,13 @@ fn six_miller_loop_expression() -> cek_builtin_v1.BlsExpressionWitnessV1 {
 
 test add_integer_direct_step_is_authenticated() {
   let arguments = [integer(#"1829"), integer(#"01")]
-  verify_direct_with_split_parity(
-    0,
-    builtin_root(0, arguments),
-    arguments,
-    integer(#"182a"),
-  )
+  verify_direct_with_split_parity(0, arguments, integer(#"182a"))
 }
 
 test add_integer_direct_budget_matches_reference_cek() {
   let arguments = [integer(#"01"), integer(#"1880")]
   and {
-    verify_direct_with_split_parity(
-      0,
-      builtin_root(0, arguments),
-      arguments,
-      integer(#"1881"),
-    ),
+    verify_direct_with_split_parity(0, arguments, integer(#"1881")),
     cek_builtin_v1.direct_builtin_budget_v1(0, arguments) == cek_cost_v1.BuiltinBudgetV1 {
       cpu: 101208,
       memory: 2,
@@ -354,12 +344,7 @@ test valid_ecdsa_public_key_with_invalid_signature_returns_false() {
       #"584000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
     ),
   ]
-  verify_direct_with_split_parity(
-    52,
-    builtin_root(52, arguments),
-    arguments,
-    boolean(#"d87980"),
-  )
+  verify_direct_with_split_parity(52, arguments, boolean(#"d87980"))
 }
 
 test builtin_closure_type_failure_is_authenticated_without_charging() {
@@ -452,12 +437,7 @@ test arbitrary_control_branch_values_are_not_type_failures() {
 
 test append_bytearray_direct_step_is_authenticated() {
   let arguments = [bytes(#"42aabb"), bytes(#"41cc")]
-  verify_direct_with_split_parity(
-    10,
-    builtin_root(10, arguments),
-    arguments,
-    bytes(#"43aabbcc"),
-  )
+  verify_direct_with_split_parity(10, arguments, bytes(#"43aabbcc"))
 }
 
 test if_then_else_selects_an_opaque_value_without_interpreting_it() {
@@ -468,41 +448,21 @@ test if_then_else_selects_an_opaque_value_without_interpreting_it() {
     #"2222222222222222222222222222222222222222222222222222222222222222",
   )
   let arguments = [boolean(#"d87a80"), selected, rejected]
-  verify_direct_with_split_parity(
-    26,
-    builtin_root(26, arguments),
-    arguments,
-    selected,
-  )
+  verify_direct_with_split_parity(26, arguments, selected)
 }
 
 test list_head_preserves_the_authenticated_element_type() {
   let source = constant(#"9f0500ff", #"9f0102ff")
   let arguments = [source]
-  verify_direct_with_split_parity(
-    33,
-    builtin_root(33, arguments),
-    arguments,
-    integer(#"01"),
-  )
+  verify_direct_with_split_parity(33, arguments, integer(#"01"))
 }
 
 test i_data_and_un_i_data_round_trip_semantically() {
   let to_data_arguments = [integer(#"182a")]
   let data_value = constant(#"9f08ff", #"182a")
   and {
-    verify_direct_with_split_parity(
-      40,
-      builtin_root(40, to_data_arguments),
-      to_data_arguments,
-      data_value,
-    ),
-    verify_direct_with_split_parity(
-      45,
-      builtin_root(45, [data_value]),
-      [data_value],
-      integer(#"182a"),
-    ),
+    verify_direct_with_split_parity(40, to_data_arguments, data_value),
+    verify_direct_with_split_parity(45, [data_value], integer(#"182a")),
   }
 }
 
@@ -520,10 +480,6 @@ test miller_loop_expression_and_final_verify_are_authenticated() {
   and {
     verify_direct_with_split_parity(
       68,
-      builtin_root(
-        68,
-        [cek_builtin_v1.ConstantValue(g1), cek_builtin_v1.ConstantValue(g2)],
-      ),
       [cek_builtin_v1.ConstantValue(g1), cek_builtin_v1.ConstantValue(g2)],
       cek_builtin_v1.BlsMillerLoopValue(expression_root),
     ),
@@ -690,22 +646,12 @@ test twelve_leaf_miller_loop_proof_exceeding_the_reserve_fails_closed() fail {
 }
 
 test unsupported_direct_builtin_stays_closed() fail {
-  verify_direct_with_split_parity(
-    70,
-    builtin_root(70, []),
-    [],
-    boolean(#"d87980"),
-  )
+  verify_direct_with_split_parity(70, [], boolean(#"d87980"))
 }
 
 test wrong_builtin_result_fails_closed() fail {
   let arguments = [integer(#"1829"), integer(#"01")]
-  verify_direct_with_split_parity(
-    0,
-    builtin_root(0, arguments),
-    arguments,
-    integer(#"182b"),
-  )
+  verify_direct_with_split_parity(0, arguments, integer(#"182b"))
 }
 
 type LargeSemanticConstructorFixture {
@@ -778,7 +724,6 @@ test semantic_choose_data_inspects_a_large_context_root_locally() {
   ]
   verify_semantic_with_split_parity(
     36,
-    builtin_root(36, arguments),
     arguments,
     selected,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -816,7 +761,6 @@ test semantic_unconstr_data_returns_the_exact_large_typed_pair() {
   let arguments = [fixture.source]
   verify_semantic_with_split_parity(
     42,
-    builtin_root(42, arguments),
     arguments,
     result,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -895,7 +839,6 @@ test semantic_fst_pair_extracts_the_constructor_without_the_large_field() {
   let arguments = [source]
   verify_semantic_with_split_parity(
     29,
-    builtin_root(29, arguments),
     arguments,
     result,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -934,7 +877,6 @@ test semantic_head_list_extracts_a_9000_byte_data_child_by_root() {
   let arguments = [source]
   verify_semantic_with_split_parity(
     33,
-    builtin_root(33, arguments),
     arguments,
     result,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -963,7 +905,6 @@ test semantic_wrong_data_variant_failure_is_authenticated_locally() {
   let arguments = [source]
   cek_builtin_v1.verify_semantic_builtin_failure_v1(
     42,
-    builtin_root(42, arguments),
     arguments,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
       data_nodes: [node],
@@ -1041,7 +982,6 @@ fn constr_data_succeeds(
   let arguments = [index, empty_data_fields()]
   cek_builtin_v1.verify_semantic_builtin_v1(
     37,
-    builtin_root(37, arguments),
     arguments,
     constr_data_result(value),
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -1061,7 +1001,6 @@ fn constr_data_fails(
   let arguments = [index, empty_data_fields()]
   cek_builtin_v1.verify_semantic_builtin_failure_v1(
     37,
-    builtin_root(37, arguments),
     arguments,
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
       data_nodes,
@@ -1142,13 +1081,11 @@ test one_word_constr_data_index_cannot_fail_from_memory() fail {
 // The old aggregate remains the oracle while physical core hops are introduced.
 fn verify_direct_with_split_parity(
   tag: Int,
-  root: ByteArray,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
   result: cek_builtin_v1.ValueWitnessV1,
 ) -> Bool {
   let aggregate = cek_builtin_v1.verify_direct_builtin_v1(
     tag,
-    root,
     arguments,
     result,
   )
@@ -1157,21 +1094,18 @@ fn verify_direct_with_split_parity(
   } else {
     cek_builtin_v1.verify_direct_scalar_semantics(tag, arguments, result)
   }
-  let split = root == builtin_root(tag, arguments) && semantics
-  expect split == aggregate
+  expect semantics == aggregate
   aggregate
 }
 
 fn verify_semantic_with_split_parity(
   tag: Int,
-  root: ByteArray,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
   result: cek_builtin_v1.ValueWitnessV1,
   material: cek_builtin_v1.SemanticBuiltinWitnessV1,
 ) -> Bool {
   let aggregate = cek_builtin_v1.verify_semantic_builtin_v1(
     tag,
-    root,
     arguments,
     result,
     material,
@@ -1192,7 +1126,6 @@ fn verify_semantic_with_split_parity(
   expect
     cek_builtin_v1.verify_semantic_builtin_v1(
       tag,
-      root,
       compact_arguments,
       compact_result,
       material,
@@ -1222,7 +1155,7 @@ fn verify_semantic_with_split_parity(
   } else {
     cek_builtin_v1.verify_semantic_data_scalar(tag, arguments, result, material)
   }
-  expect ( root == builtin_root(tag, arguments) && semantics ) == aggregate
+  expect semantics == aggregate
   aggregate
 }
 
@@ -1311,12 +1244,7 @@ fn length_of_bytes_at(length: Int) -> Bool {
   let payload = zero_bytes_constant(length)
   let result = integer(cbor.serialise(builtin.i_data(length)))
   let arguments = [bytes(payload)]
-  verify_direct_with_split_parity(
-    13,
-    builtin_root(13, arguments),
-    arguments,
-    result,
-  )
+  verify_direct_with_split_parity(13, arguments, result)
 }
 
 fn negative_index_failure_at(length: Int) -> Bool {
@@ -1410,18 +1338,8 @@ test map_conversions_have_no_direct_arm() {
   let map_arguments = [one_pair_list()]
   let unmap_arguments = [one_pair_map()]
   and {
-    !verify_direct_with_split_parity(
-      38,
-      builtin_root(38, map_arguments),
-      map_arguments,
-      one_pair_map(),
-    ),
-    !verify_direct_with_split_parity(
-      43,
-      builtin_root(43, unmap_arguments),
-      unmap_arguments,
-      one_pair_list(),
-    ),
+    !verify_direct_with_split_parity(38, map_arguments, one_pair_map()),
+    !verify_direct_with_split_parity(43, unmap_arguments, one_pair_list()),
   }
 }
 
@@ -2092,7 +2010,6 @@ fn serialise_data_verifies(
   let arguments = [constant(#"9f08ff", cbor.serialise(source))]
   verify_semantic_with_split_parity(
     51,
-    builtin_root(51, arguments),
     arguments,
     bytes(cbor.serialise(builtin.b_data(serialised))),
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -2159,12 +2076,7 @@ test semantic_data_misc_serialises_data_within_64_bits() {
 // direct addInteger arm. Each sum crosses from a major-type head to a bignum.
 fn add_integer_verifies(left: Int, right: Int, sum: Int) -> Bool {
   let arguments = [integer_value(left), integer_value(right)]
-  verify_direct_with_split_parity(
-    0,
-    builtin_root(0, arguments),
-    arguments,
-    integer_value(sum),
-  )
+  verify_direct_with_split_parity(0, arguments, integer_value(sum))
 }
 
 test add_integer_reads_constants_across_the_64_bit_boundary() {
@@ -2247,7 +2159,6 @@ fn un_i_data_leaf_with_memory_verifies(memory: Int, raw: ByteArray) -> Bool {
   }
   verify_semantic_with_split_parity(
     45,
-    builtin_root(45, [source]),
     [source],
     result,
     leaf_witness(node, raw),
@@ -2267,7 +2178,6 @@ fn i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
   )
   verify_semantic_with_split_parity(
     40,
-    builtin_root(40, [argument]),
     [argument],
     cek_builtin_v1.SemanticConstantValue {
       type_cbor: #"9f08ff",
@@ -2388,7 +2298,6 @@ fn equals_data_verifies(
   let arguments = [constant(#"9f08ff", left), constant(#"9f08ff", right)]
   verify_semantic_with_split_parity(
     47,
-    builtin_root(47, arguments),
     arguments,
     boolean(claimed),
     cek_builtin_v1.SemanticBuiltinWitnessV1 {
@@ -2455,24 +2364,9 @@ test bls_g1_builtins_follow_cardano_flat_tags() {
     #"58308148482e08a92312cbd0a869e03ced121bf66f29306e281b0f894701f5e3f1242fa6cfdd3afbb2620cb9bfc50ed7dd52",
   )
   and {
-    verify_direct_with_split_parity(
-      58,
-      builtin_root(58, [point]),
-      [point],
-      compressed,
-    ),
-    verify_direct_with_split_parity(
-      59,
-      builtin_root(59, [compressed]),
-      [compressed],
-      point,
-    ),
-    verify_direct_with_split_parity(
-      60,
-      builtin_root(60, h2g_arguments),
-      h2g_arguments,
-      hashed,
-    ),
+    verify_direct_with_split_parity(58, [point], compressed),
+    verify_direct_with_split_parity(59, [compressed], point),
+    verify_direct_with_split_parity(60, h2g_arguments, hashed),
   }
 }
 
@@ -2492,24 +2386,9 @@ test bls_g2_builtins_follow_cardano_flat_tags() {
     #"5f584089ac93813e1f13d1f1a75d2c790cbc435330bdfcaa9f42a609aa5563b8bab0edbc269b186eb3c3c9a6bdf9fd525c34e7167f474f0e648c0c3eeab5df3eebf3ff58207c39f72addeb2d3368a44d56f5dca28fca97fe1184b365e3c8a14e226b6188b1ff",
   )
   and {
-    verify_direct_with_split_parity(
-      65,
-      builtin_root(65, [point]),
-      [point],
-      compressed,
-    ),
-    verify_direct_with_split_parity(
-      66,
-      builtin_root(66, [compressed]),
-      [compressed],
-      point,
-    ),
-    verify_direct_with_split_parity(
-      67,
-      builtin_root(67, h2g_arguments),
-      h2g_arguments,
-      hashed,
-    ),
+    verify_direct_with_split_parity(65, [point], compressed),
+    verify_direct_with_split_parity(66, [compressed], point),
+    verify_direct_with_split_parity(67, h2g_arguments, hashed),
   }
 }
 
@@ -2520,12 +2399,7 @@ test bls_g1_compress_is_refused_at_the_library_tag() fail {
     #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
   )
   let point = cek_builtin_v1.ConstantValue(g1_generator())
-  cek_builtin_v1.verify_direct_builtin_v1(
-    59,
-    builtin_root(59, [point]),
-    [point],
-    compressed,
-  )
+  cek_builtin_v1.verify_direct_builtin_v1(59, [point], compressed)
 }
 
 // Variant E bounds a CInteger argument to [-2^262143, 2^262143 - 1] and a
@@ -2560,7 +2434,6 @@ fn out_of_bound_integer_addition(operand: Int) -> Bool {
   ]
   cek_builtin_v1.verify_direct_builtin_v1(
     0,
-    #"",
     arguments,
     integer(cbor.serialise(builtin.i_data(operand))),
   )
@@ -2577,7 +2450,7 @@ test add_integer_success_is_refused_one_past_the_lower_bound() fail {
 test append_bytes_success_is_refused_one_past_the_bound() fail {
   let left = cbor.serialise(builtin.b_data(zero_run(65537)))
   let arguments = [bytes(left), bytes(cbor.serialise(builtin.b_data(#"")))]
-  cek_builtin_v1.verify_direct_builtin_v1(10, #"", arguments, bytes(left))
+  cek_builtin_v1.verify_direct_builtin_v1(10, arguments, bytes(left))
 }
 
 // ECDSA takes a 33 B key, a 32 B message and a 64 B signature; any other
@@ -2928,7 +2801,6 @@ fn write_bit_zero_succeeds_at(length: Int) -> Bool {
   let written = bytearray.concat(zero_run(length - 1), #"01")
   cek_builtin_v1.verify_direct_builtin_v1(
     80,
-    builtin_root(80, arguments),
     arguments,
     bytes(cbor.serialise(builtin.b_data(written))),
   )
@@ -2960,7 +2832,6 @@ fn shift_or_rotate_succeeds(tag: Int, amount: Int) -> Bool {
   ]
   cek_builtin_v1.verify_direct_builtin_v1(
     tag,
-    builtin_root(tag, arguments),
     arguments,
     bytes(cbor.serialise(builtin.b_data(shifted))),
   )
@@ -3038,7 +2909,6 @@ fn scalar_mul_succeeds(tag: Int, scalar: Int) -> Bool {
   ]
   cek_builtin_v1.verify_direct_builtin_v1(
     tag,
-    builtin_root(tag, arguments),
     arguments,
     constant(point.type_cbor, cbor.serialise(builtin.b_data(product))),
   )
@@ -3216,18 +3086,8 @@ fn un_constr_data_then_fst_pair_verifies(index: Int) -> Bool {
   let unconstr = cek_builtin_v1.direct_builtin_budget_v1(42, source)
   let fst = cek_builtin_v1.direct_builtin_budget_v1(29, pair)
   and {
-    verify_direct_with_split_parity(
-      42,
-      builtin_root(42, source),
-      source,
-      un_constr_data_pair(index),
-    ),
-    verify_direct_with_split_parity(
-      29,
-      builtin_root(29, pair),
-      pair,
-      integer_value(index),
-    ),
+    verify_direct_with_split_parity(42, source, un_constr_data_pair(index)),
+    verify_direct_with_split_parity(29, pair, integer_value(index)),
     unconstr.cpu + fst.cpu == 166483,
     unconstr.memory + fst.memory == 64,
   }
@@ -3244,32 +3104,17 @@ test un_constr_data_reads_constructors_127_and_128() {
 
 test un_constr_data_refuses_a_wrong_index_at_constructor_128() {
   let source = [data_value(builtin.constr_data(128, []))]
-  !verify_direct_with_split_parity(
-    42,
-    builtin_root(42, source),
-    source,
-    un_constr_data_pair(127),
-  )
+  !verify_direct_with_split_parity(42, source, un_constr_data_pair(127))
 }
 
 test un_constr_data_refuses_constructor_102_with_a_negative_index() fail {
   let source = [constant(#"9f08ff", #"d866822080")]
-  verify_direct_with_split_parity(
-    42,
-    builtin_root(42, source),
-    source,
-    un_constr_data_pair(0),
-  )
+  verify_direct_with_split_parity(42, source, un_constr_data_pair(0))
 }
 
 test un_constr_data_refuses_constructor_102_with_a_bignum_index() fail {
   let source = [constant(#"9f08ff", #"d86682c2410180")]
-  verify_direct_with_split_parity(
-    42,
-    builtin_root(42, source),
-    source,
-    un_constr_data_pair(1),
-  )
+  verify_direct_with_split_parity(42, source, un_constr_data_pair(1))
 }
 
 // mkCons over a list item presented by its semantic summary. The summary
@@ -3283,25 +3128,13 @@ type ListItemFixture {
   material: cek_builtin_v1.SemanticBuiltinWitnessV1,
 }
 
-/// The list summary `semantic_data_summary_v1` commits for `items`.
-fn commit_items(items: List<Data>) -> cek_data_v1.DataSequenceSummaryV1 {
-  when items is {
-    [] -> cek_data_v1.empty_data_list_summary_v1()
-    [head, ..rest] ->
-      cek_data_v1.prepend_data_list_summary_v1(
-        cek_data_v1.semantic_data_summary_v1(head),
-        commit_items(rest),
-      )
-  }
-}
-
 fn list_item_fixture(
   element_cbor: ByteArray,
   item: Data,
   items: List<Data>,
 ) -> ListItemFixture {
   let source_cbor = cbor.serialise(builtin.list_data(items))
-  let tail = commit_items(items)
+  let tail = cek_data_v1.commit_data_list(items)
   let list_nodes = when items is {
     [] -> []
     [head, ..rest] -> {
@@ -3311,7 +3144,7 @@ fn list_item_fixture(
           head: head_summary.root,
           head_cbor_length: head_summary.cbor_length,
           head_memory: head_summary.memory,
-          tail: commit_items(rest).root,
+          tail: cek_data_v1.commit_data_list(rest).root,
           length: tail.length,
           payload_cbor_length: tail.payload_cbor_length,
           memory: tail.memory,
@@ -3383,15 +3216,15 @@ fn presented_item(
   }
 }
 
-/// mkCons over the presented item, in the direct arm and the split list hop,
-/// which agree.
+/// mkCons over the presented item, in the direct arm and the split chain.
 fn mk_cons_presented(fixture: ListItemFixture, delta: Int) -> Bool {
-  let Pair(direct, split) = mk_cons_in_both_arms(
-    fixture,
-    presented_item(fixture, delta),
+  let item = presented_item(fixture, delta)
+  verify_semantic_with_split_parity(
+    32,
+    [item, fixture.source],
+    mk_cons_result(fixture, item),
+    fixture.material,
   )
-  expect direct == split
-  direct
 }
 
 /// mkCons in the direct arm and the split list hop, each given the arguments
@@ -3405,7 +3238,6 @@ fn mk_cons_in_both_arms(
   Pair(
     cek_builtin_v1.verify_semantic_builtin_v1(
       32,
-      builtin_root(32, arguments),
       arguments,
       result,
       fixture.material,
@@ -3655,7 +3487,6 @@ fn mk_cons_from_its_split_presentation(fixture: ListItemFixture) -> Bool {
   and {
     verify_semantic_with_split_parity(
       32,
-      builtin_root(32, [fixture.item, fixture.source]),
       [fixture.item, fixture.source],
       mk_cons_result(fixture, fixture.item),
       fixture.material,
@@ -3667,6 +3498,14 @@ fn mk_cons_from_its_split_presentation(fixture: ListItemFixture) -> Bool {
       fixture.material,
     ),
   }
+}
+
+test mk_cons_over_a_unit_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(unit_item_fixture())
+}
+
+test mk_cons_over_a_bool_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(boolean_item_fixture())
 }
 
 test mk_cons_over_a_data_list_is_proved_from_its_split_presentation() {
@@ -3745,34 +3584,17 @@ test data_builtins_read_and_return_an_ending_empty_byte_string() {
   and {
     verify_direct_with_split_parity(
       41,
-      builtin_root(41, [bytes(#"40")]),
       [bytes(#"40")],
       constant(#"9f08ff", #"40"),
     ),
-    verify_direct_with_split_parity(
-      46,
-      builtin_root(46, empty),
-      empty,
-      bytes(#"40"),
-    ),
-    verify_direct_with_split_parity(
-      44,
-      builtin_root(44, list),
-      list,
-      constant(#"9f0508ff", #"9f40ff"),
-    ),
+    verify_direct_with_split_parity(46, empty, bytes(#"40")),
+    verify_direct_with_split_parity(44, list, constant(#"9f0508ff", #"9f40ff")),
     verify_direct_with_split_parity(
       42,
-      builtin_root(42, constructor),
       constructor,
       constant(#"9f06000508ff", #"d8799f019f40ffff"),
     ),
-    verify_direct_with_split_parity(
-      51,
-      builtin_root(51, list),
-      list,
-      bytes(#"439f40ff"),
-    ),
+    verify_direct_with_split_parity(51, list, bytes(#"439f40ff")),
   }
 }
 
@@ -3790,12 +3612,7 @@ test data_builtins_reveal_an_ending_empty_byte_string() {
 
 test un_b_data_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
   let source = [constant(#"9f08ff", #"41")]
-  verify_direct_with_split_parity(
-    46,
-    builtin_root(46, source),
-    source,
-    bytes(#"40"),
-  )
+  verify_direct_with_split_parity(46, source, bytes(#"40"))
 }
 
 test serialise_data_refuses_a_revealed_byte_string_claiming_one_byte_past_the_end() fail {

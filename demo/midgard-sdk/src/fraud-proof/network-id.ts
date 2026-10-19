@@ -67,7 +67,6 @@ export const NetworkIdForcedStepArgsSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 export const NetworkIdForcedStepSpendRedeemerSchema =
   faultProofStepRedeemerSchema(NetworkIdForcedStepArgsSchema);

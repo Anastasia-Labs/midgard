@@ -1,6 +1,5 @@
 import "./txAdmissions.admit-reserved-batch.js";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect } from "effect";
 
@@ -9,7 +8,6 @@ import { withFollowerWrite } from "../services/follower-write-gate.js";
 import {
   Columns,
   type Entry,
-  payloadTableName,
   type RawEntry,
   tableName,
   toBigInt,
@@ -127,15 +125,6 @@ export const markRejected = ({
               }),
             );
           }
-          // Terminal rejections retain the original sidecar digest for exact
-          // duplicate matching but do not retain attacker-sized sidecar bytes.
-          // Rejected rows are never claimable, so the canonical empty sidecar is
-          // a tombstone rather than validation input.
-          const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
-          yield* sql`UPDATE ${sql(payloadTableName)}
-          SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
-            ${terminalSidecar}
-          WHERE ${sql.in(Columns.TX_ID, txIds)}`;
         }),
       ),
     );
@@ -218,14 +207,6 @@ export const markAcceptedRejectedAfterCorrection = (
           cause: `tx=${remaining[0]?.tx_id.toString("hex")},status=${remaining[0]?.status},updated=${updated.length}`,
         }),
       );
-    if (updated.length === 0) return;
-    const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
-    yield* sql`UPDATE ${sql(payloadTableName)}
-      SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} = ${terminalSidecar}
-      WHERE ${sql.in(
-        Columns.TX_ID,
-        updated.map((row) => row[Columns.TX_ID]),
-      )}`;
   }).pipe(
     sqlErrorToDatabaseError(
       tableName,

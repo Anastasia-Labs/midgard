@@ -11,7 +11,7 @@ pub const source_pending_forced: Int = 1
 
 pub type BindStateV1 {
   BoundAccepted { subject: VerdictSubjectV1, witness_set_hash: ByteArray }
-  PendingForced { direction: Int }
+  PendingForced
 }
 
 pub type DecisionStateV1 {

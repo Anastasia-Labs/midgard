@@ -77,7 +77,12 @@ export type RejectSubject =
       readonly purposeIndex: bigint;
     }
   | {
-      readonly arm: "OutputNonCanonical" | "OutputBelowMinAda";
+      readonly arm:
+        | "OutputNonCanonical"
+        | "OutputBelowMinAda"
+        | "OutputReferenceScriptMalformed"
+        | "OutputReferenceScriptNodeLimit"
+        | "OutputReferenceScriptDepthLimit";
       readonly index: bigint;
     }
   /**

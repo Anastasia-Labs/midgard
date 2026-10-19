@@ -85,10 +85,13 @@ describe("deployment member admission", () => {
       "fraudProofMinAdaStep03",
       "fraudProofMinAdaStep04",
     ]);
-    expect(DEPLOYMENT_MANIFEST_MEMBERS[523]).toBe(
+    const { manifestPosition, publicationPosition } =
+      DEPLOYMENT_MEMBERS.fraudProofMinAdaStep02TxWithdraw;
+    expect(DEPLOYMENT_MANIFEST_MEMBERS[manifestPosition]).toBe(
       "fraudProofMinAdaStep02TxWithdraw",
     );
-    expect(DEPLOYMENT_PUBLICATION_MEMBERS[524]).toBe(
+    expect(publicationPosition).not.toBeNull();
+    expect(DEPLOYMENT_PUBLICATION_MEMBERS[publicationPosition!]).toBe(
       "fraudProofMinAdaStep02TxWithdraw",
     );
   });

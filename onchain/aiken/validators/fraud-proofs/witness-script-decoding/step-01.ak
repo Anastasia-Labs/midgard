@@ -38,12 +38,12 @@ validator main(
       ct.Continue(Args { source: AcceptedSource { inclusion }, script_index }) -> {
         let
             _own_script_hash,
-            _thread_asset_name,
+            subject_thread_name,
             _fraud_prover,
             _input_state,
             next_script_hash,
             next_state,
-            _header,
+            subject_header,
             _tx_id,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -54,7 +54,13 @@ validator main(
           own_out_ref,
           tx,
         )
-        let subject = substrate.bind_accepted_subject_v1(verified)
+        let subject = substrate.open_subject_v1(
+          subject_thread_name,
+          substrate.AcceptedSource {
+            header: subject_header,
+            tx_inclusion: verified,
+          },
+        )
         let expected: Data = bind_subject_v1(
           subject,
           verified.tx_compact.witness_set_hash,
@@ -66,13 +72,7 @@ validator main(
         }
       }
       ct.Continue(Args {
-        source: ForcedSource {
-          input_index,
-          output_index,
-          header,
-          membership,
-          direction,
-        },
+        source: ForcedSource { input_index, output_index, header, membership },
         script_index,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
@@ -93,11 +93,9 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_asset_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(

@@ -9,7 +9,6 @@ import {
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  decodeMidgardCekProgramEnvelope,
   decodeMidgardLedgerOutputCommitment,
   encodeCbor,
   finalizeMidgardRedeemerItemProof,
@@ -53,7 +52,11 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
-import { startMidgardCekObservedRun } from "../cek-executor.js";
+import {
+  buildMidgardCekExecutionGraph,
+  startMidgardCekObservedRun,
+} from "../cek-executor.js";
+import { buildMidgardCanonicalCekProgram } from "../cek-program.js";
 import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
@@ -73,7 +76,6 @@ import {
   summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "../script-context-proof.js";
-import { txOutRefData } from "../tx-out-ref.js";
 import type { RejectCode } from "../types.js";
 import { RejectCodes } from "../types.js";
 import { outputCborMeetsMinAda } from "../value-accounting.js";
@@ -105,6 +107,12 @@ import type {
   ScriptPurposeProofEntry,
 } from "./trace-builder-types.js";
 import {
+  exactDescriptorSummary,
+  outRefSummary,
+  sameSequence,
+  sameSummary,
+} from "./trace-descriptor-summary.js";
+import {
   type DeterministicValidationMachineTrace,
   type ValidationMachineWorkWitness,
 } from "./types.js";
@@ -124,7 +132,6 @@ import {
 export type CompletedValidationTrace = Pick<
   DeterministicValidationMachineTrace,
   | "validationContextCbor"
-  | "programMaterialSidecarCbor"
   | "verdict"
   | "rejectionCode"
   | "rejectionReason"
@@ -178,7 +185,6 @@ export const completeValidationTrace = (
       recording,
       verdict,
       contextCbor,
-      canonicalProgramMaterialSidecarCbor,
       ledgerOps,
     } = context;
 
@@ -631,52 +637,6 @@ export const completeValidationTrace = (
               });
             },
           );
-          const sameSummary = (
-            left: {
-              readonly root: Uint8Array;
-              readonly cborLength: bigint;
-              readonly memory: bigint;
-            },
-            right: {
-              readonly root: Uint8Array;
-              readonly cborLength: bigint;
-              readonly memory: bigint;
-            },
-          ): boolean =>
-            Buffer.from(left.root).equals(Buffer.from(right.root)) &&
-            left.cborLength === right.cborLength &&
-            left.memory === right.memory;
-          const sameSequence = (
-            left: {
-              readonly root: Uint8Array;
-              readonly length: bigint;
-              readonly payloadCborLength: bigint;
-              readonly memory: bigint;
-            },
-            right: {
-              readonly root: Uint8Array;
-              readonly length: bigint;
-              readonly payloadCborLength: bigint;
-              readonly memory: bigint;
-            },
-          ): boolean =>
-            Buffer.from(left.root).equals(Buffer.from(right.root)) &&
-            left.length === right.length &&
-            left.payloadCborLength === right.payloadCborLength &&
-            left.memory === right.memory;
-          const exactDescriptorSummary = (summary: {
-            readonly root: Uint8Array;
-            readonly cborLength: bigint;
-            readonly memory: bigint;
-          }) => ({
-            root: Buffer.from(summary.root),
-            cborLength: summary.cborLength,
-            memory: summary.memory,
-          });
-          const outRefSummary = (key: Buffer) =>
-            summarizeMidgardCekLucidData(
-              txOutRefData(key.toString("hex")) as never,
-            );
           const resolvedTxInInfoSummary = (
             key: Buffer,
             output: {
@@ -751,7 +711,10 @@ export const completeValidationTrace = (
           const executionAuxiliary = (
             execution: ScriptExecutionProofEntry,
             executionIndex: number,
-          ): NonNullable<ValidationMachineWorkWitness["auxiliary"]> => {
+          ): Extract<
+            NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
+            { readonly kind: "nativeExecutionScan" }
+          > => {
             const sourceItem = boundedItemForScriptSource(execution.source);
             return {
               kind: "nativeExecutionScan",
@@ -842,6 +805,12 @@ export const completeValidationTrace = (
             executionIndex += 1
           ) {
             const executionEntry = scriptExecutionEntries[executionIndex]!;
+            const evaluation =
+              executionEntry.languageTag === 0 ||
+              (executionEntry.languageTag === 3 &&
+                executionEntry.purpose.purposeKind === 3)
+                ? undefined
+                : scriptEvaluations[evaluationIndex++];
             const completedCpu = executionBudget.cpu;
             const completedMemory = executionBudget.memory;
             pushWitness(
@@ -856,7 +825,12 @@ export const completeValidationTrace = (
                 executionMemoryLimit: 0n,
                 programScriptHash: null,
               }),
-              executionAuxiliary(executionEntry, executionIndex),
+              {
+                ...executionAuxiliary(executionEntry, executionIndex),
+                ...(evaluation?.phase2Class === undefined
+                  ? {}
+                  : { phase2Class: evaluation.phase2Class }),
+              },
             );
 
             if (
@@ -885,18 +859,42 @@ export const completeValidationTrace = (
               continue;
             }
 
-            const evaluation = scriptEvaluations[evaluationIndex++];
             if (
               evaluation === undefined ||
               !evaluation.scriptBytes.equals(
                 executionEntry.source.script.scriptBytes,
               ) ||
-              evaluation.graph === null
+              evaluation.phase2Class === undefined
             ) {
+              throw new Error(
+                "CEK execution is missing its exact script decode classification",
+              );
+            }
+            if (evaluation.phase2Class !== 0) {
+              if (
+                evaluation.result.kind !== "script_invalid" ||
+                evaluation.graph !== null ||
+                evaluation.execution !== null ||
+                rejection === null ||
+                terminalPhase !== "cek" ||
+                rejection.code !== RejectCodes.PlutusScriptInvalid
+              )
+                throw new Error(
+                  "Phase-two selection refusal disagrees with validation",
+                );
+              stopReason = {
+                PlutusExecutionFailed: {
+                  purpose_kind: BigInt(executionEntry.purpose.purposeKind),
+                  purpose_index: executionEntry.purpose.purposeIndex,
+                },
+              };
+              stoppedAtRejection = true;
+              break;
+            }
+            if (evaluation.graph === null && recording.mode === "proof")
               throw new Error(
                 "CEK execution is missing its authenticated program graph",
               );
-            }
             const selected = selectedRedeemer(executionEntry);
             const exactExecution = evaluation.execution;
             if (exactExecution === null && recording.mode === "proof") {
@@ -904,14 +902,25 @@ export const completeValidationTrace = (
                 "CEK trace is missing the evaluator's captured execution",
               );
             }
-            // A commit build re-executes the script and streams its steps;
-            // nothing is verified or retained.
+            const program = buildMidgardCanonicalCekProgram(
+              executionEntry.source.script.scriptBytes,
+            );
+            // A proof build carries the evaluator's graph and captured run; a
+            // commit build derives the graph from the carried Flat program and
+            // re-executes it, streaming its steps (nothing verified or kept).
+            const graph =
+              evaluation.graph ??
+              buildMidgardCekExecutionGraph(
+                program.termRoot,
+                program.material.values(),
+                evaluation.contextCbor,
+              );
             const observedRun =
               exactExecution === null
                 ? startMidgardCekObservedRun({
-                    root: evaluation.graph.root,
-                    material: evaluation.graph.material.values(),
-                    constantWitnesses: evaluation.graph.constantWitnesses,
+                    root: graph.root,
+                    material: graph.material.values(),
+                    constantWitnesses: graph.constantWitnesses,
                     executionIndex: evaluation.executionIndex,
                     maxSteps:
                       input.consensusProfile.limits
@@ -921,12 +930,9 @@ export const completeValidationTrace = (
                 : null;
             const initialCekState =
               exactExecution?.initialState ?? observedRun!.initialState;
-            const programEnvelope = decodeMidgardCekProgramEnvelope(
-              executionEntry.source.script.scriptBytes,
-            );
             let contextControl = initialMidgardCekContextControl({
               languageTag: executionEntry.languageTag,
-              programTermRoot: programEnvelope.termRoot,
+              programTermRoot: program.termRoot,
               purposeKind: executionEntry.purpose.purposeKind,
               purposeIndex: executionEntry.purpose.purposeIndex,
               scriptHash: executionEntry.purpose.scriptHash,
@@ -1882,10 +1888,10 @@ export const completeValidationTrace = (
             );
             executionBudget.cpu = completedCpu + initialCekState.cpu; // spends startup cost
             executionBudget.memory = completedMemory + initialCekState.memory;
-            const contextWitness = evaluation.graph.contextWitness;
+            const contextWitness = graph.contextWitness;
             if (
               !Buffer.from(initialCekState.focusRoot).equals(
-                Buffer.from(evaluation.graph.root),
+                Buffer.from(graph.root),
               ) ||
               initialCekState.executionIndex !== BigInt(executionIndex) ||
               !sameSummary(
@@ -2549,9 +2555,6 @@ export const completeValidationTrace = (
     );
     return {
       validationContextCbor: contextCbor,
-      programMaterialSidecarCbor: Buffer.from(
-        canonicalProgramMaterialSidecarCbor,
-      ),
       verdict,
       rejectionCode,
       rejectionCodeHash,

@@ -1,25 +1,21 @@
 use aiken/cbor
-use aiken/crypto.{ScriptHash, blake2b_256}
-use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/helpers.{nibble}
+use aiken/crypto.{ScriptHash}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{
-  Input, OutputReference, Redeemer, ScriptPurpose, Transaction,
-}
-use env
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
-use midgard/fraud_proofs/common.{
-  NonMembershipCarriage, PublishedChunkNonMembership,
-  RedeemerCarriedNonMembership, cancel, continue, verify_non_membership_carried,
+use midgard/fraud_proofs/first_fault_v1 as order
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
+use midgard/fraud_proofs/input_existence_v1/pre_state
+use midgard/fraud_proofs/input_existence_v1/types.{
+  LedgerStateV1, PreStateArgsV1, SelectedInputStateV1,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
-use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_tx_types
-use midgard/fraud_proofs/no_input/step_03.{
-  Args, Datum, ForcedArgs, ForcedState, SpendRedeemer, State,
-}
-use midgard/fraud_proofs/no_input/step_04
+use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
+use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact,
+  TxCompactView} as native_types
+use midgard/fraud_proofs/no_input/step_03.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
 use midgard/transition_trace
 
@@ -33,128 +29,14 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-        cancel(
-          computation_thread_token_policy_id,
-          datum,
-          input_index,
-          own_out_ref,
-          computation_thread_mint_redeemer_index,
-          tx,
-        )
-      ct.Continue(Args { input_index, output_index, non_membership_in_ledger }) -> {
-        let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
-
-        expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced.
-        let
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data,
-            output_script_hash,
-            output_state_data
-          <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          inputs,
-          outputs,
-        )
-
-        expect
-            Some(State {
-              missing_input,
-              blocks_prev_utxos_root,
-              blocks_transactions_root,
-            })
-          = m_input_state_data
-
-        // 2. Target input must be absent from the verified block's prev ledger.
-        //    The ledger MPF is keyed by the node's `CML.TransactionInput` CBOR
-        //    (a definite 2-element array), so the non-membership key must be
-        //    `encode_midgard_tx_input`, NOT `cbor.serialise` of an aiken
-        //    `OutputReference` (which serialises as a constructor).
-        //    The prover chooses the carriage: the proof may ride in this
-        //    transaction's redeemers or have been published beforehand as
-        //    chunks this transaction merely references (issue #545).
-        expect
-          verify_non_membership_carried(
-            non_membership_in_ledger,
-            blocks_prev_utxos_root,
-            encode_midgard_tx_input(missing_input),
-            reference_inputs,
-            redeemers,
-          )
-
-        // 3. Referenced transaction ID, plus the block's transactions root,
-        //    must be passed to the next step.
-        expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data = step_04.State {
-          missing_input_tx_id: missing_input.tx_id,
-          blocks_transactions_root,
-        }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
-      }
-      ct.Continue(ForcedArgs {
-        input_index,
-        output_index,
-        transition_membership,
-      }) -> {
-        expect Some(step_datum) = datum
-        let _, _, _, input_state, output_hash, output_state <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          tx.inputs,
-          tx.outputs,
-        )
-        expect
-            Some(ForcedState {
-              event_key,
-              trace_root,
-              trace_count,
-              step_index,
-              selected_input,
-            })
-          = input_state
-        let transition = transition_membership.value
-        expect and {
-            transition_trace.verify_root_membership_with_bytes(
-              transition_membership,
-              transition_trace.TransitionTraceRootDomain,
-              trace_root,
-              trace_count,
-              cbor.serialise(transition_membership.key),
-              cbor.serialise(transition),
-            ),
-            transition_membership.key == step_index,
-            transition.step_index == step_index,
-            step_index >= 0,
-            step_index < trace_count,
-            transition.schema_version == ledger_state.transition_step_schema_version_v1,
-            transition.event_key == event_key,
-            transition.phase == ledger_state.ForcedTransaction,
-          }
-        let expected: Data = step_04.ForcedState {
-          selected_input,
-          pre_utxos_root: transition.pre_utxos_root,
-        }
-        and {
-          output_hash == step_04_validator_script_hash,
-          output_state == expected,
-        }
-      }
-    }
+    pre_state.pre_state_step_v1(
+      step_04_validator_script_hash,
+      computation_thread_token_policy_id,
+      datum,
+      redeemer,
+      own_out_ref,
+      tx,
+    )
   }
 
   else(_) {
@@ -162,257 +44,345 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
-//
-// Step-03 is the first of the two non-existence checks: the challenged input
-// must be absent from the block's initial ledger (`prev_utxos_root`). The
-// delegated `pexcludes` claim is bound to the exact authenticated root and to
-// the canonical `MidgardTxInput` CBOR key of the forwarded input, so neither the
-// root nor the key can be swapped for a convenient one.
-//
-// The carried claims are witness-faithful (#582): every `[root, key, proof]`
-// triple a selector attaches is one the merkelized `exclusion` validator
-// itself accepts, which the selectors in `validators/pexcludes.ak` execute
-// against the same fixture builders. The initial-ledger roots are therefore
-// provable ones — the empty-trie sentinel a genesis block carries, or the
-// shared single-leaf `fixture.absence_witness()` trie — never an arbitrary
-// placeholder no absence proof can exist for.
+// Event-relative root controls execute this family's actual step-03 entry.
 
-fn transactions_root() -> ByteArray {
-  fixture.challenged_block_v1().transactions_phas_root
+fn claim_v1() -> tf.ThreadClaimFixtureV1 {
+  tf.thread_claim_v1(
+    ledger_state.L2TransactionEventKey {
+      tx_id: fixture.challenged_block_v1().tx_id,
+    },
+    ledger_state.L2Transaction,
+    tf.h32_d,
+    None,
+  )
 }
 
-fn challenged_input() -> MidgardTxInput {
-  fixture.absent_midgard_tx_input()
+fn normal_subject_v1() -> substrate.VerdictSubjectV1 {
+  substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: fixture.challenged_block_v1().tx_id,
+    source_key: #"",
+    rejection_reason: None,
+  }
 }
 
-fn run_step_03_with(
-  missing_input: MidgardTxInput,
-  blocks_prev_utxos_root: ByteArray,
-  carriage: NonMembershipCarriage,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-  reference_inputs: List<Input>,
+fn run_pre_state_v1(
+  claim: tf.ThreadClaimFixtureV1,
+  event: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  step: transition_trace.RootMembershipProof<Int, ledger_state.TransitionStep>,
+  expected_root: ByteArray,
+  tamper_context: Bool,
 ) -> Bool {
-  let expected_output_state: Data = step_04.State {
-    missing_input_tx_id: missing_input.tx_id,
-    blocks_transactions_root: transactions_root(),
+  run_pre_state_in_v1(
+    claim,
+    event,
+    step,
+    expected_root,
+    None,
+    fn(context) {
+      if tamper_context {
+        order.NetworkOrderContextV1 {
+          body_network_mismatch: !context.body_network_mismatch,
+        }
+      } else {
+        context
+      }
+    },
+  )
+}
+
+/// The fixture body, or that body with its network id replaced.
+fn compact_v1(network_id: Option<Int>) -> TxCompactView {
+  let base = carriage_fixture.compact_view_v1(
+    fixture.challenged_block_v1().compact,
+  )
+  when network_id is {
+    None -> base
+    Some(id) ->
+      TxCompactView {
+        ..base,
+        body: NativeTxBodyCompact { ..base.body, network_id: id },
+      }
   }
-  let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
-  let l1_tx = Transaction {
+}
+
+/// `written` maps the context derived from the input state to the one the
+/// expected output carries.
+fn run_pre_state_in_v1(
+  claim: tf.ThreadClaimFixtureV1,
+  event: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  step: transition_trace.RootMembershipProof<Int, ledger_state.TransitionStep>,
+  expected_root: ByteArray,
+  network_id: Option<Int>,
+  written: fn(order.NetworkOrderContextV1) -> order.NetworkOrderContextV1,
+) -> Bool {
+  let compact = compact_v1(network_id)
+  let subject = normal_subject_v1()
+  // Unit composition explicitly executes the crypto walk performed by the
+  // separately merkelized verifier in a real transaction, for both claims.
+  expect
+    transition_trace.verify_root_membership_with_bytes(
+      event,
+      transition_trace.EventToStepRootDomain,
+      claim.header.event_to_step_root,
+      claim.header.total_event_count,
+      cbor.serialise(event.key),
+      cbor.serialise(event.value),
+    )
+  expect
+    transition_trace.verify_root_membership_with_bytes(
+      step,
+      transition_trace.TransitionTraceRootDomain,
+      claim.header.transition_trace_root,
+      claim.header.transition_step_count,
+      cbor.serialise(step.key),
+      cbor.serialise(step.value),
+    )
+  let event_tx = Transaction {
     ..transaction.placeholder,
-    inputs: [fixture.ct_thread_input(asset_name)],
-    outputs: [fixture.next_step_output(asset_name, expected_output_state)],
-    reference_inputs,
-    redeemers,
+    redeemers: [
+      fixture.phas_withdraw_redeemer_entry(
+        event.phas_root,
+        cbor.serialise(event.key),
+        cbor.serialise(event.value),
+      ),
+    ],
   }
+  let selected_step_index = substrate.subject_event_step_index_v1(
+    claim.header,
+    subject,
+    carriage_fixture.direct_carried_membership_v1(event, 0),
+    event_tx.reference_inputs,
+    event_tx.redeemers,
+  )
+  let selected_input = Some(fixture.absent_midgard_tx_input())
+  let input_state = SelectedInputStateV1 {
+    compact,
+    source_kind: 0,
+    input_index: 0,
+    claimed_input: None,
+    subject,
+    header: claim.header,
+    selected_input,
+    step_index: selected_step_index,
+  }
+  let context = order.network_order_context_v1(
+    input_state.compact,
+    input_state.header,
+  )
+  let expected: Data = LedgerStateV1 {
+    network_order_context: written(context),
+    compact,
+    source_kind: 0,
+    input_index: 0,
+    claimed_input: None,
+    subject,
+    selected_input,
+    pre_utxos_root: expected_root,
+  }
+  let name = tf.header_asset_name_v1(claim.header)
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          State {
-            missing_input,
-            blocks_prev_utxos_root,
-            blocks_transactions_root: transactions_root(),
-          },
-        ),
+        data: Some(input_state),
       },
     ),
     ct.Continue(
-      Args {
+      PreStateArgsV1 {
         input_index: 0,
         output_index: 0,
-        non_membership_in_ledger: carriage,
+        transition_membership: carriage_fixture.direct_carried_membership_v1(
+          step,
+          0,
+        ),
       },
     ),
     fixture.own_out_ref(),
-    l1_tx,
-  )
-}
-
-fn run_step_03(
-  missing_input: MidgardTxInput,
-  blocks_prev_utxos_root: ByteArray,
-  claimed_root: ByteArray,
-  claimed_key: ByteArray,
-  non_membership_proof: mpf.Proof,
-) -> Bool {
-  run_step_03_with(
-    missing_input,
-    blocks_prev_utxos_root,
-    RedeemerCarriedNonMembership {
-      non_membership_proof,
-      non_membership_proof_script_redeemer_index: 0,
-    },
-    [
-      fixture.pexcludes_withdraw_redeemer_entry(
-        claimed_root,
-        claimed_key,
-        non_membership_proof,
-      ),
-    ],
-    [],
-  )
-}
-
-// ## Published-chunk carriage (issue #545)
-//
-// On the chunked route the absence witness is verified here rather than
-// delegated, so these selectors use the shared real one: a canonical divergent
-// terminal leaf, and the initial-ledger root that leaf reconstructs.
-
-/// The absence claim a published-chunk step must find in the merkelized
-/// verifier's redeemer.
-fn absence_claim(
-  merkle_root: ByteArray,
-  key_bytes: ByteArray,
-  indices: List<Int>,
-) -> chunked_inclusion_v1.ChunkedProofClaim {
-  chunked_inclusion_v1.ChunkedProofClaim {
-    mode: chunked_inclusion_v1.NonMembership,
-    merkle_root,
-    key_bytes,
-    value_hash: chunked_inclusion_v1.absent_value_hash,
-    ordered_chunk_reference_input_indices: indices,
-  }
-}
-
-fn run_step_03_published_with_claim(
-  missing_input: MidgardTxInput,
-  blocks_prev_utxos_root: ByteArray,
-  indices: List<Int>,
-  claim_indices: List<Int>,
-  witness: mpf.Proof,
-) -> Bool {
-  run_step_03_with(
-    missing_input,
-    blocks_prev_utxos_root,
-    PublishedChunkNonMembership(
-      PublishedProofCarriage { ordered_chunk_reference_input_indices: indices },
-    ),
-    [
-      fixture.chunked_verify_withdraw_redeemer_entry(
-        absence_claim(
-          blocks_prev_utxos_root,
-          encode_midgard_tx_input(missing_input),
-          claim_indices,
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(name, expected),
+      redeemers: [
+        fixture.phas_withdraw_redeemer_entry(
+          step.phas_root,
+          cbor.serialise(step.key),
+          cbor.serialise(step.value),
         ),
-      ),
-    ],
-    fixture.proof_chunk_reference_inputs(witness),
+      ],
+    },
   )
 }
 
-fn run_step_03_published(
-  missing_input: MidgardTxInput,
-  blocks_prev_utxos_root: ByteArray,
-  indices: List<Int>,
-  witness: mpf.Proof,
-) -> Bool {
-  run_step_03_published_with_claim(
-    missing_input,
-    blocks_prev_utxos_root,
-    indices,
-    indices,
-    witness,
+test event_pre_state_uses_committed_event_root_instead_of_block_initial_root() {
+  let claim = claim_v1()
+  claim.header.prev_utxos_root != tf.h32_d && run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    False,
   )
 }
 
-/// Positive selector, genesis initial ledger: a first block over a genesis
-/// confirmed state carries `env.empty_merkle_tree_root` as `prev_utxos_root`
-/// (`state-queue.ak` forces it), and the empty proof is the only — and a
-/// genuine — absence witness an empty ledger can produce. The claim is bound
-/// to the canonical `MidgardTxInput` CBOR key of the forwarded input, so the
-/// transaction id reaches step-04.
-test no_input_step_03_excludes_the_input_from_a_genesis_initial_ledger() {
-  let missing_input = challenged_input()
-  run_step_03(
-    missing_input,
-    env.empty_merkle_tree_root,
-    env.empty_merkle_tree_root,
-    encode_midgard_tx_input(missing_input),
-    [],
+test event_pre_state_rejects_forwarding_the_block_initial_root() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    claim.header.prev_utxos_root,
+    False,
   )
 }
 
-/// Positive selector, populated initial ledger: the same delegated claim
-/// against a non-empty root, carrying the real single-leaf absence witness
-/// that reconstructs it — the arm every block after the first takes.
-test no_input_step_03_excludes_the_input_from_a_populated_initial_ledger() {
-  let missing_input = challenged_input()
-  let (root, witness) = fixture.absence_witness()
-  and {
-    // The witness really is a divergence at the first nibble of the
-    // forwarded input's canonical key.
-    nibble(blake2b_256(encode_midgard_tx_input(missing_input)), 0) != nibble(
-      fixture.absence_witness_leaf_path(),
-      0,
-    ),
-    run_step_03(
-      missing_input,
-      root,
-      root,
-      encode_midgard_tx_input(missing_input),
-      witness,
-    ),
-  }
-}
-
-/// Valid-block negative selector: in a valid block the spent input really is in
-/// the initial ledger, so the only non-membership claim a prover can obtain is
-/// for some other key. Binding the claim to a key that is not the forwarded
-/// input's canonical CBOR is rejected here.
-test no_input_step_03_rejects_a_non_membership_claim_for_another_key() fail {
-  let missing_input = challenged_input()
-  let other_key = encode_midgard_tx_input(
-    MidgardTxInput { ..missing_input, output_index: 4 },
-  )
-  run_step_03(
-    missing_input,
-    env.empty_merkle_tree_root,
-    env.empty_merkle_tree_root,
-    other_key,
-    [],
+test event_pre_state_rejects_substituted_event_key() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    transition_trace.RootMembershipProof {
+      ..claim.event_to_step_membership,
+      key: ledger_state.L2TransactionEventKey { tx_id: tf.h32_c },
+    },
+    claim.transition_step_membership,
+    tf.h32_d,
+    False,
   )
 }
 
-/// Positive selector, published-chunk carriage: the very same absence claim,
-/// with the witness living in a referenced publication UTxO and only its index
-/// reaching the step redeemer. Nothing else about the step changes.
-test no_input_step_03_excludes_the_input_through_published_chunks() {
-  let missing_input = challenged_input()
-  let (root, witness) = fixture.absence_witness()
-  and {
-    // The witness really is a divergence at the first nibble of the
-    // forwarded input's canonical key.
-    nibble(blake2b_256(encode_midgard_tx_input(missing_input)), 0) != nibble(
-      fixture.absence_witness_leaf_path(),
-      0,
-    ),
-    run_step_03_published(missing_input, root, [0], witness),
-  }
-}
-
-/// The step is bound to the exact claim its redeemer named: a verifier invoked
-/// on a different chunk order proves something this step did not ask for.
-test no_input_step_03_rejects_a_claim_the_redeemer_did_not_name() fail {
-  let (root, witness) = fixture.absence_witness()
-  run_step_03_published_with_claim(challenged_input(), root, [0], [], witness)
-}
-
-/// A published-chunk step that never invokes the merkelized verifier proves
-/// nothing at all.
-test no_input_step_03_rejects_a_missing_verifier_invocation() fail {
-  let (root, witness) = fixture.absence_witness()
-  run_step_03_with(
-    challenged_input(),
-    root,
-    PublishedChunkNonMembership(
-      PublishedProofCarriage { ordered_chunk_reference_input_indices: [0] },
-    ),
-    [],
-    fixture.proof_chunk_reference_inputs(witness),
+test event_pre_state_rejects_substituted_step_root() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    transition_trace.RootMembershipProof {
+      ..claim.transition_step_membership,
+      root: tf.h32_c,
+    },
+    tf.h32_d,
+    False,
   )
+}
+
+test event_pre_state_rejects_substituted_step_domain() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    transition_trace.RootMembershipProof {
+      ..claim.transition_step_membership,
+      domain: transition_trace.EventToStepRootDomain,
+    },
+    tf.h32_d,
+    False,
+  )
+}
+
+test event_pre_state_rejects_substituted_step_count() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    transition_trace.RootMembershipProof {
+      ..claim.transition_step_membership,
+      count: 2,
+    },
+    tf.h32_d,
+    False,
+  )
+}
+
+test event_pre_state_rejects_substituted_event_index() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    transition_trace.RootMembershipProof {
+      ..claim.event_to_step_membership,
+      value: ledger_state.EventToStepValue {
+        ..claim.event_to_step_membership.value,
+        step_index: 1,
+      },
+    },
+    claim.transition_step_membership,
+    tf.h32_d,
+    False,
+  )
+}
+
+test event_pre_state_rejects_substituted_step_pre_root() fail {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    transition_trace.RootMembershipProof {
+      ..claim.transition_step_membership,
+      value: ledger_state.TransitionStep {
+        ..claim.transition_step_membership.value,
+        pre_utxos_root: tf.h32_c,
+      },
+    },
+    tf.h32_d,
+    False,
+  )
+}
+
+test n7_pre_state_carries_derived_network_context() {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    False,
+  )
+}
+
+test n7_pre_state_rejects_only_the_tampered_network_context() {
+  let claim = claim_v1()
+  !run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    True,
+  )
+}
+
+// The header expects network 0. Each row states the context step_03 must
+// write rather than deriving it, so a step that writes any other context fails.
+fn run_network_context_v1(network_id: Int, mismatch: Bool) -> Bool {
+  let claim = claim_v1()
+  expect claim.header.expected_network_id == 0
+  run_pre_state_in_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    Some(network_id),
+    fn(_) { order.NetworkOrderContextV1 { body_network_mismatch: mismatch } },
+  )
+}
+
+test n7_pre_state_writes_mismatch_for_a_foreign_body_network() {
+  run_network_context_v1(1, True)
+}
+
+test n7_pre_state_writes_no_mismatch_for_the_expected_body_network() {
+  run_network_context_v1(0, False)
+}
+
+test n7_pre_state_writes_no_mismatch_for_an_untagged_body() {
+  run_network_context_v1(255, False)
+}
+
+test n7_pre_state_refuses_a_cleared_mismatch_for_a_foreign_body_network() {
+  !run_network_context_v1(1, False)
 }

@@ -324,6 +324,14 @@ pub type CoreStepWitnessV1 {
     arguments: List<cek_builtin_v1.RuntimeValueWitnessV1>,
   }
   ComputeContextConstant { value_root: ByteArray }
+  ReturnCaseConstant {
+    scrutinee: cek_builtin_v1.ValueWitnessV1,
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+    branches_count: Int,
+    branches_root: ByteArray,
+    captured_environment: ByteArray,
+    tail: ByteArray,
+  }
 }
 
 pub type CoreStepEvidenceV1 {
@@ -499,9 +507,10 @@ fn value_is_delay_or_forceable_builtin(value: MachineValueWitnessV1) -> Bool {
   }
 }
 
-fn value_is_constr(value: MachineValueWitnessV1) -> Bool {
+fn value_is_case_scrutinee(value: MachineValueWitnessV1) -> Bool {
   when value is {
     ConstrValue { .. } -> True
+    ConstantValue { .. } -> True
     _ -> False
   }
 }
@@ -1523,7 +1532,7 @@ fn verify_return_case_invalid(
   tail: ByteArray,
 ) -> Bool {
   and {
-    !value_is_constr(value),
+    !value_is_case_scrutinee(value),
     branches_count >= 0,
     linked_sequence_root_is_well_formed(branches_root, branches_count),
     pre.focus_root == value_witness_hash(value),
@@ -1534,6 +1543,58 @@ fn verify_return_case_invalid(
       tail,
     ),
     post == error_successor(pre, error_invalid_case_scrutinee),
+  }
+}
+
+// The case frame is bound by `pre.continuation_root`, and `ComputeCase`, its
+// only producer, already checked its branch count and branch root, so they are
+// not checked again here. `verify_return_step` does not dispatch this step:
+// `case` on a constant has its own core group and arm validator, so the
+// machine arm does not carry its code.
+pub fn verify_return_case_constant(
+  pre: MachineStateV1,
+  post: MachineStateV1,
+  scrutinee: cek_builtin_v1.ValueWitnessV1,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+  branches_count: Int,
+  branches_root: ByteArray,
+  captured_environment: ByteArray,
+  tail: ByteArray,
+) -> Bool {
+  let Pair(root, selection) = cek_builtin_v1.case_constant_selection_v1(
+    scrutinee,
+    material,
+    branches_count,
+  )
+  and {
+    pre.focus_root == root,
+    pre.continuation_root == cek_proof_v1.hash_case_continuation_v1(
+      branches_count,
+      branches_root,
+      captured_environment,
+      tail,
+    ),
+    post == when selection is {
+      cek_builtin_v1.CaseConstantBranch { tag, values_count, values_root } ->
+        exact_state(
+          pre,
+          mode_case_select,
+          branches_root,
+          values_root,
+          cek_proof_v1.hash_case_select_continuation_v1(
+            captured_environment,
+            tail,
+            values_count,
+          ),
+          tag,
+          0,
+          0,
+        )
+      cek_builtin_v1.CaseConstantMissing ->
+        error_successor(pre, error_case_branch_missing)
+      cek_builtin_v1.CaseConstantUnsupported ->
+        error_successor(pre, error_invalid_case_scrutinee)
+    },
   }
 }
 
@@ -1870,12 +1931,7 @@ fn verify_builtin_direct_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_direct_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-    ),
+    cek_builtin_v1.verify_direct_builtin_v1(tag, arguments, result),
     post == exact_state(
       pre,
       mode_return,
@@ -2053,13 +2109,7 @@ fn verify_builtin_semantic_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_v1(tag, arguments, result, material),
     post == exact_state(
       pre,
       mode_return,
@@ -2079,20 +2129,12 @@ fn verify_builtin_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3878-3886).
   and {
-    pre.focus_root == builtin_root,
     cek_builtin_v1.verify_direct_builtin_failure_v1(
       tag,
-      builtin_root,
+      pre.focus_root,
       arguments,
     ),
     builtin_failure_post_is_exact(pre, post, tag, arguments),
@@ -2142,12 +2184,7 @@ fn verify_builtin_semantic_failure_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_failure_v1(
-      tag,
-      builtin_root,
-      arguments,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_failure_v1(tag, arguments, material),
     post == exact_state(
       pre,
       mode_halt_error,
@@ -2167,18 +2204,14 @@ fn verify_builtin_type_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.RuntimeValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.runtime_arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3326-3336).
   and {
-    pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_builtin_type_failure_v1(tag, builtin_root, arguments),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      tag,
+      pre.focus_root,
+      arguments,
+    ),
     post == exact_state(
       pre,
       mode_halt_error,
@@ -2466,7 +2499,27 @@ pub fn verify_core_step_v1(
     } else if pre.mode == mode_lookup {
       verify_lookup_step(pre, post, witness)
     } else if pre.mode == mode_return {
-      verify_return_step(pre, post, witness)
+      when witness is {
+        ReturnCaseConstant {
+          scrutinee,
+          material,
+          branches_count,
+          branches_root,
+          captured_environment,
+          tail,
+        } ->
+          verify_return_case_constant(
+            pre,
+            post,
+            scrutinee,
+            material,
+            branches_count,
+            branches_root,
+            captured_environment,
+            tail,
+          )
+        _ -> verify_return_step(pre, post, witness)
+      }
     } else if pre.mode == mode_case_select {
       verify_case_select_step(pre, post, witness)
     } else if pre.mode == mode_case_apply {

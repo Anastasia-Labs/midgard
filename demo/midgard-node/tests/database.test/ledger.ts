@@ -40,7 +40,6 @@ import {
   databaseFixtureBytes,
   databaseOutputReferenceId,
   databaseTxHash,
-  emptyProgramMaterialSidecar,
   isolatedDb,
   ledgerEntry1,
   ledgerEntry2,
@@ -737,7 +736,6 @@ export const registerLedgerTests = () => {
             const admitted = yield* TxAdmissionsDB.admit({
               txId,
               txCanonicalCbor,
-              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,

@@ -122,8 +122,15 @@ fn run_finalize(state: State) -> Bool {
 
 fn accepted_subject() -> substrate.VerdictSubjectV1 {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-  substrate.bind_accepted_subject_v1(
-    verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+  substrate.open_subject_v1(
+    fixture.ct_token_asset_name(block),
+    substrate.AcceptedSource {
+      header: block.header,
+      tx_inclusion: verify_native_tx_compact_cbor_v1(
+        block.tx_id,
+        block.compact_cbor,
+      ),
+    },
   )
 }
 

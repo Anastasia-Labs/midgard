@@ -1,5 +1,14 @@
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import {
+  computeMidgardNativeTxId,
+  encodeMidgardSpendInputItem,
+} from "@al-ft/midgard-core";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeAddressWitnessPreimage,
+  forcedVerdictSubject,
+  missingSignatureVkeyHash,
+} from "@al-ft/midgard-sdk";
+import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
@@ -85,6 +94,57 @@ export const nodeTransaction = (output: Buffer) =>
     outputCbors: [output],
   });
 
+/**
+ * `output` spent from one held ledger input that carries the output's value
+ * and is owned by the key that signs the transaction, so the node resolves
+ * the input and the output's own encoding is the only fault it can find.
+ */
+export const nodeTransactionSpendingHeldInput = (output: Buffer) => {
+  const ownerKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 41));
+  try {
+    const ownerVkey = Buffer.from(ownerKey.to_public().to_raw_bytes()).toString(
+      "hex",
+    );
+    const heldInput = encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0x57),
+      outputIndex: 0,
+    });
+    // `{0: enterprise key address of the owner, 1: [5_000_000, {}]}`, the
+    // value `outputWithInlineDatum` pays out.
+    const heldOutput = Buffer.concat([
+      hex("a200581d60"),
+      hex(missingSignatureVkeyHash(ownerVkey)),
+      hex("01821a004c4b40a0"),
+    ]);
+    const build = (addrTxWitsPreimageCbor?: Buffer) =>
+      makeNativeTx({
+        spendInputCbors: [heldInput],
+        fee: 0n,
+        outputCbors: [output],
+        addrTxWitsPreimageCbor,
+      });
+    const transactionId = computeMidgardNativeTxId(
+      materializeMidgardForcedTxFromCanonical(build()),
+    );
+    const transaction = build(
+      encodeAddressWitnessPreimage([
+        {
+          verification_key: ownerVkey,
+          signature: Buffer.from(
+            ownerKey.sign(transactionId).to_raw_bytes(),
+          ).toString("hex"),
+        },
+      ]),
+    );
+    const ledger: readonly (readonly [Buffer, Buffer])[] = [
+      [heldInput, heldOutput],
+    ];
+    return { transaction, ledger };
+  } finally {
+    ownerKey.free();
+  }
+};
+
 /** Every planned datum step for `datum`, run whole off chain. */
 export const makeHarness = async () =>
   await makeFaultProofEmulatorHarness({
@@ -148,7 +208,10 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
       ...stepCommon(registered),
       threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
       finding: evidence,
-      forcedSource: { header: forced.header, membership, direction: 1n },
+      forcedSource: {
+        header: forced.header,
+        membership,
+      },
       referenceScriptUtxo: registered.references[0]!,
     });
     const authenticated = await submitTransactionOutputNonCanonicalStep02({

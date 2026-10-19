@@ -400,7 +400,6 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     expect(payload.block_body.validation_trace_witnesses).toEqual([]);
     expect(payload.block_body.transactions).toHaveLength(1);
     expect(payload.block_body.forced_transactions).toEqual([]);
-    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
     const installed = await classify({
       fixture,
       block: fixture.block,

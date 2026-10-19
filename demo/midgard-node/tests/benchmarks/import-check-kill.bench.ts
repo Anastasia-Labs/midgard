@@ -21,11 +21,8 @@
  *     tests/benchmarks/import-check-kill.bench.ts --disableConsoleIntercept
  * `BENCH_IMPORT_CHECK_MINIMAL_RUNS` sets the minimal-run sample (20,000).
  */
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import {
-  buildMidgardCanonicalCekProgram,
-  type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
+import { encodeCbor } from "@al-ft/midgard-core";
+import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
 import {
   Application,
   Builtin,
@@ -77,15 +74,12 @@ const withProgram = (
   body: UPLCTerm,
   cpu: bigint,
 ): MidgardCekVerdictRequest => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
-  );
   return {
     ...base,
-    scriptBytes: program.envelopeCbor,
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
+    scriptBytes: encodeCbor(
+      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+    ),
+    scriptLanguage: "PlutusV3",
     executionBudget: { cpu, memory: 10n ** 12n },
   };
 };

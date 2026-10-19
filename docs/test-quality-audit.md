@@ -275,9 +275,7 @@ matching as exact script identification. See
 ## 13. Tests inverted into pins of their own failure
 
 A declared remaining-gap set can prevent regression. If changing its structure,
-preserve rejection of newly missing coverage. The old four-entry
-`typed-reason-disposition.test.ts` residue claim is closed: current source
-expects no missing noninteractive installations.
+preserve rejection of newly missing coverage.
 
 `e2e-state-correction-acceptance.test.ts` explicitly supplies a missing
 availability capability, and separately supplies an aggregate without reconciled

@@ -84,9 +84,10 @@ inputs require every referenced UTxO's canonical output bytes, retained through
 signing and assembly; deferred provider resolution cannot establish this boundary.
 
 Reference-script metadata can verify a declared language/hash branch but cannot
-supply executable bytes. Non-native reference execution requires the canonical
-script envelope and exact CEK program material. Local preflight reports shared
-validation failures, while final node acceptance depends on the node's state.
+supply executable bytes. Non-native reference execution reads the exact stored
+CBOR-wrapped Flat script from the resolved output. Local preflight reports
+shared validation failures, while final node acceptance depends on the node's
+state.
 
 See the [native transaction model](/docs/sdk/lucid-midgard/native-transaction-model)
 and [scripts and redeemers](/docs/sdk/lucid-midgard/scripts-redeemers) for the

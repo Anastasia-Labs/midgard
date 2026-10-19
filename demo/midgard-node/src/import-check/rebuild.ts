@@ -62,7 +62,6 @@ export const rebuildAndEvaluate = (
     const replay = yield* replayValidationVerdictEvent({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       canonicalTransactionCbor: material.transactionCbor,
-      programMaterialSidecarCbor: material.programMaterialSidecarCbor,
       ledgerWitnessEntries: material.outputs,
       ...material.context,
       sourceKind: "normal",

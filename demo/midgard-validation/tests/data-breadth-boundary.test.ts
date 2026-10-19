@@ -4,7 +4,6 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/cek-program.js";
 import "../src/midgard-redeemers.js";
 import "../src/validation-machine/index.js";
 import "./helpers/ordered-collection-boundary.js";
@@ -17,7 +16,6 @@ import {
   buildMidgardRedeemerItemProofTrace,
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardCekProgramMaterialSidecar,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
@@ -36,7 +34,6 @@ import {
   MidgardRedeemerItemProofModes,
   nextMidgardRedeemerItemProofSpan,
   validateMidgardConsensusTx,
-  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
@@ -50,7 +47,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
 import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
 import {
@@ -693,37 +689,15 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         .witness_set()
         .plutus_v3_scripts();
       expect(acceptedScripts?.len()).toBe(1);
-      const sourceRawFlatProgramBytes = Buffer.from(
+      const sourceStoredScriptBytes = Buffer.from(
         acceptedScripts!.get(0).to_raw_bytes(),
       );
-      const artifact = buildMidgardCanonicalScriptArtifact({
-        language: "PlutusV3",
-        sourceRawFlatProgramBytes,
-      });
-      const canonicalMaterialEntries = decodeMidgardCekProgramMaterialSidecar(
-        artifact.canonicalMaterialSidecarCbor,
-      );
-      expect(canonicalMaterialEntries).toEqual(
-        artifact.canonicalMaterialEntries,
-      );
-      expect(
-        verifyMidgardCekProgramMaterialBundle(
-          [artifact.canonicalProgram.envelope],
-          canonicalMaterialEntries,
-        ),
-      ).toHaveLength(1);
-      expect(artifact.canonicalMidgardCredentialScriptHash).toBe(
-        hashMidgardVersionedScript(artifact.canonicalMidgardCredentialScript),
-      );
-      expect(artifact.sourceRawScriptAuditHash).toBe(
-        hashMidgardVersionedScript({
-          language: "PlutusV3",
-          scriptBytes: sourceRawFlatProgramBytes,
-        }),
-      );
-      expect(artifact.sourceRawScriptAuditHash).not.toBe(
-        artifact.canonicalMidgardCredentialScriptHash,
-      );
+      const storedScript = {
+        language: "PlutusV3" as const,
+        scriptBytes: sourceStoredScriptBytes,
+      };
+      const sourceScriptHash = hashMidgardVersionedScript(storedScript);
+      expect(sourceScriptHash).toBe(acceptedScripts!.get(0).hash().to_hex());
 
       let collateralRejection:
         | {
@@ -833,11 +807,14 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(sourceScripts).toEqual([
         {
           language: "PlutusV3",
-          scriptBytes: sourceRawFlatProgramBytes,
+          scriptBytes: sourceStoredScriptBytes,
         },
       ]);
       expect(hashMidgardVersionedScript(sourceScripts[0]!)).toBe(
-        artifact.sourceRawScriptAuditHash,
+        hashMidgardVersionedScript({
+          language: "PlutusV3",
+          scriptBytes: sourceStoredScriptBytes,
+        }),
       );
       expect(schemaSourceNative.witnessSet.addrTxWitsPreimageCbor).not.toEqual(
         Buffer.from([0x80]),
@@ -850,9 +827,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           ["PlutusV3"],
         );
       expect(projectedScriptIntegrityHash).toHaveLength(32);
-      expect(artifact.canonicalMidgardCredentialScript.language).toBe(
-        "PlutusV3",
-      );
+      expect(storedScript.language).toBe("PlutusV3");
       expect(projectedScriptIntegrityHash).toEqual(
         computeScriptIntegrityHashForLanguages(
           midgardFieldCommitment(
@@ -873,7 +848,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           ...schemaSourceNative.witnessSet,
           addrTxWitsPreimageCbor: Buffer.from([0x80]),
           scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
-            artifact.canonicalMidgardCredentialScript,
+            storedScript,
           ]),
         },
       });
@@ -888,11 +863,9 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       const projectedScripts = decodeMidgardVersionedScriptListPreimage(
         native.witnessSet.scriptTxWitsPreimageCbor,
       );
-      expect(projectedScripts).toEqual([
-        artifact.canonicalMidgardCredentialScript,
-      ]);
+      expect(projectedScripts).toEqual([storedScript]);
       expect(hashMidgardVersionedScript(projectedScripts[0]!)).toBe(
-        artifact.canonicalMidgardCredentialScriptHash,
+        sourceScriptHash,
       );
       expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
       const redeemers = decodeMidgardRedeemers(
@@ -979,8 +952,10 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       await exerciseMidgardRetainedDaCanonicalBoundary({
         canonicalTransactionCbor: canonical,
         corpusLabel: `maximum-${kind}-redeemer-breadth`,
-        canonicalMaterialSidecarCbor: artifact.canonicalMaterialSidecarCbor,
-        sourceRawScriptAuditHash: artifact.sourceRawScriptAuditHash,
+        sourceScriptHash: hashMidgardVersionedScript({
+          language: "PlutusV3",
+          scriptBytes: sourceStoredScriptBytes,
+        }),
       });
 
       vectors[`redeemer_${kind}`] = {
@@ -999,12 +974,11 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         midgardSchemaProjection: {
           sourceShapeBytes: schemaProjectionSource.cborHex.length / 2,
           nativeCanonicalBytes: canonical.length,
-          sourceRawScriptAuditHash: artifact.sourceRawScriptAuditHash,
-          canonicalMidgardCredentialScriptHash:
-            artifact.canonicalMidgardCredentialScriptHash,
-          canonicalMaterialEntryCount: canonicalMaterialEntries.length,
-          canonicalMaterialSidecarBytes:
-            artifact.canonicalMaterialSidecarCbor.length,
+          sourceScriptHash: hashMidgardVersionedScript({
+            language: "PlutusV3",
+            scriptBytes: sourceStoredScriptBytes,
+          }),
+          canonicalMidgardCredentialScriptHash: sourceScriptHash,
           redeemerFieldBytes:
             native.witnessSet.redeemerTxWitsPreimageCbor.length,
           redeemerItemBytes: item.bytes.length,

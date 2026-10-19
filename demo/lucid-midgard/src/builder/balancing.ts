@@ -30,7 +30,7 @@ import {
 import { cloneOutput, cloneUtxo } from "./state.js";
 import {
   buildCanonicalUnsignedTx,
-  type ScriptMaterialization,
+  type ScriptWitnesses,
 } from "./unsigned-tx.js";
 import { estimatedSignedTxByteLength } from "./witness-bundle.js";
 
@@ -297,16 +297,14 @@ export const buildBalancedCompletion = ({
   initialFee,
   maxFeeIterations,
   nativeTxVersion,
-  deriveScriptMaterialization,
+  deriveScriptWitnesses,
 }: {
   readonly state: BuilderState;
   readonly resolved: BalancedCompletionInputs;
   readonly initialFee: bigint;
   readonly maxFeeIterations: number;
   readonly nativeTxVersion: bigint;
-  readonly deriveScriptMaterialization: (
-    state: BuilderState,
-  ) => ScriptMaterialization;
+  readonly deriveScriptWitnesses: (state: BuilderState) => ScriptWitnesses;
 }): {
   readonly tx: MidgardNativeTxFull;
   readonly metadata: Omit<CompleteTxMetadata, "localValidation">;
@@ -357,7 +355,7 @@ export const buildBalancedCompletion = ({
       buildCanonicalUnsignedTx(
         candidateState,
         fee,
-        deriveScriptMaterialization(candidateState),
+        deriveScriptWitnesses(candidateState),
         nativeTxVersion,
       ),
     );

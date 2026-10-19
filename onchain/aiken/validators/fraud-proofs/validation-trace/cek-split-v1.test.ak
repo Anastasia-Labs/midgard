@@ -47,6 +47,7 @@ use fraud_proofs/validation_trace/cek_context_settle as context_settle
 use fraud_proofs/validation_trace/cek_context_signer as context_signer
 use fraud_proofs/validation_trace/cek_context_spend as context_spend
 use fraud_proofs/validation_trace/cek_context_step_semantic_v1 as context_bind
+use fraud_proofs/validation_trace/cek_core_arm_case_constant as core_case_constant
 use fraud_proofs/validation_trace/cek_core_arm_compute as core_compute
 use fraud_proofs/validation_trace/cek_core_settle as core_settle
 use fraud_proofs/validation_trace/cek_core_step_semantic_v1 as core_validator
@@ -55,6 +56,8 @@ use fraud_proofs/validation_trace/cek_execution_selection_yields as selection_yi
 use fraud_proofs/validation_trace/cek_finish_semantic_v1 as finish_validator
 use fraud_proofs/validation_trace/cek_v1 as prepare_validator
 use midgard/bounded_item_v1
+use midgard/cek_builtin_v1
+use midgard/cek_constant_v1
 use midgard/cek_context_chain as context_chain
 use midgard/cek_context_item as context_item
 use midgard/cek_context_observer as context_observer
@@ -760,18 +763,6 @@ fn context_step_fixture() -> CekStepFixtureV1 {
 /// Kind 3: one active core step, a `ComputeApplication` over two leaf terms
 /// (the lib module's `cek_active_core_step_fixture`).
 fn core_step_fixture() -> CekStepFixtureV1 {
-  let tx = empty_v1_transaction()
-  let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
-  let execution_frontier = validation_merkle_v1.build_frontier([h_b])
-  let control = NativeScriptsControlV1 {
-    ..empty_native_control(tx),
-    purpose_count: 1,
-    purpose_peaks: purpose_frontier.peaks,
-    execution_count: 1,
-    execution_peaks: execution_frontier.peaks,
-    execution_cursor: 1,
-    language_bitmap: 1,
-  }
   let application_root = cek_proof_v1.hash_application_term_v1(h_a, h_b)
   let machine_pre = cek_machine_v1.MachineStateV1 {
     mode: cek_machine_v1.mode_compute,
@@ -794,6 +785,31 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     continuation_root,
     cpu: 16010,
     memory: 111,
+  }
+  core_step_fixture_of(
+    machine_pre,
+    machine_post,
+    cek_machine_v1.ComputeApplication { function: h_a, argument: h_b },
+  )
+}
+
+/// Kind 3 over one active core step from `machine_pre` to `machine_post`.
+fn core_step_fixture_of(
+  machine_pre: cek_machine_v1.MachineStateV1,
+  machine_post: cek_machine_v1.MachineStateV1,
+  witness: cek_machine_v1.CoreStepWitnessV1,
+) -> CekStepFixtureV1 {
+  let tx = empty_v1_transaction()
+  let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
+  let execution_frontier = validation_merkle_v1.build_frontier([h_b])
+  let control = NativeScriptsControlV1 {
+    ..empty_native_control(tx),
+    purpose_count: 1,
+    purpose_peaks: purpose_frontier.peaks,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+    execution_cursor: 1,
+    language_bitmap: 1,
   }
   let active_pre_hash = cek_proof_v1.hash_machine_state_v1(
     machine_pre.mode,
@@ -825,8 +841,8 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     1000000,
     h_28_a,
     40,
-    10,
-    11,
+    machine_pre.cpu,
+    machine_pre.memory,
   )
   let Pair(post, _) = cek_state(
     tx,
@@ -838,8 +854,8 @@ fn core_step_fixture() -> CekStepFixtureV1 {
     1000000,
     h_28_a,
     41,
-    16010,
-    111,
+    machine_post.cpu,
+    machine_post.memory,
   )
   step_fixture(
     3,
@@ -850,13 +866,72 @@ fn core_step_fixture() -> CekStepFixtureV1 {
       step: cek_machine_v1.CoreStepEvidenceV1 {
         pre: machine_pre,
         post: machine_post,
-        witness: cek_machine_v1.ComputeApplication {
-          function: h_a,
-          argument: h_b,
-        },
+        witness,
       },
     },
     None,
+  )
+}
+
+/// Kind 3 over a `case` on the integer constant 1 with two branches, which
+/// selects the second (`ReturnCaseConstant`, core group 11).
+fn case_constant_core_step_fixture() -> CekStepFixtureV1 {
+  let constant = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor: #"9f00ff",
+    payload_cbor: cbor.serialise(builtin.i_data(1)),
+  }
+  let branches = cek_proof_v1.hash_sequence_node_v1(
+    h_a,
+    cek_proof_v1.hash_sequence_node_v1(
+      h_b,
+      cek_proof_v1.empty_sequence_root_v1,
+      1,
+    ),
+    2,
+  )
+  let machine_pre = cek_machine_v1.MachineStateV1 {
+    mode: cek_machine_v1.mode_return,
+    execution_index: 0,
+    focus_root: cek_constant_v1.constant_root_v1(constant),
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.hash_case_continuation_v1(
+      2,
+      branches,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+    ),
+    auxiliary: 0,
+    cpu: 10,
+    memory: 11,
+  }
+  let machine_post = cek_machine_v1.MachineStateV1 {
+    ..machine_pre,
+    mode: cek_machine_v1.mode_case_select,
+    focus_root: branches,
+    environment_root: cek_proof_v1.empty_sequence_root_v1,
+    continuation_root: cek_proof_v1.hash_case_select_continuation_v1(
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+    ),
+    auxiliary: 1,
+  }
+  core_step_fixture_of(
+    machine_pre,
+    machine_post,
+    cek_machine_v1.ReturnCaseConstant {
+      scrutinee: cek_builtin_v1.ConstantValue(constant),
+      material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+        data_nodes: [],
+        list_nodes: [],
+        pair_nodes: [],
+        scalar_preimages: [],
+      },
+      branches_count: 2,
+      branches_root: branches,
+      captured_environment: cek_proof_v1.empty_environment_root_v1,
+      tail: cek_proof_v1.empty_continuation_root_v1,
+    },
   )
 }
 
@@ -1644,6 +1719,106 @@ test context_step_validator_wins_the_mint_context_initialisation() {
 
 test core_step_validator_wins_the_application_step() {
   run_kind(3, core_step_fixture())
+}
+
+/// Runs the case-constant core step of fixture `f` bound to `group`: the
+/// semantic validator, the case-constant arm and the settle validator. Only
+/// slot `group` of the arm table is the next-step hash, so a step the
+/// semantic validator routes to another group fails on the output script.
+fn run_case_constant_core_step(group: Int, f: CekStepFixtureV1) -> Bool {
+  expect CekCoreStepWitness { step } = f.auxiliary
+  let base = prepared(f)
+  let step_data: Data = step
+  let witness_data: Data = step.witness
+  let prepared_data: Data = base
+  let bound = core_chain.CoreBound {
+    prepared: prepared_data,
+    pre: step.pre,
+    post: step.post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = bound
+  let settled = core_chain.CoreBound { ..bound, progress: 1 }
+  let arm_script_hashes = list.map(
+    list.range(0, 11),
+    fn(slot) {
+      if slot == group {
+        fixture.next_step_script_hash
+      } else {
+        fixture.step_script_hash
+      }
+    },
+  )
+  and {
+    core_validator.main.spend(
+      arm_script_hashes,
+      fixture.computation_thread_policy_id,
+      Some(semantic_datum(base)),
+      ct.Continue(
+        core_validator.VerifyCoreStep {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          step: step_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, next),
+    ),
+    core_case_constant.main.spend(
+      fixture.next_step_script_hash,
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(bound),
+        },
+      ),
+      ct.Continue(
+        core_chain.VerifyArm {
+          input_index: 0,
+          output_index: 0,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, settled),
+    ),
+    core_settle.main.spend(
+      fixture.next_step_script_hash,
+      list.repeat(1, 12),
+      fixture.computation_thread_policy_id,
+      Some(
+        ct.StepDatum {
+          fraud_prover: fixture.fraud_prover_key_hash,
+          data: Some(settled),
+        },
+      ),
+      ct.Continue(
+        core_settle.Settle {
+          input_index: 0,
+          output_index: 0,
+          transition: f.transition,
+          witness: witness_data,
+        },
+      ),
+      fixture.own_out_ref(),
+      prover_continue_tx(ct_asset, winning_output()),
+    ),
+  }
+}
+
+// A `case` on a constant is routed to group 11, the case-constant arm.
+test core_step_validator_wins_a_case_constant_step_in_group_11() {
+  run_case_constant_core_step(11, case_constant_core_step_fixture())
+}
+
+test core_step_validator_refuses_a_case_constant_step_in_group_1() fail {
+  run_case_constant_core_step(1, case_constant_core_step_fixture())
 }
 
 /// A Plutus selection runs only the program its decode record states: the

@@ -1,10 +1,6 @@
 import "./native-transaction-integration.make-mint-preimage.js";
 
 import {
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeHash32,
   computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
@@ -34,7 +30,6 @@ import { expect } from "vitest";
 
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 import {
-  canonicalizeTestProofScript,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   encodeByteList,
@@ -42,7 +37,6 @@ import {
   type ScriptWitnessItem,
   scriptWitnessItemToVersioned,
   TEST_ADDRESS,
-  testProgramMaterial,
 } from "./native-transaction-integration.script-witness-item-to-versioned.js";
 
 export const buildNativeTx = (opts?: {
@@ -112,9 +106,7 @@ export const buildNativeTx = (opts?: {
     opts?.scriptWitnessItems === undefined
       ? EMPTY_CBOR_LIST
       : encodeMidgardVersionedScriptListPreimage(
-          opts.scriptWitnessItems
-            .map(scriptWitnessItemToVersioned)
-            .map(canonicalizeTestProofScript),
+          opts.scriptWitnessItems.map(scriptWitnessItemToVersioned),
         );
   const redeemerTxWitsPreimageCbor =
     opts?.redeemerTxWitsPreimageCbor ?? EMPTY_CBOR_LIST;
@@ -255,16 +247,9 @@ export const phaseAConfig = {
   strictnessProfile: "phase1_midgard",
 } as const;
 
-export const mkQueued = (
-  txId: Buffer,
-  txCbor: Buffer,
-  programMaterial?: readonly MidgardCekProgramMaterialEntry[],
-): QueuedTx => ({
+export const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-    ...(programMaterial ?? testProgramMaterial.values()),
-  ]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -276,13 +261,9 @@ export const runBothPhases = async (
   phaseBOptions?: {
     readonly enforceScriptBudget?: boolean;
   },
-  programMaterial?: readonly MidgardCekProgramMaterialEntry[],
 ) => {
   const phaseA = await Effect.runPromise(
-    runPhaseAValidation(
-      [mkQueued(txId, txCbor, programMaterial)],
-      phaseAConfig,
-    ),
+    runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
   );
   const { accepted, rejected } = await Effect.runPromise(
     runPhaseBValidationWithPatch(phaseA.accepted, preState, {

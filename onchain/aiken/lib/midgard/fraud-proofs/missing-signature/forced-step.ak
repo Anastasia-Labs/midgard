@@ -10,7 +10,6 @@ pub type Args {
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
 }
 
 pub type Datum =

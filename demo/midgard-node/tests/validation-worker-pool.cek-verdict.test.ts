@@ -1,6 +1,5 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
+import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import {
-  buildMidgardCanonicalCekProgram,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
 } from "@al-ft/midgard-validation";
@@ -35,14 +34,12 @@ const request = (
   body: UPLCTerm,
   executionBudget?: { readonly cpu: bigint; readonly memory: bigint },
 ): MidgardCekVerdictRequest => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body))),
+  const scriptBytes = encodeCborBytes(
+    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], body)),
   );
   return {
-    scriptBytes: program.envelopeCbor,
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
+    scriptBytes,
+    scriptLanguage: "PlutusV3",
     contextCbor: encodeMidgardCekPlutusData(new DataI(42n)),
     executionBudget,
     executionIndex: 0n,
@@ -66,9 +63,9 @@ const unitProgram = () =>
 const REQUESTS = {
   success: request(unitProgram()),
   halt_error: request(new Lambda(new ErrorUPLC())),
-  budget_stop: request(new Lambda(new UPLCVar(0)), { cpu: 1n, memory: 1n }),
+  budget_stop: request(new Lambda(UPLCConst.unit), { cpu: 1n, memory: 1n }),
   malformed: {
-    ...request(new Lambda(new UPLCVar(0))),
+    ...request(new Lambda(UPLCConst.unit)),
     scriptBytes: new Uint8Array([0xde, 0xad]),
   },
 };
@@ -160,7 +157,7 @@ describe("validation pool CEK verdicts", () => {
       expect(kinds).toEqual([
         "accepted",
         "script_invalid",
-        "accepted",
+        "script_invalid",
         "indeterminate",
       ]);
     } finally {

@@ -2,7 +2,6 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekProgramEnvelope,
   encodeMidgardFieldPreimageForField,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
@@ -29,16 +28,8 @@ export const address = midgardAddressFromText(
   "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6",
 );
 
-export const cekProgramEnvelope = (
-  nodeCount = 3n,
-  materialByteLength = 144n,
-): Buffer =>
-  encodeMidgardCekProgramEnvelope({
-    uplcVersion: [1n, 1n, 0n],
-    termRoot: Buffer.alloc(32, 0x33),
-    nodeCount,
-    materialByteLength,
-  });
+export const flatProgramBytes = (): Buffer =>
+  Buffer.from("450101006001", "hex");
 
 export const output = (
   overrides: Partial<MidgardTxOutput> = {},
@@ -47,7 +38,7 @@ export const output = (
   value: { lovelace: 2_000_000n, assets: new Map() },
   script_ref: {
     language: "MidgardV1",
-    scriptBytes: cekProgramEnvelope(),
+    scriptBytes: flatProgramBytes(),
   },
   ...overrides,
 });
@@ -83,7 +74,7 @@ export const canonical = (
   witnessSet: {
     addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
-      { language: "MidgardV1", scriptBytes: cekProgramEnvelope() },
+      { language: "MidgardV1", scriptBytes: flatProgramBytes() },
     ]),
     redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageForField({
       fieldIndex: 8,

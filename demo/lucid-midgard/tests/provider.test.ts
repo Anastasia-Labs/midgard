@@ -31,7 +31,6 @@ import {
   protocolInfo,
   protocolInfoJson,
   submitAdmission,
-  submitProgramMaterial,
   submitTx,
 } from "./provider.protocol-info.js";
 
@@ -519,21 +518,17 @@ describe("MidgardNodeProvider", () => {
           : Buffer.from(await new Response(init?.body).arrayBuffer());
       const submission = decodeMidgardProofSubmission(body);
       expect(submission.transactionCbor.toString("hex")).toBe(submitTx.txHex);
-      expect(submission.programMaterial).toEqual(submitProgramMaterial);
+      expect(Object.keys(submission)).toEqual(["transactionCbor"]);
       submittedBodies.push(submission.transactionCbor.toString("hex"));
       return responses.shift()!;
     });
 
-    await expect(
-      provider.submitTx(submitTx.txHex, submitProgramMaterial),
-    ).resolves.toMatchObject({
+    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 202,
       duplicate: false,
     });
-    await expect(
-      provider.submitTx(submitTx.txHex, submitProgramMaterial),
-    ).resolves.toMatchObject({
+    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 200,
       duplicate: true,

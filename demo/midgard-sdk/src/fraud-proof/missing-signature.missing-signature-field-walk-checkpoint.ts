@@ -254,7 +254,6 @@ export const MissingSignatureForcedStepArgsSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const MissingSignatureForcedSignerStateSchema = Data.Object({

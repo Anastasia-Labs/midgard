@@ -386,7 +386,6 @@ export const runNativeScriptDecodingProver = async (
                 })
               : await submitNativeScriptDecodingStep01RecordForced({
                   ...shared,
-                  direction: finding.direction,
                 });
           txHashes.push(result.txHash);
           currentOutRef = result.nextThreadOutRef;

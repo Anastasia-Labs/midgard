@@ -492,13 +492,11 @@ DaPayloadV1 {
   block_body: {
     header_hash,
     header,
-    utxos,
     withdrawals,
     forced_transactions,
     transactions,
     transaction_preimages,
     forced_transaction_preimages,
-    cek_program_material,
     deposits,
     transition_trace,
     event_to_step,
@@ -519,9 +517,12 @@ DaPayloadV1 {
 
 Each member list contains `(key_bytes, value_bytes)` tuples. The committee
 validator requires a byte-for-byte canonical re-encoding, validates the
-embedded header hash and header against L1, recomputes the UTxO, withdrawal,
+embedded header hash and header against L1, recomputes the withdrawal,
 forced-transaction, transaction, deposit, transition-trace, event-to-step, and
-validation-trace roots, and checks all committed counts before signing.
+validation-trace roots, and checks all committed counts before signing. The
+payload carries canonical transaction preimages and their script witnesses.
+The post-state UTxO root is checked by replay against the parent ledger; the
+payload does not contain a separate UTxO set or CEK material section.
 
 Inbound payload submission is admitted through one process-wide FIFO slot
 before any frame read or decompression. One absolute request deadline starts

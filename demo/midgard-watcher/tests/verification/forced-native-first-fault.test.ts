@@ -38,7 +38,6 @@ it.each([
       authority: {
         phase: "ForcedTransaction",
         canonicalNativeTxCbor: fixture.canonicalTransactionCbor,
-        programMaterialSidecarCbor: fixture.programMaterialSidecarCbor,
         committedForcedValidity: verdict,
         eventKeyFingerprint: "native-first-fault",
       } as ValidatedEventAuthority,

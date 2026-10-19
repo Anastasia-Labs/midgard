@@ -1056,7 +1056,6 @@ const submitTxHex = async (
   while (attempt <= retryLimit) {
     const bodyBytes = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from(txHex, "hex"),
-      programMaterial: [],
     });
     const resp = await httpClient.request(`${endpoint}/submit`, {
       method: "POST",

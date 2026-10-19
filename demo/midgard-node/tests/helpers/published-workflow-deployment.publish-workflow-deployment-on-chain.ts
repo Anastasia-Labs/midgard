@@ -46,7 +46,6 @@ import {
 } from "../../src/transactions/script-reward-registration.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./availability-challenge.js";
 import { runWithoutFollower } from "./intent-journal.js";
-import { publishableRoles } from "./publishable-reference-roles.js";
 import {
   awaitReferenceScriptPublicationReadiness,
   hardLimitAcceptedContracts,
@@ -183,8 +182,8 @@ export const publishWorkflowDeploymentOnChain = async ({
     ),
   );
   const targets = nodeRuntimeReferenceScriptTargets(contracts);
-  const expectedRoles = publishableRoles(
-    Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+  const expectedRoles = Object.keys(
+    DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   );
   if (
     targets.length !== expectedRoles.length ||

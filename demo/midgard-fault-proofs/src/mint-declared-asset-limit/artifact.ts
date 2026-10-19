@@ -241,7 +241,6 @@ export const MintDeclaredAssetLimitForcedSourcePayloadSchema = Data.Object({
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const mintDeclaredAssetLimitArtifactDigest = (

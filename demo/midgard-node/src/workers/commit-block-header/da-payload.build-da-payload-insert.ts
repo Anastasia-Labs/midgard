@@ -19,7 +19,6 @@ import {
   daPayloadCompressDurationTimer,
   daPayloadCompressionRatioGauge,
   expectedCounts,
-  journalCekProgramMaterial,
   sortedEntries,
 } from "./da-payload.compute-da-payload-roots.js";
 import {
@@ -67,16 +66,6 @@ export const buildDaPayloadInsert = ({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to build V1 DA from a non-canonical ForcedTransactionJournalMemberV1",
-          cause,
-        }),
-    });
-    const cekProgramMaterial = yield* Effect.try({
-      try: () => journalCekProgramMaterial(record, forcedMembers),
-      catch: (cause) =>
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to build V1 DA without exact journaled CEK program material",
           cause,
         }),
     });
@@ -150,7 +139,6 @@ export const buildDaPayloadInsert = ({
             bufferEntry(member.key, member.canonicalTransactionCbor),
           ),
         ),
-        cek_program_material: [...cekProgramMaterial],
         validation_traces: sortedEntries(
           record.validationTraceMembers.map((member) =>
             bufferEntry(

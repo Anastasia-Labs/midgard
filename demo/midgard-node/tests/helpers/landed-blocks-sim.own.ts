@@ -134,15 +134,12 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
       } as never)}`;
       for (const [ordinal, txId] of journal.txIds.entries()) {
         const payload = Buffer.concat([Buffer.from("landed-sim-tx:"), txId]);
-        const sidecar = Buffer.from("a0", "hex");
         yield* sql`INSERT INTO pending_block_finalization_txs ${sql.insert({
           header_hash: header,
           member_id: txId,
           ordinal,
           payload_cbor: payload,
           payload_sha256: sha256(payload),
-          cek_program_material_sidecar_cbor: sidecar,
-          cek_program_material_sidecar_sha256: sha256(sidecar),
           source_table: MempoolDB.tableName,
           source_id: txId,
           source_time_stamp_tz: journal.at,

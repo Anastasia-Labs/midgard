@@ -20,7 +20,6 @@ import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/w
 import { firstCanonicalViolationDetection } from "../workflow/classification.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
-import { withoutHeldPlutusScriptItems } from "../workflow/plutus-script-item-hold.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
   type OutputReferenceScriptDecodingAuthenticatedSource,
@@ -31,7 +30,7 @@ import { type OutputReferenceScriptDecodingStage } from "./workflow.js";
 
 /**
  * Derives the family evidence to prove from L1-bound public retained DA: the
- * first unheld finding in the order `classifyCanonicalBlockViolations`
+ * first finding in the order `classifyCanonicalBlockViolations`
  * selects, so the workflow proves the detection the classifier chose.
  */
 export const deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock = (
@@ -39,9 +38,7 @@ export const deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock = (
 ): OutputReferenceScriptDecodingEvidence => {
   const first = firstCanonicalViolationDetection(
     block,
-    withoutHeldPlutusScriptItems(
-      outputReferenceScriptDecodingCanonicalFindings(block),
-    ),
+    outputReferenceScriptDecodingCanonicalFindings(block),
   );
   if (first === undefined)
     throw new Error(

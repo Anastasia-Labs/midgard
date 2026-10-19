@@ -193,7 +193,10 @@ export const forcedBlock = async (
   await h.publishReferences();
   const finding = forcedFinding(shape, leaf, sourceKey);
   const evidence = evidenceOf(shape, finding);
-  const source = { header, membership: leaf.membership, direction: 1n };
+  const source = {
+    header,
+    membership: leaf.membership,
+  };
   return { setup, header, leaf, sourceKey, finding, evidence, source };
 };
 

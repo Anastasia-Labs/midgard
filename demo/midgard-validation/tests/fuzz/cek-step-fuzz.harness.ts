@@ -122,12 +122,16 @@ const runProgram = (
   });
 };
 
-/** Indices of the steps a case adjudicates. */
+/**
+ * Indices of the steps a case adjudicates. The last step is always one: it is
+ * the step a stopped trace's proof rests on.
+ */
 const chooseSteps = (
   steps: readonly MidgardCekExecutionStep[],
   seed: number,
 ): readonly number[] => {
   const chosen = new Set<number>();
+  if (steps.length > 0) chosen.add(steps.length - 1);
   const seenKinds = new Set<WitnessKind>();
   let executing = 0;
   steps.forEach((step, index) => {

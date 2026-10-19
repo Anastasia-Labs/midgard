@@ -147,8 +147,8 @@
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [").sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
-    "da-committee-node/tests/payload.payload-with-program-material.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+    "da-committee-node/tests/payload.payload-with-script-witnesses.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here. Existing sorting site moved unchanged when the fixture was renamed for stored Flat witnesses.",
       "sites": [".sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
     "midgard-core/src/codec/native.decode-midgard-native-mint.ts": {
@@ -284,13 +284,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
-    "midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ".sort(([left], [right]) => left.localeCompare(right)),",
-        "].sort(([left], [right]) => left.localeCompare(right)),"
-      ]
-    },
     "midgard-fault-proofs/tests/fixtures/build-cardano-capability-p2-boundary-corpus-v1.mjs": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
@@ -322,10 +315,6 @@
     "midgard-fault-proofs/tests/support/emulator/setup-tx.submit-initial-mint-tx.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort((left, right) => left[1]!.localeCompare(right[1]!))"]
-    },
-    "midgard-fault-proofs/tests/support/retained-reason-classifier.build-retained-validation-block-fixture.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": ["([left], [right]) => left.localeCompare(right),"]
     },
     "midgard-fault-proofs/tests/support/transition-trace-retained.deposit-events-retained-block.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -538,10 +527,6 @@
     "midgard-sdk/tests/state-queue-correction-transition.fraud-lock.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-validation/tests/cek-program.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [".sort((left, right) => left[1].localeCompare(right[1]));"]
     },
     "midgard-validation/tests/helpers/ordered-collection-boundary.build-signed-cardano-mint-native-policies-candidate.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",

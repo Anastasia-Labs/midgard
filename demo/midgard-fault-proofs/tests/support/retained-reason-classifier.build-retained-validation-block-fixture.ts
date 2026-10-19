@@ -91,7 +91,6 @@ export const buildRetainedValidationBlockFixture = async ({
   minFeeB = 0n,
   operatorVkey = "b1".repeat(28),
   prevHeaderHash,
-  programMaterialEntries,
   postLedgerEntries,
 }: {
   readonly subject: Parameters<typeof buildDecodingBlockFixture>[0]["subject"];
@@ -104,7 +103,6 @@ export const buildRetainedValidationBlockFixture = async ({
   readonly minFeeB?: bigint;
   readonly operatorVkey?: string;
   readonly prevHeaderHash?: string;
-  readonly programMaterialEntries?: readonly DaPayloadEntry[];
   readonly postLedgerEntries?: readonly { outRef: Buffer; output: Buffer }[];
 }) => {
   const base = await buildDecodingBlockFixture({
@@ -196,13 +194,6 @@ export const buildRetainedValidationBlockFixture = async ({
       validation_traces: entries(descriptors),
       validation_trace_witnesses: [],
       transition_trace: entries(transitionEntries),
-      ...(programMaterialEntries === undefined
-        ? {}
-        : {
-            cek_program_material: [...programMaterialEntries].sort(
-              ([left], [right]) => left.localeCompare(right),
-            ),
-          }),
       counts: {
         ...base.reconstruction.payload.block_body.counts,
         validationTraceCount: root.count,

@@ -16,23 +16,17 @@ import {
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,
 } from "../src/cek-builtin.js";
+import { encodeMidgardCekCanonicalConstant } from "../src/cek-constant.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
-import {
-  type MidgardCekCoreStepWitness,
-  verifyMidgardCekCoreStep,
-} from "../src/cek-machine.js";
+import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { listSequenceFromNode } from "../src/cek-machine.verify-case-select.js";
 import {
   listDataSummary,
   prependListSequence,
 } from "../src/cek-machine.verify-semantic-builtin-control.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
-
-type SemanticWitness = Extract<
-  MidgardCekCoreStepWitness,
-  { readonly kind: "executeBuiltinSemantic" }
->;
+import { listConstructSemanticWitness } from "./cek-machine.list-construct-witness.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const D = constT.data;
 
@@ -42,7 +36,7 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
     new Application(new Force(Builtin.mkCons), item),
     items,
   );
-  const program = buildMidgardCanonicalCekProgram(
+  const program = buildCekProgramFromRawFlat(
     encodeMidgardCekCardanoFlatProgram(
       new UPLCProgram(
         [1, 1, 0],
@@ -51,15 +45,26 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
     ),
   );
   const execution = executeMidgardCekStructuralProgram({
-    root: program.envelope.termRoot,
+    root: program.termRoot,
     material: program.material.values(),
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
   });
   const step = execution.steps.find(
-    (candidate) => candidate.witness.kind === "executeBuiltinSemantic",
+    (candidate) =>
+      candidate.witness.kind === "executeBuiltinSemantic" ||
+      candidate.witness.kind === "executeBuiltinDirect",
   )!;
-  return { step, witness: step.witness as SemanticWitness };
+  const { typeCbor, payloadCbor } = encodeMidgardCekCanonicalConstant(item);
+  const revealed: MidgardCekDirectValueWitness = {
+    kind: "constant",
+    witness: { typeCbor, payloadCbor },
+  };
+  return {
+    step,
+    witness: listConstructSemanticWitness(step.witness),
+    revealed,
+  };
 };
 
 const semanticParts = (value: MidgardCekDirectValueWitness) => {
@@ -211,11 +216,6 @@ const REVEALED_ONLY = [
 
 const ALL = [...BOUND, ...REVEALED_ONLY];
 
-/** Bound element types whose list source memory is derived from its summary node. */
-const SUMMARY_SOURCE = BOUND.filter(({ element }) =>
-  ["data", "integer", "pair<data,data>"].includes(element),
-);
-
 describe("mkCons list item summary memory", () => {
   it.each(BOUND)(
     "the honest $element item's summary memory is its memory plus $words words",
@@ -264,12 +264,16 @@ describe("mkCons list item summary memory", () => {
   );
 
   it.each(ALL)("mkCons accepts a revealed $element item", ({ step }) => {
-    const { step: core, witness } = step();
-    expect(witness.arguments[0]!.kind).toBe("constant");
-    expect(verifyMidgardCekCoreStep(core.pre, core.post, witness)).toBe(true);
+    const { step: core, witness, revealed } = step();
+    expect(
+      verifyMidgardCekCoreStep(core.pre, core.post, {
+        ...witness,
+        arguments: [revealed, witness.arguments[1]!],
+      }),
+    ).toBe(true);
   });
 
-  it.each(SUMMARY_SOURCE)(
+  it.each(BOUND)(
     "mkCons over a $element list is proved with its item and list presented by summary",
     ({ step }) => {
       const built = step();

@@ -17,8 +17,9 @@
  *   6. ask the family for its transaction port and replayer, and build the
  *      adapter the definition's arm names: linear, or cursor from the arm's
  *      spec and action refiner;
- *   7. decorate the adapter: field carriage first (in declared order), then
- *      proof chunks, each only when declared;
+ *   7. decorate the adapter: the script decode record innermost, then field
+ *      carriage (in declared order), then proof chunks, each only when
+ *      declared;
  *   8. attach the terminal verifier, release-finality authority and any
  *      `extend` members, and freeze.
  *
@@ -35,6 +36,7 @@ import "./field-carriage-prerequisite.js";
 import "./linear-family-adapter.js";
 import "./orchestrator.js";
 import "./proof-chunk-prerequisite.js";
+import "./script-decode-prerequisite.js";
 import "./manifest-bound-family-assembly.bind-reference-scripts.js";
 import "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";

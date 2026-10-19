@@ -86,6 +86,7 @@ export const noReferenceInputTxId = (tx: MidgardNativeTxFull): string =>
   computeMidgardNativeTxId(tx).toString("hex");
 
 export type NoReferenceInputFixture = {
+  readonly nativeTx: ReturnType<typeof decodingSubjectTransaction>;
   /** The disputed transaction: the one the block committed with a bad field 1. */
   readonly subjectTxId: string;
   /** The block's other committed transaction. */
@@ -207,6 +208,7 @@ export const buildNoReferenceInputFixture = async ({
     entry.key.equals(producerKey),
   );
   return {
+    nativeTx: subjectTx,
     subjectTxId,
     companionTxId,
     transactionsRoot,

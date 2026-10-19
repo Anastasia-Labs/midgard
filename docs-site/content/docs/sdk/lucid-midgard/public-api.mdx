@@ -46,10 +46,9 @@ Key members:
 - `newTx()`: returns a fresh `TxBuilder` bound to the current provider snapshot.
 - `fromTx(input, options?)`: imports canonical Midgard native v1 full
   transactions (native objects, native CBOR/hex, `{ txCbor }`, `{ txHex }`, or an
-  existing `CompleteTx`). An existing `CompleteTx` retains its canonical
-  program-material sidecar; raw imports can supply exact material through
-  `FromTxOptions.programMaterial`. Cardano transaction/body/witness bytes are
-  rejected.
+  existing `CompleteTx`). Script witnesses are carried by the canonical
+  transaction; reference scripts come from the resolved reference outputs.
+  Cardano transaction/body/witness bytes are rejected.
 - `switchProvider(provider, expectations?)`, `overrideUTxOs(utxos)`,
   `clearUTxOOverrides()`, provider and UTxO source control.
 - `config()`: immutable `LucidMidgardConfigSnapshot` (provider generation,

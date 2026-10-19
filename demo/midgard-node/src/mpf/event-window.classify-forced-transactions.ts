@@ -1,5 +1,4 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardForcedTxProofCommitment,
   deriveMidgardForcedTxFaultEvidenceMaterial,
@@ -23,7 +22,6 @@ import { Effect } from "effect";
 
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { sha256 } from "../sha256.js";
 import {
   acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
@@ -38,11 +36,6 @@ import {
 } from "./ledger-delta.js";
 import { type ProcessMpfsConfig } from "./process-config.js";
 import { type MpfBatchOp } from "./types.js";
-
-/** A forced transaction runs no program, so its material is always empty. */
-const FORCED_PROGRAM_MATERIAL_SIDECAR = encodeMidgardCekProgramMaterialSidecar(
-  [],
-);
 
 export const classifyForcedTransactions = ({
   entries,
@@ -111,9 +104,6 @@ export const classifyForcedTransactions = ({
         );
       }
       const txId = entry[ForcedTransactionsDB.Columns.TX_ID];
-      const programMaterialSidecarCbor = Buffer.from(
-        FORCED_PROGRAM_MATERIAL_SIDECAR,
-      );
       const phaseA = yield* runPhaseAValidation(
         [
           {
@@ -122,7 +112,6 @@ export const classifyForcedTransactions = ({
             sourceKind: "forced",
             arrivalSeq,
             createdAt: entry[ForcedTransactionsDB.Columns.INCLUSION_TIME],
-            programMaterialSidecarCbor,
           },
         ],
         {
@@ -287,10 +276,6 @@ export const classifyForcedTransactions = ({
         entry: {
           ...entry,
           [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
-          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
-            programMaterialSidecarCbor,
-          [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-            sha256(programMaterialSidecarCbor),
         },
         transitionEffect,
         ledgerOps,
@@ -300,7 +285,6 @@ export const classifyForcedTransactions = ({
         rejectionCode,
         rejectionReason:
           verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason,
-        programMaterialSidecarCbor,
       });
     }
     return classified;

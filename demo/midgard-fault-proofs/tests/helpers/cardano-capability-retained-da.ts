@@ -1,8 +1,4 @@
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramMaterialDaValue,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -76,12 +72,10 @@ export type StrictRetainedDaPairFixture = {
 
 export const buildStrictRetainedDaPairFixture = async ({
   canonicalTransactionCbor,
-  canonicalMaterialSidecarCbor,
   resolvedReferenceUtxos,
   withForcedTwin = true,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
-  readonly canonicalMaterialSidecarCbor?: Uint8Array;
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
   /**
    * Also commit the transaction as a valid forced transaction ahead of the
@@ -220,17 +214,6 @@ export const buildStrictRetainedDaPairFixture = async ({
     fixtureValidationTrace(normalEventKey, transactionIdHex),
   ];
   const validationTraces = validationTraceMembers.map(({ entry }) => entry);
-  const cekProgramMaterial = sorted(
-    (canonicalMaterialSidecarCbor === undefined
-      ? []
-      : decodeMidgardCekProgramMaterialSidecar(canonicalMaterialSidecarCbor)
-    ).map(
-      (entry): SDK.DaPayloadEntry => [
-        Buffer.from(entry.root).toString("hex"),
-        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-      ],
-    ),
-  );
   const roots = {
     withdrawals: await countedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
     forcedTransactions: await countedRoot(
@@ -301,7 +284,6 @@ export const buildStrictRetainedDaPairFixture = async ({
             ],
           ]
         : [],
-      cek_program_material: cekProgramMaterial,
       deposits: [],
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),

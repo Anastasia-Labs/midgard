@@ -228,7 +228,6 @@ export const daPayloadBodyFixture: SDK.DaPayloadBody = {
   event_to_step: [["0d", "0e"]],
   transaction_preimages: [["0f", "10"]],
   forced_transaction_preimages: [["11", "12"]],
-  cek_program_material: [["13", "14"]],
   validation_traces: [["15", "16"]],
   validation_trace_witnesses: [],
   counts: {

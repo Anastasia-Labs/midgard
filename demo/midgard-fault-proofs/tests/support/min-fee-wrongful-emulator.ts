@@ -197,7 +197,10 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     header: requestedHeader,
   });
   const header = seeded.header;
-  const forcedSource = { header: header, membership, direction: 1n };
+  const forcedSource = {
+    header: header,
+    membership,
+  };
   const state: SDK.MinFeeStep02State = {
     subject: SDK.forcedVerdictSubject({
       transactionId,

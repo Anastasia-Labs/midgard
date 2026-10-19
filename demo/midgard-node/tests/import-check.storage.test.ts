@@ -1,6 +1,6 @@
 /**
  * What the import checker stores per block: each transaction once (its
- * bytes and its program sidecar) and each output it spends or references
+ * bytes, carrying its scripts) and each output it spends or references
  * once per block, so a block's stored bytes grow linearly with its
  * transactions' sizes, however many runs read the same outputs. Each test
  * prints what it measured.
@@ -36,7 +36,6 @@ const stored = () =>
       (sql) => sql<{ checks: string; outputs: string; outputRows: string }>`
         SELECT
           (SELECT COALESCE(SUM(octet_length(tx_cbor)
-            + octet_length(program_material_sidecar)
             + octet_length(script_hashes)), 0) FROM node_import_checks)
             AS checks,
           (SELECT COALESCE(SUM(octet_length(out_ref) + octet_length(output)), 0)

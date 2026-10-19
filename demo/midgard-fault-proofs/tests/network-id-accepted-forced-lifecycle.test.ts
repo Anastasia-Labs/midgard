@@ -75,7 +75,10 @@ const preparedAcceptedFor = ({
       sourceKey: membership.key,
       rejectionReason: null,
     }),
-    forcedSource: { header: block.header, membership, direction: 0n },
+    forcedSource: {
+      header: block.header,
+      membership,
+    },
   };
 };
 

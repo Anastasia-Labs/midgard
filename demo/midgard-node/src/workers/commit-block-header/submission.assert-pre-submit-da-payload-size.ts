@@ -1,7 +1,3 @@
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  mergeMidgardCekProgramMaterialSidecars,
-} from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   type DaPayloadEmissionMode,
@@ -19,7 +15,6 @@ import {
   DepositsDB,
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
-  TxAdmissionsDB,
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "../../database/index.js";
@@ -44,32 +39,6 @@ const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   value.toString("hex"),
 ];
 
-export const forcedProgramMaterialSidecars = (
-  entries: readonly ForcedTransactionsDB.Entry[],
-): readonly Buffer[] =>
-  entries.map((entry) => {
-    const sidecar =
-      entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR];
-    if (sidecar == null || sidecar.length === 0) {
-      throw new Error(
-        `V1 forced transaction ${entry[
-          ForcedTransactionsDB.Columns.TX_ORDER_ID
-        ].toString("hex")} is missing canonical CEK program material`,
-      );
-    }
-    return Buffer.from(sidecar);
-  });
-
-export const daProgramMaterialFromSidecars = (
-  sidecars: Iterable<Uint8Array>,
-): readonly SDK.DaPayloadEntry[] =>
-  mergeMidgardCekProgramMaterialSidecars(sidecars).map((entry) =>
-    daEntry(
-      Buffer.from(entry.root),
-      encodeMidgardCekProgramMaterialDaValue(entry),
-    ),
-  );
-
 export type DaPayloadBlockContent = {
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
@@ -91,11 +60,9 @@ export const commitDaPayloadForSizing = ({
   transitionTraceMembers,
   eventToStepMembers,
   validationTraceMembers,
-  cekProgramMaterial,
 }: DaPayloadBlockContent & {
   readonly headerHash: string;
   readonly header: SDK.Header;
-  readonly cekProgramMaterial: readonly SDK.DaPayloadEntry[];
 }): Effect.Effect<SDK.DaPayload, DatabaseError> =>
   Effect.gen(function* () {
     const transactionSources = yield* Effect.try({
@@ -173,7 +140,6 @@ export const commitDaPayloadForSizing = ({
           daEntry(entry[TxColumns.TX_ID], entry[TxColumns.TX]),
         ),
         forced_transaction_preimages: forcedTransactionPreimages,
-        cek_program_material: [...cekProgramMaterial],
         validation_traces: validationTraceMembers.map((entry) =>
           daEntry(entry.keyCbor, entry.valueCbor),
         ),
@@ -206,7 +172,6 @@ export const assertPreSubmitDaPayloadSize = ({
 }: DaPayloadBlockContent & {
   readonly headerHash: string;
   readonly header: SDK.Header;
-  readonly cekProgramMaterial: readonly SDK.DaPayloadEntry[];
   readonly envelopeMode?: DaPayloadEmissionMode;
 }): Effect.Effect<number, DatabaseError> =>
   Effect.gen(function* () {
@@ -266,42 +231,15 @@ export const measureCommitDaPayloadUpperBound = ({
   readonly identityContext?: Buffer;
 }): Effect.Effect<CommitDaFrameMeasurement | undefined, never, Database> =>
   Effect.gen(function* () {
-    const sidecars = yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
-      content.processedMempoolTxs.map((entry) => entry[TxColumns.TX_ID]),
-    );
-    const byId = new Map(
-      sidecars.map((entry) => [entry.txId.toString("hex"), entry.sidecarCbor]),
-    );
-    if (
-      sidecars.length !== content.processedMempoolTxs.length ||
-      byId.size !== sidecars.length
-    )
-      return yield* Effect.fail(
-        "DA prefix program material identities are incomplete or duplicated",
-      );
-    const ordinarySidecars = yield* Effect.try(() =>
-      content.processedMempoolTxs.map((entry) => {
-        const sidecar = byId.get(entry[TxColumns.TX_ID].toString("hex"));
-        if (sidecar === undefined)
-          throw new Error("DA prefix program material identity is missing");
-        return sidecar;
-      }),
-    );
-    const forcedSidecars = yield* Effect.try(() =>
-      forcedProgramMaterialSidecars(content.includedForcedTransactionEntries),
-    );
     const payload = yield* commitDaPayloadForSizing({
       ...content,
       headerHash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
       header: DA_PAYLOAD_UPPER_BOUND_HEADER,
-      cekProgramMaterial: [],
     });
     return yield* Effect.try(() =>
       measureDaPayloadPrefixes({
         payload,
         content,
-        ordinarySidecars,
-        forcedSidecars,
         identityContext,
         rejectedTxIds,
       }),

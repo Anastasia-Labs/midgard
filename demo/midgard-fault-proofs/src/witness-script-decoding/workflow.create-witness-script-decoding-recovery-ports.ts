@@ -2,6 +2,7 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
@@ -29,87 +30,24 @@ import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
-import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
-import {
-  runWitnessScriptDecodingProof,
-  type WitnessScriptDecodingEvidence,
-  type WitnessScriptDecodingJournalEntry,
-} from "./witness-script-decoding.js";
+import { type WitnessScriptDecodingJournalEntry } from "./witness-script-decoding.js";
 import { createManifestBoundWitnessScriptDecodingSubmission } from "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
 import {
   deriveWitnessScriptDecodingAuthenticatedSource,
   deriveWitnessScriptDecodingEvidenceFromCanonicalBlock,
 } from "./workflow.derive-witness-script-decoding-authenticated-source.js";
-import {
-  createWitnessScriptDecodingRawL1StageResolver,
-  type WitnessScriptDecodingRuntimeLoader,
-} from "./workflow.detect-witness-script-decoding-complete-replay.js";
+import { createWitnessScriptDecodingRawL1StageResolver } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 import {
   type LoadManifestBoundWitnessScriptDecodingConfig,
-  loadManifestBoundWitnessScriptDecodingConfig,
   type ManifestBoundWitnessScriptDecodingConfig,
   WITNESS_SCRIPT_DECODING_WORKFLOW,
-  type WitnessScriptDecodingJournal,
 } from "./workflow.witness-script-decoding-config-from-binding.js";
-
-export const loadWitnessScriptDecodingRuntime = async (
-  input: WitnessScriptDecodingRuntimeLoader,
-) => {
-  const config = await loadManifestBoundWitnessScriptDecodingConfig(
-    input.config,
-  );
-  return createManifestBoundWitnessScriptDecodingRuntime({
-    config,
-    journal: input.journal,
-    observe: input.observe,
-    resolveStage: input.resolveStage,
-  });
-};
-
-export const createManifestBoundWitnessScriptDecodingRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  centralJournal,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundWitnessScriptDecodingConfig;
-  readonly journal: WitnessScriptDecodingJournal;
-  readonly observe: WitnessScriptDecodingRuntimeLoader["observe"];
-  readonly resolveStage: WitnessScriptDecodingRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createWitnessScriptDecodingCentralJournalAdapter
-  >;
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundWitnessScriptDecodingSubmission({
-    config,
-    observe: async (identity) => {
-      const observed = await observe(identity);
-      await centralJournal?.reconcile(observed.stage);
-      return observed;
-    },
-    resolveStage,
-    centralJournal,
-    stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    runtimeVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
-    config,
-    runOrResume: async (evidence: WitnessScriptDecodingEvidence) =>
-      await runWitnessScriptDecodingProof({
-        evidence,
-        load: journal.load,
-        append: journal.append,
-        submission,
-      }),
-  });
-};
 
 export type ManifestBoundWitnessScriptDecodingWorkflowConfig =
   LoadManifestBoundWitnessScriptDecodingConfig &
     Readonly<{
+      /** The script-decode references, by `SCRIPT_DECODE_REFERENCE_SCRIPTS` role. */
+      auxiliaryReferenceScripts: Readonly<Record<string, UTxO>>;
       l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -197,6 +135,12 @@ export const prepareWitnessScriptDecodingRecoveryMaterial = async (
     source,
   };
 };
+
+const SCRIPT_DECODE_RECORDED_BEFORE: ReadonlySet<string> = new Set([
+  "init",
+  "step_01",
+  "step_02",
+]);
 
 export const createWitnessScriptDecodingRecoveryPorts = (
   workflow: ManifestBoundWitnessScriptDecodingWorkflow,
@@ -324,7 +268,17 @@ export const createWitnessScriptDecodingRecoveryPorts = (
       },
     };
   };
-  return { transactions, requirementForAction };
+  // The record is made before Init, so no thread deadline runs meanwhile;
+  // past step 02 the proof no longer reads it.
+  const scriptDecodeItemForAction = ({
+    action,
+    artifact,
+  }: LinearFamilyPrerequisiteInput): Uint8Array | null =>
+    typeof action.input.stage === "string" &&
+    SCRIPT_DECODE_RECORDED_BEFORE.has(action.input.stage)
+      ? Buffer.from(material.require(artifact).evidence.itemHex, "hex")
+      : null;
+  return { transactions, requirementForAction, scriptDecodeItemForAction };
 };
 
 export const WITNESS_ROLES = [

@@ -156,7 +156,6 @@ export const retainSignedIntentContinuationChildDa = (
         transactions: [],
         transaction_preimages: [],
         forced_transaction_preimages: [],
-        cek_program_material: [],
         transition_trace: events.transition_trace,
         event_to_step: events.event_to_step,
         validation_traces: [],

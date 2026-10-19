@@ -423,7 +423,7 @@ Item-level rules:
   (`midgard_redeemer_purpose_from_tag`, same Aiken module). Two narrower
   sets sit inside this one and are deliberately not the format's bound: the
   Midgard builder emits only `Spend`, `Mint`, `Reward`, and `Receive`
-  (`RedeemerTags`, `demo/lucid-midgard/src/builder/script-materialization.ts`),
+  (`RedeemerTags`, `demo/lucid-midgard/src/builder/script-witnesses.known-script-source.ts`),
   and the Cardano↔Midgard conversion bridge admits only `Spend`, `Mint`,
   and `Reward`, rejecting the rest as lossy
   (`ensureSupportedCardanoRedeemerTag`,

@@ -300,22 +300,23 @@ export const readOutputScanState = async (common: Common, stepIndex: 2 | 4) => {
   });
 };
 
-/** Step 01 over a forced leaf with the source, direction and coordinates handed to the validator verbatim. */
+/** Step 01 with authenticated source evidence and caller-selected output subject/coordinates. */
 export const submitOutputStep01ForcedRaw = async ({
   header,
   membership,
-  direction,
   outputIndex,
   boundIndex = outputIndex,
+  boundSubjectDirection,
   ...common
 }: Common & {
   readonly header: Header;
   readonly membership: RootMembershipProof<OutputReference, unknown>;
-  readonly direction: bigint;
   /** The redeemer's output coordinate. */
   readonly outputIndex: bigint;
   /** The coordinate the next thread state claims; defaults to the redeemer's. */
   readonly boundIndex?: bigint;
+  /** Test-only successor subject forgery; absent from the source redeemer. */
+  readonly boundSubjectDirection?: bigint;
 }) => {
   const leaf = membership.value as {
     readonly tx_id: string;
@@ -330,7 +331,9 @@ export const submitOutputStep01ForcedRaw = async ({
           ? null
           : leaf.verdict.ForcedTxInvalid.reason,
     }),
-    direction,
+    ...(boundSubjectDirection === undefined
+      ? {}
+      : { direction: boundSubjectDirection, rejection_reason: null }),
   };
   return await continueRaw({
     common,
@@ -349,7 +352,6 @@ export const submitOutputStep01ForcedRaw = async ({
           output_index,
           header,
           membership,
-          direction,
         },
       },
       output_index: outputIndex,

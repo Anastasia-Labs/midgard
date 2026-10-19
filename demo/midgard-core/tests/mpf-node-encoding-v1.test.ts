@@ -9,7 +9,9 @@ import {
   reconstructFraudProofCatalogueMpfNode,
 } from "../src/deployment-manifest-identity/catalogue-proof.js";
 import { buildMidgardMpfProofFoldTrace } from "../src/mpf-proof-fold.build-midgard-mpf-proof-fold-trace.js";
+import { encodeMidgardMpfProofFrame } from "../src/mpf-proof-fold.encode-midgard-mpf-proof-frame.js";
 import {
+  type MidgardMpfProofFrame,
   parseMidgardMpfProofJson,
   suffix,
 } from "../src/mpf-proof-fold.parse-midgard-mpf-proof-json.js";
@@ -83,6 +85,81 @@ const fold = (key: string, value: string, proof: ProofJson) =>
   });
 
 describe("MPF node encoding V1 goldens (midgard-core)", () => {
+  it.each([
+    { skip: 0, length: 62, accepted: true },
+    { skip: 0, length: 63, accepted: false },
+    { skip: 62, length: 0, accepted: true },
+    { skip: 63, length: 0, accepted: false },
+    { skip: 31, length: 31, accepted: true },
+    { skip: 31, length: 32, accepted: false },
+  ])(
+    "bounds Fork prefix at skip=$skip length=$length",
+    ({ skip, length, accepted }) => {
+      const raw = [
+        {
+          type: "fork",
+          skip,
+          neighbor: {
+            nibble: 1,
+            prefix: "0f".repeat(length),
+            root: "11".repeat(32),
+          },
+        },
+      ];
+      const frame: MidgardMpfProofFrame = {
+        version: 1,
+        frameIndex: 0,
+        cursor: 0,
+        nextCursor: skip + 1,
+        step: {
+          kind: "fork" as const,
+          skip,
+          neighbor: {
+            nibble: 1,
+            prefix: Buffer.alloc(length, 15),
+            root: Buffer.alloc(32, 17),
+          },
+        },
+      };
+      if (accepted) {
+        expect(parseMidgardMpfProofJson(raw)[0]).toEqual(frame.step);
+        expect(encodeMidgardMpfProofFrame(frame).length).toBeGreaterThan(0);
+      } else {
+        expect(() => parseMidgardMpfProofJson(raw)).toThrow(/prefix|envelope/u);
+        expect(() => encodeMidgardMpfProofFrame(frame)).toThrow(/envelope/u);
+      }
+    },
+  );
+
+  it("refuses nonnibble bytes anywhere in a Fork prefix", () => {
+    expect(() =>
+      parseMidgardMpfProofJson([
+        {
+          type: "fork",
+          skip: 0,
+          neighbor: { nibble: 1, prefix: "0010", root: "11".repeat(32) },
+        },
+      ]),
+    ).toThrow(/nibble bytes/u);
+    expect(() =>
+      encodeMidgardMpfProofFrame({
+        version: 1,
+        frameIndex: 0,
+        cursor: 0,
+        nextCursor: 1,
+        step: {
+          kind: "fork",
+          skip: 0,
+          neighbor: {
+            nibble: 1,
+            prefix: Buffer.from([0, 16]),
+            root: Buffer.alloc(32, 17),
+          },
+        },
+      }),
+    ).toThrow(/envelope/u);
+  });
+
   it("pins the leaf markers", () => {
     expect(golden.evenLeafMarker).toBe("ff");
     expect(golden.oddLeafMarker).toBe("10");

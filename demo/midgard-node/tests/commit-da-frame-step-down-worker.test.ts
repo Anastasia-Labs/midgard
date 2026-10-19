@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger, Option } from "effect";
@@ -92,14 +91,6 @@ vi.mock("../src/database/index.js", async () => {
     },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
-      retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-        Effect.succeed(
-          txIds.map((txId) => ({
-            txId,
-            sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-          })),
-        ),
-      ),
     },
     WithdrawalsDB: {
       ...actual.WithdrawalsDB,

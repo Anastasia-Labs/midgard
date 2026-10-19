@@ -7,6 +7,7 @@ import {
   buildFieldItemWidthIllegalFaultProofContracts,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,9 +16,11 @@ import {
 } from "../src/field-item-width-illegal/contracts.js";
 import {
   classifyFieldItemWidthFinding,
-  encodeFieldItemWidthAuthenticatedWidth,
+  encodeFieldItemWidthAuthenticatedItem,
   encodeFieldItemWidthBoundCoordinate,
   FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES,
+  FieldItemWidthAuthenticatedItemSchema,
+  FieldItemWidthBoundCoordinateSchema,
   fieldItemWidthEvidenceCloses,
   fieldItemWidthEvidenceIdentity,
   fieldItemWidthIsIllegal,
@@ -29,6 +32,7 @@ import {
   reconcileFieldItemWidthJournal,
   runFieldItemWidthProof,
 } from "../src/field-item-width-illegal/field-item-width-illegal.js";
+import { FieldItemWidthStep02ArgsSchema } from "../src/field-item-width-illegal/schemas.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -52,16 +56,16 @@ const rejected = (fieldIndex: number, itemIndex: number) =>
 
 const evidence = ({
   subject = accepted,
-  fieldIndex = 2,
+  fieldIndex = 2n,
   item = Buffer.alloc(FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES + 1, 7),
 }: {
   readonly subject?: typeof accepted;
-  readonly fieldIndex?: number;
+  readonly fieldIndex?: bigint;
   readonly item?: Buffer;
 } = {}) => {
   const preimage = encodeMidgardFieldPreimage([item]);
   return prepareFieldItemWidthEvidence({
-    finding: { subject, fieldIndex, itemIndex: 0 },
+    finding: { subject, fieldIndex, itemIndex: 0n },
     fieldPreimage: preimage,
     committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
   });
@@ -73,7 +77,8 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     expect(fieldItemWidthIsIllegal(2, 16_385)).toBe(true);
     expect(fieldItemWidthIsIllegal(5, 0)).toBe(true);
     expect(fieldItemWidthIsIllegal(5, 1)).toBe(false);
-    expect(() => fieldItemWidthIsIllegal(4, 28)).toThrow(/outside/u);
+    expect(fieldItemWidthIsIllegal(4, 28)).toBe(false);
+    expect(fieldItemWidthIsIllegal(4, 27)).toBe(true);
   });
 
   it("proves wrongful acceptance and wrongful forced rejection", () => {
@@ -88,14 +93,14 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     ).toBe(true);
     expect(
       fieldItemWidthEvidenceCloses(
-        evidence({ fieldIndex: 5, item: Buffer.alloc(0) }),
+        evidence({ fieldIndex: 5n, item: Buffer.alloc(0) }),
       ),
     ).toBe(true);
     expect(
       fieldItemWidthEvidenceCloses(
         evidence({
           subject: rejected(5, 0),
-          fieldIndex: 5,
+          fieldIndex: 5n,
           item: Buffer.alloc(1),
         }),
       ),
@@ -113,48 +118,48 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     ).toBe(false);
   });
 
-  it("binds reason constructor and coordinate exactly", () => {
-    expect(() =>
+  it("admits supported observed coordinates under other typed claims", () => {
+    expect(
       classifyFieldItemWidthFinding({
         subject: rejected(2, 1),
-        fieldIndex: 2,
-        itemIndex: 0,
+        fieldIndex: 2n,
+        itemIndex: 0n,
       }),
-    ).toThrow(/coordinate differs/u);
+    ).toMatchObject({ fieldIndex: 2n, itemIndex: 0n });
     const wrongReason = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: forcedSource,
       rejectionReason: { FieldPreimageLengthMismatch: { field_index: 2n } },
     });
-    expect(() =>
+    expect(
       classifyFieldItemWidthFinding({
         subject: wrongReason,
-        fieldIndex: 2,
-        itemIndex: 0,
+        fieldIndex: 2n,
+        itemIndex: 0n,
       }),
-    ).toThrow(/not FieldItemWidthIllegal/u);
+    ).toMatchObject({ fieldIndex: 2n, itemIndex: 0n });
   });
 
   it("refuses substituted field bytes, commitment, and item coordinate", () => {
     const preimage = encodeMidgardFieldPreimage([Buffer.alloc(1)]);
     expect(() =>
       prepareFieldItemWidthEvidence({
-        finding: { subject: accepted, fieldIndex: 5, itemIndex: 0 },
+        finding: { subject: accepted, fieldIndex: 5n, itemIndex: 0n },
         fieldPreimage: preimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/does not match/u);
-    expect(() =>
-      prepareFieldItemWidthEvidence({
-        finding: { subject: accepted, fieldIndex: 5, itemIndex: 1 },
-        fieldPreimage: preimage,
-        committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
-      }),
-    ).toThrow(/outside the field/u);
+    const absent = prepareFieldItemWidthEvidence({
+      finding: { subject: accepted, fieldIndex: 5n, itemIndex: 1n },
+      fieldPreimage: preimage,
+      committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
+    });
+    expect(absent.observation).toBe("ItemOutOfDomain");
+    expect(fieldItemWidthEvidenceCloses(absent)).toBe(false);
   });
 
   it("selects direct and certified maximum carriage without overrides", () => {
-    expect(evidence({ fieldIndex: 5, item: Buffer.alloc(0) }).carriage).toBe(
+    expect(evidence({ fieldIndex: 5n, item: Buffer.alloc(0) }).carriage).toBe(
       "Inline",
     );
     const maximum = evidence({ item: Buffer.alloc(32_764) });
@@ -163,23 +168,118 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     expect(maximum.decisiveFaultHolds).toBe(true);
   });
 
-  it("matches the Aiken Plutus-Data ABI vectors", () => {
-    const tiny = evidence({
-      fieldIndex: 5,
-      item: Buffer.from("000102", "hex"),
-    });
+  // The same explicit Data layouts are checked by the Aiken rule tests.
+  const compact = {
+    body: {
+      spend_inputs_hash: "00".repeat(32),
+      reference_inputs_hash: "00".repeat(32),
+      outputs_hash: "00".repeat(32),
+      fee: 42n,
+      validity_interval_start: 3n,
+      validity_interval_end: 99n,
+      required_observers_hash: "00".repeat(32),
+      required_signers_hash: "00".repeat(32),
+      mint_hash: "00".repeat(32),
+      script_integrity_hash: "00".repeat(32),
+      auxiliary_data_hash: "00".repeat(32),
+      network_id: 255n,
+    },
+    witness_set_hash: "ff".repeat(32),
+  };
+
+  it("serializes the source compact and optional validity in the current bound ABI", () => {
+    const finding = { subject: accepted, fieldIndex: 5n, itemIndex: 0n };
     expect(
-      encodeFieldItemWidthBoundCoordinate({
-        subject: accepted,
-        fieldIndex: 5,
-        itemIndex: 0,
+      encodeFieldItemWidthBoundCoordinate(finding, {
+        ...compact,
+        validity_code: 0n,
       }),
     ).toBe(
-      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500ff",
+      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d8799fd8799f582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000182a031863582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000018ffff5820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd8799f00ffffff",
     );
-    expect(encodeFieldItemWidthAuthenticatedWidth(tiny)).toBe(
-      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff050003ff",
+    expect(
+      encodeFieldItemWidthBoundCoordinate(finding, {
+        ...compact,
+        validity_code: null,
+      }),
+    ).toBe(
+      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d8799fd8799f582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000182a031863582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000018ffff5820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd87a80ffff",
     );
+  });
+
+  it("serializes item legality rather than the obsolete item width", () => {
+    expect(
+      encodeFieldItemWidthAuthenticatedItem(
+        evidence({ fieldIndex: 5n, item: Buffer.from("000102", "hex") }),
+      ),
+    ).toBe(
+      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87a9fd87a80ffff",
+    );
+    expect(
+      encodeFieldItemWidthAuthenticatedItem(
+        evidence({ fieldIndex: 5n, item: Buffer.alloc(0) }),
+      ),
+    ).toBe(
+      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87a9fd87980ffff",
+    );
+  });
+
+  it("preserves the distinct out-of-domain observation constructor", () => {
+    expect(
+      Data.to(
+        {
+          subject: accepted,
+          field_index: 5n,
+          item_index: 0n,
+          observation: "ItemOutOfDomain",
+        } as never,
+        FieldItemWidthAuthenticatedItemSchema as never,
+      ),
+    ).toBe(
+      "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87980ff",
+    );
+  });
+
+  it("encodes both absent and present step-02 openings with their Option wrapper", () => {
+    expect(
+      Data.to(
+        { input_index: 0n, output_index: 1n, opening: null } as never,
+        FieldItemWidthStep02ArgsSchema as never,
+      ),
+    ).toBe("d8799f0001d87a80ff");
+    expect(
+      Data.to(
+        {
+          input_index: 0n,
+          output_index: 1n,
+          opening: {
+            BodyFieldOpening: {
+              native_tx_compact_cbor: "01",
+              carriage: { Inline: { preimage: "80" } },
+            },
+          },
+        } as never,
+        FieldItemWidthStep02ArgsSchema as never,
+      ),
+    ).toBe("d8799f0001d8799fd8799f4101d8799f4180ffffffff");
+  });
+
+  it("refuses the obsolete short bound datum", () => {
+    expect(() =>
+      Data.from(
+        "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500ff",
+        FieldItemWidthBoundCoordinateSchema as never,
+      ),
+    ).toThrow();
+  });
+
+  it("refuses the obsolete width-only authenticated datum", () => {
+    expect(() =>
+      Data.from(
+        "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff050003ff",
+        FieldItemWidthAuthenticatedItemSchema as never,
+      ),
+    ).toThrow();
   });
 });
 

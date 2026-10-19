@@ -150,7 +150,7 @@ test mpf_terminal_leaf_skip_inflation_is_refused_on_insert() {
 test mpf_terminal_fork_masquerade_is_refused_on_delete() {
   let steps = [masquerading_fork_step()]
   and {
-    proof.has(a_and_b(), a, va, steps),
+    !proof.has(a_and_b(), a, va, steps),
     proof.delete_root_paired_fold(a_and_b(), a, va, steps, #"") == None,
   }
 }
@@ -421,7 +421,7 @@ test mpf_terminal_fork_prefix_may_end_at_the_last_nibble() {
 test mpf_terminal_fork_prefix_past_the_path_is_refused() {
   let (including, excluding, step) = deep_fork(32)
   and {
-    proof.has(including, a, va, [step]),
+    !proof.has(including, a, va, [step]),
     proof.delete_root_paired_fold(including, a, va, [step], #"") == None,
     proof.insert_root_paired_fold(excluding, a, va, [step]) == None,
     proof.insert_root_two_fold(excluding, a, va, [step]) == None,
@@ -555,21 +555,12 @@ test mpf_fold_refuses_an_inflated_terminal_leaf_skip() {
   fold_steps(a, va, [inflated_leaf_step()], None) == None
 }
 
-// On insertion the fold does not read the fork's prefix kind: a leaf re-read
-// as a terminal Fork gives a predecessor root that is not the authenticated
-// one, so the caller's root comparison refuses it.
+// Fork's canonical branch-prefix envelope is checked for every fold frame,
+// including insertion, before either root can be made authoritative.
 test mpf_fold_refuses_a_terminal_fork_masquerade() {
-  expect Some(even) = fold_steps(a, va, [masquerading_fork_step()], None)
-  expect Some(odd) = fold_steps(
-    a,
-    va,
-    [c_step(), odd_cursor_fork_masquerade(pb(), vb)],
-    None,
-  )
   and {
-    even.excluding_root != only_b(),
-    odd.excluding_root != b_and_c(),
-    odd.including_root != a_b_and_c(),
+    fold_steps(a, va, [masquerading_fork_step()], None) == None,
+    fold_steps(a, va, [c_step(), odd_cursor_fork_masquerade(pb(), vb)], None) == None,
     fold_steps(a, va, [masquerading_fork_step()], Some(#"")) == None,
   }
 }

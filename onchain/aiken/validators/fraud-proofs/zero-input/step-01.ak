@@ -51,12 +51,12 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            subject_thread_name,
             _fraud_prover,
             _m_input_state_data,
             output_script_hash,
             output_state_data,
-            _header,
+            subject_header,
             _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -77,7 +77,13 @@ validator main(
         //    to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = bind_state_v1(
-          substrate.bind_accepted_subject_v1(bad_tx_view),
+          substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource {
+              header: subject_header,
+              tx_inclusion: bad_tx_view,
+            },
+          ),
         )
         expect output_state_data == expected_output_state
 
@@ -89,7 +95,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -102,11 +107,9 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(
@@ -144,8 +147,15 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 test zero_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(zero_input_bad_tx())
   let expected_output_state: Data = bind_state_v1(
-    substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
   )
   let l1_tx = fixture.continue_step_l1_tx_v1(
@@ -198,8 +208,15 @@ fn run_zero_input_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = bind_state_v1(
-    substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
   )
   main.spend(
@@ -287,11 +304,15 @@ test zero_input_step_01_rejects_forged_transactions_root() fail {
   )
   let forged_block = fixture.native_block_fixture_v1(zero_input_bad_tx())
   let expected_output_state: Data = bind_state_v1(
-    substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(
-        forged_block.tx_id,
-        forged_block.compact_cbor,
-      ),
+    substrate.open_subject_v1(
+      fixture.ct_token_asset_name(forged_block),
+      substrate.AcceptedSource {
+        header: forged_block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          forged_block.tx_id,
+          forged_block.compact_cbor,
+        ),
+      },
     ),
   )
   // The prover claims the forged bad tx under the valid block's header by

@@ -12,13 +12,13 @@ import {
   encodeDaMetadataByHeaderResponseCbor,
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import type * as SDK from "@al-ft/midgard-sdk";
 import { vi } from "vitest";
 
 import type { DaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-committee-peers.js";
 import * as Manifest from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import * as Publication from "../src/da/libp2p-producer.publish-da-payload-insert-from-env.js";
 import { sha256 } from "../src/sha256.js";
+import { type DaCopy } from "./landed-blocks-replay-foreign.availability.js";
 import {
   envelope,
   MANIFEST_ID,
@@ -42,12 +42,12 @@ const manifest: DaProducerPublicationManifest = {
 };
 
 /**
- * Serves `serve(peerIndex)`'s payload (or nothing) from each of `peers`
+ * Serves `serve(peerIndex)`'s copy (or nothing) from each of `peers`
  * committee peers to the replayer's DA fetch; returns the indices of the
  * peers asked, in order.
  */
 export const serveDa = (
-  serve: (peerIndex: number) => SDK.DaPayload | undefined,
+  serve: (peerIndex: number) => DaCopy | undefined,
   peers = 1,
 ) => {
   const requests: number[] = [];

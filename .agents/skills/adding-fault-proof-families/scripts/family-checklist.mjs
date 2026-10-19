@@ -21,7 +21,7 @@
 // application record; the classification and adapter-registration rows at
 // the catalogue position; a catalogue-status.md row; a devnet journey owner;
 // and at least one fault-proofs test file named after the family.
-// Informational: family definition kind, typed reasons routed here, and which
+// Informational: family definition kind, and which
 // matched tests are lifecycles, assert validator refusal, or record coverage.
 //
 // What it cannot see: whether the validator is correct, whether the emulator

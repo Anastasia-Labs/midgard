@@ -554,11 +554,11 @@ export const USER_EVENT_WITNESS_SCRIPT_PREFIX =
 /** The delegated verifier script hashes pinned in every profile's Aiken env. */
 export const VERIFIER_SCRIPT_HASHES = Object.freeze({
   plutarch_phas_validator_hash:
-    "295ef8e61e32fca2d4e99da4c663ee2d5188ec94e1b907713d61e4ed",
+    "540660a975f99e74f17236217d218494ff0b0eca85e8fc74398464e2",
   plutarch_pexcludes_validator_hash:
-    "2dcb7892575cda83abd101588d7da0d7b15bbde00e601e610a6c0e5a",
+    "b0d2d7144f6f349ed9bf7a6c5b5c709203e79f686743163c3c0e243b",
   mpf_chunked_verify_validator_hash:
-    "6d5607e377782585db39b7c62f3a5dfbab2ad2b2c060bd5627bf3a5c",
+    "39f64e95ef5c8d243ae9287a8b13ba22360009c96e1913328d543065",
 } as const);
 
 export const SELECTED_DEPLOYMENT_PROFILE =

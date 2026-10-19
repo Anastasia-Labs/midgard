@@ -1,22 +1,12 @@
-import { decodeMidgardCekProgramMaterialDaEntry } from "@al-ft/midgard-core/cek-proof";
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { pinRetainedStateScriptRefs } from "../../database/cekProgramMaterial.pin-retained-state.js";
 import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "../../database/utils/common.js";
+import { DatabaseError } from "../../database/utils/common.js";
 import { type Database } from "../../services/database.js";
-import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { buildDaPayloadInsert } from "./da-payload.js";
 
 export type DaPayloadBackfillSkipped = {
@@ -46,78 +36,16 @@ type BackfillDeps<R> = {
     DatabaseError,
     R
   >;
-  /**
-   * Stores the payload and pins the scripts the block's post-state ledger
-   * references. The payload carries no UTxO set, so the outputs come from
-   * the node's own ledger.
-   */
   readonly upsertAvailable: (
     input: DaPayloadsDB.InsertInput,
-    ledgerOutputs: readonly Buffer[],
   ) => Effect.Effect<void, DatabaseError, R>;
-  readonly materializeLedgerOutputs: (
-    record: PendingBlockFinalizationsDB.Record,
-  ) => Effect.Effect<readonly Buffer[], DatabaseError, R>;
 };
 
 const defaultDeps: BackfillDeps<Database> = {
   retrieveMissingRecords:
     PendingBlockFinalizationsDB.retrieveFinalizedMissingDaPayloads,
   retrieveJournalByHeaderHash: PendingBlockFinalizationsDB.retrieveByHeaderHash,
-  upsertAvailable: (input, ledgerOutputs) =>
-    Effect.gen(function* () {
-      const body = yield* Effect.tryPromise({
-        try: async () =>
-          SDK.decodeDaPayload(
-            (
-              await unwrapDaPayload(input.payload_cbor, {
-                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-              })
-            ).innerBytes,
-          ).block_body,
-        catch: (cause) =>
-          new DatabaseError({
-            table: "da_payloads",
-            message: "Failed to decode backfilled state for script retention",
-            cause,
-          }),
-      });
-      const material = yield* Effect.try({
-        try: () =>
-          body.cek_program_material.map((entry) =>
-            decodeMidgardCekProgramMaterialDaEntry(
-              Buffer.from(entry[0], "hex"),
-              Buffer.from(entry[1], "hex"),
-            ),
-          ),
-        catch: (cause) =>
-          new DatabaseError({
-            table: "da_payloads",
-            message: "Malformed backfilled script material",
-            cause,
-          }),
-      });
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* DaPayloadsDB.upsertAvailable(input);
-          yield* pinRetainedStateScriptRefs({
-            headerHash: input.header_hash,
-            outputs: ledgerOutputs,
-            material,
-          });
-        }),
-      );
-    }).pipe(
-      sqlErrorToDatabaseError(
-        "da_payloads",
-        "Failed to persist retained backfill state",
-      ),
-    ),
-  materializeLedgerOutputs: (record) =>
-    materializeConfirmedLedgerSnapshot(record).pipe(
-      Effect.map((snapshot) => snapshot.entries.map((entry) => entry.output)),
-    ),
+  upsertAvailable: DaPayloadsDB.upsertAvailable,
 };
 
 const headerHashHex = (record: PendingBlockFinalizationsDB.Record): string =>
@@ -214,9 +142,8 @@ export const backfillMissingDaPayloadsFromFinalizedJournals = <R = Database>({
 
       const result = yield* Effect.either(
         Effect.gen(function* () {
-          const ledgerOutputs = yield* deps.materializeLedgerOutputs(record);
           const insert = yield* buildDaPayloadInsert({ record });
-          yield* deps.upsertAvailable(insert, ledgerOutputs);
+          yield* deps.upsertAvailable(insert);
         }),
       );
       if (result._tag === "Left") {

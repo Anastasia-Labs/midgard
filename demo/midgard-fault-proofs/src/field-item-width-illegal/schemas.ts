@@ -11,7 +11,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  FieldItemWidthAuthenticatedWidthSchema,
+  FieldItemWidthAuthenticatedItemSchema,
   FieldItemWidthBoundCoordinateSchema,
 } from "./field-item-width-illegal.js";
 
@@ -28,7 +28,6 @@ export const FieldItemWidthStep01SourceSchema = Data.Enum([
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   }),
 ]);
@@ -47,13 +46,13 @@ export const FieldItemWidthStep02DatumSchema = faultProofStepDatumSchema(
 export const FieldItemWidthStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningSchema,
+  opening: Data.Nullable(FieldOpeningSchema),
 });
 export const FieldItemWidthStep02RedeemerSchema = faultProofStepRedeemerSchema(
   FieldItemWidthStep02ArgsSchema,
 );
 export const FieldItemWidthStep03DatumSchema = faultProofStepDatumSchema(
-  FieldItemWidthAuthenticatedWidthSchema,
+  FieldItemWidthAuthenticatedItemSchema,
 );
 export const FieldItemWidthStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),

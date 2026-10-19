@@ -4,12 +4,14 @@
  */
 import {
   type ScriptDecodeData,
-  type ScriptDecodeFrame,
   scriptDecodeFrameData,
+  scriptDecodeMachineData,
+  scriptDecodeMachineHash,
   type ScriptDecodeRecord,
   scriptDecodeRecordData,
   type ScriptDecodeRun,
   scriptDecodeRunData,
+  type ScriptDecodeWalkSegment,
   serialiseScriptDecodeData,
 } from "@al-ft/midgard-validation";
 
@@ -49,28 +51,55 @@ export const scriptDecodeBindRedeemer = ({
 export const scriptDecodeFinishRedeemer = (recordOutput: bigint): string =>
   cborHex({ constr: 1, fields: [recordOutput] });
 
-/** Spend `Walk { staging, reveals, base, fuel, run_output }`. */
-export const scriptDecodeWalkRedeemer = ({
+/** Spend `Walk { run_output }`. */
+export const scriptDecodeWalkRedeemer = (runOutput: bigint): string =>
+  cborHex({ constr: 0, fields: [runOutput] });
+
+/** A Walk segment at its chain `position`, as one staker steps it. */
+export type ScriptDecodePositionedSegment = Readonly<{
+  position: number;
+  segment: ScriptDecodeWalkSegment;
+}>;
+
+/**
+ * A class staker's redeemer `{ run, links, staging, segments }`: the run it
+ * steps, a link `{ position, from, to }` per segment it steps, the staging of
+ * the run's bytes, and those segments `{ machine, reveals, base, fuel }`.
+ */
+export const scriptDecodeStakeRedeemer = ({
+  run,
   staging,
-  reveals,
-  base,
-  fuel,
-  runOutput,
+  segments,
 }: {
+  readonly run: Readonly<{ txHash: string; outputIndex: number }>;
   readonly staging: readonly bigint[];
-  readonly reveals: readonly ScriptDecodeFrame[];
-  readonly base: Uint8Array;
-  readonly fuel: number;
-  readonly runOutput: bigint;
+  readonly segments: readonly ScriptDecodePositionedSegment[];
 }): string =>
   cborHex({
     constr: 0,
     fields: [
+      {
+        constr: 0,
+        fields: [Buffer.from(run.txHash, "hex"), BigInt(run.outputIndex)],
+      },
+      segments.map(({ position, segment }) => ({
+        constr: 0,
+        fields: [
+          BigInt(position),
+          scriptDecodeMachineHash(segment.machine),
+          scriptDecodeMachineHash(segment.reached),
+        ],
+      })),
       [...staging],
-      reveals.map(scriptDecodeFrameData),
-      base,
-      BigInt(fuel),
-      runOutput,
+      segments.map(({ segment }) => ({
+        constr: 0,
+        fields: [
+          scriptDecodeMachineData(segment.machine),
+          segment.reveals.map(scriptDecodeFrameData),
+          segment.base,
+          BigInt(segment.fuel),
+        ],
+      })),
     ],
   });
 

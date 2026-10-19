@@ -701,7 +701,6 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
             ...common(threadOutRef, 0),
             header: forced.header,
             membership,
-            direction: 1n,
             outputIndex: 0n,
             ...input,
           }),
@@ -714,7 +713,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     await refuseStep01("forced_leaf", {
       header: { ...forced.header, utxosRoot: "ff".repeat(32) },
     });
-    await refuseStep01("forced_leaf", { direction: 0n });
+    await refuseStep01("forced_leaf", { boundSubjectDirection: 0n });
     // Reason/coordinate mutation: the redeemer names output 1 while the
     // committed reason is `OutputNonCanonical { output_index: 0 }`.
     await refuseStep01("reason_coordinate", { outputIndex: 1n });
@@ -731,7 +730,10 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef,
         finding: evidence,
-        forcedSource: { header: forced.header, membership, direction: 1n },
+        forcedSource: {
+          header: forced.header,
+          membership,
+        },
         referenceScriptUtxo: references[0]!,
       }),
     );
@@ -840,7 +842,10 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
       finding: evidence,
-      forcedSource: { header: forced.header, membership, direction: 1n },
+      forcedSource: {
+        header: forced.header,
+        membership,
+      },
       referenceScriptUtxo: references[0]!,
     });
     const authenticated = await submitTransactionOutputNonCanonicalStep02({

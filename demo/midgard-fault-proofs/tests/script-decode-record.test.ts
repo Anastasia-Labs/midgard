@@ -1,5 +1,5 @@
 import {
-  nextScriptDecodeWalkStep,
+  nextScriptDecodeChainedWalk,
   type ScriptDecodeRecord,
   scriptDecodeRecordOfScript,
   scriptDecodeScriptHash,
@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
+  buildScriptDecodeWalkTx,
   findScriptDecodeRecord,
   finishScriptDecodeRun,
   recordScriptDecode,
@@ -25,6 +26,7 @@ import {
   type ScriptDecodeDeployment,
   scriptDecodeRecordDatum,
   scriptDecodeRunDatum,
+  scriptDecodeWalkStakes,
   stageScriptDecodeBytes,
 } from "../src/script-decode/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -115,28 +117,36 @@ describe("script-decode record builders", () => {
     let cursor = start;
     let forgedOnce = false;
     while (scriptDecodeWalkRecord(cursor) === undefined) {
-      const honest = nextScriptDecodeWalkStep(cursor, 1);
-      const walk = (step: typeof honest.step) =>
-        buildScriptDecodeWalk({
+      const honest = nextScriptDecodeChainedWalk(cursor, 1);
+      if (!forgedOnce) {
+        // A successor two ticks on, claimed by a one-tick Walk.
+        const further = nextScriptDecodeChainedWalk(cursor, 2).walk.after;
+        expect(scriptDecodeRunDatum(further)).not.toBe(
+          scriptDecodeRunDatum(honest.walk.after),
+        );
+        await expectOnchainRefusal(() =>
+          buildScriptDecodeWalkTx({
+            lucid,
+            deployment,
+            scriptHashHex,
+            runUtxo,
+            staging,
+            after: further,
+            stakes: scriptDecodeWalkStakes(deployment, runUtxo, honest.walk),
+          }),
+        );
+        forgedOnce = true;
+      }
+      runUtxo = await (
+        await buildScriptDecodeWalk({
           lucid,
           deployment,
           scriptHashHex,
           runUtxo,
           staging,
-          step,
-        });
-      if (!forgedOnce) {
-        // A successor two ticks on, claimed by a one-tick Walk.
-        const further = nextScriptDecodeWalkStep(cursor, 2).step.after;
-        expect(scriptDecodeRunDatum(further)).not.toBe(
-          scriptDecodeRunDatum(honest.step.after),
-        );
-        await expectOnchainRefusal(() =>
-          walk({ ...honest.step, after: further }),
-        );
-        forgedOnce = true;
-      }
-      runUtxo = await (await walk(honest.step)).submit();
+          walk: honest.walk,
+        })
+      ).submit();
       cursor = honest.next;
     }
 

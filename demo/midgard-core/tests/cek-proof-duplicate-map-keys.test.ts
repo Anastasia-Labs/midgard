@@ -8,7 +8,6 @@ import {
   encodeMidgardCekValueNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
   MidgardCekProgramMaterialMissingRootError,
   verifyMidgardCekProgramMaterial,
@@ -67,7 +66,12 @@ const dataConstantProgram = (
   raw: RawData,
   declare: { readonly payloadLength?: bigint } = {},
 ): {
-  readonly envelope: MidgardCekProgramEnvelope;
+  readonly summary: {
+    readonly termRoot: Uint8Array;
+    readonly nodeCount: bigint;
+    readonly materialByteLength: bigint;
+    readonly uplcVersion: readonly [bigint, bigint, bigint];
+  };
   readonly entries: MidgardCekProgramMaterialEntry[];
   readonly semantic: SemanticMaterial;
   readonly dataRoot: Hash32;
@@ -130,7 +134,7 @@ const dataConstantProgram = (
     preimage: encodeMidgardCekTermNode(termNode),
   });
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(entries.length),
@@ -197,7 +201,7 @@ describe("CEK program material with a duplicate-key Data constant", () => {
   it("accepts the honest material and returns the exact payload", () => {
     const program = dataConstantProgram(DUPLICATE_KEY_MAP);
     const verified = verifyMidgardCekProgramMaterial(
-      program.envelope,
+      program.summary.termRoot,
       program.entries,
     );
     expect(verified.constants).toHaveLength(1);
@@ -220,7 +224,7 @@ describe("CEK program material with a duplicate-key Data constant", () => {
         : entry,
     );
     expect(() =>
-      verifyMidgardCekProgramMaterial(honest.envelope, tampered),
+      verifyMidgardCekProgramMaterial(honest.summary.termRoot, tampered),
     ).toThrow("CEK program material root does not match its preimage");
   });
 
@@ -230,18 +234,24 @@ describe("CEK program material with a duplicate-key Data constant", () => {
       payloadLength: deduplicatedLength,
     });
     expect(() =>
-      verifyMidgardCekProgramMaterial(program.envelope, program.entries),
+      verifyMidgardCekProgramMaterial(
+        program.summary.termRoot,
+        program.entries,
+      ),
     ).toThrow(/payload length does not match its semantic tree/u);
   });
 
-  it("refuses a re-rooted deduplicated program against the honest envelope", () => {
+  it("refuses a re-rooted deduplicated program against the honest term root", () => {
     const honest = dataConstantProgram(DUPLICATE_KEY_MAP);
     const deduplicated = dataConstantProgram(DEDUPLICATED_MAP);
-    expect(hexRoot(deduplicated.envelope.termRoot)).not.toBe(
-      hexRoot(honest.envelope.termRoot),
+    expect(hexRoot(deduplicated.summary.termRoot)).not.toBe(
+      hexRoot(honest.summary.termRoot),
     );
     expect(() =>
-      verifyMidgardCekProgramMaterial(honest.envelope, deduplicated.entries),
+      verifyMidgardCekProgramMaterial(
+        honest.summary.termRoot,
+        deduplicated.entries,
+      ),
     ).toThrow(MidgardCekProgramMaterialMissingRootError);
   });
 });

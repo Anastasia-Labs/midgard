@@ -46,6 +46,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
 import { submitRawNonExistentInputForcedStep } from "./support/non-existent-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -73,6 +74,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         },
       });
       const contracts = {
+        hubOraclePolicyId: harness.contracts.hubOracle.policyId,
         steps: harness.contracts.fraudProofContracts.nonExistentInput.steps,
         computationThread: harness.contracts.computationThread,
         fraudProof: harness.contracts.fraudProof,
@@ -255,7 +257,6 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       const forcedSource = {
         header,
         membership: forcedMembership,
-        direction: 1n,
       };
       const fullTransactionCbor =
         encodeMidgardForcedTxCanonical(native).toString("hex");
@@ -401,6 +402,15 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         );
         certificates = [certified.certificateUtxo];
       }
+      const common = {
+        blueprint: harness.realBlueprint,
+        network: "Custom" as const,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        lucid: harness.proverLucid,
+        contracts,
+        categoryId,
+        signer: harness.proverSigner,
+      };
       const init = async (label: string) => {
         const result = await captures(label, () =>
           submitInit({
@@ -423,24 +433,20 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       if (honest) {
         let thread = await init("honest-init");
         for (const stepIndex of [0, 1, 2] as const)
-          thread = await captures(`honest-step-${stepIndex}`, () =>
-            submitRawNonExistentInputForcedStep({
-              lucid: harness.proverLucid,
-              contracts,
-              categoryId,
-              signer: harness.proverSigner,
-              threadOutRef: thread,
-              prepared,
-              stepIndex,
-              references: referenceScripts,
-            }),
-          );
+          thread = (
+            await captures(`honest-step-${stepIndex}`, () =>
+              submitRawNonExistentInputForcedStep({
+                ...common,
+                threadOutRef: thread,
+                prepared,
+                stepIndex,
+                references: referenceScripts,
+              }),
+            )
+          ).nextThreadOutRef;
         await expect(
           submitRawNonExistentInputForcedStep({
-            lucid: harness.proverLucid,
-            contracts,
-            categoryId,
-            signer: harness.proverSigner,
+            ...common,
             threadOutRef: thread,
             prepared,
             stepIndex: 3,
@@ -460,6 +466,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         );
         return;
       }
+      const chunked = deep ? await deepProofChunks(harness, prepared) : [];
       const advance = async (
         threadOutRef: string,
         stepIndex: 0 | 1 | 2 | 3,
@@ -467,19 +474,18 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       ) =>
         captures(label, async () =>
           submitNonExistentInputForcedStep({
-            lucid: harness.proverLucid,
-            contracts,
-            categoryId,
-            signer: harness.proverSigner,
+            ...common,
             threadOutRef,
             stepIndex,
             prepared: await admitNonExistentInputForcedArtifact(
               JSON.parse(JSON.stringify(artifact)),
             ),
             referenceScripts,
-            carriageUtxos: stepIndex === 1 ? [...chunks, ...certificates] : [],
+            fieldCarriageUtxos:
+              stepIndex === 1 ? [...chunks, ...certificates] : [],
             certificatePolicyId:
               harness.contracts.fieldPreimageCertificate.policyId,
+            publishedProofChunks: chunked[stepIndex] ?? [],
           }),
         );
       if (!deep)
@@ -540,10 +546,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
                   };
           await expect(
             submitRawNonExistentInputForcedStep({
-              lucid: harness.proverLucid,
-              contracts,
-              categoryId,
-              signer: harness.proverSigner,
+              ...common,
               threadOutRef: thread,
               prepared: changed,
               stepIndex: step,
@@ -557,10 +560,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       if (!deep && index === 0n)
         await expect(
           submitRawNonExistentInputForcedStep({
-            lucid: harness.proverLucid,
-            contracts,
-            categoryId,
-            signer: harness.proverSigner,
+            ...common,
             threadOutRef: thread,
             prepared: {
               ...prepared,

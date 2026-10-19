@@ -33,11 +33,6 @@ export const MACHINE_STATE_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export const PROGRAM_ENVELOPE_DOMAIN = Buffer.from(
-  "MidgardCekProgramEnvelopeV1",
-  "ascii",
-);
-
 export const BLS_EXPRESSION_NODE_DOMAIN = Buffer.from(
   "MidgardCekBlsExpressionV1",
   "ascii",
@@ -46,13 +41,6 @@ export const BLS_EXPRESSION_NODE_DOMAIN = Buffer.from(
 const UINT32_MAX = 0xffff_ffffn;
 
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
-
-/**
- * V1 makes the semantic payload root canonical for every constant, admits
- * semantic builtin/control witnesses, and uses the bounded graph-material
- * interpretation.
- */
-export const MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION = 1n;
 
 export const MIDGARD_CEK_MACHINE_STATE_VERSION = 1n;
 
@@ -82,63 +70,7 @@ export const isMidgardCekProgramUplcVersion = (
   patch: bigint,
 ): boolean => major === 1n && (minor === 0n || minor === 1n) && patch === 0n;
 
-/**
- * The canonical V1 DA envelope is the only aggregate program-size budget. The
- * constants below mirror its exact canonical Plutus-Data encoding:
- *
- * - an otherwise-empty, structurally valid V1 payload is 445 bytes;
- * - replacing its one-byte empty material list with the two-byte non-empty
- *   list framing leaves 446 fixed bytes outside material tuples. The constant
- *   is 447, measured when the body also carried a one-byte empty UTxO list;
- *   it is kept so the consensus limits do not move, and is one byte
- *   conservative;
- * - the smallest tuple is 42 bytes: tuple framing (2), a bytes32 key (34),
- *   and a five-byte `[v1, kind, one-byte-preimage]` value wrapped as Plutus
- *   bytes (6).
- *
- * The canonical DA encoder has regression tests for all three measurements.
- * The material-byte bound is deliberately the tight structural upper bound
- * after fixed framing. Exact tuple overhead makes the realizable total
- * smaller, and the canonical 64 MiB DA-size check remains authoritative.
- */
 export const MIDGARD_MAX_DA_PAYLOAD_BYTES = 64 * 1024 * 1024;
-
-export const MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES = 447;
-
-export const MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES = 42;
-
-export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT = BigInt(
-  Math.floor(
-    (MIDGARD_MAX_DA_PAYLOAD_BYTES -
-      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES) /
-      MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES,
-  ),
-);
-
-/**
- * A bundle may contain many transactions that use the same program, but
- * distinct program identities must not multiply verification work beyond one
- * maximum-size V1 program. Identical envelopes are verified once and reuse the
- * same positional result.
- */
-export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS =
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT;
-
-export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES = BigInt(
-  MIDGARD_MAX_DA_PAYLOAD_BYTES - MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
-);
-
-/**
- * Each unique envelope declares the exact bytes reachable from its root. The
- * sum is therefore a conservative upper bound on both byte verification work
- * and retained type/payload result bytes, including when envelopes share
- * material. V1 permits at most one maximum-size program's work per bundle.
- */
-export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK =
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES;
-
-// [v1, [1,1,0], h32, uint32(node_count), uint32(material_bytes)].
-export const MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES = 50;
 
 export const MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES = 9_215;
 

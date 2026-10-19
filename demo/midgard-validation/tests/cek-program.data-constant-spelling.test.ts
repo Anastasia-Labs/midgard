@@ -23,10 +23,7 @@ import {
   CardanoFlatRefusal,
   encodeMidgardCekCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
-import {
-  buildMidgardCanonicalCekProgram,
-  buildMidgardCanonicalScriptArtifact,
-} from "../src/cek-program.js";
+import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
 import {
   midgardEnvelopeDataFromCborIterative,
   plutusDataFromCborIterative,
@@ -41,12 +38,14 @@ import {
   DATA_DECODER_ACCEPTED,
   DATA_DECODER_REFUSED,
 } from "./cek-program.data-constant-spelling.vectors.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * The Cardano ledger reads a Data constant inside a script's Flat bytes with
  * its Plutus Data decoder, which accepts several spellings of one value. A
  * script whose flat uses any of them is the same program as its canonical
- * twin, so it must build the same envelope and prove the same execution.
+ * twin, so it must build the same local graph and prove the same execution.
+ * The exact stored byte strings retain distinct script identities.
  */
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
@@ -89,10 +88,9 @@ const equalsDataTerm = (): UPLCTerm =>
   );
 
 const programView = (flat: Buffer) => {
-  const program = buildMidgardCanonicalCekProgram(flat);
+  const program = buildCekProgramFromRawFlat(flat);
   return {
-    envelopeHash: hex(program.envelopeHash),
-    envelopeCbor: hex(program.envelopeCbor),
+    termRoot: hex(program.termRoot),
     material: [...program.material.values()]
       .map((entry) => `${entry.kind}:${hex(entry.root)}:${hex(entry.preimage)}`)
       .sort(),
@@ -114,7 +112,7 @@ const programView = (flat: Buffer) => {
 /** The detail of the `invalidData` refusal building the program raises. */
 const invalidDataRefusal = (flat: Buffer): string => {
   try {
-    buildMidgardCanonicalCekProgram(flat);
+    buildCekProgramFromRawFlat(flat);
   } catch (error) {
     expect(error).toBeInstanceOf(CardanoFlatRefusal);
     expect((error as CardanoFlatRefusal).refusal).toBe("invalidData");
@@ -132,7 +130,7 @@ const invalidDataRefusal = (flat: Buffer): string => {
 const prove = (flat: Buffer) => {
   const { program } = programView(flat);
   const execution = executeMidgardCekStructuralProgram({
-    root: program.envelope.termRoot,
+    root: program.termRoot,
     material: program.material.values(),
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
@@ -211,11 +209,10 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
 
       const spelledView = programView(spelled);
       const twinView = programView(twin);
-      expect(spelledView.envelopeHash).toBe(twinView.envelopeHash);
-      expect(spelledView.envelopeCbor).toBe(twinView.envelopeCbor);
+      expect(spelledView.termRoot).toBe(twinView.termRoot);
       expect(spelledView.material).toEqual(twinView.material);
       expect(spelledView.constantWitnesses).toEqual(twinView.constantWitnesses);
-      expect(spelledView.credentialScriptHash).toBe(
+      expect(spelledView.credentialScriptHash).not.toBe(
         twinView.credentialScriptHash,
       );
 
@@ -262,7 +259,7 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     const twin = programView(canonicalFlat(UPLCConst.data(new DataI(0n))));
     for (const flat of ["0101004c01020000000001", "0101004c010200ff0001"]) {
       const view = programView(bytes(flat));
-      expect(view.envelopeHash).toBe(twin.envelopeHash);
+      expect(view.termRoot).toBe(twin.termRoot);
       expect(view.material).toEqual(twin.material);
       expect(view.constantWitnesses).toEqual(twin.constantWitnesses);
       const [, witness] = [...view.program.constantWitnesses.entries()].find(
@@ -336,9 +333,7 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     expect(canonical.length / 2).toBeLessThanOrEqual(9_215);
     const spelled = spelledFlat(serialiseDataTerm(), [padded]);
     const twin = spelledFlat(serialiseDataTerm(), [canonical]);
-    expect(programView(spelled).envelopeHash).toBe(
-      programView(twin).envelopeHash,
-    );
+    expect(programView(spelled).termRoot).toBe(programView(twin).termRoot);
     const spelledRun = prove(spelled);
     expect(spelledRun.terminal).toBe(prove(twin).terminal);
     expect(spelledRun.cpu).toBe(prove(twin).cpu);

@@ -7,6 +7,7 @@ import {
   OutputReference,
   Proof,
   ROOT_DOMAINS,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
@@ -21,6 +22,7 @@ import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { submitMintStep01ForcedRaw } from "./support/mint-item-non-canonical-emulator.js";
 import {
   evidenceOf,
   registeredContracts,
@@ -126,11 +128,24 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
     ...registered.common(threadOutRef, 0),
     finding: evidence,
   });
-  await expectOnchainRefusal(() =>
-    submitMintItemNonCanonicalStep01Forced({
-      ...common(),
-      forcedSource: { header, membership, direction: 1n },
-    }),
+  const forgedRejectionSubject = forcedVerdictSubject({
+    transactionId: id,
+    sourceKey: key,
+    rejectionReason: { MintItemMalformed: { policy_index: 0n } },
+  });
+  expect(verdictSubjectIsCanonical(forgedRejectionSubject)).toBe(true);
+  await expectOnchainRefusal(
+    () =>
+      submitMintStep01ForcedRaw({
+        ...registered.common(threadOutRef, 0),
+        subject: forgedRejectionSubject,
+        itemIndex: evidence.itemIndex,
+        forcedSource: { header, membership },
+      }),
+    {
+      refusedBy: "fraud_proofs/mint_item_non_canonical/step_01",
+      check: /^Validator returned false$/u,
+    },
   );
   await expectOnchainRefusal(() =>
     submitMintItemNonCanonicalStep01Forced({
@@ -141,13 +156,15 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
           ...membership,
           value: { ...value, tx_id: "cd".repeat(32) },
         },
-        direction: 0n,
       },
     }),
   );
   const bound = await submitMintItemNonCanonicalStep01Forced({
     ...common(),
-    forcedSource: { header, membership, direction: 0n },
+    forcedSource: {
+      header,
+      membership,
+    },
   });
   threadOutRef = bound.nextThreadOutRef;
   const opened = await submitMintItemNonCanonicalStep02({

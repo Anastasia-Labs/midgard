@@ -257,18 +257,12 @@ it("backs off a header whose fetch failed, asking no peer before its next attemp
   expect(t.requests).toHaveLength(6);
 });
 
-/** `payload` with program material no transaction reads, same header. */
-const strayMaterial = (payload: SDK.DaPayload): SDK.DaPayload => ({
-  ...payload,
-  block_body: {
-    ...payload.block_body,
-    cek_program_material: [["ab".repeat(32), "00"]],
-  },
-});
-
 it("asks the next peer within the fetch when a body differs from the attested commitment", async () => {
   const { payload } = await normalFixture();
-  const variant = await envelope(strayMaterial(payload));
+  // The same body recompressed: other bytes under the same header.
+  const variant = await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    mode: "zstd",
+  });
   const canonical = await envelope(payload);
   const t = transport((index) => (index === 0 ? variant : canonical));
   const result = await Effect.runPromise(

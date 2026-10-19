@@ -591,7 +591,6 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
     const forcedSource = {
       header: block.header,
       membership: accused.membership,
-      direction: 1n,
     };
     const door = async (
       seam: (typeof AUTHENTICATION_SEAMS)[number],

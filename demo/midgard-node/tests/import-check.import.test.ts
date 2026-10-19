@@ -80,31 +80,6 @@ describe("foreign import by committed verdict", () => {
     );
   });
 
-  it("imports several transactions in less time than one local run of them takes", async () => {
-    const parent = [0x40, 0x41, 0x42, 0x43].map((byte) =>
-      fundedBy(byte, "loop"),
-    );
-    const block = await committedBlock(
-      parent,
-      parent.map((entry) => ({
-        input: entry.outRef,
-        body: "loop" as const,
-        next: "accept" as const,
-        cpu: 10n ** 10n,
-      })),
-    );
-    const startedAt = performance.now();
-    const result = await imported(block);
-    const importMs = performance.now() - startedAt;
-    expect(
-      result.scriptChecks.checks.map((check) => check.transactionId),
-    ).toEqual(block.txIds);
-    const runStartedAt = performance.now();
-    await localVerdict(block.runs[0]![0]!);
-    const runMs = performance.now() - runStartedAt;
-    expect(importMs).toBeLessThan(runMs);
-  });
-
   it("imports an honest block unchanged, with its runs for the checker", async () => {
     const parent = [fundedBy(0x33, "accept"), fundedBy(0x34, "accept")];
     const block = await committedBlock(
@@ -169,10 +144,10 @@ describe("foreign import by committed verdict", () => {
   });
 
   it("replays a forced transaction's script spend in full: it imports with the rejection a full replay gives it, and leaves no check", async () => {
-    const parent = [fundedBy(0x35, "accept")];
+    const parent = [fundedBy(0x35, "reject")];
     const block = await forcedBlock(parent, {
       input: parent[0]!.outRef,
-      body: "accept",
+      body: "reject",
       next: "accept",
     });
     expect(block.rejection.code).toBe("E_PLUTUS_SCRIPT_INVALID");

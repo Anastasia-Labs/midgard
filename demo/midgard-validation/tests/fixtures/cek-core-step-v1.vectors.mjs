@@ -44,6 +44,8 @@ import {
   UPLCVar,
 } from "@harmoniclabs/uplc";
 
+import { caseConstantPrograms } from "./cek-core-step-v1.case-constant.mjs";
+
 /** `(program 1.1.0 term)` as canonical Flat bytes, the V1 script payload. */
 export const compileMidgardCekGoldenProgram = (term, encodeProgram) =>
   Buffer.from(encodeProgram(new UPLCProgram([1, 1, 0], term)));
@@ -230,10 +232,12 @@ export const CEK_CORE_STEP_PROGRAMS = [
   {
     label: "case_scrutinee_invalid",
     note: "returnCaseInvalid: error_invalid_case_scrutinee",
-    term: () => new Lambda(new Case(UPLCConst.int(1), [UPLCConst.int(7)])),
+    term: () =>
+      new Lambda(new Case(new Delay(UPLCConst.int(1)), [UPLCConst.int(7)])),
     context: EMPTY_CONTEXT,
     maxSteps: 32,
   },
+  ...caseConstantPrograms(EMPTY_CONTEXT),
   {
     label: "add_integer",
     note: "computeBuiltin, returnApplyBuiltin, executeBuiltinDirect",
@@ -479,6 +483,7 @@ export const CEK_CORE_STEP_WITNESS_KINDS = [
   "executeBuiltinFailure",
   "executeBuiltinTypeFailure",
   "computeContextConstant",
+  "returnCaseConstant",
 ];
 
 /**

@@ -119,16 +119,6 @@ vi.mock("@al-ft/midgard-validation", async () => {
 });
 // Opaque fixture bytes (no programs, no descriptors) do not affect the
 // persisted state compared here.
-vi.mock(
-  "../src/mpf/commit-rejection.normal-program-coverage-check.js",
-  async (original) => ({
-    ...(await original<object>()),
-    normalProgramCoverageCheck: () => ({
-      stage: "Program material coverage",
-      start: () => ({ admit: () => ({ kind: "keep" }) }),
-    }),
-  }),
-);
 vi.mock("../src/mpf/ledger-hydration.js", async () => {
   const actual = await vi.importActual<
     typeof import("../src/mpf/ledger-hydration.js")
@@ -138,20 +128,6 @@ vi.mock("../src/mpf/ledger-hydration.js", async () => {
     encodeTransactionRootValue: vi.fn((txCbor: Buffer) => Buffer.from(txCbor)),
   };
 });
-vi.mock("../src/database/txAdmissions.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/database/txAdmissions.js")
-  >("../src/database/txAdmissions.js");
-  return {
-    ...actual,
-    retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-      Effect.succeed(
-        txIds.map((txId) => ({ txId, sidecarCbor: Buffer.from("80", "hex") })),
-      ),
-    ),
-  };
-});
-
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
   { network: "Preprod" },
@@ -355,7 +331,7 @@ const snapshot = Effect.gen(function* () {
     deposits:
       yield* sql`SELECT event_id, status, projected_header_hash FROM deposits_utxos ORDER BY event_id`,
     forced:
-      yield* sql`SELECT tx_order_id, status, projected_header_hash, forced_inclusion_value, cek_program_material_sidecar_cbor FROM forced_transaction_utxos ORDER BY tx_order_id`,
+      yield* sql`SELECT tx_order_id, status, projected_header_hash, forced_inclusion_value FROM forced_transaction_utxos ORDER BY tx_order_id`,
     withdrawals:
       yield* sql`SELECT event_id, status, validity, classification_revision, settlement_event_info FROM withdrawal_utxos ORDER BY event_id`,
   };

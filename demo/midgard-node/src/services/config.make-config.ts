@@ -25,7 +25,6 @@ import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
 import {
   boundedValidationInteger,
-  CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
   type NodeConfigDep,
   positiveFiniteNumberConfig,
   positiveSafeIntegerConfig,
@@ -331,22 +330,6 @@ const makeConfig = Effect.gen(function* () {
       ) {
         throw new Error(
           `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
-        );
-      }
-      return value;
-    }),
-  );
-  const cekProgramMaterialStoreMaxBytes = yield* Config.integer(
-    "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
-  ).pipe(
-    Config.withDefault(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4),
-    Config.mapAttempt((value) => {
-      if (
-        !Number.isSafeInteger(value) ||
-        value < CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES
-      ) {
-        throw new Error(
-          `CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least ${CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES.toString()}`,
         );
       }
       return value;
@@ -930,7 +913,6 @@ const makeConfig = Effect.gen(function* () {
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,
     SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: submitIngressMaxInFlightBytes,
-    CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: cekProgramMaterialStoreMaxBytes,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:

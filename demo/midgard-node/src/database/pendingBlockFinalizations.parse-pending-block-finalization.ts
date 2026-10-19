@@ -269,7 +269,6 @@ export const txMemberEntry = (
   entry: TxTable.EntryWithTimeStamp,
   ordinal: number,
   sourceTable: string,
-  programMaterialSidecarCbor?: Buffer,
 ): MemberRecord => {
   const payload = Buffer.from(entry[TxTable.Columns.TX]);
   const memberId = Buffer.from(entry[TxTable.Columns.TX_ID]);
@@ -279,16 +278,6 @@ export const txMemberEntry = (
     [MemberColumns.ORDINAL]: ordinal,
     [MemberColumns.PAYLOAD_CBOR]: payload,
     [MemberColumns.PAYLOAD_SHA256]: sha256(payload),
-    ...(programMaterialSidecarCbor === undefined
-      ? {}
-      : {
-          [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer.from(
-            programMaterialSidecarCbor,
-          ),
-          [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: sha256(
-            programMaterialSidecarCbor,
-          ),
-        }),
     [MemberColumns.SOURCE_TABLE]: sourceTable,
     [MemberColumns.SOURCE_ID]: memberId,
     [MemberColumns.SOURCE_TIMESTAMP]: entry[TxTable.Columns.TIMESTAMPTZ],

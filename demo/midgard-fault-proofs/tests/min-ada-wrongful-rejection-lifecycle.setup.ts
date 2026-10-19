@@ -228,7 +228,7 @@ export const setup = async ({
   });
   const header = seeded.header;
   const direction = accepted ? 0n : 1n;
-  const source = { header, membership, direction };
+  const source = { header, membership };
   const refs = await publishFinalFamilyReferenceScripts({
     lucid: h.proverLucid,
     family: h.family,

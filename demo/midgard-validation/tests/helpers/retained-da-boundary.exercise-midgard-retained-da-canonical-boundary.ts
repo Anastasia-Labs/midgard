@@ -155,25 +155,15 @@ export const exerciseMidgardRetainedDaCanonicalBoundary = async ({
   canonicalTransactionCbor,
   corpusLabel,
   productionAdmission: admission = "required",
-  canonicalMaterialSidecarCbor,
-  sourceRawScriptAuditHash,
+  sourceScriptHash,
   resolvedReferenceUtxos,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
   readonly corpusLabel?: string;
   readonly productionAdmission?: RetainedDaAdmission;
-  readonly canonicalMaterialSidecarCbor?: Uint8Array;
-  readonly sourceRawScriptAuditHash?: string;
+  readonly sourceScriptHash?: string;
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
 }): Promise<RetainedDaBoundaryMeasurement> => {
-  if (
-    (canonicalMaterialSidecarCbor === undefined) !==
-    (sourceRawScriptAuditHash === undefined)
-  ) {
-    throw new Error(
-      "retained-DA corpus program material and raw-source audit identity must be provided together",
-    );
-  }
   if (
     admission === "diagnostic-synthetic-script-witnesses" &&
     corpusLabel !== "mixed-size-balanced"
@@ -212,8 +202,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundary = async ({
     transactionIdHex,
     transactionCommitmentHex,
     canonicalTransactionCbor: exactCanonicalTransactionCbor,
-    canonicalMaterialSidecarCbor,
-    sourceRawScriptAuditHash,
+    sourceScriptHash,
     resolvedReferenceUtxos,
   });
   const retainedSource: SDK.L2TransactionSource = {

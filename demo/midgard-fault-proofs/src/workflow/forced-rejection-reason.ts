@@ -89,7 +89,6 @@ export const FORCED_REJECTION_NO_ARM_CODES = Object.freeze([
   RejectCodes.MintForbidden,
   RejectCodes.ReferenceInputForbidden,
   RejectCodes.ScriptFeatureForbidden,
-  RejectCodes.CekProgramMaterial,
   RejectCodes.TxExUnits,
 ] as const);
 

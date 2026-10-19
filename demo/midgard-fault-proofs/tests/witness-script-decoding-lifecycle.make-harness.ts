@@ -75,8 +75,11 @@ export let publicationsRecorded = false;
 // Harness
 // ---------------------------------------------------------------------------
 
-export const makeHarness = async () => {
+export const makeHarness = async ({
+  referenceScriptAuthTimelockMs,
+}: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
+    referenceScriptAuthTimelockMs,
     contractOptions: {
       realWitnessScriptDecoding: true,
       alwaysFraudProofCatalogue: true,
@@ -344,7 +347,6 @@ export const makeHarness = async () => {
           threadOutRef,
           header: forced.block.header,
           membership: forced.membership,
-          direction: 1n,
           witnessSetHash,
           scriptIndex,
           referenceScriptUtxo: ref(0),
@@ -368,7 +370,6 @@ export const makeHarness = async () => {
       threadOutRef,
       header: forced.block.header,
       membership: forced.membership,
-      direction: 1n,
       subject: evidence.finding.subject,
       witnessSetHash: evidence.finding.witnessSetHash,
       scriptIndex: BigInt(evidence.finding.scriptIndex),

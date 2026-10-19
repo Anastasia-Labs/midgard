@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   NetworkIdForcedStepDatum,
   NetworkIdStep01SpendRedeemerSchema,
@@ -54,7 +55,10 @@ export const submitNetworkIdForcedStep01 = async ({
   // accepted one carries its own body or output claim to the forced door.
   const fault = prepared.fault;
   if (
-    (prepared.forcedSource.direction === 1n) !==
+    (proofThreadDirectionOfForcedLeaf(
+      prepared.forcedSource.membership.value,
+    ) ===
+      1n) !==
       (fault === "ForcedNetworkIdMismatch") ||
     (typeof fault === "object" &&
       (!("OutputNetwork" in fault) || fault.OutputNetwork.output_index < 0n))

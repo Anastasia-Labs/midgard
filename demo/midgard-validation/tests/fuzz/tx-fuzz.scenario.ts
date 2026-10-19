@@ -1,15 +1,10 @@
-import {
-  encodeCbor,
-  encodeMidgardCekProgramMaterialSidecar,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core";
+import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { type Data } from "@harmoniclabs/plutus-data";
 import { UPLCConst, UPLCProgram, type UPLCTerm } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekPlutusData } from "../../src/cek-constant.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../../src/cek-program.js";
 import {
   MidgardRedeemerTag,
   validationMachineLedgerRoot,
@@ -106,8 +101,7 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
   const scriptFlat = encodeMidgardCekCardanoFlatProgram(
     new UPLCProgram([1, 1, 0], scriptTerm(program.term, returnsUnit)),
   );
-  const canonical = buildMidgardCanonicalCekProgram(scriptFlat);
-  const script = plutusV3ScriptWitness(canonical.envelopeCbor);
+  const script = plutusV3ScriptWitness(encodeCbor(scriptFlat));
   const spent = outRefFromByte(0x1d);
   const spentOutput = makeProtectedScriptOutput(
     hashScriptWitness(script),
@@ -169,9 +163,6 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-        ...canonical.material.values(),
-      ]),
       ledgerWitnessEntries,
       priorUtxosRoot: priorRoot.toString("hex"),
       blockTimeMs: 1_750_000_000_000,

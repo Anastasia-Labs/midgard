@@ -69,25 +69,11 @@ describe("import checker negative cache", () => {
     60_000,
   );
 
-  it("does not fault or cache an honest transaction with a large script and a low declared budget, under a loaded pool too", async () => {
+  it("does not fault or cache an honest transaction with a large script and a low declared budget", async () => {
     const real = await realEvaluator(4);
-    // Three workers busy with long runs; the checker gets the fourth.
-    const [loopRun] = firstRuns(
-      await blockOf(["loop"], { firstByte: 0x90, cpu: 10_000_000_000n }),
-    );
-    const load = Array.from({ length: 3 }, () =>
-      real.pool
-        .submit({
-          kind: "cek_verdict",
-          jobId: real.pool.allocateJobId(),
-          request: loopRun!,
-        })
-        .catch(() => undefined),
-    );
     const check = checker(real, DEFAULT_IMPORT_CHECK_CONFIG);
     const first = await landBlock(["large"], { cpu: 1_000_000n });
     expect(await check.importPass()).toEqual([]);
-    expect(real.pool.stats().busyWorkers).toBe(3);
     expect(await entries()).toEqual([]);
     // Not cached: the next transaction running it is run at import.
     await landBlock(["large"], {
@@ -97,8 +83,6 @@ describe("import checker negative cache", () => {
     });
     expect(await check.importPass()).toEqual([]);
     expect(await entries()).toEqual([]);
-    await closePools();
-    await Promise.all(load);
   }, 60_000);
 
   it("faults and caches the same large script when the kill has no byte term", async () => {

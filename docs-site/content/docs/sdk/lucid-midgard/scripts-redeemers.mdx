@@ -90,11 +90,11 @@ Reference inputs must preserve their canonical output bytes. Trusted metadata
 binds a declared script language and hash to a reference out-ref; declarations
 are checked against available script bytes and cannot supply executable code.
 
-Non-native reference execution requires the canonical script envelope and exact
-CEK program material. Supply required sidecar material through
-`complete({ programMaterial })`; completion verifies its match and fails closed
-when material is missing or inconsistent. Metadata alone is insufficient.
-Node Phase B still resolves the reference input against its own ledger state.
+Non-native reference execution reads the stored CBOR-wrapped Flat script from
+the resolved output. Preserve those exact bytes: the script hash includes their
+spelling. Metadata alone cannot provide executable bytes. Node Phase B resolves
+the reference input against its own ledger state, while local preflight needs
+the corresponding output bytes in its supplied pre-state.
 
 ## Related
 

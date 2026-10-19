@@ -17,6 +17,7 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -242,10 +243,18 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       label: `${FAMILY} field 2`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  // A certificate already on chain (the workflow's certify action ran) is
+  // reused; only an absent one is minted here.
   const certificateUtxo =
     suppliedCertificate ??
     (planned.plan.tier === "Certified"
-      ? (
+      ? ((await resolveFaultProofFieldPreimageCertificate({
+          lucid,
+          network: lucid.config().network!,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        })) ??
+        (
           await certifyFaultProofFieldCarriage({
             lucid,
             network: lucid.config().network!,
@@ -266,7 +275,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
             witnessSetCompactCbor,
             preSubmitBoundary: certificatePreSubmitBoundary,
           })
-        ).certificateUtxo
+        ).certificateUtxo)
       : undefined);
   return await submitOutputReferenceScriptDecodingStep02Raw({
     lucid,

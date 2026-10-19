@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxOutput,
   protectMidgardAddress,
@@ -27,7 +26,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardCanonicalCekProgram,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
   MidgardRedeemerTag,
@@ -35,6 +33,7 @@ import {
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -107,8 +106,8 @@ const verdict = async (
   validityIntervalStart: bigint,
   hooks: Pick<PhaseBConfig, "evaluateCekVerdict" | "cekExecutionMode"> = {},
 ) => {
-  const program = buildMidgardCanonicalCekProgram(lockedAfterPosixInstant);
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const program = buildCekProgramFromRawFlat(lockedAfterPosixInstant);
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const scriptHash = hashScriptWitness(script);
   const spent = outRefFromByte(0x5c);
   const spentOutput = encodeMidgardTxOutput({
@@ -137,9 +136,6 @@ const verdict = async (
       },
     ]),
     scriptLanguages: ["PlutusV3"],
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
   });
   const result = await Effect.runPromise(
     runPhaseBValidationWithPatch(
@@ -195,7 +191,7 @@ describe("phase B POSIX validRange", () => {
       verdict(preprod, LOWER_BOUND_SLOT - 1n, { evaluateCekVerdict }),
     ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
     expect(requests).toHaveLength(2);
-    expect(requests[0]?.programMaterialSidecarCbor).not.toBeNull();
+    expect(requests[0]?.scriptBytes).toBeDefined();
 
     // A proof-mode run keeps its per-step evidence in process.
     await expect(

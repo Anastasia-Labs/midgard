@@ -16,7 +16,7 @@ pub type Args {
   BindNormalTransaction { carriage: NativeTxInclusionCarriage }
   /// Either direction over a forced-source subject: record the direction now,
   /// bind the forced leaf (and its verdict) at step-02.
-  RecordForcedSource { direction: Int, input_index: Int, output_index: Int }
+  RecordForcedSource { input_index: Int, output_index: Int }
 }
 
 pub type SpendRedeemer =

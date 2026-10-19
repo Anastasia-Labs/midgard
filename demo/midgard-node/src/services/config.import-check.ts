@@ -7,8 +7,7 @@ import { boundedValidationInteger } from "./config.node-config-dep.js";
  * The import checker's bounds (`../import-check/`).
  *
  * One script run is killed `floor + a * declared cpu + b * bytes` after it
- * starts on a started worker, where bytes are the script, its context and
- * the transaction's program-material sidecar:
+ * starts on a started worker, where bytes are the script and its context:
  * - `killFloorMs`: the floor, at least the p99.9 of a minimal run including
  *   a worker GC pause;
  * - `killMsPerGigaCpu`: a, in milliseconds per 10^9 declared cpu units;

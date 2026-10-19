@@ -16,7 +16,6 @@ import "./config.node-config-dep.js";
 import "./config.make-config.js";
 export { ConfigError, NodeConfig } from "./config.make-config.js";
 export {
-  CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
   type NodeConfigDep,
   resolveValidationWorkerPoolSize,
 } from "./config.node-config-dep.js";

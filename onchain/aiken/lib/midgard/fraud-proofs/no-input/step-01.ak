@@ -1,28 +1,10 @@
-use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}
-use midgard/ledger_state
-use midgard/transition_trace
+use midgard/fraud_proofs/input_existence_v1/source
 
-pub type Source {
-  AcceptedSource { inclusion: NativeTxInclusionCarriage }
-  ForcedSource {
-    input_index: Int,
-    output_index: Int,
-    header: ledger_state.HeaderV1,
-    membership: transition_trace.RootMembershipProof<
-      ledger_state.TxOrderId,
-      ledger_state.ForcedInclusionTxV1,
-    >,
-    direction: Int,
-  }
-}
+pub type Args =
+  source.Args
 
 pub type Datum =
-  ct.StepDatum<Data>
-
-pub type Args {
-  source: Source,
-}
+  source.Datum
 
 pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+  source.SpendRedeemer

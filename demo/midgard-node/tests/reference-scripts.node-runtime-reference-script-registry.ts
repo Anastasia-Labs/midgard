@@ -12,7 +12,6 @@ import {
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "../src/transactions/reference-scripts.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
-import { publishableRoles } from "./helpers/publishable-reference-roles.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   REFERENCE_SCRIPT_ADDRESS,
@@ -28,9 +27,7 @@ describe("node-runtime reference-script registry", () => {
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
 
     expect(targets.map(({ name }) => name).sort()).toEqual(
-      publishableRoles(
-        Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-      ).sort(),
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).sort(),
     );
     expect(
       targets.find(({ name }) => name === "V1 field-preimage certificate")

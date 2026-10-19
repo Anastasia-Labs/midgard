@@ -24,13 +24,12 @@ import {
 } from "../step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { firstCanonicalViolationDetection } from "../workflow/classification.js";
-import { withoutHeldPlutusScriptItems } from "../workflow/plutus-script-item-hold.js";
 import { type WitnessScriptDecodingEvidence } from "./witness-script-decoding.js";
 import { witnessScriptDecodingCompleteReplayFindings } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 
 /**
  * Derives the family evidence to prove from L1-bound public retained DA: the
- * first unheld finding in the order `classifyCanonicalBlockViolations`
+ * first finding in the order `classifyCanonicalBlockViolations`
  * selects, so the workflow proves the detection the classifier chose.
  */
 export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
@@ -38,9 +37,7 @@ export const deriveWitnessScriptDecodingEvidenceFromCanonicalBlock = (
 ): WitnessScriptDecodingEvidence => {
   const first = firstCanonicalViolationDetection(
     block,
-    withoutHeldPlutusScriptItems(
-      witnessScriptDecodingCompleteReplayFindings(block),
-    ),
+    witnessScriptDecodingCompleteReplayFindings(block),
   );
   if (first === undefined)
     throw new Error(

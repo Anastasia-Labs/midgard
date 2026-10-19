@@ -1,5 +1,6 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -62,7 +63,6 @@ export const admitNativeScriptInvalidForcedArtifact = async (
   ) as {
     header: SDK.Header;
     membership: SDK.ForcedTransactionSourceMembershipProof;
-    direction: bigint;
   };
   if (
     Data.to(
@@ -73,7 +73,7 @@ export const admitNativeScriptInvalidForcedArtifact = async (
     throw new Error("nativeScriptInvalid: noncanonical forced source");
   const { membership, header } = source;
   if (
-    source.direction !== 1n ||
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
     header.protocolVersion !== 1n ||
     membership.domain !== SDK.ROOT_DOMAINS.forcedTransactionsV1 ||
     membership.root !== header.forcedTransactionsRoot ||
@@ -150,7 +150,10 @@ export const admitNativeScriptInvalidForcedArtifact = async (
     detectionId,
     forcedIndex: Number(artifact.forcedIndex),
     position: BigInt(Number(artifact.forcedIndex)),
-    forcedSource: { header, membership, direction: 1n as const },
+    forcedSource: {
+      header,
+      membership,
+    },
   });
 };
 export const prepareNativeScriptInvalidForcedArtifact = async ({

@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { DataI } from "@harmoniclabs/plutus-data";
 import { Effect, Either } from "effect";
@@ -7,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import {
   commitValidationTraceV1,
-  evaluateMidgardCekScript,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
   type PhaseBConfig,
@@ -36,7 +34,9 @@ import {
  * verdict), never a rejection. Phase B fails with a
  * `ScriptEvaluationIndeterminateError` naming the transaction, and the trace
  * builder stops as unavailable. A script that fails on its own is still
- * rejected.
+ * rejected. The verdict evaluator runs Cardano's machine under the ledger
+ * budget, so the proof evaluator's step and payload bounds are limits of
+ * proof mode only.
  */
 
 const config: PhaseBConfig = {
@@ -99,9 +99,16 @@ describe("Phase B: an evaluator limit is indeterminate, never a rejection", () =
     expectScriptRejected(await runPhaseB(failing));
   });
 
-  it("is indeterminate when a run reaches the step bound", async () => {
+  it("decides by the ledger budget, not the proof evaluator's step bound", async () => {
+    expectAccepted(await runPhaseB(accepting, { maxScriptExecutionSteps: 2 }));
+  });
+
+  it("is indeterminate when a proof-mode run reaches the step bound", async () => {
     expectIndeterminate(
-      await runPhaseB(accepting, { maxScriptExecutionSteps: 2 }),
+      await runPhaseB(accepting, {
+        maxScriptExecutionSteps: 2,
+        cekExecutionMode: "proof",
+      }),
       accepting,
     );
   });
@@ -112,11 +119,11 @@ describe("Phase B: an evaluator limit is indeterminate, never a rejection", () =
     );
   });
 
-  it("is indeterminate when a builtin passes the evaluator's payload bound", async () => {
-    expectIndeterminate(await runPhaseB(doubling), doubling);
+  it("accepts a program Cardano accepts past the proof evaluator's payload bound", async () => {
+    expectAccepted(await runPhaseB(doubling));
   });
 
-  it("is indeterminate in proof mode as in verdict mode", async () => {
+  it("is indeterminate when a proof-mode builtin passes the payload bound", async () => {
     expectIndeterminate(
       await runPhaseB(doubling, { cekExecutionMode: "proof" }),
       doubling,
@@ -137,27 +144,14 @@ describe("Phase B: an evaluator limit is indeterminate, never a rejection", () =
     );
     expect(indeterminate?.cause).toBe(cause);
   });
-
-  it("is indeterminate when the step bound is reached on another evaluator", async () => {
-    expectIndeterminate(
-      await runPhaseB(accepting, {
-        maxScriptExecutionSteps: 2,
-        evaluateCekVerdict: (request) =>
-          Effect.sync(() => evaluateMidgardCekVerdict(request)),
-      }),
-      accepting,
-    );
-  });
 });
 
 const verdictRequest = (
   program: PlutusProgram,
   overrides: Partial<MidgardCekVerdictRequest> = {},
 ): MidgardCekVerdictRequest => ({
-  scriptBytes: program.envelopeCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-    ...program.material.values(),
-  ]),
+  scriptBytes: program.scriptBytes,
+  scriptLanguage: "PlutusV3",
   contextCbor: encodeMidgardCekPlutusData(new DataI(42n)),
   executionIndex: 0n,
   maxSteps: 1_000,
@@ -174,17 +168,7 @@ describe("verdict evaluator: no verdict on bytes it cannot read", () => {
     ).toBe("script_invalid");
   });
 
-  it("is indeterminate on material it cannot decode", () => {
-    expect(
-      evaluateMidgardCekVerdict(
-        verdictRequest(acceptingProgram(), {
-          programMaterialSidecarCbor: Uint8Array.of(0xff),
-        }),
-      ).kind,
-    ).toBe("indeterminate");
-  });
-
-  it("is indeterminate on a program envelope it cannot decode", () => {
+  it("is indeterminate on carried script bytes it cannot decode", () => {
     expect(
       evaluateMidgardCekVerdict(
         verdictRequest(acceptingProgram(), {
@@ -194,61 +178,17 @@ describe("verdict evaluator: no verdict on bytes it cannot read", () => {
     ).toBe("indeterminate");
   });
 
-  it("is indeterminate at the step bound and keeps the verdict within it", () => {
+  it("decides by the ledger budget, not the step bound", () => {
     expect(
       evaluateMidgardCekVerdict(
         verdictRequest(acceptingProgram(), { maxSteps: 2 }),
       ).kind,
-    ).toBe("indeterminate");
+    ).toBe("accepted");
     expect(
       evaluateMidgardCekVerdict(
         verdictRequest(failingProgram(), { maxSteps: 1_000 }),
       ).kind,
     ).toBe("script_invalid");
-  });
-});
-
-describe("structural evaluator: a program root missing from the run", () => {
-  const program = acceptingProgram();
-  const entries = [...program.material.values()];
-  const withheld = entries[0]!;
-  const others = entries.filter((entry) => entry !== withheld);
-  const missing = `CEK program material is missing root ${Buffer.from(withheld.root).toString("hex")}`;
-  const evaluate = (material: typeof entries) =>
-    evaluateMidgardCekScript(
-      {
-        scriptBytes: program.envelopeCbor,
-        contextCbor: encodeMidgardCekPlutusData(new DataI(42n)),
-        executionIndex: 0n,
-        maxSteps: 1_000,
-      },
-      material,
-      "verdict",
-    ).result;
-
-  it("is rejected when the transaction's material does not carry it", () => {
-    expect(evaluate(others)).toStrictEqual({
-      kind: "script_invalid",
-      detail: expect.stringContaining(missing) as unknown,
-    });
-  });
-
-  it("is indeterminate when the material carries it and the run still loses it", () => {
-    // The material hands the run every node but one on its first read, and
-    // all of them on any later read: the root is the transaction's, so its
-    // absence from the run is the evaluator's failure.
-    let reads = 0;
-    const losesOneNode = Object.assign([...entries], {
-      [Symbol.iterator]: () => {
-        reads += 1;
-        return (reads === 1 ? others : entries)[Symbol.iterator]();
-      },
-    });
-    expect(evaluate(losesOneNode)).toMatchObject({
-      kind: "indeterminate",
-      detail: expect.stringContaining(missing) as unknown,
-    });
-    expect(evaluate(entries).kind).toBe("accepted");
   });
 });
 
@@ -271,7 +211,7 @@ describe("trace builder: a claimed rejection is never built from an evaluator li
   );
 
   it(
-    "stops as unavailable when the claimed rejection rests on the payload bound",
+    "refuses a claimed rejection of a program Cardano accepts past the payload bound",
     { timeout: 60_000 },
     async () => {
       const input = claimedRejected(
@@ -282,13 +222,13 @@ describe("trace builder: a claimed rejection is never built from an evaluator li
       if (Either.isRight(result)) return;
       expect(result.left).toBeInstanceOf(ValidationTraceStopped);
       expect((result.left as ValidationTraceStopped).reason).toBe(
-        "unavailable",
+        "disagreement",
       );
     },
   );
 });
 
-describe("verdict event replay: an evaluator limit is no verdict", () => {
+describe("verdict event replay: the verdict is Cardano's", () => {
   const replay = async (program: PlutusProgram) =>
     Effect.runPromise(
       Effect.either(
@@ -314,10 +254,9 @@ describe("verdict event replay: an evaluator limit is no verdict", () => {
     }
   });
 
-  it("fails with no verdict when a builtin passes the evaluator's payload bound", async () => {
+  it("replays Cardano's verdict on a program past the proof evaluator's payload bound", async () => {
     const result = await replay(doublingProgram());
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left).toBeInstanceOf(ScriptEvaluationIndeterminateError);
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) expect(result.right.verdict).toBe("accepted");
   });
 });

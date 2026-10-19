@@ -6,7 +6,6 @@
  * copied capability, and once a rewind or close retires the capability.
  */
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
@@ -169,7 +168,6 @@ describe("user-event replay authority over follower facts", () => {
     const pendingDeposit = deriveWatcherUserEventReplayAuthority({
       userEvent: capability.deposit,
       committedClaim: depositClaim,
-      programMaterial: [],
     });
     depositClaim.eventIdCborHex = "00";
     depositClaim.valueCborHex = "00";
@@ -190,7 +188,6 @@ describe("user-event replay authority over follower facts", () => {
       const withdrawal = await deriveWatcherUserEventReplayAuthority({
         userEvent: capability.withdrawal,
         committedClaim: claims.withdrawal(validity),
-        programMaterial: [],
       });
       if (withdrawal.phase !== "Withdrawal")
         throw new Error("not a withdrawal");
@@ -216,21 +213,17 @@ describe("user-event replay authority over follower facts", () => {
     const forcedClaim: Mutable<WatcherCommittedEventClaim> = {
       ...claims.forced,
     };
-    const material: [string, string][] = [];
     const pendingForced = deriveWatcherUserEventReplayAuthority({
       userEvent: capability.forced,
       committedClaim: forcedClaim,
-      programMaterial: material,
     });
     forcedClaim.canonicalNativeTxCborHex = "00";
     forcedClaim.valueCborHex = "00";
-    material.push(["00", "00"]);
     const forced = await pendingForced;
     expect(forced).toMatchObject({
       phase: "ForcedTransaction",
       eventKey: { ForcedTransactionEventKey: { tx_order_id: ID.forced.id } },
       canonicalNativeTxCbor: submittedCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
     });
     expect("transitionEffect" in forced).toBe(false);
   });
@@ -302,7 +295,6 @@ describe("user-event replay authority over follower facts", () => {
         deriveWatcherUserEventReplayAuthority({
           userEvent,
           committedClaim,
-          programMaterial: [],
         }),
       ).rejects.toThrow(message);
   });
@@ -314,7 +306,6 @@ describe("user-event replay authority over follower facts", () => {
       deriveWatcherUserEventReplayAuthority({
         userEvent: { ...capability.deposit },
         committedClaim: claims.deposit,
-        programMaterial: [],
       }),
     ).rejects.toThrow(/not admitted/u);
 
@@ -328,7 +319,6 @@ describe("user-event replay authority over follower facts", () => {
         deriveWatcherUserEventReplayAuthority({
           userEvent,
           committedClaim,
-          programMaterial: [],
         }),
       ).rejects.toThrow(/retired by an L1 rewind/u);
 
@@ -337,7 +327,6 @@ describe("user-event replay authority over follower facts", () => {
     const inFlight = deriveWatcherUserEventReplayAuthority({
       userEvent: closing.capability.withdrawal,
       committedClaim: closing.claims.withdrawal("WithdrawalIsValid"),
-      programMaterial: [],
     });
     closing.follower.userEvents.close();
     await expect(inFlight).rejects.toThrow();
@@ -345,7 +334,6 @@ describe("user-event replay authority over follower facts", () => {
       deriveWatcherUserEventReplayAuthority({
         userEvent: closing.capability.forced,
         committedClaim: closing.claims.forced,
-        programMaterial: [],
       }),
     ).rejects.toThrow();
   });

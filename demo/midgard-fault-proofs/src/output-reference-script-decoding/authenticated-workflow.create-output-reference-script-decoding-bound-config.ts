@@ -8,6 +8,7 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
+import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
@@ -60,6 +61,11 @@ export type ManifestBoundOutputReferenceScriptDecodingConfig = Readonly<{
   binding: OutputReferenceScriptDecodingDeploymentBinding;
   contracts: OutputReferenceScriptDecodingContracts;
   referenceScripts: OutputReferenceScriptDecodingReferenceScripts;
+  /**
+   * The script-decode deployment step 04 finds a Plutus item's record in;
+   * without it a Plutus item cannot be proven.
+   */
+  scriptDecode?: ScriptDecodeDeployment;
 }>;
 
 export type OutputReferenceScriptDecodingDeploymentBinding = Omit<
@@ -163,9 +169,12 @@ export const bindOutputReferenceScriptDecodingReferenceScripts = ({
 export const createOutputReferenceScriptDecodingBoundConfig = (
   input: LoadManifestBoundOutputReferenceScriptDecodingConfig,
   binding: FraudProofWorkflowDeploymentBinding<"outputReferenceScriptDecoding">,
+  scriptDecode?: ScriptDecodeDeployment,
 ): ManifestBoundOutputReferenceScriptDecodingConfig => {
   const localContracts = binding.resolvedContracts.contracts as unknown as {
-    readonly outputReferenceScriptDecoding?: OutputReferenceScriptDecodingContracts;
+    readonly outputReferenceScriptDecoding?: OutputReferenceScriptDecodingContracts & {
+      readonly scriptDecode: { readonly policyId: string };
+    };
   };
   const chain = localContracts.outputReferenceScriptDecoding;
   const certificate = binding.fieldPreimageCertificate;
@@ -228,6 +237,7 @@ export const createOutputReferenceScriptDecodingBoundConfig = (
       fieldPreimageCertificateMintingScript: certificate.mintingScript,
     },
     referenceScripts,
+    ...(scriptDecode === undefined ? {} : { scriptDecode }),
   });
 };
 

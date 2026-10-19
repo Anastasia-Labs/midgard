@@ -1,4 +1,5 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   MinAdaStep01SpendRedeemerSchema,
   MinAdaStep02DatumSchema,
@@ -70,7 +71,8 @@ export const submitMinAdaStep01Forced = async ({
 }) => {
   if (
     state.source_kind !== 1n ||
-    state.direction !== forcedSource.direction ||
+    state.direction !==
+      proofThreadDirectionOfForcedLeaf(forcedSource.membership.value) ||
     (state.direction !== 0n && state.direction !== 1n)
   )
     throw new Error("minAda: expected an exact forced verdict subject");

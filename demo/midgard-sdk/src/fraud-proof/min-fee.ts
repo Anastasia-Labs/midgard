@@ -20,7 +20,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { H32Schema, OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
 import { FieldCarriageSchema } from "../native-tx-field-access.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
@@ -32,6 +31,8 @@ import {
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   terminalVerdictContradiction,
   type VerdictSubject,
@@ -65,38 +66,14 @@ export const MinFeeStep01Datum = asDataType<MinFeeStep01Datum>(
   MinFeeStep01DatumSchema,
 );
 
-export const MinFeeVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const MinFeeStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const MinFeeVerdictSubjectSchema = VerdictSubjectSchema;
+export const MinFeeStep01SourceSchema = ProofThreadSubjectSourceSchema;
 export const MinFeeForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({ source: MinFeeStep01SourceSchema }),

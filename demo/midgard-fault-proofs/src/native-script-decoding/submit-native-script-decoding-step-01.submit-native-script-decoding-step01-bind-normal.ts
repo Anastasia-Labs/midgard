@@ -1,7 +1,6 @@
 import {
+  acceptedVerdictSubject,
   HUB_ORACLE_ASSET_NAME,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
   type NativeScriptDecodingBindState,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02Datum,
@@ -146,9 +145,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     );
   }
   const bindState: NativeScriptDecodingBindState = {
-    direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
-    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
-    verified_tx_id: txInclusion.nativeTxId,
+    BoundAccepted: { subject: acceptedVerdictSubject(txInclusion.nativeTxId) },
   };
 
   signer.selectWallet(lucid);

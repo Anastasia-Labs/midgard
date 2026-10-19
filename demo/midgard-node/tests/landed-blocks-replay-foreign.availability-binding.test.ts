@@ -1,8 +1,8 @@
 /**
  * The foreign replayer against the availability commitment its block's node
  * carries (`SDK.daPayloadAvailabilityBinding`). The header does not commit
- * every body section, so a peer can serve the canonical header over other
- * bytes. Once the node carries a commitment, a fetched or retained body that
+ * the envelope's bytes (a body can be served recompressed, or tampered), so
+ * a peer can serve the canonical header over other bytes. Once the node carries a commitment, a fetched or retained body that
  * does not rebuild it is the next peer's to serve, within the same fetch.
  * While the node is Unattested no replay refusal is final: it is `missing`,
  * and the next fetch asks the next peer. A copy imported then is retained
@@ -37,6 +37,7 @@ import {
   attested,
   AVAILABILITY,
   published,
+  recompressed,
 } from "./landed-blocks-replay-foreign.availability.js";
 import {
   clock,
@@ -136,10 +137,6 @@ const otherPreimage = (block: SDK.DaPayload) => {
     ],
   });
 };
-
-/** The forced block with program material no transaction reads. */
-const strayMaterial = (block: SDK.DaPayload) =>
-  tampered(block, { cek_program_material: [["ab".repeat(32), "00"]] });
 
 const retainedBytes = async (block: SDK.DaPayload) => {
   const row = await retained(block);
@@ -332,7 +329,7 @@ describe("binding a copy imported Unattested", () => {
     const { run, bind } = await setup();
     const honest = await forcedBlock();
     const requests = serveDa(
-      (peer) => (peer === 0 ? strayMaterial(honest) : honest),
+      (peer) => (peer === 0 ? recompressed(honest) : honest),
       2,
     );
     expect(await run(honest, "Unattested")).toMatchObject({
@@ -352,7 +349,7 @@ describe("binding a copy imported Unattested", () => {
   it("retains the held copy as it is when the commitment binds it", async () => {
     const { run, bind } = await setup();
     const honest = await forcedBlock();
-    const variant = strayMaterial(honest);
+    const variant = recompressed(honest);
     const requests = serveDa(() => variant, 2);
     expect(await run(honest, "Unattested")).toMatchObject({
       kind: "replayed",
@@ -366,7 +363,7 @@ describe("binding a copy imported Unattested", () => {
   it("drops a retained copy the later commitment does not bind", async () => {
     const { bind } = await setup();
     const honest = await forcedBlock();
-    await retain(await retainedRow(strayMaterial(honest)));
+    await retain(await retainedRow(recompressed(honest)));
     await landed(honest);
     serveDa(() => undefined, 2);
     await bind(queueOf(honest, await attested(honest)));
@@ -392,7 +389,7 @@ describe("the node's binding pass in the driver run", () => {
       () => Effect.succeed(undefined),
       () => AVAILABILITY,
     );
-    serveDa((peer) => (peer === 0 ? strayMaterial(honest) : honest), 2);
+    serveDa((peer) => (peer === 0 ? recompressed(honest) : honest), 2);
     expect(
       await inNode(ports.replay(await inputFor(store, honest, "Unattested"))),
     ).toMatchObject({ kind: "replayed" });

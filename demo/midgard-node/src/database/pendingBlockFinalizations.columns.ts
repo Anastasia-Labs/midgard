@@ -88,8 +88,6 @@ export enum MemberColumns {
   ORDINAL = "ordinal",
   PAYLOAD_CBOR = "payload_cbor",
   PAYLOAD_SHA256 = "payload_sha256",
-  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
-  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   SOURCE_TABLE = "source_table",
   SOURCE_ID = "source_id",
   SOURCE_TIMESTAMP = "source_time_stamp_tz",
@@ -226,8 +224,6 @@ export type MemberRecord = {
   [MemberColumns.ORDINAL]: number;
   [MemberColumns.PAYLOAD_CBOR]: Buffer;
   [MemberColumns.PAYLOAD_SHA256]: Buffer;
-  [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]?: Buffer | null;
-  [MemberColumns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]?: Buffer | null;
   [MemberColumns.SOURCE_TABLE]: string;
   [MemberColumns.SOURCE_ID]: Buffer;
   [MemberColumns.SOURCE_TIMESTAMP]: Date;

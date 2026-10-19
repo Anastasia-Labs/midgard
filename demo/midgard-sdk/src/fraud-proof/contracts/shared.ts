@@ -22,7 +22,10 @@ import {
   makeSpendingValidator,
   tryBuild,
 } from "./blueprint.js";
-import { buildScriptDecodeValidator } from "./script-decode.js";
+import {
+  buildScriptDecodeValidator,
+  type ScriptDecodeValidator,
+} from "./script-decode.js";
 import { FAULT_PROOF_SHARED_TITLES } from "./titles.js";
 import { type BuildFaultProofContractsParams } from "./types.js";
 
@@ -64,12 +67,12 @@ export type SharedFaultProofContracts = {
   readonly fieldPreimageCertificatePolicyId: string;
   /**
    * The script-decode family: runs at its spending address, records minted
-   * under its policy. The validator takes no parameters and its handlers
-   * share one script, so the policy id is the script hash and a pure function
-   * of the blueprint, derived here for the same reason as the certificate
-   * policy above.
+   * under its policy. The validator takes its class stakers' hashes and its
+   * handlers share one script, so the policy id is the script hash and a pure
+   * function of the blueprint, derived here for the same reason as the
+   * certificate policy above.
    */
-  readonly scriptDecode: AuthenticatedValidator;
+  readonly scriptDecode: ScriptDecodeValidator;
   readonly scriptDecodePolicyId: string;
 };
 

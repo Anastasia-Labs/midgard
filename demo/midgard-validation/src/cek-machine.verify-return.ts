@@ -28,6 +28,7 @@ import {
   MidgardCekErrorCodes,
   sameBytes,
 } from "./cek-machine.midgard-cek-core-step-witness.js";
+import { verifyReturnCaseConstant } from "./cek-machine.verify-case-constant.js";
 import { applyBuiltinResult } from "./cek-machine.verify-lookup.js";
 
 export const verifyReturn = (
@@ -460,9 +461,12 @@ export const verifyReturn = (
         )
       );
     }
+    case "returnCaseConstant":
+      return verifyReturnCaseConstant(pre, post, witness);
     case "returnCaseInvalid":
       return (
         witness.value.kind !== "constr" &&
+        witness.value.kind !== "constant" &&
         linkedSequenceRootIsWellFormed(
           witness.branchesRoot,
           witness.branchesCount,

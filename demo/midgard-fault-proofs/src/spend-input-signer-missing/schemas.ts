@@ -54,7 +54,6 @@ export const SpendInputSignerStep01SourceSchema = Data.Enum([
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   }),
 ]);

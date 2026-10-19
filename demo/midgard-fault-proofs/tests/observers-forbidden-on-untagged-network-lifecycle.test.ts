@@ -424,7 +424,7 @@ describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () =>
       await door(
         "forced_direction",
         { ...finding, subject: acceptedVerdictSubject(leaf.transactionId) },
-        { direction: 0n },
+        {},
       );
       await expectOnchainRefusal(() =>
         h.step01ForcedRaw(thread, finding, source, 0),

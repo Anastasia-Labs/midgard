@@ -5,6 +5,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   encodeHeaderCbor,
   ForcedInclusionTxV1,
@@ -66,7 +67,7 @@ export const admitMissingSignatureForcedArtifact = async (
   const { header, membership } = source;
   if (
     Data.to(source, MissingSignatureForcedStepArgs) !== forcedSourceCbor ||
-    source.direction !== 1n ||
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
     source.input_index !== 0n ||
     source.output_index !== 0n ||
     computeHash28(encodeHeaderCbor(header)).toString("hex") !== headerHash ||
@@ -142,6 +143,9 @@ export const admitMissingSignatureForcedArtifact = async (
       script_tx_wits_hash: witnessSet.scriptTxWitsHash.toString("hex"),
       redeemer_tx_wits_hash: witnessSet.redeemerTxWitsHash.toString("hex"),
     },
-    forcedSource: { header, membership, direction: 1n },
+    forcedSource: {
+      header,
+      membership,
+    },
   };
 };

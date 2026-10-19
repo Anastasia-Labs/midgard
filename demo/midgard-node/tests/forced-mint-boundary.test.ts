@@ -3,7 +3,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -58,7 +57,7 @@ describe("forced admission at the tx-order mint", () => {
   );
 
   it.each(MINT_ADMITTED_UNDECODABLE)(
-    "an admitted order with %s is rejected at its item and attested",
+    "an admitted order with %s is rejected at its first fault and attested",
     async (_name, reason, bytes) => {
       const tx = bytes();
       expect(
@@ -109,8 +108,8 @@ describe("forced admission at the tx-order mint", () => {
       );
       expect(leaf.verdict).toEqual({ ForcedTxInvalid: { reason } });
       const code =
-        typeof reason === "object" && "OutputNonCanonical" in reason
-          ? RejectCodes.InvalidOutput
+        typeof reason === "object" && "InputNotFound" in reason
+          ? RejectCodes.InputNotFound
           : RejectCodes.InvalidFieldType;
       expect(result.rejectionCode).toBe(code);
       expect(result.ledgerOps).toEqual([]);
@@ -121,9 +120,6 @@ describe("forced admission at the tx-order mint", () => {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: tx,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
           sourceKind: "forced",
           ledgerWitnessEntries: result.ledgerWitnessEntries,
           blockTimeMs: time.getTime(),
@@ -238,7 +234,6 @@ describe("forced admission at the tx-order mint", () => {
             ],
           ],
           validation_trace_witnesses: [],
-          cek_program_material: [],
         },
       };
       expect(

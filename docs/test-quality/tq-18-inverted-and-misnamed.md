@@ -33,9 +33,6 @@ The original audit's counts and line references are not a current inventory.
   conditionally pass for arbitrary present evidence or remove the refusal
   test to accommodate implementation progress. Activation requires the
   repository's validator-bound evidence verification contract.
-- [Typed reason disposition](../../demo/midgard-fault-proofs/tests/typed-reason-disposition.test.ts)
-  now requires an empty missing-installation set. The old four-entry residue
-  example is stale, and the current assertion detects missing runner coverage.
 - Lifecycle coverage checks that deliberately demonstrate missing reason
   arms should remain negative tests. If they instead pin accidental omissions
   in the live installed surface, record that distinction and the required

@@ -18,7 +18,7 @@ import {
 } from "./utils.js";
 
 describe("populated public-read migration", () => {
-  it("rolls back a late DDL failure, then migrates every historical row/status intact through the actual runner", async () => {
+  it("rolls back failed public-read DDL, then preserves its upgrade when Flat refuses retained state", async () => {
     await Effect.runPromise(
       provideDatabaseLayers(
         Effect.gen(function* () {
@@ -108,13 +108,33 @@ describe("populated public-read migration", () => {
             yield* sql`SELECT version FROM schema_migrations WHERE version = 27`,
           ).toEqual([]);
           yield* sql`DROP INDEX idx_withdrawal_ledger_outref_unknown`;
-          const migrated = yield* withSql(
-            MigrationRunner.migrate({
-              appVersion: "r7-test",
-              actor: "populated-forward",
-            }),
+          const migrated = yield* Effect.either(
+            withSql(
+              MigrationRunner.migrate({
+                appVersion: "r7-test",
+                actor: "populated-forward",
+              }),
+            ),
           );
-          expect(migrated.compatible).toBe(true);
+          expect(migrated).toMatchObject({
+            _tag: "Left",
+            left: {
+              code: "schema_migration_requires_fresh_database",
+              message:
+                "Migration 29_drop_cek_program_material refused this database: Flat-script migration needs a fresh node database: withdrawal_utxos retains state. Flat scripts start from a fresh genesis. Point the node at a new, empty database and run db:migrate there.",
+            },
+          });
+          expect(
+            yield* sql`SELECT version FROM schema_migrations WHERE version = 29`,
+          ).toEqual([]);
+          expect(
+            yield* sql`SELECT version, event_type FROM schema_migration_events
+            WHERE actor = 'populated-forward' AND event_type IN ('succeeded', 'failed') ORDER BY id`,
+          ).toEqual([
+            { version: 27, event_type: "succeeded" },
+            { version: 28, event_type: "succeeded" },
+            { version: 29, event_type: "failed" },
+          ]);
           const after = yield* sql<
             Record<string, unknown>
           >`SELECT * FROM withdrawal_utxos ORDER BY event_id`;

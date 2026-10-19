@@ -188,7 +188,6 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         forcedSource: {
           header: required(stage.forcedHeader, "forced header"),
           membership: required(stage.forcedMembership, "forced membership"),
-          direction: required(stage.forcedDirection, "forced direction"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
         preSubmitBoundary:

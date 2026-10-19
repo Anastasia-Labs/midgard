@@ -43,7 +43,7 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            subject_thread_name,
             _fraud_prover,
             _m_input_state_data,
             output_script_hash,
@@ -74,7 +74,10 @@ validator main(
         //    which is what entitles step-02 to treat its state as anchored.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
+          subject: substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource { header, tx_inclusion: bad_tx_view },
+          ),
           bad_tx: ForcedTxCompact {
             body: bad_tx_view.tx_compact.body,
             witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
@@ -94,7 +97,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         expect Some(step_datum) = datum
         let _, thread_name, _, _, output_script_hash, output_state_data <- continue(
@@ -106,14 +108,11 @@ validator main(
           tx.inputs,
           tx.outputs,
         )
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
-        expect subject.direction == substrate.direction_wrongful_rejection
-        expect _reason = substrate.bind_exact_rejection_reason_v1(
+        expect _reason = substrate.bind_reason_or_coordinate_v1(
           subject,
           FeeBelowMinimum,
         )
@@ -147,8 +146,15 @@ validator main(
 
 fn expected_state_for(block: fixture.NativeBlockFixtureV1) -> Data {
   let state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
     bad_tx: ForcedTxCompact {
       body: block.compact.body,
@@ -229,8 +235,15 @@ test min_fee_step_01_rejects_forged_transactions_root() fail {
 test min_fee_step_01_rejects_a_forged_fee_schedule_in_state() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let forged_state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
     bad_tx: ForcedTxCompact {
       body: block.compact.body,

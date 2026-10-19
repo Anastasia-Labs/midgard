@@ -202,6 +202,32 @@ describe("validation resolver production-builder parameter application", () => {
       validatorToScriptHash({ type: "PlutusV3", script: appliedSuccessor }),
     ).toBe(dispute.yields.cekSelectionSuccessor.withdrawalScriptHash);
 
+    const independentlyAppliedSelection = applied(
+      selectionValidator,
+      selectionTitles,
+    );
+    const independentlyAppliedSuccessor = validatorToScriptHash({
+      type: "PlutusV3",
+      script: applyExpectedScriptParams(successorValidator.compiledCode, [
+        independentlyAppliedSelection,
+        contracts.scriptDecode.policyId,
+      ]),
+    });
+    expect(dispute.yields.cekSelectionSuccessor.withdrawalScriptHash).toBe(
+      independentlyAppliedSuccessor,
+    );
+    for (const parameters of [[], [independentlyAppliedSelection]]) {
+      expect(
+        validatorToScriptHash({
+          type: "PlutusV3",
+          script: applyExpectedScriptParams(
+            successorValidator.compiledCode,
+            parameters,
+          ),
+        }),
+      ).not.toBe(independentlyAppliedSuccessor);
+    }
+
     // #605: under Plutus V3 an under-applied script is an always-succeeds
     // script -- it would let any prover collect the award. Every strict prefix
     // of the declared parameter list must therefore differ from what is

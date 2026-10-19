@@ -3,6 +3,7 @@ import {
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
@@ -14,16 +15,16 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-} from "../workflow/deployment-manifest-binding.js";
-import {
   defineFamily,
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
+import {
+  SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeDeploymentFromReferences,
+} from "../workflow/script-decode-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -36,15 +37,12 @@ import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
   type OutputReferenceScriptDecodingDeploymentBinding,
-  type OutputReferenceScriptDecodingRuntimeLoader,
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
 import { createOutputReferenceScriptDecodingRawL1StageResolver } from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
 import {
   type OutputReferenceScriptDecodingAssemblyRuntime,
   outputReferenceScriptDecodingStageFromL1,
 } from "./authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
-import { createOutputReferenceScriptDecodingCentralJournalAdapter } from "./central-journal.js";
-import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 import {
   OutputReferenceStep02DatumSchema,
   OutputReferenceStep03DatumSchema,
@@ -52,96 +50,13 @@ import {
   OutputReferenceStep05DatumSchema,
   OutputReferenceStep06DatumSchema,
 } from "./schemas.js";
-import {
-  nextOutputReferenceScriptDecodingAction,
-  outputReferenceScriptDecodingEvidenceIdentity,
-  type OutputReferenceScriptDecodingJournal,
-} from "./workflow.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC } from "./workflow-spec.js";
-
-export const loadManifestBoundOutputReferenceScriptDecodingConfig = async (
-  input: LoadManifestBoundOutputReferenceScriptDecodingConfig,
-): Promise<ManifestBoundOutputReferenceScriptDecodingConfig> => {
-  const binding = await bindFraudProofWorkflowDeployment({
-    manifest: input.manifest,
-    blueprintJson: input.blueprintJson,
-    deploymentInfo: input.deploymentInfo,
-    category: "outputReferenceScriptDecoding",
-    headerHash: input.headerHash,
-    proverCredential: input.signer.paymentKeyHash,
-    stepDatumSchemas:
-      OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION.stepDatumSchemas,
-  });
-  assertManifestBoundWorkflowSigner({
-    network: binding.network,
-    address: input.signer.address,
-    paymentKeyHash: input.signer.paymentKeyHash,
-  });
-
-  return createOutputReferenceScriptDecodingBoundConfig(input, binding);
-};
-
-export const createManifestBoundOutputReferenceScriptDecodingRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  centralJournal,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundOutputReferenceScriptDecodingConfig;
-  readonly journal: OutputReferenceScriptDecodingJournal;
-  readonly observe: OutputReferenceScriptDecodingRuntimeLoader["observe"];
-  readonly resolveStage: OutputReferenceScriptDecodingRuntimeLoader["resolveStage"];
-  readonly centralJournal?: ReturnType<
-    typeof createOutputReferenceScriptDecodingCentralJournalAdapter
-  >;
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundOutputReferenceScriptDecodingSubmission(
-    {
-      config,
-      observe: async (identity) => {
-        const observed = await observe(identity);
-        await centralJournal?.reconcile(observed);
-        return observed;
-      },
-      resolveStage,
-      centralJournal,
-      stateQueueMutationLeaseCoordinator,
-    },
-  );
-  return Object.freeze({
-    runtimeVersion: OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW,
-    config,
-    runOrResume: async (evidence: OutputReferenceScriptDecodingEvidence) => {
-      const identity = outputReferenceScriptDecodingEvidenceIdentity(evidence);
-      for (;;) {
-        const stage = await submission.observe(identity);
-        const action = nextOutputReferenceScriptDecodingAction(stage);
-        if (action === "done") return stage;
-        if (action === "cancel")
-          throw new Error(
-            "outputReferenceScriptDecoding automatic runner cannot synthesize cancellation",
-          );
-        const result = await submission.submit(action, evidence);
-        await journal.append({
-          sequence: (await journal.load(identity)).length,
-          identity,
-          sourceStage: stage,
-          targetStage: result.stage,
-          action,
-          phase: "submitted",
-          txHash: result.txHash,
-        });
-      }
-    },
-  });
-};
 
 export type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig =
   LoadManifestBoundOutputReferenceScriptDecodingConfig &
     Readonly<{
+      /** The script-decode references, by `SCRIPT_DECODE_REFERENCE_SCRIPTS` role. */
+      auxiliaryReferenceScripts: Readonly<Record<string, UTxO>>;
       l1Source: FraudProofL1Source;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -188,6 +103,11 @@ export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
   const config = createOutputReferenceScriptDecodingBoundConfig(
     input,
     deployment.binding,
+    scriptDecodeDeploymentFromReferences({
+      blueprint: deployment.binding.blueprint,
+      network: deployment.binding.network,
+      references: deployment.auxiliaryReferences,
+    }),
   );
   const l1 = deployment.l1;
   return Object.freeze({
@@ -201,6 +121,14 @@ export const createManifestBoundOutputReferenceScriptDecodingWorkflow = async (
     decisionDigest: input.decisionDigest,
   });
 };
+
+const SCRIPT_DECODE_RECORDED_BEFORE: ReadonlySet<string> = new Set([
+  "init",
+  "step_01",
+  "step_02",
+  "step_03",
+  "step_04",
+]);
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
   "outputReferenceScriptDecoding",
@@ -224,6 +152,18 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
     "phasMembershipWithdraw",
   ],
   fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  // The record is made before Init, so no thread deadline runs meanwhile;
+  // past step 04 the proof no longer reads it.
+  scriptDecodeRecord: (context, { action, artifact }) =>
+    typeof action.input.stage === "string" &&
+    SCRIPT_DECODE_RECORDED_BEFORE.has(action.input.stage)
+      ? Buffer.from(
+          context.runtime.material.require(artifact).evidence
+            .referenceScriptItemHex,
+          "hex",
+        )
+      : null,
   replayer: () => OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "cursor",

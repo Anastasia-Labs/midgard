@@ -29,7 +29,12 @@ export {
   midgardLedgerOutputScriptHashContentSpan,
   midgardLedgerOutputWindowCovers,
 } from "./ledger-output-proof.authenticated-output-span.js";
-export { buildMidgardLedgerOutputProofTrace } from "./ledger-output-proof.build-midgard-ledger-output-proof-trace.js";
+export {
+  buildMidgardLedgerOutputProofTrace,
+  type MidgardLedgerOutputProofOutcome,
+  type MidgardLedgerOutputProofRefusalKind,
+  traceMidgardLedgerOutputProof,
+} from "./ledger-output-proof.build-midgard-ledger-output-proof-trace.js";
 export {
   encodeMidgardLedgerOutputProofControl,
   initialMidgardLedgerOutputProofControl,

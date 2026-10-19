@@ -13,6 +13,7 @@
  *   old columns: a `confirmed` attempt the journal still holds is pending
  *   again and reads the journal's level; one it does not hold stays
  *   terminal (`final`); a database with no follower tables migrates too.
+ *   Such a database holds state, so the upgrade stops at 0029's refusal.
  */
 import "./utils.js";
 
@@ -320,12 +321,17 @@ describe("migration 0015 on a database holding the old columns", () => {
   const migrate = (run: Awaited<ReturnType<typeof nodeDatabase>>["run"]) =>
     run(
       Effect.gen(function* () {
-        const status = yield* MigrationRunner.migrate({
-          appVersion: "test",
-          actor: "n6b-upgrade",
-        });
-        expect(status.actualVersion).toBe(MIGRATIONS.at(-1)!.version);
-        yield* MigrationRunner.assertCompatible;
+        // Flat scripts start from a fresh genesis: the upgrade applies every
+        // migration before 0029, which refuses a database holding state.
+        const refusal = yield* Effect.flip(
+          MigrationRunner.migrate({
+            appVersion: "test",
+            actor: "n6b-upgrade",
+          }),
+        );
+        expect(refusal.code).toBe("schema_migration_requires_fresh_database");
+        const status = yield* MigrationRunner.getStatus;
+        expect(status.actualVersion).toBe(28);
         const sql = yield* SqlClient.SqlClient;
         const columns = yield* sql<{ column_name: string }>`SELECT column_name
           FROM information_schema.columns

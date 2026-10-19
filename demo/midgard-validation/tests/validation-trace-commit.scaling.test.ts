@@ -3,7 +3,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   commitValidationTraceV1,
   type ValidationMachineReplayInput,
@@ -17,6 +16,7 @@ import {
   MIDGARD_TX_EX_UNITS_CAP,
   plutusV3SpendInput,
 } from "./helpers/plutus-spend-input.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * Commit-mode scaling gate. Each adversarial shape is the validator of a
@@ -43,7 +43,7 @@ const shapeSpendInput = (
   if (shape === undefined) throw new Error(`unknown shape ${label}`);
   const script = lam(seq(app(shape.term(n), v(0)), UPLCConst.unit));
   return plutusV3SpendInput(
-    buildMidgardCanonicalCekProgram(
+    buildCekProgramFromRawFlat(
       encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], script)),
     ),
     MIDGARD_TX_EX_UNITS_CAP,

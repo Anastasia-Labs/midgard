@@ -64,7 +64,6 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
   threadOutRef,
   header,
   membership,
-  direction,
   subject,
   witnessSetHash,
   scriptIndex,
@@ -82,7 +81,6 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
     OutputReference,
     ForcedInclusionTxV1
   >;
-  readonly direction: bigint;
   readonly subject: WitnessScriptDecodingBound["subject"];
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
@@ -140,7 +138,6 @@ export const submitWitnessScriptDecodingStep01ForcedRaw = async ({
                 output_index: outputIndex,
                 header,
                 membership,
-                direction,
               },
             },
             script_index: scriptIndex,

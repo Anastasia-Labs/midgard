@@ -1,8 +1,4 @@
-import {
-  encodeCbor,
-  encodeMidgardCekProgramMaterialSidecar,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core";
+import { encodeCbor, MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import {
   decodeMidgardDatum,
   decodeMidgardTxOutput,
@@ -30,7 +26,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardCanonicalCekProgram,
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
   buildValidationMachineLedgerInsertOp,
@@ -46,6 +41,7 @@ import {
   orderingView,
   redeemerMapEntries,
 } from "./script-context-map-order.ordering-view.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -223,8 +219,8 @@ type Scenario = {
 };
 
 const buildScenario = (scenario: Scenario) => {
-  const program = buildMidgardCanonicalCekProgram(scenario.program);
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const program = buildCekProgramFromRawFlat(scenario.program);
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const scriptHash = hashScriptWitness(script);
   const spent = outRefFromByte(0x5b);
   const spentOutput = scriptOutput(scriptHash, scenario.spentDatum);
@@ -270,14 +266,10 @@ const buildScenario = (scenario: Scenario) => {
         }),
     scriptLanguages: ["PlutusV3" as const],
   };
-  const sidecar = encodeMidgardCekProgramMaterialSidecar([
-    ...program.material.values(),
-  ]);
   return {
     spent,
     spentOutput,
     output,
-    sidecar,
     transaction: makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -287,7 +279,6 @@ const buildScenario = (scenario: Scenario) => {
     candidate: makePhaseBCandidate({
       spent: [spent],
       outputs: [output],
-      programMaterialSidecarCbor: sidecar,
       ...txOptions,
     }),
   };
@@ -316,8 +307,7 @@ const proofVerdict = async (
   scenario: Scenario,
   verdict: "accepted" | "rejected",
 ) => {
-  const { transaction, spent, spentOutput, output, sidecar } =
-    buildScenario(scenario);
+  const { transaction, spent, spentOutput, output } = buildScenario(scenario);
   const ledgerOps = [
     { type: "delete" as const, key: spent },
     buildValidationMachineLedgerInsertOp({
@@ -343,7 +333,6 @@ const proofVerdict = async (
       blockSlot: 100n,
       transactionId: transaction.txId,
       canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: sidecar,
       priorUtxosRoot: preRoot,
       postUtxosRoot:
         verdict === "accepted"

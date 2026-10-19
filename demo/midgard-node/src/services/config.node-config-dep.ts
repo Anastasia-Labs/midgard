@@ -1,10 +1,6 @@
 import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 
-import {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-} from "@al-ft/midgard-core/cek-proof";
 import { type DeploymentManifestEconomicsProfile } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
@@ -70,18 +66,6 @@ export const validateDaKeySetEncoding = (
  * derived values that other services depend on. Keeping it in one place makes
  * production configuration easier to audit.
  */
-
-/**
- * The SQL quota counts each unique material entry (32-byte root plus at most
- * six bytes of DA-value framing), its membership row (32 + 32 + boolean), and
- * its admission-owner row (32 + 32 + 32). Reserving 199 bytes per maximum
- * reachable node in addition to the authenticated preimages guarantees that
- * one protocol-valid maximum envelope fits even at the configured minimum.
- */
-export const CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES = Number(
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES +
-    MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT * 199n,
-);
 
 export const resolveValidationWorkerPoolSize = (
   configured: number | undefined,
@@ -171,7 +155,6 @@ export type NodeConfigDep = {
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   SUBMIT_INGRESS_MAX_CONCURRENCY: number;
   SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: number;
-  CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: number;

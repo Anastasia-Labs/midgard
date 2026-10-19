@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   isAnyNetworkIdMismatch,
   NetworkIdForcedStepDatum,
@@ -72,7 +73,10 @@ export const submitNetworkIdAcceptedForcedBind = async ({
     throw networkIdSubmitError("forced binding step is not deployed");
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId)
     throw networkIdSubmitError("forced evidence targets another deployment");
-  if (prepared.forcedSource.direction !== 0n)
+  if (
+    proofThreadDirectionOfForcedLeaf(prepared.forcedSource.membership.value) !==
+    0n
+  )
     throw networkIdSubmitError("accepted forced binding requires direction 0");
   const claimed =
     prepared.faultClaim.kind === "transaction-network"

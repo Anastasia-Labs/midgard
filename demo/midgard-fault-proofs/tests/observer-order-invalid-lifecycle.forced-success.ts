@@ -235,7 +235,10 @@ export const forcedBlock = async (
   const header = setup.header;
   await h.publishReferences();
   const finding = forcedFinding(leaf, sourceKey, observerIndex);
-  const source = { header, membership: leaf.membership, direction: 1n };
+  const source = {
+    header,
+    membership: leaf.membership,
+  };
   return { setup, header, leaf, sourceKey, finding, source };
 };
 

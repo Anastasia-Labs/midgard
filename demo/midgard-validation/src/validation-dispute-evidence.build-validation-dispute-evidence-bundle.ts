@@ -1,23 +1,52 @@
 import {
   MIDGARD_CONSENSUS_LIMITS,
+  type MidgardValidationDispute,
+  type MidgardValidationTraceProof,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
   revealMidgardValidationOperatorMidpoint,
 } from "@al-ft/midgard-core";
 
-import {
-  requireProofEnvelope,
-  type ValidationDisputeEvidenceBundle,
-  type ValidationDisputeEvidenceMove,
-} from "./validation-dispute-evidence.parse-cek-program-material-necessity-receipt-set.js";
 import type { DeterministicValidationMachineTrace } from "./validation-machine/index.js";
-import { buildValidationOneStepArgument } from "./validation-machine-data.js";
+import {
+  buildValidationOneStepArgument,
+  type ValidationOneStepArgument,
+} from "./validation-machine-data.js";
 import {
   encodeValidationBoundaryEvidenceCbor,
   encodeValidationDisputeDataCbor,
   encodeValidationTraceDescriptorDataCbor,
   encodeValidationTraceProofDataCbor,
 } from "./validation-one-step-data.js";
+
+export type ValidationDisputeEvidenceMove = {
+  readonly role: "operator" | "challenger";
+  readonly disputeBefore: MidgardValidationDispute;
+  readonly proof: MidgardValidationTraceProof;
+  readonly proofCbor: Buffer;
+  readonly disputeAfter: MidgardValidationDispute;
+  readonly disputeAfterCbor: Buffer;
+};
+
+export type ValidationDisputeEvidenceBundle = {
+  readonly operatorDescriptorCbor: Buffer;
+  readonly challengerDescriptorCbor: Buffer;
+  readonly openingDispute: MidgardValidationDispute;
+  readonly openingDisputeCbor: Buffer;
+  readonly moves: readonly ValidationDisputeEvidenceMove[];
+  readonly finalDispute: MidgardValidationDispute;
+  readonly finalDisputeCbor: Buffer;
+  readonly boundaryEvidenceCbor: Buffer;
+  readonly oneStepArgument: ValidationOneStepArgument;
+};
+
+const requireProofEnvelope = (bytes: Uint8Array, label: string): void => {
+  if (bytes.length >= MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes) {
+    throw new Error(
+      `${label} exceeds the strict L1 proof envelope: ${bytes.length.toString()} bytes`,
+    );
+  }
+};
 
 /**
  * Constructs every authenticated bisection reveal and the terminal one-step
@@ -31,6 +60,7 @@ export const buildValidationDisputeEvidenceBundle = ({
   challengerTrace,
   currentTime,
   resolveFieldCarriage,
+  resolveCekDecodeRecord,
 }: {
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
@@ -38,6 +68,9 @@ export const buildValidationDisputeEvidenceBundle = ({
   readonly resolveFieldCarriage?: Parameters<
     typeof buildValidationOneStepArgument
   >[0]["resolveFieldCarriage"];
+  readonly resolveCekDecodeRecord?: Parameters<
+    typeof buildValidationOneStepArgument
+  >[0]["resolveCekDecodeRecord"];
 }): ValidationDisputeEvidenceBundle => {
   const openingDispute = openMidgardValidationDispute({
     operatorDescriptor: operatorTrace.tree.descriptor,
@@ -112,6 +145,7 @@ export const buildValidationDisputeEvidenceBundle = ({
     trace: challengerTrace,
     stateIndex: dispute.lowIndex,
     ...(resolveFieldCarriage === undefined ? {} : { resolveFieldCarriage }),
+    ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
   });
   requireProofEnvelope(operatorDescriptorCbor, "operator descriptor");
   requireProofEnvelope(challengerDescriptorCbor, "challenger descriptor");

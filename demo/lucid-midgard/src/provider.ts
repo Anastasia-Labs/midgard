@@ -1,7 +1,4 @@
-import {
-  encodeMidgardProofSubmission,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -280,10 +277,7 @@ export class MidgardNodeProvider implements MidgardProvider {
     );
   }
 
-  async submitTx(
-    txCanonicalCborHex: string,
-    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
-  ): Promise<SubmitTxResult> {
+  async submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult> {
     const endpoint = "/submit";
     const protocolInfo = await this.getProtocolInfo();
     const submittedTx = submittedTxCanonicalCbor(
@@ -293,7 +287,6 @@ export class MidgardNodeProvider implements MidgardProvider {
     );
     const body = encodeMidgardProofSubmission({
       transactionCbor: submittedTx.txCanonicalCbor,
-      programMaterial,
     });
     const { response, payload } = await this.transport.requestJson(endpoint, {
       method: "POST",
@@ -329,7 +322,6 @@ export class MidgardNodeProvider implements MidgardProvider {
 
   async evaluateTx(
     txCanonicalCborHex: string,
-    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
   ): Promise<readonly MidgardRedeemerBudget[]> {
     const endpoint = "/tx/evaluate";
     const protocolInfo = await this.getProtocolInfo();
@@ -343,7 +335,6 @@ export class MidgardNodeProvider implements MidgardProvider {
       headers: { "content-type": "application/vnd.midgard.v1+cbor" },
       body: encodeMidgardProofSubmission({
         transactionCbor: draft.txCanonicalCbor,
-        programMaterial,
       }),
     });
     if (response.status !== 200) {

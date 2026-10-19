@@ -8,29 +8,27 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema, ProofSchema } from "../common.js";
+import { OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
-  EventKeySchema,
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
-} from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
-import {
-  EventToStepMembershipProofSchema,
-  rootMembershipProofSchema,
-  TransitionTraceMembershipProofSchema,
-} from "../transition-trace.js";
-import { FieldOpeningSchema } from "./field-opening.js";
+  InputExistenceLedgerStateSchema,
+  InputExistencePreStateArgsSchema,
+  InputExistenceSelectArgsSchema,
+  InputExistenceSelectedStateSchema,
+  InputExistenceSourceStateSchema,
+  InputExistenceTerminalArgsSchema,
+} from "./input-existence.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  MidgardTxInputSchema,
   NativeTxInclusionCarriage,
   NativeTxInclusionCarriageSchema,
-  NonMembershipCarriageSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 /**
  * No-reference-input fault proof — proves a Midgard block includes a native L2
@@ -62,38 +60,15 @@ export const NoReferenceInputStepCancel =
 // is read with the generic computation-thread step datum. Spending it requires
 // only the native-tx inclusion redeemer; the produced UTxO carries step-02.
 
-export const NoReferenceInputVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: Data.Bytes(),
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
-export const NoReferenceInputStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const NoReferenceInputVerdictSubjectSchema = VerdictSubjectSchema;
+export const NoReferenceInputStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const NoReferenceInputForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
     ForcedInclusionTxV1Schema,
   ),
-  direction: Data.Integer(),
 });
 
 export const NoReferenceInputStep01ArgsSchema = Data.Object({
@@ -116,11 +91,8 @@ export const NoReferenceInputStep01SpendRedeemer =
  * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.State`. #604: the
  * retired `bad_tx_reference_inputs_hash` became the §2.5 anchor `bad_tx_id`.
  */
-export const NoReferenceInputStep02StateSchema = Data.Object({
-  bad_tx_id: H32Schema,
-  blocks_prev_utxos_root: H32Schema,
-  blocks_transactions_root: H32Schema,
-});
+export const NoReferenceInputStep02StateSchema =
+  InputExistenceSourceStateSchema;
 export type NoReferenceInputStep02State = Data.Static<
   typeof NoReferenceInputStep02StateSchema
 >;
@@ -141,12 +113,7 @@ export const NoReferenceInputStep02Datum =
  * field 0 — the index is a literal at the on-chain call site, and §4 removed the
  * domain separation that used to make the two distinguishable by hash alone.
  */
-export const NoReferenceInputStep02ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  reference_inputs_opening: FieldOpeningSchema,
-  bad_reference_input_index: Data.Integer(),
-});
+export const NoReferenceInputStep02ArgsSchema = InputExistenceSelectArgsSchema;
 export type NoReferenceInputStep02Args = Data.Static<
   typeof NoReferenceInputStep02ArgsSchema
 >;
@@ -172,11 +139,8 @@ export const NoReferenceInputStep02SpendRedeemer =
 // key, however, is the node's `CML.TransactionInput` CBOR, produced by
 // `encode_midgard_tx_input` — not this datum encoding.
 
-export const NoReferenceInputStep03StateSchema = Data.Object({
-  missing_reference_input: MidgardTxInputSchema,
-  blocks_prev_utxos_root: H32Schema,
-  blocks_transactions_root: H32Schema,
-});
+export const NoReferenceInputStep03StateSchema =
+  InputExistenceSelectedStateSchema;
 export type NoReferenceInputStep03State = Data.Static<
   typeof NoReferenceInputStep03StateSchema
 >;
@@ -192,11 +156,8 @@ export type NoReferenceInputStep03Datum = Data.Static<
 export const NoReferenceInputStep03Datum =
   asDataType<NoReferenceInputStep03Datum>(NoReferenceInputStep03DatumSchema);
 
-export const NoReferenceInputStep03ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  non_membership_in_ledger: NonMembershipCarriageSchema,
-});
+export const NoReferenceInputStep03ArgsSchema =
+  InputExistencePreStateArgsSchema;
 export type NoReferenceInputStep03Args = Data.Static<
   typeof NoReferenceInputStep03ArgsSchema
 >;
@@ -216,10 +177,8 @@ export const NoReferenceInputStep03SpendRedeemer =
 // ## Step 04 — prove the missing reference input was not produced within the
 // block
 
-export const NoReferenceInputStep04StateSchema = Data.Object({
-  missing_reference_input_tx_id: H32Schema,
-  blocks_transactions_root: H32Schema,
-});
+export const NoReferenceInputStep04StateSchema =
+  InputExistenceLedgerStateSchema;
 export type NoReferenceInputStep04State = Data.Static<
   typeof NoReferenceInputStep04StateSchema
 >;
@@ -235,12 +194,8 @@ export type NoReferenceInputStep04Datum = Data.Static<
 export const NoReferenceInputStep04Datum =
   asDataType<NoReferenceInputStep04Datum>(NoReferenceInputStep04DatumSchema);
 
-export const NoReferenceInputStep04ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  non_membership_in_txs: NonMembershipCarriageSchema,
-});
+export const NoReferenceInputStep04ArgsSchema =
+  InputExistenceTerminalArgsSchema;
 export type NoReferenceInputStep04Args = Data.Static<
   typeof NoReferenceInputStep04ArgsSchema
 >;
@@ -257,14 +212,8 @@ export const NoReferenceInputStep04SpendRedeemer =
     NoReferenceInputStep04SpendRedeemerSchema,
   );
 
-export const NoReferenceInputStep02ForcedStateSchema = Data.Object({
-  subject: NoReferenceInputVerdictSubjectSchema,
-  event_key: EventKeySchema,
-  event_root: H32Schema,
-  event_count: Data.Integer(),
-  trace_root: H32Schema,
-  trace_count: Data.Integer(),
-});
+export const NoReferenceInputStep02ForcedStateSchema =
+  InputExistenceSourceStateSchema;
 export type NoReferenceInputStep02ForcedState = Data.Static<
   typeof NoReferenceInputStep02ForcedStateSchema
 >;
@@ -273,12 +222,8 @@ export const NoReferenceInputStep02ForcedState =
     NoReferenceInputStep02ForcedStateSchema,
   );
 
-export const NoReferenceInputStep02ForcedArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  reference_inputs_opening: FieldOpeningSchema,
-  event_membership: EventToStepMembershipProofSchema,
-});
+export const NoReferenceInputStep02ForcedArgsSchema =
+  InputExistenceSelectArgsSchema;
 export type NoReferenceInputStep02ForcedArgs = Data.Static<
   typeof NoReferenceInputStep02ForcedArgsSchema
 >;
@@ -287,10 +232,8 @@ export const NoReferenceInputStep02ForcedArgs =
     NoReferenceInputStep02ForcedArgsSchema,
   );
 
-export const NoReferenceInputStep02ThreadStateSchema = Data.Enum([
-  Data.Object({ State: NoReferenceInputStep02StateSchema }),
-  Data.Object({ ForcedState: NoReferenceInputStep02ForcedStateSchema }),
-]);
+export const NoReferenceInputStep02ThreadStateSchema =
+  InputExistenceSourceStateSchema;
 export type NoReferenceInputStep02ThreadState = Data.Static<
   typeof NoReferenceInputStep02ThreadStateSchema
 >;
@@ -309,10 +252,8 @@ export const NoReferenceInputStep02ThreadDatum =
     NoReferenceInputStep02ThreadDatumSchema,
   );
 
-export const NoReferenceInputStep02ThreadArgsSchema = Data.Enum([
-  Data.Object({ Args: NoReferenceInputStep02ArgsSchema }),
-  Data.Object({ ForcedArgs: NoReferenceInputStep02ForcedArgsSchema }),
-]);
+export const NoReferenceInputStep02ThreadArgsSchema =
+  InputExistenceSelectArgsSchema;
 export type NoReferenceInputStep02ThreadArgs = Data.Static<
   typeof NoReferenceInputStep02ThreadArgsSchema
 >;
@@ -331,13 +272,8 @@ export const NoReferenceInputStep02ThreadSpendRedeemer =
     NoReferenceInputStep02ThreadSpendRedeemerSchema,
   );
 
-export const NoReferenceInputStep03ForcedStateSchema = Data.Object({
-  event_key: EventKeySchema,
-  trace_root: H32Schema,
-  trace_count: Data.Integer(),
-  step_index: Data.Integer(),
-  selected_input: Data.Nullable(MidgardTxInputSchema),
-});
+export const NoReferenceInputStep03ForcedStateSchema =
+  InputExistenceSelectedStateSchema;
 export type NoReferenceInputStep03ForcedState = Data.Static<
   typeof NoReferenceInputStep03ForcedStateSchema
 >;
@@ -346,11 +282,8 @@ export const NoReferenceInputStep03ForcedState =
     NoReferenceInputStep03ForcedStateSchema,
   );
 
-export const NoReferenceInputStep03ForcedArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  transition_membership: TransitionTraceMembershipProofSchema,
-});
+export const NoReferenceInputStep03ForcedArgsSchema =
+  InputExistencePreStateArgsSchema;
 export type NoReferenceInputStep03ForcedArgs = Data.Static<
   typeof NoReferenceInputStep03ForcedArgsSchema
 >;
@@ -359,10 +292,8 @@ export const NoReferenceInputStep03ForcedArgs =
     NoReferenceInputStep03ForcedArgsSchema,
   );
 
-export const NoReferenceInputStep03ThreadStateSchema = Data.Enum([
-  Data.Object({ State: NoReferenceInputStep03StateSchema }),
-  Data.Object({ ForcedState: NoReferenceInputStep03ForcedStateSchema }),
-]);
+export const NoReferenceInputStep03ThreadStateSchema =
+  InputExistenceSelectedStateSchema;
 export type NoReferenceInputStep03ThreadState = Data.Static<
   typeof NoReferenceInputStep03ThreadStateSchema
 >;
@@ -381,10 +312,8 @@ export const NoReferenceInputStep03ThreadDatum =
     NoReferenceInputStep03ThreadDatumSchema,
   );
 
-export const NoReferenceInputStep03ThreadArgsSchema = Data.Enum([
-  Data.Object({ Args: NoReferenceInputStep03ArgsSchema }),
-  Data.Object({ ForcedArgs: NoReferenceInputStep03ForcedArgsSchema }),
-]);
+export const NoReferenceInputStep03ThreadArgsSchema =
+  InputExistencePreStateArgsSchema;
 export type NoReferenceInputStep03ThreadArgs = Data.Static<
   typeof NoReferenceInputStep03ThreadArgsSchema
 >;
@@ -403,10 +332,8 @@ export const NoReferenceInputStep03ThreadSpendRedeemer =
     NoReferenceInputStep03ThreadSpendRedeemerSchema,
   );
 
-export const NoReferenceInputStep04ForcedStateSchema = Data.Object({
-  selected_input: Data.Nullable(MidgardTxInputSchema),
-  pre_utxos_root: H32Schema,
-});
+export const NoReferenceInputStep04ForcedStateSchema =
+  InputExistenceLedgerStateSchema;
 export type NoReferenceInputStep04ForcedState = Data.Static<
   typeof NoReferenceInputStep04ForcedStateSchema
 >;
@@ -415,14 +342,8 @@ export const NoReferenceInputStep04ForcedState =
     NoReferenceInputStep04ForcedStateSchema,
   );
 
-export const NoReferenceInputStep04ForcedArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  membership: Data.Nullable(
-    Data.Object({ value_hash: H32Schema, proof: ProofSchema }),
-  ),
-});
+export const NoReferenceInputStep04ForcedArgsSchema =
+  InputExistenceTerminalArgsSchema;
 export type NoReferenceInputStep04ForcedArgs = Data.Static<
   typeof NoReferenceInputStep04ForcedArgsSchema
 >;
@@ -431,10 +352,8 @@ export const NoReferenceInputStep04ForcedArgs =
     NoReferenceInputStep04ForcedArgsSchema,
   );
 
-export const NoReferenceInputStep04ThreadStateSchema = Data.Enum([
-  Data.Object({ State: NoReferenceInputStep04StateSchema }),
-  Data.Object({ ForcedState: NoReferenceInputStep04ForcedStateSchema }),
-]);
+export const NoReferenceInputStep04ThreadStateSchema =
+  InputExistenceLedgerStateSchema;
 export type NoReferenceInputStep04ThreadState = Data.Static<
   typeof NoReferenceInputStep04ThreadStateSchema
 >;
@@ -453,10 +372,8 @@ export const NoReferenceInputStep04ThreadDatum =
     NoReferenceInputStep04ThreadDatumSchema,
   );
 
-export const NoReferenceInputStep04ThreadArgsSchema = Data.Enum([
-  Data.Object({ Args: NoReferenceInputStep04ArgsSchema }),
-  Data.Object({ ForcedArgs: NoReferenceInputStep04ForcedArgsSchema }),
-]);
+export const NoReferenceInputStep04ThreadArgsSchema =
+  InputExistenceTerminalArgsSchema;
 export type NoReferenceInputStep04ThreadArgs = Data.Static<
   typeof NoReferenceInputStep04ThreadArgsSchema
 >;

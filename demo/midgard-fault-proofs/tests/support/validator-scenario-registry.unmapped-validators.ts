@@ -54,6 +54,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/validation_trace/cek_context_spend.main",
       "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main",
       "fraud_proofs/validation_trace/cek_context_tx_info.main",
+      "fraud_proofs/validation_trace/cek_core_arm_case_constant.main",
       "fraud_proofs/validation_trace/cek_core_arm_compute.main",
       "fraud_proofs/validation_trace/cek_core_arm_machine.main",
       "fraud_proofs/validation_trace/cek_core_arm_map_conversion.main",
@@ -490,6 +491,18 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/witness_script_decoding/step_04.main",
       "fraud_proofs/zero_input/step_01.main",
       "fraud_proofs/zero_input/step_02.main",
+    ],
+  },
+  {
+    reason:
+      "direct-script-derivation purpose-stage validators (purpose and spend selection, spend and mint scans, source lookup). The library compiles and its on-chain rows cover them; their emulator scenarios belong to the family chain that wires them, which is not wired in this change.",
+    validators: [
+      "fraud_proofs/direct_script_derivation/mint_grammar.main",
+      "fraud_proofs/direct_script_derivation/mint_scan.main",
+      "fraud_proofs/direct_script_derivation/purpose_select.main",
+      "fraud_proofs/direct_script_derivation/source_lookup.main",
+      "fraud_proofs/direct_script_derivation/spend_scan.main",
+      "fraud_proofs/direct_script_derivation/spend_select.main",
     ],
   },
   {

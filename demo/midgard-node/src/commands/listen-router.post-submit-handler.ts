@@ -1,16 +1,6 @@
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  decodeMidgardProofSubmission,
-  encodeMidgardCekProgramMaterialSidecar,
-  verifyMidgardCekProgramMaterialBundle,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
-import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Cause, Duration, Effect, Exit, Metric, Option } from "effect";
@@ -179,12 +169,6 @@ export const postSubmitHandler = <R>(
             );
           }
           const transactionBytes = decodedSubmission.right.transactionCbor;
-          const programMaterial = decodedSubmission.right.programMaterial;
-          const programMaterialSidecarCbor =
-            encodeMidgardCekProgramMaterialSidecar(programMaterial);
-          // Re-decode the independently stored representation at the admission
-          // boundary; database replay must never depend on the HTTP wrapper.
-          decodeMidgardCekProgramMaterialSidecar(programMaterialSidecarCbor);
 
           const normalizeStartedAt = Date.now();
           const validation = validateSubmitTxCanonicalCbor(
@@ -248,46 +232,6 @@ export const postSubmitHandler = <R>(
               { status: 400 },
             );
           }
-          const materialValidation = yield* Effect.either(
-            Effect.try({
-              try: () => {
-                const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
-                  normalized.txCanonicalCbor,
-                );
-                const envelopes = collectMidgardAttachedProgramEnvelopes(tx);
-                const hasUnresolvedReferenceInputs =
-                  decodeMidgardNativeByteListPreimage(
-                    tx.body.referenceInputsPreimageCbor,
-                    "reference_inputs_preimage",
-                  ).length > 0;
-                // Reference-input program envelopes are ledger-state dependent and
-                // become authoritative in Phase B. The one bundle traversal still
-                // proves every attached envelope and preserves envelope position.
-                verifyMidgardCekProgramMaterialBundle(
-                  envelopes,
-                  programMaterial,
-                  hasUnresolvedReferenceInputs
-                    ? { allowUnreachable: true }
-                    : undefined,
-                );
-              },
-              catch: (cause) => cause,
-            }),
-          );
-          if (materialValidation._tag === "Left") {
-            yield* submitNormalizeDurationTimer(
-              Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
-            );
-            yield* recordLatency();
-            return HttpServerResponse.json(
-              {
-                error: "E_CEK_PROGRAM_MATERIAL",
-                detail:
-                  "V1 program material does not cover every attached program envelope",
-              },
-              { status: 400 },
-            );
-          }
           yield* submitNormalizeDurationTimer(
             Effect.succeed(Duration.millis(Date.now() - normalizeStartedAt)),
           );
@@ -312,7 +256,6 @@ export const postSubmitHandler = <R>(
               ? admissionWriter.admitReserved({
                   txId: normalized.txId,
                   txCanonicalCbor: normalized.txCanonicalCbor,
-                  programMaterialSidecarCbor,
                   submitSource: normalized.source,
                   maxBacklogBytes:
                     nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
@@ -320,7 +263,6 @@ export const postSubmitHandler = <R>(
               : TxAdmissionsDB.admit({
                   txId: normalized.txId,
                   txCanonicalCbor: normalized.txCanonicalCbor,
-                  programMaterialSidecarCbor,
                   submitSource: normalized.source,
                   currentBacklog: reservation.currentBacklog,
                   maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,

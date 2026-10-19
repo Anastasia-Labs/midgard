@@ -1,20 +1,15 @@
 import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import {
-  BoundedItemChunkProofSchema,
-  ForcedInclusionTxV1Schema,
-  HeaderSchema,
-} from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+import { H32Schema } from "../common.js";
+import { BoundedItemChunkProofSchema } from "../ledger-state.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { NativeScriptFrameSchema } from "./validation-auxiliary-witness.js";
 
 export const WITNESS_SCRIPT_DECODING_CATEGORY =
@@ -28,14 +23,7 @@ export const WITNESS_SCRIPT_DECODING_RESULT_NATIVE_MALFORMED = 1n;
 export const WITNESS_SCRIPT_DECODING_RESULT_NODE_LIMIT = 2n;
 export const WITNESS_SCRIPT_DECODING_RESULT_DEPTH_LIMIT = 3n;
 
-export const WitnessScriptDecodingVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: H32Schema,
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const WitnessScriptDecodingVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const WitnessScriptDecodingBoundSchema = Data.Object({
   subject: WitnessScriptDecodingVerdictSubjectSchema,
@@ -60,23 +48,8 @@ export type WitnessScriptDecodingScanState = Data.Static<
   typeof WitnessScriptDecodingScanStateSchema
 >;
 
-export const WitnessScriptDecodingStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-      direction: Data.Integer(),
-    }),
-  }),
-]);
+export const WitnessScriptDecodingStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const WitnessScriptDecodingStep01ArgsSchema = Data.Object({
   source: WitnessScriptDecodingStep01SourceSchema,
   script_index: Data.Integer(),
@@ -143,6 +116,7 @@ export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
       "step_03_validator_script_hash",
       "computation_thread_token_policy_id",
       "field_preimage_certificate_policy_id",
+      "script_decode_policy_id",
     ],
   },
   {

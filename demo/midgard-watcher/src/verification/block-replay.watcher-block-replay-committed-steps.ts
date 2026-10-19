@@ -220,10 +220,6 @@ export const snapshotWatcherBlockReplayEventAuthorities = (
           eventKey,
           phase: authority.phase,
           canonicalNativeTxCbor: Buffer.from(authority.canonicalNativeTxCbor),
-          programMaterialSidecarCbor:
-            authority.programMaterialSidecarCbor == null
-              ? null
-              : Buffer.from(authority.programMaterialSidecarCbor),
         });
       }
       return Object.freeze({
