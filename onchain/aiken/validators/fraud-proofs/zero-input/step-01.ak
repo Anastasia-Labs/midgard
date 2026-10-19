@@ -13,8 +13,7 @@ use midgard/fraud_proofs/common.{
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_proof_source_v1,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody,
@@ -51,12 +50,12 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             _m_input_state_data,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -77,13 +76,7 @@ validator main(
         //    to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = bind_state_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource {
-              header: subject_header,
-              tx_inclusion: bad_tx_view,
-            },
-          ),
+          substrate.open_accepted_subject_v1(bad_tx_view),
         )
         expect output_state_data == expected_output_state
 
@@ -107,16 +100,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
+          header,
+          membership,
         )
         let expected_output_state: Data = bind_state_v1(subject)
         and {

@@ -37,17 +37,7 @@ validator main(
         source_kind,
         input_index,
       }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           thread_policy,
           hub_oracle,
           datum,
@@ -56,10 +46,7 @@ validator main(
           tx,
         )
         let state = bind_input_v1(
-          substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          substrate.open_accepted_subject_v1(verified),
           source_kind,
           input_index,
           header.prev_utxos_root,
@@ -91,9 +78,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let state = bind_input_v1(
           subject,

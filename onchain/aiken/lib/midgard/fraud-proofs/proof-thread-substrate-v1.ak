@@ -96,25 +96,48 @@ pub type EventPreStateV1 {
 /// the accepted scalar is checked here. A forced source's header is supplied
 /// by the prover, so its protocol version and thread binding are checked
 /// before its leaf is opened.
+///
+/// A validator whose arms already know the source kind may call
+/// `open_accepted_subject_v1` or `open_forced_subject_v1` directly; each
+/// returns exactly what this function returns for that kind.
 pub fn open_subject_v1(
   thread_name: ByteArray,
   source: SubjectSourceV1,
 ) -> VerdictSubjectV1 {
   when source is {
     AcceptedSource { tx_inclusion, .. } ->
-      bind_accepted_subject_v1(tx_inclusion)
+      open_accepted_subject_v1(tx_inclusion)
     ForcedSource { header, membership } -> {
-      let header_data: Data = header
-      expect and {
-          header.protocol_version == ledger_state.protocol_version_v1,
-          utils.serialise_and_hash_28(header_data) == bytearray.drop(
-            thread_name,
-            fraud_proof_catalogue.id_byte_count,
-          ),
-        }
-      bind_forced_subject_v1(header, membership)
+      let Pair(subject, _verified) = open_forced_subject_v1(
+        thread_name,
+        header,
+        membership,
+      )
+      subject
     }
   }
+}
+
+/// `open_subject_v1` on a forced source, also returning the verified view of
+/// the opened leaf's own `submitted_source`. A caller that reads body fields
+/// takes them from this view instead of verifying the same bytes again.
+pub fn open_forced_subject_v1(
+  thread_name: ByteArray,
+  header: ledger_state.HeaderV1,
+  membership: transition_trace.RootMembershipProof<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+) -> Pair<VerdictSubjectV1, VerifiedTxSourceView> {
+  let header_data: Data = header
+  expect and {
+      header.protocol_version == ledger_state.protocol_version_v1,
+      utils.serialise_and_hash_28(header_data) == bytearray.drop(
+        thread_name,
+        fraud_proof_catalogue.id_byte_count,
+      ),
+    }
+  bind_forced_subject_v1(header, membership)
 }
 
 fn is_h32(bytes: ByteArray) -> Bool {
@@ -182,7 +205,11 @@ pub fn encode_verdict_subject_v1(subject: VerdictSubjectV1) -> ByteArray {
 /// has already authenticated this verified compact transaction under the
 /// header's counted `transactions_root`; this seam additionally enforces the
 /// leaf-is-acceptance validity scalar before constructing canonical state.
-fn bind_accepted_subject_v1(verified: VerifiedTxSourceView) -> VerdictSubjectV1 {
+/// `open_subject_v1` on an accepted source. The carriage that produced
+/// `verified` has already bound its header to the thread.
+pub fn open_accepted_subject_v1(
+  verified: VerifiedTxSourceView,
+) -> VerdictSubjectV1 {
   expect and {
       verified.version == native_tx_version_v1,
       is_h32(verified.tx_id),
@@ -271,19 +298,20 @@ pub fn event_key_matches_subject_v1(
 /// Opens a forced leaf against the challenged header, re-verifies its exact
 /// validity-free proof source and tx id, authenticates the sole verdict,
 /// and fixes the direction's reason polarity. No prover-supplied reason or
-/// coordinate enters the returned state.
+/// coordinate enters the returned state. The verified view is returned
+/// unchanged with the subject.
 fn bind_forced_subject_v1(
   header: ledger_state.HeaderV1,
   membership: transition_trace.RootMembershipProof<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-) -> VerdictSubjectV1 {
+) -> Pair<VerdictSubjectV1, VerifiedTxSourceView> {
   let leaf = membership.value
   let source_key = cbor.serialise(membership.key)
   // The verifier hashes the body bytes against `leaf.tx_id` and returns that
-  // id with version 1; the view is not read again, so neither is re-compared.
-  let Pair(_verified, _witness_set) = verify_forced_tx_proof_source_v1(
+  // id with version 1, so neither is compared back to the leaf.
+  let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
     leaf.submitted_source.compact_cbor,
     leaf.submitted_source.witness_set_compact_cbor,
@@ -306,14 +334,17 @@ fn bind_forced_subject_v1(
     ForcedTxInvalid { reason } ->
       Pair(direction_wrongful_rejection, Some(reason))
   }
-  VerdictSubjectV1 {
-    version,
-    direction,
-    source_kind: source_kind_forced,
-    transaction_id: leaf.tx_id,
-    source_key,
-    rejection_reason,
-  }
+  Pair(
+    VerdictSubjectV1 {
+      version,
+      direction,
+      source_kind: source_kind_forced,
+      transaction_id: leaf.tx_id,
+      source_key,
+      rejection_reason,
+    },
+    verified,
+  )
 }
 
 /// The event phase is determined by its authenticated key.
@@ -483,7 +514,7 @@ pub fn bind_exact_rejection_reason_v1(
 /// of `rejection_reason_of_v1`: the opener builds every subject canonical, so
 /// `subject_is_canonical_v1` would only repeat it. An accepted source gets
 /// version 1, wrongful acceptance, an empty key and no reason, and a 32-byte
-/// id (`bind_accepted_subject_v1`'s `is_h32`). A forced source gets version
+/// id (`open_accepted_subject_v1`'s `is_h32`). A forced source gets version
 /// 1, a non-empty CBOR key, the direction and reason from one match on the
 /// leaf verdict, and an id equal to the verified blake2b-256 body hash
 /// (`verify_forced_tx_compact_cbor_v1`). A subject read from a datum must

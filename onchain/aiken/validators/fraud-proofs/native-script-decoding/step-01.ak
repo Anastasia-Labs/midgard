@@ -54,12 +54,12 @@ validator main(
         //    next step must pass.
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -80,13 +80,7 @@ validator main(
         //    accusation is against exactly that acceptance.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = engine.BoundAccepted {
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource {
-              header: subject_header,
-              tx_inclusion: bad_tx_view,
-            },
-          ),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
         }
         expect output_state_data == expected_output_state
 

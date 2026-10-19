@@ -28,7 +28,6 @@ use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
-use midgard/fraud_proofs/native_tx/compact.{verify_forced_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -83,17 +82,12 @@ validator main(
           outputs,
         )
         expect Some(handoff) = input_state
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
-        )
         // The source authenticates immutable submission content; the verdict
         // matched below authenticates the operator's decision.
         let committed_tx_network_id = verified.tx_compact.body.network_id

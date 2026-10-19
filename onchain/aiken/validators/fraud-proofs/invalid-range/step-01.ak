@@ -23,8 +23,7 @@ use midgard/fraud_proofs/invalid_range/step_01.{
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{
-  verify_forced_tx_proof_source_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_proof_source_v1,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, NativeTxBodyCompact,
@@ -91,7 +90,7 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
@@ -122,10 +121,7 @@ validator main(
         //    challenged header.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: bad_tx_view },
-          ),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
           block_slot,
           bad_tx_normalized_validity_range,
         }
@@ -152,16 +148,10 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, verified) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
-        )
-        let leaf = membership.value
-        let Pair(verified, _) = verify_forced_tx_proof_source_v1(
-          leaf.tx_id,
-          leaf.submitted_source.compact_cbor,
-          leaf.submitted_source.witness_set_compact_cbor,
-          leaf.submitted_source.field_preimage_lengths_cbor,
+          header,
+          membership,
         )
         let expected: Data = step_02.State {
           subject,

@@ -51,7 +51,7 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             _m_input_state_data,
             output_script_hash,
@@ -80,10 +80,7 @@ validator main(
         //    which is what entitles step-02 to treat its state as anchored.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: bad_tx_view },
-          ),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
           bad_tx: ForcedTxCompact {
             body: bad_tx_view.tx_compact.body,
             witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
@@ -114,9 +111,10 @@ validator main(
           tx.inputs,
           tx.outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         // The opener built this subject from the authenticated leaf, so it is
         // canonical by construction and a reason is present exactly on a
