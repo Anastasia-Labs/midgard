@@ -31,7 +31,7 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   /**
    * Called when a continuing session journals progress past its first poll,
    * so a caller can clear an alarm before the session ends. Never authority.
-   * It must not throw: a throw ends the session as a runner exception.
+   * A throw is ignored and does not end the session.
    */
   readonly onProgress?: () => void;
 };
