@@ -300,6 +300,20 @@ test refuses_a_missing_break() fail {
   )
 }
 
+/// A second full-segment head with 63 bytes before the break, so the segment
+/// would take the break byte as its last.
+test refuses_a_full_segment_over_the_break() fail {
+  accepted(
+    builtin.append_bytearray(
+      builtin.append_bytearray(#"c25f", segment(1)),
+      builtin.append_bytearray(
+        #"5840",
+        builtin.append_bytearray(replicate(63, 1), #"ff"),
+      ),
+    ),
+  )
+}
+
 test refuses_an_indefinite_form_of_64_bytes() fail {
   accepted(
     builtin.append_bytearray(

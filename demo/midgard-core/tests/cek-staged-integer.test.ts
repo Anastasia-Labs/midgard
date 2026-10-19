@@ -126,6 +126,16 @@ describe("canonical integer CBOR", () => {
       ]),
     ],
     [
+      "a full segment over the break",
+      Buffer.concat([
+        Buffer.from("c25f", "hex"),
+        segment(1),
+        Buffer.from("5840", "hex"),
+        Buffer.alloc(63, 1),
+        Buffer.from("ff", "hex"),
+      ]),
+    ],
+    [
       "an indefinite form of 64 bytes",
       Buffer.concat([
         Buffer.from("c25f", "hex"),
