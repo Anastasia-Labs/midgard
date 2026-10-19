@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
   encodeMidgardSpendInputItem,
+  encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
@@ -95,11 +96,15 @@ export const nodeTransaction = (output: Buffer) =>
   });
 
 /**
- * `output` spent from one held ledger input that carries the output's value
- * and is owned by the key that signs the transaction, so the node resolves
- * the input and the output's own encoding is the only fault it can find.
+ * `outputs` spent from one held ledger input that carries `heldLovelace`,
+ * their total value, and is owned by the key that signs the transaction, so
+ * the node resolves the input and the outputs' own encodings are the only
+ * fault it can find.
  */
-export const nodeTransactionSpendingHeldInput = (output: Buffer) => {
+export const nodeTransactionSpendingHeldInput = (
+  outputs: readonly Buffer[],
+  heldLovelace: bigint,
+) => {
   const ownerKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 41));
   try {
     const ownerVkey = Buffer.from(ownerKey.to_public().to_raw_bytes()).toString(
@@ -109,18 +114,19 @@ export const nodeTransactionSpendingHeldInput = (output: Buffer) => {
       txId: Buffer.alloc(32, 0x57),
       outputIndex: 0,
     });
-    // `{0: enterprise key address of the owner, 1: [5_000_000, {}]}`, the
-    // value `outputWithInlineDatum` pays out.
-    const heldOutput = Buffer.concat([
-      hex("a200581d60"),
-      hex(missingSignatureVkeyHash(ownerVkey)),
-      hex("01821a004c4b40a0"),
-    ]);
+    // `{0: enterprise key address of the owner, 1: [heldLovelace, {}]}`.
+    const heldOutput = encodeMidgardTxOutput({
+      address: Buffer.concat([
+        hex("60"),
+        hex(missingSignatureVkeyHash(ownerVkey)),
+      ]),
+      value: { lovelace: heldLovelace, assets: new Map() },
+    });
     const build = (addrTxWitsPreimageCbor?: Buffer) =>
       makeNativeTx({
         spendInputCbors: [heldInput],
         fee: 0n,
-        outputCbors: [output],
+        outputCbors: [...outputs],
         addrTxWitsPreimageCbor,
       });
     const transactionId = computeMidgardNativeTxId(
