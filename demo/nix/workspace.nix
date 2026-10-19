@@ -19,6 +19,14 @@ let
     inherit src pnpm;
     fetcherVersion = 3;
     hash = pnpmDepsHash;
+    # Runs before the fetcher's own fixup, which then sorts the index.
+    preFixup = ''
+      if [ -f "$storePath/v11/index.db" ]; then
+        ${nodejs}/bin/node ${./pnpm-store-side-effect-times.mjs} \
+          ${pkgs.pnpm-fixup-state-db}/lib/node_modules/pnpm-fixup-state-db/node_modules/@pnpm/store.index/lib/index.js \
+          "$storePath/v11"
+      fi
+    '';
   };
 
   app = { name, entry, binaries, native, env ? { } }:
