@@ -1,5 +1,6 @@
-/** Opening a validation case on the emulator. Open and VerifySource over a
- * committed normal transaction whose script fails land, with the case datum
+/** Opening a validation case on the emulator. The complete DA replay of the
+ * committed blocks detects the normal transaction whose script fails, and
+ * only it; Open and VerifySource over that detection land, with the case datum
  * the off-chain claim material derives, each within the transaction limits,
  * also when the validity bounds are not on a slot boundary. source-v1
  * refuses a terminal the challenger's own committed root does not prove, a
@@ -18,6 +19,7 @@ import { buildValidationClaimWitness } from "../src/validation-trace-dispute/cla
 import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
 import {
   BOND_LOVELACE,
+  detectOn,
   failingClaim,
   failingMaterial,
   honestPresentation,
@@ -36,8 +38,11 @@ describe("validation-trace dispute: Open and VerifySource", () => {
     scene = await setUpScene();
   }, 1_800_000);
 
-  it("opens a case on a committed transaction whose script fails", async () => {
+  it("detects and opens a case on a committed transaction whose script fails", async () => {
     const { h, chain } = scene;
+    expect(await detectOn(scene.failing)).toHaveLength(1);
+    expect(await detectOn(scene.passing)).toStrictEqual([]);
+    expect(await detectOn(scene.forced)).toStrictEqual([]);
     const material = await failingMaterial(scene);
     const { opener } = await initAndOpen(
       scene,

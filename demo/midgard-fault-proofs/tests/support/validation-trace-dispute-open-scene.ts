@@ -2,7 +2,9 @@
  * three blocks committed from DA fixtures, each with one event that spends a
  * PlutusV3-locked seed (a normal transaction whose script fails, one whose
  * script passes, and a forced transaction whose script fails), and the
- * builders that Init, Open and VerifySource a thread over one of them. */
+ * builders that Init, Open and VerifySource a thread over one of them. The
+ * claim opened on the failing block is built from the detection the
+ * complete DA replay of that committed block reports. */
 import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
@@ -28,7 +30,12 @@ import {
   buildValidationClaimWitness,
   type ValidationTraceClaimMaterial,
 } from "../../src/validation-trace-dispute/claim-material.js";
+import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
 import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
+import {
+  createValidationTraceDisputeCompleteCanonicalReplay,
+  requireCompleteCanonicalReplayDecision,
+} from "../../src/workflow/complete-replay.js";
 import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
@@ -52,7 +59,6 @@ import {
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 import {
-  claimMaterialOf,
   eventAndLedger,
   l1SlotConfig,
 } from "./validation-trace-claim-material.js";
@@ -246,10 +252,36 @@ export const setUpScene = async (): Promise<Scene> => {
   };
 };
 
+const replayer =
+  createValidationTraceDisputeCompleteCanonicalReplay(l1SlotConfig);
+
+/** The validation-trace detections of the complete DA replay of `block`. */
+export const detectOn = async (block: Block) => {
+  const decision = await replayer.replay(block.evidence, block.context);
+  return requireCompleteCanonicalReplayDecision({
+    evidence: block.evidence,
+    replayer,
+    decision,
+    context: block.context,
+  });
+};
+
+/** The claim material for the failing block's one detection. */
 export const failingMaterial = async (
   scene: Scene,
-): Promise<ValidationTraceClaimMaterial> =>
-  await claimMaterialOf(scene.failing);
+): Promise<ValidationTraceClaimMaterial> => {
+  const detections = await detectOn(scene.failing);
+  if (detections.length !== 1)
+    throw new Error("the failing block has no single detection");
+  return (
+    await detectedValidationTraceClaim({
+      evidence: scene.failing.evidence,
+      context: scene.failing.context,
+      detection: detections[0]!,
+      l1SlotConfig,
+    })
+  ).material;
+};
 
 /** The honest trace of the passing transaction: Terminal Accepted. */
 export const passingTrace = async (scene: Scene) => {
