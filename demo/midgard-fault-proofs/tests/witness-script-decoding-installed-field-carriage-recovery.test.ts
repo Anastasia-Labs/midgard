@@ -7,8 +7,9 @@
  * published again, never served by an unrelated output with the same datum;
  * a confirmed publication its own wallet spends while its transaction stays
  * on chain is published once more in its place; and a certificate
- * transaction that can never land is certified again, as is a certificate its
- * own wallet retires while the certify transaction stays on chain.
+ * transaction that can never land is certified again, never served by
+ * another party's certificate of the same field, as is a certificate its own
+ * wallet retires while the certify transaction stays on chain.
  *
  * The emulator has no chain rollback, so a carriage transaction rolled back
  * and then included again, or rolled back and then expired, is not run here.
@@ -58,6 +59,7 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   certificateOf,
   fieldCarriageOf,
+  placeCertificateBefore,
   placeSameDatum,
   publicationsOf,
 } from "./support/own-field-carriage-installed.js";
@@ -299,61 +301,77 @@ describe("witness field carriage recovered from its own journal, in the installe
     expect(watch.plantedOutRefs().size).toBeGreaterThan(0);
   }, 900_000);
 
-  it("certifies the field again when its certificate transaction is lost and another transaction of its wallet spends one of its coins", async () => {
-    let lost: LedgerTransaction | undefined;
-    let spent = false;
-    const context: { place?: PlaceContext } = {};
-    const moved = new Set<string>();
-    const { run, watch, harness, cost } = await runWith(hooks, () => [], {
-      decide: (transaction, { harness }) => {
-        if (lost !== undefined)
-          return transaction.txHash === lost.txHash ? "withhold" : "accept";
-        if (certificateOf(transaction, sitesOf(harness)) === undefined)
-          return "accept";
-        // Signed and journaled, and never seen by the ledger, however often
-        // it is sent.
-        lost = transaction;
-        return "withhold";
-      },
-      during: (_, place) => {
-        context.place = place;
-      },
-      // Between turns, once the lost transaction has been sent: another
-      // transaction of the prover's wallet spends a coin it spends, so it
-      // can never land.
-      afterTurn: async () => {
-        if (lost === undefined || spent) return;
-        const { harness, watch } = context.place!;
-        const [txHash, index] = lost.inputs[0]!.split("#");
-        const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
-        if (utxo === undefined) return;
-        spent = true;
-        await removeOutput(
-          watch,
-          harness.proverLucid,
-          utxo,
-          harness.proverSigner.address,
-        );
-        moved.add(`${watch.accepted.at(-1)!.txHash}#0`);
-        harness.emulator.awaitBlock();
-      },
-    });
-    expect(spent).toBe(true);
-    expect(run.convicted).toBe(true);
-    expect(watch.ours().map(({ txHash }) => txHash)).not.toContain(
-      lost!.txHash,
-    );
-    // One certificate, of the same field, in the lost one's place.
-    const carriage = expectOwnFieldCarriage(watch, harness, moved);
-    expect(carriage.certificates[0]!.output.datum).toBe(
-      certificateOf(lost!, sitesOf(harness))!.datum,
-    );
-    // The same transactions as the baseline: only the certificate's is
-    // built again.
-    expect(cost.map(({ kind }) => kind)).toEqual(
-      baseline.map(({ kind }) => kind),
-    );
-  }, 900_000);
+  it.each([
+    ["", false],
+    [", past another party's certificate of the same field", true],
+  ] as const)(
+    "certifies the field again when its certificate transaction is lost and another transaction of its wallet spends one of its coins%s",
+    async (_, copy) => {
+      let lost: LedgerTransaction | undefined;
+      let spent = false;
+      const context: { place?: PlaceContext } = {};
+      const moved = new Set<string>();
+      const { run, watch, harness, cost } = await runWith(hooks, () => [], {
+        decide: (transaction, { harness }) => {
+          if (lost !== undefined)
+            return transaction.txHash === lost.txHash ? "withhold" : "accept";
+          if (certificateOf(transaction, sitesOf(harness)) === undefined)
+            return "accept";
+          // Signed and journaled, and never seen by the ledger, however often
+          // it is sent.
+          lost = transaction;
+          return "withhold";
+        },
+        during: (_, place) => {
+          context.place = place;
+        },
+        // Between turns, once the lost transaction has been sent: another
+        // transaction of the prover's wallet spends a coin it spends, so it
+        // can never land. With `copy`, another party certifies the same field
+        // in the same block, so its certificate is on chain before the
+        // application plans the certificate again.
+        afterTurn: async () => {
+          if (lost === undefined || spent) return;
+          const { harness, watch, other } = context.place!;
+          const [txHash, index] = lost.inputs[0]!.split("#");
+          const utxo = harness.emulator.ledger[`${txHash!}${index!}`]?.utxo;
+          if (utxo === undefined) return;
+          spent = true;
+          if (copy)
+            await placeCertificateBefore(watch, other, {
+              certify: lost,
+              certificate: certificateOf(lost, sitesOf(harness))!,
+              below: "f".repeat(64),
+            });
+          await removeOutput(
+            watch,
+            harness.proverLucid,
+            utxo,
+            harness.proverSigner.address,
+          );
+          moved.add(`${watch.accepted.at(-1)!.txHash}#0`);
+          harness.emulator.awaitBlock();
+        },
+      });
+      expect(spent).toBe(true);
+      expect(run.convicted).toBe(true);
+      expect(watch.ours().map(({ txHash }) => txHash)).not.toContain(
+        lost!.txHash,
+      );
+      // One certificate, of the same field, in the lost one's place.
+      const carriage = expectOwnFieldCarriage(watch, harness, moved);
+      expect(carriage.certificates[0]!.output.datum).toBe(
+        certificateOf(lost!, sitesOf(harness))!.datum,
+      );
+      // The same transactions as the baseline: only the certificate's is
+      // built again.
+      expect(cost.map(({ kind }) => kind)).toEqual(
+        baseline.map(({ kind }) => kind),
+      );
+      if (copy) expect(watch.plantedOutRefs().size).toBeGreaterThan(0);
+    },
+    900_000,
+  );
 
   it.each([
     ["before its certify transaction is confirmed", "landed"],
