@@ -11,7 +11,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
-import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -20,6 +19,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
+import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import {
   assertWatcherProtocolParameterHistory,
   assertWatcherProtocolParameterRuntimeAuthority,
@@ -29,8 +29,10 @@ import {
   watcherSignedDeploymentProtocolParameterRecoveryAuthority,
 } from "./prover-funding.js";
 import { createWatcherProverFundingAuthority } from "./prover-funding-authority.create-watcher-prover-funding-authority.js";
+import { createWatcherReservationHoldRegister } from "./prover-funding-authority.decision-hold-register.js";
 import {
   admittedFactories,
+  readRecord,
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthorityFactory,
 } from "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
@@ -41,6 +43,10 @@ import {
   authorizeWatcherProverFundingRecovery,
   releaseUnusedWatcherProverFundingReservations,
 } from "./prover-funding-recovery.js";
+import {
+  createWatcherOrphanedReservations,
+  type WatcherOrphanedReservationObserver,
+} from "./prover-funding-recovery.orphaned-reservation.js";
 import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
@@ -103,6 +109,13 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly fundingInputFacts?: WatcherFundingInputFacts;
   /** This deployment's computation-thread policy, which proves own thread custody. */
   readonly computationThreadPolicyId?: string;
+  /** Reads signed attempts from their own bytes; it alone settles or hands
+   * over funding no workflow will drive again. */
+  readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
+  /** The clock that paces those reads. */
+  readonly now?: () => number;
+  /** Where an orphaned reservation's failure alert is raised and cleared. */
+  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -122,19 +135,23 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     WorkflowActuationPermit,
     WatcherProverFundingReservationRecord
   >();
-  // Reservations held because their recorded decision is missing, by id.
-  const decisionHolds = new Map<string, WatcherDecisionHold>();
-  const recordHolds = (
-    checked: readonly string[] | null,
-    holds: readonly WatcherDecisionHold[],
-  ): void => {
-    if (checked === null) decisionHolds.clear();
-    else
-      for (const reservationId of checked) decisionHolds.delete(reservationId);
-    for (const hold of holds)
-      if (hold.kind === "reservation")
-        decisionHolds.set(hold.reservationId, hold);
-  };
+  const orphans =
+    input.observeSignedTransaction === undefined
+      ? undefined
+      : createWatcherOrphanedReservations({
+          store: input.store,
+          observe: input.observeSignedTransaction,
+          ...(input.now === undefined ? {} : { now: input.now }),
+        });
+  // Reservations a run is bound to; no sweep beside it settles them.
+  const live = new Set<string>();
+  const idle = async () =>
+    (await input.store.readAll())
+      .map(parseWatcherProverFundingReservationRecord)
+      .filter(({ reservationId }) => !live.has(reservationId));
+  // Reservations held because their decision or workflow is missing, by id.
+  const decisionHolds = createWatcherReservationHoldRegister(input.alertSink);
+  const recordHolds = decisionHolds.record;
   // A sweep, a per-run release and a hold recheck each read the store and
   // then record holds; one at a time, none records over another's newer read.
   let releasing = Promise.resolve();
@@ -152,33 +169,35 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             ? undefined
             : reservationByPermit.get(scope.actuationPermit);
         if (scope !== undefined && reservation === undefined) return;
+        if (reservation !== undefined) live.delete(reservation.reservationId);
         recordHolds(
           reservation === undefined ? null : [reservation.reservationId],
           await releaseUnusedWatcherProverFundingReservations({
             ...input,
-            ...(reservation === undefined
-              ? {}
-              : { reservations: [reservation] }),
+            reservations:
+              reservation === undefined ? await idle() : [reservation],
+            ...(orphans === undefined ? {} : { orphans }),
           }),
         );
       }),
     recheckDecisionHolds: () =>
       serialize(async () => {
-        if (decisionHolds.size === 0) return;
-        const checked = [...decisionHolds.keys()];
-        const reservations = (await input.store.readAll())
-          .map(parseWatcherProverFundingReservationRecord)
-          .filter(({ reservationId }) => checked.includes(reservationId));
+        const checked = decisionHolds.ids();
+        if (checked.length === 0) return;
+        const reservations = (await idle()).filter(({ reservationId }) =>
+          checked.includes(reservationId),
+        );
         recordHolds(
           checked,
           await releaseUnusedWatcherProverFundingReservations({
             ...input,
             reservations,
             decisionMissingOnly: true,
+            ...(orphans === undefined ? {} : { orphans }),
           }),
         );
       }),
-    decisionHolds: () => Object.freeze([...decisionHolds.values()]),
+    decisionHolds: decisionHolds.current,
     create: async (request) => {
       assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
       let protocolParameters =
@@ -278,7 +297,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;
-      await authorizeWatcherProverFundingRecovery({
+      const handOver = await authorizeWatcherProverFundingRecovery({
         journalRoot: input.journalRoot,
         journalAuthenticationKey: input.journalAuthenticationKey,
         deploymentIdentity: input.deploymentIdentity,
@@ -286,6 +305,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         category: request.category,
         rollbackGeneration: request.rollbackGeneration,
         store: input.store,
+        ...(orphans === undefined ? {} : { orphans }),
       });
       const execution = assertWorkflowActuationPermitIdentity({
         permit: request.actuationPermit,
@@ -420,6 +440,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             currentParameters,
           );
           reservationByPermit.set(request.actuationPermit, record);
+          live.add(record.reservationId);
         },
         walletAddress: request.walletAddress,
         walletUtxos:
@@ -427,7 +448,39 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             ? (request.walletUtxos ?? (await request.readWalletUtxos()))
             : [],
         readWalletUtxos: request.readWalletUtxos,
-        store: input.store,
+        // Signed funding no workflow drives again becomes this execution's
+        // superseded attempts as it first reserves: excluded by its
+        // replacement, or adopted.
+        store:
+          handOver.length === 0
+            ? input.store
+            : {
+                ...input.store,
+                reserve: async (plan, expectedIdleRevision) => {
+                  const reserved = await input.store.reserve(
+                    plan,
+                    expectedIdleRevision,
+                  );
+                  if (expectedIdleRevision !== undefined) return reserved;
+                  if (input.store.handOverOrphanedAttempts === undefined)
+                    throw new Error(
+                      "prover funding store cannot hand over funding",
+                    );
+                  await input.store.handOverOrphanedAttempts({
+                    plan,
+                    expectedRevision: (
+                      await readRecord({
+                        store: input.store,
+                        reservationId: plan.reservationId,
+                      })
+                    ).revision,
+                    orphans: handOver,
+                    category: request.category,
+                    headerHash: execution.headerHash,
+                  });
+                  return reserved;
+                },
+              },
         resolveInputs: request.resolveInputs,
         computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,

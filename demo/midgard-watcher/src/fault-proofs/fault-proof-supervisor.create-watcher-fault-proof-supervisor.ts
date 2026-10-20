@@ -17,6 +17,22 @@ import {
 } from "./fault-proof-supervisor.validate-job.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 
+/** A deadline alert's headroom: the longest single-stage deadline. */
+export const watcherDeadlineAlertHeadroomMs = (
+  deadlines: Readonly<
+    Record<
+      "daFetchMs" | "daPublishMs" | "proofConstructMs" | "proofSubmitMs",
+      number
+    >
+  >,
+): number =>
+  Math.max(
+    deadlines.daFetchMs,
+    deadlines.daPublishMs,
+    deadlines.proofConstructMs,
+    deadlines.proofSubmitMs,
+  );
+
 export const createWatcherFaultProofSupervisor = (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;

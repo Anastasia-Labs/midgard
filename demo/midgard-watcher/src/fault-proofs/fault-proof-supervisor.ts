@@ -17,6 +17,7 @@ export type { WatcherFaultProofProgressRequest } from "./fault-proof-progress-au
 export {
   createWatcherFaultProofSupervisor,
   unsafeCreateWatcherFaultProofSupervisorForTest,
+  watcherDeadlineAlertHeadroomMs,
 } from "./fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 export {
   type UnsafeWatcherFaultProofSupervisorForTest,

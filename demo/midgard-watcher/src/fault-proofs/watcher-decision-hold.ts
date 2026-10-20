@@ -30,6 +30,13 @@ export type WatcherDecisionHold =
       reservationId: string;
       decisionDigest: string;
       detail: string;
+      /**
+       * `prover_funding_orphaned_reservation`: no workflow will drive the
+       * reservation's signed attempts again, and they are not retired past
+       * release finality yet. The watcher reads them from their own bytes
+       * and releases the reservation once they are; its detail names it.
+       */
+      readiness?: "prover_funding_orphaned_reservation";
     }>;
 
 /**
@@ -51,9 +58,10 @@ export type WatcherObjectiveHoldReadiness =
 /** The readiness reason a hold names. */
 export const watcherDecisionHoldReason = (
   hold: WatcherDecisionHold,
-): WatcherObjectiveHoldReadiness | "journal_decision_missing" =>
-  (hold.kind === "objective" ? hold.readiness : undefined) ??
-  "journal_decision_missing";
+):
+  | WatcherObjectiveHoldReadiness
+  | "prover_funding_orphaned_reservation"
+  | "journal_decision_missing" => hold.readiness ?? "journal_decision_missing";
 
 /** Work whose recorded decision is missing: held, never a process failure. */
 export class WatcherProofDecisionMissingError extends Error {

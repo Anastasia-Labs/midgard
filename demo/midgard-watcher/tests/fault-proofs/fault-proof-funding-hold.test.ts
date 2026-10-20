@@ -6,6 +6,7 @@
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { WatcherProverFundingOrphanedReservationError } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -109,5 +110,40 @@ describe("a fault-proof objective paused on prover funding", () => {
     });
     await test.execution.execute(test.input);
     expect(test.execution.readiness()).toEqual([]);
+  });
+
+  it("names a wait on signed funding no workflow drives on readiness and alerts until it ends", async () => {
+    const test = await setupFaultProofExecution();
+    const objective = `doubleSpend/${test.input.job.headerHash}`;
+    const orphaned =
+      "reservation aa has no workflow to drive its signed attempts: attempt bb reads pending";
+    const alerts = (active: boolean) =>
+      test.setAlert.mock.calls.filter(
+        ([alert]) =>
+          alert.code === "proof_submission_failure" &&
+          alert.subjectDigest === test.input.job.decisionDigest &&
+          alert.active === active,
+      ).length;
+    for (const attempt of [1, 2]) {
+      test.runOrResume.mockRejectedValueOnce(
+        new WatcherProverFundingOrphanedReservationError([orphaned]),
+      );
+      expect(await test.execution.execute(test.input)).toMatchObject({
+        kind: "pending",
+        resume: "await_observation",
+      });
+      expect(test.execution.readiness()).toEqual([
+        {
+          reason: "prover_funding_orphaned_reservation",
+          detail: `${objective}: ${orphaned}`,
+        },
+      ]);
+      // Raised once on entering, however often the wait is met again.
+      expect([alerts(true), alerts(false), attempt]).toEqual([1, 0, attempt]);
+    }
+    test.runOrResume.mockResolvedValueOnce({ kind: "pending", reason: OTHER });
+    await test.execution.execute(test.input);
+    expect(test.execution.readiness()).toEqual([]);
+    expect([alerts(true), alerts(false)]).toEqual([1, 1]);
   });
 });

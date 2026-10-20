@@ -19,6 +19,7 @@ import {
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
+  watcherDeadlineAlertHeadroomMs,
   type WatcherFaultProofSupervisor,
 } from "../fault-proofs/fault-proof-supervisor.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
@@ -279,6 +280,8 @@ export const startWatcherRuntime = async (
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
       fundingInputFacts: activeFollower.fundingInputFacts,
+      observeSignedTransaction: activeFollower.observeSignedTransaction,
+      alertSink: () => operations.sink,
       blueprintBytes,
     });
     proverFundingStore = fundingRuntime.store;
@@ -304,11 +307,8 @@ export const startWatcherRuntime = async (
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      deadlineAlertHeadroomMs: Math.max(
-        watcherConfig.deadlines.daFetchMs,
-        watcherConfig.deadlines.daPublishMs,
-        watcherConfig.deadlines.proofConstructMs,
-        watcherConfig.deadlines.proofSubmitMs,
+      deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
+        watcherConfig.deadlines,
       ),
       queueAuthenticationKey: rollbackAuthenticationKey,
       execution,

@@ -1,5 +1,9 @@
 import { isWorkflowFundingPauseReason } from "@al-ft/midgard-fault-proofs";
 
+import {
+  WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
+  WatcherProverFundingOrphanedReservationError,
+} from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 
@@ -23,7 +27,9 @@ const fundingReason = (cause: unknown): string | undefined => {
 /**
  * Holds the objective under `prover_funding_unavailable` when `cause` (a
  * pending run's reason, or the error a run failed with) says the prover
- * wallet cannot fund it.
+ * wallet cannot fund it, or under `prover_funding_orphaned_reservation`
+ * while it waits on funding no workflow will drive again; that hold raises
+ * the objective's failure alert until a run ends out of it.
  */
 export const holdWatcherFaultProofOnFunding = (
   holds: Map<string, Readonly<{ reason: string; detail: string }>>,
@@ -34,7 +40,10 @@ export const holdWatcherFaultProofOnFunding = (
   if (reason === undefined) return undefined;
   const objective = `${job.category}/${job.headerHash}`;
   holds.set(objective, {
-    reason: WATCHER_PROVER_FUNDING_UNAVAILABLE,
+    reason:
+      cause instanceof WatcherProverFundingOrphanedReservationError
+        ? WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION
+        : WATCHER_PROVER_FUNDING_UNAVAILABLE,
     detail: `${objective}: ${reason}`,
   });
   return { kind: "pending", reason };

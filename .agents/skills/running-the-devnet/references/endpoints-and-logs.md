@@ -702,6 +702,16 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   `<category>/<headerHash>: <reason>`. The objective resumes on each
   observation and is never failed for it; the hold clears once a later run
   meets something else. Top up the prover wallet with plain ada.
+- `prover_funding_orphaned_reservation`: a funding reservation holds signed
+  transactions that no workflow will drive again (its journals were lost)
+  and that could still land; the detail names the reservation, and an
+  objective of the same target waits on it with the same reason. The
+  `proof_submission_failure` alert stays raised meanwhile. The watcher reads
+  each transaction from its own signed bytes on a bounded backoff: once none
+  can land beside a replacement, the objective's fresh run takes them over;
+  once each is final, the reservation is released. It clears by itself, at
+  the latest when the transactions' validity intervals end and that end is
+  final. Report it if it lasts longer.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands

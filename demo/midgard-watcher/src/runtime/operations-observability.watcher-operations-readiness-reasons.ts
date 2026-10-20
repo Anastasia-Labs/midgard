@@ -38,6 +38,15 @@ export const WATCHER_OPERATIONS_READINESS_REASONS = Object.freeze([
    * up; clears once its header leaves the finalized queue, which forgets its
    * rows. */
   "fault_proof_objective_unreadable",
+  /** A funding reservation no workflow will drive again holds signed
+   * attempts that are not retired past release finality; it is listed in
+   * `supervisor.journalDecisionMissing` with this `readiness`, and its
+   * detail names the reservation. Its `proof_submission_failure` alert is
+   * active meanwhile. Clears once its attempts' own signed bytes show each
+   * one retired past release finality and the reservation is released, or
+   * once a fresh execution of its target takes them over. An objective
+   * waiting on such a reservation reports the same reason. */
+  "prover_funding_orphaned_reservation",
   /** A released or final objective's workflow directory could not be
    * removed (its rows stay and keep their slot under the objective cap), or
    * a removed directory's tombstone could not be deleted;

@@ -11,7 +11,6 @@ import {
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
-  parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
@@ -40,6 +39,7 @@ import {
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import { projectRetainedProverFundingLeases } from "./sqlite-prover-funding-reservation-store.lease-claims.js";
+import { createProverFundingReclaimOperations } from "./sqlite-prover-funding-reservation-store.orphaned-reservation.js";
 import {
   type CompletionHandoff,
   type HandoffRow,
@@ -820,34 +820,6 @@ export const openInternal = async (
 
   transaction(rebuildLeases, null);
 
-  const clearUnused = async (
-    expected: WatcherProverFundingReservationRecord,
-    refuseSignedHistory: boolean,
-  ): Promise<boolean> => {
-    const snapshot = parseWatcherProverFundingReservationRecord(expected);
-    return transaction(() => {
-      const current = readOne(snapshot.reservationId);
-      if (current === null)
-        throw new Error("unused prover reservation is missing");
-      if (
-        current.recordDigest !== snapshot.recordDigest ||
-        current.state !== "active" ||
-        current.activeInputs.length === 0 ||
-        current.pendingTransition !== null ||
-        current.lastConfirmedTransitionDigest !== null
-      )
-        return false;
-      // Preparation persists signed bytes before the journal intent. Absence
-      // from the journal alone never authorizes reclaiming those inputs.
-      if (refuseSignedHistory && hasSignedHistory(current.reservationId))
-        return false;
-      const next = nextRecord({ current, activeInputs: [] });
-      writeRecord(current.recordDigest, next);
-      rebuildLeases();
-      return true;
-    }, snapshot.reservationId);
-  };
-
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
     isReconciliationOnly: async ({ reservationId }) => {
@@ -1087,8 +1059,18 @@ export const openInternal = async (
         resolvedOutputCborHex: lineage.resolvedOutputCborHex,
       });
     },
-    releaseUnused: async (expected) => clearUnused(expected, true),
-    dropSpentUnused: async (expected) => clearUnused(expected, false),
+    ...createProverFundingReclaimOperations({
+      database,
+      transaction,
+      assertPlan,
+      readOne,
+      writeRecord,
+      rebuildLeases,
+      recordedSubmissions,
+      abandonmentsOf,
+      hasSignedHistory,
+      persistHandoff,
+    }),
     reserve: async (plan, expectedIdleRevision) => {
       assertPlan(plan);
       return transaction(() => {

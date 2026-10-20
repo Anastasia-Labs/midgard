@@ -13,18 +13,19 @@ import {
   type WatcherInstalledWorkflowCategory,
 } from "../fault-proofs/fault-proof-application.js";
 import { WatcherProofDecisionMissingError } from "../fault-proofs/watcher-decision-hold.js";
+import type { WatcherOrphanedReservations } from "./prover-funding-recovery.orphaned-reservation.js";
 import {
   parseWatcherProverFundingReservationRecord,
+  type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
 } from "./prover-funding-reservation.js";
 
 /**
  * The hold for an objective whose signed funding names a fault decision the
- * decision journal no longer holds: it never runs again beside that funding.
- * TODO(option-A lane): the hold lasts until the header leaves the queue.
- * Release the reservation once its in-flight attempt is expired or
- * invalidated from its own signed bytes, or adopt it if it landed, so a fresh
- * workflow can proceed.
+ * decision journal no longer holds, when the watcher cannot read that
+ * funding's attempts on L1: it never runs again beside that funding. With
+ * those reads, the funding is handed over to the fresh execution instead
+ * (see `resumeWatcherProverFundingWithoutJournal`).
  */
 export const watcherProverFundingDecisionMissing = (
   category: FraudProofCatalogueCategoryName,
@@ -38,6 +39,16 @@ export const watcherProverFundingDecisionMissing = (
     decisionDigest,
     detail: `${category}/${headerHash}: workflow recovery has no unique original fault decision (${decisionDigest})`,
   });
+
+/** Whether the reservation holds a signed attempt or its history. */
+export const signedReservation = async (
+  store: WatcherProverFundingReservationStore,
+  record: WatcherProverFundingReservationRecord,
+) =>
+  record.pendingTransition !== null ||
+  record.lastConfirmedTransitionDigest !== null ||
+  (await store.hasSignedHistory?.({ reservationId: record.reservationId })) ===
+    true;
 
 /** The workflow identities a reservation's stored handoffs name. */
 const handoffIdentities = async (
@@ -60,6 +71,48 @@ const handoffIdentities = async (
           }
         | undefined,
   );
+
+/** Whether a reservation's stored handoffs name this target. */
+export const handoffsNameTarget = async (
+  store: WatcherProverFundingReservationStore,
+  record: WatcherProverFundingReservationRecord,
+  category: string,
+  headerHash: string,
+) =>
+  (await handoffIdentities(store, record)).some(
+    (identity) =>
+      identity?.category === category &&
+      identity.target?.headerHash === headerHash,
+  );
+
+/** The active signed reservations whose handoffs name a target no workflow
+ * journal holds, whatever decision they name. */
+export const targetOrphans = async (
+  store: WatcherProverFundingReservationStore,
+  target: Readonly<{
+    deploymentFingerprint: string;
+    category: string;
+    headerHash: string;
+  }>,
+) => {
+  const orphans: WatcherProverFundingReservationRecord[] = [];
+  for (const record of (await store.readAll()).map(
+    parseWatcherProverFundingReservationRecord,
+  ))
+    if (
+      record.deploymentFingerprint === target.deploymentFingerprint &&
+      record.state === "active" &&
+      (await signedReservation(store, record)) &&
+      (await handoffsNameTarget(
+        store,
+        record,
+        target.category,
+        target.headerHash,
+      ))
+    )
+      orphans.push(record);
+  return orphans;
+};
 
 /**
  * The decision of a reservation with durable funding history whose workflow
@@ -88,11 +141,10 @@ export const emptyExecutionHistory = async (
         },
         decisionDigest: record.decisionDigest,
       }) === workflowId &&
-      (record.state !== "active" ||
-        record.pendingTransition !== null ||
-        record.lastConfirmedTransitionDigest !== null ||
+      // A reservation released by a hand-over keeps no history.
+      (record.state === "conflict" ||
         store.hasSignedHistory === undefined ||
-        (await store.hasSignedHistory({ reservationId: record.reservationId })))
+        (await signedReservation(store, record)))
     )
       return record.decisionDigest;
   return null;
@@ -107,7 +159,13 @@ export const emptyExecutionHistory = async (
  * and the fresh classification must prove the identical fault before the
  * original decision becomes the execution identity. A reservation that
  * never signed holds no execution and stays for the unused-funding release.
- * Returns whether an original execution was resumed.
+ * Signed funding for this target whose decision is gone is never run
+ * beside: with `orphans`, it is handed over to the fresh execution once
+ * each of its attempts reads expired, invalidated or landed from its own
+ * bytes, and held until then; without, it is held. Once every attempt is
+ * retired past release finality it settles instead. Returns whether an
+ * original execution was resumed, the funding to hand over, and the
+ * funding settled.
  */
 export const resumeWatcherProverFundingWithoutJournal = async (
   input: Readonly<{
@@ -117,20 +175,28 @@ export const resumeWatcherProverFundingWithoutJournal = async (
     category: FraudProofCatalogueCategoryName;
     rollbackGeneration: string;
     store: WatcherProverFundingReservationStore;
+    orphans?: WatcherOrphanedReservations;
   }>,
   authority: Readonly<{
     deploymentFingerprint: string;
     headerHash: string;
     launchScope: HeaderFaultDecision["launchScope"];
   }>,
-): Promise<boolean> => {
+): Promise<
+  Readonly<{
+    resumed: boolean;
+    handOver: readonly WatcherProverFundingReservationRecord[];
+    settled: readonly WatcherProverFundingReservationRecord[];
+  }>
+> => {
   const records = (await input.store.readAll())
     .map(parseWatcherProverFundingReservationRecord)
     .filter(
       (record) =>
         record.deploymentFingerprint === authority.deploymentFingerprint,
     );
-  if (records.length === 0) return false;
+  if (records.length === 0)
+    return { resumed: false, handOver: [], settled: [] };
   const decisions = await (
     await openWatcherFaultDecisionJournal({
       directory: input.journalRoot,
@@ -140,34 +206,35 @@ export const resumeWatcherProverFundingWithoutJournal = async (
     })
   ).readAll();
   const originals: HeaderFaultDecision[] = [];
+  const orphans: WatcherProverFundingReservationRecord[] = [];
   for (const record of records) {
     const matches = decisions.filter(
       ({ decision }) => decision.decisionDigest === record.decisionDigest,
     );
     const decision = matches[0]?.decision;
-    const signed =
-      record.pendingTransition !== null ||
-      record.lastConfirmedTransitionDigest !== null ||
-      (await input.store.hasSignedHistory?.({
-        reservationId: record.reservationId,
-      })) === true;
-    // Signed funding for this target whose decision is gone is held, never
-    // run beside. Its handoffs are unauthenticated: they only ever hold.
-    // TODO(option-A lane): release or adopt it, as the hold's doc says.
+    const signed = await signedReservation(input.store, record);
+    // Signed funding for this target whose decision is gone is never run
+    // beside. Its handoffs are unauthenticated: they only ever hold, or hand
+    // its attempts over to be excluded or adopted.
     if (
       signed &&
       (matches.length !== 1 || decision?.decision !== "fault_detected") &&
-      (await handoffIdentities(input.store, record)).some(
-        (identity) =>
-          identity?.category === input.category &&
-          identity.target?.headerHash === authority.headerHash,
-      )
-    )
-      throw watcherProverFundingDecisionMissing(
+      (await handoffsNameTarget(
+        input.store,
+        record,
         input.category,
         authority.headerHash,
-        record.decisionDigest,
-      );
+      ))
+    ) {
+      if (input.orphans === undefined || record.state !== "active")
+        throw watcherProverFundingDecisionMissing(
+          input.category,
+          authority.headerHash,
+          record.decisionDigest,
+        );
+      orphans.push(record);
+      continue;
+    }
     if (
       !signed ||
       matches.length !== 1 ||
@@ -187,12 +254,27 @@ export const resumeWatcherProverFundingWithoutJournal = async (
       "workflow recovery has multiple signed funding reservations for one target",
     );
   const original = originals[0];
-  if (original === undefined) return false;
+  // The resumed execution keeps its own funding; nothing is handed to it.
+  if (original !== undefined && orphans[0] !== undefined)
+    throw watcherProverFundingDecisionMissing(
+      input.category,
+      authority.headerHash,
+      orphans[0].decisionDigest,
+    );
+  if (original === undefined)
+    return {
+      resumed: false,
+      ...((await input.orphans?.resolveTarget({
+        target: `${input.category}/${authority.headerHash}`,
+        orphans,
+        handOver: true,
+      })) ?? { handOver: [], settled: [] }),
+    };
   bindWorkflowActuationRecoveryIdentity({
     permit: input.actuationPermit,
     category: input.category,
     rollbackGeneration: input.rollbackGeneration,
     originalDecision: original,
   });
-  return true;
+  return { resumed: true, handOver: [], settled: [] };
 };

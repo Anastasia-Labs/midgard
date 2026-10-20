@@ -72,6 +72,10 @@ export type {
   SignedTransactionRecoveryObservation,
   SignedWorkflowTransaction,
 } from "./signed-transaction-reconciliation.js";
+export {
+  parseSignedWorkflowTransactionRetirement,
+  type SignedWorkflowTransactionRetirement,
+} from "./signed-transaction-retirement.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
 export * from "./withdrawn-input.js";

@@ -9,10 +9,12 @@ import {
   type WatcherProverFundingAuthorityFactory,
 } from "../funding/prover-funding-authority.js";
 import type { WatcherFundingInputFacts } from "../funding/prover-funding-input-facts.js";
+import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
 import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.js";
 import { watcherDeploymentAppliedScriptHashes } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import type { WatcherOperationsSink } from "./operations-observability.js";
 
 /**
  * Opens the funding store, then admits the live protocol parameters through
@@ -30,6 +32,10 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly fundingInputFacts?: WatcherFundingInputFacts;
   /** The deployment blueprint the computation-thread policy derives from. */
   readonly blueprintBytes?: Uint8Array;
+  /** Reads the signed attempts of reservations no workflow drives again. */
+  readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
+  /** Where an orphaned reservation's alert is raised, once bound. */
+  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
 }) => {
   const store = await openWatcherSqliteProverFundingReservationStore({
     path: input.path,
@@ -51,6 +57,10 @@ export const openWatcherProverFundingRuntime = async (input: {
       ...(input.fundingInputFacts === undefined
         ? {}
         : { fundingInputFacts: input.fundingInputFacts }),
+      ...(input.observeSignedTransaction === undefined
+        ? {}
+        : { observeSignedTransaction: input.observeSignedTransaction }),
+      ...(input.alertSink === undefined ? {} : { alertSink: input.alertSink }),
       ...(input.blueprintBytes === undefined
         ? {}
         : {

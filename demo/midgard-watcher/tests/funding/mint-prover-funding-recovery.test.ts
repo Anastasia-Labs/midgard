@@ -204,7 +204,7 @@ const setup = async () => {
 
 it("recovers mint's exact retained artifact under verified deployment finality without rewriting journals or funding", async () => {
   const test = await setup();
-  await expect(test.authorize()).resolves.toBeUndefined();
+  await expect(test.authorize()).resolves.toEqual([]);
   expect(await test.journal.load(test.workflowId)).toEqual(test.entries);
   expect(test.forbidden).not.toHaveBeenCalled();
 });
