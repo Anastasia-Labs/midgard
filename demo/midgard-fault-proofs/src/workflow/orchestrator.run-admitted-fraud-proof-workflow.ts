@@ -81,11 +81,12 @@ import {
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
-import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
-import { supersedeWorkflowFundingAttempt } from "./orchestrator.supersede-funding-attempt.js";
+import {
+  supersedeDisplacedFundingAttempt,
+  supersedeWorkflowFundingAttempt,
+} from "./orchestrator.supersede-funding-attempt.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
-import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
  * ambiguous result, reconciliation, submitted hash, and confirmation are
@@ -295,25 +296,20 @@ export const runAdmittedFraudProofWorkflow = async ({
       entries,
     };
 
-    const landed = await reconcileLegacyFraudProofAbandonments(
-      context,
-      journal,
+    const adoption = await adoptLandedSupersededAttempt({
       adapter,
+      context,
+      headerHash,
+      journal,
+      entries: () => entries,
       append,
-      now().getTime(),
-    );
-    if (
-      landed !== null &&
-      (await adoptLandedSupersededAttempt({
-        journal,
-        entries: () => entries,
-        landed,
-        append,
-      }))
-    ) {
-      supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
-      continue;
-    }
+      assertReconcile,
+      stalled,
+      resumeOnObservation,
+      nowMs: now().getTime(),
+    });
+    if (adoption === "continue") continue;
+    if (adoption !== null) return adoption;
     // Reconcile rolled-back parents before pending descendants. An action
     // with its own unresolved intent still reconciles before reobservation.
     const latestJournalEvent = [...entries]
@@ -370,24 +366,14 @@ export const runAdmittedFraudProofWorkflow = async ({
             journal,
             intent,
             hasUnresolvedDescendant: unresolvedEvent !== undefined,
-            // The reobserved intent displaces the pending later attempt. It is
-            // superseded, never silently dropped: a dropped attempt would count
-            // as live coverage, so a replacement could skip its inputs and both
-            // could land, the second failing its script at inclusion.
-            supersedeDisplacedAttempt: async () => {
-              const displaced = await readWorkflowFundingRecovery(journal);
-              const pending = displaced.transition?.transactionHash;
-              if (pending !== undefined && pending !== intent.txHash)
-                await supersedeWorkflowFundingAttempt({
-                  journal,
-                  assertReconcile,
-                  entries: () => entries,
-                  append,
-                  transactionHash: pending,
-                  retirement: undefined,
-                  savedHandoff: displaced.abandonmentHandoff,
-                });
-            },
+            supersedeDisplacedAttempt: async () =>
+              await supersedeDisplacedFundingAttempt({
+                journal,
+                assertReconcile,
+                entries: () => entries,
+                append,
+                kept: intent.txHash,
+              }),
             append,
             stalled,
             resumeOnObservation,

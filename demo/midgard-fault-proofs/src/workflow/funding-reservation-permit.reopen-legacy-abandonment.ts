@@ -1,3 +1,4 @@
+import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import { retireLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.apply-transition.js";
 import {
   readLegacyWorkflowFundingAbandonedTransactions,
@@ -37,13 +38,12 @@ export const recordBothAttemptsLanded = async ({
   readonly other: string;
 }): Promise<void> => {
   const reason = `attempts ${result} and ${other} of ${actionId} both landed; ${result} is its result`;
-  // A terminal journal is closed to diagnostics.
+  // A journal past its final completion is closed to diagnostics.
   if (
     !entries.some(
       ({ event }) =>
         (event.kind === "stalled" && event.reason === reason) ||
-        event.kind === "terminal_included" ||
-        event.kind === "completed",
+        isFinalWorkflowCompletion(event),
     )
   )
     await append({ kind: "stalled", reason });

@@ -7,26 +7,17 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import {
-  type Fixture,
   fundingOf,
   recordReplacement,
+  replaceAfterExpiry,
   signReplacement,
+  supersedeAtTip,
 } from "./superseded-attempt-replacement.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
   await cleanupFundingRecoveryFixtures();
 });
-
-/** The fixture's attempt expires at the tip: its funding input is unspent and
- * the reader reports absence without retirement. */
-const supersedeAtTip = async (fixture: Fixture) => {
-  fixture.useUnspentPendingInputs();
-  vi.mocked(fixture.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
-  const journal = await fixture.recover();
-  await fixture.run(journal);
-  return journal;
-};
 
 it("admits a replacement for an attempt that expired at the tip at once, drawing on that attempt's funding input", async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
@@ -116,27 +107,6 @@ it("keeps a superseded attempt's input that holds a token as its replacement's f
     replacement.transactionHash,
   );
 });
-
-const replaceAfterExpiry = async (fixture: Fixture) => {
-  const funding = fundingOf(fixture);
-  const journal = await supersedeAtTip(fixture);
-  await beginWorkflowFundingReservationAction({
-    journal,
-    action: { actionId: "init", input: { actionKind: "proof.init" } },
-  });
-  const collateral = (await fixture.records())[0]!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
-  const replacement = signReplacement(
-    funding.outRef,
-    BigInt(funding.lovelace),
-    300n,
-    collateral,
-  );
-  await recordReplacement(fixture, journal, replacement, 2);
-  // The process restarts with the replacement in flight.
-  return { journal: await fixture.recover(), replacement };
-};
 
 it("adopts the expired attempt as the result when it lands late, and retires the replacement's reservation", async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
@@ -251,7 +221,7 @@ it("admits a replacement that spends the superseded attempt's input as before, a
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   // The superseded attempt never landed, so nothing descends from it.
   expect(
-    await fixture.store.readLandedSupersededAttempt!({
+    await fixture.store.readLandedSupersededAttempt({
       reservationId: fixture.plan.reservationId,
       actionId: "init",
       signedTransactionCborHex: replacement.signedTransactionCborHex,
@@ -324,7 +294,7 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
   );
   // Same action: that attempt is the result, so no fresh attempt is admitted.
   expect(
-    await fixture.store.readLandedSupersededAttempt!({
+    await fixture.store.readLandedSupersededAttempt({
       reservationId: fixture.plan.reservationId,
       actionId: "init",
       signedTransactionCborHex: fresh.signedTransactionCborHex,
@@ -341,7 +311,7 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
   ).rejects.toThrow("repeats an action whose superseded attempt landed");
   // Another action may spend it: it does not repeat that attempt.
   expect(
-    await fixture.store.readLandedSupersededAttempt!({
+    await fixture.store.readLandedSupersededAttempt({
       reservationId: fixture.plan.reservationId,
       actionId: "next",
       signedTransactionCborHex: fresh.signedTransactionCborHex,

@@ -22,6 +22,84 @@ import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-wor
 import { normalizeTxHash } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { validateAction } from "./orchestrator.normalize-workflow-terminal.js";
 
+type Submission = Extract<
+  FraudProofWorkflowJournalEvent,
+  { kind: "submission_intent" }
+>;
+
+/** Reads, without replay authority, whether `submission` is on chain. */
+export const readSubmissionOnChain = async ({
+  adapter,
+  context,
+  headerHash,
+  journal,
+  submission,
+  signedTransactionCborHex,
+  stalled,
+  resumeOnObservation,
+}: {
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
+  readonly context: FraudProofWorkflowAdapterContext;
+  readonly headerHash: string;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly submission: Submission;
+  readonly signedTransactionCborHex?: string;
+  readonly stalled: (reason: string) => Promise<FraudProofWorkflowRunResult>;
+  readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
+}): Promise<boolean | FraudProofWorkflowRunResult> => {
+  const { deploymentFingerprint, category } = context.identity;
+  let inclusion: FraudProofWorkflowReconcileResult;
+  try {
+    assertWorkflowJournalActuation({
+      journal,
+      deploymentFingerprint,
+      category,
+      headerHash,
+      checkpoint: "before_reconcile",
+    });
+    inclusion = await adapter.reconcile({
+      ...context,
+      reconciliationOnly: true,
+      action: validateAction({
+        actionId: submission.actionId,
+        input: submission.actionInput,
+      }),
+      txHash: submission.txHash,
+      ...(signedTransactionCborHex === undefined
+        ? {}
+        : { signedTransactionCborHex }),
+      ...(submission.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: submission.durableRecovery }),
+    });
+    assertWorkflowJournalActuation({
+      journal,
+      deploymentFingerprint,
+      category,
+      headerHash,
+      checkpoint: "before_reconcile",
+    });
+  } catch (cause) {
+    if (cause instanceof FraudProofL1CheckpointChangedError)
+      return resumeOnObservation(
+        `reconciliation awaits a stable boundary for ${submission.actionId}: ${cause.message}`,
+      );
+    if (isFraudProofL1WaitError(cause)) throw cause;
+    return await stalled(
+      `reconciliation failed for ${submission.actionId}: ${formatUnknownError(cause)}`,
+    );
+  }
+  if (inclusion.kind !== "confirmed") return false;
+  if (
+    normalizeTxHash(inclusion.txHash, "reconciled transaction hash") !==
+    submission.txHash
+  )
+    return await stalled(
+      `reconciliation for ${submission.actionId} returned ${inclusion.txHash}, expected ${submission.txHash}`,
+    );
+  return true;
+};
+
 export const reobserveRequiredWorkflowParent = async ({
   adapter,
   context,
@@ -29,6 +107,7 @@ export const reobserveRequiredWorkflowParent = async ({
   journal,
   intent,
   hasUnresolvedDescendant,
+  intentReadAbsent = false,
   supersedeDisplacedAttempt,
   append,
   stalled,
@@ -43,6 +122,8 @@ export const reobserveRequiredWorkflowParent = async ({
     { kind: "submission_intent" }
   >;
   readonly hasUnresolvedDescendant: boolean;
+  /** The caller has just read `intent` as absent from the chain. */
+  readonly intentReadAbsent?: boolean;
   /** Retires the pending later attempt that reobserving `intent` displaces. */
   readonly supersedeDisplacedAttempt: () => Promise<void>;
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
@@ -57,71 +138,27 @@ export const reobserveRequiredWorkflowParent = async ({
   const { workflowId } = context;
   const identity = context.identity;
   const entries = context.entries;
-  type Submission = Extract<
-    FraudProofWorkflowJournalEvent,
-    { kind: "submission_intent" }
-  >;
-  // Reads, without replay authority, whether `submission` is on chain.
   const onChain = async (
     submission: Submission,
     signedTransactionCborHex?: string,
-  ): Promise<boolean | FraudProofWorkflowRunResult> => {
-    let inclusion: FraudProofWorkflowReconcileResult;
-    try {
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
-      inclusion = await adapter.reconcile({
-        ...context,
-        reconciliationOnly: true,
-        action: validateAction({
-          actionId: submission.actionId,
-          input: submission.actionInput,
-        }),
-        txHash: submission.txHash,
-        ...(signedTransactionCborHex === undefined
-          ? {}
-          : { signedTransactionCborHex }),
-        ...(submission.durableRecovery === undefined
-          ? {}
-          : { durableRecovery: submission.durableRecovery }),
-      });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_reconcile",
-      });
-    } catch (cause) {
-      if (cause instanceof FraudProofL1CheckpointChangedError)
-        return resumeOnObservation(
-          `reconciliation awaits a stable boundary for ${submission.actionId}: ${cause.message}`,
-        );
-      if (isFraudProofL1WaitError(cause)) throw cause;
-      return await stalled(
-        `reconciliation failed for ${submission.actionId}: ${formatUnknownError(cause)}`,
-      );
-    }
-    if (inclusion.kind !== "confirmed") return false;
-    if (
-      normalizeTxHash(inclusion.txHash, "reconciled transaction hash") !==
-      submission.txHash
-    )
-      return await stalled(
-        `reconciliation for ${submission.actionId} returned ${inclusion.txHash}, expected ${submission.txHash}`,
-      );
-    return true;
-  };
+  ) =>
+    await readSubmissionOnChain({
+      adapter,
+      context,
+      headerHash,
+      journal,
+      submission,
+      ...(signedTransactionCborHex === undefined
+        ? {}
+        : { signedTransactionCborHex }),
+      stalled,
+      resumeOnObservation,
+    });
   // A descendant can consume a parent's effects while its inclusion
   // remains canonical. Authenticate that inclusion without replay
   // authority before displacing the descendant's unresolved intent.
   let resolvedOnChain = false;
-  if (hasUnresolvedDescendant) {
+  if (hasUnresolvedDescendant && !intentReadAbsent) {
     const included = await onChain(intent);
     if (typeof included !== "boolean") return included;
     resolvedOnChain = included;
