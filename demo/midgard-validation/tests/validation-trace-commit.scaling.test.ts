@@ -12,11 +12,11 @@ import {
   MIDGARD_CEK_ADVERSARIAL_SHAPES,
 } from "./helpers/cek-adversarial-shapes.js";
 import { app, lam, seq, v } from "./helpers/cek-uplc-terms.js";
-import { measureHashWork } from "./helpers/hash-work.js";
 import {
   MIDGARD_TX_EX_UNITS_CAP,
   plutusV3SpendInput,
 } from "./helpers/plutus-spend-input.js";
+import { measureWork } from "./helpers/work-count.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
@@ -25,14 +25,16 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
  * cap, and the transaction's trace is committed in streaming commit mode at
  * shape size `n` and `2n` (near the cap). Commit mode hashes every state of
  * the trace into an O(log n) frontier, so its work per step does not grow with
- * the trace. Work is counted as the bytes the commit hashes
- * (`measureHashWork`), which is deterministic: the `2n` commit may hash at
- * most 5% more bytes per step than the `n` commit. Wall-clock time at the cap
- * is measured outside the gate, by
- * `bench/validation-trace-commit.bench.test.ts`.
+ * the trace. Work is counted twice, deterministically (`measureWork`): the
+ * bytes the commit hashes and the reads it makes of the CEK semantic store.
+ * The `2n` commit may do at most 5% more of either per step than the `n`
+ * commit. Wall-clock time at the cap is measured outside the gate, by
+ * `bench/validation-trace-commit.bench.test.ts`, which also sees work neither
+ * counter counts. The appendByteString and deep-continuation shapes read the
+ * store zero times, so its check holds trivially for them.
  *
- * This gate guards the commitment's per-step cost. It is about twenty times
- * less sensitive to an executor regression than the verdict-mode gate in
+ * This gate guards the commitment's per-step cost. Its hashing count is about
+ * twenty times less sensitive to an executor regression than the one in
  * `cek-executor.adversarial-shapes.test.ts`: a commit hashes about 1.7 KB per
  * step, nearly all of it state hashing, so an executor regression must add
  * about 84 bytes per step to cross 5% here, against about 4 bytes there. The
@@ -60,7 +62,8 @@ const shapeSpendInput = (
 };
 
 type Measured = {
-  readonly bytes: number;
+  readonly hashedBytes: number;
+  readonly storeReads: number;
   readonly stepCount: number;
   readonly accepted: boolean;
 };
@@ -68,11 +71,16 @@ type Measured = {
 const measureCommit = async (
   input: ValidationMachineReplayInput,
 ): Promise<Measured> => {
-  const { result: commitment, bytes } = await measureHashWork(() =>
+  const {
+    result: commitment,
+    hashedBytes,
+    storeReads,
+  } = await measureWork(() =>
     Effect.runPromise(commitValidationTraceV1(input)),
   );
   return {
-    bytes,
+    hashedBytes,
+    storeReads,
     stepCount: commitment.descriptor.stepCount,
     accepted: commitment.descriptor.verdict === "accepted",
   };
@@ -92,10 +100,13 @@ describe("validation trace commit-mode scaling", () => {
         const full = await measureCommit(await shapeSpendInput(label, 2 * n));
         expect(half.accepted).toBe(true);
         expect(full.accepted).toBe(true);
-        expect(half.bytes).toBeGreaterThan(0);
+        expect(half.hashedBytes).toBeGreaterThan(0);
         expect(full.stepCount).toBeGreaterThan(half.stepCount);
-        expect(full.bytes / full.stepCount).toBeLessThanOrEqual(
-          MAX_WORK_PER_STEP_GROWTH * (half.bytes / half.stepCount),
+        expect(full.hashedBytes / full.stepCount).toBeLessThanOrEqual(
+          MAX_WORK_PER_STEP_GROWTH * (half.hashedBytes / half.stepCount),
+        );
+        expect(full.storeReads / full.stepCount).toBeLessThanOrEqual(
+          MAX_WORK_PER_STEP_GROWTH * (half.storeReads / half.stepCount),
         );
       },
     );

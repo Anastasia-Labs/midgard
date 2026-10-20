@@ -686,7 +686,7 @@ jobs:
         with:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk
-      # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner, and the validation job gates the same runs on work counts
+      # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner. The validation job gates the same runs on bytes hashed and semantic-store reads per step; this bench is the only check on work neither counts
       # The step's own limit, well inside the job's, so a slow or hung bench
       # fails only this step: a job that hits its timeout fails the gate.
       - name: Benchmark the CEK executor and trace commitment at the budget cap
