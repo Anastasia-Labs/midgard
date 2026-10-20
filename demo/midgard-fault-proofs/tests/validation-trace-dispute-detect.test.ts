@@ -20,6 +20,7 @@ import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
 } from "./helpers/plutus-execution-block-fixture.js";
+import { claimMaterialOf } from "./support/validation-trace-claim-material.js";
 
 const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 const replayer =
@@ -68,8 +69,13 @@ describe("validation-trace dispute detection from DA replay", () => {
       headerHash: fixture.evidence.headerHash,
       position: 0n,
     });
-    expect(detection!.diagnostic).toMatch(
-      /^accepted transaction [0-9a-f]{64} fails Plutus execution; its honest trace has [1-9][0-9]* steps$/u,
+    // S is the index of the trace's Terminal Rejected leaf.
+    const material = await claimMaterialOf(fixture);
+    expect(material.terminalLeafProof.stateIndex).toBe(
+      Number(material.stepCount),
+    );
+    expect(detection!.diagnostic).toBe(
+      `accepted transaction ${fixture.tx.txId} fails Plutus execution; its honest trace has ${material.stepCount.toString()} steps`,
     );
     const classification = await classifyCanonicalBlockViolations({
       evidence: fixture.evidence,

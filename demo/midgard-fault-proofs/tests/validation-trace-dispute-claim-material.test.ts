@@ -10,42 +10,16 @@ import {
   type MidgardValidationTraceDescriptor,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { ledgerBeforeTransactionEvent } from "../src/input-existence/event-ledger.js";
-import { buildValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
+import { claimMaterialOf } from "./support/validation-trace-claim-material.js";
 
 const claimMaterial = async () => {
   const fixture = await plutusExecutionBlockFixture("failing");
-  const { evidence, context } = fixture;
-  const event = evidence.reconstruction.sourceEvents.find(
-    (candidate) => candidate.phase === "L2Transaction",
-  );
-  if (event?.phase !== "L2Transaction") throw new Error("no L2 event");
-  const opening = evidence.reconstruction.eventToStepByFingerprint.get(
-    event.fingerprint,
-  )!;
-  const ledger = await ledgerBeforeTransactionEvent({
-    block: evidence,
-    eventKey: event.eventKey,
-    stepIndex: opening.value.step_index,
-    predecessor: completeCanonicalReplayPredecessorLedger({
-      evidence,
-      context,
-    }),
-  });
-  const material = await buildValidationTraceClaimMaterial({
-    evidence,
-    event,
-    ledger,
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-  });
-  return { fixture, material };
+  return { fixture, material: await claimMaterialOf(fixture) };
 };
 
 describe("validation-trace dispute claim material", () => {

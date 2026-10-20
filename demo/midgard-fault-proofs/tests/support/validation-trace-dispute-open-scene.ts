@@ -8,7 +8,6 @@ import {
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildChallengerDescriptorV1,
@@ -24,19 +23,12 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { ledgerBeforeTransactionEvent } from "../../src/input-existence/event-ledger.js";
-import type { CheckedLedger } from "../../src/ledger-at.js";
 import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import {
   buildValidationClaimWitness,
-  buildValidationTraceClaimMaterial,
   type ValidationTraceClaimMaterial,
 } from "../../src/validation-trace-dispute/claim-material.js";
-import {
-  type CommittedL2Event,
-  plutusFailureReplayInput,
-} from "../../src/validation-trace-dispute/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.js";
+import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
 import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
@@ -59,8 +51,12 @@ import {
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
+import {
+  claimMaterialOf,
+  eventAndLedger,
+  l1SlotConfig,
+} from "./validation-trace-claim-material.js";
 
-export const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 /** L_d: the longest validity range VerifySource admits. */
 const MAX_RANGE_MS =
   SELECTED_DEPLOYMENT_PROFILE.timing.dispute_max_validity_range_ms;
@@ -250,41 +246,10 @@ export const setUpScene = async (): Promise<Scene> => {
   };
 };
 
-/** The block's single L2 event and the ledger it executes over. */
-const eventAndLedger = async (
-  block: Block,
-): Promise<{ event: CommittedL2Event; ledger: CheckedLedger }> => {
-  const { evidence, context } = block;
-  const event = evidence.reconstruction.sourceEvents.find(
-    (candidate) => candidate.phase === "L2Transaction",
-  );
-  if (event?.phase !== "L2Transaction") throw new Error("no L2 event");
-  const opening = evidence.reconstruction.eventToStepByFingerprint.get(
-    event.fingerprint,
-  )!;
-  const ledger = await ledgerBeforeTransactionEvent({
-    block: evidence,
-    eventKey: event.eventKey,
-    stepIndex: opening.value.step_index,
-    predecessor: completeCanonicalReplayPredecessorLedger({
-      evidence,
-      context,
-    }),
-  });
-  return { event, ledger };
-};
-
 export const failingMaterial = async (
   scene: Scene,
-): Promise<ValidationTraceClaimMaterial> => {
-  const { event, ledger } = await eventAndLedger(scene.failing);
-  return await buildValidationTraceClaimMaterial({
-    evidence: scene.failing.evidence,
-    event,
-    ledger,
-    l1SlotConfig,
-  });
-};
+): Promise<ValidationTraceClaimMaterial> =>
+  await claimMaterialOf(scene.failing);
 
 /** The honest trace of the passing transaction: Terminal Accepted. */
 export const passingTrace = async (scene: Scene) => {
