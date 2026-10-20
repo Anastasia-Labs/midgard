@@ -155,8 +155,11 @@ describe("semantic builtin steps present Data, list and pair values by summary",
     }
   }, 60_000);
 
+  // Each row builds and proves a program over a 9,200-item source: under a
+  // second on a developer machine and over 5 s on a loaded CI runner.
   it.each(MAX_SHAPES)(
     "$name over a near-maximum source proves with a witness under 1 KB",
+    { timeout: 60_000 },
     ({ term }) => {
       const step = semanticStep(term());
       expect(step.allVerify).toBe(true);
