@@ -1,8 +1,9 @@
 /**
  * A VerifySource other than the one its builder evaluated, presented to the
  * prover funding permit: the builder's signed bytes with their outputs
- * edited and signed again by the prover, carrying the builder's own
- * authority granted over them, or the same bytes with no authority.
+ * edited or inputs added and signed again by the prover, carrying the
+ * builder's own authority (or one amended) granted over them, or the same
+ * bytes with no authority.
  */
 import { CML, Lucid, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
@@ -19,11 +20,25 @@ import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import { isVerifySource } from "./validation-trace-dispute-funded-verify-source.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
-/** Rewrites VerifySource's outputs, given the bond and wallet addresses. */
+/** Rewrites VerifySource's outputs, given the bond, case and wallet addresses. */
 export type VerifySourceTamper = (
   outputs: CML.TransactionOutput[],
-  addresses: Readonly<{ bond: string; wallet: string }>,
+  addresses: Readonly<{ bond: string; case: string; wallet: string }>,
 ) => CML.TransactionOutput[];
+
+type Grant = Parameters<typeof grantValidationDisputeFundingAuthority>[0];
+
+/** The authority's terms as its builder grants them. */
+export type VerifySourceGrant = Omit<Grant, "signed" | "opener">;
+
+/** How a presented VerifySource differs from the evaluated one. */
+export type VerifySourcePresentation = Readonly<{
+  outputs?: VerifySourceTamper;
+  /** Inputs spent besides the evaluated ones. */
+  inputs?: readonly UTxO[];
+  /** The authority granted over the presented bytes. */
+  authority?: (grant: VerifySourceGrant) => VerifySourceGrant;
+}>;
 
 /**
  * What a tampered VerifySource pays its fee above the evaluated one, taken
@@ -32,14 +47,16 @@ export type VerifySourceTamper = (
 const FEE_BUMP = 200_000n;
 
 /**
- * Builds `signed`'s body again with `edit`'s outputs, its change paying
- * `feeBump` more fee, signed by the prover.
+ * Builds `signed`'s body again with `edit`'s outputs and `inputs` spent
+ * besides its own, its change paying `feeBump` more fee, signed by the
+ * prover.
  */
 const withOutputs = async (
   scene: Scene,
   signed: TxSigned,
   edit: (outputs: CML.TransactionOutput[]) => CML.TransactionOutput[],
   feeBump: bigint,
+  inputs: readonly UTxO[] = [],
 ): Promise<TxSigned> => {
   const transaction = signed.toTransaction();
   const body = transaction.body();
@@ -57,11 +74,15 @@ const withOutputs = async (
         : output,
     ),
   );
-  const rebuilt = CML.TransactionBody.new(
-    body.inputs(),
-    outputs,
-    body.fee() + feeBump,
-  );
+  const spent = body.inputs();
+  for (const input of inputs)
+    spent.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(input.txHash),
+        BigInt(input.outputIndex),
+      ),
+    );
+  const rebuilt = CML.TransactionBody.new(spent, outputs, body.fee() + feeBump);
   const copy = body as unknown as Record<string, () => unknown>;
   const into = rebuilt as unknown as Record<string, (value: unknown) => void>;
   for (const field of [
@@ -127,11 +148,12 @@ const atAddress = (output: CML.TransactionOutput, address: string) =>
 
 /**
  * Presents a VerifySource other than the one the builder evaluated: the
- * builder's own authority, granted again over the `tamper`ed bytes (or, for
- * `null`, the same bytes with no authority).
+ * builder's own authority, amended as `presentation` says, granted again
+ * over the presented bytes (or, for `null`, the same bytes with no
+ * authority).
  */
 export const presentVerifySource =
-  (scene: Scene, tamper: VerifySourceTamper | null): AdapterWrap =>
+  (scene: Scene, presentation: VerifySourcePresentation | null): AdapterWrap =>
   (adapter) => ({
     ...adapter,
     preflight: async (context) => {
@@ -140,27 +162,27 @@ export const presentVerifySource =
       const signed = workflowPreflightTransaction(preflight)!;
       const authority = readValidationDisputeFundingAuthority(signed)!;
       const presented =
-        tamper === null
+        presentation === null
           ? await withOutputs(scene, signed, (outputs) => outputs, 0n)
           : await withOutputs(
               scene,
               signed,
               (outputs) =>
-                tamper(outputs, {
+                presentation.outputs?.(outputs, {
                   bond: authority.bondAddress,
+                  case: authority.caseAddress,
                   wallet: scene.h.proverSigner.address,
-                }),
+                }) ?? outputs,
               FEE_BUMP,
+              presentation.inputs,
             );
-      if (tamper !== null) {
+      if (presentation !== null) {
         const [opener] = await scene.h.emulator.getUtxosByOutRef([
           parseOwnOutRef(authority.openerOutRef),
         ]);
-        grantValidationDisputeFundingAuthority({
-          signed: presented,
+        const grant: VerifySourceGrant = {
           deploymentFingerprint: authority.deploymentFingerprint,
           headerHash: authority.headerHash,
-          opener: opener as UTxO,
           bond: {
             address: authority.bondAddress,
             unit: authority.bondUnit,
@@ -173,6 +195,11 @@ export const presentVerifySource =
             floorLovelace: BigInt(authority.caseFloorLovelace),
             lovelace: BigInt(authority.caseLovelace),
           },
+        };
+        grantValidationDisputeFundingAuthority({
+          ...(presentation.authority?.(grant) ?? grant),
+          signed: presented,
+          opener: opener as UTxO,
         });
       }
       return bindWorkflowPreflightTransaction(
@@ -204,4 +231,33 @@ export const bondIndex = (outputs: CML.TransactionOutput[], bond: string) => {
   const index = outputs.findIndex((output) => atAddress(output, bond));
   if (index === -1) throw new Error("VerifySource pays no bond");
   return index;
+};
+
+/** The case output VerifySource pays. */
+export const caseIndex = (
+  outputs: CML.TransactionOutput[],
+  caseAddress: string,
+) => {
+  const index = outputs.findIndex((output) => atAddress(output, caseAddress));
+  if (index === -1) throw new Error("VerifySource pays no case");
+  return index;
+};
+
+/** `output` with the inline datum `datumCborHex`. */
+export const withDatum = (
+  output: CML.TransactionOutput,
+  datumCborHex: string,
+) =>
+  CML.TransactionOutput.new(
+    output.address(),
+    output.amount(),
+    CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datumCborHex)),
+    output.script_ref() ?? null,
+  );
+
+/** `output`'s inline datum. */
+export const inlineDatumOf = (output: CML.TransactionOutput): string => {
+  const datum = output.datum()?.as_datum();
+  if (datum === undefined) throw new Error("the output has no inline datum");
+  return datum.to_cbor_hex();
 };
