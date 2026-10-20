@@ -64,6 +64,14 @@ export type ValidationDisputeFundingAuthority = Readonly<{
 
 type Policy = ReturnType<typeof readWorkflowRuntimeFundingPolicy>;
 
+/**
+ * Each authority lives only in this process, keyed by the builder's own
+ * TxSigned object: it is never journaled or persisted, and a re-read
+ * transaction carries none. The runtime bound checks it while the funding
+ * permit prepares the transaction, before the signed bytes are journaled
+ * with their submission intent; recovery then resubmits those saved bytes
+ * and needs no authority again.
+ */
 const authorities = new WeakMap<TxSigned, ValidationDisputeFundingAuthority>();
 
 const bodySha256 = (signed: TxSigned): string =>
@@ -442,22 +450,15 @@ export const validationDisputeFunding = ({
           `validation dispute VerifySource tops up protocol state: topup=${protocolTopup.toString()}`,
         );
     },
-    /** Exactly one bond and one case, funding nothing else. */
+    /**
+     * Exactly one bond and one case, funding nothing else. With the claim
+     * as the only released custody, the custody they hold is the released
+     * custody plus their allocation by construction.
+     */
     assertComplete: ({
       releasedCustody,
-      custody,
-      custodyAllocation,
-    }: Readonly<{
-      releasedCustody: bigint;
-      custody: bigint;
-      custodyAllocation: bigint;
-    }>): void => {
-      if (
-        bonds !== 1 ||
-        cases !== 1 ||
-        releasedCustody !== openerLovelace ||
-        custody !== releasedCustody + custodyAllocation
-      )
+    }: Readonly<{ releasedCustody: bigint }>): void => {
+      if (bonds !== 1 || cases !== 1 || releasedCustody !== openerLovelace)
         throw new Error(
           `validation dispute VerifySource must pay exactly one bond and one case output: bonds=${bonds.toString()} cases=${cases.toString()}`,
         );

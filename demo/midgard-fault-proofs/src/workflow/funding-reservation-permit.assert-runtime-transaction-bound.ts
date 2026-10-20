@@ -453,7 +453,7 @@ export const assertRuntimeTransactionBound = async ({
       custodyAllocation += minimum;
     }
   }
-  dispute?.assertComplete({ releasedCustody, custody, custodyAllocation });
+  dispute?.assertComplete({ releasedCustody });
   if (custody > releasedCustody + custodyAllocation)
     throw new Error(
       `funding transaction exceeds its governed custody allocation: actual=${custody.toString()} allowed=${(releasedCustody + custodyAllocation).toString()}`,
