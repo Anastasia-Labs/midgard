@@ -223,7 +223,6 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
       signer: ready.harness.proverSigner,
       publications,
       requirementForAction: () => requirement,
-      transactionConfirmed: async () => false,
     });
     const baseAction = {
       actionId: "transactionOutputNonCanonical:step_02",

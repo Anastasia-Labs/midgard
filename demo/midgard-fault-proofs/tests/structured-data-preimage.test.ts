@@ -71,7 +71,6 @@ it("journals bounded structured Data publications and re-admits every exact outp
       network,
       signer,
       requirementForAction: () => requirement,
-      transactionConfirmed: async () => false,
       publications: {
         observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
         observeExact: async (request) => {
@@ -143,7 +142,6 @@ it("journals bounded structured Data publications and re-admits every exact outp
     network,
     signer,
     requirementForAction: () => changed,
-    transactionConfirmed: async () => false,
     publications: {
       observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
       observeExact: async () => ({ kind: "not_found" }),

@@ -94,10 +94,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     | PreimageCarriageRequirement
     | null
     | Promise<PreimageCarriageRequirement | null>;
-  readonly transactionConfirmed: (input: {
-    readonly headerHash: string;
-    readonly txHash: string;
-  }) => Promise<boolean>;
 }): FieldCarriagePrerequisitePort<Category> => {
   if (
     publications.observerVersion !==

@@ -24,7 +24,6 @@ export const createMissingSignatureFieldPrerequisite = ({
   publications,
   certificate,
   certificateReference,
-  transactionConfirmed,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: import("@lucid-evolution/lucid").Network;
@@ -35,10 +34,6 @@ export const createMissingSignatureFieldPrerequisite = ({
     readonly mintingScript: import("@lucid-evolution/lucid").MintingPolicy;
   };
   readonly certificateReference: UTxO | undefined;
-  readonly transactionConfirmed: (input: {
-    headerHash: string;
-    txHash: string;
-  }) => Promise<boolean>;
 }) => {
   const certificateOf = () => {
     if (certificateReference === undefined)
@@ -152,7 +147,5 @@ export const createMissingSignatureFieldPrerequisite = ({
         certificate: certificateOf(),
       };
     },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await transactionConfirmed({ headerHash, txHash }),
   });
 };

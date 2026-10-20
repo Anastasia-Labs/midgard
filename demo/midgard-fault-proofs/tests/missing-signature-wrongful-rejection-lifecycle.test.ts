@@ -278,7 +278,6 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
           signer: s.harness.proverSigner,
           certificate: s.harness.contracts.fieldPreimageCertificate,
           certificateReference: reference.utxo,
-          transactionConfirmed: async () => true,
           publications: {
             observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
             observeExact: async (input) => {

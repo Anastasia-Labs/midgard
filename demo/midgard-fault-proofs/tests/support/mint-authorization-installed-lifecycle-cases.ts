@@ -359,7 +359,6 @@ const captureAndRestart = async (name: string): Promise<void> => {
         action.input.stage,
       );
     },
-    transactionConfirmed: async () => false,
   });
   const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: "mintAuthorization",
@@ -383,7 +382,6 @@ const captureAndRestart = async (name: string): Promise<void> => {
         },
       );
     },
-    transactionConfirmed: async () => false,
   });
   const port = createMintAuthorizationTransactionPort(
     {

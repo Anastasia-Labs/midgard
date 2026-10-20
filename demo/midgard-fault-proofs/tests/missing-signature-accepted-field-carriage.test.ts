@@ -149,7 +149,6 @@ describe("missing-signature accepted-path field carriage", () => {
         signer: harness.proverSigner,
         certificate: harness.contracts.fieldPreimageCertificate,
         certificateReference,
-        transactionConfirmed: async () => true,
         publications: {
           observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
           observeExact: async (input) => {

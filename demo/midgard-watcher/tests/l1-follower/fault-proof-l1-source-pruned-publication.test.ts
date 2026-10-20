@@ -79,9 +79,6 @@ describe("field publication on a pruned follower", () => {
       },
       publications,
       requirementForAction: () => requirement,
-      // Whether the follower holds the transaction at all.
-      transactionConfirmed: async ({ txHash }) =>
-        (await fx.store.txByHash(Buffer.from(txHash, "hex"))) !== null,
     });
     const required = await port.inspect({
       headerHash: fx.header,

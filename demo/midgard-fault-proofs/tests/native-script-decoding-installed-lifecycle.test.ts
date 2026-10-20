@@ -278,7 +278,6 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
               } as never,
               input,
             ),
-          transactionConfirmed: async () => false,
         });
       const adapter = () =>
         withFieldCarriagePrerequisite({

@@ -98,7 +98,6 @@ describe("raw datum preimage publication prerequisite", () => {
           publications,
           requirementForAction: ({ action: candidate }) =>
             candidate.actionId === action.actionId ? requirement : null,
-          transactionConfirmed: async () => false,
         });
       for (let index = 0; index < count; index++) {
         const inspection = await port().inspect({

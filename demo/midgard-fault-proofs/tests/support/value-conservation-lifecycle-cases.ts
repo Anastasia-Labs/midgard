@@ -869,7 +869,6 @@ export const registerValueConservationCases = (
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,
-            transactionConfirmed: async () => true,
             publications: {
               observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
               observeExact: async (input) => {

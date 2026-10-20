@@ -68,7 +68,6 @@ describe("bound typed publication prerequisite", () => {
         transactionCommitment: "22".repeat(32),
       },
     });
-    const confirmed = new Set<string>();
     const journal = createConfirmedActionJournal({
       category: "validationTraceDispute",
       headerHash,
@@ -97,7 +96,6 @@ describe("bound typed publication prerequisite", () => {
               : { kind: "confirmed", outRef: input.expectedOutRef };
           },
         },
-        transactionConfirmed: async ({ txHash }) => confirmed.has(txHash),
       });
     // The same complete datum at the publisher's address is not the bound evidence.
     const wrong = await lucid
@@ -135,7 +133,6 @@ describe("bound typed publication prerequisite", () => {
       const submitted = await captureEmulatorSubmission(emulator, () =>
         captured.transaction.signed.submit(),
       );
-      confirmed.add(submitted.result);
       await lucid.awaitTx(submitted.result);
       expect(
         submitted.measurements[0]!.completeSignedBytes,
@@ -280,7 +277,6 @@ describe("bound typed publication prerequisite", () => {
               : { kind: "confirmed", outRef: input.expectedOutRef };
           },
         },
-        transactionConfirmed: async () => true,
       });
     let previous: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {

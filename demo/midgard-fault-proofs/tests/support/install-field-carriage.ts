@@ -83,7 +83,6 @@ export const installFieldCarriage = async ({
     signer,
     publications: emulatorPublicationObserver(lucid),
     requirementForAction: () => requirement,
-    transactionConfirmed: async () => false,
   });
   const baseAction = {
     actionId: `${category}:field-${requirement.planned.plan.fieldIndex.toString()}`,

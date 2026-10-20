@@ -239,8 +239,6 @@ export const createManifestBoundMissingSignatureWorkflow = async (
     publications: l1.publications,
     certificate,
     certificateReference: references.fieldPreimageCertificateMint,
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
   });
   adapter = withFieldCarriagePrerequisite({
     category: "missingSignature",

@@ -75,7 +75,6 @@ describe("production field-carriage prerequisite V1", () => {
         observeExact,
       },
       requirementForAction: () => requirement,
-      transactionConfirmed: async () => true,
     });
     // Each chunk is published by its own action, in plan order, and the
     // journal keeps the out-ref its signed body gave the chunk.
@@ -196,7 +195,6 @@ describe("production field-carriage prerequisite V1", () => {
     };
     let candidates: UTxO[] = [];
     let outputConfirmed = false;
-    let included = false;
     const port = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "nonExistentInput",
       lucid: outRefReader(() => candidates),
@@ -210,7 +208,6 @@ describe("production field-carriage prerequisite V1", () => {
             : { kind: "not_found" },
       },
       requirementForAction: () => requirement,
-      transactionConfirmed: async () => included,
     });
     const required = await port.inspect({
       headerHash,
@@ -276,7 +273,6 @@ describe("production field-carriage prerequisite V1", () => {
     await expect(
       wrapped.preflight({ ...resumed, action: baseAction }),
     ).rejects.toThrow("cannot bypass authenticated field carriage");
-    included = true;
     // Never a conflict: a publication's transaction without its output is
     // reconciled from its signed bytes, which this call does not carry.
     await expect(port.reconcile(input)).resolves.toEqual({
@@ -295,7 +291,6 @@ describe("production field-carriage prerequisite V1", () => {
     const previousCandidates = candidates;
     candidates = [];
     outputConfirmed = false;
-    included = false;
     await expect(wrapped.observe(resumed)).resolves.toEqual({
       kind: "action_required",
       action: required.action,
