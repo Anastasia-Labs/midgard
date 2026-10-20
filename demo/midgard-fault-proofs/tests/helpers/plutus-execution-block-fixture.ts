@@ -1,7 +1,8 @@
 /** One committed block whose single event spends a deposit-derived output.
- * The operator commits the event as accepted and applies its ledger effect;
- * every root is computed from the actual outputs. The spend runs a PlutusV3
- * script (failing or passing), or is a key spend with no redeemers. */
+ * The operator commits the event and applies its ledger effect (none for a
+ * transaction stamped `TxIsInvalid`); every root is computed from the actual
+ * outputs. The spend runs a PlutusV3 script (failing or passing), or is a key
+ * spend with no redeemers. */
 import {
   computeHash28,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -52,7 +53,11 @@ export type PlutusExecutionScenario =
   | "failing"
   | "passing"
   | "forced_failing"
-  | "no_redeemers";
+  | "no_redeemers"
+  /** The failing spend, stamped `TxIsInvalid`. */
+  | "failing_stamped_invalid"
+  /** The passing spend, also requiring a signer that does not sign. */
+  | "unsigned_required_signer";
 
 const SEED_LOVELACE = 20_000_000n;
 const ownerKey = () => CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x63));
@@ -111,12 +116,15 @@ const depositSeed = (
 const DEFAULT_SCRIPT_SEED_BYTE = 0x61;
 const KEY_SEED_BYTE = 0x62;
 
+const scenarioScript = (scenario: PlutusExecutionScenario) =>
+  scenario === "passing" || scenario === "unsigned_required_signer"
+    ? PASSING_SCRIPT
+    : FAILING_SCRIPT;
+
 const scriptCredential = (
   scenario: PlutusExecutionScenario,
 ): SeedCredential => ({
-  ScriptCredential: [
-    hashScriptWitness(scenario === "passing" ? PASSING_SCRIPT : FAILING_SCRIPT),
-  ],
+  ScriptCredential: [hashScriptWitness(scenarioScript(scenario))],
 });
 const keyCredential = (): SeedCredential => ({
   PublicKeyCredential: [ownerKeyHash()],
@@ -157,9 +165,13 @@ const scenarioTransaction = (
       spendInputs: [seed.outRef],
       outputs,
       privateKey: key,
-      scriptWitnesses: [
-        scenario === "passing" ? PASSING_SCRIPT : FAILING_SCRIPT,
-      ],
+      scriptWitnesses: [scenarioScript(scenario)],
+      ...(scenario === "failing_stamped_invalid"
+        ? { validity: "TxIsInvalid" as const }
+        : {}),
+      ...(scenario === "unsigned_required_signer"
+        ? { requiredSignerItems: [Buffer.alloc(28, 0x71)] }
+        : {}),
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Spend, index: 0n },
       ]),
@@ -247,10 +259,15 @@ export const plutusExecutionBlockFixture = async (
     outRef: created,
     output: makeOutput(SEED_LOVELACE),
   };
-  const postEntries = [
-    ...predecessorEntries.filter((entry) => !entry.outRef.equals(seed.outRef)),
-    createdEntry,
-  ];
+  const postEntries =
+    scenario === "failing_stamped_invalid"
+      ? [...predecessorEntries]
+      : [
+          ...predecessorEntries.filter(
+            (entry) => !entry.outRef.equals(seed.outRef),
+          ),
+          createdEntry,
+        ];
   const utxosRoot = await ledgerEntriesRoot(postEntries);
 
   const forcedRows: SDK.DaPayloadEntry[] = [];

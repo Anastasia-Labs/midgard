@@ -2,7 +2,9 @@
  * transaction with redeemers from DA replay. A committed block whose
  * transaction's PlutusV3 script fails is one fault routed to
  * `validationTraceDispute`; the same block over a passing script, a forced
- * transaction (rule R-DESC) and a key spend with no redeemers are none. */
+ * transaction (rule R-DESC), a failing script stamped `TxIsInvalid`, a
+ * redeemer transaction rejected for a missing signer and a key spend with no
+ * redeemers are none. */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { replayValidationVerdictEvent } from "@al-ft/midgard-validation";
@@ -88,6 +90,29 @@ describe("validation-trace dispute detection from DA replay", () => {
     const failing = await honestVerdict("forced_failing");
     expect(failing.rejection?.subject?.arm).toBe("PlutusExecutionFailed");
     expect((await detect("forced_failing")).detections).toStrictEqual([]);
+  });
+
+  it("detects nothing for a failing-script transaction stamped TxIsInvalid", async () => {
+    // Its spend, stamped TxIsValid, is the "failing" row's detection.
+    expect((await honestVerdict("failing")).rejection?.subject?.arm).toBe(
+      "PlutusExecutionFailed",
+    );
+    expect((await honestVerdict("failing_stamped_invalid")).verdict).toBe(
+      "rejected",
+    );
+    expect((await detect("failing_stamped_invalid")).detections).toStrictEqual(
+      [],
+    );
+  });
+
+  it("detects nothing for a redeemer transaction rejected for a non-Plutus reason", async () => {
+    const rejected = await honestVerdict("unsigned_required_signer");
+    expect(rejected.verdict).toBe("rejected");
+    expect(rejected.rejection?.subject?.arm).toBeDefined();
+    expect(rejected.rejection?.subject?.arm).not.toBe("PlutusExecutionFailed");
+    expect((await detect("unsigned_required_signer")).detections).toStrictEqual(
+      [],
+    );
   });
 
   it("detects nothing for a normal transaction without redeemers", async () => {
