@@ -1,7 +1,8 @@
 /**
  * The import checker's negative cache: the scripts whose run faulted twice,
- * the second time on a fresh instance. A transaction running a cached
- * script skips its import-time runs (`cache_skipped`) and gets them from the
+ * the second time on a fresh instance. A run killed at its kill is not a
+ * fault (a loaded machine stretches the kill), so it never caches its
+ * script. A transaction running a cached script skips its import-time runs (`cache_skipped`) and gets them from the
  * backlog lane instead. An entry expires after its TTL (at most half the
  * block maturity), and the next transaction running that script is probed
  * again. The cache is in memory: a restart empties it, so every script is
