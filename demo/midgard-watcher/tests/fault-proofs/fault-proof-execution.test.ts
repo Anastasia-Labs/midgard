@@ -1,3 +1,5 @@
+import { rename, symlink } from "node:fs/promises";
+
 import {
   FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
@@ -8,6 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
+import { watcherProofObjectiveDirectory } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
@@ -157,10 +160,7 @@ describe("supervisor execution adapter with durable funding", () => {
   });
 
   it.each([
-    [
-      { kind: "awaiting_counterparty" },
-      "Watcher doubleSpend workflow did not progress: invalid execution outcome",
-    ],
+    [{ kind: "awaiting_counterparty" }, "invalid execution outcome"],
     [
       { kind: "no_fault_detected", classification: {} },
       "the family's own classification returned no_fault_detected for an admitted fault",
@@ -169,14 +169,56 @@ describe("supervisor execution adapter with durable funding", () => {
       { kind: "unprovable_gap", classification: {} },
       "the family's own classification returned unprovable_gap for an admitted fault",
     ],
-    [{ kind: "unknown_kind", reason: "x" }, "did not progress: x"],
-  ])("keeps %j fail-closed with a named reason", async (result, message) => {
+    [{ kind: "unknown_kind", reason: "x" }, "x"],
+  ])(
+    "quarantines %j to its own objective under a named cause",
+    async (result, cause) => {
+      const test = await setup();
+      test.runOrResume.mockResolvedValue(result);
+      const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+      try {
+        for (let run = 0; run < 2; run += 1)
+          expect(await test.execution.execute(test.input)).toEqual({
+            kind: "retryable",
+            resume: "backoff",
+            reason: `${WATCHER_FAULT_PROOF_QUARANTINED}: workflow did not progress: ${cause}`,
+            retryAfterMs: 1000,
+          });
+      } finally {
+        stderr.mockRestore();
+      }
+      expect(test.execution.readiness()).toEqual([
+        {
+          reason: WATCHER_FAULT_PROOF_QUARANTINED,
+          detail: expect.stringContaining(
+            `: workflow did not progress: ${cause}`,
+          ),
+        },
+      ]);
+      expect(
+        test.setAlert.mock.calls.filter(
+          ([alert]) =>
+            (alert as { code: string }).code === "proof_submission_failure",
+        ),
+      ).toEqual([[expect.objectContaining({ active: true })]]);
+    },
+  );
+
+  it("keeps a workflow journal directory that traverses a symlink fail-closed", async () => {
     const test = await setup();
-    test.runOrResume.mockResolvedValueOnce(result);
-    await expect(test.execution.execute(test.input)).rejects.toThrow(message);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "proof_submission_failure" }),
+    const directory = watcherProofObjectiveDirectory(
+      test.fixture.journalRoot,
+      test.input.job,
     );
+    await rename(directory, `${directory}-real`);
+    await symlink(`${directory}-real`, directory);
+    await expect(test.execution.execute(test.input)).rejects.toThrow(
+      "watcher workflow journal directory traverses a symlink",
+    );
+    expect(test.runOrResume).not.toHaveBeenCalled();
+    expect(test.execution.readiness()).toEqual([]);
   });
 
   it("quarantines a workflow stall outside preflight to its own objective and clears it on the next run that moves on", async () => {

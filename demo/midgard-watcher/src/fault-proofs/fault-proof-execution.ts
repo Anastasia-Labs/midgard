@@ -464,10 +464,10 @@ export const createWatcherFaultProofExecution = (dependencies: {
           )
             return quarantine(`workflow stalled: ${result.reason}`);
         }
-        // Everything else stays fail-closed: a family that re-classifies the
-        // watcher's admitted fault as `no_fault_detected` or `unprovable_gap`
-        // disagrees with the decision that dispatched it.
-        objectiveWork = false;
+        // Everything else contradicts this objective's own decision: a family
+        // that re-classifies the watcher's admitted fault as
+        // `no_fault_detected` or `unprovable_gap`, or an outcome of no known
+        // kind. That holds this objective alone; the process keeps running.
         const reason =
           typeof result === "object" &&
           result !== null &&
@@ -481,9 +481,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
                   result.kind === "unprovable_gap")
               ? `the family's own classification returned ${result.kind} for an admitted fault`
               : "invalid execution outcome";
-        throw new Error(
-          `Watcher ${category} workflow did not progress: ${reason}`,
-        );
+        return quarantine(`workflow did not progress: ${reason}`);
       } catch (error) {
         if (isWorkflowActuationRevokedError(error)) {
           record("cancelled");

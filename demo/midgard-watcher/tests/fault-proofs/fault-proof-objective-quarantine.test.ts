@@ -277,6 +277,10 @@ describe("an objective that stalls or meets its own integrity error is quarantin
       "an integrity error from its reconcile",
       () => new Error("Rebroadcast changed recorded transaction hash"),
     ],
+    [
+      "its family re-classifying the admitted fault",
+      () => ({ kind: "no_fault_detected", classification: {} }),
+    ],
   ])(
     "holds the objective after %s while another objective convicts, and clears once the cause is gone",
     async (_name, cause) => {
