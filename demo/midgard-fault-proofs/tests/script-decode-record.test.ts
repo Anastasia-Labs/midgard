@@ -26,6 +26,7 @@ import {
   type ScriptDecodeDeployment,
   scriptDecodeRecordDatum,
   scriptDecodeRunDatum,
+  scriptDecodeStagingDatums,
   scriptDecodeWalkStakes,
   stageScriptDecodeBytes,
 } from "../src/script-decode/index.js";
@@ -204,5 +205,46 @@ describe("script-decode record builders on a wallet holding a token", () => {
     });
     expect(recorded.record).toMatchObject({ k: "decoded" });
     expect(await emulator.getUtxosByOutRef([tokenCoin])).toEqual([tokenCoin]);
+  }, 300_000);
+});
+
+describe("script-decode record builders on a wallet holding a staged chunk", () => {
+  it("fund from plain-ADA coins only, leaving a larger staged chunk at the wallet unspent", async () => {
+    const account = generateEmulatorAccount({ lovelace: 5_000_000_000n });
+    const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
+    const chunkDeployment = injectScriptDecodeDeployment(emulator);
+    const wallet = await Lucid(emulator, "Custom");
+    wallet.selectWallet.fromSeed(account.seedPhrase);
+    // A chunk staged at the wallet's own address under its inline datum,
+    // holding most of the ada, beside one plain coin.
+    const [chunkDatum] = scriptDecodeStagingDatums(undecodable);
+    const stage = await (
+      await (
+        await wallet
+          .newTx()
+          .pay.ToAddressWithData(
+            account.address,
+            { kind: "inline", value: chunkDatum! },
+            { lovelace: 4_000_000_000n },
+          )
+          .complete()
+      ).sign
+        .withWallet()
+        .complete()
+    ).submit();
+    await wallet.awaitTx(stage);
+    const chunk = (await wallet.wallet().getUtxos()).find(
+      (utxo) => utxo.datum === chunkDatum,
+    )!;
+    expect(chunk.assets.lovelace).toBe(4_000_000_000n);
+
+    const recorded = await recordScriptDecode({
+      lucid: wallet,
+      deployment: chunkDeployment,
+      language: PLUTUS_V3,
+      scriptBytes: decodable,
+    });
+    expect(recorded.record).toMatchObject({ k: "decoded" });
+    expect(await emulator.getUtxosByOutRef([chunk])).toEqual([chunk]);
   }, 300_000);
 });
