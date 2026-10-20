@@ -32,6 +32,10 @@ import {
 
 import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
 import {
+  readValidationDisputeMoveAuthority,
+  validationDisputeMoveFunding,
+} from "./funding-reservation-permit.assert-validation-dispute-move.js";
+import {
   actionKind,
   exactResolvedOutputCbor,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
@@ -351,17 +355,12 @@ export const validationDisputeOutput = ({
 };
 
 /**
- * VerifySource's funding under its authority, checked step by step as the
- * runtime bound walks the signed transaction; `null` when it carries none,
- * so the bound refuses its custody as before.
+ * VerifySource's funding under its authority, or a thread move's under its
+ * own, checked step by step as the runtime bound walks the signed
+ * transaction; `null` when it carries neither, so the bound refuses its
+ * custody as before.
  */
-export const validationDisputeFunding = ({
-  signed,
-  slash,
-  policy,
-  state,
-  action,
-}: {
+export const validationDisputeFunding = async (input: {
   readonly signed: TxSigned;
   /** Whether the transaction also carries a fraud slash authority. */
   readonly slash: boolean;
@@ -369,8 +368,13 @@ export const validationDisputeFunding = ({
   readonly state: PermitState;
   readonly action: FraudProofWorkflowAction;
 }) => {
+  const { signed, slash, policy, state, action } = input;
   const authority = readValidationDisputeFundingAuthority(signed);
-  if (authority === null) return null;
+  if (authority === null) return validationDisputeMoveFunding(input);
+  if (readValidationDisputeMoveAuthority(signed) !== null)
+    throw new Error(
+      "funding transaction carries both a VerifySource and a thread move authority",
+    );
   if (slash)
     throw new Error(
       "funding transaction carries both a fraud slash and a validation dispute authority",
@@ -405,12 +409,16 @@ export const validationDisputeFunding = ({
         fundingPaymentKeyHash: policy.fundingPaymentKeyHash,
       });
     },
-    /** The only contract input VerifySource spends is its pending claim. */
-    admitContractInput: (outRef: string): void => {
+    /**
+     * The only contract input VerifySource spends is its pending claim,
+     * whose lineage the bound reads as for any other action.
+     */
+    admitContractInput: (outRef: string, _input: UTxO): null => {
       if (outRef !== authority.openerOutRef)
         throw new Error(
           "validation dispute VerifySource consumes a contract input besides its pending claim",
         );
+      return null;
     },
     /**
      * A bond or case output's custody and allocation: the bond is new
