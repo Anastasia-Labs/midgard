@@ -184,6 +184,7 @@ describe("input existence on a submitted withdrawal", () => {
         owner: h.proverSigner.paymentKeyHash,
       });
       expect(prepared.source.subject.direction).toBe(0n);
+      expect(prepared.source.subject.source_kind).toBe(0n);
       expect(prepared.eventMembership.value.step_index).toBe(
         history.targetStep,
       );
@@ -198,6 +199,9 @@ describe("input existence on a submitted withdrawal", () => {
         h.proverSigner.paymentKeyHash,
       );
       expect(admitted.ledgerEvidence).toEqual(prepared.ledgerEvidence);
+      expect(Data.to(admitted.source.eventKey, SDK.EventKey)).toBe(
+        targetFingerprint,
+      );
       await runInputExistenceRoute({
         h,
         field,
