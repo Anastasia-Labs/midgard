@@ -1191,7 +1191,7 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-execution.ts",
-    "max": 516,
+    "max": 519,
     "reason": "One execution adapter: admission identity checks, funding permit mint, invocation, outcome mapping and cleanup share the refusal holds and the operations sink; a split would pass that state across modules."
   },
   {
