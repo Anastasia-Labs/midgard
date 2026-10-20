@@ -15,6 +15,7 @@ import {
   Constr,
   Data,
   fromText,
+  type LucidEvolution,
   toUnit,
   type TxBuilder,
   type TxOutput,
@@ -249,8 +250,9 @@ export type ValidationCaseOpening = {
  * VerifySource: spends the pending claim at the source validator, mints the
  * case NFT and its bond marker, and pays the case (the thread token, the case
  * NFT, the case datum) and the bond (the marker and `bondLovelace`). The
- * case starts at the validity range's inclusive upper bound, `validTo - 1`;
- * the range is at most L_d long and must end by `block_end + M/2`.
+ * transaction's upper bound is the start of the slot holding `validTo`,
+ * exclusive, and the case starts at its inclusive form, one millisecond
+ * before; the range is at most L_d long and must end by `block_end + M/2`.
  * `agreedInitialState` is state 0 of the challenger's trace, the state
  * VerifySource derives from the committed header and source.
  */
@@ -275,6 +277,8 @@ export const appendValidationSourceVerification = (
     readonly bondLovelace: bigint;
     readonly validFrom: number;
     readonly validTo: number;
+    /** The slot conversion the transaction's bounds are set with. */
+    readonly slots: Pick<LucidEvolution, "unixTimeToSlot" | "slotToUnixTime">;
   },
 ): { readonly tx: TxBuilder; readonly opening: ValidationCaseOpening } => {
   const { contracts, opener } = params;
@@ -320,7 +324,10 @@ export const appendValidationSourceVerification = (
     agreed_initial_hash: hex(
       hashMidgardValidationMachineState(params.agreedInitialState),
     ),
-    started_at: BigInt(params.validTo - 1),
+    started_at: BigInt(
+      params.slots.slotToUnixTime(params.slots.unixTimeToSlot(params.validTo)) -
+        1,
+    ),
     open_threads: 0n,
     defenders_root: EMPTY_MERKLE_TREE_ROOT,
     defender_won: false,

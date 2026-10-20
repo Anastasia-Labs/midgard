@@ -425,7 +425,8 @@ export const initAndOpen = async (
   return { opener };
 };
 
-/** VerifySource over `opener`, valid for L_d from the emulator's now. */
+/** VerifySource over `opener`, valid for L_d from the emulator's now (plus
+ * `offsetMs`). */
 export const verifySource = (
   scene: Scene,
   opener: UTxO,
@@ -434,10 +435,12 @@ export const verifySource = (
     readonly terminalProof: MidgardValidationTraceProof;
     readonly initialState: MidgardValidationMachineState;
     readonly bondLovelace?: bigint;
+    /** Shifts both bounds off the emulator's slot boundary. */
+    readonly offsetMs?: number;
   },
 ) => {
   const { h, chain } = scene;
-  const validFrom = h.emulator.now();
+  const validFrom = h.emulator.now() + (presented.offsetMs ?? 0);
   const validTo = validFrom + MAX_RANGE_MS;
   const { tx, opening } = SDK.appendValidationSourceVerification(
     h.proverLucid.newTx(),
@@ -458,6 +461,7 @@ export const verifySource = (
       bondLovelace: presented.bondLovelace ?? BOND_LOVELACE,
       validFrom,
       validTo,
+      slots: h.proverLucid,
     },
   );
   return {

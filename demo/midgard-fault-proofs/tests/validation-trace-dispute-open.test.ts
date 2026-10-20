@@ -91,6 +91,39 @@ describe("validation-trace dispute: Open and VerifySource", () => {
     );
   });
 
+  it("lands VerifySource whose wall-clock bounds are not slot-aligned", async () => {
+    const { h, chain } = scene;
+    const offsetMs = 500;
+    expect(
+      SELECTED_DEPLOYMENT_PROFILE.timing.dispute_max_validity_range_ms % 1_000,
+    ).toBe(0);
+    const material = await failingMaterial(scene);
+    const { opener } = await initAndOpen(
+      scene,
+      scene.failing,
+      failingClaim(material),
+    );
+    const verification = verifySource(scene, opener, {
+      ...honestPresentation(material),
+      offsetMs,
+    });
+    const signed = await (await verification.build()).sign
+      .withWallet()
+      .complete();
+    const txHash = await signed.submit();
+    await h.proverLucid.awaitTx(txHash);
+    const [caseOutput] = await h.proverLucid.utxosAtWithUnit(
+      chain.case.spendingScriptAddress,
+      verification.opening.caseUnit,
+    );
+    expect(caseOutput?.txHash).toBe(txHash);
+    // The upper bound the transaction carries is the slot that holds
+    // `validTo`, exclusive: the case starts one millisecond before it.
+    expect(Data.from(caseOutput!.datum!, SDK.Case).started_at).toBe(
+      BigInt(verification.validTo - offsetMs - 1),
+    );
+  });
+
   it("refuses a Rejected terminal for a transaction whose script passes", async () => {
     const honest = await passingTrace(scene);
     const { opener } = await initAndOpen(scene, scene.passing, honest.claim);
