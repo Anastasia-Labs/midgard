@@ -3,6 +3,7 @@ import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
+import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
@@ -212,6 +213,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
       throw new Error("prepared funding transaction changed before submission");
     }
     readFraudSlashFundingAuthority(signed);
+    readValidationDisputeFundingAuthority(signed);
   }
   if (
     state.snapshot.state !== "active" ||

@@ -3,7 +3,10 @@ import {
   type DeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import {
+  type FraudProofCatalogueCategoryName,
+  VALIDATION_CASE_FLOOR_LOVELACE,
+} from "@al-ft/midgard-sdk";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { WorkflowAdapterRunner } from "./adapters.js";
@@ -90,6 +93,31 @@ export const workflowRuntimeFundingMinimumFee = ({
   );
 };
 
+/**
+ * The validation-trace dispute's deployment-bound VerifySource custody: the
+ * dispute bond the case validator is applied with (the manifest's
+ * `availabilityChallenge.challengerBondLovelace`) and the compiled profile's
+ * case floor (`fraud_proof_output_lovelace + max_dispute_move_fee_lovelace`).
+ */
+export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
+  deploymentFingerprint: string;
+  bondLovelace: bigint;
+  /** The dispute-bond spending validator's address. */
+  bondAddress: string;
+  /** The case spending validator's address. */
+  caseAddress: string;
+  /** The case minting policy, which mints the case NFT and the bond marker. */
+  casePolicyId: string;
+}>;
+
+type ValidationDisputeTermsValue = Readonly<{
+  bondLovelace: string;
+  caseFloorLovelace: string;
+  bondAddress: string;
+  caseAddress: string;
+  casePolicyId: string;
+}>;
+
 type PolicyValue = Readonly<{
   category: FraudProofCatalogueCategoryName;
   deploymentFingerprint: string;
@@ -104,12 +132,61 @@ type PolicyValue = Readonly<{
   maximumCollateralLovelace: string;
   maximumSlashCollateralLovelace: string;
   maximumCollateralInputs: string;
+  /** Present only for a validation-trace dispute policy given its terms. */
+  validationDispute?: ValidationDisputeTermsValue;
   policyDigest: string;
 }>;
 const admitted = new WeakMap<
   object,
   { runner: WorkflowAdapterRunner; value: PolicyValue }
 >();
+
+const validationDisputeTerms = ({
+  category,
+  deploymentFingerprint,
+  terms,
+  roster,
+}: {
+  category: FraudProofCatalogueCategoryName;
+  deploymentFingerprint: string;
+  terms: WorkflowRuntimeValidationDisputeTerms;
+  roster: readonly WorkflowRuntimeFundingContract[];
+}): ValidationDisputeTermsValue => {
+  if (category !== "validationTraceDispute")
+    throw new Error(
+      `runtime funding validation dispute terms are refused for category ${category}`,
+    );
+  if (terms.deploymentFingerprint !== deploymentFingerprint)
+    throw new Error(
+      "runtime funding validation dispute terms belong to another deployment",
+    );
+  if (typeof terms.bondLovelace !== "bigint" || terms.bondLovelace <= 0n)
+    throw new Error(
+      "runtime funding validation dispute bond is not a positive lovelace amount",
+    );
+  if (!/^[0-9a-f]{56}$/u.test(terms.casePolicyId))
+    throw new Error("runtime funding validation case policy is malformed");
+  const custody = (address: string, label: string) => {
+    const contract = roster.find((entry) => entry.address === address);
+    if (contract?.role !== "proof_thread")
+      throw new Error(
+        `runtime funding validation dispute ${label} address is not a rostered proof-thread contract`,
+      );
+  };
+  custody(terms.bondAddress, "bond");
+  custody(terms.caseAddress, "case");
+  if (terms.bondAddress === terms.caseAddress)
+    throw new Error(
+      "runtime funding validation dispute bond and case addresses coincide",
+    );
+  return Object.freeze({
+    bondLovelace: terms.bondLovelace.toString(),
+    caseFloorLovelace: VALIDATION_CASE_FLOOR_LOVELACE.toString(),
+    bondAddress: terms.bondAddress,
+    caseAddress: terms.caseAddress,
+    casePolicyId: terms.casePolicyId,
+  });
+};
 
 /**
  * The admitted application calls this after authenticating its deployment,
@@ -125,6 +202,7 @@ export const createWorkflowRuntimeFundingPolicy = ({
   economics,
   contracts,
   referenceScripts,
+  validationDispute,
 }: {
   category: FraudProofCatalogueCategoryName;
   runner: WorkflowAdapterRunner;
@@ -134,6 +212,7 @@ export const createWorkflowRuntimeFundingPolicy = ({
   economics: VerifiedFraudProofReleaseEconomicsPolicy;
   contracts: readonly WorkflowRuntimeFundingContract[];
   referenceScripts: readonly Readonly<{ outRef: string; scriptHash: string }>[];
+  validationDispute?: WorkflowRuntimeValidationDisputeTerms;
 }): WorkflowRuntimeFundingPolicy => {
   if (!isAdmittedWorkflowRunner({ category, runner }))
     throw new Error(
@@ -203,6 +282,15 @@ export const createWorkflowRuntimeFundingPolicy = ({
       parameters.referenceScriptFee.maximumSizeBytes,
     ),
   });
+  const disputeTerms =
+    validationDispute === undefined
+      ? undefined
+      : validationDisputeTerms({
+          category,
+          deploymentFingerprint,
+          terms: validationDispute,
+          roster,
+        });
   const collateral =
     (maximumFee * BigInt(parameters.collateralPercentage) + 99n) / 100n;
   const floor = BigInt(release.policy.proverCollateralFloorLovelace);
@@ -228,6 +316,8 @@ export const createWorkflowRuntimeFundingPolicy = ({
       100n
     ).toString(),
     maximumCollateralInputs: parameters.maxCollateralInputs,
+    // Absent terms leave every other policy's digest unchanged.
+    ...(disputeTerms === undefined ? {} : { validationDispute: disputeTerms }),
   });
   const value = Object.freeze({
     ...basis,

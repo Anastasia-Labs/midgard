@@ -16,6 +16,7 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
@@ -46,6 +47,34 @@ import {
   type WatcherProverFundingReservationStore,
   WatcherProverFundingUnavailableError,
 } from "./prover-funding-reservation.js";
+
+/**
+ * VerifySource's deployment-bound custody terms: the manifest's dispute bond
+ * (the case validator's applied bond) and the dispute contracts it pays.
+ */
+const validationDisputeTerms = (
+  identity: VerifiedWatcherDeploymentIdentity,
+) => {
+  const hashes = watcherDeploymentAppliedScriptHashes(identity);
+  const hash = (name: string) => {
+    const scriptHash = hashes[name];
+    if (scriptHash === undefined)
+      throw new Error(`signed deployment omits validation dispute ${name}`);
+    return scriptHash;
+  };
+  const address = (name: string) =>
+    credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
+  return {
+    deploymentFingerprint: identity.manifestId,
+    bondLovelace: BigInt(
+      watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+        .challengerBondLovelace,
+    ),
+    bondAddress: address("validationTraceDisputeBond"),
+    caseAddress: address("validationTraceDisputeCase"),
+    casePolicyId: hash("validationTraceDisputeCaseMint"),
+  };
+};
 
 /**
  * Runtime-owned funding authority bound to the admitted runner, deployment,
@@ -230,6 +259,13 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         economics,
         contracts: [...uniqueContracts.values()],
         referenceScripts: [...referenceScripts.values()],
+        ...(request.category === "validationTraceDispute"
+          ? {
+              validationDispute: validationDisputeTerms(
+                input.deploymentIdentity,
+              ),
+            }
+          : {}),
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;

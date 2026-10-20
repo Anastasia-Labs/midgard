@@ -29,12 +29,14 @@ import {
 /** The deployment the runner builds against, from the scene's contracts. */
 export const runnerDeployment = (
   scene: Scene,
+  deploymentFingerprint: string = DEPLOYMENT_FINGERPRINT,
 ): ValidationTraceDisputeDeployment => {
   const { h, chain } = scene;
   const category = h.catalogue.categories.validationTraceDispute;
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
   return {
+    deploymentFingerprint,
     network,
     blueprint: h.realBlueprint,
     init: {

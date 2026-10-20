@@ -366,9 +366,10 @@ export const plutusExecutionBlockFixture = async (
       },
     },
   };
+  const payloadEnvelopeCbor = await reencodeFixturePayload(payload);
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({ header, headerHash }),
-    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+    payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
       sourceId: "test/plutus-execution",
@@ -384,6 +385,8 @@ export const plutusExecutionBlockFixture = async (
   };
   return {
     evidence,
+    /** The committed block's retained-DA payload envelope. */
+    payloadEnvelopeCbor,
     context,
     eventKey,
     tx,

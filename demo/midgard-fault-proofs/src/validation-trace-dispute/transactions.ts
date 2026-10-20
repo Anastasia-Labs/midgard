@@ -5,6 +5,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
+  Data,
   type LucidEvolution,
   type Network,
   scriptHashToCredential,
@@ -22,6 +23,7 @@ import type {
 import { submitResolvedInit } from "../submit-init.submit-resolved-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
+import { grantValidationDisputeFundingAuthority } from "../workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { ownOutRefLabel, parseOwnOutRef } from "../workflow/own-outputs.js";
 import {
@@ -44,6 +46,8 @@ type DisputeChain =
 
 /** The deployment the open step builds against. */
 export type ValidationTraceDisputeDeployment = Readonly<{
+  /** The deployment VerifySource's funding authority is bound to. */
+  deploymentFingerprint: string;
   network: Network;
   blueprint: unknown;
   /** Init's contracts; the first step is the dispute opener. */
@@ -64,7 +68,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
   >;
   /** The published reference scripts of the opener, source and case. */
   references: Readonly<{ opener: UTxO; source: UTxO; case: UTxO }>;
-  /** The bond source-v1 is deployed with. */
+  /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;
 }>;
 
@@ -307,6 +311,28 @@ export const captureValidationTraceVerifySource = async ({
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
+  const openerLovelace = opener.assets.lovelace ?? 0n;
+  grantValidationDisputeFundingAuthority({
+    signed,
+    deploymentFingerprint: deployment.deploymentFingerprint,
+    headerHash: artifact.headerHash,
+    opener,
+    bond: {
+      address: chain.disputeBond.spendingScriptAddress,
+      unit: opening.bondMarkerUnit,
+      lovelace: deployment.bondLovelace,
+      datumCborHex: Data.to(opening.bond, SDK.DisputeBond),
+    },
+    caseOutput: {
+      address: chain.case.spendingScriptAddress,
+      unit: opening.caseUnit,
+      floorLovelace: SDK.VALIDATION_CASE_FLOOR_LOVELACE,
+      lovelace:
+        openerLovelace > SDK.VALIDATION_CASE_FLOOR_LOVELACE
+          ? openerLovelace
+          : SDK.VALIDATION_CASE_FLOOR_LOVELACE,
+    },
+  });
   const transaction = captured(signed, [
     { role: "validation-trace-source", utxo: references.source },
     { role: "validation-case", utxo: references.case },
