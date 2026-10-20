@@ -271,11 +271,10 @@ export const createWatcherOrphanCancels = (
       await submit(reservationId, recorded);
       return ORPHAN_CANCEL_IN_FLIGHT;
     },
-    /** Forgets every orphan but `held`: one that settled or left. */
-    retain: (held: ReadonlySet<string>) => {
-      for (const tracked of [rounds, submitted])
-        for (const reservationId of [...tracked.keys()])
-          if (!held.has(reservationId)) tracked.delete(reservationId);
+    /** Forgets an orphan that settled or was handed over. */
+    forget: (reservationId: string) => {
+      rounds.delete(reservationId);
+      submitted.delete(reservationId);
     },
   });
 };

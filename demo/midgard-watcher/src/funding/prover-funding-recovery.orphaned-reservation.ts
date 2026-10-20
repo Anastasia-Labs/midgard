@@ -361,9 +361,10 @@ export const createWatcherOrphanedReservations = (input: {
               orphan: record,
               retirements: reading.retirements,
             })
-          )
+          ) {
             settled.push(record);
-          else held.push(describe(record, "the store refused to settle it"));
+            cancels?.forget(record.reservationId);
+          } else held.push(describe(record, "the store refused to settle it"));
           continue;
         }
         // A cancelled orphan's funding is the cancel's: never handed over.
@@ -376,8 +377,10 @@ export const createWatcherOrphanedReservations = (input: {
           (await input.store.readCompletionHandoff({
             reservationId: record.reservationId,
           })) !== null;
-        if (handOver && reading.handOver && !completed) handed.push(record);
-        else
+        if (handOver && reading.handOver && !completed) {
+          handed.push(record);
+          cancels?.forget(record.reservationId);
+        } else
           held.push(
             describe(
               record,
@@ -422,7 +425,6 @@ export const createWatcherOrphanedReservations = (input: {
         ]),
       );
       const holds: WatcherDecisionHold[] = [];
-      const held = new Set<string>();
       for (const record of orphans) {
         let detail = "awaiting its next L1 read";
         const reading = readings.get(record.reservationId);
@@ -435,6 +437,7 @@ export const createWatcherOrphanedReservations = (input: {
             })) === true
           ) {
             schedule.forget(record.reservationId);
+            cancels?.forget(record.reservationId);
             continue;
           }
           // One left unread for want of reads stays first in line.
@@ -449,7 +452,6 @@ export const createWatcherOrphanedReservations = (input: {
             detail = `its funding cancel failed: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        held.add(record.reservationId);
         holds.push(
           Object.freeze({
             kind: "reservation",
@@ -460,7 +462,6 @@ export const createWatcherOrphanedReservations = (input: {
           }),
         );
       }
-      cancels?.retain(held);
       return Object.freeze(holds);
     },
   });

@@ -2,24 +2,26 @@ import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 import { Lucid, type Provider } from "@lucid-evolution/lucid";
 
 import type { WatcherOrphanCancelInput } from "../funding/prover-funding-recovery.orphan-cancel.js";
-import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   loadWatcherSecretText,
   type WatcherProcessConfig,
 } from "./process-config.js";
+import type { WatcherDecisionDriver } from "./watcher-runtime.decision-driver.js";
 
 /**
  * The prover wallet a cancel of orphaned funding signs with, and whether a
  * target can still run. The secret is resolved again for each cancel and
- * never held. A target is gone once the finalized queue no longer holds its
- * header; before the first observation, none is.
+ * never held, and a secret naming another address opens no wallet. A
+ * target is gone once the finalized queue of the decision driver's latest
+ * observation no longer holds its header; before the driver exists or
+ * observes, none is.
  */
 export const watcherOrphanCancelInput = (
   input: Readonly<{
     config: WatcherProcessConfig;
     address: string;
     provider: Provider;
-    inclusion: () => WatcherAuthenticatedStateQueueObservation | null;
+    decisionDriver: () => Pick<WatcherDecisionDriver, "inclusion"> | undefined;
   }>,
 ): WatcherOrphanCancelInput => ({
   wallet: {
@@ -30,13 +32,6 @@ export const watcherOrphanCancelInput = (
         customNetwork,
         proverWallet,
       } = input.config.watcherConfig;
-      const lucid = await Lucid(
-        input.provider,
-        network,
-        customNetwork?.slotConfig === undefined
-          ? {}
-          : { slotConfig: customNetwork.slotConfig },
-      );
       const secret = await loadWatcherSecretText(proverWallet.keySource);
       const signer = resolveProverSigner(
         secret.startsWith("ed25519_sk")
@@ -46,6 +41,13 @@ export const watcherOrphanCancelInput = (
       );
       if (signer.address !== input.address)
         throw new Error("the prover wallet secret no longer names its address");
+      const lucid = await Lucid(
+        input.provider,
+        network,
+        customNetwork?.slotConfig === undefined
+          ? {}
+          : { slotConfig: customNetwork.slotConfig },
+      );
       signer.selectWallet(lucid);
       return {
         slotOf: (unixTimeMs) => lucid.unixTimeToSlot(unixTimeMs),
@@ -58,7 +60,7 @@ export const watcherOrphanCancelInput = (
     },
   },
   targetGone: ({ headerHash }) => {
-    const observation = input.inclusion();
+    const observation = input.decisionDriver()?.inclusion() ?? null;
     return (
       observation !== null &&
       !observation.finalizedHeaders.some(

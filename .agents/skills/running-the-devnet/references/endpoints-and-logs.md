@@ -724,8 +724,9 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   landed (then "its cancel landed; it settles once its attempts are
   release-final"), or the old transaction landed first. This holds when a
   transaction also names a coin outside the follower's history, such as a
-  collateral from before its origin: a spend of another of its inputs by a
-  different transaction, once past the recovery depth, retires it. A cancel
+  collateral from before its origin: a recorded spend of another of its
+  inputs, by a different transaction or by its own landing that failed
+  phase 2, once past the recovery depth, retires it. A cancel
   that retired unlanded past finality is dropped: "its cancel expired
   unlanded" means its hour passed, and a new one may follow; "its cancel
   was invalidated: another transaction spent its funding" means an old
@@ -736,7 +737,7 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   outlasts the latest expiry plus the recovery depth. With a transaction
   that has no expiry, the hold is expected, and is no fault, for as long as
   its target's header stays in the finalized queue and no fresh run takes
-  it over. Report it if it outlasts an hour plus the recovery depth after
+  it over. Report it if it outlasts two hours plus the recovery depth after
   the header left the finalized queue (or its workflow completed).
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no

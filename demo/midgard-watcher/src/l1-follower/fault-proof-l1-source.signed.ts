@@ -46,8 +46,9 @@ import {
  * A spend of any input by another transaction makes the intent impossible,
  * whatever the other inputs: it is `invalidated_at_tip` even beside an input
  * without history. It is `invalidated` once a spend is stable, beside an
- * input without history only when a stored transaction with another hash
- * made it; a spend inferred from the pruning names no spender.
+ * input without history only when a stored transaction made it: another
+ * one, or the intent's own phase-2-invalid landing, which consumed its
+ * collateral. A spend inferred from the pruning names no spender.
  */
 
 type Observation = Awaited<
@@ -304,8 +305,10 @@ const observeOnce = async (
   let status: Status = "rebroadcast";
   let reason: string = REASONS.rebroadcast;
   let unknown: string | undefined;
-  /** A stored transaction with another hash stably spent an input. */
-  let stablySpentByOther = false;
+  /** A stored transaction stably spent an input. Its own landing, if
+   * stored, failed phase 2 by now (a valid one is included above), so
+   * whichever it is, the body can never be valid. */
+  let stablySpentByStored = false;
   for (const label of signed.outRefs) {
     const state = await inputState(reader, label);
     if (state.kind === "unknown") {
@@ -319,11 +322,7 @@ const observeOnce = async (
     if (stable) {
       status = "invalidated";
       reason = REASONS.invalidated;
-      if (
-        state.spender !== undefined &&
-        state.spender !== input.transactionHash.toLowerCase()
-      )
-        stablySpentByOther = true;
+      if (state.spender !== undefined) stablySpentByStored = true;
     } else if (status !== "invalidated") {
       status = "invalidated_at_tip";
       reason = REASONS.invalidatedAtTip;
@@ -331,11 +330,11 @@ const observeOnce = async (
   }
   // A spend makes the intent impossible whatever else holds; an input
   // without history still prevents its rebroadcast, and its retirement
-  // unless another stored transaction stably spent an input.
+  // unless a stored transaction stably spent an input.
   if (unknown !== undefined)
     return status === "rebroadcast"
       ? finish("unknown", unknown)
-      : stablySpentByOther
+      : stablySpentByStored
         ? finish("invalidated", REASONS.invalidated)
         : finish("invalidated_at_tip", REASONS.invalidatedAtTip);
   if (status !== "rebroadcast") return finish(status, reason);

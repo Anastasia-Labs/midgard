@@ -274,7 +274,7 @@ export const startWatcherRuntime = async (
         config: input.config,
         address: proverWalletAddress,
         provider,
-        inclusion: () => decisionDriver?.inclusion() ?? null,
+        decisionDriver: () => decisionDriver,
       }),
     });
     proverFundingStore = fundingRuntime.store;

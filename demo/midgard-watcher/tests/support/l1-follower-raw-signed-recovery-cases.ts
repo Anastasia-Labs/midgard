@@ -6,6 +6,7 @@ import {
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 
+import { watcherRetainedDepth } from "../../src/l1-follower/follower-runtime.js";
 import {
   C,
   expected,
@@ -52,9 +53,10 @@ const REASON = {
   mempool: "Recorded transaction remains in the node mempool",
 } as const;
 
-/** A in b1, then `above` empty blocks (default: b1 is recovery-deep). */
-const setup = async (above = 4) => {
-  const h = await harness();
+/** A in b1, then `above` empty blocks (default: b1 is recovery-deep), over
+ * a store keeping `retainedDepth` blocks (default: k). */
+const setup = async (above = 4, retainedDepth?: number) => {
+  const h = await harness(undefined, undefined, retainedDepth);
   const A: SimTx = {
     inputs: [h.chain.outsideInput()],
     outputs: [
@@ -206,7 +208,7 @@ export const describeSignedRecovery = (): void => {
       );
     });
 
-    it("a spend the pruning removed is never stable; unpruned and deep, it is invalidated", async () => {
+    it("a spend the pruning removed is not stable at a retained depth of k; unpruned and deep, it is invalidated", async () => {
       const s = await setup();
       const { point: spentAt } = await s.forward([
         s.intent({ outputs: [{ address: X, lovelace: 1_500_000n }] }),
@@ -231,6 +233,29 @@ export const describeSignedRecovery = (): void => {
       expect(Number(pruned.releaseFinalPoint.blockNo)).toBeLessThanOrEqual(
         Number(spentAt.blockNo),
       );
+    });
+
+    it("at the production retained depth, a spend the pruning removed is stable alone, never beside an input without history", async () => {
+      const s = await setup(4, watcherRetainedDepth(K));
+      await s.forward([
+        s.intent({ outputs: [{ address: X, lovelace: 1_500_000n }] }),
+      ]);
+      await s.empty(K + 3);
+      await s.pruneAll();
+      expect(await s.observe(s.intent())).toMatchObject({
+        status: "invalidated",
+        reason: REASON.invalidated,
+        inputs: [s.input(0)],
+      });
+      expect(
+        await s.observe(
+          s.intent({ inputs: [s.at(0), s.chain.outsideInput()] }),
+        ),
+      ).toMatchObject({
+        status: "invalidated_at_tip",
+        reason: REASON.invalidatedAtTip,
+        inputs: [s.input(0)],
+      });
     });
 
     it("unknown: no stored creation, a seed output, an untracked output with no recorded spend", async () => {
@@ -326,19 +351,28 @@ export const describeSignedRecovery = (): void => {
       expect(await s.observe(z)).toMatchObject({ status: "invalidated" });
     });
 
-    it("its own phase-2-invalid landing never stably invalidates an intent beside an input without history", async () => {
+    it("its own phase-2-invalid landing invalidates an intent beside an input without history at the tip, then stably once recovery-deep", async () => {
       const s = await setup();
       const z = s.intent({
         inputs: [SEED.outRef, s.at(0)],
         collaterals: [s.at(1)],
       });
       await s.forward([{ ...z, isValid: false }]);
-      await s.empty(K + 2);
-      expect(await s.observe(z)).toMatchObject({
-        status: "invalidated_at_tip",
-        reason: REASON.invalidatedAtTip,
+      for (let depth = 1; depth < 5; depth += 1) {
+        expect(await s.observe(z)).toMatchObject({
+          status: "invalidated_at_tip",
+          reason: REASON.invalidatedAtTip,
+          inputs: [s.input(0), s.input(1)],
+        });
+        await s.empty(1);
+      }
+      const observed = await s.observe(z);
+      expect(observed).toMatchObject({
+        status: "invalidated",
+        reason: REASON.invalidated,
         inputs: [s.input(0), s.input(1)],
       });
+      expect(observed.inclusionPoint).toBeUndefined();
     });
 
     it("a seed input another transaction spends invalidates the intent; one that lands is included", async () => {

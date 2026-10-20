@@ -138,12 +138,17 @@ export const harness = async (
     dialect: DialectName;
     store: (options: FactStoreOptions) => FactStore;
   }>,
+  /** Blocks below the tip the store keeps (default: k). */
+  retainedDepth?: number,
 ) => {
-  const options = simStoreOptions(
-    [watcherProjection(deployment)],
-    K,
-    open?.dialect ?? "sqlite",
-  );
+  const options = {
+    ...simStoreOptions(
+      [watcherProjection(deployment)],
+      K,
+      open?.dialect ?? "sqlite",
+    ),
+    ...(retainedDepth === undefined ? {} : { retainedDepth }),
+  };
   const store =
     open === undefined
       ? openSqliteFactStore({ ...options, path: ":memory:" })
