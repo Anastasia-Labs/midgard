@@ -142,8 +142,9 @@ export const VALIDATION_DISPUTE_MOVE_BINDING =
 export const refuse = (names: readonly string[]): never => {
   throw new Error(`${VALIDATION_DISPUTE_MOVE_BINDING} (${names.join(", ")})`);
 };
+const refuseMove = refuse;
 
-const failing = (rows: readonly (readonly [string, boolean])[]) =>
+export const failing = (rows: readonly (readonly [string, boolean])[]) =>
   rows.filter(([, holds]) => !holds).map(([name]) => name);
 
 /**
@@ -190,16 +191,22 @@ export const assertValidationDisputeMoveBinding = ({
  * Our case, as this reservation's lineage holds the pending claim our Open
  * left: a pending claim for the actuation's header, the funding key its
  * fraud prover. Returns the id of the case it opens, whoever verified it.
+ * A move's or a case close's authority; each refuses under its own name.
  */
 export const assertValidationDisputeMoveCase = ({
   authority,
   lineage,
   fundingPaymentKeyHash,
+  refuse = refuseMove,
 }: {
-  readonly authority: ValidationDisputeMoveAuthority;
+  readonly authority: Pick<
+    ValidationDisputeMoveAuthority,
+    "caseOpenerOutRef" | "headerHash"
+  >;
   /** The reservation's confirmed lineage of the case opener, or null. */
   readonly lineage: unknown;
   readonly fundingPaymentKeyHash: string;
+  readonly refuse?: (names: readonly string[]) => never;
 }): string => {
   const confirmed =
     lineage === null ? null : parseConfirmedActionOutput(lineage);

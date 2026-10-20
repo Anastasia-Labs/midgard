@@ -10,8 +10,7 @@
  * idea of the step, decides the next action. A thread move needs the claim
  * material, which each run reads back as it validates its saved artifact. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
+import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
@@ -44,6 +43,7 @@ import {
 } from "./actions.js";
 import { parseValidationTraceDisputeArtifact } from "./artifact.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
+import { validationTraceCaseOrigin } from "./case-origin.js";
 import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { captureValidationTraceClose } from "./close.js";
@@ -183,27 +183,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     const record = liveClaim("close");
     if (record !== undefined)
       return await removalStage.convicted(context, record);
-    // Our case as VerifySource left it: nobody has defended it.
-    const openCase = liveClaim("verify_source");
-    if (openCase !== undefined) {
-      const caseDatum = Data.from(live.get(openCase.outRef)!.datum!, SDK.Case);
-      return now() > validationTraceDefenseDeadlineMs(caseDatum)
-        ? {
-            kind: "action_required",
-            action: validationTraceAction({
-              stage: "close",
-              consumes: openCase.outRef,
-            }),
-          }
-        : {
-            kind: "pending",
-            reason: validationTraceCaseOpenReason({
-              caseUnit: openCase.unit,
-              outRef: openCase.outRef,
-              caseDatum,
-            }),
-          };
-    }
     const opener = liveClaim("open");
     if (opener !== undefined)
       return {
@@ -222,6 +201,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           consumes: thread.outRef,
         }),
       };
+    // The case our Open opened, whoever verified it.
     const found = await ourCase(artifact, stages);
     if (found !== undefined)
       return isContested(found.caseDatum)
@@ -237,11 +217,23 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             now: now(),
             material: materials.get(artifact.headerHash),
           })
-        : {
-            kind: "pending",
-            reason: validationTraceCaseOpenReason(found),
-          };
-    if (newestFirst.some(({ action }) => action.stage === "verify_source")) {
+        : // Nobody has defended it: it closes once its deadline has passed.
+          now() > validationTraceDefenseDeadlineMs(found.caseDatum)
+          ? {
+              kind: "action_required",
+              action: validationTraceAction({
+                stage: "close",
+                consumes: found.outRef,
+              }),
+            }
+          : {
+              kind: "pending",
+              reason: validationTraceCaseOpenReason(found),
+            };
+    // Our Open opened the case, whoever verified or closed it: the record
+    // names the claim's prover, us.
+    const opened = newestFirst.some(({ action }) => action.stage === "open");
+    if (opened) {
       const recorded = await recordAt(artifact.headerHash);
       if (recorded !== undefined)
         return await removalStage.convicted(context, recorded);
@@ -252,7 +244,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         kind: "pending",
         reason: `validation-trace output ${newest.outputs[0]!.outRef} is not yet visible to the provider`,
       };
-    if (newestFirst.some(({ action }) => action.stage === "verify_source"))
+    if (opened)
       return {
         kind: "conflict",
         reason: "validation-trace case is closed without this workflow's close",
@@ -265,22 +257,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         consumes: replaced?.outputs[0]!.outRef ?? null,
       }),
     };
-  };
-
-  /** The bond VerifySource left beside our case at `caseOutRef`. */
-  const bondOf = (
-    context: FraudProofWorkflowAdapterContext,
-    caseOutRef: string,
-  ): string => {
-    const verified = confirmedValidationTraceStages(context.entries).find(
-      ({ action, outputs }) =>
-        action.stage === "verify_source" && outputs[0]!.outRef === caseOutRef,
-    );
-    if (verified === undefined)
-      throw new WorkflowActionChangedError(
-        `validation-trace case ${caseOutRef} is not one VerifySource left`,
-      );
-    return verified.outputs[1]!.outRef;
   };
 
   const capture = async (
@@ -308,11 +284,6 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             openerOutRef: action.consumes!,
           });
         case "close":
-          return await captureValidationTraceClose({
-            ...input,
-            caseOutRef: action.consumes!,
-            bondOutRef: bondOf(context, action.consumes!),
-          });
         case "reveal":
         case "timeout":
         case "close_thread":
@@ -326,6 +297,19 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         throw new WorkflowActionChangedError(
           `validation-trace ${action.stage} has no case of ours to play`,
         );
+      if (action.stage === "close")
+        // The case and bond its VerifySource left, by its L1 history.
+        return await captureValidationTraceClose({
+          ...input,
+          ...validationTraceCaseOrigin({
+            transactions: await caseHistory.transactions({
+              headerHash: input.artifact.headerHash,
+              caseUnit: found.caseUnit,
+            }),
+            caseUnit: found.caseUnit,
+          }),
+          caseOpenerOutRef: found.openerOutRef,
+        });
       const move = {
         ...input,
         threadOutRef: action.consumes!,

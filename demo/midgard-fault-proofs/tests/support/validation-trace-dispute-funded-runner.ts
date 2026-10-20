@@ -32,6 +32,7 @@ import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
 import { createValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
@@ -109,6 +110,8 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
     validationTraceDisputeGame: chain.game.spendingScriptHash,
     validationTraceDisputeTimeout: chain.timeout.spendingScriptHash,
     validationTraceDisputeAward: chain.award.spendingScriptHash,
+    // The hub's fraud-proof record, where a case close locks its record.
+    fraudProofSpend: h.contracts.fraudProof.spendingScriptHash,
     // A protocol-state contract, as every deployment's roster governs.
     stateQueueSpend: h.contracts.stateQueue.spendingScriptHash,
   };
@@ -167,9 +170,13 @@ const signedDeployment = (scene: Scene) => {
 
 /**
  * Classifies the failing block's header, then returns one watcher turn for
- * its objective over the durable state in a fresh directory.
+ * its objective over the durable state in a fresh directory. By default the
+ * runner observes no convicted block's removal.
  */
-export const openFundedDispute = async (scene: Scene) => {
+export const openFundedDispute = async (
+  scene: Scene,
+  options: { readonly removal?: ValidationTraceRemovalConfig } = {},
+) => {
   const { h } = scene;
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
@@ -312,7 +319,7 @@ export const openFundedDispute = async (scene: Scene) => {
       signer,
       deployment,
       l1SlotConfig,
-      removal: unobservedRemoval,
+      removal: options.removal ?? unobservedRemoval,
       signedRecovery,
       caseHistory,
       now: () => h.emulator.now(),
@@ -342,6 +349,8 @@ export const openFundedDispute = async (scene: Scene) => {
   return {
     decision,
     deployment,
+    /** The case token's authenticated L1 history the watcher reads. */
+    caseHistory,
     rebroadcasts,
     turn,
     /** Stops the watcher process and starts another over its durable state. */

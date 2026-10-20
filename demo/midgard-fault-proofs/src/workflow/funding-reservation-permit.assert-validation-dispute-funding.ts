@@ -39,6 +39,10 @@ import {
   actionKind,
   exactResolvedOutputCbor,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import {
+  readValidationDisputeCloseAuthority,
+  validationDisputeCloseFunding,
+} from "./funding-reservation-permit.validation-dispute-close-authority.js";
 import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
@@ -355,8 +359,8 @@ export const validationDisputeOutput = ({
 };
 
 /**
- * VerifySource's funding under its authority, or a thread move's under its
- * own, checked step by step as the runtime bound walks the signed
+ * VerifySource's funding under its authority, or a thread move's or a case
+ * close's under its own, checked step by step as the runtime bound walks the signed
  * transaction; `null` when it carries neither, so the bound refuses its
  * custody as before.
  */
@@ -370,6 +374,23 @@ export const validationDisputeFunding = async (input: {
 }) => {
   const { signed, slash, policy, state, action } = input;
   const authority = readValidationDisputeFundingAuthority(signed);
+  const close = readValidationDisputeCloseAuthority(signed);
+  if (close !== null) {
+    if (
+      authority !== null ||
+      readValidationDisputeMoveAuthority(signed) !== null
+    )
+      throw new Error(
+        "funding transaction carries a case close authority beside another validation dispute authority",
+      );
+    return await validationDisputeCloseFunding({
+      authority: close,
+      slash,
+      policy,
+      state,
+      action,
+    });
+  }
   if (authority === null) return validationDisputeMoveFunding(input);
   if (readValidationDisputeMoveAuthority(signed) !== null)
     throw new Error(
