@@ -43,6 +43,10 @@
       "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
       "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
     },
+    "./test-support/input-existence-prepare": {
+      "midgard-source": "./src/input-existence/prepare.ts",
+      "types": "./src/input-existence/prepare.ts"
+    },
     "./test-support/family-l1-observation": {
       "midgard-source": "./src/workflow/family-l1-observation.ts",
       "types": "./src/workflow/family-l1-observation.ts"
