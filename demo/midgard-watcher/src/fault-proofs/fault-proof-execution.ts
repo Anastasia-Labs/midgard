@@ -349,8 +349,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
       // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
       const wasQuarantined = isWatcherFaultProofQuarantined(holds, job);
-      // Set while the objective's own run is in hand: a failure there
-      // quarantines this objective alone (fault-proof-quarantine.ts).
+      // Set while the objective's own funding and run are in hand: a failure
+      // there quarantines this objective alone (fault-proof-quarantine.ts).
       let objectiveWork = false;
       const quarantine = (cause: string) => {
         held = { kind: "pending", reason: cause };
@@ -406,6 +406,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             `fault-proof execution has no installed ${category} runner`,
           );
+        objectiveWork = true;
         const fundingReservationPermit =
           await mintWatcherProverFundingReservationPermit({
             category,
@@ -418,7 +419,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
             provider: dependencies.provider,
             reservationMode: admission.funding,
           });
-        objectiveWork = true;
         const result = await dependencies.application.runOrResume({
           mode: admission.mode,
           category,

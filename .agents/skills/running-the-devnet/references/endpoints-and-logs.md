@@ -682,8 +682,9 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   provider. On the testing profiles (15 min maturity) the bound is longer
   than maturity, so there it is an alarm only.
 - `fault_proof_objective_quarantined`: one objective's run stalled outside
-  preflight or met an integrity failure of its own (for example a reconcile
-  that refused its durable transaction); the detail is
+  preflight, or its funding or run met an integrity failure of its own (for
+  example a reconcile that refused its durable transaction, or a stored
+  funding handoff its workflow journal no longer anchors); the detail is
   `<category>/<headerHash>: <cause>`. Only that objective is held: the
   `proof_submission_failure` alert is raised, the process keeps running and
   every other objective keeps proving. The objective is run again on a

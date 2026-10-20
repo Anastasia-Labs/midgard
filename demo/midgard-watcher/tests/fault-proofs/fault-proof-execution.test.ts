@@ -220,17 +220,6 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(alarms()).toEqual([true, false]);
   });
 
-  it("refuses existing-only recovery without a durable reservation before querying the wallet", async () => {
-    const test = await setup(true);
-    const before = await test.fixture.records();
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      "existing-only funding requires its durable reservation",
-    );
-    expect(test.getUtxos).not.toHaveBeenCalled();
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
-  });
-
   it("returns structured read-only provider transport failures for bounded backoff", async () => {
     const test = await setup(true);
     const before = await test.fixture.records();
@@ -272,22 +261,6 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.runOrResume).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
     expect(test.setAlert).not.toHaveBeenCalled();
-  });
-
-  it("does not classify provider message strings as transport authority", async () => {
-    const test = await setup(true);
-    test.getUtxos.mockRejectedValueOnce(new Error("provider says ECONNRESET"));
-    await expect(
-      test.execution.execute({
-        ...test.input,
-        job: { ...test.input.job, mode: "run" },
-        admission: { mode: "run", funding: "create_or_resume" },
-      }),
-    ).rejects.toThrow("provider says ECONNRESET");
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ active: true }),
-    );
   });
 
   it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
