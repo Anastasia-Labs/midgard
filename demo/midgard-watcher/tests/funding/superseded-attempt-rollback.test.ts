@@ -13,6 +13,7 @@ import {
   key,
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
+import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import {
   type Fixture,
   fundingOf,
@@ -113,6 +114,32 @@ it("keeps the confirmed replacement as the result when the expired attempt is on
   const { journal, replacement } = await confirmReplacement(fixture);
   const before = (await journal.load(fixture.initial.workflowId)).length;
   chainHolds(fixture, [fixture.transactionHash, replacement.transactionHash]);
+  const events = await runMinutesApart(fixture, journal, 4);
+  expect(events.slice(before)).toEqual([
+    {
+      kind: "stalled",
+      reason: `attempts ${replacement.transactionHash} and ${fixture.transactionHash} of init both landed; ${replacement.transactionHash} is its result`,
+    },
+  ]);
+  expect(intentsOf(events, fixture.transactionHash)).toBe(1);
+  expect((await fixture.records())[0]!.pendingTransition).toBeNull();
+});
+
+it("keeps the confirmed replacement as the result when it is on chain deeper than the recovery window and the expired attempt lands beside it, and records the pair once", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const { journal, replacement } = await confirmReplacement(fixture);
+  const before = (await journal.load(fixture.initial.workflowId)).length;
+  // The replacement's inclusion is past the recovery window; the expired
+  // attempt lands at the tip.
+  fixture.chain.mockImplementation(async (txHash) =>
+    txHash === replacement.transactionHash
+      ? {
+          kind: "pending",
+          txHash,
+          retirement: { ...retirementFixture(txHash), reason: "included" },
+        }
+      : { kind: "confirmed", txHash },
+  );
   const events = await runMinutesApart(fixture, journal, 4);
   expect(events.slice(before)).toEqual([
     {
