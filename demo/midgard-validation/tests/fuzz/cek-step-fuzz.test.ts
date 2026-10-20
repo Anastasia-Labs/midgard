@@ -119,9 +119,9 @@ const describeDivergences = (results: readonly CaseResult[]): string[] =>
 describe("CEK step differential against the Aiken machine", () => {
   let oracle: AikenStepOracle | undefined;
 
-  // The oracle compiles the on-chain project twice, once per run for every
-  // file (about 45 s on a developer machine, a few minutes on a loaded CI
-  // runner); a file that starts meanwhile waits for it.
+  // The oracle compiles the on-chain project twice per run, shared by every
+  // file that uses it (about 45 s on a developer machine, a few minutes on a
+  // loaded CI runner); a file that starts meanwhile waits for it.
   beforeAll(async () => {
     oracle = await makeAikenStepOracle();
   }, 300_000);
