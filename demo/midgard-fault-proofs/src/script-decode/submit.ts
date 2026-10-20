@@ -35,7 +35,6 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.js";
 import {
   claimOwnOutputs,
@@ -84,20 +83,15 @@ export type ScriptDecodeStake = Readonly<{
 export type ScriptDecodeExUnits = Readonly<{ mem: bigint; steps: bigint }>;
 
 /**
- * `complete`'s wallet inputs, read fresh: the plain coins only. With nothing
- * but plain coins in the wallet there is no preset, so a wallet's own
- * collateral (the watcher's reserved one, never among its funding UTxOs)
- * survives: Lucid takes collateral only from among preset inputs.
+ * `complete` over the wallet read fresh (an earlier `complete` pins the
+ * wallet's UTxO view), with no preset, so the wallet's own collateral
+ * survives: Lucid takes collateral only from among preset inputs. Which
+ * coins may fund is the wallet's to say: the watcher's reserved wallet
+ * offers only plain-ADA funding (`restrictWorkflowFundingSigner`).
  */
-export const scriptDecodeWalletInputs = async (
-  lucid: LucidEvolution,
-): Promise<{ presetWalletInputs?: UTxO[] }> => {
+const freshWallet = (lucid: LucidEvolution): Record<string, never> => {
   lucid.clearUTxOOverride();
-  const utxos = await lucid.wallet().getUtxos();
-  const spendable = utxos.filter(isPlainFundingOutput);
-  return spendable.length === utxos.length
-    ? {}
-    : { presetWalletInputs: spendable };
+  return {};
 };
 
 export const transactionExUnits = (txCbor: string): ScriptDecodeExUnits => {
@@ -257,7 +251,7 @@ export const buildScriptDecodeStageTx = async ({
       .newTx()
       .pay.ToAddressWithData(address, { kind: "inline", value: datum }, {}),
     validTo,
-  ).complete(await scriptDecodeWalletInputs(lucid));
+  ).complete(freshWallet(lucid));
   return {
     signed: await unsigned.sign.withWallet().complete(),
     address,
@@ -309,7 +303,7 @@ export const buildScriptDecodeBindTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    ...(await scriptDecodeWalletInputs(lucid)),
+    ...freshWallet(lucid),
   });
   return {
     signed: await unsigned.sign.withWallet().complete(),
@@ -389,7 +383,7 @@ export const buildScriptDecodeWalkTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    ...(await scriptDecodeWalletInputs(lucid)),
+    ...freshWallet(lucid),
   });
   const signed = await unsigned.sign.withWallet().complete();
   const cbor = signed.toCBOR();
@@ -467,7 +461,7 @@ export const buildScriptDecodeFinishTx = async ({
     validTo,
   ).complete({
     localUPLCEval: true,
-    ...(await scriptDecodeWalletInputs(lucid)),
+    ...freshWallet(lucid),
   });
   return {
     signed: await unsigned.sign.withWallet().complete(),
