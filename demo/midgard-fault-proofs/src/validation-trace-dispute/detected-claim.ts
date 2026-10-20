@@ -105,11 +105,14 @@ export const prepareValidationTraceArtifact = async ({
   context,
   classification,
   l1SlotConfig,
+  onMaterial,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly classification: FaultClassification;
   readonly l1SlotConfig: L1SlotConfig;
+  /** Receives the claim material the artifact was built from. */
+  readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;
 }): Promise<JournalJsonObject> => {
   if (classification.category !== "validationTraceDispute")
     throw new Error("validation-trace adapter received another family");
@@ -119,6 +122,7 @@ export const prepareValidationTraceArtifact = async ({
     detection: classification.selected,
     l1SlotConfig,
   });
+  onMaterial?.(material);
   return encodeValidationTraceDisputeArtifact({
     headerHash: evidence.headerHash,
     material,
@@ -137,12 +141,15 @@ export const validateValidationTraceArtifact = async ({
   classification,
   artifact,
   l1SlotConfig,
+  onMaterial,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly classification: FaultClassification;
   readonly artifact: JournalJsonObject;
   readonly l1SlotConfig: L1SlotConfig;
+  /** Receives the material of the artifact, once it matches. */
+  readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;
 }): Promise<void> => {
   const { eventKeyCbor } = parseValidationTraceDisputeArtifact(artifact);
   const named = classification.detections.find(
@@ -154,6 +161,7 @@ export const validateValidationTraceArtifact = async ({
           Data.to(event.eventKey, SDK.EventKey) === eventKeyCbor,
       ),
   );
+  const built: { material?: ValidationTraceClaimMaterial } = {};
   const rebuilt =
     named === undefined
       ? undefined
@@ -162,9 +170,13 @@ export const validateValidationTraceArtifact = async ({
           context,
           classification: { ...classification, selected: named },
           l1SlotConfig,
+          onMaterial: (material) => {
+            built.material = material;
+          },
         });
   if (rebuilt === undefined || !sameJson(rebuilt, artifact))
     throw new Error(
       "validation-trace artifact differs from this evidence's replay",
     );
+  if (built.material !== undefined) onMaterial?.(built.material);
 };

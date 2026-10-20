@@ -1,6 +1,8 @@
 /** The journaled actions of the validation-trace dispute: Init the thread,
- * Open the claim, VerifySource it into a case and its bond, and close the
- * convicted case into its fraud-proof record. Each action is keyed by the
+ * Open the claim, VerifySource it into a case and its bond, close the
+ * convicted case into its fraud-proof record, and the challenger's moves on
+ * a defended case's threads: reveal a midpoint, time out a defender whose
+ * clock ran out, and close that thread into the case. Each action is keyed by the
  * output of ours it consumes, and its durable recovery names the outputs of
  * our own signed body it leaves, by out-ref, which every later read
  * follows. */
@@ -32,6 +34,9 @@ export const VALIDATION_TRACE_STAGES = [
   "open",
   "verify_source",
   "close",
+  "reveal",
+  "timeout",
+  "close_thread",
 ] as const;
 
 export type ValidationTraceStage = (typeof VALIDATION_TRACE_STAGES)[number];
@@ -42,6 +47,9 @@ export const VALIDATION_TRACE_STAGE_ROLES = {
   open: ["opener"],
   verify_source: ["case", "bond"],
   close: ["proof"],
+  reveal: ["thread"],
+  timeout: ["thread"],
+  close_thread: ["case", "receipt"],
 } as const satisfies Record<ValidationTraceStage, readonly string[]>;
 
 export type ValidationTraceOutputRole =
@@ -54,7 +62,9 @@ export type ParsedValidationTraceAction = Readonly<{
   /**
    * Init: the thread of ours it replaces after that one vanished (null
    * first). Open: our thread it spends. VerifySource: our opener it spends.
-   * Close: our case it spends, beside the case's bond.
+   * Close: our case it spends, beside the case's bond. Reveal and timeout:
+   * the defended thread at the game they spend. Close thread: the thread at
+   * the timeout validator it closes into the case.
    */
   consumes: string | null;
 }>;

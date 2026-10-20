@@ -105,14 +105,17 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
     validationTraceDisputeSource: chain.source.spendingScriptHash,
     validationTraceDisputeCase: chain.case.spendingScriptHash,
     validationTraceDisputeBond: chain.disputeBond.spendingScriptHash,
+    validationTraceDisputeGame: chain.game.spendingScriptHash,
+    validationTraceDisputeTimeout: chain.timeout.spendingScriptHash,
+    validationTraceDisputeAward: chain.award.spendingScriptHash,
     // A protocol-state contract, as every deployment's roster governs.
     stateQueueSpend: h.contracts.stateQueue.spendingScriptHash,
   };
 };
 
 /**
- * The fixture's signed deployment, its dispute bond and case contracts (and
- * their reference-script entries) the scene's.
+ * The fixture's signed deployment, its dispute bond, case, game, timeout
+ * and award contracts (and their reference-script entries) the scene's.
  */
 const signedDeployment = (scene: Scene) => {
   const { chain } = scene;
@@ -146,6 +149,17 @@ const signedDeployment = (scene: Scene) => {
     "validationTraceDisputeCaseMint",
     chain.case.mintingScript,
     chain.case.policyId,
+  );
+  for (const [name, script] of [
+    ["validationTraceDisputeGame", chain.game],
+    ["validationTraceDisputeTimeout", chain.timeout],
+    ["validationTraceDisputeAward", chain.award],
+  ] as const)
+    deployed(name, script.spendingScript, script.spendingScriptHash);
+  deployed(
+    "validationTraceDisputeAwardMint",
+    chain.award.mintingScript,
+    chain.award.policyId,
   );
   return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
 };

@@ -1,0 +1,228 @@
+/**
+ * The validation-trace dispute's thread moves under the watcher's prover
+ * funding, on the emulator: a funded watcher opens our case, the scene's
+ * operator defends it with a scripted trace and reveals, and the watcher
+ * plays the thread. Each move the watcher builds is captured with the
+ * thread (and case) it spends while they are still live, so a test can
+ * walk the funding permit over the exact signed bytes it admitted.
+ */
+import type { TxSigned, UTxO } from "@lucid-evolution/lucid";
+
+import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
+import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
+import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
+import {
+  VALIDATION_TRACE_CASE_CONTESTED,
+  VALIDATION_TRACE_THREAD_AWAITING,
+  validationTraceDefenderDeadlineMs,
+} from "../../src/validation-trace-dispute/threads.js";
+import { readValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
+import type { ValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.validation-dispute-move-authority.js";
+import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
+import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
+import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
+import { drainProver } from "./installed-prover-wallet.js";
+import {
+  type Defender,
+  sceneOperator,
+} from "./validation-trace-dispute-defend.js";
+import {
+  type AdapterWrap,
+  type FundedDispute,
+  openFundedDispute,
+  turnUntil,
+} from "./validation-trace-dispute-funded-runner.js";
+import {
+  caseAndBond,
+  entriesOf,
+  FUNDED,
+} from "./validation-trace-dispute-funded-verify-source.js";
+import {
+  failingMaterial,
+  type Scene,
+  setUpScene,
+} from "./validation-trace-dispute-open-scene.js";
+import {
+  defendScripted,
+  liveThread,
+  revealAsDefender,
+  type ScriptedTrace,
+  scriptedTrace,
+  threadOf,
+  threadUnitOf,
+} from "./validation-trace-dispute-scripted-defender.js";
+
+/** One move the watcher built, with what it spends as it was then. */
+export type CapturedMove = Readonly<{
+  signed: TxSigned;
+  authority: ValidationDisputeMoveAuthority;
+  action: FraudProofWorkflowAction;
+  thread: UTxO;
+  caseInput: UTxO | undefined;
+}>;
+
+export type FundedMoves = Readonly<{
+  scene: Scene;
+  dispute: FundedDispute;
+  material: ValidationTraceClaimMaterial;
+  defender: Defender;
+  trace: ScriptedTrace;
+  /** The case output our VerifySource left, as it was before the Defend. */
+  caseOrigin: UTxO;
+  /** The defender's thread token. */
+  unit: string;
+  /** Every move the watcher built, in order. */
+  moves: CapturedMove[];
+  /** Captures every move the watcher builds into `moves`. */
+  capture: AdapterWrap;
+}>;
+
+const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
+  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+/**
+ * A fresh scene whose funded watcher has opened our case, which the
+ * scene's operator then defends with a trace agreeing up to a third of the
+ * steps.
+ */
+export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
+  const scene = await setUpScene();
+  await drainProver(scene.h as never, FUNDED);
+  const dispute = await openFundedDispute(scene);
+  const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
+  if (opened.result.kind !== "pending")
+    throw new Error(`the case did not open: ${opened.history.join("\n")}`);
+  const { caseOutput } = await caseAndBond(scene, opened.result);
+  const material = await failingMaterial(scene);
+  const trace = scriptedTrace(
+    material,
+    Math.floor(Number(material.stepCount) / 3),
+  );
+  const defender = sceneOperator(scene);
+  const threadOutRef = await defendScripted(scene, caseOutput, defender, trace);
+  const [thread] = await scene.h.emulator.getUtxosByOutRef([
+    parseOwnOutRef(threadOutRef),
+  ]);
+  const moves: CapturedMove[] = [];
+  const capture: AdapterWrap = (adapter) => ({
+    ...adapter,
+    preflight: async (context) => {
+      const preflight = await adapter.preflight(context);
+      const signed = workflowPreflightTransaction(preflight);
+      const authority =
+        signed === undefined
+          ? null
+          : readValidationDisputeMoveAuthority(signed);
+      if (authority === null) return preflight;
+      const [spent, caseInput] = await scene.h.emulator.getUtxosByOutRef([
+        parseOwnOutRef(authority.threadOutRef),
+        ...(authority.caseOutRef === null
+          ? []
+          : [parseOwnOutRef(authority.caseOutRef)]),
+      ]);
+      moves.push({
+        signed: signed!,
+        authority,
+        action: context.action,
+        thread: spent!,
+        caseInput,
+      });
+      return preflight;
+    },
+  });
+  return {
+    scene,
+    dispute,
+    material,
+    defender,
+    trace,
+    caseOrigin: caseOutput,
+    unit: threadUnitOf(scene, thread!),
+    moves,
+    capture,
+  };
+};
+
+/** The defender's live thread. */
+export const liveFundedThread = async ({
+  scene,
+  unit,
+}: FundedMoves): Promise<UTxO> => {
+  const utxo = await liveThread(scene, unit);
+  if (utxo === undefined) throw new Error("the thread is not live");
+  return utxo;
+};
+
+/** Moves the emulator past the live thread's defender deadline. */
+export const passDefenderDeadline = async (journey: FundedMoves) => {
+  const { scene } = journey;
+  const deadline = validationTraceDefenderDeadlineMs(
+    threadOf(await liveFundedThread(journey)),
+  );
+  const lucid = scene.h.proverLucid;
+  scene.h.emulator.awaitSlot(
+    lucid.unixTimeToSlot(deadline) - lucid.currentSlot() + 2,
+  );
+};
+
+/**
+ * The defender reveals, the watcher reveals in turn, the defender goes
+ * silent, and the watcher times its thread out and closes it into our case.
+ */
+export const playFundedMovesToClose = async (journey: FundedMoves) => {
+  const { scene, dispute, defender, trace, capture } = journey;
+  await revealAsDefender(
+    scene,
+    defender,
+    await liveFundedThread(journey),
+    trace,
+  );
+  const revealed = await turnUntil(dispute, VALIDATION_TRACE_THREAD_AWAITING, {
+    wrap: capture,
+  });
+  if (revealed.result.kind !== "pending")
+    throw new Error(`no reveal: ${revealed.history.join("\n")}`);
+  await passDefenderDeadline(journey);
+  const closed = await turnUntil(dispute, VALIDATION_TRACE_CASE_CONTESTED, {
+    wrap: capture,
+  });
+  if (closed.result.kind !== "pending")
+    throw new Error(`no thread close: ${closed.history.join("\n")}`);
+};
+
+/** The stages the journal confirmed, with the out-refs each left. */
+export const confirmedMoves = (
+  result: Awaited<ReturnType<FundedDispute["turn"]>>,
+) =>
+  confirmedValidationTraceStages(entriesOf(result)).map(
+    ({ action, outputs }) => ({
+      stage: action.stage,
+      outputs: outputs.map(({ outRef }) => outRef),
+    }),
+  );
+
+/** The submission intents the journal recorded for actions of `stage`. */
+export const moveIntents = (
+  result: Awaited<ReturnType<FundedDispute["turn"]>>,
+  stage: "reveal" | "timeout" | "close-thread",
+) =>
+  entriesOf(result).flatMap(({ event }) =>
+    event.kind === "submission_intent" &&
+    event.actionId.startsWith(`validation-trace-${stage}:`)
+      ? [
+          {
+            actionId: event.actionId,
+            attempt: event.attempt,
+            txHash: event.txHash,
+          },
+        ]
+      : [],
+  );
+
+/** The prover wallet's outputs, by out-ref. */
+export const walletOutRefs = async ({ scene }: FundedMoves) =>
+  new Map(
+    (await scene.h.emulator.getUtxos(scene.h.proverSigner.address)).map(
+      (utxo) => [outRefOf(utxo), utxo] as const,
+    ),
+  );

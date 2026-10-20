@@ -2,7 +2,8 @@
  * emulator: once our case is open and undefended, a run reports
  * `awaiting_counterparty` with the case's on-chain defense deadline, and a
  * session hands its turn back at once instead of polling; once the operator
- * defends, the next run observes the defense and stops awaiting. */
+ * defends, the run awaits the defender's move on the thread the Defend
+ * opened, until the defender's clock ends. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -12,10 +13,7 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
-import {
-  VALIDATION_TRACE_CASE_CONTESTED,
-  VALIDATION_TRACE_CASE_OPEN,
-} from "../src/validation-trace-dispute/adapter.js";
+import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
@@ -109,18 +107,19 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
     );
   }, 120_000);
 
-  it("stops awaiting once the operator's Defend lands, and reports the case contested", async () => {
+  it("awaits the defender's move on the thread once the operator's Defend lands, until the defender's clock ends", async () => {
     const defense = await defendAsOperator(scene, await liveCase());
-    const raw = await runner.runOnce(scene.failing);
-    const result = awaitingValidationTraceCounterparty(raw);
-    expect(result).toBe(raw);
-    expect(result.kind).toBe("pending");
-    if (!("reason" in result)) throw new Error("no reason");
-    expect(result.reason).toMatch(
-      new RegExp(
-        `^${VALIDATION_TRACE_CASE_CONTESTED}: .* at ${defense}#0 `,
-        "u",
-      ),
+    const result = awaitingValidationTraceCounterparty(
+      await runner.runOnce(scene.failing),
     );
+    const [thread] = await scene.h.proverLucid.utxosByOutRef([
+      parseOwnOutRef(`${defense}#1`),
+    ]);
+    const datum = Data.from(thread!.datum!, SDK.CaseThreadDatum).data!;
+    expect(result).toMatchObject({
+      kind: "awaiting_counterparty",
+      outRef: `${defense}#1`,
+      responseDeadline: Number(datum.turn_started_at + datum.defender_clock_ms),
+    });
   });
 });

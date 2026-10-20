@@ -19,6 +19,7 @@ import {
 } from "@al-ft/midgard-validation";
 import {
   generateEmulatorAccount,
+  type Script,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -81,6 +82,9 @@ export type Scene = {
     readonly source: UTxO;
     readonly case: UTxO;
     readonly bond: UTxO;
+    readonly game: UTxO;
+    readonly timeout: UTxO;
+    readonly award: UTxO;
   };
   readonly failing: Block;
   readonly passing: Block;
@@ -128,27 +132,26 @@ export const setUpScene = async (): Promise<Scene> => {
     },
   });
   const chain = h.contracts.fraudProofContracts.validationTraceDispute;
-  const caseReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.case.spendingScript,
-      label: "validation case",
-    })
-  ).utxo;
-  const bondReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.disputeBond.spendingScript,
-      label: "validation dispute bond",
-    })
-  ).utxo;
-  const caseConfigReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.caseConfig.mintingScript,
-      label: "validation case configuration",
-    })
-  ).utxo;
+  const publish = async (script: Script, label: string) =>
+    (
+      await publishPlainReferenceScriptUtxo({
+        lucid: h.proverLucid,
+        script,
+        label,
+      })
+    ).utxo;
+  const caseReference = await publish(chain.case.spendingScript, "case");
+  const bondReference = await publish(chain.disputeBond.spendingScript, "bond");
+  const caseConfigReference = await publish(
+    chain.caseConfig.mintingScript,
+    "validation case configuration",
+  );
+  const gameReference = await publish(chain.game.spendingScript, "game");
+  const timeoutReference = await publish(
+    chain.timeout.spendingScript,
+    "timeout",
+  );
+  const awardReference = await publish(chain.award.spendingScript, "award");
 
   const operatorVkey = await funderPaymentKeyHash(h.funderLucid);
   const now = BigInt(
@@ -256,6 +259,9 @@ export const setUpScene = async (): Promise<Scene> => {
       source: publishedReference(h, chain.source.spendingScriptHash),
       case: caseReference,
       bond: bondReference,
+      game: gameReference,
+      timeout: timeoutReference,
+      award: awardReference,
     },
     failing,
     passing,
