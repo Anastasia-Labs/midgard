@@ -5,6 +5,7 @@ import {
   buildMidgardLedgerOutputScanTrace,
   ensureHash32,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+  midgardBlake2b,
   type MidgardLedgerOutputDataSummary,
   type MidgardLedgerOutputMaterial,
   type MidgardLedgerOutputReferenceScriptLanguage,
@@ -21,7 +22,6 @@ import {
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
 import { DataConstr } from "@harmoniclabs/plutus-data";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
@@ -226,7 +226,7 @@ export const buildOpaqueNativeReferenceScriptLedgerOutputMaterial = ({
         MidgardVersionedScriptTags.NativeCardano,
       ) as ReferenceScriptItem["language"],
       hash: Buffer.from(
-        blake2b(
+        midgardBlake2b(
           Buffer.concat([
             Buffer.from([MidgardScriptHashPrefixes.NativeCardano]),
             envelope.scriptBytes,

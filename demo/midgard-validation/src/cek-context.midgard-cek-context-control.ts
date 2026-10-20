@@ -1,8 +1,11 @@
-import { encodeCbor, MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
+import {
+  encodeCbor,
+  MIDGARD_CONSENSUS_LIMITS,
+  midgardBlake2b,
+} from "@al-ft/midgard-core";
 import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { type Data as PlutusData } from "@harmoniclabs/plutus-data";
 import { Constr, type Data as LucidDataValue } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
@@ -39,7 +42,7 @@ export const TX_INFO_ASSEMBLY_DOMAIN = Buffer.from(
 );
 
 const hash32 = (bytes: Uint8Array): Buffer =>
-  Buffer.from(blake2b(bytes, { dkLen: 32 }));
+  Buffer.from(midgardBlake2b(bytes, { dkLen: 32 }));
 
 export const bytes = (value: Uint8Array): Buffer => Buffer.from(value);
 

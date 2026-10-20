@@ -83,6 +83,7 @@ const scenarios = {
         "midgard-core",
         "midgard-sdk",
         "midgard-validation",
+        "midgard-validation-bench",
         "midgard-fault-proofs-build",
         "midgard-fault-proofs",
         "midgard-watcher-typecheck",

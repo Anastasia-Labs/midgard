@@ -1,4 +1,7 @@
-import { classifyMidgardWitnessScriptItem } from "@al-ft/midgard-core";
+import {
+  classifyMidgardWitnessScriptItem,
+  midgardBlake2b,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardVersionedScript,
@@ -14,7 +17,6 @@ import {
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   copyBuffer,
@@ -87,7 +89,7 @@ const projectRawScriptWitnesses = (
         scriptBytes: Buffer.from(payload.value),
         versionedItemBytes: Buffer.from(item),
         hash: Buffer.from(
-          blake2b(
+          midgardBlake2b(
             Buffer.concat([Buffer.from([prefix]), Buffer.from(payload.value)]),
             { dkLen: 28 },
           ),

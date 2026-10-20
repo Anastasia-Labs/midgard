@@ -180,6 +180,7 @@
     "fixtures:cek-builtin-step-evidence:sync": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs",
     "fixtures:cek-builtin-step-evidence:check": "node scripts/generate-cek-builtin-step-evidence-goldens.mjs --check",
     "test": "node ../scripts/package-test.mjs",
+    "bench": "vitest run --config vitest.bench.config.ts",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
