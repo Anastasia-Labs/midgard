@@ -48,14 +48,14 @@ import {
   captureValidationTraceVerifySource,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
+import { validationTraceCaseOpenReason } from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 
 /** A stage transaction that does not build; it is retried on observation. */
 export const VALIDATION_TRACE_STAGE_HELD = "validation-trace-stage-held";
 
-/** Our case exists and nobody has defended it yet. */
-export const VALIDATION_TRACE_CASE_OPEN = "validation-trace-case-open";
+export { VALIDATION_TRACE_CASE_OPEN } from "./waiting.js";
 
 /**
  * A defender joined our case. The challenger's moves are not installed, so
@@ -153,7 +153,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (openCase !== undefined)
       return {
         kind: "pending",
-        reason: `${VALIDATION_TRACE_CASE_OPEN}: case ${openCase.unit} is open at ${openCase.outRef}`,
+        reason: validationTraceCaseOpenReason({
+          caseUnit: openCase.unit,
+          outRef: openCase.outRef,
+          caseDatum: Data.from(live.get(openCase.outRef)!.datum!, SDK.Case),
+        }),
       };
     const opener = liveClaim("open");
     if (opener !== undefined)
@@ -188,14 +192,19 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       const found = await caseAt(caseUnit);
       if (found === undefined || typeof found.datum !== "string") continue;
       const outRef = `${found.txHash}#${found.outputIndex.toString()}`;
-      return isContested(Data.from(found.datum, SDK.Case))
+      const caseDatum = Data.from(found.datum, SDK.Case);
+      return isContested(caseDatum)
         ? {
             kind: "pending",
             reason: `${VALIDATION_TRACE_CASE_CONTESTED}: case ${caseUnit} at ${outRef} has a defender; the challenger's moves are not installed, so it waits`,
           }
         : {
             kind: "pending",
-            reason: `${VALIDATION_TRACE_CASE_OPEN}: case ${caseUnit} is open at ${outRef}`,
+            reason: validationTraceCaseOpenReason({
+              caseUnit,
+              outRef,
+              caseDatum,
+            }),
           };
     }
     const newest = newestFirst[0];

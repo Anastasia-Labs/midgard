@@ -13,6 +13,22 @@ import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission
 export const WATCHER_FAULT_PROOF_CONTINUATION_STALLED =
   "fault_proof_continuation_stalled";
 
+/**
+ * An objective awaiting its counterparty past the response deadline its run
+ * reported, plus `WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS`, or with no
+ * usable deadline. By then this side was due to move; the hold is the
+ * operator's alarm until a later run reports something else.
+ */
+export const WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED =
+  "fault_proof_counterparty_deadline_passed";
+
+/**
+ * How long past a counterparty's response deadline an objective may still
+ * await it: the observation that lets this side move, and its provider's
+ * lag, arrive within this.
+ */
+export const WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS = 10 * 60_000;
+
 /** Whether a result or outcome is a pending run handed back by its bound. */
 export const isWatcherFaultProofContinuationStall = (
   result: unknown,
@@ -25,15 +41,35 @@ export const isWatcherFaultProofContinuationStall = (
   typeof result.reason === "string" &&
   result.reason.startsWith(FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED);
 
+/** The alarm detail of an objective awaiting its counterparty, if due. */
+const counterpartyOverdue = (
+  result: Readonly<{ kind: unknown; reason: unknown }>,
+  nowMs: number,
+): string | undefined => {
+  if (result.kind !== "awaiting_counterparty") return undefined;
+  const deadline =
+    "responseDeadline" in result ? result.responseDeadline : undefined;
+  if (typeof deadline !== "number" || !Number.isSafeInteger(deadline))
+    return `awaiting its counterparty with no response deadline: ${String(result.reason)}`;
+  const overdueMs = nowMs - deadline - WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS;
+  return overdueMs > 0
+    ? `awaiting its counterparty ${overdueMs.toString()} ms past the response deadline ${deadline.toString()} and its slack: ${String(result.reason)}`
+    : undefined;
+};
+
 /**
  * Holds a pending objective under its name: one that needs a new submission
  * after its latest safe start, one paused because the prover wallet cannot
- * fund it, or one whose session stalled, which is also logged at error level.
+ * fund it, one whose session stalled, or one still awaiting its counterparty
+ * past the response deadline (as of `nowMs`) and its slack. The last two are
+ * also logged at error level. An objective awaiting its counterparty before
+ * then is healthy and holds nothing.
  */
 export const holdWatcherFaultProofPending = (
   holds: Map<string, Readonly<{ reason: string; detail: string }>>,
   job: WatcherProofObjective,
   result: Readonly<{ kind: unknown; reason: unknown }>,
+  nowMs: number = Date.now(),
 ): Readonly<{ kind: "pending"; reason: string }> | undefined => {
   const resubmission = holdWatcherFaultProofForResubmission(holds, job, result);
   if (resubmission !== undefined) return resubmission;
@@ -41,17 +77,25 @@ export const holdWatcherFaultProofPending = (
     const funding = holdWatcherFaultProofOnFunding(holds, job, result.reason);
     if (funding !== undefined) return funding;
   }
-  if (!isWatcherFaultProofContinuationStall(result)) return undefined;
   const objective = `${job.category}/${job.headerHash}`;
-  const hold = {
-    reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
-    detail: `${objective}: ${result.reason}`,
-  };
+  const overdue = counterpartyOverdue(result, nowMs);
+  if (overdue === undefined && !isWatcherFaultProofContinuationStall(result))
+    return undefined;
+  const hold =
+    overdue === undefined
+      ? {
+          reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+          detail: `${objective}: ${String(result.reason)}`,
+        }
+      : {
+          reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+          detail: `${objective}: ${overdue}`,
+        };
   holds.set(objective, hold);
   process.stderr.write(
     `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
   );
-  return { kind: "pending", reason: result.reason };
+  return { kind: "pending", reason: String(result.reason) };
 };
 
 /**

@@ -84,6 +84,8 @@ export type Scene = {
   readonly failing: Block;
   readonly passing: Block;
   readonly forced: Block;
+  /** The operator that committed the blocks, and its active-operator node. */
+  readonly operator: { readonly vkey: string; readonly nodeUnit: string };
 };
 
 /** The signed transaction's size and execution units, each within the
@@ -249,6 +251,7 @@ export const setUpScene = async (): Promise<Scene> => {
     failing,
     passing,
     forced,
+    operator: { vkey: operatorVkey, nodeUnit: setup.activeOperatorNodeUnit },
   };
 };
 
