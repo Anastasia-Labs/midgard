@@ -1,6 +1,7 @@
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  ledgerEd25519SignatureReady,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -21,7 +22,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import { expect, it } from "vitest";
+import { beforeAll, expect, it } from "vitest";
 
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import type { ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
@@ -30,6 +31,9 @@ import {
   watcherForcedOperatorVerdict,
 } from "../../src/verification/user-event.js";
 import { makeForcedTxFixture } from "../support/forced-submission-fixture.js";
+
+// The watcher waits for the verifier at startup; this replay runs without it.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 const transaction = (
   outputs: readonly Buffer[],
