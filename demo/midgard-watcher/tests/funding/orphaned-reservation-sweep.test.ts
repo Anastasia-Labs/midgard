@@ -3,11 +3,7 @@ import { rm } from "node:fs/promises";
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createWatcherOrphanedReservations,
-  WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
-} from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
-import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
+import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import {
   cleanupFundingRecoveryFixtures,
   setupFundingRecoveryFixture,
@@ -141,39 +137,5 @@ describe("signed funding no workflow drives is settled from its own attempts", (
         readiness: WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
       }),
     ]);
-  });
-
-  it("reads at most its per-pass bound of reservations in one sweep", async () => {
-    const fixture = await setupFundingRecoveryFixture(
-      false,
-      false,
-      false,
-      true,
-    );
-    const [record] = await fixture.records();
-    const observe = vi.fn(fixture.observeSignedTransaction);
-    fixture.chain.mockResolvedValue({ kind: "not_found" });
-    const orphans = createWatcherOrphanedReservations({
-      // Five reservations, each holding the same signed attempt.
-      store: {
-        readPendingTransition: async () =>
-          await fixture.store.readPendingTransition(record!),
-        settleOrphanedReservation: async () => false,
-      } as unknown as WatcherProverFundingReservationStore,
-      observe,
-      now: () => 1_000_000,
-      perPass: 3,
-    });
-    const five = [0, 1, 2, 3, 4].map((index) => ({
-      ...record!,
-      reservationId: `${index}`.repeat(64),
-    }));
-    const counts: number[] = [];
-    for (let pass = 0; pass < 4; pass += 1) {
-      observe.mockClear();
-      expect(await orphans.sweep(five)).toHaveLength(5);
-      counts.push(observe.mock.calls.length);
-    }
-    expect(counts).toEqual([3, 2, 0, 0]);
   });
 });

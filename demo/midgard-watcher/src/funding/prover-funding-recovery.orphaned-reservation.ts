@@ -21,7 +21,7 @@ export const WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION =
  * An objective waiting on a funding reservation that no workflow will drive
  * again, whose signed attempt could still land. It runs again on the next
  * observation; the wait ends once each attempt has expired, been
- * invalidated or landed, at the latest when its validity interval ends.
+ * invalidated or landed, or has left the mempool with its inputs unspent.
  */
 export class WatcherProverFundingOrphanedReservationError extends WatcherProverFundingUnavailableError {
   constructor(readonly details: readonly string[]) {
@@ -77,69 +77,170 @@ const unretiredAttempts = async (
     }));
 };
 
+type Retired = Readonly<{
+  transactionHash: string;
+  retirement: SignedWorkflowTransactionRetirement;
+}>;
+
 type Reading = Readonly<{
+  /** Every attempt was read this pass or is final already. */
+  complete: boolean;
+  /** Some attempt of it was read this pass. */
+  touched: boolean;
   /** Every attempt can no longer land beside a replacement, or landed
    * within release finality, where a replacement adopts it. */
   handOver: boolean;
   /** Every attempt's retirement past release finality, when all have one. */
-  retirements:
-    | readonly Readonly<{
-        transactionHash: string;
-        retirement: SignedWorkflowTransactionRetirement;
-      }>[]
-    | null;
+  retirements: readonly Retired[] | null;
   /** Why it is held, when it cannot be handed over. */
   detail: string;
 }>;
 
-const readAttempts = async (
+/** One attempt as a read left it: retired past release finality, or still
+ * open, and then whether a replacement may take it over. */
+type AttemptRead =
+  | Readonly<{ final: SignedWorkflowTransactionRetirement }>
+  | Readonly<{ final?: undefined; handOver: boolean; detail: string }>;
+
+/** Attempts tracked beyond the schedule's own entries. */
+const MAXIMUM_TRACKED_ATTEMPTS = 4096;
+
+const remember = <T>(map: Map<string, T>, key: string, value: T) => {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > MAXIMUM_TRACKED_ATTEMPTS)
+    map.delete(map.keys().next().value!);
+};
+
+/**
+ * Reads signed attempts within a bound of `perPass` L1 reads a pass, the
+ * least recently read first. A retirement past release finality never
+ * changes, so it is kept and never read again: reservations with more
+ * attempts than one pass reads still settle over later passes.
+ */
+const createAttemptReads = (
   observe: WatcherOrphanedReservationObserver,
-  attempts: readonly Attempt[],
-): Promise<Reading> => {
-  let handOver = true;
-  let detail = "";
-  const retirements: {
-    transactionHash: string;
-    retirement: SignedWorkflowTransactionRetirement;
-  }[] = [];
-  for (const attempt of attempts) {
+  perPass: number,
+) => {
+  const finals = new Map<string, SignedWorkflowTransactionRetirement>();
+  const lastRead = new Map<string, number>();
+  const readOne = async (attempt: Attempt): Promise<AttemptRead> => {
+    let status: string | undefined;
     const read = await readSignedAttempt(
-      { observeSignedTransaction: observe },
+      {
+        observeSignedTransaction: async (signed) => {
+          const observed = await observe(signed);
+          status = observed.status;
+          return observed;
+        },
+      },
       attempt,
     );
     const retirement =
       read.kind === "pending" || read.kind === "not_found"
         ? read.retirement
         : undefined;
-    if (retirement !== undefined)
-      retirements.push({
-        transactionHash: attempt.transactionHash,
-        retirement,
-      });
+    if (retirement !== undefined) {
+      remember(finals, attempt.transactionHash, retirement);
+      return { final: retirement };
+    }
     // Landed within k is adopted from the replacement, and absent at the
-    // tip is excluded by it. A landing past k is final and is never
-    // adopted: the reservation settles once its other attempts retire.
-    if (read.kind === "confirmed" || read.kind === "not_found") continue;
-    handOver = false;
-    detail =
-      retirement === undefined
-        ? `attempt ${attempt.transactionHash} reads ${read.kind}${"reason" in read ? `: ${read.reason}` : ""}`
-        : `attempt ${attempt.transactionHash} landed past release finality`;
-  }
-  return {
-    handOver,
-    retirements: retirements.length === attempts.length ? retirements : null,
-    detail:
-      detail === ""
-        ? "its attempts are not retired past release finality yet"
-        : detail,
+    // tip is excluded by it. Dropped from the mempool with every input
+    // unspent, it is excluded the same way: the replacement must spend one
+    // of its inputs, and it is adopted should it land after all.
+    if (
+      read.kind === "confirmed" ||
+      read.kind === "not_found" ||
+      (read.kind === "unknown" && status === "rebroadcast")
+    )
+      return { handOver: true, detail: "" };
+    return {
+      handOver: false,
+      detail: `attempt ${attempt.transactionHash} reads ${read.kind}${"reason" in read ? `: ${read.reason}` : ""}`,
+    };
+  };
+  /** One pass over the attempts of each group, a reading for each. */
+  return async (
+    groups: readonly (readonly Attempt[])[],
+    at: number,
+  ): Promise<readonly Reading[]> => {
+    const open = [
+      ...new Map(
+        groups
+          .flat()
+          .filter(({ transactionHash }) => !finals.has(transactionHash))
+          .map((attempt) => [attempt.transactionHash, attempt]),
+      ).values(),
+    ];
+    const due = open
+      .map((attempt, order) => ({
+        attempt,
+        order,
+        readAt: lastRead.get(attempt.transactionHash) ?? -1,
+      }))
+      .sort((left, right) =>
+        left.readAt === right.readAt
+          ? left.order - right.order
+          : left.readAt - right.readAt,
+      )
+      .slice(0, perPass);
+    const reads = new Map<string, AttemptRead>();
+    for (const { attempt } of due) {
+      remember(lastRead, attempt.transactionHash, at);
+      reads.set(attempt.transactionHash, await readOne(attempt));
+    }
+    return groups.map((attempts) => {
+      let complete = true;
+      let touched = false;
+      let handOver = true;
+      let detail = "";
+      const retirements: Retired[] = [];
+      for (const { transactionHash } of attempts) {
+        const final = finals.get(transactionHash);
+        const read: AttemptRead | undefined =
+          final === undefined ? reads.get(transactionHash) : { final };
+        if (read === undefined) {
+          complete = false;
+          continue;
+        }
+        if (final === undefined) touched = true;
+        if (read.final !== undefined) {
+          retirements.push({ transactionHash, retirement: read.final });
+          // A landing past k is final and is never adopted: the
+          // reservation settles once its other attempts retire.
+          if (read.final.reason !== "included") continue;
+          handOver = false;
+          detail = `attempt ${transactionHash} landed past release finality`;
+          continue;
+        }
+        if (read.handOver) continue;
+        handOver = false;
+        detail = read.detail;
+      }
+      return {
+        complete,
+        touched,
+        handOver: complete && handOver,
+        retirements:
+          retirements.length === attempts.length ? retirements : null,
+        detail: !complete
+          ? "awaiting its next L1 read: it has more unsettled attempts than one pass reads"
+          : detail === ""
+            ? "its attempts are not retired past release finality yet"
+            : detail,
+      };
+    });
   };
 };
+
+/** L1 reads of signed attempts one sweep or one target resolution makes. */
+export const WATCHER_ORPHANED_RESERVATION_READS_PER_PASS = 16;
 
 /**
  * Settles reservations whose workflow is gone from their own recorded signed
  * bytes. Each read is bounded: a reservation or target is read at most once
- * per backoff step, and a sweep reads at most `perPass` reservations.
+ * per backoff step, and a sweep or a target resolution makes at most
+ * `perPass` L1 reads of attempts.
  */
 export const createWatcherOrphanedReservations = (input: {
   readonly store: WatcherProverFundingReservationStore;
@@ -147,9 +248,9 @@ export const createWatcherOrphanedReservations = (input: {
   readonly now?: () => number;
   readonly perPass?: number;
 }) => {
-  const schedule = createSupersededAttemptReadSchedule(
-    input.perPass === undefined ? {} : { perPass: input.perPass },
-  );
+  const perPass = input.perPass ?? WATCHER_ORPHANED_RESERVATION_READS_PER_PASS;
+  const schedule = createSupersededAttemptReadSchedule({ perPass });
+  const readPass = createAttemptReads(input.observe, perPass);
   const now = input.now ?? Date.now;
   const describe = (
     record: WatcherProverFundingReservationRecord,
@@ -189,11 +290,16 @@ export const createWatcherOrphanedReservations = (input: {
       const held: string[] = [];
       const handed: WatcherProverFundingReservationRecord[] = [];
       const settled: WatcherProverFundingReservationRecord[] = [];
-      for (const record of orphans) {
-        const reading = await readAttempts(
-          input.observe,
-          await unretiredAttempts(input.store, record),
-        );
+      const readings = await readPass(
+        await Promise.all(
+          orphans.map(
+            async (record) => await unretiredAttempts(input.store, record),
+          ),
+        ),
+        at,
+      );
+      for (const [index, record] of orphans.entries()) {
+        const reading = readings[index]!;
         // Nothing of it can land or roll back any more: it settles alone.
         if (reading.retirements !== null) {
           if (
@@ -231,27 +337,39 @@ export const createWatcherOrphanedReservations = (input: {
     },
     /**
      * Settles orphans the sweep found once every attempt is retired past
-     * release finality, reading at most `perPass` of them. Returns a hold
+     * release finality, making at most `perPass` L1 reads. Returns a hold
      * for each one left.
      */
     sweep: async (
       orphans: readonly WatcherProverFundingReservationRecord[],
     ): Promise<readonly WatcherDecisionHold[]> => {
       const at = now();
-      const due = new Set(
+      const dueIds = new Set(
         schedule.due(
           orphans.map(({ reservationId }) => reservationId),
           at,
         ),
       );
+      const due = orphans.filter(({ reservationId }) =>
+        dueIds.has(reservationId),
+      );
+      const readings = new Map(
+        (
+          await readPass(
+            await Promise.all(
+              due.map(
+                async (record) => await unretiredAttempts(input.store, record),
+              ),
+            ),
+            at,
+          )
+        ).map((reading, index) => [due[index]!.reservationId, reading]),
+      );
       const holds: WatcherDecisionHold[] = [];
       for (const record of orphans) {
         let detail = "awaiting its next L1 read";
-        if (due.has(record.reservationId)) {
-          const reading = await readAttempts(
-            input.observe,
-            await unretiredAttempts(input.store, record),
-          );
+        const reading = readings.get(record.reservationId);
+        if (reading !== undefined) {
           if (
             reading.retirements !== null &&
             (await input.store.settleOrphanedReservation?.({
@@ -262,7 +380,9 @@ export const createWatcherOrphanedReservations = (input: {
             schedule.forget(record.reservationId);
             continue;
           }
-          schedule.unresolved(record.reservationId, at);
+          // One left unread for want of reads stays first in line.
+          if (reading.touched || reading.complete)
+            schedule.unresolved(record.reservationId, at);
           detail = reading.detail;
         }
         holds.push(
