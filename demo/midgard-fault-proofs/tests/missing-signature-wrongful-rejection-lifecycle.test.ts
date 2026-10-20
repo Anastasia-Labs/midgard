@@ -25,7 +25,7 @@ import {
   journalJsonDigest,
 } from "../src/workflow/journal.js";
 import {
-  createMissingSignatureForcedFieldPrerequisite,
+  createMissingSignatureFieldPrerequisite,
   unsafeCreateMissingSignatureTransactionPortForTest,
 } from "../src/workflow/missing-signature.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
@@ -272,7 +272,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
         }),
       );
       const makePort = () =>
-        createMissingSignatureForcedFieldPrerequisite({
+        createMissingSignatureFieldPrerequisite({
           lucid: s.harness.proverLucid,
           network,
           signer: s.harness.proverSigner,

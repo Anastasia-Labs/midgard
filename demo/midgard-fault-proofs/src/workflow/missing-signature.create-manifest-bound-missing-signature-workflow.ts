@@ -37,7 +37,7 @@ import {
   type ManifestBoundMissingSignatureWorkflow,
   type ManifestBoundMissingSignatureWorkflowConfig,
 } from "./missing-signature.create-bound-transaction-port.js";
-import { createMissingSignatureForcedFieldPrerequisite } from "./missing-signature.create-missing-signature-forced-field-prerequisite.js";
+import { createMissingSignatureFieldPrerequisite } from "./missing-signature.create-missing-signature-field-prerequisite.js";
 import {
   createMissingSignatureWorkflowAdapter,
   type MissingSignatureTransactionPort,
@@ -232,7 +232,7 @@ export const createManifestBoundMissingSignatureWorkflow = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createMissingSignatureForcedFieldPrerequisite({
+  const prerequisite = createMissingSignatureFieldPrerequisite({
     lucid: config.lucid,
     network: binding.network,
     signer: config.signer,

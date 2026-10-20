@@ -28,6 +28,7 @@ import {
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -96,7 +97,10 @@ export const submitMissingSignatureStep04 = async ({
   readonly witnessSetCompact: NativeTxWitnessSetCompact;
   /** Force §8 tier-2 carriage publication (testing knob). */
   readonly publishCarriage?: boolean;
-  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  /**
+   * Pre-minted §8.6 certificate when the planner selects tier 3; otherwise
+   * the one `ownOutputs` claims.
+   */
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-04 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
@@ -173,8 +177,18 @@ export const submitMissingSignatureStep04 = async ({
     publisherAddress: signer.address,
     label: `${STEP_LABEL} address-witnesses`,
   });
+  // A configured certificate, or the one this workflow's own journal claims.
+  const certificate =
+    certificateUtxo ??
+    (await resolveFaultProofFieldPreimageCertificate({
+      ownOutputs,
+      lucid,
+      network: lucid.config().network!,
+      planned,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    }));
   const fieldReferenceInputs = [
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...(certificate === undefined ? [] : [certificate]),
     ...carriageUtxos,
   ];
   const computationThreadBurnCarriage = witnessMintingPolicyCarriage({

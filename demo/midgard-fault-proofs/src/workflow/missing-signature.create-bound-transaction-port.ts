@@ -32,7 +32,6 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
-import { createOwnOutputJournal } from "./own-outputs.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -47,9 +46,6 @@ export const createBoundTransactionPort = ({
   readonly config: BoundMissingSignatureTransactionsConfig;
   readonly builders: MissingSignatureBuilderSet;
 }): MissingSignatureTransactionPort => {
-  // Carriage the accepted-path steps publish inside their own capture; the
-  // forced path reads the carriage its prerequisite journaled instead.
-  const ownOutputs = createOwnOutputJournal();
   return {
     portVersion: MISSING_SIGNATURE_TRANSACTION_PORT,
     category: "missingSignature",
@@ -76,6 +72,11 @@ export const createBoundTransactionPort = ({
         );
       }
       const input = requiredAction(action);
+      // Every step reads the field carriage its prerequisite journaled.
+      const ownOutputs = workflowFieldCarriageOwnOutputs({
+        category: "missingSignature",
+        entries,
+      });
       if (input.stage === "init") {
         const transaction = await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
@@ -123,10 +124,7 @@ export const createBoundTransactionPort = ({
         const transaction = await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingSignatureForcedAction({
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category: "missingSignature",
-                entries,
-              }),
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
