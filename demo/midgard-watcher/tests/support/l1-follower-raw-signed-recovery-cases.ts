@@ -33,8 +33,8 @@ import {
 
 const REASON = {
   included: "Exact recorded transaction body is on the canonical chain",
-  otherWitnesses:
-    "A transaction with the recorded id but other witness bytes is on the canonical chain",
+  includedOtherWitnesses:
+    "Exact recorded transaction body is on the canonical chain with other witness bytes",
   expired:
     "Recorded TTL passed beyond the canonical recovery horizon and the exact transaction is absent",
   expiredAtTip:
@@ -122,25 +122,27 @@ export const describeSignedRecovery = (): void => {
       );
     });
 
-    it("included only with the exact signed bytes; other witnesses are unknown", async () => {
+    it("included by its exact body; other witness bytes are the same inclusion, told apart by the reason", async () => {
       const s = await setup();
       const z = s.intent();
       const { point } = await s.forward([z]);
-      expect(await s.observe(z)).toEqual({
-        ...signedOf(z),
+      const included = {
         status: "included",
-        reason: REASON.included,
         inclusionPoint: point,
         canonicalPoint: point,
         releaseFinalPoint: point,
         inputs: [],
+      };
+      expect(await s.observe(z)).toEqual({
+        ...signedOf(z),
+        ...included,
+        reason: REASON.included,
       });
-      const other = await s.observe(z, FOREIGN_WITNESS);
-      expect(other).toMatchObject({
-        status: "unknown",
-        reason: REASON.otherWitnesses,
+      expect(await s.observe(z, FOREIGN_WITNESS)).toEqual({
+        ...signedOf(z, FOREIGN_WITNESS),
+        ...included,
+        reason: REASON.includedOtherWitnesses,
       });
-      expect(other.inclusionPoint).toBeUndefined();
     });
 
     it("a phase-2-invalid landing is not an inclusion: its collateral spend invalidates", async () => {

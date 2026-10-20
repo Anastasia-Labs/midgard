@@ -103,8 +103,10 @@ const signedFacts = (input: SignedInput): SignedFacts => {
 
 const REASONS = {
   included: "Exact recorded transaction body is on the canonical chain",
-  otherWitnesses:
-    "A transaction with the recorded id but other witness bytes is on the canonical chain",
+  includedOtherWitnesses:
+    "Exact recorded transaction body is on the canonical chain with other witness bytes",
+  otherBody:
+    "A transaction with the recorded id but other body bytes is on the canonical chain",
   expired:
     "Recorded TTL passed beyond the canonical recovery horizon and the exact transaction is absent",
   expiredAtTip:
@@ -260,16 +262,20 @@ const observeOnce = async (
   // spend shows below as an invalidating input.
   if (stored !== null && stored.isValid) {
     atView(view, stored.blockSlot);
-    if (
-      !stored.bodyCbor.equals(signed.body) ||
-      !stored.witnessCbor.equals(signed.witnessSet)
-    )
-      return finish("unknown", REASONS.otherWitnesses);
+    if (!stored.bodyCbor.equals(signed.body))
+      return finish("unknown", REASONS.otherBody);
     const block = await store.blockAtOrBeforeSlot(stored.blockSlot);
     if (block === null || block.slot !== stored.blockSlot)
       throw chainMoved("the including block left the stored chain");
     inclusionPoint = rawPointOf(block);
-    return finish("included", REASONS.included);
+    // The body fixes every ledger effect, and the stored tx passed phase 2:
+    // other witness bytes are the same inclusion.
+    return finish(
+      "included",
+      stored.witnessCbor.equals(signed.witnessSet)
+        ? REASONS.included
+        : REASONS.includedOtherWitnesses,
+    );
   }
   const tipSlot = BigInt(view.point.slot);
   if (signed.expiresAtSlot !== undefined && tipSlot >= signed.expiresAtSlot)
