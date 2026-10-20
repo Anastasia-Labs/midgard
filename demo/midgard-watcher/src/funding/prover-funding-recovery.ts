@@ -73,12 +73,16 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     authority.headerHash,
   );
   // Reconciliation never creates a workflow journal, so it cannot resume one.
-  const withoutJournal = async () => {
+  const withoutJournal = async (history = false) => {
     if (authority.authority === "reconciliation")
       throw new Error(
         "reconciliation funding requires its existing durable workflow",
       );
-    await resumeWatcherProverFundingWithoutJournal(input, authority);
+    if (
+      !(await resumeWatcherProverFundingWithoutJournal(input, authority)) &&
+      history
+    )
+      throw new Error("empty workflow directory has durable funding history");
   };
   let names;
   try {
@@ -99,13 +103,14 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       "workflow recovery target contains an invalid journal entry",
     );
   const candidates: typeof names = [];
+  let history = false;
   for (const candidate of names) {
     const candidateDirectory = join(directory, candidate.name);
     if ((await realpath(candidateDirectory)) !== candidateDirectory)
       throw new Error("workflow recovery execution traverses a symlink");
-    // append creates its directory before validating the first event. Only a
-    // literally empty directory is pre-start debris: fsynced temporary files
-    // and every other nonempty directory still require strict journal recovery.
+    // append creates its directory before validating the first event. A literally
+    // empty one is pre-start debris, or with durable funding history a journal
+    // lost before its first record. Any other needs strict journal recovery.
     if ((await readdir(candidateDirectory)).length !== 0) {
       candidates.push(candidate);
       continue;
@@ -135,15 +140,17 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
           reservationId: record.reservationId,
         }))
       )
-        throw new Error("empty workflow directory has durable funding history");
+        history = true;
     }
   }
+  if (history && candidates.length !== 0)
+    throw new Error("empty workflow directory has durable funding history");
   if (candidates.length > 1)
     throw new Error(
       "workflow recovery has multiple candidate executions for one target",
     );
   const candidate = candidates[0];
-  if (candidate === undefined) return await withoutJournal();
+  if (candidate === undefined) return await withoutJournal(history);
   const entries = await new DirectoryFraudProofWorkflowJournalStore(
     directory,
   ).load(candidate.name);

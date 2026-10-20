@@ -1,4 +1,5 @@
-import { rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 
 import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -154,6 +155,43 @@ describe("an objective whose workflow journal was lost proceeds", () => {
       expect(fixture.adapter.submit).not.toHaveBeenCalled();
     },
   );
+
+  it("resumes the in-flight attempt after a crash between creating the journal directory and its first record", async () => {
+    const { fixture, step } = await stepInFlight();
+    await rm(fixture.journalDirectory, { recursive: true, force: true });
+    const stopped = await restart(fixture, true);
+    // The process stops once the journal directory exists, before any record.
+    const directory = join(
+      fixture.journalDirectory,
+      fixture.initial.workflowId,
+    );
+    const crash = new Error("crash before the first journal record");
+    vi.spyOn(stopped, "append").mockImplementation(async () => {
+      await mkdir(directory, { recursive: true });
+      throw crash;
+    });
+    await expect(fixture.run(stopped)).rejects.toBe(crash);
+    expect(await readdir(directory)).toEqual([]);
+    const journal = await restart(fixture, true);
+    expect(await fixture.run(journal)).toMatchObject({
+      kind: "pending",
+      workflowId: fixture.initial.workflowId,
+    });
+    expect(
+      (await journal.load(fixture.initial.workflowId))
+        .slice(2)
+        .map(({ event }) => [event.kind, "txHash" in event && event.txHash]),
+    ).toEqual(
+      ["preflight_passed", "submission_intent", "reconciled", "confirmed"].map(
+        (kind) => [kind, step.transactionHash],
+      ),
+    );
+    const records = await fixture.records();
+    expect(records).toHaveLength(1);
+    expect(records[0]!.pendingTransition).toBeNull();
+    expect(fixture.adapter.preflight).not.toHaveBeenCalled();
+    expect(fixture.adapter.submit).not.toHaveBeenCalled();
+  });
 
   it.each(
     (["before", "after"] as const).flatMap((boundary) =>
