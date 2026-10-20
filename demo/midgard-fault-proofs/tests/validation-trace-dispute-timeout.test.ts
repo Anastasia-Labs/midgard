@@ -101,6 +101,8 @@ let operator: Defender;
 let second: Defender;
 let traceA: ScriptedTrace;
 let traceB: ScriptedTrace;
+/** The silent defender's thread, defended before any case runs. */
+let threadA: string;
 /** The silent defender's thread, and the revealing defender's. */
 let unitA: string;
 let unitB: string;
@@ -209,16 +211,16 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     };
     traceA = scriptedTrace(material, Math.floor(stepCount / 3));
     traceB = scriptedTrace(material, Math.floor((2 * stepCount) / 3));
-  }, 1_800_000);
-
-  it("holds while its provider has not indexed a defended thread, then reports the thread as awaiting its defender until the defender's clock ends", async () => {
-    const threadA = await defendScripted(
+    threadA = await defendScripted(
       scene,
       (await at(caseOutRef))!,
       operator,
       traceA,
     );
     unitA = threadUnitOf(scene, (await at(threadA))!);
+  }, 1_800_000);
+
+  it("holds while its provider has not indexed a defended thread, then reports the thread as awaiting its defender until the defender's clock ends", async () => {
     // A provider that has not yet indexed the thread: the runner holds on
     // the count it cannot match, moving nothing, and plays once it can.
     const lucid = scene.h.proverLucid;
