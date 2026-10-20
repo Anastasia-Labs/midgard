@@ -179,6 +179,29 @@ export type WatcherProverFundingReservationStore = Readonly<{
       retirement: unknown;
     }>[];
   }): Promise<boolean>;
+  /** The one signed cancel of an orphan's funding, or null. */
+  readOrphanCancel?(input: {
+    readonly reservationId: string;
+  }): Promise<Readonly<{
+    transactionHash: string;
+    signedTransactionCborHex: string;
+    inputs: readonly string[];
+  }> | null>;
+  /** Records `orphan`'s cancel before it is ever submitted: at most one at
+   * a time, spending only funding the orphan leases. A cancelled orphan is
+   * never handed over, and settles only once the cancel retires too.
+   * Revision-checked; returns the orphan's next record. */
+  recordOrphanCancel?(input: {
+    readonly orphan: WatcherProverFundingReservationRecord;
+    readonly signedTransactionCborHex: string;
+  }): Promise<WatcherProverFundingReservationRecord>;
+  /** Removes `orphan`'s cancel once `retirement` shows it expired or was
+   * invalidated past release finality. Revision-checked; returns the
+   * orphan's next record. */
+  dropRetiredOrphanCancel?(input: {
+    readonly orphan: WatcherProverFundingReservationRecord;
+    readonly retirement: unknown;
+  }): Promise<WatcherProverFundingReservationRecord>;
   reserve(
     plan: WatcherProverFundingReservationPlan,
     expectedIdleRevision?: string,

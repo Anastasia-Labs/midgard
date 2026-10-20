@@ -23,6 +23,10 @@ import {
   nextRecord,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import {
+  decodeProverFundingOrphanCancel,
+  type ProverFundingCancelRows,
+} from "./sqlite-prover-funding-reservation-store.orphan-cancel.js";
+import {
   type LineageRow,
   parseLineageRow,
   type SubmissionHandoff,
@@ -58,6 +62,7 @@ export const createProverFundingReclaimOperations = (deps: {
   readonly recordedSubmissions: (reservationId: string) => SubmissionHandoff[];
   readonly abandonmentsOf: (reservationId: string) => readonly Abandoned[];
   readonly hasSignedHistory: (reservationId: string) => boolean;
+  readonly cancels: ProverFundingCancelRows;
   readonly persistHandoff: (
     record: WatcherProverFundingReservationRecord,
     kind: "submission",
@@ -70,6 +75,9 @@ export const createProverFundingReclaimOperations = (deps: {
   | "dropSpentUnused"
   | "handOverOrphanedAttempts"
   | "settleOrphanedReservation"
+  | "readOrphanCancel"
+  | "recordOrphanCancel"
+  | "dropRetiredOrphanCancel"
 > => {
   const { database } = deps;
   const insertAcknowledgedAbandonment = database.prepare(`
@@ -89,7 +97,7 @@ export const createProverFundingReclaimOperations = (deps: {
     WHERE reservation_id = ? AND phase = 'confirmed'
   `);
   const deleteRows = (reservationId: string) => {
-    for (const table of ["handoff", "abandonment", "lineage"])
+    for (const table of ["handoff", "abandonment", "lineage", "cancel"])
       database
         .prepare(
           `DELETE FROM watcher_prover_funding_${table}_v1 WHERE reservation_id = ?`,
@@ -120,6 +128,13 @@ export const createProverFundingReclaimOperations = (deps: {
         conflictCode: null,
       }),
     );
+  };
+  /** The orphan's next revision, with its leases rebuilt. */
+  const revise = (orphan: WatcherProverFundingReservationRecord) => {
+    const next = nextRecord({ current: orphan });
+    deps.writeRecord(orphan.recordDigest, next);
+    deps.rebuildLeases();
+    return next;
   };
   const clearUnused = async (
     expected: WatcherProverFundingReservationRecord,
@@ -195,8 +210,10 @@ export const createProverFundingReclaimOperations = (deps: {
           const abandoned =
             orphan === null ? [] : deps.abandonmentsOf(orphan.reservationId);
           // Its submissions make it signed, so it is not `current`.
+          // A cancelled orphan's funding is the cancel's, never a replacement's.
           if (
             orphan === null ||
+            deps.cancels.has(orphan.reservationId) ||
             orphan.deploymentFingerprint !== current.deploymentFingerprint ||
             submissions.length === 0 ||
             [...submissions, ...abandoned].some(
@@ -317,6 +334,8 @@ export const createProverFundingReclaimOperations = (deps: {
             ? []
             : [{ transition: orphan.pendingTransition }]),
         ].map(({ transition }) => transition.transactionHash);
+        const cancel = deps.cancels.read(orphan.reservationId);
+        if (cancel !== null) attempts.push(cancel.transactionHash);
         // Only an attempt retired past k can never land again or roll back.
         if (
           (attempts.length === 0 &&
@@ -328,6 +347,52 @@ export const createProverFundingReclaimOperations = (deps: {
         settle(orphan);
         deps.rebuildLeases();
         return true;
+      }, null),
+    readOrphanCancel: async ({ reservationId }) =>
+      deps.cancels.read(reservationId),
+    recordOrphanCancel: async ({
+      orphan: snapshot,
+      signedTransactionCborHex,
+    }) => {
+      const cancel = decodeProverFundingOrphanCancel(signedTransactionCborHex);
+      return deps.transaction(() => {
+        const orphan = currentOrphan(snapshot);
+        const funding = new Set(
+          orphan?.activeInputs
+            .filter(({ role }) => role === "funding")
+            .map(({ outRef }) => outRef),
+        );
+        // One live cancel at a time, of signed funding, spending nothing
+        // the orphan does not lease as funding.
+        if (
+          orphan === null ||
+          deps.cancels.has(orphan.reservationId) ||
+          !deps.hasSignedHistory(orphan.reservationId) ||
+          cancel.inputs.length === 0 ||
+          cancel.inputs.some((outRef) => !funding.has(outRef))
+        )
+          throw new Error("prover funding cancel mismatch");
+        deps.cancels.insert(orphan.reservationId, cancel);
+        return revise(orphan);
+      }, null);
+    },
+    dropRetiredOrphanCancel: async ({ orphan: snapshot, retirement }) =>
+      deps.transaction(() => {
+        const orphan = currentOrphan(snapshot);
+        const cancel =
+          orphan === null ? null : deps.cancels.read(orphan.reservationId);
+        // A landed cancel is never dropped: the orphan settles with it.
+        if (
+          orphan === null ||
+          cancel === null ||
+          parseSignedWorkflowTransactionRetirement(
+            retirement,
+            cancel.transactionHash,
+          ).reason === "included"
+        )
+          throw new Error("prover funding cancel mismatch");
+        deps.cancels.remove(orphan.reservationId);
+        return revise(orphan);
       }, null),
   });
 };

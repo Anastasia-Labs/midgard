@@ -712,9 +712,21 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   inputs unspent, or one of them outside the follower's history, such as a
   wallet coin from before its origin), the objective's next fresh run takes
   them over; once each is final, the reservation is released. It does not
-  clear while one is in the mempool; one without expiry that left the
-  mempool clears only through a fresh run. Report it if it outlasts the
-  transactions' expiry plus the recovery depth.
+  clear while one is in the mempool. One without expiry that left the
+  mempool clears through a fresh run while its target can still run; once
+  the target has left the finalized queue (or its workflow completed),
+  three agreeing reads in a row make the watcher cancel it: it signs one
+  transaction spending that funding back to the prover wallet, valid for
+  an hour, records it, then submits it (a restart submits the recorded
+  bytes again, never a new one). The detail then reads "a cancel of its
+  funding is in flight", and no fresh run takes the reservation over. It
+  clears once the cancel and every transaction are final: the cancel
+  landed, or the old transaction landed first and the cancel was refused.
+  A cancel that expired unlanded past finality is dropped ("its cancel
+  expired unlanded") and a new one may follow; only one is live at a time.
+  "its funding cancel failed" means signing or recording it failed; it is
+  retried on the next read. Report it if it outlasts the transactions'
+  expiry plus the recovery depth.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands

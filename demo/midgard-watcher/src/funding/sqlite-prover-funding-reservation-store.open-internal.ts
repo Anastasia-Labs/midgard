@@ -39,6 +39,7 @@ import {
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import { projectRetainedProverFundingLeases } from "./sqlite-prover-funding-reservation-store.lease-claims.js";
+import { createProverFundingCancelRows } from "./sqlite-prover-funding-reservation-store.orphan-cancel.js";
 import { createProverFundingReclaimOperations } from "./sqlite-prover-funding-reservation-store.orphaned-reservation.js";
 import {
   type CompletionHandoff,
@@ -807,9 +808,10 @@ export const openInternal = async (
     }
   };
 
+  const cancels = createProverFundingCancelRows(database);
   const hasSignedHistory = (reservationId: string): boolean =>
     (selectSignedHistory.get(reservationId) as { present: unknown }).present ===
-    1;
+      1 || cancels.has(reservationId);
 
   transaction(rebuildLeases, null);
 
@@ -1062,6 +1064,7 @@ export const openInternal = async (
       recordedSubmissions,
       abandonmentsOf,
       hasSignedHistory,
+      cancels,
       persistHandoff,
     }),
     reserve: async (plan, expectedIdleRevision) => {

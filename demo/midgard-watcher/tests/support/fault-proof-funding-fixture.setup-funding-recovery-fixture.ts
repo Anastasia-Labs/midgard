@@ -84,6 +84,7 @@ export const setupFundingRecoveryFixture = async (
   headerEndTime = 20n,
   protocolMinFeeCoefficient = 44,
   protocolMaxCollateralInputs = 3,
+  attemptTtl: bigint | null = 100n,
 ) => {
   const journalRoot = await createFundingRecoveryDirectory();
   directories.push(journalRoot);
@@ -413,7 +414,7 @@ export const setupFundingRecoveryFixture = async (
     ),
   );
   const body = CML.TransactionBody.new(inputs, outputs, 1_000_000n);
-  body.set_ttl(100n);
+  if (attemptTtl !== null) body.set_ttl(attemptTtl);
   if (withCollateral) {
     const collateral = CML.TransactionInputList.new();
     for (const reserved of plan.inputs.filter(

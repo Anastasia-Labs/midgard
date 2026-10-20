@@ -44,6 +44,10 @@ import {
   releaseUnusedWatcherProverFundingReservations,
 } from "./prover-funding-recovery.js";
 import {
+  watcherOrphanCancelConfig,
+  type WatcherOrphanCancelInput,
+} from "./prover-funding-recovery.orphan-cancel.js";
+import {
   createWatcherOrphanedReservations,
   type WatcherOrphanedReservationObserver,
 } from "./prover-funding-recovery.orphaned-reservation.js";
@@ -116,6 +120,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly now?: () => number;
   /** Where an orphaned reservation's failure alert is raised and cleared. */
   readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
+  /** Cancels orphaned funding no attempt can release; never without it. */
+  readonly orphanCancel?: WatcherOrphanCancelInput;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -139,9 +145,9 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     input.observeSignedTransaction === undefined
       ? undefined
       : createWatcherOrphanedReservations({
-          store: input.store,
+          ...input,
           observe: input.observeSignedTransaction,
-          ...(input.now === undefined ? {} : { now: input.now }),
+          cancel: watcherOrphanCancelConfig(input),
         });
   // Reservations a run is bound to; no sweep beside it settles them.
   const live = new Set<string>();

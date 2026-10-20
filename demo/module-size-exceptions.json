@@ -1220,11 +1220,6 @@
     "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules."
   },
   {
-    "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 506,
-    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state."
-  },
-  {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
     "max": 967,
     "reason": "Retained concurrent challenge registrations share the imported hoisted mock fixture. Fixture setup and independent held workflow regression were extracted and verified separately; further division needs a fixture lifetime refactor."

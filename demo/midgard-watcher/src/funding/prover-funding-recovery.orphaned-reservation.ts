@@ -10,6 +10,12 @@ import {
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import { SIGNED_INPUT_HISTORY_UNKNOWN_REASONS } from "../l1-follower/fault-proof-l1-source.signed.js";
 import {
+  createWatcherOrphanCancels,
+  ORPHAN_CANCEL_IN_FLIGHT,
+  type OrphanAttemptState,
+  type WatcherOrphanCancelConfig,
+} from "./prover-funding-recovery.orphan-cancel.js";
+import {
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
   WatcherProverFundingUnavailableError,
@@ -39,7 +45,8 @@ type Attempt = Readonly<{
   signedTransactionCborHex: string;
 }>;
 
-/** Every signed attempt of the reservation that is not yet retired. */
+/** Every signed attempt of the reservation that is not yet retired, its
+ * cancel included. */
 const unretiredAttempts = async (
   store: WatcherProverFundingReservationStore,
   record: WatcherProverFundingReservationRecord,
@@ -70,6 +77,9 @@ const unretiredAttempts = async (
     add((saved as { transition: unknown }).transition);
   const pending = await store.readPendingTransition(reserved);
   if (pending !== null) add(pending);
+  const cancel = await store.readOrphanCancel?.(reserved);
+  if (cancel != null)
+    attempts.set(cancel.transactionHash, cancel.signedTransactionCborHex);
   return [...attempts]
     .filter(([transactionHash]) => !retired.has(transactionHash))
     .map(([transactionHash, signedTransactionCborHex]) => ({
@@ -95,13 +105,16 @@ type Reading = Readonly<{
   retirements: readonly Retired[] | null;
   /** Why it is held, when it cannot be handed over. */
   detail: string;
+  /** Each attempt read this pass or final already. */
+  states: ReadonlyMap<string, OrphanAttemptState>;
 }>;
 
 /** One attempt as a read left it: retired past release finality, or still
  * open, and then whether a replacement may take it over. */
 type AttemptRead =
   | Readonly<{ final: SignedWorkflowTransactionRetirement }>
-  | Readonly<{ final?: undefined; handOver: boolean; detail: string }>;
+  | (Exclude<OrphanAttemptState, { final: object }> &
+      Readonly<{ detail: string }>);
 
 /** Attempts tracked beyond the schedule's own entries. */
 const MAXIMUM_TRACKED_ATTEMPTS = 4096;
@@ -151,17 +164,18 @@ const createAttemptReads = (
     // unspent, or holding an input whose history the follower lacks, it is
     // excluded the same way: the replacement must spend one of its funding
     // inputs, and it is adopted should it land after all.
-    if (
-      read.kind === "confirmed" ||
-      read.kind === "not_found" ||
-      (read.kind === "unknown" &&
-        (observed?.status === "rebroadcast" ||
-          (observed?.status === "unknown" &&
-            SIGNED_INPUT_HISTORY_UNKNOWN_REASONS.has(observed.reason))))
-    )
-      return { handOver: true, detail: "" };
+    const landed = read.kind === "confirmed";
+    const stranded =
+      read.kind === "unknown" &&
+      (observed?.status === "rebroadcast" ||
+        (observed?.status === "unknown" &&
+          SIGNED_INPUT_HISTORY_UNKNOWN_REASONS.has(observed.reason)));
+    if (landed || stranded || read.kind === "not_found")
+      return { handOver: true, landed, stranded, detail: "" };
     return {
       handOver: false,
+      landed,
+      stranded,
       detail: `attempt ${attempt.transactionHash} reads ${read.kind}${"reason" in read ? `: ${read.reason}` : ""}`,
     };
   };
@@ -217,6 +231,7 @@ const createAttemptReads = (
       let handOver = true;
       let detail = "";
       const retirements: Retired[] = [];
+      const states = new Map<string, OrphanAttemptState>();
       for (const { transactionHash } of attempts) {
         const final = finals.get(transactionHash);
         const read: AttemptRead | undefined =
@@ -225,6 +240,7 @@ const createAttemptReads = (
           complete = false;
           continue;
         }
+        states.set(transactionHash, read);
         if (final === undefined) touched = true;
         if (read.final !== undefined) {
           retirements.push({ transactionHash, retirement: read.final });
@@ -250,6 +266,7 @@ const createAttemptReads = (
           : detail === ""
             ? "its attempts are not retired past release finality yet"
             : detail,
+        states,
       };
     });
   };
@@ -270,8 +287,22 @@ export const createWatcherOrphanedReservations = (input: {
   readonly observe: WatcherOrphanedReservationObserver;
   readonly now?: () => number;
   readonly perPass?: number;
+  /** Cancels funding no attempt can release by itself; never without it. */
+  readonly cancel?: WatcherOrphanCancelConfig;
 }) => {
   const perPass = input.perPass ?? WATCHER_ORPHANED_RESERVATION_READS_PER_PASS;
+  const { store } = input;
+  const cancels =
+    input.cancel === undefined ||
+    store.readOrphanCancel === undefined ||
+    store.recordOrphanCancel === undefined ||
+    store.dropRetiredOrphanCancel === undefined
+      ? undefined
+      : createWatcherOrphanCancels({
+          store,
+          config: input.cancel,
+          now: input.now ?? Date.now,
+        });
   const schedule = createSupersededAttemptReadSchedule({ perPass });
   const readPass = createAttemptReads(input.observe, perPass);
   const now = input.now ?? Date.now;
@@ -335,6 +366,11 @@ export const createWatcherOrphanedReservations = (input: {
           else held.push(describe(record, "the store refused to settle it"));
           continue;
         }
+        // A cancelled orphan's funding is the cancel's: never handed over.
+        if ((await input.store.readOrphanCancel?.(record)) != null) {
+          held.push(describe(record, ORPHAN_CANCEL_IN_FLIGHT));
+          continue;
+        }
         // A completed action is never handed over: it settles once final.
         const completed =
           (await input.store.readCompletionHandoff({
@@ -376,17 +412,14 @@ export const createWatcherOrphanedReservations = (input: {
       const due = orphans.filter(({ reservationId }) =>
         dueIds.has(reservationId),
       );
+      const attempts = await Promise.all(
+        due.map(async (record) => await unretiredAttempts(input.store, record)),
+      );
       const readings = new Map(
-        (
-          await readPass(
-            await Promise.all(
-              due.map(
-                async (record) => await unretiredAttempts(input.store, record),
-              ),
-            ),
-            at,
-          )
-        ).map((reading, index) => [due[index]!.reservationId, reading]),
+        (await readPass(attempts, at)).map((reading, index) => [
+          due[index]!.reservationId,
+          { ...reading, attempts: attempts[index]! },
+        ]),
       );
       const holds: WatcherDecisionHold[] = [];
       for (const record of orphans) {
@@ -407,6 +440,13 @@ export const createWatcherOrphanedReservations = (input: {
           if (reading.touched || reading.complete)
             schedule.unresolved(record.reservationId, at);
           detail = reading.detail;
+          try {
+            detail =
+              (await cancels?.step(record, reading.attempts, reading.states)) ??
+              detail;
+          } catch (error) {
+            detail = `its funding cancel failed: ${error instanceof Error ? error.message : String(error)}`;
+          }
         }
         holds.push(
           Object.freeze({
