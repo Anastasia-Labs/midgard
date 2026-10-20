@@ -207,10 +207,10 @@ export const createWatcherProverFundingAuthority = async (input: {
       actionId: string;
       signedTransactionCborHex: string;
     }) =>
-      (await input.store.readLandedSupersededAttempt?.({
+      await input.store.readLandedSupersededAttempt({
         ...candidate,
         reservationId: plan.reservationId,
-      })) ?? null,
+      }),
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,

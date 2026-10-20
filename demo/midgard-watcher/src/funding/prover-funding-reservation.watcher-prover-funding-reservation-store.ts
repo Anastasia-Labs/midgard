@@ -108,7 +108,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
   /** The superseded, unretired attempt of `actionId` that this signed
    * transaction or a reserved input descends from, or null: such an attempt
    * landed, and is adopted instead of a fresh attempt. */
-  readLandedSupersededAttempt?(input: {
+  readLandedSupersededAttempt(input: {
     readonly reservationId: string;
     readonly actionId: string;
     readonly signedTransactionCborHex: string;

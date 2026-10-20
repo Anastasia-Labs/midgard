@@ -123,7 +123,7 @@ export interface WorkflowFundingReservationPort {
   /** The superseded, unretired attempt of `actionId` that this signed
    * transaction or a reserved input descends from, or null. Such an attempt
    * landed, so it is the action's result and is adopted instead. */
-  readLandedSupersededAttempt?(input: {
+  readLandedSupersededAttempt(input: {
     readonly actionId: string;
     readonly signedTransactionCborHex: string;
   }): Promise<string | null>;

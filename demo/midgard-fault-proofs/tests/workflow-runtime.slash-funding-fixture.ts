@@ -234,6 +234,7 @@ export const slashFundingFixture = async (
       readPendingHandoff: async () => null,
       readCompletionHandoff: async () => null,
       readAbandonmentHandoff: async () => null,
+      readLandedSupersededAttempt: async () => null,
       acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: protocolAuthority,
       prepare,

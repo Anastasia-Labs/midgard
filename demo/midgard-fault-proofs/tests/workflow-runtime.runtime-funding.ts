@@ -211,6 +211,7 @@ export const runtimeFunding = async (
             },
       readCompletionHandoff: async () => null,
       readAbandonmentHandoff: async () => null,
+      readLandedSupersededAttempt: async () => null,
       acknowledgeAbandonment: async () => snapshot,
       resolveProtocolInputAuthority: async () => {
         throw new Error("test action has no protocol input");
