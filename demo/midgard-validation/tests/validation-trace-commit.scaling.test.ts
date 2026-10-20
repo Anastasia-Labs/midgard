@@ -30,6 +30,13 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
  * most 5% more bytes per step than the `n` commit. Wall-clock time at the cap
  * is measured outside the gate, by
  * `bench/validation-trace-commit.bench.test.ts`.
+ *
+ * This gate guards the commitment's per-step cost. It is about twenty times
+ * less sensitive to an executor regression than the verdict-mode gate in
+ * `cek-executor.adversarial-shapes.test.ts`: a commit hashes about 1.7 KB per
+ * step, nearly all of it state hashing, so an executor regression must add
+ * about 84 bytes per step to cross 5% here, against about 4 bytes there. The
+ * verdict-mode gate is the executor's guard.
  */
 
 const MAX_WORK_PER_STEP_GROWTH = 1.05;
