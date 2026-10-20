@@ -64,11 +64,6 @@ export const VALIDATION_CASE_FLOOR_LOVELACE =
   BigInt(limits.fraud_proof_output_lovelace) +
   BigInt(limits.max_dispute_move_fee_lovelace);
 
-/** `validation_dispute_v1.case_open_window_milliseconds`: M/2. */
-export const VALIDATION_CASE_OPEN_WINDOW_MS = Math.floor(
-  SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms / 2,
-);
-
 const blake2b256 = (hex: string): string =>
   Effect.runSync(hashHexWithBlake2b(hex, 32));
 

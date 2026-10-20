@@ -5,7 +5,10 @@
  * Rejected terminal for a transaction whose script passes, a forced
  * transaction (R-DESC), a state 0 the header does not derive (N5), a bond one
  * lovelace short, and a VerifySource after `block_end + M/2`. */
-import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
+import {
+  hashMidgardValidationMachineState,
+  MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
+} from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -222,7 +225,7 @@ describe("validation-trace dispute: Open and VerifySource", () => {
 
     const caseOpenDeadline =
       Number(scene.failing.evidence.header.endTime) +
-      Math.floor(SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms / 2);
+      MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS;
     h.emulator.awaitSlot(
       Math.ceil((caseOpenDeadline - h.emulator.now()) / 1_000) + 1,
     );
