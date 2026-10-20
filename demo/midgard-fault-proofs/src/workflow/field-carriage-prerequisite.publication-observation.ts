@@ -16,7 +16,10 @@ import { recordedCarriageRecovery } from "./field-carriage-prerequisite.recorded
 import { certifiedRequirement } from "./field-carriage-prerequisite.requirement-identity.js";
 import type { FraudProofWorkflowJournalEntry } from "./journal.js";
 import { latestSubmissionIntent } from "./orchestrator.fraud-proof-workflow-run-result.js";
-import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import type {
+  FraudProofWorkflowAction,
+  FraudProofWorkflowReconcileResult,
+} from "./orchestrator.js";
 import {
   inlineDatumCarriageSlot,
   type OwnOutputClaimed,
@@ -24,6 +27,7 @@ import {
   readOwnOutputs,
 } from "./own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "./raw-l1-publication-observation.js";
+import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 
 export type OwnCarriageObservation =
   | Readonly<{ kind: "confirmed"; utxo: UTxO }>
@@ -81,11 +85,20 @@ export const observeOwnCarriage = async ({
   return Object.freeze({ kind: "absent" });
 };
 
+/**
+ * Whether the transaction that created `oldOutRef` is on the chain although
+ * the output is gone. A confirmed action whose output disappears is
+ * reconciled again (`reobserved`), and the port's reconcile then confirms it
+ * only from the authenticated output or, with the output gone, from the
+ * signed-transaction observation of its inclusion past the recovery depth: a
+ * confirmation after the latest such re-reconciliation shows it. A
+ * certificate of ours that read the old output shows it too.
+ */
 export const publicationStillIncluded = async ({
   headerHash,
   oldOutRef,
   required,
-  transactionConfirmed,
+  entries,
   publications,
   network,
   ownOutputs,
@@ -93,19 +106,25 @@ export const publicationStillIncluded = async ({
   readonly headerHash: string;
   readonly oldOutRef: string;
   readonly required: Requirement;
-  readonly transactionConfirmed: (input: {
-    headerHash: string;
-    txHash: string;
-  }) => Promise<boolean>;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
   readonly publications: FraudProofAuthenticatedPublicationObserver;
   readonly network: Network;
   /** The workflow's own carriage claims (its certificates among them). */
   readonly ownOutputs: OwnOutputJournal;
 }): Promise<boolean> => {
-  if (
-    await transactionConfirmed({ headerHash, txHash: oldOutRef.split("#")[0]! })
-  )
-    return true;
+  const txHash = oldOutRef.split("#")[0]!;
+  let reconciledAgain: "no" | "awaiting" | "confirmed" = "no";
+  for (const { event } of entries) {
+    if (event.kind === "reobserved" && event.txHash === txHash)
+      reconciledAgain = "awaiting";
+    else if (
+      event.kind === "confirmed" &&
+      event.txHash === txHash &&
+      reconciledAgain === "awaiting"
+    )
+      reconciledAgain = "confirmed";
+  }
+  if (reconciledAgain === "confirmed") return true;
   if (required.planned.plan.tier !== "Certified") return false;
   const address = fieldPreimageCertificateAddress({
     network,
@@ -142,7 +161,6 @@ export const missingPublicationReplacement = async ({
   entries,
   address,
   publications,
-  transactionConfirmed,
   network,
   ownOutputs,
 }: {
@@ -152,10 +170,6 @@ export const missingPublicationReplacement = async ({
   readonly required: Requirement;
   readonly publicationIndex: number;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
-  readonly transactionConfirmed: (input: {
-    headerHash: string;
-    txHash: string;
-  }) => Promise<boolean>;
   readonly network: Network;
   readonly ownOutputs: OwnOutputJournal;
   readonly address: string;
@@ -196,7 +210,7 @@ export const missingPublicationReplacement = async ({
       headerHash,
       oldOutRef: recovered.outRef,
       required,
-      transactionConfirmed,
+      entries,
       publications,
       network,
       ownOutputs,
@@ -212,7 +226,7 @@ export const assertPublicationReplacement = async ({
   headerHash,
   replacementOutRef,
   required,
-  transactionConfirmed,
+  entries,
   publications,
   network,
   ownOutputs,
@@ -244,7 +258,7 @@ export const assertPublicationReplacement = async ({
       headerHash,
       oldOutRef: replacementOutRef,
       required,
-      transactionConfirmed,
+      entries,
       publications,
       network,
       ownOutputs,
@@ -253,4 +267,67 @@ export const assertPublicationReplacement = async ({
     throw new WorkflowActionChangedError(
       `${category} field publication replacement lost its canonical creation`,
     );
+};
+
+/**
+ * Reconciles a carriage transaction whose journaled output is not
+ * authenticated, from its signed bytes. A publication included past the
+ * recovery depth with its output gone was spent by something else: it is
+ * confirmed, so that the planner publishes a replacement recording the
+ * out-ref it replaces, rather than held pending, which would never end, or
+ * refused as a conflict. A certificate's transaction carries its unit, so
+ * its unit history shows it on the chain without its output.
+ */
+export const reconcileCarriageWithoutOutput = async ({
+  category,
+  kind,
+  headerHash,
+  txHash,
+  signedTransactionCborHex,
+  authorizeResubmission,
+  publications,
+  transactionConfirmed,
+}: {
+  readonly category: FraudProofCatalogueCategoryName;
+  readonly kind: "publication" | "certificate";
+  readonly headerHash: string;
+  readonly txHash: string;
+  readonly signedTransactionCborHex?: string;
+  readonly authorizeResubmission?: Parameters<
+    typeof reconcileSignedWorkflowTransaction
+  >[0]["authorizeResubmission"];
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+  readonly transactionConfirmed: (input: {
+    headerHash: string;
+    txHash: string;
+  }) => Promise<boolean>;
+}): Promise<FraudProofWorkflowReconcileResult> => {
+  if (
+    kind === "certificate" &&
+    (await transactionConfirmed({ headerHash, txHash }))
+  )
+    return {
+      kind: "conflict",
+      reason: `${category} field prerequisite transaction omitted its journaled output`,
+    };
+  // A known submitted hash can be absent until the release-final cursor
+  // catches up. Keep its journaled output and funding reservation pending.
+  if (
+    signedTransactionCborHex === undefined ||
+    publications.observeSignedTransaction === undefined
+  )
+    return { kind: "pending", txHash };
+  const reconciled = await reconcileSignedWorkflowTransaction({
+    transactionHash: txHash,
+    signedTransactionCborHex,
+    observe: publications.observeSignedTransaction,
+    rebroadcast: publications.rebroadcastSignedTransaction,
+    authorizeResubmission,
+  });
+  // Pending with a retirement is inclusion past the recovery depth.
+  return kind === "publication" &&
+    reconciled.kind === "pending" &&
+    reconciled.retirement !== undefined
+    ? { kind: "confirmed", txHash }
+    : reconciled;
 };

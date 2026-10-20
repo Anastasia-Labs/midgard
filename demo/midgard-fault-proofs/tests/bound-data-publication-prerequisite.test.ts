@@ -200,7 +200,9 @@ describe("bound typed publication prerequisite", () => {
           .complete({ localUPLCEval: true });
         await (await unsigned.sign.withWallet().complete()).submit();
         emulator.awaitBlock();
-        expect((await reconcile()).kind).toBe("conflict");
+        // Its transaction stays on chain without the output: never a conflict,
+        // so the planner can publish it again.
+        expect((await reconcile()).kind).toBe("pending");
         expect((await inspect()).kind).toBe("required");
       }
     }
@@ -343,7 +345,7 @@ describe("bound typed publication prerequisite", () => {
               durableRecovery,
             })
           ).kind,
-        ).toBe("conflict");
+        ).toBe("pending");
       }
     }
     expect(await chainUtxosAt(address)).toHaveLength(2);

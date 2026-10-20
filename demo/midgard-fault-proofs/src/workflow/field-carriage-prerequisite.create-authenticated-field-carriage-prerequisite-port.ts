@@ -40,6 +40,7 @@ import {
   assertPublicationReplacement,
   missingPublicationReplacement,
   observeOwnCarriage,
+  reconcileCarriageWithoutOutput,
 } from "./field-carriage-prerequisite.publication-observation.js";
 import {
   recordedCarriageRecovery,
@@ -64,7 +65,6 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import {
   captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
@@ -209,7 +209,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           entries,
           address: publicationAddress(required),
           publications,
-          transactionConfirmed,
           network,
           ownOutputs,
         });
@@ -265,11 +264,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     headerHash,
     action,
     artifact,
+    entries,
     ownOutputs,
   }: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
     readonly headerHash: string;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
     readonly ownOutputs: OwnOutputJournal;
   }): Promise<
     Readonly<{
@@ -332,7 +333,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         headerHash,
         replacementOutRef: publicationReplacementOutRef(action),
         required,
-        transactionConfirmed,
+        entries,
         publications,
         network,
         ownOutputs,
@@ -405,6 +406,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         headerHash,
         action,
         artifact,
+        entries,
         ownOutputs,
       });
       signer.selectWallet(lucid);
@@ -536,24 +538,16 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       if (observation.kind === "confirmed") {
         return { kind: "confirmed", txHash };
       }
-      if (await transactionConfirmed({ headerHash, txHash })) {
-        return {
-          kind: "conflict",
-          reason: `${category} field prerequisite transaction omitted its journaled output`,
-        };
-      }
-      // A known submitted hash can be absent until the release-final cursor
-      // catches up. Keep its journaled output and funding reservation pending.
-      return signedTransactionCborHex === undefined ||
-        publications.observeSignedTransaction === undefined
-        ? { kind: "pending", txHash }
-        : reconcileSignedWorkflowTransaction({
-            transactionHash: txHash,
-            signedTransactionCborHex,
-            observe: publications.observeSignedTransaction,
-            rebroadcast: publications.rebroadcastSignedTransaction,
-            authorizeResubmission,
-          });
+      return await reconcileCarriageWithoutOutput({
+        category,
+        kind: recovered.kind,
+        headerHash,
+        txHash,
+        signedTransactionCborHex,
+        authorizeResubmission,
+        publications,
+        transactionConfirmed,
+      });
     },
   };
   return Object.freeze(port);

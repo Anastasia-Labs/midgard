@@ -277,9 +277,11 @@ describe("production field-carriage prerequisite V1", () => {
       wrapped.preflight({ ...resumed, action: baseAction }),
     ).rejects.toThrow("cannot bypass authenticated field carriage");
     included = true;
-    await expect(port.reconcile(input)).resolves.toMatchObject({
-      kind: "conflict",
-      reason: expect.stringContaining("omitted its journaled output"),
+    // Never a conflict: a publication's transaction without its output is
+    // reconciled from its signed bytes, which this call does not carry.
+    await expect(port.reconcile(input)).resolves.toEqual({
+      kind: "pending",
+      txHash,
     });
     outputConfirmed = true;
     await expect(port.reconcile(input)).resolves.toEqual({
