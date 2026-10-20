@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import {
   blueprintStampGlobalSetup,
   midgardSourceEnvironments,
+  runSharedFixturesGlobalSetup,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -11,8 +12,9 @@ const WORKER_THREAD_TESTS = "./tests/**/*.worker-thread.test.ts";
 
 export default defineConfig({
   test: {
-    // Refuses the run when onchain/aiken/plutus.json is stale.
-    globalSetup: [blueprintStampGlobalSetup],
+    // Refuses the run when onchain/aiken/plutus.json is stale, and gives the
+    // run its shared fixture directory (the Aiken step oracle's exports).
+    globalSetup: [blueprintStampGlobalSetup, runSharedFixturesGlobalSetup],
     reporters: "verbose",
     projects: [
       // Workspace packages load from a per-run source bundle; files that need
