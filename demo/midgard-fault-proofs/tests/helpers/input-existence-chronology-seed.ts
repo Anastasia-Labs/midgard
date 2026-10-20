@@ -1,6 +1,7 @@
-/** Actual deposit-derived seed outputs and signed key-owned transactions for
- * input-existence chronology. The same entries feed the committed prior
- * deposit block and the checked predecessor ledger; no held root is invented. */
+/** Actual deposit-derived seed outputs, signed key-owned transactions and
+ * owner-signed withdrawal bodies for input-existence chronology. The same
+ * entries feed the committed prior deposit block and the checked predecessor
+ * ledger; no held root is invented. */
 import { computeHash28 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
@@ -12,8 +13,9 @@ import {
   type FixtureTransactionInput,
 } from "./canonical-block-evidence-fixture.js";
 
+const ownerKey = () => CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 71));
 const ownerVerificationKey = () => {
-  const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 71));
+  const key = ownerKey();
   try {
     return Buffer.from(key.to_public().to_raw_bytes());
   } finally {
@@ -23,9 +25,11 @@ const ownerVerificationKey = () => {
 export const CHRONOLOGY_OWNER_KEY_HASH = computeHash28(
   ownerVerificationKey(),
 ).toString("hex");
-export const CHRONOLOGY_SEED_VALUE = 2_000_000n;
+// Large enough for a withdrawal order to fund both its payout and refund
+// retirement paths from the withdrawn value.
+export const CHRONOLOGY_SEED_VALUE = 50_000_000n;
 export const chronologySeedDeposits = () =>
-  [81, 82].map((byte) => ({
+  [81, 82, 83].map((byte) => ({
     event: {
       id: {
         transactionId: byte.toString(16).padStart(2, "0").repeat(32),
@@ -62,7 +66,7 @@ export const chronologySeedEntries = (): readonly LedgerEntry[] =>
   });
 export const signedChronologyTransaction = (input: FixtureTransactionInput) => {
   const unsigned = buildFixtureTransaction(input);
-  const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 71));
+  const key = ownerKey();
   try {
     return buildFixtureTransaction({
       ...input,
@@ -75,6 +79,17 @@ export const signedChronologyTransaction = (input: FixtureTransactionInput) => {
         },
       ],
     });
+  } finally {
+    key.free();
+  }
+};
+/** The seed owner's signature over a withdrawal body, as a wallet signs it. */
+export const signChronologyWithdrawal = (
+  body: SDK.WithdrawalBody,
+): SDK.WithdrawalSignature => {
+  const key = ownerKey();
+  try {
+    return SDK.signWithdrawalBody(key, body);
   } finally {
     key.free();
   }

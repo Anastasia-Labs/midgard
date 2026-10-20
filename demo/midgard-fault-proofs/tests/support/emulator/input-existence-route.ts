@@ -1,0 +1,156 @@
+/** The registered four-step input-existence route on the emulator: publish
+ * the family's step scripts, open the thread with `submitInit`, run steps
+ * 01-03, then either convict at step 04 or hand step 04 to the caller's
+ * refusal check and confirm the thread is kept and no proof minted. The
+ * caller runs `expectOnchainRefusal` itself so a traced pin is checked
+ * against the file that declares it. */
+import type { UTxO } from "@lucid-evolution/lucid";
+import { expect } from "vitest";
+
+import type { PreparedInputExistence } from "../../../src/input-existence/prepare.js";
+import { submitInputExistenceStep } from "../../../src/input-existence/submit.js";
+import { submitInit } from "../../../src/submit-init.js";
+import {
+  buildRemovalDeploymentInfo,
+  network,
+  publishPlainReferenceScriptUtxo,
+} from "../submit-init-emulator-shared.js";
+import type { makeFaultProofEmulatorHarness } from "./harness.js";
+import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./measurement.js";
+
+type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
+
+export const inputExistenceCategory = (field: 0 | 1) =>
+  field === 0 ? "nonExistentInput" : "noReferenceInput";
+
+const checkFit = (measurement: CompleteSignedTransactionMeasurement) => {
+  expect(measurement.completeSignedBytes).toBeLessThanOrEqual(16_384);
+  expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
+  expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
+};
+
+export const runInputExistenceRoute = async ({
+  h,
+  field,
+  prepared,
+  fraudulentBlockOutRef,
+  outcome,
+}: {
+  readonly h: Harness;
+  readonly field: 0 | 1;
+  readonly prepared: PreparedInputExistence;
+  readonly fraudulentBlockOutRef: string;
+  readonly outcome:
+    | Readonly<{ kind: "conviction" }>
+    | Readonly<{
+        kind: "refusal";
+        refuse: (step04: () => Promise<unknown>) => Promise<unknown>;
+      }>;
+}) => {
+  const category = inputExistenceCategory(field);
+  const family = h.contracts.fraudProofContracts[category];
+  for (const step of family.steps)
+    expect(step.spendingScript.script.length / 2).toBeLessThanOrEqual(16_384);
+  const stepReferences: UTxO[] = [];
+  for (const [index, step] of family.steps.entries())
+    stepReferences.push(
+      (
+        await publishPlainReferenceScriptUtxo({
+          lucid: h.funderLucid,
+          script: step.spendingScript,
+          label: `input existence ${category} step${index + 1}`,
+        })
+      ).utxo,
+    );
+  const ct = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: h.funderLucid,
+      script: h.contracts.computationThread.mintingScript,
+      label: "input existence CT mint",
+    })
+  ).utxo;
+  const fp = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: h.funderLucid,
+      script: h.contracts.fraudProof.mintingScript,
+      label: "input existence proof mint",
+    })
+  ).utxo;
+  const init = await captureEmulatorSubmission(h.emulator, () =>
+    submitInit({
+      lucid: h.proverLucid,
+      blueprint: h.realBlueprint,
+      deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
+      network,
+      signer: h.proverSigner,
+      fraudCategory: category,
+      fraudulentBlockOutRef,
+      witnessReferenceScripts: h.witnessReferenceScripts,
+    }),
+  );
+  checkFit(init.measurement);
+  let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
+  const send = (stepIndex: 0 | 1 | 2 | 3) =>
+    submitInputExistenceStep({
+      lucid: h.proverLucid,
+      blueprint: h.realBlueprint,
+      network,
+      contracts: {
+        hubOraclePolicyId: h.contracts.hubOracle.policyId,
+        steps: family.steps,
+        computationThread: h.contracts.computationThread,
+        fraudProof: h.contracts.fraudProof,
+      },
+      categoryId: h.catalogue.categories[category].categoryId,
+      signer: h.proverSigner,
+      threadOutRef,
+      prepared,
+      stepIndex,
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      referenceScripts: {
+        steps: stepReferences,
+        computationThreadMint: ct,
+        fraudProofMint: fp,
+      },
+      witnessReferenceScripts: h.witnessReferenceScripts,
+    });
+  for (const index of [0, 1, 2] as const) {
+    const submitted = await captureEmulatorSubmission(h.emulator, () =>
+      send(index),
+    );
+    checkFit(submitted.measurement);
+    threadOutRef = submitted.result.nextThreadOutRef;
+  }
+  if (outcome.kind === "refusal") {
+    await outcome.refuse(() => send(3));
+    // A refusal must preserve the actual step-04 thread and mint no proof.
+    const [txHash, index] = threadOutRef.split("#");
+    expect(
+      await h.proverLucid.utxosByOutRef([
+        { txHash: txHash!, outputIndex: Number(index) },
+      ]),
+    ).toHaveLength(1);
+    return;
+  }
+  const final = await captureEmulatorSubmission(h.emulator, () => send(3));
+  checkFit(final.measurement);
+  expect(final.result.fraudProofOutRef).toBe(final.result.nextThreadOutRef);
+  const [txHash, index] = final.result.fraudProofOutRef!.split("#");
+  const [proof] = await h.proverLucid.utxosByOutRef([
+    { txHash: txHash!, outputIndex: Number(index) },
+  ]);
+  expect(proof!.address).toBe(h.contracts.fraudProof.spendingScriptAddress);
+  expect(
+    Object.entries(proof!.assets).filter(([unit]) =>
+      unit.startsWith(h.contracts.fraudProof.policyId),
+    ),
+  ).toHaveLength(1);
+  expect(
+    Object.entries(proof!.assets).filter(([unit]) =>
+      unit.startsWith(h.contracts.computationThread.policyId),
+    ),
+  ).toHaveLength(0);
+};
