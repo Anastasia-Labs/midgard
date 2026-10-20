@@ -2,7 +2,8 @@
  * committed blocks detects the normal transaction whose script fails, and
  * only it; Open and VerifySource over that detection land, with the case datum
  * the off-chain claim material derives, each within the transaction limits,
- * also when the validity bounds are not on a slot boundary. source-v1
+ * also when the validity bounds are not on a slot boundary and at the
+ * largest step count the trace descriptor admits (2^32 - 1). source-v1
  * refuses a terminal the challenger's own committed root does not prove, a
  * forced transaction (R-DESC), a state 0 the header does not derive (N5), a
  * bond one lovelace short, and a VerifySource after `block_end + M/2`. */
@@ -17,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { buildValidationClaimWitness } from "../src/validation-trace-dispute/claim-material.js";
 import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import { sparseTrace } from "./support/validation-game-deep-traces.js";
 import {
   BOND_LOVELACE,
   detectOn,
@@ -186,6 +188,46 @@ describe("validation-trace dispute: Open and VerifySource", () => {
         refusedBy: "fraud_proofs/validation_trace/source_v1",
         check: /expect validation_claim_v1\.source_requires_trace/u,
       },
+    );
+  });
+
+  it("lands Open and VerifySource at the maximum step count within the transaction limits", async () => {
+    const { h, chain } = scene;
+    const material = await failingMaterial(scene);
+    // 2^32 - 1 steps: a 32-level trace tree, the deepest the case admits.
+    const stepCount = 2 ** 32 - 1;
+    const trace = sparseTrace(
+      [
+        { from: 0, state: material.initialState },
+        { from: stepCount, state: material.terminal },
+      ],
+      stepCount,
+    );
+    const terminalProof = trace.proofAt(stepCount);
+    expect(terminalProof.siblings).toHaveLength(32);
+    const { opener } = await initAndOpen(scene, scene.failing, {
+      claimWitness: material.claimWitness,
+      challengerRoot: trace.descriptor.traceRoot.toString("hex"),
+      stepCount: BigInt(stepCount),
+    });
+    const verification = verifySource(scene, opener, {
+      terminal: material.terminal,
+      terminalProof,
+      initialState: material.initialState,
+    });
+    const signed = await (await verification.build()).sign
+      .withWallet()
+      .complete();
+    measureWithinTransactionLimits(signed.toCBOR());
+    const txHash = await signed.submit();
+    await h.proverLucid.awaitTx(txHash);
+    const [caseOutput] = await h.proverLucid.utxosAtWithUnit(
+      chain.case.spendingScriptAddress,
+      verification.opening.caseUnit,
+    );
+    expect(caseOutput?.txHash).toBe(txHash);
+    expect(Data.from(caseOutput!.datum!, SDK.Case).step_count).toBe(
+      BigInt(stepCount),
     );
   });
 
