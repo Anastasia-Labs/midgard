@@ -571,7 +571,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/workflow-tier3-actions.test.ts",
-    "max": 991,
+    "max": 1006,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
