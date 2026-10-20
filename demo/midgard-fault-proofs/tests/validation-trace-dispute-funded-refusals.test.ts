@@ -2,8 +2,8 @@
  * other than the one its builder evaluated, before it is submitted: a bond
  * above the deployment-bound bond, a second bond, the bond at another
  * contract, at a wallet outside the deployment or under another datum, a
- * case output above its derived lovelace, a contract input besides the
- * pending claim, an authority naming another header, deployment, case
+ * case output above its derived lovelace, a protocol min-Ada top-up, a
+ * contract input besides the pending claim, an authority naming another header, deployment, case
  * lovelace or bond datum than the claim's, or the evaluated bytes without
  * the builder's authority. The workflow stalls with the refusal after Init
  * and Open. A pending claim naming a fraud prover other than the funding
@@ -13,7 +13,7 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import * as SDK from "@al-ft/midgard-sdk";
-import { type CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
@@ -113,6 +113,34 @@ const bondForAnotherCase: VerifySourceTamper = (outputs, addresses) => {
       ? withDatum(output, anotherBondDatum(inlineDatumOf(output)))
       : output,
   );
+};
+
+/**
+ * An output at the state-queue contract, a protocol-state contract the
+ * roster governs, at its exact min-Ada, paid from the change.
+ */
+const protocolStateTopup: VerifySourceTamper = (outputs, addresses) => {
+  const coinsPerUtxoByte = BigInt(
+    scene.h.proverLucid.config().protocolParameters!.coinsPerUtxoByte,
+  );
+  let topup = CML.TransactionOutput.new(
+    CML.Address.from_bech32(scene.h.contracts.stateQueue.spendingScriptAddress),
+    CML.Value.from_coin(0n),
+  );
+  // The minimum grows with the coin's own encoding; settle on its fixpoint.
+  while (
+    topup.amount().coin() !== CML.min_ada_required(topup, coinsPerUtxoByte)
+  )
+    topup = withCoin(topup, CML.min_ada_required(topup, coinsPerUtxoByte));
+  const change = changeIndex(outputs, addresses.wallet);
+  return [
+    ...outputs.map((output, index) =>
+      index === change
+        ? withCoin(output, output.amount().coin() - topup.amount().coin())
+        : output,
+    ),
+    topup,
+  ];
 };
 
 /** A live output at the source contract that no workflow of ours made. */
@@ -247,6 +275,13 @@ describe("validation-trace dispute VerifySource refused by the prover funding pe
       }),
       refusal:
         "validation dispute VerifySource consumes a contract input besides its pending claim",
+    },
+    {
+      name: "a protocol-state output at its exact min-Ada",
+      present: (): VerifySourcePresentation => ({
+        outputs: protocolStateTopup,
+      }),
+      refusal: "validation dispute VerifySource tops up protocol state: topup=",
     },
     {
       name: "an authority naming another header",

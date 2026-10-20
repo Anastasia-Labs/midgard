@@ -462,6 +462,7 @@ export const assertRuntimeTransactionBound = async ({
     protocolOutputs > protocolInputLovelace
       ? protocolOutputs - protocolInputLovelace
       : 0n;
+  dispute?.refuseProtocolTopup(protocolTopup);
   if (
     slash !== null &&
     (rewardOutputs !== 1 ||

@@ -431,6 +431,13 @@ export const validationDisputeFunding = ({
         "validation dispute VerifySource pays custody beyond its bond and case",
       );
     },
+    /** Like a fraud slash, VerifySource tops up no protocol state. */
+    refuseProtocolTopup: (protocolTopup: bigint): void => {
+      if (protocolTopup !== 0n)
+        throw new Error(
+          `validation dispute VerifySource tops up protocol state: topup=${protocolTopup.toString()}`,
+        );
+    },
     /** Exactly one bond and one case, funding nothing else. */
     assertComplete: ({
       releasedCustody,

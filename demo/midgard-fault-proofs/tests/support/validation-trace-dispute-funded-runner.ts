@@ -102,6 +102,8 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
     validationTraceDisputeSource: chain.source.spendingScriptHash,
     validationTraceDisputeCase: chain.case.spendingScriptHash,
     validationTraceDisputeBond: chain.disputeBond.spendingScriptHash,
+    // A protocol-state contract, as every deployment's roster governs.
+    stateQueueSpend: h.contracts.stateQueue.spendingScriptHash,
   };
 };
 
