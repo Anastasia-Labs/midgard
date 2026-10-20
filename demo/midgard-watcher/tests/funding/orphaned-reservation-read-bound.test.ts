@@ -68,6 +68,7 @@ const orphanedMany = (
     records,
     settled,
     reads: observeSignedTransaction,
+    chain,
     later: () => {
       clock += 3_600_000;
     },
@@ -145,5 +146,23 @@ describe("orphaned reservations read L1 within the per-pass bound", () => {
     }
     expect(perPass).toEqual([4, 4]);
     expect(settled.size).toBe(2);
+  });
+
+  it("an orphan with more open attempts than the bound is still read whole, so it can be taken over", async () => {
+    const { orphans, records, reads, chain } = orphanedMany({
+      orphans: 1,
+      attempts: 6,
+      bound: 4,
+    });
+    // Absent at the tip: never final, but a fresh execution may take it over.
+    chain.mockResolvedValue({ kind: "not_found" });
+    expect(
+      await orphans.resolveTarget({
+        target: "e".repeat(64),
+        orphans: records,
+        handOver: true,
+      }),
+    ).toEqual({ handOver: records, settled: [] });
+    expect(reads).toHaveBeenCalledTimes(6);
   });
 });

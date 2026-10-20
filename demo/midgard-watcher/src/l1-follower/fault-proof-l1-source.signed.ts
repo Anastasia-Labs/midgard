@@ -124,6 +124,12 @@ const REASONS = {
   mempool: "Recorded transaction remains in the node mempool",
 } as const;
 
+/** Reasons an `unknown` read gives when a recorded input's history lies
+ * outside the follower's facts, as for a wallet coin from before its
+ * origin. */
+export const SIGNED_INPUT_HISTORY_UNKNOWN_REASONS: ReadonlySet<string> =
+  new Set([REASONS.unknown, REASONS.unspentUnknown]);
+
 /** An input as the follower's facts show it at the view. */
 type InputState =
   | Readonly<{ kind: "unknown"; reason: string }>

@@ -708,13 +708,13 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   objective of the same target waits on it with the same reason. The
   `proof_submission_failure` alert stays raised meanwhile. The watcher reads
   each transaction from its own signed bytes on a bounded backoff. Once each
-  has expired, been invalidated or landed, or has left the mempool with its
-  inputs unspent, the objective's next fresh run takes them over; once each
-  is final, the reservation is released. It does not clear while one is in
-  the mempool, or spends an input with no creation history in the follower
-  (a wallet coin from before its origin) that nothing else spends; one
-  without expiry that left the mempool clears only through a fresh run.
-  Report it if it outlasts the transactions' expiry plus the recovery depth.
+  has expired, been invalidated or landed, or has left the mempool (with its
+  inputs unspent, or one of them outside the follower's history, such as a
+  wallet coin from before its origin), the objective's next fresh run takes
+  them over; once each is final, the reservation is released. It does not
+  clear while one is in the mempool; one without expiry that left the
+  mempool clears only through a fresh run. Report it if it outlasts the
+  transactions' expiry plus the recovery depth.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands

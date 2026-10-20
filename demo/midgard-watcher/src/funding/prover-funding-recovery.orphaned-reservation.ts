@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
+import { SIGNED_INPUT_HISTORY_UNKNOWN_REASONS } from "../l1-follower/fault-proof-l1-source.signed.js";
 import {
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
@@ -114,7 +115,8 @@ const remember = <T>(map: Map<string, T>, key: string, value: T) => {
 
 /**
  * Reads signed attempts within a bound of `perPass` L1 reads a pass, the
- * least recently read first. A retirement past release finality never
+ * least recently read first, and every open attempt of the orphan first in
+ * line. A retirement past release finality never
  * changes, so it is kept and never read again: reservations with more
  * attempts than one pass reads still settle over later passes.
  */
@@ -125,17 +127,17 @@ const createAttemptReads = (
   const finals = new Map<string, SignedWorkflowTransactionRetirement>();
   const lastRead = new Map<string, number>();
   const readOne = async (attempt: Attempt): Promise<AttemptRead> => {
-    let status: string | undefined;
+    const seen: {
+      observed?: Awaited<ReturnType<WatcherOrphanedReservationObserver>>;
+    } = {};
     const read = await readSignedAttempt(
       {
-        observeSignedTransaction: async (signed) => {
-          const observed = await observe(signed);
-          status = observed.status;
-          return observed;
-        },
+        observeSignedTransaction: async (signed) =>
+          (seen.observed = await observe(signed)),
       },
       attempt,
     );
+    const { observed } = seen;
     const retirement =
       read.kind === "pending" || read.kind === "not_found"
         ? read.retirement
@@ -146,12 +148,16 @@ const createAttemptReads = (
     }
     // Landed within k is adopted from the replacement, and absent at the
     // tip is excluded by it. Dropped from the mempool with every input
-    // unspent, it is excluded the same way: the replacement must spend one
-    // of its inputs, and it is adopted should it land after all.
+    // unspent, or holding an input whose history the follower lacks, it is
+    // excluded the same way: the replacement must spend one of its funding
+    // inputs, and it is adopted should it land after all.
     if (
       read.kind === "confirmed" ||
       read.kind === "not_found" ||
-      (read.kind === "unknown" && status === "rebroadcast")
+      (read.kind === "unknown" &&
+        (observed?.status === "rebroadcast" ||
+          (observed?.status === "unknown" &&
+            SIGNED_INPUT_HISTORY_UNKNOWN_REASONS.has(observed.reason))))
     )
       return { handOver: true, detail: "" };
     return {
@@ -172,7 +178,7 @@ const createAttemptReads = (
           .map((attempt) => [attempt.transactionHash, attempt]),
       ).values(),
     ];
-    const due = open
+    const ordered = open
       .map((attempt, order) => ({
         attempt,
         order,
@@ -183,9 +189,25 @@ const createAttemptReads = (
           ? left.order - right.order
           : left.readAt - right.readAt,
       )
-      .slice(0, perPass);
+      .map(({ attempt }) => attempt);
+    // The orphan first in line is read whole, past the budget if it must:
+    // one with more open attempts than a pass reads still settles.
+    const first = ordered[0]?.transactionHash;
+    const due = new Map(
+      (
+        groups.find((attempts) =>
+          attempts.some(({ transactionHash }) => transactionHash === first),
+        ) ?? []
+      )
+        .filter(({ transactionHash }) => !finals.has(transactionHash))
+        .map((attempt) => [attempt.transactionHash, attempt]),
+    );
+    for (const attempt of ordered) {
+      if (due.size >= perPass) break;
+      due.set(attempt.transactionHash, attempt);
+    }
     const reads = new Map<string, AttemptRead>();
-    for (const { attempt } of due) {
+    for (const attempt of due.values()) {
       remember(lastRead, attempt.transactionHash, at);
       reads.set(attempt.transactionHash, await readOne(attempt));
     }
@@ -240,7 +262,8 @@ export const WATCHER_ORPHANED_RESERVATION_READS_PER_PASS = 16;
  * Settles reservations whose workflow is gone from their own recorded signed
  * bytes. Each read is bounded: a reservation or target is read at most once
  * per backoff step, and a sweep or a target resolution makes at most
- * `perPass` L1 reads of attempts.
+ * `perPass` L1 reads of attempts, or as many as the orphan first in line
+ * has open.
  */
 export const createWatcherOrphanedReservations = (input: {
   readonly store: WatcherProverFundingReservationStore;
@@ -337,7 +360,7 @@ export const createWatcherOrphanedReservations = (input: {
     },
     /**
      * Settles orphans the sweep found once every attempt is retired past
-     * release finality, making at most `perPass` L1 reads. Returns a hold
+     * release finality, within the pass's L1 reads. Returns a hold
      * for each one left.
      */
     sweep: async (
