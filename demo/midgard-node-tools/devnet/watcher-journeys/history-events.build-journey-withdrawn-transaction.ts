@@ -23,7 +23,10 @@ import {
   retainJourneyWithdrawals,
   type StagedHistoryEvent,
 } from "./history-events.retain-journey-withdrawals.js";
-import { journeyLedgerPairs } from "./journey-ledger.js";
+import {
+  checkedJourneyConstruction,
+  journeyLedgerPairs,
+} from "./journey-ledger.js";
 
 export const buildJourneyWithdrawalEvent = async (
   input: HistoryEventBlockInput & {
@@ -295,14 +298,17 @@ export const buildJourneyWithdrawnTransaction = async (
       transition_trace: sort(transitions),
     },
   };
-  return {
-    ...transactions,
-    header,
-    headerHash,
-    payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-      mode: "identity",
-    }),
-    actualWithdrawal: input.withdrawal,
-  };
+  return checkedJourneyConstruction(
+    {
+      ...transactions,
+      header,
+      headerHash,
+      payload,
+      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+        mode: "identity",
+      }),
+      actualWithdrawal: input.withdrawal,
+    },
+    transactions.ledger.entries,
+  );
 };

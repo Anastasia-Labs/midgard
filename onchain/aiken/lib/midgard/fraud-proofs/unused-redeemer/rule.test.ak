@@ -225,6 +225,23 @@ test wrong_reason_constructor_is_not_exact() {
   bad.rejection_reason != Some(UnusedRedeemer { redeemer_index: 1 })
 }
 
+/// A forced rejection binds only the redeemer its committed reason names.
+test forced_reason_at_another_redeemer_index_refuses() fail {
+  rule.bind_redeemer_v1(subject(1), h32, 1, 2).redeemer_index == 2
+}
+
+test forced_reason_of_another_constructor_refuses() fail {
+  rule.bind_redeemer_v1(
+    substrate.VerdictSubjectV1 {
+      ..subject(1),
+      rejection_reason: Some(OutputNonCanonical { output_index: 1 }),
+    },
+    h32,
+    1,
+    1,
+  ).redeemer_index == 1
+}
+
 test bounded_header_and_tail_authenticate_exact_descriptor() {
   let item = #"8400044100820101"
   let authenticated = accepted_control(item)

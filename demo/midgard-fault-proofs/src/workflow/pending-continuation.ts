@@ -63,9 +63,10 @@ const journaledProgress = (result: object): number => {
  * pending result to resume on the next observation, with a reason naming
  * `FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED`, so the caller can run other
  * work and raise an alarm; its later progress is reported through
- * `onProgress`. It is a hold, never a refusal: an action that is
- * resubmitted every validity window and never lands, as under sustained
- * congestion, is held the same way and runs again on its next observation.
+ * `onProgress`, whose throws are ignored. It is a hold, never a refusal: an
+ * action that is resubmitted every validity window and never lands, as under
+ * sustained congestion, is held the same way and runs again on its next
+ * observation.
  */
 export const continuePendingWorkflow = async <Result>({
   invocation,
@@ -105,7 +106,13 @@ export const continuePendingWorkflow = async <Result>({
     const journaled = journaledProgress(result);
     if (journaled > progress) {
       // The first poll only sets the session's baseline.
-      if (progress >= 0) invocation.onProgress?.();
+      if (progress >= 0) {
+        try {
+          invocation.onProgress?.();
+        } catch {
+          // A failing callback must not end the session.
+        }
+      }
       progress = journaled;
       quietSinceMs = Date.now();
       quietPolls = 0;
