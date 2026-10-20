@@ -13,7 +13,6 @@ import {
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { scriptDecodeRunTokenName } from "../script-decode/data.js";
 import { plutusItemScript } from "../script-decode/item-record.js";
@@ -109,22 +108,6 @@ const underfunded = (cause: unknown): boolean => {
     at = at instanceof Error ? at.cause : undefined;
   }
   return false;
-};
-
-/** Wallet coins funding leaves out for tokens alone; 0 when unreadable. */
-const tokenCoinsLeftOut = async (lucid: LucidEvolution): Promise<number> => {
-  try {
-    lucid.clearUTxOOverride();
-    return (await lucid.wallet().getUtxos()).filter(
-      (utxo) =>
-        utxo.datum == null &&
-        utxo.datumHash == null &&
-        utxo.scriptRef == null &&
-        !isPlainFundingOutput(utxo),
-    ).length;
-  } catch {
-    return 0;
-  }
 };
 
 /** Records each Plutus item `itemForAction` names before its proof step. */
@@ -407,11 +390,7 @@ export const createScriptDecodePrerequisitePort = <
       } catch (cause) {
         if (cause instanceof WorkflowActionChangedError) throw cause;
         if (underfunded(cause)) {
-          throw new ScriptDecodeRecordUnderfundedError(
-            parsed.stage,
-            cause,
-            await tokenCoinsLeftOut(lucid),
-          );
+          throw new ScriptDecodeRecordUnderfundedError(parsed.stage, cause);
         }
         throw new ScriptDecodeRecordHeldError(parsed.stage, cause);
       }

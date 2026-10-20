@@ -6,14 +6,16 @@
  * again over its journal and reservation store and finishes the record it
  * began: it leaves exactly the outputs an uninterrupted run leaves, so no
  * record action is taken twice. A wallet that cannot pay for the next record
- * action pauses the objective with the typed underfunded reason, which names
- * the wallet's coins left out of funding for holding tokens, and a top-up
- * resumes it to conviction. A Walk the ledger rejects on every one of
- * its bounded attempts holds the objective instead of refitting it forever.
+ * action pauses the objective with the typed underfunded reason, which says
+ * it funds from plain-ADA coins only, and a top-up resumes it to conviction,
+ * a coin holding a token left unspent. A Walk the ledger rejects on every
+ * one of its bounded attempts holds the objective instead of refitting it
+ * forever.
  */
 import {
   getAddressDetails,
   mintingPolicyToId,
+  type OutRef,
   scriptFromNative,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
@@ -132,7 +134,10 @@ const topUpProver = async (harness: Harness, lovelace: bigint) => {
   harness.emulator.awaitBlock();
 };
 
-/** The funder pays the prover wallet one coin of `lovelace` and a token. */
+/**
+ * The funder pays the prover wallet one coin of `lovelace` and a token;
+ * returns the coin's out-ref.
+ */
 const sendTokenCoin = async (harness: Harness, lovelace: bigint) => {
   const funder = harness.funderLucid;
   const policy = scriptFromNative({
@@ -147,8 +152,12 @@ const sendTokenCoin = async (harness: Harness, lovelace: bigint) => {
     .attach.MintingPolicy(policy)
     .pay.ToAddress(harness.proverSigner.address, { lovelace, [unit]: 1n })
     .complete();
-  await (await sent.sign.withWallet().complete()).submit();
+  const txHash = await (await sent.sign.withWallet().complete()).submit();
   harness.emulator.awaitBlock();
+  const [coin] = (
+    await harness.proverLucid.utxosAt(harness.proverSigner.address)
+  ).filter((utxo) => utxo.txHash === txHash && utxo.assets[unit] === 1n);
+  return { txHash, outputIndex: coin!.outputIndex };
 };
 
 describe("script-decode record recovery in the installed watcher application", () => {
@@ -238,36 +247,44 @@ describe("script-decode record recovery in the installed watcher application", (
     expect(run.convicted).toBe(true);
   }, 1_800_000);
 
-  it("names the wallet's coins holding tokens, left out of funding, when it pauses a record it cannot fund", async () => {
+  it("pauses a record the wallet's plain-ADA coins cannot fund beside a coin holding a token, and convicts after a top-up without spending that coin", async () => {
     let drained = false;
+    let toppedUp = false;
+    let tokenCoin: OutRef | undefined;
+    let harness: Harness | undefined;
     const pausedReasons: string[] = [];
     const run = await runInstalled(SCENARIO, hooks, {
-      maxTurns: RECOVERY_TURN_CAP,
-      beforeTurns: ({ harness, clock }) => {
-        clock.state.crashAfterPolls = POLL_CAP;
-        clock.state.onPoll = async () => {
-          if (drained || (await stagingOutputsOf(harness)).length === 0) return;
+      beforeTurns: (context) => {
+        harness = context.harness;
+        context.clock.state.crashAfterPolls = POLL_CAP;
+        context.clock.state.onPoll = async () => {
+          if (drained || (await stagingOutputsOf(context.harness)).length === 0)
+            return;
           drained = true;
-          await drainProver(harness, 1_500_000n);
+          await drainProver(context.harness, 1_500_000n);
           // The wallet's ada now sits in a coin that also holds a token.
-          await sendTokenCoin(harness, 5_000n * ADA);
+          tokenCoin = await sendTokenCoin(context.harness, 5_000n * ADA);
         };
       },
-      afterTurn: ({ result }) => {
-        if (!drained) return;
+      afterTurn: async ({ harness, result }) => {
+        if (!drained || toppedUp) return;
         if (
           result.reason?.startsWith(SCRIPT_DECODE_RECORD_UNDERFUNDED) !== true
         )
           return;
         pausedReasons.push(result.reason);
-        return "stop";
+        await topUpProver(harness, 5_000n * ADA);
+        toppedUp = true;
       },
     });
 
-    expect(run.convicted).toBe(false);
     expect(pausedReasons).toHaveLength(1);
     expect(pausedReasons[0]).toContain(
-      "from plain-ADA coins (1 wallet coin(s) holding tokens are not spent)",
+      "from its plain-ADA coins (a coin holding a token is never spent)",
+    );
+    expect(run.convicted).toBe(true);
+    expect(await harness!.emulator.getUtxosByOutRef([tokenCoin!])).toHaveLength(
+      1,
     );
   }, 1_800_000);
 
