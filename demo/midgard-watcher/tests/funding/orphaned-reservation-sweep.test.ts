@@ -162,7 +162,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
       } as unknown as WatcherProverFundingReservationStore,
       observe,
       now: () => 1_000_000,
-      perPass: 2,
+      perPass: 3,
     });
     const five = [0, 1, 2, 3, 4].map((index) => ({
       ...record!,
@@ -174,6 +174,6 @@ describe("signed funding no workflow drives is settled from its own attempts", (
       expect(await orphans.sweep(five)).toHaveLength(5);
       counts.push(observe.mock.calls.length);
     }
-    expect(counts).toEqual([2, 2, 1, 0]);
+    expect(counts).toEqual([3, 2, 0, 0]);
   });
 });

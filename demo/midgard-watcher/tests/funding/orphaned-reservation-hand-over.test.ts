@@ -1,3 +1,6 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import {
   beginWorkflowFundingReservationAction,
   supersededAttemptReadSchedule,
@@ -121,6 +124,41 @@ describe("signed funding without its original decision is handed over", () => {
         ({ reservationId }) => reservationId === plan.reservationId,
       )!.pendingTransition?.transactionHash,
     ).toBe(replacement.transactionHash);
+  });
+
+  it("hands over funding whose workflow journal was lost before its first record", async () => {
+    const fixture = await lostWithAttemptInFlight();
+    // Only the original execution's empty journal directory is left.
+    await mkdir(join(fixture.journalDirectory, fixture.handoff.workflowId), {
+      recursive: true,
+    });
+    fixture.useUnspentPendingInputs();
+    fundWallet(fixture);
+    fixture.chain.mockResolvedValue({ kind: "not_found" });
+    const { factory, plans } = orphanReadingFactory(fixture);
+    const journal = await admitFresh(fixture, factory);
+    expect(plans).toHaveLength(1);
+    const fresh = () =>
+      fixture
+        .records()
+        .then(
+          (records) =>
+            records.find(
+              ({ reservationId }) => reservationId === plans[0]!.reservationId,
+            )!,
+        );
+    expect((await fresh()).activeInputs).toContainEqual(
+      expect.objectContaining({ outRef: fundingOf(fixture).outRef }),
+    );
+
+    // A restart resumes the fresh execution beside the empty directory.
+    await fixture.run(journal);
+    await admitFresh(fixture, factory);
+    expect(new Set(plans.map(({ reservationId }) => reservationId))).toEqual(
+      new Set([plans[0]!.reservationId]),
+    );
+    expect(await fixture.records()).toHaveLength(2);
+    expect(await doublyLeased(fixture)).toEqual([]);
   });
 
   it("adopts a landed attempt as the fresh workflow's action without a second copy", async () => {

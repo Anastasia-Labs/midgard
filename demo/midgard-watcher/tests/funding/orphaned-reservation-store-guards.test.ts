@@ -97,11 +97,15 @@ describe("the store hands signed funding over only to a fresh reservation of its
       handedOver = input;
       const records = await fixture.records();
       const orphan = await orphanOf(fixture);
+      const fresh = records.find(
+        ({ reservationId }) => reservationId === input.plan.reservationId,
+      )!;
       for (const [name, changed] of Object.entries({
         revision: { ...input, expectedRevision: orphan.revision },
         header: { ...input, headerHash: "00".repeat(32) },
         category: { ...input, category: "networkId" },
         empty: { ...input, orphans: [] },
+        unsigned: { ...input, orphans: [...input.orphans, fresh] },
         signed: {
           ...input,
           plan: fixture.plan,
@@ -121,6 +125,7 @@ describe("the store hands signed funding over only to a fresh reservation of its
       "header",
       "category",
       "empty",
+      "unsigned",
       "signed",
     ]);
     const released = await orphanOf(fixture);
