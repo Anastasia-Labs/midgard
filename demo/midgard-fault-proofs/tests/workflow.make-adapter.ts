@@ -17,7 +17,6 @@ import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
@@ -36,6 +35,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
 
@@ -203,13 +203,9 @@ export const retiredNotFound = (transactionHash: string) => {
   };
 };
 
-export const terminalVerifier: FraudProofWorkflowTerminalVerifier = {
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-  verify: async ({ candidate }) => candidate,
-  observeSignedTransaction: async () => {
-    throw new Error("no signed transaction read expected");
-  },
-};
+export const terminalVerifier = terminalVerifierOf(
+  async ({ candidate }) => candidate,
+);
 
 export const makeAdapter = (
   controls: AdapterControls = {},

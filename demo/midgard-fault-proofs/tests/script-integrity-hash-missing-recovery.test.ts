@@ -30,7 +30,6 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
 } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
@@ -38,6 +37,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
 const category = "scriptIntegrityHashMissing";
@@ -208,11 +208,7 @@ const recovery = async (needsAnotherAction = false) => {
               reason: "awaiting canonical terminal evidence",
             } as const),
     },
-    terminalVerifier: {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: forbidden,
-      observeSignedTransaction: forbidden,
-    },
+    terminalVerifier: terminalVerifierOf(forbidden),
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,

@@ -46,6 +46,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../../src/workflow/release-finality-policy.js";
 import type { LocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
+import { noSignedRead } from "./terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
 const headerHash = "11".repeat(28),
@@ -188,7 +189,7 @@ export const customWorkflowRecoveryFixture = async (
       observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
       observeExact: forbidden,
     },
-    observeSignedTransaction: forbidden,
+    observeSignedTransaction: noSignedRead,
   };
   const lease = { acquire: forbidden };
   const capture = vi.fn(async () => built);

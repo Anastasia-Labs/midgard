@@ -18,7 +18,6 @@ import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
   runFraudProofWorkflowFromRetainedDa,
   type WorkflowRawFamilyEvidence,
@@ -34,6 +33,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const categories = [
   "mintDeclaredAssetLimit",
@@ -146,11 +146,7 @@ const fixtureFor = async (category: Category) => {
     decisionDigest: undefined,
     l1: { observeHeader: async () => observation },
     adapter,
-    terminalVerifier: {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: forbidden,
-      observeSignedTransaction: forbidden,
-    },
+    terminalVerifier: terminalVerifierOf(forbidden),
     releaseFinalityAuthority,
   };
   const journal = new MemoryFraudProofWorkflowJournalStore();

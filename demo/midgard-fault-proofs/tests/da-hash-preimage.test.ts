@@ -26,7 +26,6 @@ import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
   runDaHashPreimageWorkflowFromRetainedDa,
 } from "../src/workflow/orchestrator.js";
@@ -43,6 +42,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -446,13 +446,9 @@ describe("production da-hash-preimage workflow V1", () => {
           launchScope: ["daHashPreimage"],
         }),
         journal,
-        terminalVerifier: {
-          verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-          verify: async ({ candidate }) => candidate,
-          observeSignedTransaction: async () => {
-            throw new Error("no signed transaction read expected");
-          },
-        },
+        terminalVerifier: terminalVerifierOf(
+          async ({ candidate }) => candidate,
+        ),
         releaseFinalityAuthority: {
           authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
           verifyForWorkflow: async () => ({
