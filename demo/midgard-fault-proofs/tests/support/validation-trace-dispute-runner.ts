@@ -1,6 +1,7 @@
 /** Drives the validation-trace dispute workflow on the Open scene through the
  * shared orchestrator, one emulator block per run. */
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
 import {
   type FraudProofWorkflowJournalStore,
@@ -11,6 +12,7 @@ import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrato
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflow,
 } from "../../src/workflow/orchestrator.js";
 import {
@@ -71,6 +73,23 @@ export const runnerDeployment = (
   };
 };
 
+/**
+ * The removal a runner that never reaches a conviction is given: asking it
+ * for the convicted block's L1 view fails.
+ */
+export const unobservedRemoval: ValidationTraceRemovalConfig = {
+  l1For: () => {
+    throw new Error("this runner observes no convicted block's removal");
+  },
+  stateQueueMutationLeaseCoordinator: {
+    acquire: async () => {
+      throw new Error("this runner removes no convicted block");
+    },
+  },
+  deploymentInfo: {},
+  fraudProverRewardLovelace: 0n,
+};
+
 export type Runner = Readonly<{
   journal: FraudProofWorkflowJournalStore;
   /** One orchestrator run over `block`'s detections, then one block. */
@@ -82,6 +101,10 @@ export const makeRunner = (
   options: {
     readonly journal?: FraudProofWorkflowJournalStore;
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+    /** The convicted block's removal; by default none is observed. */
+    readonly removal?: ValidationTraceRemovalConfig;
+    /** Verifies the completed removal; by default the candidate is kept. */
+    readonly terminalVerifier?: FraudProofWorkflowTerminalVerifier;
     /** Rewrites the adapter every run uses. */
     readonly wrap?: (
       adapter: FraudProofFamilyWorkflowAdapter,
@@ -95,6 +118,7 @@ export const makeRunner = (
     signer: h.proverSigner,
     deployment: runnerDeployment(scene),
     l1SlotConfig,
+    removal: options.removal ?? unobservedRemoval,
     ...(options.signedRecovery === undefined
       ? {}
       : { signedRecovery: options.signedRecovery }),
@@ -116,7 +140,7 @@ export const makeRunner = (
           : { replayContext: block.context }),
         registry,
         journal,
-        terminalVerifier,
+        terminalVerifier: options.terminalVerifier ?? terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
         now: () => new Date(h.emulator.now()),
       });

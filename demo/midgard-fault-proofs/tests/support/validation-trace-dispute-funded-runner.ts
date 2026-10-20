@@ -68,7 +68,10 @@ import {
   detectOn,
   type Scene,
 } from "./validation-trace-dispute-open-scene.js";
-import { runnerDeployment } from "./validation-trace-dispute-runner.js";
+import {
+  runnerDeployment,
+  unobservedRemoval,
+} from "./validation-trace-dispute-runner.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 
@@ -290,6 +293,7 @@ export const openFundedDispute = async (scene: Scene) => {
       signer,
       deployment,
       l1SlotConfig,
+      removal: unobservedRemoval,
       signedRecovery,
       now: () => h.emulator.now(),
     });

@@ -1,10 +1,11 @@
 /** The validation-trace dispute workflow adapter: from a detected failing
  * Plutus execution it Inits a thread, Opens the challenger's claim,
- * VerifySources it into a case and its bond, and closes the case nobody
- * defended into its fraud-proof record, through the shared workflow
- * orchestrator. Every output of ours is claimed by out-ref from our own
- * signed body before submission and read back by that out-ref; chain state,
- * not the journal's idea of the step, decides the next action. */
+ * VerifySources it into a case and its bond, closes the case nobody
+ * defended into its fraud-proof record, and removes the convicted block
+ * through the shared remove stage (removal.ts), all through the shared
+ * workflow orchestrator. Every output of ours is claimed by out-ref from our
+ * own signed body before submission and read back by that out-ref; chain
+ * state, not the journal's idea of the step, decides the next action. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
@@ -47,6 +48,11 @@ import {
 } from "./close.js";
 import { detectedValidationTraceClaim } from "./detected-claim.js";
 import {
+  createValidationTraceRemoval,
+  VALIDATION_TRACE_CASE_CONVICTED,
+  type ValidationTraceRemovalConfig,
+} from "./removal.js";
+import {
   type CapturedValidationTraceStage,
   captureValidationTraceInit,
   captureValidationTraceOpen,
@@ -72,13 +78,7 @@ export { VALIDATION_TRACE_CASE_OPEN } from "./waiting.js";
 export const VALIDATION_TRACE_CASE_CONTESTED =
   "validation-trace-case-contested";
 
-/**
- * Our case convicted and its fraud-proof record is on chain. Handing the
- * convicted block to its removal is not installed yet, so the workflow
- * raises this and waits.
- */
-export const VALIDATION_TRACE_CASE_CONVICTED =
-  "validation-trace-case-convicted";
+export { VALIDATION_TRACE_CASE_CONVICTED };
 
 /**
  * How long an output of ours the provider does not show after its
@@ -108,6 +108,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   signer,
   deployment,
   l1SlotConfig,
+  removal,
   signedRecovery,
   now = Date.now,
 }: {
@@ -115,6 +116,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly l1SlotConfig: L1SlotConfig;
+  /** The convicted block's removal through the shared remove stage. */
+  readonly removal: ValidationTraceRemovalConfig;
   /** Where one exact signed transaction stands, and its rebroadcast. */
   readonly signedRecovery?: FraudProofSignedTransactionRecovery;
   readonly now?: () => number;
@@ -125,14 +128,16 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   )
     throw new Error("validation-trace Init must start at the dispute opener");
   const prepared = new Map<string, LocallyEvaluatedTransaction>();
+  const removalStage = createValidationTraceRemoval({
+    lucid,
+    signer,
+    deployment,
+    removal,
+  });
   const read = (outRefs: readonly string[]) =>
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
   const recent = (confirmedAt: string): boolean =>
     now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
-  const convicted = (unit: string, outRef: string) => ({
-    kind: "pending" as const,
-    reason: `${VALIDATION_TRACE_CASE_CONVICTED}: fraud-proof record ${unit} at ${outRef}; the convicted block's removal is not installed, so it waits`,
-  });
   // The record a close of our case minted, whoever closed it: the policy
   // mints it once per block, and it names its prover.
   const recordAt = async (headerHash: string) => {
@@ -151,7 +156,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     );
     return found === undefined
       ? undefined
-      : convicted(unit, `${found.txHash}#${found.outputIndex.toString()}`);
+      : { unit, outRef: `${found.txHash}#${found.outputIndex.toString()}` };
   };
   const caseAt = async (caseUnit: string) => {
     const [found] = (
@@ -190,7 +195,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         .map(({ outputs }) => outputs[0]!)
         .find((claim) => isClaimedOutput(claim, live.get(claim.outRef)));
     const record = liveClaim("close");
-    if (record !== undefined) return convicted(record.unit, record.outRef);
+    if (record !== undefined)
+      return await removalStage.convicted(context, record);
     // Our case as VerifySource left it: nobody has defended it.
     const openCase = liveClaim("verify_source");
     if (openCase !== undefined) {
@@ -262,7 +268,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     }
     if (newestFirst.some(({ action }) => action.stage === "verify_source")) {
       const recorded = await recordAt(artifact.headerHash);
-      if (recorded !== undefined) return recorded;
+      if (recorded !== undefined)
+        return await removalStage.convicted(context, recorded);
     }
     const newest = newestFirst[0];
     if (newest !== undefined && recent(newest.confirmedAt))
@@ -483,5 +490,5 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         : { kind: "pending", txHash };
     },
   };
-  return Object.freeze(adapter);
+  return Object.freeze(removalStage.route(adapter));
 };
