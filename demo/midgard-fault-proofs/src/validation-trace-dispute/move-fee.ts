@@ -9,6 +9,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import {
   applySingleCborEncoding,
   CML,
+  coreToTxOutput,
   type LucidEvolution,
   type TxBuilder,
   type TxSignBuilder,
@@ -131,6 +132,39 @@ const complete = async (tx: TxBuilder, fee: bigint): Promise<TxSignBuilder> =>
     .setMinFee(fee)
     .complete({ coinSelection: false, localUPLCEval: true });
 
+/**
+ * What the wallet's funding adds to the minimum fee of `paid`, a move the
+ * wallet paid in full: the bytes of its inputs from the wallet and of the
+ * change returned to it (the last output, at the wallet's address), at the
+ * per-byte fee. Without them `paid` is about the move its thread pays.
+ */
+const walletFundingFee = async (
+  lucid: LucidEvolution,
+  paid: TxSignBuilder,
+): Promise<bigint> => {
+  const wallet = lucid.wallet();
+  const own = new Set(
+    (await wallet.getUtxos()).map(
+      ({ txHash, outputIndex }) => `${txHash}#${outputIndex.toString()}`,
+    ),
+  );
+  const body = CML.Transaction.from_cbor_hex(paid.toCBOR()).body();
+  let bytes = 0;
+  const inputs = body.inputs();
+  for (let index = 0; index < inputs.len(); index += 1) {
+    const input = inputs.get(index);
+    if (
+      own.has(`${input.transaction_id().to_hex()}#${input.index().toString()}`)
+    )
+      bytes += input.to_cbor_bytes().length;
+  }
+  const outputs = body.outputs();
+  const change = outputs.get(outputs.len() - 1);
+  if (coreToTxOutput(change).address === (await wallet.address()))
+    bytes += change.to_cbor_bytes().length;
+  return BigInt(lucid.config().protocolParameters!.minFeeA) * BigInt(bytes);
+};
+
 /** How many times a move is rebuilt on its way down to its minimum fee. */
 const FEE_ROUNDS = 8;
 
@@ -141,10 +175,12 @@ const FEE_ROUNDS = 8;
  * builder may price a move a few lovelace above the ledger; a rebuild it
  * refuses is retried a little higher, and the cap's build stands when no
  * cheaper one does. A move that needs more than the cap cannot be built at
- * the cap; its fee is then measured on the same move paid from the wallet
- * (`build(0n)` with coin selection), which needs at least as much, and when
- * that passes the cap the move is refused with
- * `ValidationTraceMoveFeeOverCapError`.
+ * the cap. When the cap build fails, the move's fee is measured on the same
+ * move paid from the wallet (`build(0n)` with coin selection), less what the
+ * wallet's funding adds to it; only when that passes the cap did the cap
+ * build fail for its fee, and the move is refused with
+ * `ValidationTraceMoveFeeOverCapError`. Any other failure of the cap build
+ * keeps its own error.
  */
 export const completeValidationTraceMove = async ({
   lucid,
@@ -170,7 +206,8 @@ export const completeValidationTraceMove = async ({
   } catch (cause) {
     let needed: bigint;
     try {
-      needed = needs(await build(0n).complete({ localUPLCEval: true }));
+      const paid = await build(0n).complete({ localUPLCEval: true });
+      needed = needs(paid) - (await walletFundingFee(lucid, paid));
     } catch {
       throw cause;
     }

@@ -1,6 +1,6 @@
 import {
   type WorkflowFundingAbandonmentHandoff,
-  workflowFundingActionExcludedByProtocolInput,
+  workflowFundingExclusiveProtocolInput,
   type WorkflowFundingPreparedTransition,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
@@ -126,8 +126,9 @@ export const supersededAttemptFundingOutRefs = (
  * possible: whatever lands first wins, and protocol state makes a duplicate
  * proof fail on-chain. Nothing waits for retirement past k. An action whose
  * attempts all spend one protocol input (a validation-trace thread move) is
- * admitted without one when it spends no reserved funding input: that input
- * already makes it exclusive, and it needs none of the wallet's.
+ * admitted without one when it spends that input and no reserved funding
+ * input: that input already makes it exclusive, and it needs none of the
+ * wallet's.
  */
 export const excludesEveryUncoveredAttempt = ({
   uncovered,
@@ -138,17 +139,21 @@ export const excludesEveryUncoveredAttempt = ({
   readonly uncovered: readonly UncoveredSupersededAttempt[];
   readonly signedTransactionCborHex: string;
   readonly reservedFundingOutRefs: readonly string[];
-  /** The fresh attempt's handoff, which names its action. */
+  /** The fresh attempt's handoff, which names its workflow and action. */
   readonly handoff?: Readonly<{
+    identity: Readonly<{ category: string }>;
     submissionIntent: Readonly<{ actionInput: unknown }>;
   }>;
 }): boolean => {
   if (uncovered.length === 0) return true;
   const inputs = signedOrdinaryInputs(signedTransactionCborHex);
+  const exclusive = workflowFundingExclusiveProtocolInput({
+    category: handoff?.identity.category,
+    actionInput: handoff?.submissionIntent.actionInput,
+  });
   if (
-    workflowFundingActionExcludedByProtocolInput(
-      handoff?.submissionIntent.actionInput,
-    ) &&
+    exclusive !== null &&
+    inputs.includes(exclusive) &&
     !shareAnInput(inputs, reservedFundingOutRefs)
   )
     return true;

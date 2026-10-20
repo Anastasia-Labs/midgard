@@ -3,17 +3,19 @@
  * `awaiting_counterparty` with the case's on-chain defense deadline, and a
  * session hands its turn back at once instead of polling; once the operator
  * defends, the run awaits the defender's move on the thread the Defend
- * opened, until the defender's clock ends. */
+ * opened, until the defender's clock ends, and reads no thread for the
+ * Defend's other outputs that only look like threads. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
+import { validationTraceThreadTokenName } from "../src/validation-trace-dispute/case-history.js";
 import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
@@ -33,6 +35,10 @@ import { DEPLOYMENT_FINGERPRINT } from "./workflow.make-adapter.js";
 let scene: Scene;
 let runner: Runner;
 let caseOutRef: string;
+let defense: string;
+
+/** Defenders named only by the Defend's extra thread-shaped outputs. */
+const DECOYS = ["d1".repeat(28), "d2".repeat(28)];
 
 const liveCase = async (): Promise<UTxO> => {
   const [found] = await scene.h.proverLucid.utxosByOutRef([
@@ -108,7 +114,7 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
   }, 120_000);
 
   it("awaits the defender's move on the thread once the operator's Defend lands, until the defender's clock ends", async () => {
-    const defense = await defendAsOperator(scene, await liveCase());
+    defense = await defendAsOperator(scene, await liveCase(), DECOYS);
     const result = awaitingValidationTraceCounterparty(
       await runner.runOnce(scene.failing),
     );
@@ -121,5 +127,36 @@ describe("validation-trace dispute runner: waiting on the counterparty", () => {
       outRef: `${defense}#1`,
       responseDeadline: Number(datum.turn_started_at + datum.defender_clock_ms),
     });
+  });
+
+  it("reads no thread for the Defend's outputs that only look like threads", async () => {
+    const [thread] = await scene.h.proverLucid.utxosByOutRef([
+      parseOwnOutRef(`${defense}#1`),
+    ]);
+    const { case_id } = Data.from(thread!.datum!, SDK.CaseThreadDatum).data!;
+    // The Defend landed its thread-shaped outputs, of our case, tokenless.
+    const decoys = await scene.h.proverLucid.utxosByOutRef(
+      [3, 4].map((index) => parseOwnOutRef(`${defense}#${index.toString()}`)),
+    );
+    expect(
+      decoys.map(({ datum, assets }) => {
+        const { data } = Data.from(datum!, SDK.CaseThreadDatum);
+        return [data!.case_id, data!.header.defender_vkh, assets];
+      }),
+    ).toStrictEqual(
+      DECOYS.map((decoy) => [case_id, decoy, { lovelace: expect.any(BigInt) }]),
+    );
+    const unitOf = (defender: string) =>
+      scene.chain.case.policyId +
+      validationTraceThreadTokenName(case_id, defender);
+    const reads = vi.spyOn(scene.h.emulator, "getUtxosWithUnit");
+    try {
+      awaitingValidationTraceCounterparty(await runner.runOnce(scene.failing));
+      const units = reads.mock.calls.map(([, unit]) => unit);
+      expect(units).toContain(unitOf(scene.operator.vkey));
+      for (const decoy of DECOYS) expect(units).not.toContain(unitOf(decoy));
+    } finally {
+      reads.mockRestore();
+    }
   });
 });

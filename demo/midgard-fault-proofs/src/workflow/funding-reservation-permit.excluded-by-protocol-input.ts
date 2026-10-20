@@ -19,18 +19,30 @@ import {
   type ValidationTraceStage,
 } from "../validation-trace-dispute/actions.js";
 
-/** Whether the funded action `actionInput` is exclusive by the protocol input
- * every attempt at it spends. */
-export const workflowFundingActionExcludedByProtocolInput = (
-  actionInput: unknown,
-): boolean => {
-  if (typeof actionInput !== "object" || actionInput === null) return false;
-  const { schemaVersion, stage } = actionInput as Readonly<
+/**
+ * The protocol input every attempt at the funded action `actionInput` of
+ * workflow `category` spends (a validation-trace thread move's thread), or
+ * null when it has none and the ordinary overlap rule applies. The caller
+ * checks the transaction spends it: the reservation store over the signed
+ * inputs, the permit through the move authority's walk, which binds the
+ * thread to this input and refuses a move that omits it.
+ */
+export const workflowFundingExclusiveProtocolInput = ({
+  category,
+  actionInput,
+}: {
+  readonly category: unknown;
+  readonly actionInput: unknown;
+}): string | null => {
+  if (category !== "validationTraceDispute") return null;
+  if (typeof actionInput !== "object" || actionInput === null) return null;
+  const { schemaVersion, stage, consumes } = actionInput as Readonly<
     Record<string, unknown>
   >;
-  return (
-    schemaVersion === VALIDATION_TRACE_DISPUTE_ACTION &&
+  return schemaVersion === VALIDATION_TRACE_DISPUTE_ACTION &&
     (VALIDATION_TRACE_STAGES as readonly unknown[]).includes(stage) &&
-    isValidationTraceMove(stage as ValidationTraceStage)
-  );
+    isValidationTraceMove(stage as ValidationTraceStage) &&
+    typeof consumes === "string"
+    ? consumes
+    : null;
 };

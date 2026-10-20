@@ -161,6 +161,9 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       const live = await liveFundedThread(journey);
       expect(live.txHash).toBe(reveals[1]);
       expect(isTurn(threadOf(live), "AwaitingOperator")).toBe(true);
+      // Each reveal paid its real fee, below the cap.
+      for (const hash of reveals)
+        expectRealMoveFee(await landedMoveFee(scene, hash));
       await expectWalletOnlyLendsCollateral();
     },
     TIMEOUT,
@@ -253,6 +256,28 @@ describe("validation-trace dispute thread moves under the prover funding permit"
         journey.moves.map(({ thread }) => outRefOf(thread)).slice(2),
       ).toStrictEqual([outRefOf(silent), `${timeout!}#0`]);
       await expectWalletOnlyLendsCollateral();
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "reads the closed thread no more once its close has burned its token",
+    async () => {
+      const { scene, dispute, capture, unit } = journey;
+      const reads = vi.spyOn(scene.h.emulator, "getUtxosWithUnit");
+      try {
+        await dispute.turn(capture);
+        const units = reads.mock.calls.map(([, read]) => read);
+        // Our case is read again; its closed thread is not.
+        expect(units).toStrictEqual(
+          Object.keys(journey.caseOrigin.assets).filter((held) =>
+            held.startsWith(scene.chain.case.policyId),
+          ),
+        );
+        expect(units).not.toContain(unit);
+      } finally {
+        reads.mockRestore();
+      }
     },
     TIMEOUT,
   );

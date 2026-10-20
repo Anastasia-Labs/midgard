@@ -416,7 +416,7 @@ it("computes the uncovered attempts and admits replacements in both polarities",
   ).toBe(true);
 });
 
-it("admits a validation-trace thread move beside a superseded attempt only while it spends no reserved funding input", () => {
+it("admits a validation-trace thread move beside a superseded attempt only while it spends its thread and no reserved funding input", () => {
   // b, a superseded VerifySource, still holds reserved funding b1 and b2.
   const b = attempt([hash("b1"), hash("b2")], [ref("b1"), ref("b2")]);
   const uncovered = uncoveredSupersededAttempts({
@@ -424,17 +424,22 @@ it("admits a validation-trace thread move beside a superseded attempt only while
     submissions: [b],
   });
   const reserved = [ref("b1"), ref("b2"), ref("d1")];
-  const admits = (inputs: readonly string[], stage: string) =>
+  const admits = (
+    inputs: readonly string[],
+    stage: string,
+    { category = "validationTraceDispute", consumes = ref("f1") } = {},
+  ) =>
     excludesEveryUncoveredAttempt({
       uncovered,
       signedTransactionCborHex: attempt(inputs, []).signedTransactionCborHex,
       reservedFundingOutRefs: reserved,
       handoff: {
+        identity: { category },
         submissionIntent: {
           actionInput: {
             schemaVersion: "midgard-validation-trace-dispute-action-v1",
             stage,
-            consumes: `${"7".repeat(64)}#0`,
+            consumes,
           },
         },
       },
@@ -446,4 +451,10 @@ it("admits a validation-trace thread move beside a superseded attempt only while
   expect(admits([hash("f1"), hash("d1")], "timeout")).toBe(false);
   // The dispute's other stages are not exempt.
   expect(admits([hash("f1")], "verify_source")).toBe(false);
+  // A move that does not spend the thread it names is held to the rule.
+  expect(admits([hash("e1")], "timeout")).toBe(false);
+  // The move's label under another workflow's category is not exempt.
+  expect(admits([hash("f1")], "timeout", { category: "doubleSpend" })).toBe(
+    false,
+  );
 });

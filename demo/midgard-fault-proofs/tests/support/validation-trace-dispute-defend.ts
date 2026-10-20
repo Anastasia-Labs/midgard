@@ -81,25 +81,35 @@ export const sceneOperator = (scene: Scene): Defender => ({
 export const defendAsOperator = async (
   scene: Scene,
   caseUtxo: UTxO,
+  decoys: readonly string[] = [],
 ): Promise<string> => {
   const stepCount = Number(Data.from(caseUtxo.datum!, SDK.Case).step_count);
   const claim = sparseTrace(
     [{ from: 0, state: machineState(0, "cek") }],
     stepCount,
   );
-  return await defendWith(scene, caseUtxo, sceneOperator(scene), {
-    root: hex(claim.descriptor.traceRoot),
-    lastState: claim.stateAt(stepCount),
-    lastStateProof: claim.proofAt(stepCount),
-  });
+  return await defendWith(
+    scene,
+    caseUtxo,
+    sceneOperator(scene),
+    {
+      root: hex(claim.descriptor.traceRoot),
+      lastState: claim.stateAt(stepCount),
+      lastStateProof: claim.proofAt(stepCount),
+    },
+    [],
+    decoys,
+  );
 };
 
 /**
  * Defend `caseUtxo` by `defender`, now, signed by its wallet, committing
  * `trace`; the thread's datum, the case's and the node's are the ones case-v1
  * requires. `priorDefenders` are the keys that already defended the case.
- * The thread is the Defend's output 1. Returns the Defend's hash once it
- * lands.
+ * The thread is the Defend's output 1. Each of `decoys` names a defender of
+ * an extra output after the Defend's own: a thread datum of the case for
+ * that defender, at the game validator, with no thread token. Returns the
+ * Defend's hash once it lands.
  */
 export const defendWith = async (
   scene: Scene,
@@ -107,6 +117,7 @@ export const defendWith = async (
   defender: Defender,
   trace: DefenseTrace,
   priorDefenders: readonly string[] = [],
+  decoys: readonly string[] = [],
 ): Promise<string> => {
   const { h, chain } = scene;
   const { lucid } = defender;
@@ -217,7 +228,7 @@ export const defendWith = async (
       },
       SDK.ActiveOperatorSpendRedeemer,
     );
-  const built = await lucid
+  let tx = lucid
     .newTx()
     .collectFrom([caseUtxo], caseRedeemer)
     .collectFrom([node], nodeRedeemer)
@@ -247,8 +258,26 @@ export const defendWith = async (
     )
     .addSignerKey(defenderVkh)
     .validFrom(validFrom)
-    .validTo(validTo)
-    .complete({ localUPLCEval: true });
+    .validTo(validTo);
+  for (const decoy of decoys)
+    tx = tx.pay.ToContract(
+      credentialToAddress(network, { type: "Script", hash: config.game_v1 }),
+      {
+        kind: "inline",
+        value: Data.to(
+          {
+            fraud_prover: caseDatum.bounty_claimant,
+            data: {
+              ...thread,
+              header: { ...thread.header, defender_vkh: decoy },
+            },
+          },
+          SDK.CaseThreadDatum,
+        ),
+      },
+      { lovelace: THREAD_FLOOR_LOVELACE },
+    );
+  const built = await tx.complete({ localUPLCEval: true });
   const signed = await built.sign.withWallet().complete();
   const hash = await signed.submit();
   await lucid.awaitTx(hash);

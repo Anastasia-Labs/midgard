@@ -14,6 +14,7 @@ import {
 
 import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
 import { exactResolvedOutputCbor } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
 import { addMintedAssets } from "./funding-reservation-permit.ledger-accounting.js";
 import {
   assertValidationDisputeMoveBinding,
@@ -138,7 +139,18 @@ export const validationDisputeMoveFunding = async ({
   readonly action: FraudProofWorkflowAction;
 }) => {
   const authority = readValidationDisputeMoveAuthority(signed);
-  if (authority === null) return null;
+  if (authority === null) {
+    // A move is exempt from forced superseded inputs only under the walk
+    // below, which binds its thread to the input it is exclusive by.
+    if (
+      workflowFundingExclusiveProtocolInput({
+        category: state.category,
+        actionInput: action.input,
+      }) !== null
+    )
+      throw new Error("validation dispute move carries no move authority");
+    return null;
+  }
   if (slash)
     throw new Error(
       "funding transaction carries both a fraud slash and a validation dispute move authority",

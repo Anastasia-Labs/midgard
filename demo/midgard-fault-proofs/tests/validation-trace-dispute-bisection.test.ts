@@ -13,7 +13,7 @@ import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type TxBuilder, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -30,7 +30,11 @@ import {
   challengerRevealedThread,
   validationTraceMoveWindow,
 } from "../src/validation-trace-dispute/move-builders.js";
-import { completeValidationTraceMove } from "../src/validation-trace-dispute/move-fee.js";
+import {
+  completeValidationTraceMove,
+  VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+  validationTraceMoveMinimumFee,
+} from "../src/validation-trace-dispute/move-fee.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
@@ -90,8 +94,8 @@ const live = async (side: Side): Promise<UTxO> => {
   return utxo;
 };
 
-/** A RevealChallenger by the prover on `thread` with `proof`, completed. */
-const challengerReveal = ({
+/** A RevealChallenger by the prover on `thread` with `proof`, at each fee. */
+const revealBuild = ({
   thread,
   proof,
   rangeMs = MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
@@ -115,27 +119,35 @@ const challengerReveal = ({
       upper: BigInt(validTo - 1),
     });
   const deployment = runnerDeployment(scene);
-  return async () =>
-    await completeValidationTraceMove({
+  return (fee: bigint) =>
+    buildValidationTraceGameMove({
       lucid,
-      stage: "reveal",
-      referenced: [deployment.references.game],
-      build: (fee) =>
-        buildValidationTraceGameMove({
-          lucid,
-          deployment,
-          thread,
-          action: { kind: "RevealChallenger", proof },
-          successor: {
-            address: thread.address,
-            datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
-          },
-          fee,
-          validFrom,
-          validTo,
-        }),
+      deployment,
+      thread,
+      action: { kind: "RevealChallenger", proof },
+      successor: {
+        address: thread.address,
+        datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
+      },
+      fee,
+      validFrom,
+      validTo,
     });
 };
+
+/** Completes the reveal `build` as the runner does. */
+const completeReveal = async (build: (fee: bigint) => TxBuilder) =>
+  await completeValidationTraceMove({
+    lucid: scene.h.proverLucid,
+    stage: "reveal",
+    referenced: [runnerDeployment(scene).references.game],
+    build,
+  });
+
+/** A RevealChallenger by the prover on `thread` with `proof`, completed. */
+const challengerReveal =
+  (input: Parameters<typeof revealBuild>[0]) => async () =>
+    await completeReveal(revealBuild(input));
 
 /** Our proof of the midpoint the thread at `thread` waits on. */
 const ourMidpointProof = (thread: UTxO): SDK.ValidationTraceProof => {
@@ -273,6 +285,53 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
         check: /upper - lower <= max_length/u,
       },
     );
+  }, 300_000);
+
+  it("keeps the cap build's own error when it fails for another reason than its fee, though the move paid from the wallet would pass the cap", async () => {
+    const { h } = scene;
+    const lucid = h.proverLucid;
+    const thread = await live(sides[0]);
+    const build = revealBuild({ thread, proof: ourMidpointProof(thread) });
+    const cap = VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE;
+    const parameters = h.emulator.protocolParameters;
+    const minimumAt = async (minFeeA: number, cbor: string) => {
+      h.emulator.protocolParameters = { ...parameters, minFeeA };
+      await lucid.switchProvider(h.emulator);
+      return validationTraceMoveMinimumFee({
+        lucid,
+        transactionCborHex: cbor,
+        referenced: [runnerDeployment(scene).references.game],
+      });
+    };
+    try {
+      const alone = (await completeReveal(build)).toCBOR();
+      const base = await minimumAt(0, alone);
+      const bytes = (await minimumAt(1, alone)) - base;
+      // The per-byte fee at which the move alone fits under the cap, 16
+      // bytes short of it ...
+      const minFeeA = Number((cap - base) / (bytes + 16n));
+      expect(await minimumAt(minFeeA, alone)).toBeLessThanOrEqual(cap);
+      // ... and the same move paid from the wallet passes it.
+      const paid = await build(0n).complete({ localUPLCEval: true });
+      expect(await minimumAt(minFeeA, paid.toCBOR())).toBeGreaterThan(cap);
+      // The cap build alone also mints under a policy it never attaches.
+      const unrelated = (fee: bigint) =>
+        fee === cap
+          ? build(fee).mintAssets({ ["ab".repeat(28)]: 1n })
+          : build(fee);
+      const own = await unrelated(cap)
+        .setMinFee(cap)
+        .complete({ coinSelection: false, localUPLCEval: true })
+        .then(
+          () => new Error("the cap build completed"),
+          (error: unknown) => error as Error,
+        );
+      await expect(completeReveal(unrelated)).rejects.toThrow(own.message);
+    } finally {
+      h.emulator.protocolParameters = parameters;
+      await lucid.switchProvider(h.emulator);
+    }
+    expect(await live(sides[0])).toStrictEqual(thread);
   }, 300_000);
 
   it("bisects each thread on its own to ReadyForOneStep on the step after its defender's last agreed state, then stops at a resumable one-step-required state", async () => {

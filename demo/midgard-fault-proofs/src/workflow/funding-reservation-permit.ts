@@ -34,7 +34,7 @@ export {
   bindWorkflowFundingReservationJournal,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 export { createWorkflowFundingReservationPermit } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-export { workflowFundingActionExcludedByProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
+export { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
 export { isWorkflowFundingPauseReason } from "./funding-reservation-permit.is-workflow-funding-pause-reason.js";
 export {
   assertWorkflowFundingAbandonmentHandoffJournal,

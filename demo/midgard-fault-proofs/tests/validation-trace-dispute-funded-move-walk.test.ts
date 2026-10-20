@@ -17,7 +17,10 @@
 import { CML } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { grantValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
+import {
+  grantValidationDisputeFundingAuthority,
+  validationDisputeFunding,
+} from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { VALIDATION_DISPUTE_MOVE_BINDING } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
 import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import {
@@ -26,6 +29,7 @@ import {
   fundingPolicy,
   movesOf,
   openWalk,
+  permitState,
   refusalOf,
   regranted,
   spentInputs,
@@ -155,6 +159,20 @@ describe("validation-trace dispute thread move walked under its authority", () =
       check: () => walk(journey, reveal, { slash: true }),
       refusal:
         "funding transaction carries both a fraud slash and a validation dispute move authority",
+    },
+    {
+      name: "a move that carries no move authority",
+      check: async () =>
+        validationDisputeFunding({
+          signed: await journey.scene.h.proverLucid
+            .fromTx(reveal.signed.toTransaction().to_cbor_hex())
+            .complete(),
+          slash: false,
+          policy: fundingPolicy(journey),
+          state: permitState(journey, reveal),
+          action: reveal.action,
+        }),
+      refusal: "validation dispute move carries no move authority",
     },
     {
       name: "a move that also carries a VerifySource authority",
