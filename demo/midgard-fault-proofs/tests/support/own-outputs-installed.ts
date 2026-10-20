@@ -8,8 +8,9 @@
  * application's own transactions spend and reference only the application's
  * own outputs and cost what they cost with nothing planted.
  *
- * Rows so far: script-decode staging and script-decode run. The other
- * carriage roles join this table as their sites move onto `own-outputs`.
+ * Rows so far: script-decode staging and script-decode run here, field
+ * publication and field certificate in `own-field-carriage-installed.ts`.
+ * The other carriage roles join as their sites move onto `own-outputs`.
  */
 import { startScriptDecodeWalk } from "@al-ft/midgard-validation";
 import {
