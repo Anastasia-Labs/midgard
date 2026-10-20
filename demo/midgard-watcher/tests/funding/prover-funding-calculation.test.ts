@@ -662,12 +662,6 @@ describe("production prover funding calculation V1", () => {
         lovelace: "900000000",
         assets: [],
       },
-      {
-        outRef: `${"03".repeat(32)}#0`,
-        role: "funding",
-        lovelace: "1100000000",
-        assets: [{ unit: tokenUnit, quantity: "1" }],
-      },
     ]);
 
     const splitCandidates = [500_000_000n, 500_000_000n, 30_000_000n].map(
@@ -769,15 +763,12 @@ describe("production prover funding calculation V1", () => {
       decisionDigest: "77".repeat(32),
       walletAddress,
       utxos: candidates.map((candidate, index) =>
-        index === 0
-          ? {
-              ...candidate,
-              assets: { lovelace: 200_000_000n, [tokenUnit]: 1n },
-            }
+        index === 2
+          ? { ...candidate, assets: { lovelace: 2_000_000n } }
           : candidate,
       ),
     });
-    expect(smaller.fundingLovelace).toBe("206000000");
+    expect(smaller.fundingLovelace).toBe("2000000");
     expect(smaller.reservationId).toBe(first.reservationId);
     const rotated = planWatcherProverFundingReservation({
       deploymentIdentity,
@@ -785,7 +776,7 @@ describe("production prover funding calculation V1", () => {
       decisionDigest: "77".repeat(32),
       walletAddress,
       utxos: candidates.map((candidate, index) =>
-        index === 0 ? { ...candidate, txHash: "04".repeat(32) } : candidate,
+        index === 2 ? { ...candidate, txHash: "04".repeat(32) } : candidate,
       ),
     });
     expect(rotated.reservationId).toBe(first.reservationId);

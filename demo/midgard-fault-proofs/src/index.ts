@@ -6,6 +6,7 @@ export * from "./direct-script-derivation/index.js";
 export * from "./evidence/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
+export * from "./funding/plain-funding-output.js";
 export * from "./input-set-uniqueness/index.js";
 export * from "./inspect-contracts.js";
 export * from "./invalid-range/index.js";
