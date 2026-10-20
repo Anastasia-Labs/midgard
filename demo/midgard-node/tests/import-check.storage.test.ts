@@ -97,6 +97,10 @@ describe("import check storage", () => {
     expect(rows[3]!.stored).toBeLessThan(rows[0]!.stored + 63 * slope * 1.1);
   }, 120_000);
 
+  // The fixture replays all eight transactions to build the block and the
+  // import check replays them again, each committing every run's ~6.6 MB
+  // script context: about 75 s on a developer machine and five to six times
+  // that on a loaded CI runner.
   it("stores a block's 16 KB reference outputs once however many transactions and runs read them, within bounded import memory", async () => {
     const OUTPUT_BYTES = 16 * 1024;
     // Transactions reading the same references: the measured max shape,
@@ -201,5 +205,5 @@ describe("import check storage", () => {
     expect(peak - baseline).toBeLessThan(
       Math.max(256 * 2 ** 20, 8 * (contextBytes + set.outputs)),
     );
-  }, 300_000);
+  }, 900_000);
 });
