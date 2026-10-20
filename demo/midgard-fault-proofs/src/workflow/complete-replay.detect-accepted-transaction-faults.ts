@@ -22,13 +22,15 @@ import {
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
+  createEventLedgerWalk,
   EventLedgerReplayRefusal,
-  ledgerBeforeTransactionEvent,
+  type EventLedgerWalk,
 } from "../input-existence/event-ledger.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import {
+  type CommittedL2Event,
   eventRunsPlutus,
   type PlutusExecutionReplay,
   replayPlutusExecution,
@@ -301,6 +303,26 @@ export const VALIDATION_TRACE_VIOLATION_ID = "validation-trace" as const;
 export const VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID =
   "validation-trace-replay-disagreement" as const;
 
+/** The block's Plutus-running L2 transactions with their positions among its
+ * L2 transactions, ordered by their committed steps; an event without a step
+ * opening sorts first. */
+const plutusEventsInStepOrder = (evidence: CanonicalBlockEvidence) => {
+  const steps = evidence.reconstruction.eventToStepByFingerprint;
+  const stepOf = (event: CommittedL2Event): bigint =>
+    steps.get(event.fingerprint)?.value.step_index ?? -1n;
+  const events: { event: CommittedL2Event; position: number }[] = [];
+  let position = -1;
+  for (const event of evidence.reconstruction.sourceEvents) {
+    if (event.phase !== "L2Transaction") continue;
+    position += 1;
+    if (eventRunsPlutus(event)) events.push({ event, position });
+  }
+  return events.sort((left, right) => {
+    const [a, b] = [stepOf(left.event), stepOf(right.event)];
+    return a < b ? -1 : a > b ? 1 : left.position - right.position;
+  });
+};
+
 /**
  * Accepted normal transactions with redeemers (rule R-DESC) whose honest
  * re-execution from DA replay ends Terminal Rejected with
@@ -327,11 +349,10 @@ export const detectPlutusExecutionFailures = async ({
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const detections: CanonicalViolationDetection[] = [];
   const held: ValidationTraceReplayHold[] = [];
-  let position = -1;
-  for (const event of evidence.reconstruction.sourceEvents) {
-    if (event.phase !== "L2Transaction") continue;
-    position += 1;
-    if (!eventRunsPlutus(event)) continue;
+  // One walk of the block's steps serves every event's pre-state, so the
+  // events replay in step order.
+  let walk: EventLedgerWalk | undefined;
+  for (const { event, position } of plutusEventsInStepOrder(evidence)) {
     const holdKey = `${evidence.headerHash}\u0000${event.fingerprint}`;
     const waiting = holds.waiting(holdKey);
     if (waiting !== undefined) {
@@ -380,12 +401,11 @@ export const detectPlutusExecutionFailures = async ({
     }
     let ledger: CheckedLedger;
     try {
-      ledger = await ledgerBeforeTransactionEvent({
+      walk ??= createEventLedgerWalk({
         block: evidence,
-        eventKey: event.eventKey,
-        stepIndex: opening.value.step_index,
-        predecessor,
+        ...(predecessor === undefined ? {} : { predecessor }),
       });
+      ledger = await walk.before(event.eventKey, opening.value.step_index);
     } catch (cause) {
       if (cause instanceof EventLedgerReplayRefusal) {
         holds.decided(holdKey);

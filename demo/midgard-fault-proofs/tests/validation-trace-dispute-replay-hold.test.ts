@@ -32,7 +32,7 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../src/workflow/complete-replay.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
-import { plutusExecutionTwoEventBlockFixture } from "./helpers/plutus-execution-two-event-fixture.js";
+import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 
 type Fault = { stage: "verdict" | "trace"; error: Error; remaining: number };
 
@@ -85,16 +85,25 @@ vi.mock("../src/input-existence/event-ledger.js", async (importOriginal) => {
     >();
   return {
     ...actual,
-    ledgerBeforeTransactionEvent: async (
-      input: Parameters<typeof actual.ledgerBeforeTransactionEvent>[0],
+    createEventLedgerWalk: (
+      input: Parameters<typeof actual.createEventLedgerWalk>[0],
     ) => {
-      const { L2TransactionEventKey: key } = input.eventKey as {
-        readonly L2TransactionEventKey?: { readonly tx_id: string };
+      const walk = actual.createEventLedgerWalk(input);
+      return {
+        before: async (
+          ...[eventKey, stepIndex]: Parameters<typeof walk.before>
+        ) => {
+          const { L2TransactionEventKey: key } = eventKey as {
+            readonly L2TransactionEventKey?: { readonly tx_id: string };
+          };
+          const fault =
+            key === undefined
+              ? undefined
+              : injected.ledgerFaults.get(key.tx_id);
+          if (fault !== undefined) throw fault;
+          return await walk.before(eventKey, stepIndex);
+        },
       };
-      const fault =
-        key === undefined ? undefined : injected.ledgerFaults.get(key.tx_id);
-      if (fault !== undefined) throw fault;
-      return await actual.ledgerBeforeTransactionEvent(input);
     },
   };
 });
@@ -363,10 +372,10 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
   });
 
   it("proves a second failing event while the first is held, and keeps its claim after the first resolves", async () => {
-    const block = await plutusExecutionTwoEventBlockFixture(
+    const block = await plutusExecutionEventsBlockFixture([
       "failing",
       "failing",
-    );
+    ]);
     const undisturbed = await decide(clockedReplayer().replayer, block);
     expect(undisturbed).toMatchObject({ decision: "fault_detected" });
     if (undisturbed.decision !== "fault_detected") return;
@@ -436,10 +445,10 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
   });
 
   it("still re-executes a passing second event while the first is held, and waits on the first", async () => {
-    const block = await plutusExecutionTwoEventBlockFixture(
+    const block = await plutusExecutionEventsBlockFixture([
       "failing",
       "passing",
-    );
+    ]);
     const { clock, replayer } = clockedReplayer();
     inject(block, 0, "verdict", indeterminate(block, 0), 1);
     const held = await heldBy(replayer, block);

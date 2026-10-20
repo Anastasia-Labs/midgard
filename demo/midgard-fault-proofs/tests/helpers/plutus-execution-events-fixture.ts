@@ -1,7 +1,8 @@
-/** One committed block of two accepted normal transactions, each spending its
- * own deposit-derived script output: the operator commits both and applies
- * both ledger effects in order, and every root is computed from the actual
- * outputs. Each spend runs its own PlutusV3 script, failing or passing. */
+/** One committed block of accepted normal transactions, each spending its
+ * own deposit-derived script output: the operator commits them all and
+ * applies their ledger effects in order, and every root is computed from the
+ * actual outputs unless a step's post-state root is replaced. Each spend runs
+ * its own PlutusV3 script, failing or passing. */
 import {
   computeHash28,
   encodeMidgardSpendInputItem,
@@ -25,28 +26,44 @@ import {
   SEED_LOVELACE,
 } from "./plutus-execution-block-fixture.js";
 
-export type TwoEventSpend = "failing" | "passing";
+export type EventSpend = "failing" | "passing";
 
-const FIRST_SEED_BYTE = 0x61;
-const SECOND_SEED_BYTE = 0x64;
+/** The deposit seed byte of the block's `index`th spend. */
+const seedByte = (index: number): number => 0x61 + 3 * index;
 
-/** `first` is the block's first event, `second` its second. */
-export const plutusExecutionTwoEventBlockFixture = async (
-  first: TwoEventSpend,
-  second: TwoEventSpend,
+/** A root no ledger of the block opens. */
+export const FOREIGN_UTXOS_ROOT = "ab".repeat(32);
+
+/**
+ * `spends` in the order the block applies them. `predecessorFiller` joins
+ * the previous ledger untouched; `foreignPostRootAt` names a step whose
+ * committed post-state root (and so the next step's pre-state root) is
+ * `FOREIGN_UTXOS_ROOT` rather than the root of its actual ledger.
+ */
+export const plutusExecutionEventsBlockFixture = async (
+  spends: readonly EventSpend[],
+  {
+    predecessorFiller = [],
+    foreignPostRootAt,
+  }: {
+    readonly predecessorFiller?: readonly LedgerEntry[];
+    readonly foreignPostRootAt?: number;
+  } = {},
 ) => {
-  const seeds = [
-    depositSeed(FIRST_SEED_BYTE, scriptCredential(first)),
-    depositSeed(SECOND_SEED_BYTE, scriptCredential(second)),
-  ];
-  const txs = [first, second].map((scenario, index) => {
-    const native = scenarioTransaction(scenario, seeds[index]!);
+  const seeds = spends.map((spend, index) =>
+    depositSeed(seedByte(index), scriptCredential(spend)),
+  );
+  const txs = spends.map((spend, index) => {
+    const native = scenarioTransaction(spend, seeds[index]!);
     return fixtureTransactionFromCanonicalCbor({
       txId: native.txId.toString("hex"),
       canonicalCbor: native.txCbor,
     });
   });
-  const predecessorEntries: readonly LedgerEntry[] = seeds;
+  const predecessorEntries: readonly LedgerEntry[] = [
+    ...seeds,
+    ...predecessorFiller,
+  ];
   // The ledger after each event: its seed spent, its output created.
   const after: LedgerEntry[][] = [];
   let ledger: LedgerEntry[] = [...predecessorEntries];
@@ -64,10 +81,13 @@ export const plutusExecutionTwoEventBlockFixture = async (
     after.push(ledger);
   }
   const prevUtxosRoot = await ledgerEntriesRoot(predecessorEntries);
-  const roots = [
-    prevUtxosRoot,
-    ...(await Promise.all(after.map((entries) => ledgerEntriesRoot(entries)))),
-  ];
+  const roots = [prevUtxosRoot];
+  for (const [index, entries] of after.entries())
+    roots.push(
+      index === foreignPostRootAt
+        ? FOREIGN_UTXOS_ROOT
+        : await ledgerEntriesRoot(entries),
+    );
   const base = await buildCanonicalBlockFixture({
     transactions: txs,
     prevUtxosRoot,
@@ -80,7 +100,7 @@ export const plutusExecutionTwoEventBlockFixture = async (
       post_utxos_root: roots[index + 1]!,
     })),
   });
-  const header: SDK.Header = { ...base.header, utxosRoot: roots[2]! };
+  const header: SDK.Header = { ...base.header, utxosRoot: roots.at(-1)! };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
@@ -97,7 +117,7 @@ export const plutusExecutionTwoEventBlockFixture = async (
     payloadEnvelopeCbor: await reencodeFixturePayload(payload),
     daProvenance: {
       trustClass: "public_or_permissionless_da",
-      sourceId: "test/plutus-execution-two-events",
+      sourceId: "test/plutus-execution-events",
       grade: "security",
     },
   });
