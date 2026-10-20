@@ -41,6 +41,7 @@ import type {
   JournalJsonObject,
 } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -61,7 +62,6 @@ import {
   runnerDeployment,
   runUntil,
 } from "./support/validation-trace-dispute-runner.js";
-import { resolvingRemovalAs } from "./support/validation-trace-removal.js";
 
 let recorder: ReturnType<typeof recordCrossBlockRawEmulator>;
 let removal: RecordedRemoval;
@@ -75,6 +75,19 @@ const outRefOf = (utxo: UTxO) =>
 
 const liveAt = async (outRef: string): Promise<UTxO | undefined> =>
   (await scene.h.proverLucid.utxosByOutRef([parseOwnOutRef(outRef)]))[0];
+
+/** Each block a removal adapter was built for, in order: one build per
+ * block's L1 view. */
+const removalViews: string[] = [];
+/** The runner's adapter and the context it last observed. */
+let lastObserved:
+  | {
+      readonly adapter: FraudProofFamilyWorkflowAdapter;
+      readonly context: Parameters<
+        FraudProofFamilyWorkflowAdapter["observe"]
+      >[0];
+    }
+  | undefined;
 
 /** The confirmed close, once the runner has closed the case. */
 let closed: ConfirmedValidationTraceStage;
@@ -95,10 +108,23 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
     scene = await setUpScene();
     removal = await recordedRemoval(scene, recorder);
     runner = makeRunner(scene, {
-      removal: removal.removal,
+      removal: {
+        ...removal.removal,
+        l1For: (headerHash) => {
+          removalViews.push(headerHash);
+          return removal.removal.l1For(headerHash);
+        },
+      },
       terminalVerifier: removal.terminalVerifier(
         scene.failing.evidence.headerHash,
       ),
+      wrap: (adapter) => ({
+        ...adapter,
+        observe: async (context) => {
+          lastObserved = { adapter, context };
+          return await adapter.observe(context);
+        },
+      }),
     });
     const { result } = await runUntil(
       runner,
@@ -257,31 +283,27 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
     const clock = vi
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
-    // The fixture deploys the chain as a scaffold, so the removal resolves
-    // its contracts under the category id alone (see resolvingRemovalAs).
-    const result = await resolvingRemovalAs(
-      "validationTraceDispute",
-      {},
-      async () => {
-        const history: string[] = [];
-        for (let run = 0; run < 12; run += 1) {
-          const outcome: FraudProofWorkflowRunResult = await runner.runOnce(
-            scene.failing,
-          );
-          history.push(
-            "reason" in outcome
-              ? `${outcome.kind}: ${outcome.reason}`
-              : outcome.kind,
-          );
-          if (
-            outcome.kind === "terminal_included" ||
-            outcome.kind === "completed"
-          )
-            return outcome;
-        }
-        throw new Error(`the removal did not complete: ${history.join("\n")}`);
-      },
-    ).finally(() => clock.mockRestore());
+    // The removal resolves its contracts for 00000006 from the deployment
+    // the scene deployed, as in production: no resolution is stubbed.
+    const result = await (async () => {
+      const history: string[] = [];
+      for (let run = 0; run < 12; run += 1) {
+        const outcome: FraudProofWorkflowRunResult = await runner.runOnce(
+          scene.failing,
+        );
+        history.push(
+          "reason" in outcome
+            ? `${outcome.kind}: ${outcome.reason}`
+            : outcome.kind,
+        );
+        if (
+          outcome.kind === "terminal_included" ||
+          outcome.kind === "completed"
+        )
+          return outcome;
+      }
+      throw new Error(`the removal did not complete: ${history.join("\n")}`);
+    })().finally(() => clock.mockRestore());
     if (!("terminal" in result)) throw new Error("no terminal");
     const record = closed.outputs[0]!.outRef;
     expect(result.terminal.correction.referencedProofTokenOutRef).toBe(record);
@@ -301,5 +323,14 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
         stage: "remove",
         fraudProofOutRef: record,
       });
+    // The completed removal's adapter is forgotten: each later observation
+    // builds its own from the L1 view, as after a restart, and forgets it.
+    const built = removalViews.length;
+    for (let again = 0; again < 2; again += 1)
+      expect(
+        await lastObserved!.adapter.observe(lastObserved!.context),
+      ).toMatchObject({ kind: "completed" });
+    expect(removalViews).toHaveLength(built + 2);
+    expect(new Set(removalViews)).toStrictEqual(new Set([artifact.headerHash]));
   }, 900_000);
 });

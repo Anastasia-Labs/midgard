@@ -122,6 +122,9 @@ const isRemoval = (action: FraudProofWorkflowAction): boolean =>
  * challenged block, driving only its remove stage. `convicted` is what the
  * dispute observes once our record is on chain; `route` hands the remove
  * stage's preflight, submit and reconcile, which carry the lease, to it.
+ * A block's adapter is forgotten once its removal is complete or in
+ * conflict: a later observation builds it again from the L1 view, as it does
+ * after a restart.
  */
 export const createValidationTraceRemoval = ({
   lucid,
@@ -176,11 +179,13 @@ export const createValidationTraceRemoval = ({
     adapters.set(headerHash, adapter);
     return adapter;
   };
-  const forContext = (context: FraudProofWorkflowAdapterContext) => {
+  const headerOf = (context: FraudProofWorkflowAdapterContext) => {
     if (context.identity.target.kind !== "state_queue_header")
       throw new Error("validation-trace removal needs a state-queue block");
-    return adapterFor(context.identity.target.headerHash);
+    return context.identity.target.headerHash;
   };
+  const forContext = (context: FraudProofWorkflowAdapterContext) =>
+    adapterFor(headerOf(context));
   return {
     /** With our record on chain, the shared remove stage decides: it removes
      * the block, or reports the removal complete. An L1 view that still
@@ -190,6 +195,8 @@ export const createValidationTraceRemoval = ({
       record: Readonly<{ unit: string; outRef: string }>,
     ): Promise<FraudProofWorkflowObservation> => {
       const observed = await forContext(context).observe(context);
+      if (observed.kind === "completed" || observed.kind === "conflict")
+        adapters.delete(headerOf(context));
       return observed.kind === "action_required" &&
         !(
           isRemoval(observed.action) && observed.action.input.stage === "remove"

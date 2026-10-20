@@ -49,7 +49,8 @@ export const recordedRemoval = async (
   recorder: ReturnType<typeof recordCrossBlockRawEmulator>,
 ): Promise<RecordedRemoval> => {
   const { h, chain } = scene;
-  const identity = makeWatcherDeploymentAuthorityFixture().result;
+  const fixture = makeWatcherDeploymentAuthorityFixture();
+  const identity = fixture.result;
   const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
     identity,
   ).verifyForWorkflow({ deploymentFingerprint: identity.manifestId });
@@ -116,9 +117,23 @@ export const recordedRemoval = async (
     removal: {
       l1For,
       stateQueueMutationLeaseCoordinator: fixtureLeaseCoordinator(),
-      deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
-        removalReferenceScripts: published.published,
-      }),
+      // The removal resolves 00000006 from the deployment as production
+      // does: its chain re-derived under the manifest's dispute bond and the
+      // case configuration's one-shot, which the scene applied.
+      deploymentInfo: {
+        ...buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
+          removalReferenceScripts: published.published,
+        }),
+        availabilityChallenge: (
+          fixture.signedIdentity.manifest as {
+            readonly availabilityChallenge: unknown;
+          }
+        ).availabilityChallenge,
+        hubOracleOneShot: {
+          txHash: h.nonceUtxo.txHash,
+          outputIndex: h.nonceUtxo.outputIndex,
+        },
+      },
       fraudProverRewardLovelace: BigInt(
         releaseEconomics.policy.fraudProverRewardLovelace,
       ),
