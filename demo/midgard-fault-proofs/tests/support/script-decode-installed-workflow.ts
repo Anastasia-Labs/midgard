@@ -11,7 +11,7 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,7 @@ import {
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import {
   emulatorProtocolParameterAuthority,
@@ -331,7 +332,10 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  const directory = await mkdtemp(join(homedir(), "script-decode-installed-"));
+  // Under the home directory: the watcher's SQLite stores refuse /tmp as
+  // not durable.
+  const scratch = await scratchDirectory("script-decode-installed-", homedir());
+  const directory = scratch.path;
   const journalDirectory = join(directory, "journal");
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   /**
@@ -466,7 +470,7 @@ export const installScriptDecodeApplication = async ({
       ).length,
     close: async () => {
       instance.funding.close();
-      await rm(directory, { recursive: true, force: true });
+      await scratch.remove();
     },
   } as const;
 };
