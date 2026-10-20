@@ -84,6 +84,39 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
   expect(replacement.transactionHash).not.toBe(fixture.transactionHash);
 });
 
+it("keeps a superseded attempt's input that holds a token as its replacement's funding", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const funding = fundingOf(fixture);
+  const journal = await supersedeAtTip(fixture);
+  // The expired attempt's input holds a token: the funding plan reserves only
+  // plain-ADA coins, save this one, which the replacement must spend.
+  const coin = fixture.walletUtxos.find(
+    ({ txHash, outputIndex }) => `${txHash}#${outputIndex}` === funding.outRef,
+  )!;
+  coin.assets = { ...coin.assets, [`${"aa".repeat(28)}00`]: 1n };
+  await beginWorkflowFundingReservationAction({
+    journal,
+    action: { actionId: "init", input: { actionKind: "proof.init" } },
+  });
+  const [refreshed] = await fixture.records();
+  expect(refreshed!.activeInputs).toContainEqual(
+    expect.objectContaining({ outRef: funding.outRef, role: "funding" }),
+  );
+  const collateral = refreshed!.activeInputs
+    .filter(({ role }) => role === "collateral")
+    .map(({ outRef }) => outRef);
+  const replacement = signReplacement(
+    funding.outRef,
+    BigInt(funding.lovelace),
+    300n,
+    collateral,
+  );
+  await recordReplacement(fixture, journal, replacement, 2);
+  expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
+    replacement.transactionHash,
+  );
+});
+
 const replaceAfterExpiry = async (fixture: Fixture) => {
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
