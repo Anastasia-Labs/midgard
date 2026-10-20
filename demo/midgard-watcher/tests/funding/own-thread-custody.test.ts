@@ -30,11 +30,13 @@ const output = ({
   quantity = 1n,
   prover = PROVER,
   extra = {},
+  datum = Data.to(new Constr(0, [prover, new Constr(1, [])])),
 }: {
   readonly unit?: string | null;
   readonly quantity?: bigint;
   readonly prover?: string;
   readonly extra?: Readonly<Record<string, bigint>>;
+  readonly datum?: string | null;
 } = {}): UTxO => ({
   txHash: "e1".repeat(32),
   outputIndex: 1,
@@ -44,7 +46,7 @@ const output = ({
     ...(unit === null ? {} : { [unit]: quantity }),
     ...extra,
   },
-  datum: Data.to(new Constr(0, [prover, new Constr(1, [])])),
+  datum,
   datumHash: null,
   scriptRef: null,
 });
@@ -97,6 +99,19 @@ describe("released custody of the reservation's own computation thread, proved f
 
   it("refuses a thread whose datum names another prover", async () => {
     expect(await resolve([output({ prover: OTHER_PROVER })])).toBeNull();
+  });
+
+  it.each([
+    [
+      "another constructor",
+      Data.to(new Constr(1, [PROVER, new Constr(1, [])])),
+    ],
+    ["a missing field", Data.to(new Constr(0, [PROVER]))],
+    ["an extra field", Data.to(new Constr(0, [PROVER, new Constr(1, []), 0n]))],
+    ["a datum that is not a constructor", Data.to([PROVER, new Constr(1, [])])],
+    ["no datum", null],
+  ])("refuses a thread whose step datum has %s", async (_shape, datum) => {
+    expect(await resolve([output({ datum })])).toBeNull();
   });
 
   it("refuses a contract input that carries no thread token of this deployment", async () => {
