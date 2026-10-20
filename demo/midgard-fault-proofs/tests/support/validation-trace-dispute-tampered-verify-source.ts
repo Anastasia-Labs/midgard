@@ -38,6 +38,8 @@ export type VerifySourcePresentation = Readonly<{
   inputs?: readonly UTxO[];
   /** The authority granted over the presented bytes. */
   authority?: (grant: VerifySourceGrant) => VerifySourceGrant;
+  /** The pending claim the authority is granted over, for the spent one. */
+  opener?: (opener: UTxO) => UTxO;
 }>;
 
 /**
@@ -199,7 +201,7 @@ export const presentVerifySource =
         grantValidationDisputeFundingAuthority({
           ...(presentation.authority?.(grant) ?? grant),
           signed: presented,
-          opener: opener as UTxO,
+          opener: presentation.opener?.(opener!) ?? opener!,
         });
       }
       return bindWorkflowPreflightTransaction(

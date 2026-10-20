@@ -171,7 +171,6 @@ export const assertValidationDisputeFundingAuthorityBinding = ({
   state,
   action,
   headerHash,
-  bodyInputs,
 }: {
   readonly authority: ValidationDisputeFundingAuthority;
   readonly policy: Policy;
@@ -179,7 +178,6 @@ export const assertValidationDisputeFundingAuthorityBinding = ({
   readonly action: FraudProofWorkflowAction;
   /** The actuation permit's challenged header. */
   readonly headerHash: string;
-  readonly bodyInputs: readonly string[];
 }): NonNullable<Policy["validationDispute"]> => {
   const terms = policy.validationDispute;
   const differing = (
@@ -198,7 +196,6 @@ export const assertValidationDisputeFundingAuthorityBinding = ({
           computeDeploymentManifestJsonDigest(action),
       ],
       ["opener", action.input.consumes === authority.openerOutRef],
-      ["opener input", bodyInputs.includes(authority.openerOutRef)],
       ["header hash", authority.headerHash === headerHash],
       [
         "deployment fingerprint",
@@ -364,7 +361,6 @@ export const validationDisputeFunding = ({
   policy,
   state,
   action,
-  bodyInputs,
 }: {
   readonly signed: TxSigned;
   /** Whether the transaction also carries a fraud slash authority. */
@@ -372,7 +368,6 @@ export const validationDisputeFunding = ({
   readonly policy: Policy;
   readonly state: PermitState;
   readonly action: FraudProofWorkflowAction;
-  readonly bodyInputs: readonly string[];
 }) => {
   const authority = readValidationDisputeFundingAuthority(signed);
   if (authority === null) return null;
@@ -390,7 +385,6 @@ export const validationDisputeFunding = ({
       category: state.category,
       rollbackGeneration: state.snapshot.rollbackGeneration,
     }).headerHash,
-    bodyInputs,
   });
   let opener: UTxO | undefined;
   let openerLovelace = 0n;
@@ -451,14 +445,12 @@ export const validationDisputeFunding = ({
         );
     },
     /**
-     * Exactly one bond and one case, funding nothing else. With the claim
-     * as the only released custody, the custody they hold is the released
-     * custody plus their allocation by construction.
+     * Exactly one bond and one case. The claim is the only contract input
+     * admitted, so the runtime bound's custody check holds them to its
+     * released lovelace plus their allocation.
      */
-    assertComplete: ({
-      releasedCustody,
-    }: Readonly<{ releasedCustody: bigint }>): void => {
-      if (bonds !== 1 || cases !== 1 || releasedCustody !== openerLovelace)
+    assertComplete: (): void => {
+      if (bonds !== 1 || cases !== 1)
         throw new Error(
           `validation dispute VerifySource must pay exactly one bond and one case output: bonds=${bonds.toString()} cases=${cases.toString()}`,
         );

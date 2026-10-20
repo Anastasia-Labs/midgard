@@ -144,7 +144,6 @@ export const assertRuntimeTransactionBound = async ({
     policy,
     state,
     action,
-    bodyInputs,
   });
   if (signedBytes > BigInt(parameters.maxTxSize))
     throw new Error("signed transaction exceeds protocol maxTxSize");
@@ -453,7 +452,7 @@ export const assertRuntimeTransactionBound = async ({
       custodyAllocation += minimum;
     }
   }
-  dispute?.assertComplete({ releasedCustody });
+  dispute?.assertComplete();
   if (custody > releasedCustody + custodyAllocation)
     throw new Error(
       `funding transaction exceeds its governed custody allocation: actual=${custody.toString()} allowed=${(releasedCustody + custodyAllocation).toString()}`,
