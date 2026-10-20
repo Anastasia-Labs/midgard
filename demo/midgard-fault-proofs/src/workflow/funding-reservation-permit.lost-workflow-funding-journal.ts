@@ -33,6 +33,7 @@ const signedRecords = <T extends { submissionIntent: { txHash: string } }>(
       record.transition,
     );
     const handoff = parse(record.handoff);
+    // For other ports: the watcher's SQLite row parsers already refuse this.
     if (transition.transactionHash !== handoff.submissionIntent.txHash)
       throw new Error("funding store changed a signed attempt's identity");
     return handoff;
@@ -76,6 +77,7 @@ export const lostWorkflowFundingJournalRecords = (input: {
     );
     const preflight = recorded[0]?.preflight;
     if (
+      // Rows are keyed by transition digest, so more than one is impossible.
       recorded.length !== 1 ||
       preflight?.txHash !== intent.txHash ||
       preflight.actionId !== intent.actionId ||

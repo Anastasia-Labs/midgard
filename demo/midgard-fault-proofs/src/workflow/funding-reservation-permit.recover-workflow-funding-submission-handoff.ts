@@ -59,6 +59,7 @@ export const recoverWorkflowFundingSubmissionHandoff = async ({
     workflowFundingHandoffJournalLost(handoff, current, records) &&
     prepared?.kind === "prepared"
   ) {
+    // For other callers: recoverWorkflowFundingJournal re-records them first.
     if (
       current.slice(2).filter(({ event }) => event.kind !== "stalled")
         .length !== records.length
