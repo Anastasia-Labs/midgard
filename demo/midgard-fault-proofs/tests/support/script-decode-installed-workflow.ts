@@ -26,6 +26,10 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
+import {
+  recordWatcherFaultDecision,
+  watcherProofObjectiveDirectory,
+} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
@@ -331,8 +335,14 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
+  // The watcher's journal root: its decision journal, the objective's
+  // workflow journal directory and, beside them, the reservation store.
   const directory = await mkdtemp(join(homedir(), "script-decode-installed-"));
-  const journalDirectory = join(directory, "journal");
+  await recordWatcherFaultDecision(directory, decision);
+  const journalDirectory = watcherProofObjectiveDirectory(directory, {
+    category,
+    headerHash,
+  });
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   /**
    * The watcher process's in-memory part: the admitted runner and the open
@@ -420,6 +430,7 @@ export const installScriptDecodeApplication = async ({
         ...Object.values(committed.removal.published),
       ],
       directory,
+      journalRoot: directory,
     });
     return { runner, funding } as const;
   };
@@ -471,7 +482,8 @@ export const installScriptDecodeApplication = async ({
       await rm(journalDirectory, { recursive: true, force: true });
       if (reservations)
         for (const name of await readdir(directory))
-          await rm(join(directory, name), { recursive: true, force: true });
+          if (name.startsWith("watcher.sqlite"))
+            await rm(join(directory, name), { force: true });
       await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
       turns = 0;
       instance = await boot();

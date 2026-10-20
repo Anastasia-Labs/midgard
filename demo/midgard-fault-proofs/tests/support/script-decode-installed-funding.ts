@@ -7,7 +7,8 @@
  * derives it from the signed manifest's applied script hashes, which name
  * the fixture manifest's scripts, not the emulator's. The roster here is the
  * emulator deployment's, mapped to custody roles exactly as the factory maps
- * them.
+ * them. Each mint first passes the factory's recovery authorization over the
+ * watcher's journal root.
  */
 import { join } from "node:path";
 
@@ -27,6 +28,10 @@ import {
   openWatcherSqliteProverFundingReservationStore,
   type VerifiedWatcherDeploymentIdentity,
 } from "midgard-watcher";
+import {
+  authorizeWatcherProverFundingRecovery,
+  TEST_JOURNAL_KEY,
+} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 import { ledgerParameterQuery } from "midgard-watcher/tests/support/ledger-protocol-parameters";
 
 import type { WorkflowActuationPermit } from "../../src/workflow/actuation-permit.js";
@@ -129,6 +134,7 @@ export const openInstalledProverFunding = async ({
   scriptHashes,
   referenceUtxos,
   directory,
+  journalRoot,
 }: {
   readonly emulator: Emulator;
   readonly identity: VerifiedWatcherDeploymentIdentity;
@@ -148,6 +154,8 @@ export const openInstalledProverFunding = async ({
   readonly referenceUtxos: readonly UTxO[];
   /** Durable home of the SQLite reservation store. */
   readonly directory: string;
+  /** The watcher's journal root: decisions and objective workflow journals. */
+  readonly journalRoot: string;
 }) => {
   const fundingContracts = new Map<
     string,
@@ -209,6 +217,15 @@ export const openInstalledProverFunding = async ({
     readonly actuationPermit: WorkflowActuationPermit;
     readonly decisionDigest: string;
   }) => {
+    await authorizeWatcherProverFundingRecovery({
+      journalRoot,
+      journalAuthenticationKey: TEST_JOURNAL_KEY,
+      deploymentIdentity: identity,
+      actuationPermit,
+      category,
+      rollbackGeneration: "0",
+      store: opened.store,
+    });
     const existing = (await opened.store.readAll()).some(
       (record) =>
         (record as { readonly decisionDigest?: unknown }).decisionDigest ===
