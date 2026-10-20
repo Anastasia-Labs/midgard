@@ -332,6 +332,8 @@ const plutusEventsInStepOrder = (evidence: CanonicalBlockEvidence) => {
  *
  * A re-execution that throws holds only its own event (`holds`): the other
  * events still replay, and a failure proven on any of them decides the block.
+ * The replay is one pass of `holds`, so it re-executes a bounded number of
+ * held events.
  * With none proven while an event is held, the replay throws
  * `ValidationTraceReplayHeldError` rather than deciding.
  */
@@ -352,9 +354,14 @@ export const detectPlutusExecutionFailures = async ({
   // One walk of the block's steps serves every event's pre-state, so the
   // events replay in step order.
   let walk: EventLedgerWalk | undefined;
+  const pass = holds.pass();
   for (const { event, position } of plutusEventsInStepOrder(evidence)) {
     const holdKey = `${evidence.headerHash}\u0000${event.fingerprint}`;
-    const waiting = holds.waiting(holdKey);
+    const waiting = pass.waiting(holdKey, {
+      headerHash: evidence.headerHash,
+      position,
+      txId: event.entry.txId,
+    });
     if (waiting !== undefined) {
       held.push(waiting);
       continue;

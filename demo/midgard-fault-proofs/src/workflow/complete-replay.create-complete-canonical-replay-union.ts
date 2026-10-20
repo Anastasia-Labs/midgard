@@ -290,14 +290,13 @@ export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
 /** Complete script re-execution scan for the validation-trace dispute. The
  * deployment's slot mapping places each transaction's validity range in the
  * script context. The replayer keeps its held events across replays, so a
- * held event is retried only after its backoff. */
+ * held event is retried only after its backoff; each replay is one pass of
+ * its holds. `onStuck` alerts once when an event becomes stuck. */
 export const createValidationTraceDisputeCompleteCanonicalReplay = (
   l1SlotConfig: L1SlotConfig,
-  { now }: { readonly now?: () => number } = {},
+  options: Parameters<typeof createValidationTraceReplayHolds>[0] = {},
 ): CompleteCanonicalReplay => {
-  const holds = createValidationTraceReplayHolds(
-    now === undefined ? {} : { now },
-  );
+  const holds = createValidationTraceReplayHolds(options);
   return completeReplayer(
     ["validationTraceDispute"],
     async (evidence, context) =>
