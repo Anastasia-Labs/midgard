@@ -150,13 +150,19 @@ export const journeyWithdrawalBody = (input: {
   };
 };
 
-/** A withdrawal followed by an accepted claim that still spends/reads its output. */
+/**
+ * A withdrawal followed by an accepted claim that still spends/reads its
+ * output. The honest control spends a retained output instead; with
+ * `controlReferencesRetained` the reference-input control also reads a second
+ * retained output, so the control carries a reference input that exists.
+ */
 export const buildJourneyWithdrawnTransaction = async (
   input: HistoryEventBlockInput & {
     category: "withdrawnInput" | "withdrawnReferenceInput";
     withdrawal: StagedHistoryEvent;
     ledgerOwnerSeedPhrase: string;
     honest?: boolean;
+    controlReferencesRetained?: boolean;
   },
 ) => {
   const datum = authenticateEvent(input.withdrawal);
@@ -179,9 +185,19 @@ export const buildJourneyWithdrawnTransaction = async (
     .to_public()
     .hash()
     .to_hex();
-  const unspent = ownedHistoryLedgerEntries(input.predecessor, owner).find(
+  const retained = ownedHistoryLedgerEntries(input.predecessor, owner).filter(
     ({ outRef }) => !outRef.equals(withdrawn),
   );
+  const unspent = retained[0];
+  const referencesRetained =
+    input.honest === true &&
+    input.category === "withdrawnReferenceInput" &&
+    input.controlReferencesRetained === true;
+  const controlReference = referencesRetained ? retained[1] : undefined;
+  if (referencesRetained && controlReference === undefined)
+    throw new Error(
+      "A reference-input control needs a second retained predecessor output",
+    );
   const remaining =
     unspent === undefined
       ? undefined
@@ -212,7 +228,9 @@ export const buildJourneyWithdrawnTransaction = async (
       referenceInputs:
         !input.honest && input.category === "withdrawnReferenceInput"
           ? [withdrawn]
-          : [],
+          : controlReference === undefined
+            ? []
+            : [controlReference.outRef],
       outputs: [Buffer.from(selected[1], "hex")],
       fee: 0n,
       networkId: input.predecessor.header.expectedNetworkId,
@@ -308,6 +326,9 @@ export const buildJourneyWithdrawnTransaction = async (
         mode: "identity",
       }),
       actualWithdrawal: input.withdrawal,
+      targetEventKey: {
+        L2TransactionEventKey: { tx_id: transaction.txId },
+      } satisfies SDK.EventKey,
     },
     transactions.ledger.entries,
   );
