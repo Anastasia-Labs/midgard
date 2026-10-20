@@ -89,3 +89,21 @@ export type FraudProofWorkflowRunResult =
        */
       readonly phase?: "preflight";
     };
+
+/**
+ * Whether the journal already records a stall for `reason` since its last
+ * state change (its last entry other than a stall): stalling again on the
+ * same cause is not a new entry, so an objective re-checked many times while
+ * it is held keeps the journal bounded.
+ */
+export const journalRepeatsStall = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  reason: string,
+): boolean => {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const event = entries[index]!.event;
+    if (event.kind !== "stalled") return false;
+    if (event.reason === reason) return true;
+  }
+  return false;
+};

@@ -64,6 +64,7 @@ import {
   attemptCount,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
+  journalRepeatsStall,
   latestSubmissionIntent,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
@@ -191,7 +192,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     reason: string,
     phase?: "preflight",
   ): Promise<FraudProofWorkflowRunResult> => {
-    await append({ kind: "stalled", reason });
+    if (!journalRepeatsStall(entries, reason))
+      await append({ kind: "stalled", reason });
     return {
       kind: "stalled",
       workflowId,

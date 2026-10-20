@@ -263,6 +263,44 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
+  it("keeps the journal bounded while a held objective is re-checked on the same stall", async () => {
+    const test = await setup();
+    const journal = () =>
+      test.fixture.journal.load(test.fixture.initial.workflowId);
+    const before = (await journal()).length;
+    vi.mocked(test.fixture.adapter.reconcile).mockRejectedValue(
+      new Error("the follower answered with a foreign block"),
+    );
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      for (let recheck = 0; recheck < 50; recheck += 1)
+        expect(await test.execution.execute(test.input)).toMatchObject({
+          kind: "retryable",
+          reason: expect.stringContaining("reconciliation failed for init"),
+        });
+    } finally {
+      stderr.mockRestore();
+    }
+    // One stall records the cause; re-checking it adds nothing more.
+    const entries = await journal();
+    expect(entries).toHaveLength(before + 1);
+    expect(entries.at(-1)!.event).toMatchObject({ kind: "stalled" });
+    expect(test.execution.readiness()).toEqual([
+      expect.objectContaining({ reason: WATCHER_FAULT_PROOF_QUARANTINED }),
+    ]);
+    // A different cause is recorded once.
+    vi.mocked(test.fixture.adapter.reconcile).mockRejectedValue(
+      new Error("the follower answered with a stale block"),
+    );
+    stderr.mockImplementation(() => true);
+    for (let recheck = 0; recheck < 3; recheck += 1)
+      await test.execution.execute(test.input);
+    stderr.mockRestore();
+    expect(await journal()).toHaveLength(before + 2);
+  });
+
   it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
     const test = await setup();
     const before = await test.fixture.records();
