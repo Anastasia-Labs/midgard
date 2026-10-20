@@ -6,13 +6,22 @@ import { WorkflowFundingReservationUnavailableError } from "./funding-reservatio
 export const WORKFLOW_FUNDING_SHORTFALL = "workflow-funding-shortfall" as const;
 
 /**
- * What a transaction build throws when the wallet it was offered cannot pay
- * for it: Lucid's coin selection (inputs, collateral or the change output's
- * minimum ada), an empty input list handed to it, or a proof step finding no
- * plain-ADA coin large enough for its fee.
+ * What a transaction build throws when the wallet it was offered is short of
+ * ada, which a top-up fixes: Lucid's coin selection missing lovelace only (for
+ * the required assets, collateral or the change output's minimum ada), or a
+ * proof step finding no plain-ADA coin large enough for its fee. A missing
+ * native token, or an empty input list, is not a shortfall: no top-up of
+ * plain ada supplies it.
  */
-const SHORTFALL =
-  /EMPTY_UTXO|does not have enough funds|must contain a pure-ADA UTxO with at least \d+ lovelace for fees/u;
+const SHORTFALL = new RegExp(
+  [
+    String.raw`does not have enough funds to cover the required assets: \{\s*"lovelace":\s*"\d+n"\s*\}`,
+    String.raw`does not have enough funds to cover the required \d+ Lovelace collateral`,
+    String.raw`does not have enough funds to cover required minimum ADA for change output`,
+    String.raw`must contain a pure-ADA UTxO with at least \d+ lovelace for fees`,
+  ].join("|"),
+  "u",
+);
 
 const describe = (value: unknown): string => {
   if (value instanceof Error) return value.message;
