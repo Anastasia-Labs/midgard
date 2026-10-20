@@ -20,13 +20,18 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./measurement.js";
+import { TRACED_REFUSALS } from "./traced-refusals.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
 export const inputExistenceCategory = (field: 0 | 1) =>
   field === 0 ? "nonExistentInput" : "noReferenceInput";
 
+// The traced-refusal run swaps in verbose-traced scripts only to attribute a
+// refusal to its check; the plain run is the one that proves every script and
+// transaction fits.
 const checkFit = (measurement: CompleteSignedTransactionMeasurement) => {
+  if (TRACED_REFUSALS) return;
   expect(measurement.completeSignedBytes).toBeLessThanOrEqual(16_384);
   expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
   expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
@@ -52,8 +57,9 @@ export const runInputExistenceRoute = async ({
 }) => {
   const category = inputExistenceCategory(field);
   const family = h.contracts.fraudProofContracts[category];
-  for (const step of family.steps)
-    expect(step.spendingScript.script.length / 2).toBeLessThanOrEqual(16_384);
+  if (!TRACED_REFUSALS)
+    for (const step of family.steps)
+      expect(step.spendingScript.script.length / 2).toBeLessThanOrEqual(16_384);
   const stepReferences: UTxO[] = [];
   for (const [index, step] of family.steps.entries())
     stepReferences.push(
