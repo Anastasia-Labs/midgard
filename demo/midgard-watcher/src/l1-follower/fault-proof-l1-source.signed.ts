@@ -45,8 +45,9 @@ import {
  *
  * A spend of any input by another transaction makes the intent impossible,
  * whatever the other inputs: it is `invalidated_at_tip` even beside an input
- * without history, and `invalidated` once stable only when every input is
- * known.
+ * without history. It is `invalidated` once a spend is stable, beside an
+ * input without history only when a stored transaction with another hash
+ * made it; a spend inferred from the pruning names no spender.
  */
 
 type Observation = Awaited<
@@ -135,8 +136,14 @@ type InputState =
   | Readonly<{ kind: "unknown"; reason: string }>
   | Readonly<{ kind: "live"; outputCbor: string }>
   /** Spent at `atOrBelowSlot` (or, when the pruning removed its row, at or
-   * below it). Without a stored creating body the output is not known. */
-  | Readonly<{ kind: "spent"; outputCbor?: string; atOrBelowSlot: number }>;
+   * below it) by `spender`, when a stored fact names it. Without a stored
+   * creating body the output is not known. */
+  | Readonly<{
+      kind: "spent";
+      outputCbor?: string;
+      atOrBelowSlot: number;
+      spender?: string;
+    }>;
 
 type Reader = Readonly<{
   store: FactStore;
@@ -163,7 +170,11 @@ const spentWithoutCreation = async (
   const spend = row?.spent ?? (await store.txSpending(outRef));
   return spend === null
     ? { kind: "unknown", reason: REASONS.unknown }
-    : { kind: "spent", atOrBelowSlot: atView(view, spend.slot) };
+    : {
+        kind: "spent",
+        atOrBelowSlot: atView(view, spend.slot),
+        spender: spend.txHash.toString("hex"),
+      };
 };
 
 const inputState = async (
@@ -193,6 +204,7 @@ const inputState = async (
           kind: "spent",
           outputCbor,
           atOrBelowSlot: atView(view, row.spent.slot),
+          spender: row.spent.txHash.toString("hex"),
         };
   const spender = await store.txSpending(outRef);
   if (spender !== null)
@@ -200,6 +212,7 @@ const inputState = async (
       kind: "spent",
       outputCbor,
       atOrBelowSlot: atView(view, spender.slot),
+      spender: spender.txHash.toString("hex"),
     };
   const missing = required(
     await rawReads.utxosByOutRefAtPoint([label], canonicalPoint),
@@ -291,6 +304,8 @@ const observeOnce = async (
   let status: Status = "rebroadcast";
   let reason: string = REASONS.rebroadcast;
   let unknown: string | undefined;
+  /** A stored transaction with another hash stably spent an input. */
+  let stablySpentByOther = false;
   for (const label of signed.outRefs) {
     const state = await inputState(reader, label);
     if (state.kind === "unknown") {
@@ -304,17 +319,25 @@ const observeOnce = async (
     if (stable) {
       status = "invalidated";
       reason = REASONS.invalidated;
+      if (
+        state.spender !== undefined &&
+        state.spender !== input.transactionHash.toLowerCase()
+      )
+        stablySpentByOther = true;
     } else if (status !== "invalidated") {
       status = "invalidated_at_tip";
       reason = REASONS.invalidatedAtTip;
     }
   }
   // A spend makes the intent impossible whatever else holds; an input
-  // without history still prevents its retirement and its rebroadcast.
+  // without history still prevents its rebroadcast, and its retirement
+  // unless another stored transaction stably spent an input.
   if (unknown !== undefined)
     return status === "rebroadcast"
       ? finish("unknown", unknown)
-      : finish("invalidated_at_tip", REASONS.invalidatedAtTip);
+      : stablySpentByOther
+        ? finish("invalidated", REASONS.invalidated)
+        : finish("invalidated_at_tip", REASONS.invalidatedAtTip);
   if (status !== "rebroadcast") return finish(status, reason);
   if (signed.validFromSlot !== undefined && tipSlot < signed.validFromSlot)
     return finish("pending", REASONS.validFrom);

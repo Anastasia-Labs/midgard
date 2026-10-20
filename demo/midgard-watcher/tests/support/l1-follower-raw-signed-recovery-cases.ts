@@ -254,18 +254,36 @@ export const describeSignedRecovery = (): void => {
         status: "invalidated_at_tip",
         inputs: [s.input(2)],
       });
-      expect(
-        await s.observe(
-          s.intent({ inputs: [s.at(2), s.chain.outsideInput()] }),
-        ),
-      ).toMatchObject({
+      const beside = s.intent({ inputs: [s.at(2), s.chain.outsideInput()] });
+      expect(await s.observe(beside)).toMatchObject({
         status: "invalidated_at_tip",
         reason: REASON.invalidatedAtTip,
         inputs: [s.input(2)],
       });
+      await s.empty(K + 2);
+      expect(await s.observe(beside)).toMatchObject({
+        status: "invalidated",
+        reason: REASON.invalidated,
+        inputs: [s.input(2)],
+      });
     });
 
-    it("a stored spend of one input invalidates an intent beside a seed input at the tip, never stably", async () => {
+    it("a seed input another transaction stably spends invalidates an intent beside an input without history", async () => {
+      const s = await setup();
+      const z = s.intent({ inputs: [SEED.outRef, s.chain.outsideInput()] });
+      await s.forward([s.intent({ inputs: [SEED.outRef] })]);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated_at_tip",
+      });
+      await s.empty(K + 2);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated",
+        reason: REASON.invalidated,
+        inputs: [],
+      });
+    });
+
+    it("a stored spend of one input invalidates an intent beside a seed input at the tip, then stably once recovery-deep", async () => {
       const s = await setup();
       const z = s.intent({ inputs: [SEED.outRef, s.at(0)] });
       expect(await s.observe(z)).toMatchObject({
@@ -285,8 +303,42 @@ export const describeSignedRecovery = (): void => {
       expect(await s.observe(z)).toMatchObject({ status: "unknown" });
       await s.forward([other]);
       await s.empty(K + 2);
-      expect(await s.observe(z)).toMatchObject(spent);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated",
+        reason: REASON.invalidated,
+        inputs: [s.input(0)],
+      });
       expect(s.double.calls).toEqual([]);
+    });
+
+    it("a known input spent only at the tip beside an input without history is invalidated_at_tip", async () => {
+      const s = await setup();
+      const z = s.intent({ inputs: [SEED.outRef, s.at(0)] });
+      await s.forward([s.intent({ inputs: [s.at(0)] })]);
+      for (let depth = 1; depth < 5; depth += 1) {
+        expect(await s.observe(z)).toMatchObject({
+          status: "invalidated_at_tip",
+          reason: REASON.invalidatedAtTip,
+          inputs: [s.input(0)],
+        });
+        await s.empty(1);
+      }
+      expect(await s.observe(z)).toMatchObject({ status: "invalidated" });
+    });
+
+    it("its own phase-2-invalid landing never stably invalidates an intent beside an input without history", async () => {
+      const s = await setup();
+      const z = s.intent({
+        inputs: [SEED.outRef, s.at(0)],
+        collaterals: [s.at(1)],
+      });
+      await s.forward([{ ...z, isValid: false }]);
+      await s.empty(K + 2);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated_at_tip",
+        reason: REASON.invalidatedAtTip,
+        inputs: [s.input(0), s.input(1)],
+      });
     });
 
     it("a seed input another transaction spends invalidates the intent; one that lands is included", async () => {
