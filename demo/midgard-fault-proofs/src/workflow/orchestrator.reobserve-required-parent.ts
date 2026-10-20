@@ -1,7 +1,10 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 
 import { assertWorkflowJournalActuation } from "./actuation-permit.js";
-import { reobserveWorkflowFundingReservationTransaction } from "./funding-reservation-permit.js";
+import {
+  readWorkflowFundingRecovery,
+  reobserveWorkflowFundingReservationTransaction,
+} from "./funding-reservation-permit.js";
 import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,
@@ -54,11 +57,15 @@ export const reobserveRequiredWorkflowParent = async ({
   const { workflowId } = context;
   const identity = context.identity;
   const entries = context.entries;
-  // A descendant can consume a parent's effects while its inclusion
-  // remains canonical. Authenticate that inclusion without replay
-  // authority before displacing the descendant's unresolved intent.
-  let parentIncluded = false;
-  if (hasUnresolvedDescendant) {
+  type Submission = Extract<
+    FraudProofWorkflowJournalEvent,
+    { kind: "submission_intent" }
+  >;
+  // Reads, without replay authority, whether `submission` is on chain.
+  const onChain = async (
+    submission: Submission,
+    signedTransactionCborHex?: string,
+  ): Promise<boolean | FraudProofWorkflowRunResult> => {
     let inclusion: FraudProofWorkflowReconcileResult;
     try {
       assertWorkflowJournalActuation({
@@ -72,13 +79,16 @@ export const reobserveRequiredWorkflowParent = async ({
         ...context,
         reconciliationOnly: true,
         action: validateAction({
-          actionId: intent.actionId,
-          input: intent.actionInput,
+          actionId: submission.actionId,
+          input: submission.actionInput,
         }),
-        txHash: intent.txHash,
-        ...(intent.durableRecovery === undefined
+        txHash: submission.txHash,
+        ...(signedTransactionCborHex === undefined
           ? {}
-          : { durableRecovery: intent.durableRecovery }),
+          : { signedTransactionCborHex }),
+        ...(submission.durableRecovery === undefined
+          ? {}
+          : { durableRecovery: submission.durableRecovery }),
       });
       assertWorkflowJournalActuation({
         journal,
@@ -90,25 +100,62 @@ export const reobserveRequiredWorkflowParent = async ({
     } catch (cause) {
       if (cause instanceof FraudProofL1CheckpointChangedError)
         return resumeOnObservation(
-          `reconciliation awaits a stable boundary for ${intent.actionId}: ${cause.message}`,
+          `reconciliation awaits a stable boundary for ${submission.actionId}: ${cause.message}`,
         );
       if (isFraudProofL1WaitError(cause)) throw cause;
       return await stalled(
-        `reconciliation failed for ${intent.actionId}: ${formatUnknownError(cause)}`,
+        `reconciliation failed for ${submission.actionId}: ${formatUnknownError(cause)}`,
       );
     }
-    if (inclusion.kind === "confirmed") {
-      if (
-        normalizeTxHash(inclusion.txHash, "reconciled transaction hash") !==
-        intent.txHash
-      )
-        return await stalled(
-          `reconciliation for ${intent.actionId} returned ${inclusion.txHash}, expected ${intent.txHash}`,
-        );
-      parentIncluded = true;
+    if (inclusion.kind !== "confirmed") return false;
+    if (
+      normalizeTxHash(inclusion.txHash, "reconciled transaction hash") !==
+      submission.txHash
+    )
+      return await stalled(
+        `reconciliation for ${submission.actionId} returned ${inclusion.txHash}, expected ${submission.txHash}`,
+      );
+    return true;
+  };
+  // A descendant can consume a parent's effects while its inclusion
+  // remains canonical. Authenticate that inclusion without replay
+  // authority before displacing the descendant's unresolved intent.
+  let resolvedOnChain = false;
+  if (hasUnresolvedDescendant) {
+    const included = await onChain(intent);
+    if (typeof included !== "boolean") return included;
+    resolvedOnChain = included;
+  }
+  // Owner ruling (whichever lands wins): the pending later attempt is
+  // superseded only while it has not landed. Once on chain it is the result
+  // for its action and is reconciled as such: superseding it would let a
+  // fresh attempt for the same action land beside it.
+  if (!resolvedOnChain && hasUnresolvedDescendant) {
+    const recovery = await readWorkflowFundingRecovery(journal);
+    const displaced = recovery.transition;
+    const submission =
+      displaced === null ||
+      recovery.abandonmentHandoff !== null ||
+      displaced.transactionHash === intent.txHash
+        ? undefined
+        : [...entries]
+            .reverse()
+            .map(({ event }) => event)
+            .find(
+              (event): event is Submission =>
+                event.kind === "submission_intent" &&
+                event.txHash === displaced.transactionHash,
+            );
+    if (displaced !== null && submission !== undefined) {
+      const landed = await onChain(
+        submission,
+        displaced.signedTransactionCborHex,
+      );
+      if (typeof landed !== "boolean") return landed;
+      resolvedOnChain = landed;
     }
   }
-  if (parentIncluded) return { kind: "included" };
+  if (resolvedOnChain) return { kind: "included" };
   await supersedeDisplacedAttempt();
   const fundingAvailable = await reobserveWorkflowFundingReservationTransaction(
     {

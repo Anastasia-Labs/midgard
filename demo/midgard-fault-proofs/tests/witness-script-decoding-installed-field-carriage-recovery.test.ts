@@ -222,16 +222,21 @@ describe("witness field carriage recovered from its own journal, in the installe
     const certify = carriage.certificates[0]!.transaction;
     expect(certify.referenceInputs).toContain(published[1]!.outRef);
     expect(certify.referenceInputs).not.toContain(spent);
-    // Only publications are added: the one in its place and, at most, the
-    // one in flight when the output went, which waits while the first is
-    // reconciled again and may be published once more.
+    // Exactly one publication is added, the one in its place. The
+    // publication in flight when the output went lands and is the result for
+    // its chunk: it is never published again.
     const others = (rows: readonly { kind: string }[]) =>
       rows.map(({ kind }) => kind).filter((kind) => kind !== "publish");
     const publishes = (rows: readonly { kind: string }[]) =>
       rows.filter(({ kind }) => kind === "publish").length;
     expect(others(cost)).toEqual(others(baseline));
-    expect(publishes(cost)).toBeGreaterThan(publishes(baseline));
-    expect(publishes(cost)).toBeLessThanOrEqual(publishes(baseline) + 2);
+    expect(publishes(cost)).toBe(publishes(baseline) + 1);
+    // Apart from the spent output, every chunk is published exactly once.
+    const live = carriage.publications
+      .flatMap(({ outputs }) => outputs)
+      .filter(({ outRef }) => outRef !== spent)
+      .map(({ datum }) => datum);
+    expect(new Set(live).size).toBe(live.length);
   }, 900_000);
 
   it("publishes again when its publication transaction is lost and another transaction of its wallet spends one of its coins, and never reads a copy for it", async () => {
