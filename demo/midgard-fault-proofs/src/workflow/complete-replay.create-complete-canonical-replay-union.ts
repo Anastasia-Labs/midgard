@@ -2,6 +2,7 @@ import "./complete-replay.resolved-output-non-canonical-complete-canonical-repla
 
 import { createHash } from "node:crypto";
 
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -16,6 +17,7 @@ import { detectRedeemerCanonicityCompleteReplay } from "../redeemer-canonicity/a
 import { type TransitionTraceL1Events } from "../transition-trace/l1-events.js";
 import { transitionTraceCanonicalDetections } from "../transition-trace/replay-authority.canonical-detections.js";
 import { replayTransitionTraceFromRetainedHistory } from "../transition-trace/replay-authority.js";
+import { createValidationTraceReplayHolds } from "../validation-trace-dispute/replay-hold.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
@@ -26,6 +28,7 @@ import {
   detectNetworkIds,
   replayDecisionJson,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { detectPlutusExecutionFailures } from "./complete-replay.detect-accepted-transaction-faults.js";
 import {
   completeReplayer,
   detectWithdrawnReferenceInputs,
@@ -283,3 +286,20 @@ export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["mintItemNonCanonical"], async (evidence) =>
     detectMintItemNonCanonicalCompleteReplay(evidence),
   );
+
+/** Complete script re-execution scan for the validation-trace dispute. The
+ * deployment's slot mapping places each transaction's validity range in the
+ * script context. The replayer keeps its held events across replays, so a
+ * held event is retried only after its backoff; each replay is one pass of
+ * its holds. `onStuck` alerts once when an event becomes stuck. */
+export const createValidationTraceDisputeCompleteCanonicalReplay = (
+  l1SlotConfig: L1SlotConfig,
+  options: Parameters<typeof createValidationTraceReplayHolds>[0] = {},
+): CompleteCanonicalReplay => {
+  const holds = createValidationTraceReplayHolds(options);
+  return completeReplayer(
+    ["validationTraceDispute"],
+    async (evidence, context) =>
+      detectPlutusExecutionFailures({ evidence, context, l1SlotConfig, holds }),
+  );
+};

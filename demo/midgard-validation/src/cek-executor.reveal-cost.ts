@@ -35,7 +35,13 @@ export type MidgardCekRevealCostMaterial = {
   };
 };
 
-/** The Data items under `root`, counted up to `limit + 1` at most. */
+/**
+ * The Data items under `root`, counted until the count exceeds `limit`. Only
+ * whether it does matters, so a node's children stop being queued once the
+ * items counted and queued exceed `limit`: every queued item is still
+ * counted, so the count still crosses `limit` exactly when the whole tree
+ * has more than `limit` items, and a long list is read only up to the limit.
+ */
 const itemsUpTo = (
   material: MidgardCekRevealCostMaterial,
   root: Bytes,
@@ -49,7 +55,12 @@ const itemsUpTo = (
     const node = material.node(item);
     if (node.kind === "map") {
       let cursor = node.entriesRoot;
-      for (let left = node.entriesCount; left > 0n; left -= 1n) {
+      // Queued items are all counted, so stopping here keeps the result.
+      for (
+        let left = node.entriesCount;
+        left > 0n && count + BigInt(pending.length) <= limit;
+        left -= 1n
+      ) {
         const entry = material.pairLink(cursor);
         pending.push(entry.key, entry.value);
         cursor = entry.tail;
@@ -63,7 +74,12 @@ const itemsUpTo = (
           ? [node.fieldsRoot, node.fieldsCount]
           : [null, 0n];
     let cursor = first;
-    for (let left = length; left > 0n && cursor !== null; left -= 1n) {
+    // As for a map: queued items are all counted, so stopping keeps the result.
+    for (
+      let left = length;
+      left > 0n && cursor !== null && count + BigInt(pending.length) <= limit;
+      left -= 1n
+    ) {
       const entry = material.link(cursor);
       pending.push(entry.head);
       cursor = entry.tail;

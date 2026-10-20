@@ -16,6 +16,7 @@ import {
   MIDGARD_TX_EX_UNITS_CAP,
   plutusV3SpendInput,
 } from "./helpers/plutus-spend-input.js";
+import { measureWork } from "./helpers/work-count.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
@@ -23,14 +24,24 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
  * PlutusV3 spend whose redeemer declares the per-transaction execution-unit
  * cap, and the transaction's trace is committed in streaming commit mode at
  * shape size `n` and `2n` (near the cap). Commit mode hashes every state of
- * the trace, so its time is linear in the step count: the `2n` commit takes
- * at most 2.3 times the `n` commit, and at most 10 s. Each size is timed up
- * to three times and the fastest run counts.
+ * the trace into an O(log n) frontier, so its work per step does not grow with
+ * the trace. Work is counted twice, deterministically (`measureWork`): the
+ * bytes the commit hashes and the reads it makes of the CEK semantic store.
+ * The `2n` commit may do at most 5% more of either per step than the `n`
+ * commit. Wall-clock time at the cap is measured outside the gate, by
+ * `bench/validation-trace-commit.bench.test.ts`, which also sees work neither
+ * counter counts. The appendByteString and deep-continuation shapes read the
+ * store zero times, so its check holds trivially for them.
+ *
+ * This gate guards the commitment's per-step cost. Its hashing count is about
+ * twenty times less sensitive to an executor regression than the one in
+ * `cek-executor.adversarial-shapes.test.ts`: a commit hashes about 1.7 KB per
+ * step, nearly all of it state hashing, so an executor regression must add
+ * about 84 bytes per step to cross 5% here, against about 4 bytes there. The
+ * verdict-mode gate is the executor's guard.
  */
 
-const MAX_RATIO = 2.3;
-const MAX_AT_CAP_MS = 10_000;
-const ATTEMPTS = 3;
+const MAX_WORK_PER_STEP_GROWTH = 1.05;
 
 /** The shape's script, returning unit so the spend is accepted. */
 const shapeSpendInput = (
@@ -50,19 +61,26 @@ const shapeSpendInput = (
   );
 };
 
-type Timed = {
-  readonly ms: number;
+type Measured = {
+  readonly hashedBytes: number;
+  readonly storeReads: number;
   readonly stepCount: number;
   readonly accepted: boolean;
 };
 
-const timeCommit = async (
+const measureCommit = async (
   input: ValidationMachineReplayInput,
-): Promise<Timed> => {
-  const started = performance.now();
-  const commitment = await Effect.runPromise(commitValidationTraceV1(input));
+): Promise<Measured> => {
+  const {
+    result: commitment,
+    hashedBytes,
+    storeReads,
+  } = await measureWork(() =>
+    Effect.runPromise(commitValidationTraceV1(input)),
+  );
   return {
-    ms: performance.now() - started,
+    hashedBytes,
+    storeReads,
     stepCount: commitment.descriptor.stepCount,
     accepted: commitment.descriptor.verdict === "accepted",
   };
@@ -72,47 +90,24 @@ describe("validation trace commit-mode scaling", () => {
   for (const [label, n] of Object.entries(
     MIDGARD_CEK_ADVERSARIAL_HALF_CAP_SIZES,
   )) {
+    // Two commits, the larger one near the budget cap: about ten seconds on
+    // a developer machine and several times that on a loaded CI runner.
     it(
       `${label} commits linearly up to the budget cap`,
       { timeout: 300_000 },
       async () => {
-        const halfInput = await shapeSpendInput(label, n);
-        const fullInput = await shapeSpendInput(label, 2 * n);
-        let best: { half: Timed; full: Timed } | undefined;
-        for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-          const half = await timeCommit(halfInput);
-          const full = await timeCommit(fullInput);
-          best = {
-            half:
-              best === undefined || half.ms < best.half.ms ? half : best.half,
-            full:
-              best === undefined || full.ms < best.full.ms ? full : best.full,
-          };
-          if (
-            best.full.ms <= MAX_RATIO * best.half.ms &&
-            best.full.ms <= MAX_AT_CAP_MS
-          ) {
-            break;
-          }
-        }
-        // The measured basis of the commit wall cap, kept in the test log.
-        console.info(
-          JSON.stringify({
-            gate: "commit-mode scaling",
-            label,
-            n,
-            halfSteps: best!.half.stepCount,
-            fullSteps: best!.full.stepCount,
-            halfMs: Math.round(best!.half.ms),
-            fullMs: Math.round(best!.full.ms),
-            ratio: Number((best!.full.ms / best!.half.ms).toFixed(2)),
-          }),
+        const half = await measureCommit(await shapeSpendInput(label, n));
+        const full = await measureCommit(await shapeSpendInput(label, 2 * n));
+        expect(half.accepted).toBe(true);
+        expect(full.accepted).toBe(true);
+        expect(half.hashedBytes).toBeGreaterThan(0);
+        expect(full.stepCount).toBeGreaterThan(half.stepCount);
+        expect(full.hashedBytes / full.stepCount).toBeLessThanOrEqual(
+          MAX_WORK_PER_STEP_GROWTH * (half.hashedBytes / half.stepCount),
         );
-        expect(best!.half.accepted).toBe(true);
-        expect(best!.full.accepted).toBe(true);
-        expect(best!.full.stepCount).toBeGreaterThan(best!.half.stepCount);
-        expect(best!.full.ms).toBeLessThanOrEqual(MAX_RATIO * best!.half.ms);
-        expect(best!.full.ms).toBeLessThanOrEqual(MAX_AT_CAP_MS);
+        expect(full.storeReads / full.stepCount).toBeLessThanOrEqual(
+          MAX_WORK_PER_STEP_GROWTH * (half.storeReads / half.stepCount),
+        );
       },
     );
   }

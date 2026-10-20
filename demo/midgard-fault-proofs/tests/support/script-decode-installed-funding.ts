@@ -128,6 +128,7 @@ export const openInstalledProverFunding = async ({
   scriptHashes,
   referenceUtxos,
   directory,
+  validationDispute,
 }: {
   readonly emulator: Emulator;
   readonly identity: VerifiedWatcherDeploymentIdentity;
@@ -145,6 +146,10 @@ export const openInstalledProverFunding = async ({
   readonly referenceUtxos: readonly UTxO[];
   /** Durable home of the SQLite reservation store. */
   readonly directory: string;
+  /** A validation dispute's deployment-bound VerifySource custody terms. */
+  readonly validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
 }) => {
   const fundingContracts = new Map<
     string,
@@ -185,6 +190,7 @@ export const openInstalledProverFunding = async ({
     economics,
     contracts: [...fundingContracts.values()],
     referenceScripts: [...references.values()],
+    ...(validationDispute === undefined ? {} : { validationDispute }),
   });
   const calculation = await calculateWatcherRuntimeProverFunding({
     deploymentIdentity: identity,

@@ -101,11 +101,14 @@ describe("transaction differential", () => {
   let oracle: AikenStepOracle | undefined;
   let reference: Reference | undefined;
 
-  beforeAll(() => {
-    oracle = makeAikenStepOracle();
+  // The oracle compiles the on-chain project twice per run, shared by every
+  // file that uses it (about 45 s on a developer machine, a few minutes on a
+  // loaded CI runner); a file that starts meanwhile waits for it.
+  beforeAll(async () => {
+    oracle = await makeAikenStepOracle();
     const binary = referenceBinary();
     reference = binary === undefined ? undefined : makeReference(binary);
-  }, 180_000);
+  }, 300_000);
 
   afterAll(() => {
     oracle?.close();

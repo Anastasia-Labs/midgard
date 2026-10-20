@@ -16,6 +16,7 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
@@ -46,6 +47,44 @@ import {
   type WatcherProverFundingReservationStore,
   WatcherProverFundingUnavailableError,
 } from "./prover-funding-reservation.js";
+
+/**
+ * A validation-trace dispute policy's VerifySource custody terms, from the
+ * signed deployment: the manifest's dispute bond (the case validator's
+ * applied bond) and the dispute contracts it pays. Any other category's
+ * policy carries none.
+ */
+export const watcherValidationDisputeFundingTerms = (
+  identity: VerifiedWatcherDeploymentIdentity,
+  category: string,
+): Readonly<{
+  validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
+}> => {
+  if (category !== "validationTraceDispute") return {};
+  const hashes = watcherDeploymentAppliedScriptHashes(identity);
+  const hash = (name: string) => {
+    const scriptHash = hashes[name];
+    if (scriptHash === undefined)
+      throw new Error(`signed deployment omits validation dispute ${name}`);
+    return scriptHash;
+  };
+  const address = (name: string) =>
+    credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
+  return {
+    validationDispute: {
+      deploymentFingerprint: identity.manifestId,
+      bondLovelace: BigInt(
+        watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+          .challengerBondLovelace,
+      ),
+      bondAddress: address("validationTraceDisputeBond"),
+      caseAddress: address("validationTraceDisputeCase"),
+      casePolicyId: hash("validationTraceDisputeCaseMint"),
+    },
+  };
+};
 
 /**
  * Runtime-owned funding authority bound to the admitted runner, deployment,
@@ -230,6 +269,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         economics,
         contracts: [...uniqueContracts.values()],
         referenceScripts: [...referenceScripts.values()],
+        ...watcherValidationDisputeFundingTerms(
+          input.deploymentIdentity,
+          request.category,
+        ),
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;

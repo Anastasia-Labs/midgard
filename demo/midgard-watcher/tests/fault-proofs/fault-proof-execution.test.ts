@@ -7,7 +7,11 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
+import {
+  WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+  WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+  WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+} from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -17,6 +21,10 @@ import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-f
 afterEach(cleanupFundingRecoveryFixtures);
 
 const setup = setupFaultProofExecution;
+
+/** A dispute's response deadline, and the reason its run awaits it under. */
+const DEADLINE = 1_767_225_600_000;
+const AWAITING = `validationTraceDispute awaiting counterparty until ${DEADLINE.toString()}`;
 
 describe("supervisor execution adapter with durable funding", () => {
   it("restores the signed objective without querying fresh wallet inputs", async () => {
@@ -77,26 +85,103 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.getUtxos).not.toHaveBeenCalled();
   });
 
-  it("waits on a fresh observation while a dispute awaits its counterparty", async () => {
+  it.each([
+    {
+      name: "before its response deadline, healthy",
+      nowMs: DEADLINE - 1,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "within the slack after its response deadline, healthy",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "past its response deadline and the slack, alarmed",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS + 1,
+      responseDeadline: DEADLINE,
+      holds: [
+        `awaiting its counterparty 1 ms past the response deadline ${DEADLINE.toString()} and its slack: ${AWAITING}`,
+      ],
+    },
+    {
+      name: "with no response deadline, alarmed",
+      nowMs: DEADLINE - 1,
+      responseDeadline: undefined,
+      holds: [
+        `awaiting its counterparty with no response deadline: ${AWAITING}`,
+      ],
+    },
+  ])(
+    "waits on a fresh observation while a dispute awaits its counterparty $name",
+    async ({ nowMs, responseDeadline, holds }) => {
+      const test = await setup();
+      const before = await test.fixture.records();
+      vi.useFakeTimers({ toFake: ["Date"], now: nowMs });
+      const logged: string[] = [];
+      const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation((line) => logged.push(String(line)) > 0);
+      try {
+        test.runOrResume.mockResolvedValueOnce({
+          kind: "awaiting_counterparty",
+          reason: AWAITING,
+          ...(responseDeadline === undefined ? {} : { responseDeadline }),
+        });
+        expect(await test.execution.execute(test.input)).toEqual({
+          kind: "pending",
+          resume: "await_observation",
+          reason: AWAITING,
+        });
+      } finally {
+        stderr.mockRestore();
+        vi.useRealTimers();
+      }
+      const alarms = holds.map((detail) => ({
+        reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+        detail: `doubleSpend/${test.input.job.headerHash}: ${detail}`,
+      }));
+      expect(test.execution.readiness()).toEqual(alarms);
+      expect(logged).toEqual(
+        alarms.map(
+          (alarm) =>
+            `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...alarm })}\n`,
+        ),
+      );
+      expect(test.recordProofStep).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "reconciling" }),
+      );
+      expect(test.setAlert).not.toHaveBeenCalled();
+      expect(await test.fixture.records()).toEqual(before);
+    },
+  );
+
+  it("clears the counterparty alarm once a later run reports something else", async () => {
     const test = await setup();
-    const before = await test.fixture.records();
-    const reason =
-      "validationTraceDispute awaiting counterparty until 1767225600000";
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "awaiting_counterparty",
-      reason,
-      responseDeadline: 1_767_225_600_000,
-    });
-    expect(await test.execution.execute(test.input)).toEqual({
-      kind: "pending",
-      resume: "await_observation",
-      reason,
-    });
-    expect(test.recordProofStep).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: "reconciling" }),
-    );
-    expect(test.setAlert).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
+    vi.useFakeTimers({ toFake: ["Date"], now: DEADLINE + 3_600_000 });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "awaiting_counterparty",
+        reason: AWAITING,
+        responseDeadline: DEADLINE,
+      });
+      await test.execution.execute(test.input);
+      expect(test.execution.readiness()).toHaveLength(1);
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "pending",
+        reason: "signed transaction awaiting inclusion",
+      });
+      await test.execution.execute(test.input);
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+    expect(test.execution.readiness()).toEqual([]);
   });
 
   it("names a stalled session on readiness and logs it at error level until a later run journals progress", async () => {

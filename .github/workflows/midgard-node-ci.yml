@@ -671,6 +671,29 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run tx-fuzz-reference
 
+  # Wall-clock benchmarks of the CEK executor and the trace commitment at the
+  # execution budget cap. The validation job gates the same runs on
+  # deterministic work counts; milliseconds depend on the runner and its load,
+  # so these only report.
+  midgard-validation-bench:
+    name: midgard-validation benchmarks
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          prebuild: lucid-midgard midgard-core midgard-sdk
+      # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner. The validation job gates the same runs on bytes hashed and semantic-store reads per step; this bench is the only check on work neither counts
+      # The step's own limit, well inside the job's, so a slow or hung bench
+      # fails only this step: a job that hits its timeout fails the gate.
+      - name: Benchmark the CEK executor and trace commitment at the budget cap
+        continue-on-error: true
+        timeout-minutes: 20
+        run: pnpm --dir demo/midgard-validation run bench
+
   # The fault-proof package's build and typecheck, once per run. The test
   # shards below resolve every workspace package from source through the
   # `midgard-source` condition and read no dist, so they neither prebuild nor
@@ -1275,6 +1298,7 @@ jobs:
       - midgard-core
       - midgard-sdk
       - midgard-validation
+      - midgard-validation-bench
       - midgard-fault-proofs-build
       - midgard-fault-proofs
       - midgard-watcher-typecheck
