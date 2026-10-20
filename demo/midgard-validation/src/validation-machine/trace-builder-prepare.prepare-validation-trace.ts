@@ -36,6 +36,7 @@ import {
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
+  midgardBlake2b,
   type MidgardBlake2b224TraceControl,
   MidgardBlake2b224TraceStages,
   type MidgardBoundedCollection,
@@ -72,7 +73,6 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
 import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
 import { awaitLedgerEd25519SignatureReady } from "../ledger-ed25519-ready.js";
@@ -615,7 +615,9 @@ export const prepareValidationTrace = (
       return {
         verificationKey: verificationKey.value,
         signature: signature.value,
-        signerHash: Buffer.from(blake2b(verificationKey.value, { dkLen: 28 })),
+        signerHash: Buffer.from(
+          midgardBlake2b(verificationKey.value, { dkLen: 28 }),
+        ),
       };
     };
     // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
@@ -802,7 +804,7 @@ export const prepareValidationTrace = (
         // A late execution scan binds its NativeScripts continuation here.
         continuationCbor.length === 0
           ? resolutionScheduleHash
-          : Buffer.from(blake2b(continuationCbor, { dkLen: 32 })),
+          : Buffer.from(midgardBlake2b(continuationCbor, { dkLen: 32 })),
         BigInt(control.stage),
         BigInt(control.scriptCount),
         BigInt(control.scriptSeen),
