@@ -16,6 +16,14 @@ import {
 } from "./prover-funding-reservation.js";
 import { HEX_32 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 
+/** A handoff's digest apart from where a workflow journal anchors it. */
+export const unanchored = (handoff: object) =>
+  computeDeploymentManifestJsonDigest({
+    ...handoff,
+    preparedArtifactDigest: null,
+    expectedJournalSequence: null,
+  });
+
 /** Row parsers of the prover funding store: each verifies one row against
  * the digests it carries and depends on nothing else. */
 export type HandoffRow = Readonly<{

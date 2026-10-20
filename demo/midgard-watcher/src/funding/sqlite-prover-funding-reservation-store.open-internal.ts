@@ -50,6 +50,7 @@ import {
   parseRecordRow,
   type RecordRow,
   type SubmissionHandoff,
+  unanchored,
 } from "./sqlite-prover-funding-reservation-store.row-parsers.js";
 import {
   excludesEveryUncoveredAttempt,
@@ -61,14 +62,6 @@ import {
   createVerifiedRowMemo,
   verifiedRowKey,
 } from "./sqlite-prover-funding-reservation-store.verified-row-memo.js";
-
-/** A handoff's digest apart from where a workflow journal anchors it. */
-const unanchored = (handoff: object) =>
-  computeDeploymentManifestJsonDigest({
-    ...handoff,
-    preparedArtifactDigest: null,
-    expectedJournalSequence: null,
-  });
 
 export const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
