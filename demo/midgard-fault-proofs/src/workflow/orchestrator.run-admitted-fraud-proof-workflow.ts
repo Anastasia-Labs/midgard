@@ -65,6 +65,7 @@ import {
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
   latestSubmissionIntent,
+  repeatsPendingReconciliation,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   normalizeTxHash,
@@ -609,12 +610,13 @@ export const runAdmittedFraudProofWorkflow = async ({
             `pending reconciliation for ${action.actionId} changed transaction hash`,
           );
         }
-        await append({
-          kind: "reconciled",
-          actionId: action.actionId,
-          outcome: "pending",
-          ...(txHash === undefined ? {} : { txHash }),
-        });
+        if (!repeatsPendingReconciliation(entries, action.actionId, txHash))
+          await append({
+            kind: "reconciled",
+            actionId: action.actionId,
+            outcome: "pending",
+            ...(txHash === undefined ? {} : { txHash }),
+          });
         // A fresh admitted observation may retry these exact bytes. Do not
         // repeatedly rebroadcast them inside the runner's one-second poll loop.
         if (rebroadcastAttempted)

@@ -124,11 +124,13 @@ const retireCertificate = async (
 
 describe("witness field carriage recovered from its own journal, in the installed watcher application", () => {
   let baseline: Awaited<ReturnType<typeof runWith>>["cost"];
+  let baselineJournal: number;
 
   it("publishes and certifies the field: the cost every other row matches", async () => {
     const { run, cost } = await runWith(hooks, () => []);
     expect(run.convicted).toBe(true);
     baseline = cost;
+    baselineJournal = run.journalEntries;
   }, 900_000);
 
   it.each(["publication", "certificate"] as const)(
@@ -432,6 +434,11 @@ describe("witness field carriage recovered from its own journal, in the installe
         rows.map(({ kind }) => kind).filter((kind) => kind !== "certify");
       expect(others(cost)).toEqual(others(baseline));
       expect(certifies(cost)).toBe(certifies(baseline) + 1);
+      // Waiting on the same pending reconciliation adds nothing to the
+      // journal: over the HOLD_POLLS wait it gains only the few entries one
+      // more certification and the step built again write, not one a poll.
+      expect(run.polls).toBeGreaterThan(HOLD_POLLS);
+      expect(run.journalEntries).toBeLessThan(baselineJournal + 20);
     },
     900_000,
   );

@@ -11,7 +11,7 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -459,6 +459,11 @@ export const installScriptDecodeApplication = async ({
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),
+    /** The entries the workflow journal holds on disk. */
+    journalEntries: async () =>
+      (await readdir(journalDirectory, { recursive: true })).filter((path) =>
+        /\d+\.json$/u.test(path),
+      ).length,
     close: async () => {
       instance.funding.close();
       await rm(directory, { recursive: true, force: true });

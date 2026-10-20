@@ -248,6 +248,7 @@ export const runInstalled = async (
       convicted,
       turns,
       polls: clock.state.polls,
+      journalEntries: await application.journalEntries(),
       reasons,
       footprint,
     } as const;
