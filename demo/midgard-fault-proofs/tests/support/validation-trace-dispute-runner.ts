@@ -10,6 +10,7 @@ import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
   runFraudProofWorkflow,
 } from "../../src/workflow/orchestrator.js";
 import {
@@ -81,6 +82,10 @@ export const makeRunner = (
   options: {
     readonly journal?: FraudProofWorkflowJournalStore;
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+    /** Rewrites the adapter every run uses. */
+    readonly wrap?: (
+      adapter: FraudProofFamilyWorkflowAdapter,
+    ) => FraudProofFamilyWorkflowAdapter;
   } = {},
 ): Runner => {
   const { h } = scene;
@@ -96,7 +101,7 @@ export const makeRunner = (
     now: () => h.emulator.now(),
   });
   const registry = createFraudProofWorkflowRegistry({
-    adapters: [adapter],
+    adapters: [options.wrap?.(adapter) ?? adapter],
     launchScope: ["validationTraceDispute"],
   });
   return {

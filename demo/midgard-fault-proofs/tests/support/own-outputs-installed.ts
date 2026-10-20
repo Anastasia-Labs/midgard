@@ -8,7 +8,8 @@
  * application's own transactions spend and reference only the application's
  * own outputs and cost what they cost with nothing planted.
  *
- * Rows so far: script-decode staging and script-decode run. The other
+ * Rows so far: script-decode staging and script-decode run, and the
+ * validation-trace dispute's pending claim, case and bond. The other
  * carriage roles join this table as their sites move onto `own-outputs`.
  */
 import { startScriptDecodeWalk } from "@al-ft/midgard-validation";
@@ -50,7 +51,12 @@ const TOKEN_BUNDLE = 40;
 
 /** The carriage roles a row covers, and where their outputs sit. */
 export type OwnOutputRole = Readonly<{
-  role: "script_decode_staging" | "script_decode_run";
+  role:
+    | "script_decode_staging"
+    | "script_decode_run"
+    | "validation_trace_opener"
+    | "validation_trace_case"
+    | "validation_trace_bond";
   /** The address the role's outputs are paid to. */
   address: string;
   /** The datums the application's own outputs of the role hold. */
