@@ -18,6 +18,7 @@ import {
   submitNetworkIdStep02,
 } from "../src/network-id/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitForcedBlock,
   type Harness,
@@ -159,6 +160,8 @@ export const makeStages = (
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
       readonly referenceScriptUtxo?: UTxO;
+      /** The carriage claims the published field is read back by. */
+      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     const label = `scan-${step.kind}${
@@ -187,6 +190,9 @@ export const makeStages = (
           ...(options.certificateUtxos === undefined
             ? {}
             : { certificateUtxos: options.certificateUtxos }),
+          ...(options.ownOutputs === undefined
+            ? {}
+            : { ownOutputs: options.ownOutputs }),
         }),
       ),
     );
@@ -199,6 +205,7 @@ export const makeStages = (
     options: {
       readonly publish?: boolean;
       readonly certificateUtxos?: readonly UTxO[];
+      readonly ownOutputs?: OwnOutputJournal;
     } = {},
   ) => {
     let cursor = threadOutRef;

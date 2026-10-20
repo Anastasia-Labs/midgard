@@ -13,6 +13,10 @@ import {
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
 } from "../field-opening.js";
+import {
+  fieldCertificateClaimKey,
+  fieldPublicationClaimKey,
+} from "../field-opening.own-field-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   boundPublicationAddress,
@@ -24,7 +28,6 @@ import {
   exact,
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
-  outRef,
   type PreimageCarriageRequirement,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
   type Recovery,
@@ -32,10 +35,13 @@ import {
   sameJson,
   TX_HASH,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
-  assertPublicationReplacement,
-  createPublicationCandidate,
+  assertCarriageReplacement,
+  missingCertificateReplacement,
   missingPublicationReplacement,
+  observeOwnCarriage,
+  reconcileCarriageWithoutOutput,
 } from "./field-carriage-prerequisite.publication-observation.js";
 import {
   recordedCarriageRecovery,
@@ -43,11 +49,11 @@ import {
 } from "./field-carriage-prerequisite.recorded-carriage-recovery.js";
 import {
   carriageActionInputKeys,
+  carriageReplacementOutRef,
   certificateAction,
   certifiedRequirement,
   parseBaseAction,
   publicationAction,
-  publicationReplacementOutRef,
   requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
 import type {
@@ -55,11 +61,11 @@ import type {
   JournalJsonObject,
 } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
 import {
   captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
@@ -75,7 +81,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
   signer,
   publications,
   requirementForAction,
-  transactionConfirmed,
 }: {
   readonly category: Category;
   readonly lucid: LucidEvolution;
@@ -89,10 +94,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     | PreimageCarriageRequirement
     | null
     | Promise<PreimageCarriageRequirement | null>;
-  readonly transactionConfirmed: (input: {
-    readonly headerHash: string;
-    readonly txHash: string;
-  }) => Promise<boolean>;
 }): FieldCarriagePrerequisitePort<Category> => {
   if (
     publications.observerVersion !==
@@ -107,30 +108,65 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     const resolved = await requirementForAction(input);
     return resolved === null ? null : requirementIdentity(resolved);
   };
-  const candidate = createPublicationCandidate(publications);
   const publicationAddress = (required: Requirement) =>
     boundPublicationAddress(required, signer.address);
+  const certificateAddress = (required: Requirement) =>
+    fieldPreimageCertificateAddress({
+      network,
+      certificatePolicyId: certifiedRequirement(required).certificate.policyId,
+    });
+  const claimsOf = (entries: readonly FraudProofWorkflowJournalEntry[]) =>
+    workflowFieldCarriageOwnOutputs({ category, entries });
+  const observePublication = async (
+    headerHash: string,
+    required: Requirement,
+    index: number,
+    ownOutputs: OwnOutputJournal,
+  ) =>
+    await observeOwnCarriage({
+      publications,
+      lucid,
+      headerHash,
+      kind: "field_publication",
+      address: publicationAddress(required),
+      datumCbor: required.publicationDatums[index]!,
+      unit: null,
+      claims: ownOutputs.claims(
+        fieldPublicationClaimKey(index, required.publicationDatums[index]!),
+      ),
+    });
+  const observeCertificate = async (
+    headerHash: string,
+    required: Requirement,
+    ownOutputs: OwnOutputJournal,
+  ) =>
+    await observeOwnCarriage({
+      publications,
+      lucid,
+      headerHash,
+      kind: "field_certificate",
+      address: certificateAddress(required),
+      datumCbor: required.certificateDatumCbor!,
+      unit: required.certificateUnit!,
+      claims: ownOutputs.claims(
+        fieldCertificateClaimKey(required.certificateDatumCbor!),
+      ),
+    });
   const resolvePublications = async (
     headerHash: string,
     required: Requirement,
+    ownOutputs: OwnOutputJournal,
     failure: string,
   ): Promise<UTxO[]> => {
-    const publicationUtxos = await lucid.utxosAt(publicationAddress(required));
-    const claimed = new Set<string>();
     const resolved: UTxO[] = [];
-    for (const datumCbor of required.publicationDatums) {
-      const observed = await candidate({
+    for (const index of required.publicationDatums.keys()) {
+      const observed = await observePublication(
         headerHash,
-        kind: "field_publication",
-        utxos: publicationUtxos,
-        claimed,
-        address: publicationAddress(required),
-        datumCbor,
-        unit: null,
-      });
-      if (observed.kind !== "confirmed" || observed.utxo === undefined)
-        throw new Error(failure);
-      claimed.add(outRef(observed.utxo));
+        required,
+        index,
+        ownOutputs,
+      );
+      if (observed.kind !== "confirmed") throw new Error(failure);
       resolved.push(observed.utxo);
     }
     return resolved;
@@ -151,18 +187,14 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       return { kind: "not_required" as const };
     }
     requireBoundPublicationContext(required, headerHash, baseAction);
-    const publicationUtxos = await lucid.utxosAt(publicationAddress(required));
-    const claimed = new Set<string>();
-    for (const [index, datumCbor] of required.publicationDatums.entries()) {
-      const observed = await candidate({
+    const ownOutputs = claimsOf(entries);
+    for (const index of required.publicationDatums.keys()) {
+      const observed = await observePublication(
         headerHash,
-        kind: "field_publication",
-        utxos: publicationUtxos,
-        claimed,
-        address: publicationAddress(required),
-        datumCbor,
-        unit: null,
-      });
+        required,
+        index,
+        ownOutputs,
+      );
       if (observed.kind === "absent") {
         const replacement = await missingPublicationReplacement({
           category,
@@ -173,9 +205,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           entries,
           address: publicationAddress(required),
           publications,
-          transactionConfirmed,
-          lucid,
           network,
+          ownOutputs,
         });
         if (replacement.kind === "pending")
           return {
@@ -199,40 +230,38 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           reason: `${category} field publication ${index.toString()} is not authenticated on the current chain`,
         };
       }
-      claimed.add(outRef(observed.utxo!));
     }
     if (required.planned.plan.tier !== "Certified") {
       return { kind: "satisfied" as const };
     }
-    const certificate = await candidate({
+    const certificate = await observeCertificate(
       headerHash,
-      kind: "field_certificate",
-      utxos: await lucid.utxosAt(
-        fieldPreimageCertificateAddress({
-          network,
-          certificatePolicyId:
-            certifiedRequirement(required).certificate.policyId,
-        }),
-      ),
-      address: fieldPreimageCertificateAddress({
-        network,
-        certificatePolicyId:
-          certifiedRequirement(required).certificate.policyId,
-      }),
-      datumCbor: required.certificateDatumCbor!,
-      unit: required.certificateUnit!,
-    });
-    if (certificate.kind === "absent") {
+      required,
+      ownOutputs,
+    );
+    const replacement =
+      certificate.kind === "absent"
+        ? await missingCertificateReplacement({
+            category,
+            headerHash,
+            baseAction,
+            required,
+            entries,
+            address: certificateAddress(required),
+            publications,
+          })
+        : certificate;
+    if (replacement.kind === "required")
       return {
         kind: "required" as const,
         action: certificateAction({
           category,
           baseAction,
           requirement: required,
+          replacementOutRef: replacement.replacementOutRef,
         }),
       };
-    }
-    return certificate.kind === "confirmed"
+    return replacement.kind === "confirmed"
       ? { kind: "satisfied" as const }
       : {
           kind: "pending" as const,
@@ -243,10 +272,14 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     headerHash,
     action,
     artifact,
+    entries,
+    ownOutputs,
   }: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
     readonly headerHash: string;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+    readonly ownOutputs: OwnOutputJournal;
   }): Promise<
     Readonly<{
       kind: Recovery["kind"];
@@ -279,6 +312,18 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       throw new Error(`${category} field action is no longer required`);
     }
     requireBoundPublicationContext(required, headerHash, baseAction);
+    const replacementOutRef = carriageReplacementOutRef(action);
+    // What a replacement is checked against, whichever output it replaces.
+    const replacement = {
+      category,
+      headerHash,
+      replacementOutRef,
+      required,
+      entries,
+      publications,
+      network,
+      ownOutputs,
+    };
     if (input.stage === "publish_field_carriage") {
       if (
         typeof input.publicationIndex !== "number" ||
@@ -297,21 +342,14 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
             baseAction,
             requirement: required,
             publicationIndex,
-            replacementOutRef: publicationReplacementOutRef(action),
+            replacementOutRef,
           }),
         )
       ) {
         throw new Error(`${category} field publication changed identity`);
       }
-      await assertPublicationReplacement({
-        category,
-        headerHash,
-        replacementOutRef: publicationReplacementOutRef(action),
-        required,
-        transactionConfirmed,
-        publications,
-        lucid,
-        network,
+      await assertCarriageReplacement({
+        ...replacement,
         address: publicationAddress(required),
         datumCbor: required.publicationDatums[publicationIndex]!,
       });
@@ -326,17 +364,28 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       required.planned.plan.tier !== "Certified" ||
       !sameJson(
         action,
-        certificateAction({ category, baseAction, requirement: required }),
+        certificateAction({
+          category,
+          baseAction,
+          requirement: required,
+          replacementOutRef,
+        }),
       )
     ) {
       throw new Error(`${category} field certificate changed identity`);
     }
+    await assertCarriageReplacement({
+      ...replacement,
+      address: certificateAddress(required),
+      datumCbor: required.certificateDatumCbor!,
+      unit: required.certificateUnit!,
+    });
     return { kind: "certificate", baseAction, requirement: required };
   };
   const port: FieldCarriagePrerequisitePort<Category> = {
     portVersion: FIELD_CARRIAGE_PREREQUISITE,
     category,
-    resolveAuthenticated: async ({ headerHash, action, artifact }) => {
+    resolveAuthenticated: async ({ headerHash, action, artifact, entries }) => {
       const required = await requirement({ action, artifact });
       if (required === null || required.planned.plan.tier === "Inline") {
         return Object.freeze({
@@ -345,9 +394,11 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         });
       }
       requireBoundPublicationContext(required, headerHash, action);
+      const ownOutputs = claimsOf(entries);
       const resolved = await resolvePublications(
         headerHash,
         required,
+        ownOutputs,
         `${category} proof step cannot use an unauthenticated field publication`,
       );
       if (required.planned.plan.tier !== "Certified") {
@@ -356,25 +407,12 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           requirement: required,
         });
       }
-      const observed = await candidate({
+      const observed = await observeCertificate(
         headerHash,
-        kind: "field_certificate",
-        utxos: await lucid.utxosAt(
-          fieldPreimageCertificateAddress({
-            network,
-            certificatePolicyId:
-              certifiedRequirement(required).certificate.policyId,
-          }),
-        ),
-        address: fieldPreimageCertificateAddress({
-          network,
-          certificatePolicyId:
-            certifiedRequirement(required).certificate.policyId,
-        }),
-        datumCbor: required.certificateDatumCbor!,
-        unit: required.certificateUnit!,
-      });
-      if (observed.kind !== "confirmed" || observed.utxo === undefined) {
+        required,
+        ownOutputs,
+      );
+      if (observed.kind !== "confirmed") {
         throw new Error(
           `${category} proof step cannot use an unauthenticated field certificate`,
         );
@@ -386,8 +424,15 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       });
     },
     inspect: async (input) => await inspect(input),
-    capture: async ({ headerHash, action, artifact }) => {
-      const parsed = await exactAction({ headerHash, action, artifact });
+    capture: async ({ headerHash, action, artifact, entries }) => {
+      const ownOutputs = claimsOf(entries);
+      const parsed = await exactAction({
+        headerHash,
+        action,
+        artifact,
+        entries,
+        ownOutputs,
+      });
       signer.selectWallet(lucid);
       if (parsed.kind === "publication") {
         const index = parsed.publicationIndex!;
@@ -426,6 +471,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       const chunkUtxos = await resolvePublications(
         headerHash,
         parsed.requirement,
+        ownOutputs,
         `${category} field certificate cannot bypass authenticated chunk publication`,
       );
       const transaction = await captureLocallyEvaluatedTransaction(
@@ -457,11 +503,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           });
         },
       );
-      const address = fieldPreimageCertificateAddress({
-        network,
-        certificatePolicyId: certifiedRequirement(parsed.requirement)
-          .certificate.policyId,
-      });
+      const address = certificateAddress(parsed.requirement);
       return {
         transaction,
         durableRecovery: recovery({
@@ -520,24 +562,12 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       if (observation.kind === "confirmed") {
         return { kind: "confirmed", txHash };
       }
-      if (await transactionConfirmed({ headerHash, txHash })) {
-        return {
-          kind: "conflict",
-          reason: `${category} field prerequisite transaction omitted its journaled output`,
-        };
-      }
-      // A known submitted hash can be absent until the release-final cursor
-      // catches up. Keep its journaled output and funding reservation pending.
-      return signedTransactionCborHex === undefined ||
-        publications.observeSignedTransaction === undefined
-        ? { kind: "pending", txHash }
-        : reconcileSignedWorkflowTransaction({
-            transactionHash: txHash,
-            signedTransactionCborHex,
-            observe: publications.observeSignedTransaction,
-            rebroadcast: publications.rebroadcastSignedTransaction,
-            authorizeResubmission,
-          });
+      return await reconcileCarriageWithoutOutput({
+        txHash,
+        signedTransactionCborHex,
+        authorizeResubmission,
+        publications,
+      });
     },
   };
   return Object.freeze(port);

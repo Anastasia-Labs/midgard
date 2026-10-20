@@ -17,7 +17,10 @@ import type {
   PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "./journal.js";
-import type { FraudProofL1Source } from "./l1-source.js";
+import type {
+  FraudProofL1Source,
+  FraudProofSignedTransactionRecovery,
+} from "./l1-source.js";
 import type { LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
   type LinearFamilyCategory,
@@ -179,9 +182,10 @@ export type FamilyAssemblyContext<
   l1Source: FraudProofL1Source;
   /** Shared handles used by both the transaction port and adapter decorators. */
   fieldCarriagePrerequisites: readonly FieldCarriagePrerequisitePort<Category>[];
-  l1: FraudProofFamilyL1ObservationPort<Category> & {
-    readonly rawL1: FraudProofRawL1SnapshotAuthority;
-  };
+  l1: FraudProofFamilyL1ObservationPort<Category> &
+    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction"> & {
+      readonly rawL1: FraudProofRawL1SnapshotAuthority;
+    };
   certificate: Certificate extends true
     ? FieldPreimageCertificateBinding
     : null;

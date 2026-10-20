@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { FraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs";
+import {
+  beginWorkflowFundingReservationAction,
+  type FraudProofWorkflowJournalStore,
+} from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -123,4 +126,35 @@ export const recordReplacement = async (
     outcome: "pending",
     txHash: replacement.transactionHash,
   });
+};
+
+/** The fixture's attempt expires at the tip: its funding input is unspent and
+ * the reader reports absence without retirement. */
+export const supersedeAtTip = async (fixture: Fixture) => {
+  fixture.useUnspentPendingInputs();
+  fixture.chain.mockResolvedValue({ kind: "not_found" });
+  const journal = await fixture.recover();
+  await fixture.run(journal);
+  return journal;
+};
+
+export const replaceAfterExpiry = async (fixture: Fixture) => {
+  const funding = fundingOf(fixture);
+  const journal = await supersedeAtTip(fixture);
+  await beginWorkflowFundingReservationAction({
+    journal,
+    action: { actionId: "init", input: { actionKind: "proof.init" } },
+  });
+  const collateral = (await fixture.records())[0]!.activeInputs
+    .filter(({ role }) => role === "collateral")
+    .map(({ outRef }) => outRef);
+  const replacement = signReplacement(
+    funding.outRef,
+    BigInt(funding.lovelace),
+    300n,
+    collateral,
+  );
+  await recordReplacement(fixture, journal, replacement, 2);
+  // The process restarts with the replacement in flight.
+  return { journal: await fixture.recover(), replacement };
 };

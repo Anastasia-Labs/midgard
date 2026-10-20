@@ -19,6 +19,7 @@ import {
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { bindManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
 import {
@@ -185,7 +186,7 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
         category,
         prepare: material.prepare,
         validatePreparedArtifact: material.validatePreparedArtifact,
-        capture: async ({ action, artifact }) => {
+        capture: async ({ action, artifact, entries }) => {
           const input = cursorFamilyActionInput({ category, action });
           if (input.stage === "remove")
             return await captureCursorRemoval({
@@ -221,6 +222,10 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
             async (preSubmitBoundary) => {
               const submission =
                 createManifestBoundOutputReferenceScriptDecodingSubmission({
+                  ownOutputs: workflowFieldCarriageOwnOutputs({
+                    category,
+                    entries,
+                  }),
                   config,
                   preSubmitBoundary,
                   observe: async () =>

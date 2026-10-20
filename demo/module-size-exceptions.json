@@ -171,8 +171,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
-    "max": 537,
-    "reason": "submitInputSetUniquenessStep02 is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 545,
+    "reason": "submitInputSetUniquenessStep02 is the dominant indivisible declaration (477 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/inspect-contracts.inspect-contracts.ts",
@@ -186,13 +186,13 @@
   },
   {
     "file": "midgard-fault-proofs/src/native-script-decoding/prover.run-native-script-decoding-prover.ts",
-    "max": 643,
-    "reason": "runNativeScriptDecodingProver is the dominant indivisible declaration (596 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 647,
+    "reason": "runNativeScriptDecodingProver is the dominant indivisible declaration (598 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/network-id/workflow-adapter.create-network-id-workflow-adapter.ts",
-    "max": 1507,
-    "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1439 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1533,
+    "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1438 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/output-reference-script-decoding/central-journal.create-output-reference-script-decoding-central-journal-adapter.ts",
@@ -236,8 +236,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
-    "max": 823,
-    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 828,
+    "reason": "submitTransitionTraceFinalStep is the dominant indivisible declaration (714 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
@@ -246,8 +246,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.ts",
-    "max": 650,
-    "reason": "createManifestBoundValueConservationWorkflow is the dominant indivisible declaration (571 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 651,
+    "reason": "createManifestBoundValueConservationWorkflow is the dominant indivisible declaration (572 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
@@ -256,12 +256,12 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.ts",
-    "max": 1006,
-    "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (946 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1027,
+    "reason": "createDoubleSpendConstrainedWorkflowAdapter is the dominant indivisible declaration (957 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.ts",
-    "max": 544,
+    "max": 574,
     "reason": "createAuthenticatedFieldCarriagePrerequisitePort is the dominant indivisible declaration. Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -276,7 +276,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/orchestrator.run-admitted-fraud-proof-workflow.ts",
-    "max": 979,
+    "max": 981,
     "reason": "runAdmittedFraudProofWorkflow remains the dominant declaration after historical-parent reobservation was extracted. Its remaining staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -291,13 +291,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-mismatch-lifecycle.test.ts",
-    "max": 903,
-    "reason": "Retained test registration “field-preimage-length-mismatch registered-chain lifecycle” (853 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 907,
+    "reason": "Retained test registration “field-preimage-length-mismatch registered-chain lifecycle” (831 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/field-preimage-length-recovery.test.ts",
-    "max": 604,
-    "reason": "Retained test registration (385 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 607,
+    "reason": "Retained test registration (386 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts",
@@ -306,8 +306,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/linear-family-adapter.test.ts",
-    "max": 760,
-    "reason": "Retained test registration “production linear family adapter V1” (677 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 761,
+    "reason": "Retained test registration “production linear family adapter V1” (678 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/linear-family-state.test.ts",
@@ -326,8 +326,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts",
-    "max": 821,
-    "reason": "Retained test registration “networkId wrongful-rejection real lifecycle” (733 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 836,
+    "reason": "Retained test registration “networkId wrongful-rejection real lifecycle” (747 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/no-reference-input-wrongful-rejection-lifecycle.test.ts",
@@ -481,8 +481,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
-    "max": 570,
-    "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 575,
+    "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (522 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/support/mint-authorization-installed-lifecycle-cases.ts",
@@ -491,8 +491,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
-    "max": 807,
-    "reason": "makeResolvedOutputStages is the dominant indivisible declaration (647 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 814,
+    "reason": "makeResolvedOutputStages is the dominant indivisible declaration (735 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.ts",
@@ -506,8 +506,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
-    "max": 918,
-    "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (846 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 923,
+    "reason": "transitionTraceFinalCaseRunner is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
@@ -571,7 +571,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/workflow-tier3-actions.test.ts",
-    "max": 991,
+    "max": 1006,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
   },
   {
@@ -586,8 +586,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts",
-    "max": 534,
-    "reason": "Retained test registration “zeroInput wrongful-rejection real lifecycle” (471 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 538,
+    "reason": "Retained test registration “zeroInput wrongful-rejection real lifecycle” (475 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-l1-follower/src/store/fact-store.ts",
@@ -1206,12 +1206,12 @@
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
-    "max": 541,
-    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations and the lifecycle legacy-retirement and submission-authority methods together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
+    "max": 546,
+    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations, the lifecycle legacy-retirement and submission-authority methods and the superseded-attempt reads together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
   },
   {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
-    "max": 1468,
+    "max": 1514,
     "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

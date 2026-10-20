@@ -15,6 +15,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
@@ -151,9 +152,12 @@ export const createObserverOrderInvalidActuator = (
     capture: async ({
       action,
       artifact,
+      ownOutputs,
     }: {
       readonly action: ObserverOrderInvalidActuatorAction;
       readonly artifact: unknown;
+      /** The workflow's field-carriage claims, which the steps read carriage by. */
+      readonly ownOutputs: OwnOutputJournal;
     }): Promise<ObserverOrderInvalidCapturedAction> => {
       const admitted = admitObserverOrderInvalidArtifact(artifact);
       if (admitted.artifact.headerHash !== config.binding.definition.headerHash)
@@ -220,6 +224,7 @@ export const createObserverOrderInvalidActuator = (
       if (action.stage === "step_02")
         return await capture(async (preSubmitBoundary) => {
           await submitObserverOrderInvalidStep02({
+            ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -237,6 +242,7 @@ export const createObserverOrderInvalidActuator = (
       if (action.stage === "step_03")
         return await capture(async (preSubmitBoundary) => {
           await submitObserverOrderInvalidStep03({
+            ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,

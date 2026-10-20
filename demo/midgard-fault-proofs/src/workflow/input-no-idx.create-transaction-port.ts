@@ -22,6 +22,7 @@ import {
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   actionInput,
   admitInputNoIdxArtifact,
@@ -107,7 +108,11 @@ const createTransactionPort = (
   category: "nonExistentInputNoIndex",
   prepare: async ({ evidence, classification }) =>
     await prepareInputNoIdxArtifact({ evidence, classification }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "nonExistentInputNoIndex",
+      entries,
+    });
     const admitted = admitInputNoIdxArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -192,7 +197,7 @@ const createTransactionPort = (
         input.stage === "step_02"
           ? admitted.inputFieldPlan
           : admitted.outputFieldPlan;
-      const carriage = await resolveField(config, plan);
+      const carriage = await resolveField(config, plan, ownOutputs);
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
@@ -213,6 +218,7 @@ const createTransactionPort = (
             } as const;
             if (input.stage === "step_02") {
               await submitInputNoIdxStep02({
+                ownOutputs,
                 ...common,
                 inputsPreimage: admitted.inputs,
                 nativeTxCompactCbor:
@@ -220,6 +226,7 @@ const createTransactionPort = (
               });
             } else {
               await submitInputNoIdxStep04({
+                ownOutputs,
                 ...common,
                 outputsPreimage: admitted.outputs,
                 nativeTxCompactCbor:

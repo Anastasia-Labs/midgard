@@ -51,6 +51,10 @@
       "midgard-source": "./src/workflow/family-l1-observation.ts",
       "types": "./src/workflow/family-l1-observation.ts"
     },
+    "./test-support/value-conservation-adapter": {
+      "midgard-source": "./src/value-not-preserved/adapter.ts",
+      "types": "./src/value-not-preserved/adapter.ts"
+    },
     "./test-support/transition-trace-l1-events": {
       "midgard-source": "./src/transition-trace/l1-events.ts",
       "types": "./src/transition-trace/l1-events.ts"

@@ -38,6 +38,28 @@ export const latestSubmissionIntent = (
     );
 
 /**
+ * Whether a pending reconciliation of `actionId` at `txHash` is what the
+ * journal last recorded (diagnostic stalls aside): reconciling the same
+ * pending state again is not a new entry, so a wait that lasts many polls
+ * keeps the journal bounded.
+ */
+export const repeatsPendingReconciliation = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  actionId: string,
+  txHash: string | undefined,
+): boolean => {
+  const last = [...entries]
+    .reverse()
+    .find(({ event }) => event.kind !== "stalled")?.event;
+  return (
+    last?.kind === "reconciled" &&
+    last.outcome === "pending" &&
+    last.actionId === actionId &&
+    last.txHash === txHash
+  );
+};
+
+/**
  * The `pending` reason of a run whose next action needs a new submission while
  * it holds reconciliation-only authority (its latest safe start has passed).
  * The run takes no further step by itself; a person resubmits.

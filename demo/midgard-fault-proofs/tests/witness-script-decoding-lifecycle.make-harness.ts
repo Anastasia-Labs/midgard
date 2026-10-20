@@ -30,6 +30,7 @@ import {
   type WitnessScriptDecodingContracts,
   type WitnessScriptDecodingEvidence,
 } from "../src/witness-script-decoding/index.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   captureEmulatorSubmission,
@@ -78,6 +79,7 @@ export let publicationsRecorded = false;
 export const makeHarness = async ({
   referenceScriptAuthTimelockMs,
 }: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
+  const ownOutputs = createOwnOutputJournal();
   const harness = await makeFaultProofEmulatorHarness({
     referenceScriptAuthTimelockMs,
     contractOptions: {
@@ -392,6 +394,7 @@ export const makeHarness = async ({
     return (
       await measured(name, () =>
         submitWitnessScriptDecodingStep02({
+          ownOutputs,
           lucid,
           network,
           contracts,
@@ -442,6 +445,7 @@ export const makeHarness = async ({
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,
@@ -462,6 +466,7 @@ export const makeHarness = async ({
     }
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         network,
         signer,
@@ -512,6 +517,7 @@ export const makeHarness = async ({
       witnessSetHash: shape.carriage.witnessSetHash,
     };
     const chunkUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -521,6 +527,7 @@ export const makeHarness = async ({
     expect(chunkUtxos).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         network,
         signer,

@@ -56,6 +56,10 @@ import {
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -160,6 +164,7 @@ export const submitMinFeeStep02 = async ({
   unsafeSkipLocalViolationCheckForTest = false,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinFeeContracts;
@@ -188,6 +193,8 @@ export const submitMinFeeStep02 = async ({
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitMinFeeStep02Result> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
     throw minFeeSubmitError("step-02 requires exactly nine field preimages.");
@@ -256,6 +263,7 @@ export const submitMinFeeStep02 = async ({
     for (const [fieldIndex, planned] of plans.entries()) {
       published.push(
         ...(await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,

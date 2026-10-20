@@ -245,7 +245,7 @@ export const describeSignedRecovery = (): void => {
       expect(s.double.calls).toEqual([]);
     });
 
-    it("an untracked output a stored transaction spends is invalidated; unknown dominates a spend", async () => {
+    it("an untracked output a stored transaction spends is invalidated, beside an input without history too", async () => {
       const s = await setup();
       await s.forward([s.intent({ inputs: [s.at(2)] })]);
       expect(await s.observe(s.intent({ inputs: [s.at(2)] }))).toMatchObject({
@@ -256,7 +256,59 @@ export const describeSignedRecovery = (): void => {
         await s.observe(
           s.intent({ inputs: [s.at(2), s.chain.outsideInput()] }),
         ),
-      ).toMatchObject({ status: "unknown", reason: REASON.unknown });
+      ).toMatchObject({
+        status: "invalidated_at_tip",
+        reason: REASON.invalidatedAtTip,
+        inputs: [s.input(2)],
+      });
+    });
+
+    it("a stored spend of one input invalidates an intent beside a seed input at the tip, never stably", async () => {
+      const s = await setup();
+      const z = s.intent({ inputs: [SEED.outRef, s.at(0)] });
+      expect(await s.observe(z)).toMatchObject({
+        status: "unknown",
+        reason: REASON.unknown,
+      });
+      const other = s.intent({ inputs: [s.at(0)] });
+      await s.forward([other]);
+      const spent = {
+        status: "invalidated_at_tip",
+        reason: REASON.invalidatedAtTip,
+        inputs: [s.input(0)],
+      };
+      expect(await s.observe(z)).toMatchObject(spent);
+      // A rollback that drops the other transaction drops its spend.
+      await s.backward(1);
+      expect(await s.observe(z)).toMatchObject({ status: "unknown" });
+      await s.forward([other]);
+      await s.empty(K + 2);
+      expect(await s.observe(z)).toMatchObject(spent);
+      expect(s.double.calls).toEqual([]);
+    });
+
+    it("a seed input another transaction spends invalidates the intent; one that lands is included", async () => {
+      const s = await setup();
+      const z = s.intent({ inputs: [SEED.outRef, s.at(0)] });
+      const { point: spentAt } = await s.forward([
+        s.intent({ inputs: [SEED.outRef] }),
+      ]);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated_at_tip",
+        inputs: [s.input(0)],
+      });
+      await s.empty(4);
+      expect(await s.observe(z)).toMatchObject({
+        status: "invalidated",
+        releaseFinalPoint: spentAt,
+      });
+      const landed = await setup();
+      const own = landed.intent({ inputs: [SEED.outRef, landed.at(0)] });
+      const { point } = await landed.forward([own]);
+      expect(await landed.observe(own)).toMatchObject({
+        status: "included",
+        inclusionPoint: point,
+      });
     });
 
     it("validFrom: pending without asking the mempool until the tip reaches it", async () => {

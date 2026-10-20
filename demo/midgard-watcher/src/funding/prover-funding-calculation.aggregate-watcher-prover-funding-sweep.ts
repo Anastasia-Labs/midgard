@@ -11,6 +11,7 @@ import {
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
 import {
@@ -203,6 +204,11 @@ export type WatcherRuntimeProverFundingCalculation = Readonly<{
   maximumFeeLovelace: string;
   maximumCollateralLovelace: string;
   maximumSlashCollateralLovelace: string;
+  /**
+   * A validation-trace dispute's VerifySource custody, the deployment-bound
+   * dispute bond plus the case floor: what its first reservation must hold.
+   */
+  validationDisputeCustodyLovelace?: string;
   reservationBasisDigest: string;
 }>;
 
@@ -238,6 +244,20 @@ export const calculateWatcherRuntimeProverFunding = async (input: {
   ).verifyForWorkflow({ deploymentFingerprint });
   if (policy.economicsPolicyDigest !== economics.policyDigest)
     throw new Error("runtime prover funding economics policy mismatch");
+  let validationDisputeCustodyLovelace: string | undefined;
+  if (policy.validationDispute !== undefined) {
+    const bound = BigInt(
+      watcherDeploymentAvailabilityChallengeAuthority(input.deploymentIdentity)
+        .parameters.challengerBondLovelace,
+    );
+    if (BigInt(policy.validationDispute.bondLovelace) !== bound)
+      throw new Error(
+        `runtime prover funding validation dispute bond differs from the deployment-bound bond: policy=${policy.validationDispute.bondLovelace} deployment=${bound.toString()}`,
+      );
+    validationDisputeCustodyLovelace = (
+      bound + BigInt(policy.validationDispute.caseFloorLovelace)
+    ).toString();
+  }
   const basis = Object.freeze({
     schemaVersion: WATCHER_RUNTIME_PROVER_FUNDING_CALCULATION,
     deploymentFingerprint,
@@ -250,6 +270,10 @@ export const calculateWatcherRuntimeProverFunding = async (input: {
     maximumFeeLovelace: policy.maximumFeeLovelace,
     maximumCollateralLovelace: policy.maximumCollateralLovelace,
     maximumSlashCollateralLovelace: policy.maximumSlashCollateralLovelace,
+    // Absent for every other policy, so their basis digests are unchanged.
+    ...(validationDisputeCustodyLovelace === undefined
+      ? {}
+      : { validationDisputeCustodyLovelace }),
   });
   const calculation = Object.freeze({
     ...basis,

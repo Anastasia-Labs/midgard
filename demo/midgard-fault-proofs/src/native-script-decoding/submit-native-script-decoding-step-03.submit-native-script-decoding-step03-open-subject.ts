@@ -24,6 +24,10 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import { type FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -64,6 +68,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -80,6 +85,8 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
@@ -141,6 +148,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
     const published =
       publishedCarriageUtxos ??
       (await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,

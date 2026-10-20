@@ -25,6 +25,7 @@ import {
 } from "../../src/output-reference-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { type SubmitStep01TxInclusion } from "../../src/step-support.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import {
@@ -51,6 +52,7 @@ export const makeOutputReferenceStages = ({
   readonly references: readonly UTxO[];
   readonly certificateReference: UTxO;
 }) => {
+  const ownOutputs = createOwnOutputJournal();
   const { harness, contracts, catalogue, category } = context;
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
@@ -166,6 +168,7 @@ export const makeOutputReferenceStages = ({
   ) =>
     await captured(() =>
       submitOutputReferenceScriptDecodingStep02({
+        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -240,6 +243,7 @@ export const makeOutputReferenceStages = ({
         : (record ?? undefined);
     return await captured(() =>
       submitOutputReferenceScriptDecodingStep04({
+        ownOutputs,
         lucid,
         contracts,
         categoryId,
@@ -403,6 +407,7 @@ export const makeOutputReferenceStages = ({
     });
     signer.selectWallet(lucid);
     const carriageUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -412,6 +417,7 @@ export const makeOutputReferenceStages = ({
     if (planned.plan.tier !== "Certified")
       throw new Error("foreign field is not certified");
     const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       network,
       signer,

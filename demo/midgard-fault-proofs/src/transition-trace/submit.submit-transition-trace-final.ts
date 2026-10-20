@@ -45,6 +45,7 @@ import {
 } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -101,7 +102,10 @@ type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {
 export const submitTransitionTraceFinal = async (
   config: SubmitTransitionTraceFinalConfig,
 ): Promise<SubmitTransitionTraceFinalResult> => {
-  let step = config;
+  let step: SubmitTransitionTraceFinalConfig = {
+    ...config,
+    ownOutputs: config.ownOutputs ?? createOwnOutputJournal(),
+  };
   for (;;) {
     const outcome = await submitTransitionTraceFinalStep(step);
     if (outcome.kind === "final") return outcome.result;
@@ -123,6 +127,7 @@ const submitTransitionTraceFinalStep = async ({
   fieldCertificateReferenceScript,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs,
 }: SubmitTransitionTraceFinalConfig): Promise<
   | {
       readonly kind: "checkpoint";
@@ -453,6 +458,7 @@ const submitTransitionTraceFinalStep = async ({
       outputCbors,
       publish: preSubmitBoundary === undefined,
       fieldCertificateReferenceScript,
+      ...(ownOutputs === undefined ? {} : { ownOutputs }),
       baseReferences: [
         hubOracleUtxo,
         finalReferenceScript,

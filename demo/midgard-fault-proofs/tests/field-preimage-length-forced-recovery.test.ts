@@ -58,6 +58,7 @@ it.each(["dispatch", "authenticate"] as const)(
     const result = await recovery.transactions.capture({
       action: required(fixture.headerHash, stage),
       artifact,
+      entries: [],
     });
     expect(result.transaction).toBe(transaction);
     expect(submit).toHaveBeenCalledOnce();

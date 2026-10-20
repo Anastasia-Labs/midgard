@@ -7,6 +7,10 @@ import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-c
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
@@ -40,6 +44,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundOutputReferenceScriptDecodingConfig;
   readonly observe: (
@@ -51,6 +56,8 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     typeof createOutputReferenceScriptDecodingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -200,6 +207,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitOutputReferenceScriptDecodingStep02({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -286,6 +294,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         label: OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL,
       });
       const result = await submitOutputReferenceScriptDecodingStep04({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

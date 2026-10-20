@@ -43,6 +43,7 @@ import {
 } from "../../src/transition-trace/proof-carriage.js";
 import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   type FraudProofPreSubmitBoundary,
@@ -159,6 +160,7 @@ export const transitionTraceFinalCaseRunner = (
     ledgerDepth = 0,
     forced,
   }: TransitionTraceFinalCase) => {
+    const ownOutputs = createOwnOutputJournal();
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const names = new Map<string, bigint>();
@@ -613,6 +615,7 @@ export const transitionTraceFinalCaseRunner = (
         witnessReferenceScripts,
         fieldCertificateReferenceScript,
         preSubmitBoundary,
+        ownOutputs,
       });
     if (cancelAt >= 0) {
       const route = await submitTransitionTraceRoute({
@@ -637,6 +640,7 @@ export const transitionTraceFinalCaseRunner = (
         proof: traceFixture.proof,
         certificate: contracts.fieldPreimageCertificate,
         certificateReference: fieldCertificateReferenceScript,
+        ownOutputs,
       });
       let checkpoint = (
         await proverLucid.utxosByOutRef([
@@ -727,6 +731,7 @@ export const transitionTraceFinalCaseRunner = (
         witnessReferenceScripts,
         fieldCertificateReferenceScript,
         awaitConfirmation: true,
+        ownOutputs,
       });
     const forged = {
       lucid: proverLucid,

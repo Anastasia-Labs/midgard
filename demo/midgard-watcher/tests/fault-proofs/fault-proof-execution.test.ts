@@ -7,8 +7,11 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
-import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
+import {
+  WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+  WATCHER_FAULT_PROOF_CONTINUATION_STALLED,
+  WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+} from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -18,6 +21,10 @@ import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-f
 afterEach(cleanupFundingRecoveryFixtures);
 
 const setup = setupFaultProofExecution;
+
+/** A dispute's response deadline, and the reason its run awaits it under. */
+const DEADLINE = 1_767_225_600_000;
+const AWAITING = `validationTraceDispute awaiting counterparty until ${DEADLINE.toString()}`;
 
 describe("supervisor execution adapter with durable funding", () => {
   it("restores the signed objective without querying fresh wallet inputs", async () => {
@@ -78,26 +85,103 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.getUtxos).not.toHaveBeenCalled();
   });
 
-  it("waits on a fresh observation while a dispute awaits its counterparty", async () => {
+  it.each([
+    {
+      name: "before its response deadline, healthy",
+      nowMs: DEADLINE - 1,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "within the slack after its response deadline, healthy",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS,
+      responseDeadline: DEADLINE,
+      holds: [],
+    },
+    {
+      name: "past its response deadline and the slack, alarmed",
+      nowMs: DEADLINE + WATCHER_COUNTERPARTY_DEADLINE_SLACK_MS + 1,
+      responseDeadline: DEADLINE,
+      holds: [
+        `awaiting its counterparty 1 ms past the response deadline ${DEADLINE.toString()} and its slack: ${AWAITING}`,
+      ],
+    },
+    {
+      name: "with no response deadline, alarmed",
+      nowMs: DEADLINE - 1,
+      responseDeadline: undefined,
+      holds: [
+        `awaiting its counterparty with no response deadline: ${AWAITING}`,
+      ],
+    },
+  ])(
+    "waits on a fresh observation while a dispute awaits its counterparty $name",
+    async ({ nowMs, responseDeadline, holds }) => {
+      const test = await setup();
+      const before = await test.fixture.records();
+      vi.useFakeTimers({ toFake: ["Date"], now: nowMs });
+      const logged: string[] = [];
+      const stderr = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation((line) => logged.push(String(line)) > 0);
+      try {
+        test.runOrResume.mockResolvedValueOnce({
+          kind: "awaiting_counterparty",
+          reason: AWAITING,
+          ...(responseDeadline === undefined ? {} : { responseDeadline }),
+        });
+        expect(await test.execution.execute(test.input)).toEqual({
+          kind: "pending",
+          resume: "await_observation",
+          reason: AWAITING,
+        });
+      } finally {
+        stderr.mockRestore();
+        vi.useRealTimers();
+      }
+      const alarms = holds.map((detail) => ({
+        reason: WATCHER_FAULT_PROOF_COUNTERPARTY_DEADLINE_PASSED,
+        detail: `doubleSpend/${test.input.job.headerHash}: ${detail}`,
+      }));
+      expect(test.execution.readiness()).toEqual(alarms);
+      expect(logged).toEqual(
+        alarms.map(
+          (alarm) =>
+            `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...alarm })}\n`,
+        ),
+      );
+      expect(test.recordProofStep).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "reconciling" }),
+      );
+      expect(test.setAlert).not.toHaveBeenCalled();
+      expect(await test.fixture.records()).toEqual(before);
+    },
+  );
+
+  it("clears the counterparty alarm once a later run reports something else", async () => {
     const test = await setup();
-    const before = await test.fixture.records();
-    const reason =
-      "validationTraceDispute awaiting counterparty until 1767225600000";
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "awaiting_counterparty",
-      reason,
-      responseDeadline: 1_767_225_600_000,
-    });
-    expect(await test.execution.execute(test.input)).toEqual({
-      kind: "pending",
-      resume: "await_observation",
-      reason,
-    });
-    expect(test.recordProofStep).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: "reconciling" }),
-    );
-    expect(test.setAlert).not.toHaveBeenCalled();
-    expect(await test.fixture.records()).toEqual(before);
+    vi.useFakeTimers({ toFake: ["Date"], now: DEADLINE + 3_600_000 });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "awaiting_counterparty",
+        reason: AWAITING,
+        responseDeadline: DEADLINE,
+      });
+      await test.execution.execute(test.input);
+      expect(test.execution.readiness()).toHaveLength(1);
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "pending",
+        reason: "signed transaction awaiting inclusion",
+      });
+      await test.execution.execute(test.input);
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+    expect(test.execution.readiness()).toEqual([]);
   });
 
   it("names a stalled session on readiness and logs it at error level until a later run journals progress", async () => {
@@ -156,94 +240,6 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.execution.readiness()).toEqual([]);
   });
 
-  it.each([
-    [{ kind: "awaiting_counterparty" }, "invalid execution outcome"],
-    [
-      { kind: "no_fault_detected", classification: {} },
-      "the family's own classification returned no_fault_detected for an admitted fault",
-    ],
-    [
-      { kind: "unprovable_gap", classification: {} },
-      "the family's own classification returned unprovable_gap for an admitted fault",
-    ],
-    [{ kind: "unknown_kind", reason: "x" }, "x"],
-  ])(
-    "quarantines %j to its own objective under a named cause",
-    async (result, cause) => {
-      const test = await setup();
-      test.runOrResume.mockResolvedValue(result);
-      const stderr = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
-      try {
-        for (let run = 0; run < 2; run += 1)
-          expect(await test.execution.execute(test.input)).toEqual({
-            kind: "retryable",
-            resume: "backoff",
-            reason: `${WATCHER_FAULT_PROOF_QUARANTINED}: workflow did not progress: ${cause}`,
-            retryAfterMs: 1000,
-          });
-      } finally {
-        stderr.mockRestore();
-      }
-      expect(test.execution.readiness()).toEqual([
-        {
-          reason: WATCHER_FAULT_PROOF_QUARANTINED,
-          detail: expect.stringContaining(
-            `: workflow did not progress: ${cause}`,
-          ),
-        },
-      ]);
-      expect(
-        test.setAlert.mock.calls.filter(
-          ([alert]) =>
-            (alert as { code: string }).code === "proof_submission_failure",
-        ),
-      ).toEqual([[expect.objectContaining({ active: true })]]);
-    },
-  );
-
-  it("quarantines a workflow stall outside preflight to its own objective and clears it on the next run that moves on", async () => {
-    const test = await setup();
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "stalled",
-      reason: "confirmed action still required",
-    });
-    const stderr = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
-    try {
-      expect(await test.execution.execute(test.input)).toMatchObject({
-        kind: "retryable",
-        resume: "backoff",
-        retryAfterMs: 1000,
-      });
-    } finally {
-      stderr.mockRestore();
-    }
-    expect(test.execution.readiness()).toEqual([
-      {
-        reason: WATCHER_FAULT_PROOF_QUARANTINED,
-        detail: expect.stringContaining(
-          ": workflow stalled: confirmed action still required",
-        ),
-      },
-    ]);
-    const alarms = () =>
-      test.setAlert.mock.calls
-        .map(([alert]) => alert as { code: string; active: boolean })
-        .filter(({ code }) => code === "proof_submission_failure")
-        .map(({ active }) => active);
-    expect(alarms()).toEqual([true]);
-    test.runOrResume.mockResolvedValueOnce({
-      kind: "pending",
-      reason: "transaction for walk is pending",
-    });
-    await test.execution.execute(test.input);
-    expect(test.execution.readiness()).toEqual([]);
-    expect(alarms()).toEqual([true, false]);
-  });
-
   it("returns structured read-only provider transport failures for bounded backoff", async () => {
     const test = await setup(true);
     const before = await test.fixture.records();
@@ -285,44 +281,6 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.runOrResume).not.toHaveBeenCalled();
     expect(await test.fixture.records()).toEqual(before);
     expect(test.setAlert).not.toHaveBeenCalled();
-  });
-
-  it("keeps the journal bounded while a held objective is re-checked on the same stall", async () => {
-    const test = await setup();
-    const journal = () =>
-      test.fixture.journal.load(test.fixture.initial.workflowId);
-    const before = (await journal()).length;
-    vi.mocked(test.fixture.adapter.reconcile).mockRejectedValue(
-      new Error("the follower answered with a foreign block"),
-    );
-    const stderr = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
-    try {
-      for (let recheck = 0; recheck < 50; recheck += 1)
-        expect(await test.execution.execute(test.input)).toMatchObject({
-          kind: "retryable",
-          reason: expect.stringContaining("reconciliation failed for init"),
-        });
-    } finally {
-      stderr.mockRestore();
-    }
-    // One stall records the cause; re-checking it adds nothing more.
-    const entries = await journal();
-    expect(entries).toHaveLength(before + 1);
-    expect(entries.at(-1)!.event).toMatchObject({ kind: "stalled" });
-    expect(test.execution.readiness()).toEqual([
-      expect.objectContaining({ reason: WATCHER_FAULT_PROOF_QUARANTINED }),
-    ]);
-    // A different cause is recorded once.
-    vi.mocked(test.fixture.adapter.reconcile).mockRejectedValue(
-      new Error("the follower answered with a stale block"),
-    );
-    stderr.mockImplementation(() => true);
-    for (let recheck = 0; recheck < 3; recheck += 1)
-      await test.execution.execute(test.input);
-    stderr.mockRestore();
-    expect(await journal()).toHaveLength(before + 2);
   });
 
   it("backs off raw-source reconciliation outages without changing signed attempts or submitting", async () => {
@@ -437,38 +395,6 @@ describe("supervisor execution adapter with durable funding", () => {
     );
     await expect(test.execution.verifyCompleted(request)).rejects.toThrow(
       "authenticated terminal mismatch",
-    );
-  });
-
-  it("quarantines an authentication failure of the objective's own run and preserves the signed reservation", async () => {
-    const test = await setup();
-    const before = await test.fixture.records();
-    test.runOrResume.mockRejectedValueOnce(
-      new Error("authenticated proof datum changed"),
-    );
-    const stderr = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
-    try {
-      expect(await test.execution.execute(test.input)).toMatchObject({
-        kind: "retryable",
-        resume: "backoff",
-      });
-    } finally {
-      stderr.mockRestore();
-    }
-    expect(test.execution.readiness()).toEqual([
-      {
-        reason: WATCHER_FAULT_PROOF_QUARANTINED,
-        detail: expect.stringContaining(": authenticated proof datum changed"),
-      },
-    ]);
-    expect(await test.fixture.records()).toEqual(before);
-    expect(test.setAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        code: "proof_submission_failure",
-        active: true,
-      }),
     );
   });
 });

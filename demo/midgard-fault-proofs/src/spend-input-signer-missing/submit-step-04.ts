@@ -32,6 +32,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
 import { planSpendInputSignerWitnessOpening } from "./field-plans.js";
@@ -93,6 +97,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
   onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -111,6 +116,8 @@ export const submitSpendInputSignerMissingStep04 = async ({
   readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -192,6 +199,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
       });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -202,6 +210,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           network,
           signer,

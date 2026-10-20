@@ -38,6 +38,10 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
@@ -67,6 +71,8 @@ export type SubmitMissingSignatureForcedParams = Readonly<{
   witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  ownOutputs?: OwnOutputJournal;
 }>;
 
 export const submitMissingSignatureForcedAction = async (
@@ -83,6 +89,7 @@ export const submitMissingSignatureForcedAction = async (
     preSubmitBoundary,
   } = params;
   const awaitConfirmation = params.awaitConfirmation ?? true;
+  const ownOutputs = params.ownOutputs ?? createOwnOutputJournal();
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "thread"),
@@ -189,6 +196,7 @@ export const submitMissingSignatureForcedAction = async (
     planned === undefined
       ? []
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -200,6 +208,7 @@ export const submitMissingSignatureForcedAction = async (
     (planned === undefined
       ? undefined
       : await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,

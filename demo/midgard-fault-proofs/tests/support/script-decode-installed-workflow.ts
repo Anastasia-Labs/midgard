@@ -11,7 +11,7 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -47,6 +47,7 @@ import {
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import {
   emulatorProtocolParameterAuthority,
@@ -335,9 +336,10 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  // The watcher's journal root: its decision journal, the objective's
-  // workflow journal directory and, beside them, the reservation store.
-  const directory = await mkdtemp(join(homedir(), "script-decode-installed-"));
+  // The watcher's journal root, under home as its SQLite stores refuse /tmp:
+  // the decision journal, objective workflow journals and reservation store.
+  const scratch = await scratchDirectory("script-decode-installed-", homedir());
+  const directory = scratch.path;
   await recordWatcherFaultDecision(directory, decision);
   const journalDirectory = watcherProofObjectiveDirectory(directory, {
     category,
@@ -470,14 +472,9 @@ export const installScriptDecodeApplication = async ({
       instance.funding.close();
       instance = await boot();
     },
-    /**
-     * Stops the watcher process and starts another whose workflow journal
-     * is gone, and with it, when `reservations` is set, its reservation
-     * store: only what is on chain is left of the objective's progress.
-     */
-    loseJournal: async ({
-      reservations = false,
-    }: { readonly reservations?: boolean } = {}) => {
+    /** Restarts with the workflow journal gone and, with `reservations`, the
+     * reservation store too: only the chain keeps the objective's progress. */
+    loseJournal: async ({ reservations = false } = {}) => {
       instance.funding.close();
       await rm(journalDirectory, { recursive: true, force: true });
       if (reservations)
@@ -489,9 +486,14 @@ export const installScriptDecodeApplication = async ({
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),
+    /** The entries the workflow journal holds on disk. */
+    journalEntries: async () =>
+      (await readdir(journalDirectory, { recursive: true })).filter((path) =>
+        /\d+\.json$/u.test(path),
+      ).length,
     close: async () => {
       instance.funding.close();
-      await rm(directory, { recursive: true, force: true });
+      await scratch.remove();
     },
   } as const;
 };

@@ -213,7 +213,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
         publications: l1.publications,
         requirementForAction: (input) =>
           requirement.requirementForAction(context, input),
-        transactionConfirmed,
       }),
     ),
   );

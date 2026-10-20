@@ -21,10 +21,10 @@ import {
   createDoubleSpendL1ObservationPort,
 } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import {
-  type DoubleSpendConstrainedWorkflowAdapterConfig,
   type DoubleSpendWorkflowReferenceScripts,
   type ManifestBoundDoubleSpendWorkflow,
   type ManifestBoundDoubleSpendWorkflowConfig,
+  type ObservedDoubleSpendWorkflowAdapterConfig,
 } from "./double-spend-adapter.preflight-of.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
@@ -121,7 +121,7 @@ export const createManifestBoundDoubleSpendWorkflow = async (
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig = {
+  const adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig = {
     lucid: config.lucid,
     blueprint: binding.blueprint,
     deploymentInfo: binding.deploymentInfo,
@@ -165,7 +165,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
+  readonly adapterConfig: ObservedDoubleSpendWorkflowAdapterConfig;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;

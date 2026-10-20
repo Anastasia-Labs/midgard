@@ -23,6 +23,7 @@ import {
 import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
 import {
   parseWatcherProverFundingReservationRecord,
+  planFirstWatcherProverFundingReservation,
   planWatcherProverFundingReservation,
   restoreWatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,
@@ -88,7 +89,7 @@ export const createWatcherProverFundingAuthority = async (input: {
   );
   const plan =
     existing === undefined
-      ? planWatcherProverFundingReservation({
+      ? planFirstWatcherProverFundingReservation({
           deploymentIdentity: input.deploymentIdentity,
           calculation: input.calculation,
           selectionCalculation: input.selectionCalculation,
@@ -205,6 +206,23 @@ export const createWatcherProverFundingAuthority = async (input: {
     },
     readSupersededAttemptFundingOutRefs: async () =>
       (await input.store.readSupersededAttemptFundingOutRefs?.(reserved)) ?? [],
+    readLandedSupersededAttempt: async (candidate: {
+      actionId: string;
+      signedTransactionCborHex: string;
+    }) =>
+      await input.store.readLandedSupersededAttempt({
+        ...candidate,
+        ...reserved,
+      }),
+    readRecordedSignedTransaction: async ({
+      transactionHash,
+    }: {
+      transactionHash: string;
+    }) =>
+      await input.store.readRecordedSignedTransaction({
+        ...reserved,
+        transactionHash,
+      }),
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,

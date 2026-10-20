@@ -135,6 +135,7 @@ export const openInstalledProverFunding = async ({
   referenceUtxos,
   directory,
   journalRoot,
+  validationDispute,
 }: {
   readonly emulator: Emulator;
   readonly identity: VerifiedWatcherDeploymentIdentity;
@@ -156,6 +157,10 @@ export const openInstalledProverFunding = async ({
   readonly directory: string;
   /** The watcher's journal root: decisions and objective workflow journals. */
   readonly journalRoot: string;
+  /** A validation dispute's deployment-bound VerifySource custody terms. */
+  readonly validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
 }) => {
   const fundingContracts = new Map<
     string,
@@ -196,6 +201,7 @@ export const openInstalledProverFunding = async ({
     economics,
     contracts: [...fundingContracts.values()],
     referenceScripts: [...references.values()],
+    ...(validationDispute === undefined ? {} : { validationDispute }),
   });
   const calculation = await calculateWatcherRuntimeProverFunding({
     deploymentIdentity: identity,

@@ -15,6 +15,7 @@ import {
   Lucid,
   type LucidEvolution,
   type MintingPolicy,
+  type OutRef,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
@@ -148,6 +149,22 @@ const certificateFor = ({
   });
 };
 
+/** Ledger reads, by address and by out-ref, over the current outputs. */
+const ledgerReads = (
+  live: () => readonly [wallet: readonly UTxO[], others: readonly UTxO[]],
+) => ({
+  utxosAt: async (address: string) =>
+    live()[address === SIGNER.address ? 0 : 1],
+  utxosByOutRef: async (outRefs: readonly OutRef[]) =>
+    live()
+      .flat()
+      .filter(({ txHash, outputIndex }) =>
+        outRefs.some(
+          (ref) => ref.txHash === txHash && ref.outputIndex === outputIndex,
+        ),
+      ),
+});
+
 const confirmedEntry = (actionId: string): FraudProofWorkflowJournalEntry =>
   ({
     event: { kind: "confirmed", actionId, txHash: h32(0x41) },
@@ -210,8 +227,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       }),
     );
     const lucid = {
-      utxosAt: async (address: string) =>
-        address === SIGNER.address ? walletUtxos : certificateUtxos,
+      ...ledgerReads(() => [walletUtxos, certificateUtxos]),
     } as unknown as LucidEvolution;
     const config = {
       lucid,
@@ -427,8 +443,7 @@ describe("Q38 tier-3 workflow action chains", () => {
           : address === "state-queue"
             ? [stateQueueUtxo]
             : [],
-      utxosAt: async (address: string) =>
-        address === SIGNER.address ? walletUtxos : certificateUtxos,
+      ...ledgerReads(() => [walletUtxos, certificateUtxos]),
     } as unknown as LucidEvolution;
     const config = {
       lucid,

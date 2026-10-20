@@ -55,6 +55,10 @@ import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -158,6 +162,7 @@ export const submitValueNotPreservedStep03 = async ({
   unsafeSpendFieldRawUtxoForTest,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ValueNotPreservedContracts;
@@ -187,6 +192,8 @@ export const submitValueNotPreservedStep03 = async ({
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitValueNotPreservedStep03Result> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
@@ -262,6 +269,7 @@ export const submitValueNotPreservedStep03 = async ({
   const outputsCarriageUtxos =
     unsafeSpendFieldRawUtxoForTest === undefined
       ? await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned: outputsPlan,
@@ -273,6 +281,7 @@ export const submitValueNotPreservedStep03 = async ({
     mintPlan === null
       ? []
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned: mintPlan,

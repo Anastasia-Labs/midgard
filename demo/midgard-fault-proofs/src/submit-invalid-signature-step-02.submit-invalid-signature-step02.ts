@@ -46,6 +46,10 @@ import {
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -70,6 +74,7 @@ export const submitInvalidSignatureStep02 = async ({
   publishMissingCarriage = true,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -101,6 +106,8 @@ export const submitInvalidSignatureStep02 = async ({
   readonly publishMissingCarriage?: boolean;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
   const { invalidSignatureCategory, contracts } =
     await resolveInvalidSignatureDeploymentContracts({
@@ -158,6 +165,7 @@ export const submitInvalidSignatureStep02 = async ({
     ...existingPublicationUtxos,
     ...(publishMissingCarriage
       ? await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,

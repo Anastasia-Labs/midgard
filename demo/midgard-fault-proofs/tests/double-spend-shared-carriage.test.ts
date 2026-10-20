@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { publishFaultProofFieldCarriage } from "../src/field-opening.js";
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import { addressFieldCarriageOwnOutputs } from "../src/workflow/bespoke-adapter-field-carriage.js";
 import { h32, outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   certifiedOpening,
@@ -30,6 +31,37 @@ const repeatedFirstChunkSpendInputs = () =>
     count: 800,
     item: (fill) => outRefCbor(fill, 0n),
   });
+
+/**
+ * The ledger view and carriage claims the double-spend adapter publishes
+ * with, over `wallet` as the prover's address.
+ */
+const adapterCarriage = async (
+  plan: ReturnType<typeof certifiedOpening>["plan"],
+  wallet: readonly UTxO[],
+) => {
+  const lucid = {
+    utxosAt: async () => [...wallet],
+    utxosByOutRef: async (
+      refs: readonly { txHash: string; outputIndex: number }[],
+    ) =>
+      refs.flatMap((ref) =>
+        wallet.filter(
+          (utxo) =>
+            utxo.txHash === ref.txHash && utxo.outputIndex === ref.outputIndex,
+        ),
+      ),
+  } as unknown as LucidEvolution;
+  return {
+    lucid,
+    ownOutputs: await addressFieldCarriageOwnOutputs({
+      lucid,
+      network: "Preview",
+      publisherAddress: SIGNER.address,
+      planned: plan,
+    }),
+  };
+};
 
 describe("double-spend carriage shared with other on-chain objects", () => {
   it("confirms its own certificate transaction by its exact output, whatever else sits at the certificate address", async () => {
@@ -188,9 +220,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     class PublicationStarted extends Error {}
     await expect(
       publishFaultProofFieldCarriage({
-        lucid: {
-          utxosAt: async () => [...wallet],
-        } as unknown as LucidEvolution,
+        ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
         publisherAddress: SIGNER.address,
@@ -332,9 +362,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     class PublicationStarted extends Error {}
     await expect(
       publishFaultProofFieldCarriage({
-        lucid: {
-          utxosAt: async () => [...wallet],
-        } as unknown as LucidEvolution,
+        ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
         publisherAddress: SIGNER.address,
@@ -354,9 +382,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [...publications];
     await expect(
       publishFaultProofFieldCarriage({
-        lucid: {
-          utxosAt: async () => [...wallet],
-        } as unknown as LucidEvolution,
+        ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
         publisherAddress: SIGNER.address,

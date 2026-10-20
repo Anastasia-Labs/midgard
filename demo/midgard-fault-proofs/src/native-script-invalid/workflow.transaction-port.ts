@@ -16,6 +16,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -56,7 +57,11 @@ export const transactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "nativeScriptInvalid",
+      entries,
+    });
     const admitted = await admitNativeScriptInvalidWorkflowArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
       throw new Error(
@@ -158,6 +163,7 @@ export const transactionPort = (
     }
     if (stage === "step_02") {
       const carriage = await resolveField({
+        ownOutputs,
         config,
         plan: scriptFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -165,6 +171,7 @@ export const transactionPort = (
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitNativeScriptInvalidStep02({
+              ownOutputs,
               ...common,
               threadOutRef: threadOutRef(),
               scriptWitnessItems: buffers(
@@ -184,6 +191,7 @@ export const transactionPort = (
     }
     if (stage === "step_03") {
       const carriage = await resolveField({
+        ownOutputs,
         config,
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -207,6 +215,7 @@ export const transactionPort = (
                 : { certificateUtxo: carriage.certificate }),
               referenceScriptUtxo: config.references.steps[2],
               preSubmitBoundary,
+              ownOutputs,
             } as const;
             if (direct) {
               await submitNativeScriptInvalidStep03({
@@ -228,6 +237,7 @@ export const transactionPort = (
     }
     if (stage === "step_04") {
       const carriage = await resolveField({
+        ownOutputs,
         config,
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
@@ -235,6 +245,7 @@ export const transactionPort = (
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitNativeScriptInvalidStep04({
+              ownOutputs,
               ...common,
               threadOutRef: threadOutRef(),
               addressWitnessItems: buffers(

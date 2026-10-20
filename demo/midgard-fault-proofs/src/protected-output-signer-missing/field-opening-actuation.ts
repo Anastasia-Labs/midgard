@@ -12,6 +12,10 @@ import {
   reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 
@@ -31,6 +35,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   onReady,
   publishedCarriageUtxos,
   suppliedCertificateUtxo,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -46,6 +51,8 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly onReady?: () => Promise<void>;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
   readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly referenceInputs: readonly UTxO[];
@@ -56,6 +63,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   const carriage =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -67,6 +75,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

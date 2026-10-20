@@ -38,8 +38,6 @@ const fieldCarriagePort = (context: AssemblyContext) =>
     publications: context.l1.publications,
     requirementForAction: (input) =>
       fieldCarriageRequirementForAction(context, input),
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await context.l1.transactionConfirmed({ headerHash, txHash }),
   });
 
 export const CANONICAL_DECODABILITY_FAMILY_DEFINITION = defineLinearFamily({

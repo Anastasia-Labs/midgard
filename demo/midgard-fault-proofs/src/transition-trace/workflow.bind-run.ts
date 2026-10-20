@@ -13,6 +13,7 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createChunkedRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
@@ -187,7 +188,7 @@ const bindRun = (context: TransitionContext) => {
         );
       return prepared.artifact;
     },
-    capture: async ({ action, artifact }) => {
+    capture: async ({ action, artifact, entries }) => {
       const prepared = admit(artifact);
       const input = cursorFamilyActionInput({
         category: "transitionTrace",
@@ -214,6 +215,7 @@ const bindRun = (context: TransitionContext) => {
           headerHash: binding.definition.headerHash,
           action,
           artifact,
+          entries,
         });
       const fields = await refineAction({ action, artifact });
       if (fields.requiresMutationLease !== input.requiresMutationLease)
@@ -270,6 +272,10 @@ const bindRun = (context: TransitionContext) => {
               );
             await submitTransitionTraceFinal({
               ...common,
+              ownOutputs: workflowFieldCarriageOwnOutputs({
+                category: "transitionTrace",
+                entries,
+              }),
               threadOutRef,
               proof: prepared.proof,
               additionalReferenceInputs: prepared.references,

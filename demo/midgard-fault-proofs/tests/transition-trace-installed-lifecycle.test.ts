@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -99,6 +98,7 @@ import {
 } from "./support/emulator/setup-tx.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
+import { scratchDirectory } from "./support/scratch-directory.js";
 import {
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
@@ -557,9 +557,8 @@ describe("transition trace installed retained-history workflow", () => {
             item,
           ]),
         );
-        directory = await mkdtemp(
-          join(homedir(), "transition-trace-installed-"),
-        );
+        directory = (await scratchDirectory("transition-trace-installed-"))
+          .path;
         // Model the separate mutation-lease service across application restarts.
         const makeLease = (token: string) => ({
           token,
