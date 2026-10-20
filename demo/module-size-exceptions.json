@@ -1206,7 +1206,7 @@
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
-    "max": 530,
+    "max": 541,
     "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations and the lifecycle legacy-retirement and submission-authority methods together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
   },
   {
@@ -1221,7 +1221,7 @@
   },
   {
     "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 505,
+    "max": 506,
     "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state."
   },
   {

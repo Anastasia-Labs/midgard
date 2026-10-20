@@ -62,6 +62,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
   /** The follower's facts that alone reclaim a reservation whose decision is missing. */
   readonly fundingInputFacts?: WatcherFundingInputFacts;
+  /** This deployment's computation-thread policy, which proves own thread custody. */
+  readonly computationThreadPolicyId?: string;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -384,6 +386,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         readWalletUtxos: request.readWalletUtxos,
         store: input.store,
         resolveInputs: request.resolveInputs,
+        computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
       });
       return authority.permit;

@@ -13,6 +13,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { readProverFundingSubmissionAuthority } from "./prover-funding-authority.reconciliation-only.js";
+import { resolveOwnThreadCustody } from "./prover-funding-authority.resolve-own-thread-custody.js";
 import {
   readRecord,
   snapshot,
@@ -50,6 +51,8 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly resolveInputs: (
     outRefs: readonly string[],
   ) => Promise<readonly UTxO[]>;
+  /** Proves this objective's thread custody when its lineage was lost. */
+  readonly computationThreadPolicyId?: string;
   readonly resolveProtocolInputAuthority: (input: {
     readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     readonly outRef: string;
@@ -377,10 +380,18 @@ export const createWatcherProverFundingAuthority = async (input: {
     }: Parameters<
       WorkflowFundingReservationPort["resolveConfirmedInput"]
     >[0]) =>
-      await input.store.readConfirmedInput({
+      (await input.store.readConfirmedInput({
         reservationId: plan.reservationId,
         outRef,
-      }),
+      })) ??
+      (await resolveOwnThreadCustody({
+        outRef,
+        category: input.category,
+        headerHash: authority.headerHash,
+        fundingPaymentKeyHash: plan.fundingPaymentKeyHash,
+        computationThreadPolicyId: input.computationThreadPolicyId,
+        resolveInputs: input.resolveInputs,
+      })),
     resolveProtocolInputAuthority: async ({
       deploymentFingerprint,
       outRef,

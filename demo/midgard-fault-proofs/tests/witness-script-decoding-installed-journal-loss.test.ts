@@ -135,4 +135,12 @@ describe("script-decode workflow journal loss in the installed watcher applicati
     });
     expect(run.convicted).toBe(true);
   }, 1_800_000);
+
+  it("convicts after the workflow journal and reservation store are both lost once the thread has stepped on chain", async () => {
+    const run = await runWithLostJournal({
+      kind: "step",
+      reservations: true,
+    });
+    expect(run.convicted).toBe(true);
+  }, 1_800_000);
 });

@@ -395,6 +395,7 @@ export const installScriptDecodeApplication = async ({
       protocolParameters,
       fundingPaymentKeyHash: signer.paymentKeyHash,
       walletAddress: signer.address,
+      computationThreadPolicyId: contracts.computationThread.policyId,
       scriptHashes: Object.fromEntries([
         ...Object.entries(deploymentInfo.contracts)
           .filter(
