@@ -33,6 +33,12 @@ import {
   type PlutusExecutionReplay,
   replayPlutusExecution,
 } from "../validation-trace-dispute/replay.js";
+import {
+  createValidationTraceReplayHolds,
+  ValidationTraceReplayHeldError,
+  type ValidationTraceReplayHold,
+  type ValidationTraceReplayHolds,
+} from "../validation-trace-dispute/replay-hold.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
@@ -294,11 +300,6 @@ export const VALIDATION_TRACE_VIOLATION_ID = "validation-trace" as const;
  * reproduce; no claim is built on it. Unregistered, so it classifies as a gap. */
 export const VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID =
   "validation-trace-replay-disagreement" as const;
-/** The script re-execution ended in an error rather than a verdict or a
- * trace, such as an evaluator with no verdict. Only that event is held:
- * unregistered, so it classifies as a gap, and the block still decides. */
-export const VALIDATION_TRACE_REPLAY_UNAVAILABLE_VIOLATION_ID =
-  "validation-trace-replay-unavailable" as const;
 
 /**
  * Accepted normal transactions with redeemers (rule R-DESC) whose honest
@@ -306,23 +307,47 @@ export const VALIDATION_TRACE_REPLAY_UNAVAILABLE_VIOLATION_ID =
  * `PlutusExecutionFailed`. Each detection names the event and the honest
  * trace's step count. Forced transactions are excluded, as R-DESC excludes
  * them on chain.
+ *
+ * A re-execution that throws holds only its own event (`holds`): the other
+ * events still replay, and a failure proven on any of them decides the block.
+ * With none proven while an event is held, the replay throws
+ * `ValidationTraceReplayHeldError` rather than deciding.
  */
 export const detectPlutusExecutionFailures = async ({
   evidence,
   context,
   l1SlotConfig,
+  holds = createValidationTraceReplayHolds(),
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly l1SlotConfig: L1SlotConfig;
+  readonly holds?: ValidationTraceReplayHolds;
 }): Promise<readonly CanonicalViolationDetection[]> => {
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const detections: CanonicalViolationDetection[] = [];
+  const held: ValidationTraceReplayHold[] = [];
   let position = -1;
   for (const event of evidence.reconstruction.sourceEvents) {
     if (event.phase !== "L2Transaction") continue;
     position += 1;
     if (!eventRunsPlutus(event)) continue;
+    const holdKey = `${evidence.headerHash}\u0000${event.fingerprint}`;
+    const waiting = holds.waiting(holdKey);
+    if (waiting !== undefined) {
+      held.push(waiting);
+      continue;
+    }
+    const hold = (cause: unknown): void => {
+      held.push(
+        holds.failed(holdKey, {
+          headerHash: evidence.headerHash,
+          position,
+          txId: event.entry.txId,
+          detail: cause instanceof Error ? cause.message : String(cause),
+        }),
+      );
+    };
     const found = (violationId: string, detail: string): void => {
       detections.push({
         ...sourceEventSubject(event),
@@ -362,11 +387,13 @@ export const detectPlutusExecutionFailures = async ({
         predecessor,
       });
     } catch (cause) {
-      if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
-      found(
-        EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
-        `script re-execution event-pre-state hold: ${cause.reason}`,
-      );
+      if (cause instanceof EventLedgerReplayRefusal) {
+        holds.decided(holdKey);
+        found(
+          EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+          `script re-execution event-pre-state hold: ${cause.reason}`,
+        );
+      } else hold(cause);
       continue;
     }
     let replay: PlutusExecutionReplay;
@@ -378,12 +405,10 @@ export const detectPlutusExecutionFailures = async ({
         l1SlotConfig,
       });
     } catch (cause) {
-      found(
-        VALIDATION_TRACE_REPLAY_UNAVAILABLE_VIOLATION_ID,
-        `script re-execution of accepted transaction ${event.entry.txId} has no result: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
+      hold(cause);
       continue;
     }
+    holds.decided(holdKey);
     if (replay.kind === "fails")
       found(
         VALIDATION_TRACE_VIOLATION_ID,
@@ -395,5 +420,12 @@ export const detectPlutusExecutionFailures = async ({
         `accepted transaction ${event.entry.txId}: ${replay.detail}`,
       );
   }
+  if (
+    held.length > 0 &&
+    !detections.some(
+      ({ violationId }) => violationId === VALIDATION_TRACE_VIOLATION_ID,
+    )
+  )
+    throw new ValidationTraceReplayHeldError(evidence.headerHash, held);
   return detections;
 };

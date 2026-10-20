@@ -12,7 +12,6 @@ import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { sameJson } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
@@ -38,15 +37,15 @@ import {
   parseValidationTraceRecovery,
   validationTraceAction,
 } from "./actions.js";
-import {
-  encodeValidationTraceDisputeArtifact,
-  parseValidationTraceDisputeArtifact,
-} from "./artifact.js";
+import { parseValidationTraceDisputeArtifact } from "./artifact.js";
 import {
   captureValidationTraceClose,
   validationTraceFraudProofUnit,
 } from "./close.js";
-import { detectedValidationTraceClaim } from "./detected-claim.js";
+import {
+  prepareValidationTraceArtifact,
+  validateValidationTraceArtifact,
+} from "./detected-claim.js";
 import {
   createValidationTraceRemoval,
   VALIDATION_TRACE_CASE_CONVICTED,
@@ -353,36 +352,26 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category: CATEGORY,
     safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-    prepare: async ({ evidence, replayContext, classification }) => {
-      if (classification.category !== CATEGORY)
-        throw new Error("validation-trace adapter received another family");
-      const { material } = await detectedValidationTraceClaim({
+    prepare: async ({ evidence, replayContext, classification }) =>
+      await prepareValidationTraceArtifact({
         evidence,
         context: replayContext,
-        detection: classification.selected,
+        classification,
         l1SlotConfig,
-      });
-      return encodeValidationTraceDisputeArtifact({
-        headerHash: evidence.headerHash,
-        material,
-      });
-    },
+      }),
     validatePreparedArtifact: async ({
       evidence,
       replayContext,
       classification,
       artifact,
-    }) => {
-      const rebuilt = await adapter.prepare({
+    }) =>
+      await validateValidationTraceArtifact({
         evidence,
+        context: replayContext,
         classification,
-        ...(replayContext === undefined ? {} : { replayContext }),
-      });
-      if (!sameJson(rebuilt, artifact))
-        throw new Error(
-          "validation-trace artifact differs from this evidence's replay",
-        );
-    },
+        artifact,
+        l1SlotConfig,
+      }),
     observe,
     preflight: async (context) => {
       const { action, workflowId } = context;

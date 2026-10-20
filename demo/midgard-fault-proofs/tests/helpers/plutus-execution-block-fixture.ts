@@ -59,7 +59,7 @@ export type PlutusExecutionScenario =
   /** The passing spend, also requiring a signer that does not sign. */
   | "unsigned_required_signer";
 
-const SEED_LOVELACE = 20_000_000n;
+export const SEED_LOVELACE = 20_000_000n;
 const ownerKey = () => CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x63));
 const ownerKeyHash = (): string => {
   const key = ownerKey();
@@ -94,7 +94,7 @@ const seedDepositEvent = (byte: number, paymentCredential: SeedCredential) =>
   }) satisfies SDK.DepositEvent;
 
 /** A deposit's canonical ledger insertion, exactly as block production derives it. */
-const depositSeed = (
+export const depositSeed = (
   byte: number,
   paymentCredential: SeedCredential,
 ): LedgerEntry => {
@@ -121,7 +121,7 @@ const scenarioScript = (scenario: PlutusExecutionScenario) =>
     ? PASSING_SCRIPT
     : FAILING_SCRIPT;
 
-const scriptCredential = (
+export const scriptCredential = (
   scenario: PlutusExecutionScenario,
 ): SeedCredential => ({
   ScriptCredential: [hashScriptWitness(scenarioScript(scenario))],
@@ -148,7 +148,7 @@ export const plutusExecutionSeedDeposit = (
 });
 
 /** The transaction the scenario commits, over its seed output. */
-const scenarioTransaction = (
+export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
 ) => {

@@ -6,6 +6,7 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   commitValidationTraceV1,
+  DirectValidationTraceUnavailable,
   RejectCodes,
   replayValidationVerdictEvent,
   requiresRealValidationDescriptorV1,
@@ -78,13 +79,18 @@ export const plutusFailureReplayInput = ({
 export type PlutusExecutionReplay =
   | { readonly kind: "no_failure" }
   | { readonly kind: "fails"; readonly stepCount: number }
-  /** The verdict replay found a failed script run, but the trace replay did
-   * not reproduce it. No claim is built on it. */
+  /** The verdict replay found a failed script run, but the trace replay
+   * deterministically did not reproduce it. No claim is built on it. */
   | { readonly kind: "trace_disagrees"; readonly detail: string };
 
 /**
  * Replays `event` by verdict first and builds the trace only for a failed
  * script run, so a block of passing transactions runs no proof-mode replay.
+ *
+ * Only a deterministic outcome is returned: a verdict, or a trace that
+ * disagrees with it. Anything else throws, including a trace build stopped
+ * as `unavailable`, which wraps whatever the builder threw (an exhausted
+ * heap among them), so the caller retries rather than deciding.
  */
 export const replayPlutusExecution = async ({
   evidence,
@@ -126,9 +132,14 @@ export const replayPlutusExecution = async ({
     Effect.either(commitValidationTraceV1(input)),
   );
   if (committed._tag === "Left") {
-    if (committed.left instanceof ValidationTraceStopped)
-      return { kind: "trace_disagrees", detail: committed.left.message };
-    throw committed.left;
+    const stop = committed.left;
+    if (
+      (stop instanceof ValidationTraceStopped &&
+        stop.reason === "disagreement") ||
+      stop instanceof DirectValidationTraceUnavailable
+    )
+      return { kind: "trace_disagrees", detail: stop.message };
+    throw stop;
   }
   if (committed.right.descriptor.verdict !== "rejected")
     return {

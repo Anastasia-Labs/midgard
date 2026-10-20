@@ -17,6 +17,7 @@ import { detectRedeemerCanonicityCompleteReplay } from "../redeemer-canonicity/a
 import { type TransitionTraceL1Events } from "../transition-trace/l1-events.js";
 import { transitionTraceCanonicalDetections } from "../transition-trace/replay-authority.canonical-detections.js";
 import { replayTransitionTraceFromRetainedHistory } from "../transition-trace/replay-authority.js";
+import { createValidationTraceReplayHolds } from "../validation-trace-dispute/replay-hold.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
@@ -288,10 +289,18 @@ export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
 
 /** Complete script re-execution scan for the validation-trace dispute. The
  * deployment's slot mapping places each transaction's validity range in the
- * script context. */
+ * script context. The replayer keeps its held events across replays, so a
+ * held event is retried only after its backoff. */
 export const createValidationTraceDisputeCompleteCanonicalReplay = (
   l1SlotConfig: L1SlotConfig,
-): CompleteCanonicalReplay =>
-  completeReplayer(["validationTraceDispute"], async (evidence, context) =>
-    detectPlutusExecutionFailures({ evidence, context, l1SlotConfig }),
+  { now }: { readonly now?: () => number } = {},
+): CompleteCanonicalReplay => {
+  const holds = createValidationTraceReplayHolds(
+    now === undefined ? {} : { now },
   );
+  return completeReplayer(
+    ["validationTraceDispute"],
+    async (evidence, context) =>
+      detectPlutusExecutionFailures({ evidence, context, l1SlotConfig, holds }),
+  );
+};
