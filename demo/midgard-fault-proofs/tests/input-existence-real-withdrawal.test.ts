@@ -46,7 +46,10 @@ import {
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.deposit-events-retained-block.js";
 
 /** The control's step 04 holds a ledger proof that its selected input is
- * present at the target's pre-root, so the verdict finds no fault. */
+ * present at the target's pre-root, so the verdict finds no fault. The
+ * verdict's no-fault branch returns a plain false, with no trace of its own,
+ * so the traced run names the module and a false result rather than one
+ * check; a failed `expect` anywhere in step 04 would carry its own trace. */
 const CONTROL_REFUSAL = {
   0: {
     refusedBy: "fraud_proofs/no_input/step_04",
