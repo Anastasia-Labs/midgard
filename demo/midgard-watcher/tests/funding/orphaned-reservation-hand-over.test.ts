@@ -70,6 +70,11 @@ describe("signed funding without its original decision is handed over", () => {
     );
     expect(await doublyLeased(fixture)).toEqual([]);
 
+    // A sweep beside the fresh run leaves the run's reservation to it.
+    await factory.releaseUnused();
+    expect(factory.decisionHolds()).toEqual([]);
+    expect(await fixture.records()).toEqual(records);
+
     // The fresh workflow is rebuilt with the attempt superseded.
     await fixture.run(journal);
     const { workflowId } = freshWorkflow(fixture);

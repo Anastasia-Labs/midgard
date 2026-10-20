@@ -88,10 +88,6 @@ export const createProverFundingReclaimOperations = (deps: {
     SELECT * FROM watcher_prover_funding_lineage_v1
     WHERE reservation_id = ? AND phase = 'confirmed'
   `);
-  const selectCompletion = database.prepare(`
-    SELECT 1 FROM watcher_prover_funding_handoff_v1
-    WHERE reservation_id = ? AND kind = 'completion'
-  `);
   const deleteRows = (reservationId: string) => {
     for (const table of ["handoff", "abandonment", "lineage"])
       database
@@ -100,19 +96,13 @@ export const createProverFundingReclaimOperations = (deps: {
         )
         .run(reservationId);
   };
-  /** The orphan exactly as its caller classified it, still active; with
-   * `uncompleted`, only while it holds no completion. */
-  const currentOrphan = (
-    snapshot: WatcherProverFundingReservationRecord,
-    uncompleted: boolean,
-  ) => {
+  /** The orphan exactly as its caller classified it, still active. */
+  const currentOrphan = (snapshot: WatcherProverFundingReservationRecord) => {
     const orphan = parseWatcherProverFundingReservationRecord(snapshot);
     const current = deps.readOne(orphan.reservationId);
     return current !== null &&
       current.recordDigest === orphan.recordDigest &&
-      current.state === "active" &&
-      (!uncompleted ||
-        selectCompletion.get(current.reservationId) === undefined)
+      current.state === "active"
       ? current
       : null;
   };
@@ -197,8 +187,7 @@ export const createProverFundingReclaimOperations = (deps: {
           }>,
         ) => void)[] = [];
         for (const snapshot of snapshots) {
-          // A completed orphan's action is done: it only ever settles.
-          const orphan = currentOrphan(snapshot, true);
+          const orphan = currentOrphan(snapshot);
           const submissions =
             orphan === null
               ? []
@@ -305,7 +294,7 @@ export const createProverFundingReclaimOperations = (deps: {
     },
     settleOrphanedReservation: async ({ orphan: snapshot, retirements }) =>
       deps.transaction(() => {
-        const orphan = currentOrphan(snapshot, false);
+        const orphan = currentOrphan(snapshot);
         if (orphan === null) return false;
         const retired = new Set(
           deps
@@ -313,14 +302,14 @@ export const createProverFundingReclaimOperations = (deps: {
             .filter(({ handoff }) => handoff.reconciliation.retirement)
             .map(({ transition }) => transition.transactionHash),
         );
+        // Each retirement must be of the attempt it names.
         for (const { transactionHash, retirement } of retirements)
-          if (
+          retired.add(
             parseSignedWorkflowTransactionRetirement(
               retirement,
               transactionHash,
-            ).transactionHash === transactionHash
-          )
-            retired.add(transactionHash);
+            ).transactionHash,
+          );
         const attempts = [
           ...deps.recordedSubmissions(orphan.reservationId),
           ...deps.abandonmentsOf(orphan.reservationId),

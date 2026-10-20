@@ -1,4 +1,5 @@
 import {
+  beginWorkflowFundingReservationAction,
   journalJsonDigest,
   normalizeJournalJson,
   supersededAttemptReadSchedule,
@@ -64,6 +65,29 @@ const orphanOf = async (fixture: Fixture) =>
     ({ reservationId }) => reservationId === fixture.plan.reservationId,
   )!;
 
+/** The store abandons the orphan's pending attempt, unretired. */
+const abandonPending = async (fixture: Fixture) => {
+  const orphan = await orphanOf(fixture);
+  await fixture.store.abandonPendingTransition({
+    handoff: {
+      workflowId: fixture.handoff.workflowId,
+      identity: fixture.handoff.identity,
+      preparedArtifactDigest: fixture.handoff.preparedArtifactDigest,
+      expectedJournalSequence: fixture.handoff.expectedJournalSequence,
+      submissionIntent: fixture.handoff.submissionIntent,
+      reconciliation: {
+        kind: "reconciled",
+        actionId: "init",
+        outcome: "not_found",
+        txHash: fixture.transactionHash,
+      },
+    },
+    plan: fixture.plan,
+    expectedRevision: orphan.revision,
+    transitionDigest: orphan.pendingTransition!.transitionDigest,
+  });
+};
+
 describe("the store hands signed funding over only to a fresh reservation of its target", () => {
   it("refuses a hand-over that does not match, and changes nothing", async () => {
     const fixture = await expiredWithJournalsLost();
@@ -125,25 +149,7 @@ describe("the store hands signed funding over only to a fresh reservation of its
       if (changed) return;
       changed = true;
       // The attempt is abandoned between the read and the hand-over.
-      const orphan = await orphanOf(fixture);
-      await fixture.store.abandonPendingTransition({
-        handoff: {
-          workflowId: fixture.handoff.workflowId,
-          identity: fixture.handoff.identity,
-          preparedArtifactDigest: fixture.handoff.preparedArtifactDigest,
-          expectedJournalSequence: fixture.handoff.expectedJournalSequence,
-          submissionIntent: fixture.handoff.submissionIntent,
-          reconciliation: {
-            kind: "reconciled",
-            actionId: "init",
-            outcome: "not_found",
-            txHash: fixture.transactionHash,
-          },
-        },
-        plan: fixture.plan,
-        expectedRevision: orphan.revision,
-        transitionDigest: orphan.pendingTransition!.transitionDigest,
-      });
+      await abandonPending(fixture);
     });
     await expect(admitFresh(fixture, factory)).rejects.toThrow(
       "prover reservation hand-over mismatch",
@@ -183,18 +189,41 @@ describe("the store hands signed funding over only to a fresh reservation of its
     expect(await orphanOf(fixture)).toMatchObject({ state: "active" });
     supersededAttemptReadSchedule.forget(fixture.transactionHash);
 
-    await admitFresh(fixture, orphanReadingFactory(fixture).factory);
+    const journal = await admitFresh(
+      fixture,
+      orphanReadingFactory(fixture).factory,
+    );
     expect(await orphanOf(fixture)).toMatchObject({
       state: "released",
       activeInputs: [],
     });
-    const fresh = (await fixture.records()).find(
-      ({ reservationId }) => reservationId === plans[0]!.reservationId,
-    )!;
-    expect(fresh.activeInputs).toContainEqual(
+    const fresh = () =>
+      fixture
+        .records()
+        .then(
+          (records) =>
+            records.find(
+              ({ reservationId }) => reservationId === plans[0]!.reservationId,
+            )!,
+        );
+    expect((await fresh()).activeInputs).toContainEqual(
       expect.objectContaining({ outRef: fundingOf(fixture).outRef }),
     );
-    expect(await fixture.store.hasSignedHistory!(fresh)).toBe(true);
+    expect(await fixture.store.hasSignedHistory!(await fresh())).toBe(true);
+    expect(await doublyLeased(fixture)).toEqual([]);
+
+    // Its next action selects collateral again beside the handed-over input.
+    await fixture.run(journal);
+    await beginWorkflowFundingReservationAction({
+      journal,
+      action: { actionId: "init", input: { actionKind: "proof.init" } },
+    });
+    expect((await fresh()).activeInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ outRef: fundingOf(fixture).outRef }),
+        expect.objectContaining({ role: "collateral" }),
+      ]),
+    );
     expect(await doublyLeased(fixture)).toEqual([]);
   });
 });
@@ -267,5 +296,49 @@ describe("signed funding whose action completed without its journal", () => {
     });
     expect(plans).toHaveLength(1);
     expect(await fixture.store.hasSignedHistory!(plans[0]!)).toBe(false);
+  });
+});
+
+describe("the store settles signed funding no workflow drives", () => {
+  it("only on a retirement of each of its attempts, each of the attempt it names", async () => {
+    const fixture = await expiredWithJournalsLost();
+    await abandonPending(fixture);
+    const other = "ab".repeat(32);
+    const settle = async (
+      retirements: { transactionHash: string; retirement: unknown }[],
+    ) =>
+      await fixture.store.settleOrphanedReservation!({
+        orphan: await orphanOf(fixture),
+        retirements,
+      });
+    const before = await fixture.records();
+    expect(await settle([])).toBe(false);
+    expect(
+      await settle([
+        { transactionHash: other, retirement: retirementFixture(other) },
+      ]),
+    ).toBe(false);
+    await expect(
+      settle([
+        {
+          transactionHash: fixture.transactionHash,
+          retirement: retirementFixture(other),
+        },
+      ]),
+    ).rejects.toThrow();
+    expect(await fixture.records()).toEqual(before);
+    expect(
+      await settle([
+        {
+          transactionHash: fixture.transactionHash,
+          retirement: retirementFixture(fixture.transactionHash),
+        },
+      ]),
+    ).toBe(true);
+    expect(await orphanOf(fixture)).toMatchObject({
+      state: "released",
+      activeInputs: [],
+    });
+    expect(await fixture.store.hasSignedHistory!(fixture.plan)).toBe(false);
   });
 });
