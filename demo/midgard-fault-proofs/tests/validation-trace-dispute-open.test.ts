@@ -1,0 +1,204 @@
+/** Opening a validation case on the emulator. Open and VerifySource over a
+ * committed normal transaction whose script fails land, with the case datum
+ * the off-chain claim material derives, each within the transaction limits.
+ * source-v1 refuses each claim the committed data does not support: a
+ * Rejected terminal for a transaction whose script passes, a forced
+ * transaction (R-DESC), a state 0 the header does not derive (N5), a bond one
+ * lovelace short, and a VerifySource after `block_end + M/2`. */
+import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { buildValidationClaimWitness } from "../src/validation-trace-dispute/claim-material.js";
+import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import {
+  BOND_LOVELACE,
+  failingClaim,
+  failingMaterial,
+  honestPresentation,
+  initAndOpen,
+  measureWithinTransactionLimits,
+  passingTrace,
+  type Scene,
+  setUpScene,
+  verifySource,
+} from "./support/validation-trace-dispute-open-scene.js";
+
+let scene: Scene;
+
+describe("validation-trace dispute: Open and VerifySource", () => {
+  beforeAll(async () => {
+    scene = await setUpScene();
+  }, 1_800_000);
+
+  it("opens a case on a committed transaction whose script fails", async () => {
+    const { h, chain } = scene;
+    const material = await failingMaterial(scene);
+    const { opener } = await initAndOpen(
+      scene,
+      scene.failing,
+      failingClaim(material),
+    );
+    const verification = verifySource(
+      scene,
+      opener,
+      honestPresentation(material),
+    );
+    const signed = await (await verification.build()).sign
+      .withWallet()
+      .complete();
+    measureWithinTransactionLimits(signed.toCBOR());
+    const txHash = await signed.submit();
+    await h.proverLucid.awaitTx(txHash);
+
+    const { opening } = verification;
+    const [caseOutput] = await h.proverLucid.utxosAtWithUnit(
+      chain.case.spendingScriptAddress,
+      opening.caseUnit,
+    );
+    expect(caseOutput?.txHash).toBe(txHash);
+    const threadUnit = Object.keys(opener.assets).find(
+      (unit) => unit !== "lovelace",
+    )!;
+    expect(caseOutput!.assets[threadUnit]).toBe(1n);
+    const datum = Data.from(caseOutput!.datum!, SDK.Case);
+    expect(datum).toStrictEqual(opening.case);
+    expect(datum).toMatchObject({
+      block_header_hash: scene.failing.evidence.headerHash,
+      event_key: scene.failing.eventKey,
+      challenger_root: material.challengerRoot,
+      step_count: material.stepCount,
+      started_at: BigInt(verification.validTo - 1),
+      agreed_initial_hash: hashMidgardValidationMachineState(
+        material.initialState,
+      ).toString("hex"),
+      challenger_terminal_hash: hashMidgardValidationMachineState(
+        material.terminal,
+      ).toString("hex"),
+      bounty_claimant: h.proverSigner.paymentKeyHash,
+    });
+
+    const [bond] = await h.proverLucid.utxosAtWithUnit(
+      chain.disputeBond.spendingScriptAddress,
+      opening.bondMarkerUnit,
+    );
+    expect(bond?.txHash).toBe(txHash);
+    expect(bond!.assets.lovelace).toBe(BOND_LOVELACE);
+    expect(Data.from(bond!.datum!, SDK.DisputeBond)).toStrictEqual(
+      opening.bond,
+    );
+  });
+
+  it("refuses a Rejected terminal for a transaction whose script passes", async () => {
+    const honest = await passingTrace(scene);
+    const { opener } = await initAndOpen(scene, scene.passing, honest.claim);
+    const pin = {
+      refusedBy: "fraud_proofs/validation_trace/source_v1",
+      check:
+        /expect and \{ challenger_terminal\.phase == validation_trace_v1\.Terminal/u,
+    };
+    // The only terminal the committed root proves is Accepted.
+    await expectOnchainRefusal(
+      () =>
+        verifySource(scene, opener, {
+          terminal: honest.terminal,
+          terminalProof: honest.terminalProof,
+          initialState: honest.initialState,
+        }).build(),
+      pin,
+    );
+    // A Rejected terminal at S is not the leaf the root holds.
+    const rejected = (await failingMaterial(scene)).terminal;
+    await expectOnchainRefusal(
+      () =>
+        verifySource(scene, opener, {
+          terminal: {
+            ...honest.terminal,
+            verdict: "rejected",
+            rejectionCodeHash: rejected.rejectionCodeHash,
+          },
+          terminalProof: honest.terminalProof,
+          initialState: honest.initialState,
+        }).build(),
+      pin,
+    );
+  });
+
+  it("refuses a case on a forced transaction (R-DESC)", async () => {
+    const material = await failingMaterial(scene);
+    const claimWitness = await buildValidationClaimWitness({
+      reconstruction: scene.forced.evidence.reconstruction,
+      eventKey: scene.forced.eventKey,
+    });
+    expect(claimWitness.source_membership).toHaveProperty(
+      "ForcedValidationSource",
+    );
+    const { opener } = await initAndOpen(scene, scene.forced, {
+      ...failingClaim(material),
+      claimWitness,
+    });
+    await expectOnchainRefusal(
+      () => verifySource(scene, opener, honestPresentation(material)).build(),
+      {
+        refusedBy: "fraud_proofs/validation_trace/source_v1",
+        check: /expect validation_claim_v1\.source_requires_trace/u,
+      },
+    );
+  });
+
+  // Last: it moves the emulator past the case open window of every block.
+  it("refuses a wrong state 0, a short bond and a late VerifySource", async () => {
+    const { h } = scene;
+    const material = await failingMaterial(scene);
+    const { opener } = await initAndOpen(
+      scene,
+      scene.failing,
+      failingClaim(material),
+    );
+    const honest = honestPresentation(material);
+    const finalCheck = {
+      refusedBy: "fraud_proofs/validation_trace/source_v1",
+      check: /^Validator returned false$/u,
+    };
+    // State 0 over the block's post-state root instead of the event's
+    // pre-state root (N5).
+    await expectOnchainRefusal(
+      () =>
+        verifySource(scene, opener, {
+          ...honest,
+          initialState: {
+            ...material.initialState,
+            priorLedgerRoot: Buffer.from(
+              scene.failing.evidence.header.utxosRoot,
+              "hex",
+            ),
+          },
+        }).build(),
+      finalCheck,
+    );
+    await expectOnchainRefusal(
+      () =>
+        verifySource(scene, opener, {
+          ...honest,
+          bondLovelace: BOND_LOVELACE - 1n,
+        }).build(),
+      finalCheck,
+    );
+
+    const caseOpenDeadline =
+      Number(scene.failing.evidence.header.endTime) +
+      Math.floor(SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms / 2);
+    h.emulator.awaitSlot(
+      Math.ceil((caseOpenDeadline - h.emulator.now()) / 1_000) + 1,
+    );
+    await expectOnchainRefusal(
+      () => verifySource(scene, opener, honest).build(),
+      {
+        refusedBy: "fraud_proofs/validation_trace/source_v1",
+        check: /expect validation_dispute_v1\.case_can_open/u,
+      },
+    );
+  });
+});

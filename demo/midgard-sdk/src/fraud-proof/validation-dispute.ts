@@ -9,6 +9,7 @@ import "./validation-dispute.validation-game-action-schema.js";
 import "./validation-dispute.validation-machine-state-data-from-core.js";
 import "./validation-dispute.dispute-bond-schema.js";
 import "./validation-case.config-initialization.js";
+import "./validation-dispute.open.js";
 export * from "./validation-case.config-initialization.js";
 export * from "./validation-case.js";
 export {
@@ -19,6 +20,7 @@ export {
   protocolTreasuryAddress,
   protocolTreasuryScriptHash,
 } from "./validation-dispute.dispute-bond-schema.js";
+export * from "./validation-dispute.open.js";
 export {
   AuthenticatedCanonicalDecodeItemDatum,
   AuthenticatedCanonicalDecodeItemDatumSchema,

@@ -67,21 +67,38 @@ const ownerKeyHash = (): string => {
   }
 };
 
-/** A deposit's canonical ledger insertion, exactly as block production derives it. */
-const depositSeed = (
-  byte: number,
-  paymentCredential:
-    | { readonly PublicKeyCredential: readonly [string] }
-    | { readonly ScriptCredential: readonly [string] },
-): LedgerEntry => {
-  const effect = deriveCanonicalOriginalDepositTransitionEffect({
-    configuredNetwork: "Custom",
-    eventId: {
+type SeedCredential =
+  | { PublicKeyCredential: [string] }
+  | { ScriptCredential: [string] };
+
+/** The deposit event whose canonical insertion is a scenario's seed. */
+const seedDepositEvent = (byte: number, paymentCredential: SeedCredential) =>
+  ({
+    id: {
       transactionId: byte.toString(16).padStart(2, "0").repeat(32),
       outputIndex: 0n,
     },
-    l2Address: { paymentCredential, stakeCredential: null },
-    l2NetworkId: 0n,
+    info: {
+      l2_address: {
+        paymentCredential,
+        stakeCredential: null,
+      },
+      l2_network_id: 0n,
+      l2_datum: null,
+    },
+  }) satisfies SDK.DepositEvent;
+
+/** A deposit's canonical ledger insertion, exactly as block production derives it. */
+const depositSeed = (
+  byte: number,
+  paymentCredential: SeedCredential,
+): LedgerEntry => {
+  const event = seedDepositEvent(byte, paymentCredential);
+  const effect = deriveCanonicalOriginalDepositTransitionEffect({
+    configuredNetwork: "Custom",
+    eventId: event.id,
+    l2Address: event.info.l2_address,
+    l2NetworkId: event.info.l2_network_id,
     l2DatumCbor: null,
     originalAssets: { lovelace: SEED_LOVELACE },
   });
@@ -90,6 +107,37 @@ const depositSeed = (
     throw new Error("seed deposit has no canonical insertion");
   return { outRef: operation.outRefCbor, output: operation.outputCbor };
 };
+
+const DEFAULT_SCRIPT_SEED_BYTE = 0x61;
+const KEY_SEED_BYTE = 0x62;
+
+const scriptCredential = (
+  scenario: PlutusExecutionScenario,
+): SeedCredential => ({
+  ScriptCredential: [
+    hashScriptWitness(scenario === "passing" ? PASSING_SCRIPT : FAILING_SCRIPT),
+  ],
+});
+const keyCredential = (): SeedCredential => ({
+  PublicKeyCredential: [ownerKeyHash()],
+});
+
+/**
+ * The deposit that creates the output `scenario`'s transaction spends, as a
+ * committed deposit block carries it. A script spend's seed is named by
+ * `seedByte`, so one deposit block can seed several scenarios.
+ */
+export const plutusExecutionSeedDeposit = (
+  scenario: PlutusExecutionScenario,
+  seedByte: number = DEFAULT_SCRIPT_SEED_BYTE,
+) => ({
+  event:
+    scenario === "no_redeemers"
+      ? seedDepositEvent(KEY_SEED_BYTE, keyCredential())
+      : seedDepositEvent(seedByte, scriptCredential(scenario)),
+  originalAssets: { lovelace: SEED_LOVELACE },
+  honest: true,
+});
 
 /** The transaction the scenario commits, over its seed output. */
 const scenarioTransaction = (
@@ -139,19 +187,40 @@ const countedRoot = async (
     )
   ).root;
 
+/** Header fields an emulator commit fixes: the operator, the covered
+ * interval, its commit slot and the chain link. */
+export type PlutusExecutionHeaderFields = Partial<
+  Pick<
+    SDK.Header,
+    "operatorVkey" | "startTime" | "endTime" | "blockSlot" | "prevHeaderHash"
+  >
+>;
+
+export type PlutusExecutionBlockOptions = {
+  readonly header?: PlutusExecutionHeaderFields;
+  /** The deposit byte of the spent seed (`plutusExecutionSeedDeposit`). */
+  readonly seedByte?: number;
+  /**
+   * The predecessor block's ledger, which must hold the spent seed. By
+   * default the scenario's script seed and a key-owned seed.
+   */
+  readonly predecessorEntries?: readonly LedgerEntry[];
+};
+
 export const plutusExecutionBlockFixture = async (
   scenario: PlutusExecutionScenario,
+  {
+    header: headerFields = {},
+    seedByte = DEFAULT_SCRIPT_SEED_BYTE,
+    predecessorEntries: requestedPredecessor,
+  }: PlutusExecutionBlockOptions = {},
 ) => {
-  const scriptSeed = depositSeed(0x61, {
-    ScriptCredential: [
-      hashScriptWitness(
-        scenario === "passing" ? PASSING_SCRIPT : FAILING_SCRIPT,
-      ),
-    ],
-  });
-  const keySeed = depositSeed(0x62, { PublicKeyCredential: [ownerKeyHash()] });
-  const predecessorEntries = [scriptSeed, keySeed];
+  const scriptSeed = depositSeed(seedByte, scriptCredential(scenario));
+  const keySeed = depositSeed(KEY_SEED_BYTE, keyCredential());
+  const predecessorEntries = requestedPredecessor ?? [scriptSeed, keySeed];
   const seed = scenario === "no_redeemers" ? keySeed : scriptSeed;
+  if (!predecessorEntries.some((entry) => entry.outRef.equals(seed.outRef)))
+    throw new Error("the predecessor ledger does not hold the spent seed");
   const native = scenarioTransaction(scenario, seed);
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
@@ -174,9 +243,13 @@ export const plutusExecutionBlockFixture = async (
     txId: Buffer.from(tx.txId, "hex"),
     outputIndex: 0,
   });
+  const createdEntry: LedgerEntry = {
+    outRef: created,
+    output: makeOutput(SEED_LOVELACE),
+  };
   const postEntries = [
     ...predecessorEntries.filter((entry) => !entry.outRef.equals(seed.outRef)),
-    { outRef: created, output: makeOutput(SEED_LOVELACE) },
+    createdEntry,
   ];
   const utxosRoot = await ledgerEntriesRoot(postEntries);
 
@@ -239,6 +312,7 @@ export const plutusExecutionBlockFixture = async (
   });
   const header: SDK.Header = {
     ...base.header,
+    ...headerFields,
     forcedTransactionCount: BigInt(forcedRows.length),
     totalEventCount: 1n,
     transitionStepCount: 1n,
@@ -291,5 +365,14 @@ export const plutusExecutionBlockFixture = async (
         hash === header.prevHeaderHash ? predecessorEntries : undefined,
     }),
   };
-  return { evidence, context, eventKey, tx, predecessorEntries, seed };
+  return {
+    evidence,
+    context,
+    eventKey,
+    tx,
+    predecessorEntries,
+    seed,
+    created: createdEntry,
+    postEntries,
+  };
 };
