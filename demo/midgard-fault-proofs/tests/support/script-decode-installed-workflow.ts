@@ -11,7 +11,7 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -456,6 +456,23 @@ export const installScriptDecodeApplication = async ({
     /** Stops the watcher process and starts another over its durable state. */
     restart: async () => {
       instance.funding.close();
+      instance = await boot();
+    },
+    /**
+     * Stops the watcher process and starts another whose workflow journal
+     * is gone, and with it, when `reservations` is set, its reservation
+     * store: only what is on chain is left of the objective's progress.
+     */
+    loseJournal: async ({
+      reservations = false,
+    }: { readonly reservations?: boolean } = {}) => {
+      instance.funding.close();
+      await rm(journalDirectory, { recursive: true, force: true });
+      if (reservations)
+        for (const name of await readdir(directory))
+          await rm(join(directory, name), { recursive: true, force: true });
+      await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
+      turns = 0;
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),
