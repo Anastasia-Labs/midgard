@@ -29,6 +29,7 @@ import {
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
+import { keepDetectedLedger } from "../validation-trace-dispute/detected-ledgers.js";
 import {
   type CommittedL2Event,
   eventRunsPlutus,
@@ -436,12 +437,18 @@ export const detectPlutusExecutionFailures = async ({
       continue;
     }
     holds.decided(holdKey);
-    if (replay.kind === "fails")
+    if (replay.kind === "fails") {
+      keepDetectedLedger({
+        evidence,
+        predecessor,
+        fingerprint: event.fingerprint,
+        ledger,
+      });
       found(
         VALIDATION_TRACE_VIOLATION_ID,
         `accepted transaction ${event.entry.txId} fails Plutus execution; its honest trace has ${replay.stepCount.toString()} steps`,
       );
-    else if (replay.kind === "trace_disagrees")
+    } else if (replay.kind === "trace_disagrees")
       found(
         VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID,
         `accepted transaction ${event.entry.txId}: ${replay.detail}`,

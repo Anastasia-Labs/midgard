@@ -1,6 +1,7 @@
 /** The claim material for the event a validation-trace detection names, from
  * the same DA replay the detector ran: the detection's single subject event,
- * its pre-state ledger over the admitted predecessor, and its honest trace. */
+ * its pre-state ledger over the admitted predecessor (the one the detector
+ * walked to, when it kept it), and its honest trace. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -26,6 +27,7 @@ import {
   buildValidationTraceClaimMaterial,
   type ValidationTraceClaimMaterial,
 } from "./claim-material.js";
+import { detectedLedger } from "./detected-ledgers.js";
 import { type CommittedL2Event, eventRunsPlutus } from "./replay.js";
 
 export type DetectedValidationTraceClaim = {
@@ -69,12 +71,18 @@ export const detectedValidationTraceClaim = async ({
       "validation claim: the detected event has no committed event-to-step opening",
     );
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  const ledger = await ledgerBeforeTransactionEvent({
-    block: evidence,
-    eventKey: event.eventKey,
-    stepIndex: opening.value.step_index,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  });
+  const ledger =
+    detectedLedger({
+      evidence,
+      predecessor,
+      fingerprint: event.fingerprint,
+    }) ??
+    (await ledgerBeforeTransactionEvent({
+      block: evidence,
+      eventKey: event.eventKey,
+      stepIndex: opening.value.step_index,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    }));
   return {
     event,
     material: await buildValidationTraceClaimMaterial({
