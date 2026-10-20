@@ -30,6 +30,7 @@ import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import {
   eventRunsPlutus,
+  type PlutusExecutionReplay,
   replayPlutusExecution,
 } from "../validation-trace-dispute/replay.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
@@ -293,6 +294,11 @@ export const VALIDATION_TRACE_VIOLATION_ID = "validation-trace" as const;
  * reproduce; no claim is built on it. Unregistered, so it classifies as a gap. */
 export const VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID =
   "validation-trace-replay-disagreement" as const;
+/** The script re-execution ended in an error rather than a verdict or a
+ * trace, such as an evaluator with no verdict. Only that event is held:
+ * unregistered, so it classifies as a gap, and the block still decides. */
+export const VALIDATION_TRACE_REPLAY_UNAVAILABLE_VIOLATION_ID =
+  "validation-trace-replay-unavailable" as const;
 
 /**
  * Accepted normal transactions with redeemers (rule R-DESC) whose honest
@@ -363,12 +369,21 @@ export const detectPlutusExecutionFailures = async ({
       );
       continue;
     }
-    const replay = await replayPlutusExecution({
-      evidence,
-      event,
-      ledger,
-      l1SlotConfig,
-    });
+    let replay: PlutusExecutionReplay;
+    try {
+      replay = await replayPlutusExecution({
+        evidence,
+        event,
+        ledger,
+        l1SlotConfig,
+      });
+    } catch (cause) {
+      found(
+        VALIDATION_TRACE_REPLAY_UNAVAILABLE_VIOLATION_ID,
+        `script re-execution of accepted transaction ${event.entry.txId} has no result: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+      continue;
+    }
     if (replay.kind === "fails")
       found(
         VALIDATION_TRACE_VIOLATION_ID,
