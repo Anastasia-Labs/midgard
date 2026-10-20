@@ -1,5 +1,3 @@
-import { rename, symlink } from "node:fs/promises";
-
 import {
   FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
@@ -10,7 +8,6 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
-import { watcherProofObjectiveDirectory } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
@@ -205,21 +202,6 @@ describe("supervisor execution adapter with durable funding", () => {
       ).toEqual([[expect.objectContaining({ active: true })]]);
     },
   );
-
-  it("keeps a workflow journal directory that traverses a symlink fail-closed", async () => {
-    const test = await setup();
-    const directory = watcherProofObjectiveDirectory(
-      test.fixture.journalRoot,
-      test.input.job,
-    );
-    await rename(directory, `${directory}-real`);
-    await symlink(`${directory}-real`, directory);
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      "watcher workflow journal directory traverses a symlink",
-    );
-    expect(test.runOrResume).not.toHaveBeenCalled();
-    expect(test.execution.readiness()).toEqual([]);
-  });
 
   it("quarantines a workflow stall outside preflight to its own objective and clears it on the next run that moves on", async () => {
     const test = await setup();

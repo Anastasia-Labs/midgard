@@ -22,7 +22,10 @@ import {
 } from "./fault-proof-funding-fixture.js";
 import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
 
-export const setupFaultProofExecution = async (newReservation = false) => {
+export const setupFaultProofExecution = async (
+  newReservation = false,
+  { installedRunner = true }: { readonly installedRunner?: boolean } = {},
+) => {
   const fixture = await setupFundingRecoveryFixture();
   const controller = createWorkflowActuationPermitController({
     decision: fixture.fresh,
@@ -67,7 +70,7 @@ export const setupFaultProofExecution = async (newReservation = false) => {
   });
   const execution = createWatcherFaultProofExecution({
     application: {
-      runners: { doubleSpend: fixture.runner },
+      runners: installedRunner ? { doubleSpend: fixture.runner } : {},
       runOrResume,
       verifyCompleted,
     },
