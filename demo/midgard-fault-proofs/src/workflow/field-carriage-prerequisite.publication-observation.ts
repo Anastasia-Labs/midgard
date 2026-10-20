@@ -86,13 +86,35 @@ export const observeOwnCarriage = async ({
 };
 
 /**
- * Whether the transaction that created `oldOutRef` is on the chain although
- * the output is gone. A confirmed action whose output disappears is
- * reconciled again (`reobserved`), and the port's reconcile then confirms it
- * only from the authenticated output or, with the output gone, from the
+ * Whether the journal shows transaction `txHash` on the chain although its
+ * output is gone. A confirmed action whose output disappears is reconciled
+ * again (`reobserved`), and the port's reconcile then confirms it only from
+ * the authenticated output or, with the output gone, from the
  * signed-transaction observation of its inclusion past the recovery depth: a
- * confirmation after the latest such re-reconciliation shows it. A
- * certificate of ours that read the old output shows it too.
+ * confirmation after the latest such re-reconciliation shows it.
+ */
+const reconciledAgainOnChain = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  txHash: string,
+): boolean => {
+  let reconciledAgain: "no" | "awaiting" | "confirmed" = "no";
+  for (const { event } of entries) {
+    if (event.kind === "reobserved" && event.txHash === txHash)
+      reconciledAgain = "awaiting";
+    else if (
+      event.kind === "confirmed" &&
+      event.txHash === txHash &&
+      reconciledAgain === "awaiting"
+    )
+      reconciledAgain = "confirmed";
+  }
+  return reconciledAgain === "confirmed";
+};
+
+/**
+ * Whether the transaction that created `oldOutRef` is on the chain although
+ * the output is gone: the journal shows it (`reconciledAgainOnChain`), or a
+ * certificate of ours read the old output.
  */
 export const publicationStillIncluded = async ({
   headerHash,
@@ -112,19 +134,7 @@ export const publicationStillIncluded = async ({
   /** The workflow's own carriage claims (its certificates among them). */
   readonly ownOutputs: OwnOutputJournal;
 }): Promise<boolean> => {
-  const txHash = oldOutRef.split("#")[0]!;
-  let reconciledAgain: "no" | "awaiting" | "confirmed" = "no";
-  for (const { event } of entries) {
-    if (event.kind === "reobserved" && event.txHash === txHash)
-      reconciledAgain = "awaiting";
-    else if (
-      event.kind === "confirmed" &&
-      event.txHash === txHash &&
-      reconciledAgain === "awaiting"
-    )
-      reconciledAgain = "confirmed";
-  }
-  if (reconciledAgain === "confirmed") return true;
+  if (reconciledAgainOnChain(entries, oldOutRef.split("#")[0]!)) return true;
   if (required.planned.plan.tier !== "Certified") return false;
   const address = fieldPreimageCertificateAddress({
     network,
@@ -221,7 +231,71 @@ export const missingPublicationReplacement = async ({
   return { kind: "required" };
 };
 
-export const assertPublicationReplacement = async ({
+/**
+ * A certificate replacement has its own stable identity, as a publication
+ * replacement does: the certify transaction stays on chain, its output gone.
+ */
+export const missingCertificateReplacement = async ({
+  category,
+  headerHash,
+  baseAction,
+  required,
+  entries,
+  address,
+  publications,
+}: {
+  readonly category: FraudProofCatalogueCategoryName;
+  readonly headerHash: string;
+  readonly baseAction: FraudProofWorkflowAction;
+  readonly required: Requirement;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly address: string;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+}): Promise<
+  { kind: "required"; replacementOutRef?: string } | { kind: "pending" }
+> => {
+  for (const { event } of [...entries].reverse()) {
+    if (event.kind !== "confirmed") continue;
+    const intent = latestSubmissionIntent(entries, event.actionId);
+    if (
+      intent?.actionInput.stage !== "certify_field_carriage" ||
+      intent.txHash !== event.txHash ||
+      intent.actionInput.requirementSha256 !== required.identitySha256 ||
+      !sameJson(intent.actionInput.forAction, baseAction)
+    )
+      continue;
+    const recovered = recordedCarriageRecovery({
+      category,
+      action: { actionId: intent.actionId, input: intent.actionInput },
+      txHash: intent.txHash,
+      value: intent.durableRecovery,
+    });
+    if (recovered.datumCbor !== required.certificateDatumCbor)
+      throw new Error(
+        "field certificate replacement changed its source content",
+      );
+    const observed = await publications.observeExact({
+      headerHash,
+      kind: "field_certificate",
+      address,
+      expectedOutRef: recovered.outRef,
+      expectedDatumCbor: recovered.datumCbor,
+      expectedUnit: required.certificateUnit!,
+    });
+    if (observed.kind === "confirmed") return { kind: "pending" };
+    return reconciledAgainOnChain(entries, intent.txHash)
+      ? { kind: "required", replacementOutRef: recovered.outRef }
+      : { kind: "required" };
+  }
+  return { kind: "required" };
+};
+
+/**
+ * A replacement action stands only while its predecessor's output is gone
+ * and the transaction that created it stays on chain. `unit` is the
+ * certificate's, absent for a publication.
+ */
+export const assertCarriageReplacement = async ({
   category,
   headerHash,
   replacementOutRef,
@@ -232,84 +306,71 @@ export const assertPublicationReplacement = async ({
   ownOutputs,
   address,
   datumCbor,
+  unit,
 }: Omit<Parameters<typeof publicationStillIncluded>[0], "oldOutRef"> & {
   readonly category: FraudProofCatalogueCategoryName;
   readonly replacementOutRef?: string;
   readonly address: string;
   readonly datumCbor: string;
+  readonly unit?: string;
 }) => {
   if (replacementOutRef === undefined) return;
+  const label = unit === undefined ? "publication" : "certificate";
   if (
     (
       await publications.observeExact({
         headerHash,
-        kind: "field_publication",
+        kind: unit === undefined ? "field_publication" : "field_certificate",
         address,
         expectedOutRef: replacementOutRef,
         expectedDatumCbor: datumCbor,
+        ...(unit === undefined ? {} : { expectedUnit: unit }),
       })
     ).kind === "confirmed"
   )
     throw new WorkflowActionChangedError(
-      `${category} field publication replacement predecessor remains available`,
+      `${category} field ${label} replacement predecessor remains available`,
     );
   if (
-    !(await publicationStillIncluded({
-      headerHash,
-      oldOutRef: replacementOutRef,
-      required,
-      entries,
-      publications,
-      network,
-      ownOutputs,
-    }))
+    !(unit === undefined
+      ? await publicationStillIncluded({
+          headerHash,
+          oldOutRef: replacementOutRef,
+          required,
+          entries,
+          publications,
+          network,
+          ownOutputs,
+        })
+      : reconciledAgainOnChain(entries, replacementOutRef.split("#")[0]!))
   )
     throw new WorkflowActionChangedError(
-      `${category} field publication replacement lost its canonical creation`,
+      `${category} field ${label} replacement lost its canonical creation`,
     );
 };
 
 /**
  * Reconciles a carriage transaction whose journaled output is not
- * authenticated, from its signed bytes. A publication included past the
- * recovery depth with its output gone was spent by something else: it is
- * confirmed, so that the planner publishes a replacement recording the
- * out-ref it replaces, rather than held pending, which would never end, or
- * refused as a conflict. A certificate's transaction carries its unit, so
- * its unit history shows it on the chain without its output.
+ * authenticated, from its signed bytes. A publication or certificate
+ * included past the recovery depth with its output gone was spent by
+ * something else (a certificate's own wallet may retire it): it is
+ * confirmed, so that the planner issues a replacement recording the out-ref
+ * it replaces, rather than held pending, which would never end, or refused
+ * as a conflict.
  */
 export const reconcileCarriageWithoutOutput = async ({
-  category,
-  kind,
-  headerHash,
   txHash,
   signedTransactionCborHex,
   authorizeResubmission,
   publications,
-  transactionConfirmed,
 }: {
-  readonly category: FraudProofCatalogueCategoryName;
-  readonly kind: "publication" | "certificate";
-  readonly headerHash: string;
   readonly txHash: string;
   readonly signedTransactionCborHex?: string;
   readonly authorizeResubmission?: Parameters<
     typeof reconcileSignedWorkflowTransaction
   >[0]["authorizeResubmission"];
   readonly publications: FraudProofAuthenticatedPublicationObserver;
-  readonly transactionConfirmed: (input: {
-    headerHash: string;
-    txHash: string;
-  }) => Promise<boolean>;
 }): Promise<FraudProofWorkflowReconcileResult> => {
-  if (
-    kind === "certificate" &&
-    (await transactionConfirmed({ headerHash, txHash }))
-  )
-    return {
-      kind: "conflict",
-      reason: `${category} field prerequisite transaction omitted its journaled output`,
-    };
   // A known submitted hash can be absent until the release-final cursor
   // catches up. Keep its journaled output and funding reservation pending.
   if (
@@ -325,9 +386,7 @@ export const reconcileCarriageWithoutOutput = async ({
     authorizeResubmission,
   });
   // Pending with a retirement is inclusion past the recovery depth.
-  return kind === "publication" &&
-    reconciled.kind === "pending" &&
-    reconciled.retirement !== undefined
+  return reconciled.kind === "pending" && reconciled.retirement !== undefined
     ? { kind: "confirmed", txHash }
     : reconciled;
 };

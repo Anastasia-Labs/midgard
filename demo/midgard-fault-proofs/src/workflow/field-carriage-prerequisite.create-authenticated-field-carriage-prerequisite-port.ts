@@ -37,7 +37,8 @@ import {
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
-  assertPublicationReplacement,
+  assertCarriageReplacement,
+  missingCertificateReplacement,
   missingPublicationReplacement,
   observeOwnCarriage,
   reconcileCarriageWithoutOutput,
@@ -48,11 +49,11 @@ import {
 } from "./field-carriage-prerequisite.recorded-carriage-recovery.js";
 import {
   carriageActionInputKeys,
+  carriageReplacementOutRef,
   certificateAction,
   certifiedRequirement,
   parseBaseAction,
   publicationAction,
-  publicationReplacementOutRef,
   requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
 import type {
@@ -80,7 +81,6 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
   signer,
   publications,
   requirementForAction,
-  transactionConfirmed,
 }: {
   readonly category: Category;
   readonly lucid: LucidEvolution;
@@ -243,17 +243,29 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       required,
       ownOutputs,
     );
-    if (certificate.kind === "absent") {
+    const replacement =
+      certificate.kind === "absent"
+        ? await missingCertificateReplacement({
+            category,
+            headerHash,
+            baseAction,
+            required,
+            entries,
+            address: certificateAddress(required),
+            publications,
+          })
+        : certificate;
+    if (replacement.kind === "required")
       return {
         kind: "required" as const,
         action: certificateAction({
           category,
           baseAction,
           requirement: required,
+          replacementOutRef: replacement.replacementOutRef,
         }),
       };
-    }
-    return certificate.kind === "confirmed"
+    return replacement.kind === "confirmed"
       ? { kind: "satisfied" as const }
       : {
           kind: "pending" as const,
@@ -304,6 +316,18 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       throw new Error(`${category} field action is no longer required`);
     }
     requireBoundPublicationContext(required, headerHash, baseAction);
+    const replacementOutRef = carriageReplacementOutRef(action);
+    // What a replacement is checked against, whichever output it replaces.
+    const replacement = {
+      category,
+      headerHash,
+      replacementOutRef,
+      required,
+      entries,
+      publications,
+      network,
+      ownOutputs,
+    };
     if (input.stage === "publish_field_carriage") {
       if (
         typeof input.publicationIndex !== "number" ||
@@ -322,21 +346,14 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
             baseAction,
             requirement: required,
             publicationIndex,
-            replacementOutRef: publicationReplacementOutRef(action),
+            replacementOutRef,
           }),
         )
       ) {
         throw new Error(`${category} field publication changed identity`);
       }
-      await assertPublicationReplacement({
-        category,
-        headerHash,
-        replacementOutRef: publicationReplacementOutRef(action),
-        required,
-        entries,
-        publications,
-        network,
-        ownOutputs,
+      await assertCarriageReplacement({
+        ...replacement,
         address: publicationAddress(required),
         datumCbor: required.publicationDatums[publicationIndex]!,
       });
@@ -351,11 +368,22 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       required.planned.plan.tier !== "Certified" ||
       !sameJson(
         action,
-        certificateAction({ category, baseAction, requirement: required }),
+        certificateAction({
+          category,
+          baseAction,
+          requirement: required,
+          replacementOutRef,
+        }),
       )
     ) {
       throw new Error(`${category} field certificate changed identity`);
     }
+    await assertCarriageReplacement({
+      ...replacement,
+      address: certificateAddress(required),
+      datumCbor: required.certificateDatumCbor!,
+      unit: required.certificateUnit!,
+    });
     return { kind: "certificate", baseAction, requirement: required };
   };
   const port: FieldCarriagePrerequisitePort<Category> = {
@@ -539,14 +567,10 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         return { kind: "confirmed", txHash };
       }
       return await reconcileCarriageWithoutOutput({
-        category,
-        kind: recovered.kind,
-        headerHash,
         txHash,
         signedTransactionCborHex,
         authorizeResubmission,
         publications,
-        transactionConfirmed,
       });
     },
   };

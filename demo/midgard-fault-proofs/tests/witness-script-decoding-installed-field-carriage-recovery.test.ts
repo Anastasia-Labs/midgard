@@ -7,7 +7,8 @@
  * published again, never served by an unrelated output with the same datum;
  * a confirmed publication its own wallet spends while its transaction stays
  * on chain is published once more in its place; and a certificate
- * transaction that can never land is certified again.
+ * transaction that can never land is certified again, as is a certificate its
+ * own wallet retires while the certify transaction stays on chain.
  *
  * The emulator has no chain rollback, so a carriage transaction rolled back
  * and then included again, or rolled back and then expired, is not run here.
@@ -51,6 +52,8 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { retireFieldPreimageCertificateRedeemer } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import {
   certificateOf,
@@ -60,6 +63,7 @@ import {
 } from "./support/own-field-carriage-installed.js";
 import {
   type LedgerTransaction,
+  type LedgerWatch,
   removeOutput,
 } from "./support/own-outputs-installed.js";
 import {
@@ -68,11 +72,55 @@ import {
 } from "./support/script-decode-installed-run.js";
 import {
   expectOwnFieldCarriage,
+  type Harness,
   type PlaceContext,
   POLL_CAP,
   runWith,
   sitesOf,
 } from "./support/witness-field-carriage-installed-run.js";
+
+/**
+ * Polls the runner waits, the certificate retired, before its certify
+ * transaction is past the recovery depth.
+ */
+const HOLD_POLLS = 100;
+
+/**
+ * The prover's wallet retires the application's certificate at `outRef`
+ * (spends it and burns its token) in a block of its own. Returns the
+ * outputs the retirement pays back to the wallet.
+ */
+const retireCertificate = async (
+  watch: LedgerWatch,
+  harness: Harness,
+  outRef: string,
+): Promise<readonly string[]> => {
+  const [txHash, index] = outRef.split("#");
+  const utxo = harness.emulator.ledger[`${txHash!}${index!}`]!.utxo;
+  const { policyId, mintingScript } =
+    harness.contracts.fieldPreimageCertificate;
+  const unit = Object.keys(utxo.assets).find((asset) =>
+    asset.startsWith(policyId),
+  )!;
+  const lucid = harness.proverLucid;
+  await watch.asOtherParty(async () => {
+    lucid.clearUTxOOverride();
+    const unsigned = await lucid
+      .newTx()
+      .collectFrom([utxo], Data.void())
+      .mintAssets({ [unit]: -1n }, retireFieldPreimageCertificateRedeemer())
+      .attach.Script(mintingScript)
+      .addSignerKey(harness.proverSigner.paymentKeyHash)
+      .complete();
+    await (await unsigned.sign.withWallet().complete()).submit();
+    lucid.clearUTxOOverride();
+  });
+  harness.emulator.awaitBlock();
+  const retirement = watch.accepted.at(-1)!;
+  return retirement.outputs.map(
+    (_, output) => `${retirement.txHash}#${output.toString()}`,
+  );
+};
 
 describe("witness field carriage recovered from its own journal, in the installed watcher application", () => {
   let baseline: Awaited<ReturnType<typeof runWith>>["cost"];
@@ -299,4 +347,92 @@ describe("witness field carriage recovered from its own journal, in the installe
       baseline.map(({ kind }) => kind),
     );
   }, 900_000);
+
+  it.each([
+    ["before its certify transaction is confirmed", "landed"],
+    ["once its certify transaction is confirmed", "read"],
+  ] as const)(
+    "certifies the field once more when its own wallet retires the certificate %s",
+    async (_, when) => {
+      let retired: string | undefined;
+      let held = 0;
+      const withheld = new Set<string>();
+      const moved = new Set<string>();
+      const retire = async (
+        watch: LedgerWatch,
+        harness: Harness,
+        outRef: string,
+      ) => {
+        retired = outRef;
+        for (const output of await retireCertificate(watch, harness, outRef))
+          moved.add(output);
+      };
+      const { run, watch, harness, cost } = await runWith(hooks, () => [], {
+        // "read": once the certify transaction is confirmed the application
+        // builds the step that reads the certificate. As that step is sent,
+        // the wallet retires the certificate first, so the step never lands.
+        decide: async (transaction, { harness, watch }) => {
+          if (retired !== undefined)
+            return withheld.has(transaction.txHash) ? "withhold" : "accept";
+          const [certificate] = fieldCarriageOf(
+            watch,
+            sitesOf(harness),
+          ).certificates;
+          if (
+            when !== "read" ||
+            certificate === undefined ||
+            !transaction.referenceInputs.includes(certificate.output.outRef)
+          )
+            return "accept";
+          await retire(watch, harness, certificate.output.outRef);
+          withheld.add(transaction.txHash);
+          return "withhold";
+        },
+        during: ({ clock }, { harness, watch }) => {
+          clock.state.onPoll = async () => {
+            if (retired === undefined) {
+              // "landed": the certify transaction is in the block this poll
+              // added, and the application has not reconciled it yet.
+              const [certificate] = fieldCarriageOf(
+                watch,
+                sitesOf(harness),
+              ).certificates;
+              if (when === "landed" && certificate !== undefined)
+                await retire(watch, harness, certificate.output.outRef);
+              return;
+            }
+            // The runner waits while the certify transaction is within the
+            // recovery depth; then time passes it.
+            held += 1;
+            if (held === HOLD_POLLS)
+              harness.emulator.awaitBlock(
+                DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth,
+              );
+          };
+          return () => {
+            clock.state.onPoll = undefined;
+          };
+        },
+      });
+      expect(retired).toBeDefined();
+      expect(withheld.size).toBe(when === "read" ? 1 : 0);
+      expect(held).toBeGreaterThanOrEqual(HOLD_POLLS);
+      expect(run.convicted).toBe(true);
+      // The retired certificate and exactly one of the same field in its
+      // place, which the proof reads.
+      const carriage = expectOwnFieldCarriage(watch, harness, moved, 2);
+      const [first, second] = carriage.certificates;
+      expect(first!.output.outRef).toBe(retired);
+      expect(second!.output.datum).toBe(first!.output.datum);
+      expect(carriage.readersOf(retired!)).toEqual([]);
+      // Only the certificate is built again.
+      const certifies = (rows: readonly { kind: string }[]) =>
+        rows.filter(({ kind }) => kind === "certify").length;
+      const others = (rows: readonly { kind: string }[]) =>
+        rows.map(({ kind }) => kind).filter((kind) => kind !== "certify");
+      expect(others(cost)).toEqual(others(baseline));
+      expect(certifies(cost)).toBe(certifies(baseline) + 1);
+    },
+    900_000,
+  );
 });

@@ -102,13 +102,16 @@ const costOf = (watch: LedgerWatch, harness: Harness) => {
 
 /**
  * Every input and reference input of the application's own transactions is
- * not another party's (`moved` are coins its own wallet moved), the certificate reads one of the application's own
- * publications for every planned one, and the certificate it minted is read.
+ * not another party's (`moved` are coins its own wallet moved), the
+ * application minted `certificates` certificates, the last of them reads one
+ * of the application's own publications for every planned one, and that
+ * certificate is read.
  */
 export const expectOwnFieldCarriage = (
   watch: LedgerWatch,
   harness: Harness,
   moved: ReadonlySet<string> = new Set(),
+  certificates = 1,
 ) => {
   const others = watch.plantedOutRefs();
   const taken = watch
@@ -117,11 +120,12 @@ export const expectOwnFieldCarriage = (
     .filter((outRef) => others.has(outRef) && !moved.has(outRef));
   expect(taken).toEqual([]);
   const carriage = fieldCarriageOf(watch, sitesOf(harness));
-  expect(carriage.certificates).toHaveLength(1);
-  const [{ transaction: certify, output: certificate }] =
-    carriage.certificates as [
-      { transaction: LedgerTransaction; output: CarriageOutput },
-    ];
+  expect(carriage.certificates).toHaveLength(certificates);
+  const { transaction: certify, output: certificate } =
+    carriage.certificates.at(-1) as {
+      transaction: LedgerTransaction;
+      output: CarriageOutput;
+    };
   const ownPublications = new Map(
     carriage.publications.flatMap(({ outputs }) =>
       outputs.map(({ outRef, datum }) => [outRef, datum] as const),
