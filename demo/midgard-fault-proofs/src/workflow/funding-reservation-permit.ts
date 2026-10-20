@@ -16,6 +16,7 @@ import "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import "./funding-reservation-permit.apply-transition.js";
 import "./funding-reservation-permit.restrict-workflow-funding-signer.js";
+import "./funding-reservation-permit.workflow-funding-shortfall.js";
 export {
   abandonWorkflowFundingReservationTransaction,
   acknowledgeWorkflowFundingAbandonment,
@@ -70,3 +71,9 @@ export {
   type WorkflowFundingReservedInput,
   type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+export {
+  asWorkflowFundingShortfall,
+  isWorkflowFundingShortfall,
+  WORKFLOW_FUNDING_SHORTFALL,
+  WorkflowFundingShortfallError,
+} from "./funding-reservation-permit.workflow-funding-shortfall.js";

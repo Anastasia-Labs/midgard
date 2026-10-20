@@ -34,6 +34,7 @@ import {
 } from "../script-decode/submit.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import { TX_HASH } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { isWorkflowFundingShortfall } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import type { JournalJsonObject } from "./journal.js";
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "./raw-l1-publication-observation.js";
@@ -86,28 +87,6 @@ const outRefOf = (utxo: UTxO): string =>
 const parseOutRef = (outRef: string) => {
   const [txHash, index] = outRef.split("#");
   return { txHash: txHash!, outputIndex: Number(index) };
-};
-
-const UNDERFUNDED = /EMPTY_UTXO|does not have enough funds/u;
-
-const describe = (value: unknown): string => {
-  if (value instanceof Error) return value.message;
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value) ?? "";
-  } catch {
-    return "";
-  }
-};
-
-/** True when a build failed for want of wallet funds, at any cause depth. */
-const underfunded = (cause: unknown): boolean => {
-  let at = cause;
-  for (let depth = 0; at !== undefined && at !== null && depth < 8; depth++) {
-    if (UNDERFUNDED.test(describe(at))) return true;
-    at = at instanceof Error ? at.cause : undefined;
-  }
-  return false;
 };
 
 /** Records each Plutus item `itemForAction` names before its proof step. */
@@ -389,7 +368,7 @@ export const createScriptDecodePrerequisitePort = <
         }
       } catch (cause) {
         if (cause instanceof WorkflowActionChangedError) throw cause;
-        if (underfunded(cause)) {
+        if (isWorkflowFundingShortfall(cause)) {
           throw new ScriptDecodeRecordUnderfundedError(parsed.stage, cause);
         }
         throw new ScriptDecodeRecordHeldError(parsed.stage, cause);

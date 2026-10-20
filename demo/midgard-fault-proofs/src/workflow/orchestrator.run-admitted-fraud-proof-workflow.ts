@@ -15,6 +15,7 @@ import {
   assertWorkflowFundingAbandonmentHandoffJournal,
   assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
+  asWorkflowFundingShortfall,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
@@ -833,8 +834,9 @@ export const runAdmittedFraudProofWorkflow = async ({
       let captured: Awaited<ReturnType<typeof adapter.preflight>>;
       try {
         captured = await adapter.preflight({ ...context, action });
-      } catch (cause) {
+      } catch (failure) {
         adapterPreflightFailed = true;
+        const cause = asWorkflowFundingShortfall(action.actionId, failure);
         await releaseUnfundedWorkflowFundingInputs({ journal, cause });
         throw cause;
       }
