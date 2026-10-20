@@ -10,7 +10,9 @@ import {
 } from "../funding/prover-funding-authority.js";
 import type { WatcherFundingInputFacts } from "../funding/prover-funding-input-facts.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
+import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
 import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.js";
+import { watcherDeploymentAppliedScriptHashes } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 
 /**
  * Opens the funding store, then admits the live protocol parameters through
@@ -26,6 +28,8 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly journalRoot: string;
   /** The follower's facts that reclaim reservations whose decision is missing. */
   readonly fundingInputFacts?: WatcherFundingInputFacts;
+  /** The deployment blueprint the computation-thread policy derives from. */
+  readonly blueprintBytes?: Uint8Array;
 }) => {
   const store = await openWatcherSqliteProverFundingReservationStore({
     path: input.path,
@@ -47,6 +51,18 @@ export const openWatcherProverFundingRuntime = async (input: {
       ...(input.fundingInputFacts === undefined
         ? {}
         : { fundingInputFacts: input.fundingInputFacts }),
+      ...(input.blueprintBytes === undefined
+        ? {}
+        : {
+            computationThreadPolicyId: watcherComputationThreadPolicyId({
+              contractScriptHashes: watcherDeploymentAppliedScriptHashes(
+                input.deploymentIdentity,
+              ),
+              blueprint: JSON.parse(
+                Buffer.from(input.blueprintBytes).toString("utf8"),
+              ),
+            }),
+          }),
     });
     // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
     // A refused decision journal, or one that could not be opened, keeps them

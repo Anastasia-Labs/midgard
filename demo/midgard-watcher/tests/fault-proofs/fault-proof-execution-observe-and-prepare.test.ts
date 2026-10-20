@@ -158,9 +158,11 @@ describe("a prover key the fraud-prover allow-list omits (observe and prepare)",
 
   it("runs the objective itself when its key is listed", async () => {
     const test = await setup(false);
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      /must not run/u,
-    );
+    // The run's own failure quarantines the objective under its message.
+    expect(await test.execution.execute(test.input)).toMatchObject({
+      kind: "retryable",
+      reason: expect.stringMatching(/must not run/u),
+    });
     expect(test.runOrResume).toHaveBeenCalledOnce();
   });
 });

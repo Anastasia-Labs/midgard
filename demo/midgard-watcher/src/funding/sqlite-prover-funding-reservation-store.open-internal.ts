@@ -62,6 +62,14 @@ import {
   verifiedRowKey,
 } from "./sqlite-prover-funding-reservation-store.verified-row-memo.js";
 
+/** A handoff's digest apart from where a workflow journal anchors it. */
+const unanchored = (handoff: object) =>
+  computeDeploymentManifestJsonDigest({
+    ...handoff,
+    preparedArtifactDigest: null,
+    expectedJournalSequence: null,
+  });
+
 export const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
   assertPlan: (plan: WatcherProverFundingReservationPlan) => void,
@@ -518,7 +526,9 @@ export const openInternal = async (
       .filter((row): row is SubmissionHandoff => row.kind === "submission");
 
   /** A superseded attempt that landed becomes the pending transition again,
-   * under the handoff that re-records its intent in the journal. */
+   * under the handoff that re-records its intent in the journal. The pending
+   * attempt is re-recorded the same way when its workflow journal was lost:
+   * the same exact intent, anchored at the recreated journal's tip. */
   const adoptSupersededAttempt = (
     current: WatcherProverFundingReservationRecord,
     transition: ReturnType<typeof makeTransition>,
@@ -529,7 +539,27 @@ export const openInternal = async (
       (saved) =>
         saved.transition.transactionHash === transition.transactionHash,
     );
+    const row = selectHandoff.get(
+      current.reservationId,
+      "submission",
+      transition.transitionDigest,
+    ) as HandoffRow | undefined;
+    const saved = row === undefined ? undefined : readHandoffRow(row);
+    const attempt = (value: typeof handoff) =>
+      unanchored({
+        ...value,
+        submissionIntent: { ...value.submissionIntent, attempt: null },
+      });
     if (
+      current.pendingTransition?.transitionDigest ===
+      transition.transitionDigest
+    ) {
+      if (
+        saved?.kind !== "submission" ||
+        attempt(saved.handoff) !== attempt(handoff)
+      )
+        throw new Error("prover reservation journal re-anchor mismatch");
+    } else if (
       current.pendingTransition !== null ||
       superseded === undefined ||
       superseded.handoff.reconciliation.retirement !== undefined ||
@@ -875,6 +905,12 @@ export const openInternal = async (
     readLegacyAbandonedTransactions: async ({ reservationId }) => {
       auditRead();
       return legacyAbandonedTransactions(reservationId);
+    },
+    readRecordedSubmissions: async ({ reservationId }) => {
+      auditRead();
+      return recordedSubmissions(reservationId).map(
+        ({ transition, handoff }) => ({ transition, handoff }),
+      );
     },
     readAbandonmentHandoff: async ({ reservationId }) => {
       const record = auditRead().find(
@@ -1437,12 +1473,13 @@ export const openInternal = async (
           const prior = readHandoffRow(priorRow);
           if (prior.kind !== "completion")
             throw new Error("prover completion handoff is malformed");
-          if (finalCompletion(prior.handoff)) {
-            if (prior.identityDigest !== digest)
-              throw new Error("prover reservation release handoff mismatch");
-            return current;
-          }
           if (prior.identityDigest === digest) return current;
+          // A final completion is only re-anchored in a recreated journal.
+          if (
+            finalCompletion(prior.handoff) &&
+            unanchored(prior.handoff) !== unanchored(handoff)
+          )
+            throw new Error("prover reservation release handoff mismatch");
           database
             .prepare(
               "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ? AND kind = 'completion'",

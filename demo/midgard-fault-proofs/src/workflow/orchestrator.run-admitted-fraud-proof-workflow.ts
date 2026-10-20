@@ -13,7 +13,6 @@ import {
 } from "./completion-finality.js";
 import {
   assertWorkflowFundingAbandonmentHandoffJournal,
-  assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   asWorkflowFundingShortfall,
   beginWorkflowFundingReservationAction,
@@ -21,7 +20,7 @@ import {
   conflictWorkflowFundingReservationTransaction,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  reconcileWorkflowFundingSubmissionHandoff,
+  recoverWorkflowFundingJournal,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
@@ -64,6 +63,7 @@ import {
   attemptCount,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
+  journalRepeatsStall,
   latestSubmissionIntent,
   repeatsPendingReconciliation,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
@@ -195,7 +195,8 @@ export const runAdmittedFraudProofWorkflow = async ({
     reason: string,
     phase?: "preflight",
   ): Promise<FraudProofWorkflowRunResult> => {
-    await append({ kind: "stalled", reason });
+    if (!journalRepeatsStall(entries, reason))
+      await append({ kind: "stalled", reason });
     return {
       kind: "stalled",
       workflowId,
@@ -261,24 +262,13 @@ export const runAdmittedFraudProofWorkflow = async ({
     });
   }
 
-  let fundingRecovery = await readWorkflowFundingRecovery(journal);
-  if (fundingRecovery.submissionHandoff !== null) {
-    for (const event of reconcileWorkflowFundingSubmissionHandoff({
-      handoff: fundingRecovery.submissionHandoff,
-      entries,
-    }))
-      await append(event);
-    validateFraudProofWorkflowJournal({
-      workflowId,
-      entries,
-      expectedIdentity: identity,
-    });
-  }
-  if (fundingRecovery.completionHandoff !== null)
-    assertWorkflowFundingCompletionHandoffJournal({
-      handoff: fundingRecovery.completionHandoff,
-      entries,
-    });
+  let fundingRecovery = await recoverWorkflowFundingJournal({
+    journal,
+    workflowId,
+    identity,
+    entries: () => entries,
+    append,
+  });
 
   // Limits bound work in this invocation, not the lifetime of the objective.
   // Journal attempt numbers remain monotonic across automatic continuations.

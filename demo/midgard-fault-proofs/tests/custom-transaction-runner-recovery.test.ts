@@ -20,6 +20,7 @@ import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-ad
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
+import * as fundingRecoveryRead from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
 import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
@@ -720,7 +721,7 @@ it.each(categories)(
     const prepared = entries[1]!.event;
     if (prepared.kind !== "prepared")
       throw new Error("missing prepared fixture");
-    vi.mocked(funding.readWorkflowFundingRecovery).mockResolvedValue({
+    const foreign = {
       transition: null,
       completionHandoff: null,
       abandonmentHandoff: null,
@@ -734,7 +735,12 @@ it.each(categories)(
         submissionIntent: entries[3]!
           .event as funding.WorkflowFundingSubmissionHandoff["submissionIntent"],
       },
-    });
+    };
+    vi.mocked(funding.readWorkflowFundingRecovery).mockResolvedValue(foreign);
+    vi.spyOn(
+      fundingRecoveryRead,
+      "readWorkflowFundingRecovery",
+    ).mockResolvedValue(foreign);
     await expect(
       execute(category, { ...fixture, sources: [] }),
     ).rejects.toThrow(/prepared|artifact|handoff/);

@@ -100,6 +100,8 @@ export interface WorkflowFundingReservationPort {
   readCompletionHandoff(): Promise<unknown>;
   readAbandonmentHandoff(): Promise<unknown>;
   readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
+  /** Every signed attempt with its submission handoff, as recorded. */
+  readRecordedSubmissions?(): Promise<readonly unknown[]>;
   retireLegacyAbandonment?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
