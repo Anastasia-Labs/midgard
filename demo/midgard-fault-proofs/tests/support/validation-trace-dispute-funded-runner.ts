@@ -31,6 +31,7 @@ import {
 import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher/tests/support/prover-funding-hold";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import { createValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
@@ -185,6 +186,10 @@ export const openFundedDispute = async (scene: Scene) => {
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint: fingerprint,
   });
+  const caseHistory = createValidationTraceCaseHistory({
+    authority: scene.l1.authority,
+    releaseFinality,
+  });
   const economics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
   ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
@@ -309,6 +314,7 @@ export const openFundedDispute = async (scene: Scene) => {
       l1SlotConfig,
       removal: unobservedRemoval,
       signedRecovery,
+      caseHistory,
       now: () => h.emulator.now(),
     });
     const result = await runFraudProofWorkflow({

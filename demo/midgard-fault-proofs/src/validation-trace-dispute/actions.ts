@@ -5,7 +5,9 @@
  * clock ran out, and close that thread into the case. Each action is keyed by the
  * output of ours it consumes, and its durable recovery names the outputs of
  * our own signed body it leaves, by out-ref, which every later read
- * follows. */
+ * follows. A move's recovery also keeps its exact signed bytes: the
+ * defender may spend a move's successor at once, so a move is reconciled
+ * from those bytes, never from its outputs. */
 import { CML, type TxOutput, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -21,6 +23,7 @@ import type {
 import { latestSubmissionIntent } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { claimOwnOutputs } from "../workflow/own-outputs.js";
+import { inspectSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import type { LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 
 export const VALIDATION_TRACE_DISPUTE_ACTION =
@@ -40,6 +43,10 @@ export const VALIDATION_TRACE_STAGES = [
 ] as const;
 
 export type ValidationTraceStage = (typeof VALIDATION_TRACE_STAGES)[number];
+
+/** The challenger's moves on a defended case's threads. */
+export const isValidationTraceMove = (stage: ValidationTraceStage): boolean =>
+  stage === "reveal" || stage === "timeout" || stage === "close_thread";
 
 /** The outputs each stage leaves, in the order its recovery lists them. */
 export const VALIDATION_TRACE_STAGE_ROLES = {
@@ -140,7 +147,8 @@ export const isClaimedOutput = (
 
 /**
  * The durable recovery of a captured stage transaction: each output of our
- * own signed body the stage leaves (`slots`, in role order), by out-ref.
+ * own signed body the stage leaves (`slots`, in role order), by out-ref, and
+ * for a move its exact signed bytes.
  */
 export const validationTraceRecovery = ({
   stage,
@@ -183,6 +191,9 @@ export const validationTraceRecovery = ({
           });
         }),
       ),
+      ...(isValidationTraceMove(stage)
+        ? { signedTransactionCborHex: transaction.signed.toCBOR() }
+        : {}),
     }),
   });
 };
@@ -200,7 +211,12 @@ export const parseValidationTraceRecovery = ({
   const outer = exact(value, ["validationTrace"], "validation-trace recovery");
   const parsed = exact(
     outer.validationTrace,
-    ["schemaVersion", "stage", "outputs"],
+    [
+      "schemaVersion",
+      "stage",
+      "outputs",
+      ...(isValidationTraceMove(stage) ? ["signedTransactionCborHex"] : []),
+    ],
     "validation-trace recovery payload",
   );
   const roles = VALIDATION_TRACE_STAGE_ROLES[stage];
@@ -240,6 +256,27 @@ export const parseValidationTraceRecovery = ({
       });
     }),
   );
+};
+
+/** The exact signed bytes a move's intent for `txHash` journaled, or throws. */
+export const recordedValidationTraceMoveBytes = ({
+  value,
+  txHash,
+}: {
+  readonly value: JournalJsonObject | undefined;
+  readonly txHash: string;
+}): string => {
+  const outer = exact(value, ["validationTrace"], "validation-trace recovery");
+  const { signedTransactionCborHex } = outer.validationTrace as Readonly<{
+    signedTransactionCborHex?: unknown;
+  }>;
+  if (typeof signedTransactionCborHex !== "string")
+    throw new Error("validation-trace move recovery omits its signed bytes");
+  inspectSignedWorkflowTransaction({
+    transactionHash: txHash,
+    signedTransactionCborHex,
+  });
+  return signedTransactionCborHex;
 };
 
 /** One confirmed stage transaction of the journal and the outputs it left. */

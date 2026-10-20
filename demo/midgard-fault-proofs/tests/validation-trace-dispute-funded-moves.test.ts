@@ -22,7 +22,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { VALIDATION_TRACE_MOVE_FEE_LOVELACE } from "../src/validation-trace-dispute/move-builders.js";
 import {
   VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_THREAD_AWAITING,
@@ -39,6 +38,10 @@ import {
 } from "./support/validation-trace-dispute-funded-moves.js";
 import { turnUntil } from "./support/validation-trace-dispute-funded-runner.js";
 import { TIMEOUT } from "./support/validation-trace-dispute-funded-verify-source.js";
+import {
+  expectRealMoveFee,
+  landedMoveFee,
+} from "./support/validation-trace-dispute-move-fees.js";
 import {
   isTurn,
   liveThread,
@@ -221,6 +224,12 @@ describe("validation-trace dispute thread moves under the prover funding permit"
         outcome: "ChallengerWins",
         bounty_claimant: caseDatum.bounty_claimant,
       });
+      // Each move paid its real fee, below the cap.
+      const fees = [
+        await landedMoveFee(scene, timeout!),
+        await landedMoveFee(scene, close!),
+      ];
+      for (const fee of fees) expectRealMoveFee(fee);
       const leftover = (
         await scene.h.proverLucid.utxosAt(
           credentialToAddress(network, {
@@ -232,7 +241,8 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       expect(leftover?.assets).toStrictEqual({
         lovelace:
           (silent.assets.lovelace ?? 0n) -
-          2n * VALIDATION_TRACE_MOVE_FEE_LOVELACE -
+          fees[0]!.paid -
+          fees[1]!.paid -
           RECEIPT_LOVELACE,
       });
       expect(leftover!.datum).toBe(Data.to(new Constr(0, [timeout!, 0n])));

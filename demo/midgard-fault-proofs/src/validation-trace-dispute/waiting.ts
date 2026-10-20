@@ -4,15 +4,28 @@
  * run reports that wait as `awaiting_counterparty` with the deadline, so the
  * session hands its turn back at once and the watcher treats the objective as
  * healthy until the deadline passes. A defended thread of ours waits the same
- * way on its defender's move, until the defender's clock runs out. */
+ * way on its defender's move, until the defender's clock runs out.
+ *
+ * Three other states are named for readiness, so a session hands its turn
+ * back at once instead of polling into a continuation stall: a thread that
+ * needs the one-step resolution, a thread lost, and a move whose fee would
+ * pass the per-move cap, the last an alarm. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 
-import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { VALIDATION_TRACE_THREAD_AWAITING } from "./threads.js";
+import type {
+  FraudProofWorkflowNamedState,
+  FraudProofWorkflowRunResult,
+} from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
+import {
+  VALIDATION_TRACE_ONE_STEP_REQUIRED,
+  VALIDATION_TRACE_THREAD_AWAITING,
+  VALIDATION_TRACE_THREAD_LOST,
+} from "./threads.js";
 
 /** Our case exists and nobody has defended it yet. */
 export const VALIDATION_TRACE_CASE_OPEN = "validation-trace-case-open";
@@ -85,4 +98,34 @@ export const awaitingValidationTraceCounterparty = (
     outRef: match[1]!,
     responseDeadline: Number(match[2]!),
   });
+};
+
+/**
+ * The run states named for readiness: a thread at ReadyForOneStep waits on
+ * the one-step resolution, a lost thread has no move of ours left, and a
+ * move whose fee would pass the cap cannot be paid by its thread, which the
+ * operator must see.
+ */
+const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
+  Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),
+  Object.freeze({ name: VALIDATION_TRACE_THREAD_LOST, alarm: false }),
+  Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
+]);
+
+/**
+ * A run of the dispute as its caller sees it: a wait on the counterparty as
+ * `awaiting_counterparty`, a named state as a pending run that hands its
+ * turn back at once under that state, and every other result unchanged.
+ */
+export const validationTraceRunState = (
+  result: FraudProofWorkflowRunResult,
+): FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty => {
+  const awaiting = awaitingValidationTraceCounterparty(result);
+  if (awaiting !== result || result.kind !== "pending") return awaiting;
+  const namedState = NAMED_STATES.find(({ name }) =>
+    result.reason.startsWith(`${name}: `),
+  );
+  return namedState === undefined
+    ? result
+    : Object.freeze({ ...result, resumeOnObservation: true, namedState });
 };

@@ -1,15 +1,18 @@
 /** The validation-trace dispute runner timing out a silent defender, on the
  * emulator. Two operators defend our case with scripted traces. While a
  * defender's clock runs, the runner reports the thread as awaiting its
- * counterparty until that clock's end. One defender never reveals; once its
- * clock is spent the runner moves its thread to the timeout validator and
+ * counterparty until that clock's end. One defender never reveals, and
+ * retires and recovers its bond, leaving both operator lists; once its clock
+ * is spent the runner still moves its thread to the timeout validator and
  * closes it into our case, which mints the defender's lost-defense receipt
  * and returns the rest of the thread to us. The other defender reveals and
  * leaves the thread on our turn; the runner never times out a thread on our
  * turn, and once our own clock on it is spent it reports that thread lost.
  * game-v1 refuses a timeout one slot before the defender's clock ends, a
  * timeout of a thread on our turn while our clock runs, and a reveal of ours
- * after our clock ends. */
+ * whose validity range is past our clock's end. Each move pays its real
+ * fee; a move whose fee would pass the per-move cap raises its own
+ * alarm and moves nothing. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -29,17 +32,23 @@ import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispu
 import {
   buildValidationTraceGameMove,
   challengerRevealedThread,
-  completeValidationTraceMove,
-  VALIDATION_TRACE_MOVE_FEE_LOVELACE,
   type ValidationTraceGameAction,
   validationTraceMoveWindow,
 } from "../src/validation-trace-dispute/move-builders.js";
+import {
+  completeValidationTraceMove,
+  VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+  VALIDATION_TRACE_MOVE_FEE_OVER_CAP,
+} from "../src/validation-trace-dispute/move-fee.js";
 import {
   VALIDATION_TRACE_THREAD_COUNT_HOLD,
   VALIDATION_TRACE_THREAD_LOST,
   validationTraceDefenderDeadlineMs,
 } from "../src/validation-trace-dispute/threads.js";
-import { awaitingValidationTraceCounterparty } from "../src/validation-trace-dispute/waiting.js";
+import {
+  awaitingValidationTraceCounterparty,
+  validationTraceRunState,
+} from "../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -50,10 +59,18 @@ import {
   sceneOperator,
 } from "./support/validation-trace-dispute-defend.js";
 import {
+  expectRealMoveFee,
+  landedMoveFee,
+} from "./support/validation-trace-dispute-move-fees.js";
+import {
   failingMaterial,
   type Scene,
   setUpScene,
 } from "./support/validation-trace-dispute-open-scene.js";
+import {
+  operatorListsHolding,
+  removeOperatorFromBothLists,
+} from "./support/validation-trace-dispute-removed-defender.js";
 import {
   makeRunner,
   type Runner,
@@ -111,27 +128,33 @@ const gameMove = (
   const lucid = scene.h.proverLucid;
   const { validFrom, validTo } = validationTraceMoveWindow(lucid);
   const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+  const deployment = runnerDeployment(scene);
   return async () =>
-    await completeValidationTraceMove(
-      buildValidationTraceGameMove({
-        lucid,
-        deployment: runnerDeployment(scene),
-        thread,
-        action,
-        successor: {
-          address,
-          datum: Data.to(
-            {
-              ...datum,
-              data: successor(BigInt(validFrom), BigInt(validTo - 1)),
-            },
-            SDK.CaseThreadDatum,
-          ),
-        },
-        validFrom,
-        validTo,
-      }),
-    );
+    await completeValidationTraceMove({
+      lucid,
+      stage: action.kind,
+      referenced: [deployment.references.game],
+      build: (fee) =>
+        buildValidationTraceGameMove({
+          lucid,
+          deployment,
+          thread,
+          action,
+          successor: {
+            address,
+            datum: Data.to(
+              {
+                ...datum,
+                data: successor(BigInt(validFrom), BigInt(validTo - 1)),
+              },
+              SDK.CaseThreadDatum,
+            ),
+          },
+          fee,
+          validFrom,
+          validTo,
+        }),
+    });
 };
 
 /** Moves the emulator to the last slot whose time is not past `time`. */
@@ -214,7 +237,7 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     expect(held.kind).toBe("pending");
     expect("reason" in held && held.reason).toMatch(
       new RegExp(
-        `^${VALIDATION_TRACE_THREAD_COUNT_HOLD}: .* counts 1 open threads; fallback discovery found 0, so it holds until they agree$`,
+        `^${VALIDATION_TRACE_THREAD_COUNT_HOLD}: .* counts 1 open threads; spend-chain discovery found 0, so it holds until they agree$`,
         "u",
       ),
     );
@@ -270,7 +293,7 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     expect(await live(unitA)).toStrictEqual(silent);
   }, 300_000);
 
-  it("refuses our reveal once our clock on the thread has ended, at the charge", async () => {
+  it("refuses our reveal with a validity range past our deadline on the thread, at the game's deadline check (the charge)", async () => {
     const thread = threadOf(revealedB);
     const ourDeadline = Number(
       thread.turn_started_at + thread.challenger_clock_ms,
@@ -279,6 +302,10 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
       validationTraceDefenderDeadlineMs(threadOf(await live(unitA))),
     );
     awaitLastSlotAtOrBefore(ourDeadline + 1_000);
+    // The reveal's whole validity range, from its lower bound on, is past it.
+    expect(
+      validationTraceMoveWindow(scene.h.proverLucid).validFrom,
+    ).toBeGreaterThan(ourDeadline);
     const turn = thread.turn;
     if (typeof turn === "string" || !("AwaitingChallenger" in turn))
       throw new Error("not on our turn");
@@ -305,7 +332,43 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     );
   }, 300_000);
 
-  it("times out the silent defender and closes its thread into our case with its lost-defense receipt, and never times out the thread on our turn", async () => {
+  it("refuses a timeout whose minimum fee would pass the per-move cap with its own alarm, moving nothing", async () => {
+    const { h } = scene;
+    const silent = await live(unitA);
+    const count = prepared.length;
+    const parameters = h.emulator.protocolParameters;
+    h.emulator.protocolParameters = { ...parameters, minFeeA: 5_000 };
+    await h.proverLucid.switchProvider(h.emulator);
+    let result: Awaited<ReturnType<Runner["runOnce"]>>;
+    try {
+      result = await runner.runOnce(scene.failing);
+    } finally {
+      h.emulator.protocolParameters = parameters;
+      await h.proverLucid.switchProvider(h.emulator);
+    }
+    expect(validationTraceRunState(result)).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true },
+    });
+    expect("reason" in result && result.reason).toMatch(
+      new RegExp(
+        `^${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the timeout move's minimum fee [0-9]+ passes the per-move cap ${VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE.toString()}$`,
+        "u",
+      ),
+    );
+    expect(prepared).toHaveLength(count);
+    expect(await live(unitA)).toStrictEqual(silent);
+  }, 300_000);
+
+  it("times out the silent defender, though it left both operator lists mid-case, and closes its thread into our case with its lost-defense receipt, and never times out the thread on our turn", async () => {
+    // The silent defender retires and recovers its bond before we move.
+    await removeOperatorFromBothLists(
+      scene,
+      operator.vkey,
+      scene.h.funderLucid,
+    );
+    expect(await operatorListsHolding(scene, operator.vkey)).toStrictEqual([]);
     const silent = await live(unitA);
     const { result, history } = await runUntil(
       runner,
@@ -353,8 +416,13 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
       outcome: "ChallengerWins",
       bounty_claimant: caseDatum.bounty_claimant,
     });
-    // The rest of the thread, less the receipt and both moves' fees, is ours.
+    // Each move paid its real fee, below the cap; the rest of the
+    // thread, less the receipt and both fees, is ours.
     const timedOut = moves[0]!;
+    const fees = await Promise.all(
+      moves.map(async ({ txHash }) => await landedMoveFee(scene, txHash)),
+    );
+    for (const fee of fees) expectRealMoveFee(fee);
     const leftover = (
       await scene.h.proverLucid.utxosAt(
         credentialToAddress(network, {
@@ -366,13 +434,24 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     expect(leftover?.assets).toStrictEqual({
       lovelace:
         (silent.assets.lovelace ?? 0n) -
-        2n * VALIDATION_TRACE_MOVE_FEE_LOVELACE -
+        fees[0]!.paid -
+        fees[1]!.paid -
         RECEIPT_LOVELACE,
     });
     expect(leftover!.datum).toBe(Data.to(new Constr(0, [timedOut.txHash, 0n])));
     // The thread on our turn was never moved.
     expect(await live(unitB)).toStrictEqual(revealedB);
   }, 1_800_000);
+
+  it("reports the lost thread under its own readiness state, handing the session back at once", async () => {
+    expect(
+      validationTraceRunState(await runner.runOnce(scene.failing)),
+    ).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_THREAD_LOST, alarm: false },
+    });
+  }, 300_000);
 
   it("fits the timeout and the thread close within the transaction limits", () => {
     for (const stage of ["timeout", "close_thread"])

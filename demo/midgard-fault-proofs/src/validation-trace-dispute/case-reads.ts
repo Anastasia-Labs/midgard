@@ -57,7 +57,8 @@ export const validationTraceCaseReads = ({
     return found;
   };
   // Our case once our pending claim is gone, by the case policy's unique
-  // token the claim's out-ref names, whoever verified it.
+  // token the claim's out-ref names, whoever verified it; the claim is the
+  // case's origin every move binds.
   const ourCase = async (
     artifact: ValidationTraceDisputeArtifact,
     stages: ReturnType<typeof confirmedValidationTraceStages>,
@@ -65,12 +66,13 @@ export const validationTraceCaseReads = ({
     for (const { outputs } of [...stages]
       .reverse()
       .filter(({ action }) => action.stage === "open")) {
+      const openerOutRef = outputs[0]!.outRef;
       const caseUnit =
         deployment.chain.case.policyId +
         SDK.validationCaseId(
           artifact.headerHash,
           artifact.claim.claimWitness.event_to_step_membership.key,
-          parseOwnOutRef(outputs[0]!.outRef),
+          parseOwnOutRef(openerOutRef),
         );
       const found = await caseAt(caseUnit);
       if (found === undefined || typeof found.datum !== "string") continue;
@@ -78,10 +80,7 @@ export const validationTraceCaseReads = ({
         caseUnit,
         outRef: `${found.txHash}#${found.outputIndex.toString()}`,
         caseDatum: Data.from(found.datum, SDK.Case),
-        originOutRef: stages.find(
-          ({ action, outputs: left }) =>
-            action.stage === "verify_source" && left[0]!.unit === caseUnit,
-        )?.outputs[0]!.outRef,
+        openerOutRef,
       };
     }
     return undefined;

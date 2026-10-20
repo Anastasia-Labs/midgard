@@ -57,13 +57,31 @@ const counterpartyOverdue = (
     : undefined;
 };
 
+/** The state a pending run's family named for readiness, if any. */
+const namedStateOf = (
+  result: Readonly<{ kind: unknown; reason: unknown }>,
+): Readonly<{ name: string; alarm: boolean }> | undefined => {
+  if (result.kind !== "pending" || !("namedState" in result)) return undefined;
+  const state: unknown = result.namedState;
+  return typeof state === "object" &&
+    state !== null &&
+    "name" in state &&
+    typeof state.name === "string" &&
+    state.name.length > 0 &&
+    "alarm" in state &&
+    typeof state.alarm === "boolean"
+    ? { name: state.name, alarm: state.alarm }
+    : undefined;
+};
+
 /**
  * Holds a pending objective under its name: one that needs a new submission
  * after its latest safe start, one paused because the prover wallet cannot
- * fund it, one whose session stalled, or one still awaiting its counterparty
- * past the response deadline (as of `nowMs`) and its slack. The last two are
- * also logged at error level. An objective awaiting its counterparty before
- * then is healthy and holds nothing.
+ * fund it, one in a state its family named, one whose session stalled, or
+ * one still awaiting its counterparty past the response deadline (as of
+ * `nowMs`) and its slack. The last two, and a named state its family marks
+ * as an alarm, are also logged at error level. An objective awaiting its
+ * counterparty before then is healthy and holds nothing.
  */
 export const holdWatcherFaultProofPending = (
   holds: Map<string, Readonly<{ reason: string; detail: string }>>,
@@ -78,6 +96,19 @@ export const holdWatcherFaultProofPending = (
     if (funding !== undefined) return funding;
   }
   const objective = `${job.category}/${job.headerHash}`;
+  const named = namedStateOf(result);
+  if (named !== undefined) {
+    const hold = {
+      reason: named.name,
+      detail: `${objective}: ${String(result.reason)}`,
+    };
+    holds.set(objective, hold);
+    if (named.alarm)
+      process.stderr.write(
+        `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
+      );
+    return { kind: "pending", reason: String(result.reason) };
+  }
   const overdue = counterpartyOverdue(result, nowMs);
   if (overdue === undefined && !isWatcherFaultProofContinuationStall(result))
     return undefined;

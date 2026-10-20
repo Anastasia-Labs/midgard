@@ -6,7 +6,12 @@
  * thread (and case) it spends while they are still live, so a test can
  * walk the funding permit over the exact signed bytes it admitted.
  */
-import type { TxSigned, UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToTxOutput,
+  type TxSigned,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
@@ -69,6 +74,8 @@ export type FundedMoves = Readonly<{
   trace: ScriptedTrace;
   /** The case output our VerifySource left, as it was before the Defend. */
   caseOrigin: UTxO;
+  /** The pending claim our Open left, which every move's authority binds. */
+  opener: UTxO;
   /** The defender's thread token. */
   unit: string;
   /** Every move the watcher built, in order. */
@@ -79,6 +86,34 @@ export type FundedMoves = Readonly<{
 
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+/** The output at `outRef` as the scene's raw L1 recorded it, spent or not. */
+export const recordedOutput = (scene: Scene, outRef: string): UTxO => {
+  const { txHash, outputIndex } = parseOwnOutRef(outRef);
+  const row = scene.l1.rows.find((recorded) => recorded.txHash === txHash);
+  if (row === undefined) throw new Error(`${outRef} was not recorded`);
+  return {
+    ...coreToTxOutput(
+      CML.TransactionBody.from_cbor_hex(row.bodyCbor)
+        .outputs()
+        .get(outputIndex),
+    ),
+    txHash,
+    outputIndex,
+  };
+};
+
+/** The pending claim our confirmed Open left, as it was before VerifySource. */
+export const ourOpener = (
+  scene: Scene,
+  result: Awaited<ReturnType<FundedDispute["turn"]>>,
+): UTxO => {
+  const open = confirmedValidationTraceStages(entriesOf(result)).find(
+    ({ action }) => action.stage === "open",
+  );
+  if (open === undefined) throw new Error("no Open was confirmed");
+  return recordedOutput(scene, open.outputs[0]!.outRef);
+};
 
 /**
  * A fresh scene whose funded watcher has opened our case, which the
@@ -137,6 +172,7 @@ export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
     defender,
     trace,
     caseOrigin: caseOutput,
+    opener: ourOpener(scene, opened.result),
     unit: threadUnitOf(scene, thread!),
     moves,
     capture,

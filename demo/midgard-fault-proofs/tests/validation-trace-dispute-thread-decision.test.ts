@@ -1,7 +1,9 @@
 /** The validation-trace dispute runner's choice among the threads of our
  * case when more than one can move at once. Our reveal comes first, since
  * our clock runs on it; then a timeout of a defender whose clock ran out;
- * then the close of a thread timed out on its defender's side. A thread
+ * then the close of a thread timed out on its defender's side. Among reveals,
+ * and among timeouts, the earliest deadline goes first, whatever the order
+ * of the threads' tokens. A thread
  * timed out on our side is reported lost, and a thread on our turn that
  * commits a trace this workflow does not hold is held, never revealed. */
 import { describe, expect, it } from "vitest";
@@ -100,6 +102,53 @@ describe("validation-trace dispute runner's choice among threads", () => {
       stage: "close_thread",
       thread: c,
     });
+  });
+
+  it("reveals first on the thread whose clock of ours ends first, and times out first the defender whose clock ended first, whatever their tokens' order", () => {
+    // Thread "9" sorts after thread "1" by token, but its deadline is earlier.
+    const later = thread(
+      "1",
+      "game",
+      { AwaitingChallenger: { midpoint: 6n, operator_midpoint_hash: "00" } },
+      BigInt(NOW) - CLOCK / 4n,
+    );
+    const sooner = thread(
+      "9",
+      "game",
+      { AwaitingChallenger: { midpoint: 6n, operator_midpoint_hash: "00" } },
+      BigInt(NOW) - CLOCK / 2n,
+    );
+    expect(later.unit < sooner.unit).toBe(true);
+    for (const order of [
+      [later, sooner],
+      [sooner, later],
+    ])
+      expect(decide(order)).toStrictEqual({
+        kind: "move",
+        stage: "reveal",
+        thread: sooner,
+      });
+    const endedLater = thread(
+      "1",
+      "game",
+      { AwaitingOperator: { midpoint: 6n } },
+      BigInt(NOW) - CLOCK - 1n,
+    );
+    const endedFirst = thread(
+      "9",
+      "game",
+      { AwaitingOperator: { midpoint: 6n } },
+      BigInt(NOW) - CLOCK - 2n,
+    );
+    for (const order of [
+      [endedLater, endedFirst],
+      [endedFirst, endedLater],
+    ])
+      expect(decide(order)).toStrictEqual({
+        kind: "move",
+        stage: "timeout",
+        thread: endedFirst,
+      });
   });
 
   it("reports a thread timed out on our side as lost, never closing it", () => {

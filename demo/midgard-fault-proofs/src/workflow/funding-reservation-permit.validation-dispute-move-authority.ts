@@ -5,9 +5,10 @@
  * created, so the thread has no confirmed lineage in this workflow and the
  * runtime funding bound refuses it without this authority. The authority
  * admits exactly one thread input: one token of the case policy, named from
- * our own confirmed case (the case output our VerifySource left, read back
- * from this reservation's lineage) and the defender key in the thread's
- * datum, with the funding wallet as its fraud prover. A reveal or timeout
+ * our own confirmed case (the case id our pending claim derives, the claim
+ * our Open left, read back from this reservation's lineage, whoever then
+ * verified it) and the defender key in the thread's datum, with the funding
+ * wallet as its fraud prover. A reveal or timeout
  * pays one successor, the thread less the fee at the game or timeout
  * validator; a thread close pays the case back unchanged but for its datum,
  * the defender's lost-defense receipt at the award validator, and the rest
@@ -26,7 +27,6 @@ import {
   CML,
   coreToTxOutput,
   Data,
-  type TxOutput,
   type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -42,7 +42,7 @@ import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
 
 const CATEGORY = "validationTraceDispute" as const;
-const VERIFY_SOURCE = "verify_source";
+const OPEN = "open";
 
 export type ValidationDisputeMoveKind = "reveal" | "timeout" | "close_thread";
 
@@ -51,8 +51,8 @@ export type ValidationDisputeMoveAuthority = Readonly<{
   kind: ValidationDisputeMoveKind;
   deploymentFingerprint: string;
   headerHash: string;
-  /** The case output our VerifySource left, in this reservation's lineage. */
-  caseOriginOutRef: string;
+  /** The pending claim our Open left, in this reservation's lineage. */
+  caseOpenerOutRef: string;
   threadOutRef: string;
   threadResolvedOutputCborHex: string;
   /** A thread close's case input; null for a reveal or timeout. */
@@ -84,7 +84,7 @@ export const grantValidationDisputeMoveAuthority = ({
   kind,
   deploymentFingerprint,
   headerHash,
-  caseOriginOutRef,
+  caseOpenerOutRef,
   thread,
   caseInput,
 }: {
@@ -92,7 +92,7 @@ export const grantValidationDisputeMoveAuthority = ({
   readonly kind: ValidationDisputeMoveKind;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly caseOriginOutRef: string;
+  readonly caseOpenerOutRef: string;
   readonly thread: UTxO;
   readonly caseInput?: UTxO;
 }): void => {
@@ -104,7 +104,7 @@ export const grantValidationDisputeMoveAuthority = ({
       kind,
       deploymentFingerprint,
       headerHash,
-      caseOriginOutRef,
+      caseOpenerOutRef,
       threadOutRef: outRefLabel(thread),
       threadResolvedOutputCborHex: exactResolvedOutputCbor(thread),
       caseOutRef: caseInput === undefined ? null : outRefLabel(caseInput),
@@ -186,28 +186,18 @@ export const assertValidationDisputeMoveBinding = ({
   return { terms: terms!, moves: terms!.moves! };
 };
 
-const caseDatumOf = (output: TxOutput): SDK.Case | null => {
-  try {
-    return Data.from(output.datum!, SDK.Case);
-  } catch {
-    return null;
-  }
-};
-
 /**
- * Our case, as this reservation's lineage holds the output our VerifySource
- * left: at the dispute case address, with exactly one case token, for the
- * actuation's header, the funding key its bounty claimant. Returns its id.
+ * Our case, as this reservation's lineage holds the pending claim our Open
+ * left: a pending claim for the actuation's header, the funding key its
+ * fraud prover. Returns the id of the case it opens, whoever verified it.
  */
 export const assertValidationDisputeMoveCase = ({
   authority,
-  terms,
   lineage,
   fundingPaymentKeyHash,
 }: {
   readonly authority: ValidationDisputeMoveAuthority;
-  readonly terms: Terms;
-  /** The reservation's confirmed lineage of the case origin, or null. */
+  /** The reservation's confirmed lineage of the case opener, or null. */
   readonly lineage: unknown;
   readonly fundingPaymentKeyHash: string;
 }): string => {
@@ -215,31 +205,37 @@ export const assertValidationDisputeMoveCase = ({
     lineage === null ? null : parseConfirmedActionOutput(lineage);
   if (
     confirmed === null ||
-    confirmed.sourceActionKind !== VERIFY_SOURCE ||
-    confirmed.outRef !== authority.caseOriginOutRef
+    confirmed.sourceActionKind !== OPEN ||
+    confirmed.outRef !== authority.caseOpenerOutRef
   )
-    refuse(["case origin lineage"]);
-  const output = coreToTxOutput(
-    CML.TransactionOutput.from_cbor_hex(confirmed!.resolvedOutputCborHex),
-  );
-  const tokens = Object.entries(output.assets).filter(([unit]) =>
-    unit.startsWith(terms.casePolicyId),
-  );
-  const caseDatum = caseDatumOf(output);
+    refuse(["case opener lineage"]);
+  let pending: SDK.PendingValidationClaimDatum | null = null;
+  try {
+    pending = Data.from(
+      coreToTxOutput(
+        CML.TransactionOutput.from_cbor_hex(confirmed!.resolvedOutputCborHex),
+      ).datum!,
+      SDK.PendingValidationClaimDatum,
+    );
+  } catch {
+    refuse(["case opener datum"]);
+  }
+  const claim = pending!.data;
+  if (claim === null) refuse(["case opener datum"]);
   const differing = failing([
-    ["case origin address", output.address === terms.caseAddress],
-    ["case origin token", tokens.length === 1 && tokens[0]![1] === 1n],
     [
-      "case origin header",
-      caseDatum?.block_header_hash === authority.headerHash,
+      "case opener header",
+      claim!.challenged_header_hash === authority.headerHash,
     ],
-    [
-      "case origin claimant",
-      caseDatum?.bounty_claimant === fundingPaymentKeyHash,
-    ],
+    ["case opener prover", pending!.fraud_prover === fundingPaymentKeyHash],
   ]);
   if (differing.length > 0) refuse(differing);
-  return tokens[0]![0].slice(56);
+  const [txHash, outputIndex] = authority.caseOpenerOutRef.split("#");
+  return SDK.validationCaseId(
+    claim!.challenged_header_hash,
+    claim!.claim.event_to_step_membership.key,
+    { txHash: txHash!, outputIndex: Number(outputIndex) },
+  );
 };
 
 /** hash(case id ‖ defender key hash): a thread token's and receipt's name. */

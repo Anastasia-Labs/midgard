@@ -17,10 +17,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
-import {
-  completeValidationTraceMove,
-  VALIDATION_TRACE_MOVE_FEE_LOVELACE,
-} from "../../src/validation-trace-dispute/move-builders.js";
+import { completeValidationTraceMove } from "../../src/validation-trace-dispute/move-fee.js";
 import { gameRedeemer } from "./validation-game-moves.js";
 import { machineState } from "./validation-game-traces.js";
 import {
@@ -140,7 +137,8 @@ const defenderRevealedThread = (
 
 /**
  * The defender's RevealOperator on `thread`, now, from `trace`, paid from
- * the thread like every move, signed by its wallet; built, not submitted.
+ * the thread at its minimum fee like every move, signed by its wallet;
+ * built, not submitted.
  */
 export const buildDefenderReveal = async (
   scene: Scene,
@@ -162,31 +160,34 @@ export const buildDefenderReveal = async (
     BigInt(validFrom),
     BigInt(validTo - 1),
   );
-  return await completeValidationTraceMove(
-    lucid
-      .newTx()
-      .collectFrom([thread], (ctx) =>
-        gameRedeemer({ kind: "RevealOperator", proof })({
-          input_index: SDK.requireInputIndex(ctx, thread, "thread"),
-          output_index: 0n,
-        }),
-      )
-      .readFrom([scene.references.game])
-      .pay.ToContract(
-        thread.address,
-        {
-          kind: "inline",
-          value: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
-        },
-        {
-          ...thread.assets,
-          lovelace:
-            (thread.assets.lovelace ?? 0n) - VALIDATION_TRACE_MOVE_FEE_LOVELACE,
-        },
-      )
-      .validFrom(validFrom)
-      .validTo(validTo),
-  );
+  return await completeValidationTraceMove({
+    lucid,
+    stage: "RevealOperator",
+    referenced: [scene.references.game],
+    build: (fee) =>
+      lucid
+        .newTx()
+        .collectFrom([thread], (ctx) =>
+          gameRedeemer({ kind: "RevealOperator", proof })({
+            input_index: SDK.requireInputIndex(ctx, thread, "thread"),
+            output_index: 0n,
+          }),
+        )
+        .readFrom([scene.references.game])
+        .pay.ToContract(
+          thread.address,
+          {
+            kind: "inline",
+            value: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
+          },
+          {
+            ...thread.assets,
+            lovelace: (thread.assets.lovelace ?? 0n) - fee,
+          },
+        )
+        .validFrom(validFrom)
+        .validTo(validTo),
+  });
 };
 
 /** The defender reveals on `thread` and the reveal lands; returns the

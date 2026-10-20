@@ -3,7 +3,7 @@
  * watcher built and landed, the authority's checks refuse each binding
  * changed on its own: the workflow, the policy's terms, the action the
  * reservation began, the move's thread and header and deployment; our case
- * as the reservation's lineage holds it; the spent thread's exact output,
+ * as the reservation's lineage holds the pending claim our Open left; the spent thread's exact output,
  * validator, token, prover and case; and a close's case input.
  *
  * The category is not installed until its defender exists; this file
@@ -23,7 +23,7 @@ import {
   type ValidationDisputeMoveAuthority,
 } from "../src/workflow/funding-reservation-permit.validation-dispute-move-authority.js";
 import {
-  caseOriginLineage,
+  caseOpenerLineage,
   disputeTerms,
   fundingPolicy,
   movesOf,
@@ -103,27 +103,27 @@ const bind = (
 const readCase = (move: CapturedMove, lineage: unknown) =>
   assertValidationDisputeMoveCase({
     authority: move.authority,
-    terms: disputeTerms(journey),
     lineage,
     fundingPaymentKeyHash: journey.scene.h.proverSigner.paymentKeyHash,
   });
 
-/** The lineage of a case origin `edit` made, at its own out-ref. */
-const originLineage = (edit: (origin: UTxO) => UTxO) => ({
-  ...caseOriginLineage(journey),
-  resolvedOutputCborHex: exactResolvedOutputCbor(edit(journey.caseOrigin)),
+/** The lineage of a pending claim `edit` made, at our opener's out-ref. */
+const openerLineage = (edit: (opener: UTxO) => UTxO) => ({
+  ...caseOpenerLineage(journey),
+  resolvedOutputCborHex: exactResolvedOutputCbor(edit(journey.opener)),
 });
 
-/** The case origin with its datum's `field` set to `value`. */
-const originDatum = (
-  field: "block_header_hash" | "bounty_claimant",
-  value: string,
+/** Our pending claim with its datum edited by `edit`. */
+const openerDatum = (
+  edit: (
+    datum: SDK.PendingValidationClaimDatum,
+  ) => SDK.PendingValidationClaimDatum,
 ) =>
-  originLineage((origin) => ({
-    ...origin,
+  openerLineage((opener) => ({
+    ...opener,
     datum: Data.to(
-      { ...Data.from(origin.datum!, SDK.Case), [field]: value },
-      SDK.Case,
+      edit(Data.from(opener.datum!, SDK.PendingValidationClaimDatum)),
+      SDK.PendingValidationClaimDatum,
     ),
   }));
 
@@ -191,7 +191,7 @@ describe("validation-trace dispute thread-move authority bound to its exact move
   it("admits each move the watcher built as its builder evaluated it", async () => {
     for (const move of journey.moves) {
       expect(await refusalOf(() => bind(move))).toBeNull();
-      expect(readCase(move, caseOriginLineage(journey))).toBe(caseId());
+      expect(readCase(move, caseOpenerLineage(journey))).toBe(caseId());
       expect(presentThread(move, (thread) => thread)).toBe(
         threadUnitOf(journey.scene, move.thread).slice(56),
       );
@@ -272,64 +272,68 @@ describe("validation-trace dispute thread-move authority bound to its exact move
     {
       name: "no lineage for our case",
       check: () => readCase(reveal, null),
-      refusal: refused("case origin lineage"),
+      refusal: refused("case opener lineage"),
     },
     {
-      name: "a case lineage from another action than VerifySource",
+      name: "a case lineage from another action than our Open",
       check: () =>
         readCase(reveal, {
-          ...caseOriginLineage(journey),
-          sourceActionKind: "open",
+          ...caseOpenerLineage(journey),
+          sourceActionKind: "verify_source",
         }),
-      refusal: refused("case origin lineage"),
+      refusal: refused("case opener lineage"),
     },
     {
-      name: "the lineage of another output than the authority's case",
+      name: "the lineage of another output than the authority's opener",
       check: () =>
         readCase(reveal, {
-          ...caseOriginLineage(journey),
+          ...caseOpenerLineage(journey),
           outRef: `${ANOTHER}#0`,
         }),
-      refusal: refused("case origin lineage"),
+      refusal: refused("case opener lineage"),
     },
     {
-      name: "a case origin at another contract",
+      name: "an opener lineage that holds no pending claim",
       check: () =>
         readCase(
           reveal,
-          originLineage((origin) => ({
-            ...origin,
-            address: journey.scene.chain.game.spendingScriptAddress,
+          openerLineage((opener) => ({ ...opener, datum: Data.void() })),
+        ),
+      refusal: refused("case opener datum"),
+    },
+    {
+      name: "an opener lineage whose pending claim holds no claim",
+      check: () =>
+        readCase(
+          reveal,
+          openerDatum((datum) => ({ ...datum, data: null })),
+        ),
+      refusal: refused("case opener datum"),
+    },
+    {
+      name: "a pending claim for another header",
+      check: () =>
+        readCase(
+          reveal,
+          openerDatum((datum) => ({
+            ...datum,
+            // A header hash is 28 bytes.
+            data: { ...datum.data!, challenged_header_hash: "00".repeat(28) },
           })),
         ),
-      refusal: refused("case origin address"),
+      refusal: refused("case opener header"),
     },
     {
-      name: "a case origin holding a second case-policy token",
+      name: "a pending claim another key proves",
       check: () =>
         readCase(
           reveal,
-          originLineage((origin) => ({
-            ...origin,
-            assets: { ...origin.assets, [anotherUnit(caseUnit())]: 1n },
+          openerDatum((datum) => ({
+            ...datum,
+            fraud_prover: ANOTHER.slice(0, 56),
           })),
         ),
-      refusal: refused("case origin token"),
-    },
-    {
-      name: "a case origin for another header",
-      check: () =>
-        readCase(
-          reveal,
-          originDatum("block_header_hash", ANOTHER.slice(0, 56)),
-        ),
-      refusal: refused("case origin header"),
-    },
-    {
-      name: "a case origin another key claims",
-      check: () =>
-        readCase(reveal, originDatum("bounty_claimant", ANOTHER.slice(0, 56))),
-      refusal: refused("case origin claimant"),
+      refusal: refused("case opener prover"),
     },
     {
       name: "a spent thread that holds no thread datum",

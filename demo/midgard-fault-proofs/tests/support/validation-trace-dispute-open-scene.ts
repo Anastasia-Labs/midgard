@@ -19,6 +19,7 @@ import {
 } from "@al-ft/midgard-validation";
 import {
   generateEmulatorAccount,
+  type LucidEvolution,
   type Script,
   toUnit,
   type UTxO,
@@ -42,6 +43,7 @@ import {
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
 } from "../helpers/plutus-execution-block-fixture.js";
+import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { submitSuccessorBlockTx } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
@@ -91,10 +93,11 @@ export type Scene = {
   readonly forced: Block;
   /** The operator that committed the blocks, and its active-operator node. */
   readonly operator: { readonly vkey: string; readonly nodeUnit: string };
+  /** The raw L1 view of every transaction after the scene's setup. */
+  readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
 
-/** The signed transaction's size and execution units, each within the
- * emulator's transaction limits. */
+/** The signed transaction's size and units, within the emulator's limits. */
 export const measureWithinTransactionLimits = (
   transactionCbor: string,
 ): CompleteSignedTransactionMeasurement => {
@@ -160,11 +163,7 @@ export const setUpScene = async (): Promise<Scene> => {
       h.emulator.now() + 120_000,
     ) - 1,
   );
-  const seeds = {
-    failing: 0x61,
-    passing: 0x64,
-    forced_failing: 0x65,
-  } as const;
+  const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
     startTime: now,
@@ -250,6 +249,7 @@ export const setUpScene = async (): Promise<Scene> => {
   if (caseConfig === undefined)
     throw new Error("the case configuration was not initialized");
   return {
+    l1: recordCrossBlockRawEmulator({ emulator: h.emulator }),
     h,
     chain,
     hubOracle: setup.hubOracle,
@@ -440,8 +440,7 @@ export const initAndOpen = async (
   return { opener };
 };
 
-/** VerifySource over `opener`, valid for L_d from the emulator's now (plus
- * `offsetMs`). */
+/** VerifySource over `opener`, valid for L_d from now (plus `offsetMs`). */
 export const verifySource = (
   scene: Scene,
   opener: UTxO,
@@ -452,13 +451,15 @@ export const verifySource = (
     readonly bondLovelace?: bigint;
     /** Shifts both bounds off the emulator's slot boundary. */
     readonly offsetMs?: number;
+    /** Who submits it; by default the prover, whose claim it verifies. */
+    readonly lucid?: LucidEvolution;
   },
 ) => {
   const { h, chain } = scene;
   const validFrom = h.emulator.now() + (presented.offsetMs ?? 0);
   const validTo = validFrom + MAX_RANGE_MS;
   const { tx, opening } = SDK.appendValidationSourceVerification(
-    h.proverLucid.newTx(),
+    (presented.lucid ?? h.proverLucid).newTx(),
     {
       contracts: {
         source: chain.source,

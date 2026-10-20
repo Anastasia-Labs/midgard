@@ -36,11 +36,14 @@ import {
 import {
   confirmedValidationTraceStages,
   isClaimedOutput,
+  isValidationTraceMove,
   parseValidationTraceAction,
   parseValidationTraceRecovery,
+  recordedValidationTraceMoveBytes,
   validationTraceAction,
 } from "./actions.js";
 import { parseValidationTraceDisputeArtifact } from "./artifact.js";
+import type { ValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceCaseReads } from "./case-reads.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { captureValidationTraceClose } from "./close.js";
@@ -112,6 +115,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   l1SlotConfig,
   removal,
   signedRecovery,
+  caseHistory,
   now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
@@ -121,7 +125,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   /** The convicted block's removal through the shared remove stage. */
   readonly removal: ValidationTraceRemovalConfig;
   /** Where one exact signed transaction stands, and its rebroadcast. */
-  readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+  readonly signedRecovery: FraudProofSignedTransactionRecovery;
+  /** Our case token's complete L1 history, where its threads are found. */
+  readonly caseHistory: ValidationTraceCaseHistory;
   readonly now?: () => number;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
@@ -223,10 +229,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             lucid,
             signer,
             deployment,
+            caseHistory,
+            headerHash: artifact.headerHash,
             caseUnit: found.caseUnit,
             caseOutRef: found.outRef,
             caseDatum: found.caseDatum,
-            caseOriginOutRef: found.originOutRef,
             now: now(),
             material: materials.get(artifact.headerHash),
           })
@@ -315,7 +322,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         input.artifact,
         confirmedValidationTraceStages(context.entries),
       );
-      if (found?.originOutRef === undefined)
+      if (found === undefined)
         throw new WorkflowActionChangedError(
           `validation-trace ${action.stage} has no case of ours to play`,
         );
@@ -323,7 +330,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         ...input,
         threadOutRef: action.consumes!,
         caseUnit: found.caseUnit,
-        caseOriginOutRef: found.originOutRef,
+        caseOpenerOutRef: found.openerOutRef,
       };
       if (action.stage === "reveal")
         return await captureValidationTraceReveal({
@@ -441,23 +448,31 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           kind: "conflict",
           reason: "validation-trace action omitted its transaction hash",
         };
+      const { stage } = parseValidationTraceAction(action);
       let outputs: ReturnType<typeof parseValidationTraceRecovery>;
+      let signed = signedTransactionCborHex;
       try {
         outputs = parseValidationTraceRecovery({
           value: durableRecovery,
-          stage: parseValidationTraceAction(action).stage,
+          stage,
           txHash,
         });
+        // A move's successor is the defender's to spend at once, so whether
+        // it is live never shows the move landed: a move reconciles from its
+        // exact signed bytes, which its recovery keeps when no funding
+        // transition holds them.
+        if (signed === undefined && isValidationTraceMove(stage))
+          signed = recordedValidationTraceMoveBytes({
+            value: durableRecovery,
+            txHash,
+          });
       } catch (cause) {
         return { kind: "conflict", reason: String(cause) };
       }
-      if (
-        signedTransactionCborHex !== undefined &&
-        signedRecovery !== undefined
-      ) {
+      if (signed !== undefined) {
         const reconciled = await reconcileSignedWorkflowTransaction({
           transactionHash: txHash,
-          signedTransactionCborHex,
+          signedTransactionCborHex: signed,
           observe: signedRecovery.observeSignedTransaction,
           rebroadcast: signedRecovery.rebroadcastSignedTransaction,
           authorizeResubmission,

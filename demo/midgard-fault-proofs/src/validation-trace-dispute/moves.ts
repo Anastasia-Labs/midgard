@@ -15,9 +15,9 @@ import {
   buildValidationTraceGameMove,
   buildValidationTraceThreadClose,
   challengerRevealedThread,
-  completeValidationTraceMove,
   validationTraceMoveWindow,
 } from "./move-builders.js";
+import { completeValidationTraceMove } from "./move-fee.js";
 import {
   isThreadMaterial,
   readValidationTraceThread,
@@ -39,8 +39,8 @@ export type ValidationTraceMoveInput = StageInput &
     threadOutRef: string;
     /** Our case's unit, which names the thread's case. */
     caseUnit: string;
-    /** The case output our VerifySource left, which the authority binds. */
-    caseOriginOutRef: string;
+    /** The pending claim our Open left, which the authority binds. */
+    caseOpenerOutRef: string;
   }>;
 
 /** The thread at `threadOutRef`, a thread of our case at `at`, or changed. */
@@ -110,7 +110,7 @@ const captureMove = async ({
     kind: stage,
     deploymentFingerprint: input.deployment.deploymentFingerprint,
     headerHash: input.artifact.headerHash,
-    caseOriginOutRef: input.caseOriginOutRef,
+    caseOpenerOutRef: input.caseOpenerOutRef,
     thread: thread.utxo,
     ...(caseInput === undefined ? {} : { caseInput }),
   });
@@ -156,23 +156,28 @@ export const captureValidationTraceReveal = async (
     upper: BigInt(validTo - 1),
   });
   const address = deployment.chain.game.spendingScriptAddress;
-  const unsigned = await completeValidationTraceMove(
-    buildValidationTraceGameMove({
-      lucid,
-      deployment,
-      thread: thread.utxo,
-      action: { kind: "RevealChallenger", proof },
-      successor: {
-        address,
-        datum: Data.to(
-          { fraud_prover: signer.paymentKeyHash, data: next },
-          SDK.CaseThreadDatum,
-        ),
-      },
-      validFrom,
-      validTo,
-    }),
-  );
+  const unsigned = await completeValidationTraceMove({
+    lucid,
+    stage: "reveal",
+    referenced: [deployment.references.game],
+    build: (fee) =>
+      buildValidationTraceGameMove({
+        lucid,
+        deployment,
+        thread: thread.utxo,
+        action: { kind: "RevealChallenger", proof },
+        successor: {
+          address,
+          datum: Data.to(
+            { fraud_prover: signer.paymentKeyHash, data: next },
+            SDK.CaseThreadDatum,
+          ),
+        },
+        fee,
+        validFrom,
+        validTo,
+      }),
+  });
   return await captureMove({
     input,
     stage: "reveal",
@@ -200,17 +205,22 @@ export const captureValidationTraceTimeout = async (
       `validation-trace thread cannot time out before its defender's deadline ${deadline.toString()}`,
     );
   const address = deployment.chain.timeout.spendingScriptAddress;
-  const unsigned = await completeValidationTraceMove(
-    buildValidationTraceGameMove({
-      lucid,
-      deployment,
-      thread: thread.utxo,
-      action: { kind: "EnterChallengerTimeout" },
-      successor: { address, datum: thread.utxo.datum! },
-      validFrom,
-      validTo,
-    }),
-  );
+  const unsigned = await completeValidationTraceMove({
+    lucid,
+    stage: "timeout",
+    referenced: [deployment.references.game],
+    build: (fee) =>
+      buildValidationTraceGameMove({
+        lucid,
+        deployment,
+        thread: thread.utxo,
+        action: { kind: "EnterChallengerTimeout" },
+        successor: { address, datum: thread.utxo.datum! },
+        fee,
+        validFrom,
+        validTo,
+      }),
+  });
   return await captureMove({
     input,
     stage: "timeout",
@@ -241,18 +251,34 @@ export const captureValidationTraceThreadClose = async (
     );
   const caseConfig = await caseConfigUtxo(lucid, deployment);
   signer.selectWallet(lucid);
-  const { tx, receiptUnit } = buildValidationTraceThreadClose({
+  const window = validationTraceMoveWindow(lucid);
+  const close = (fee: bigint) =>
+    buildValidationTraceThreadClose({
+      lucid,
+      deployment,
+      thread,
+      caseUtxo,
+      caseConfig,
+      fee,
+      ...window,
+    });
+  const { references } = deployment;
+  const unsigned = await completeValidationTraceMove({
     lucid,
-    deployment,
-    thread,
-    caseUtxo,
-    caseConfig,
-    ...validationTraceMoveWindow(lucid),
+    stage: "close_thread",
+    referenced: [
+      caseConfig,
+      references.case,
+      references.timeout,
+      references.award,
+    ],
+    build: (fee) => close(fee).tx,
   });
+  const { receiptUnit } = close(0n);
   return await captureMove({
     input,
     stage: "close_thread",
-    unsigned: await completeValidationTraceMove(tx),
+    unsigned,
     thread,
     caseInput: caseUtxo,
     slots: [

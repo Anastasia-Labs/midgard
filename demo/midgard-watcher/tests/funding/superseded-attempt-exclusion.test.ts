@@ -415,3 +415,35 @@ it("computes the uncovered attempts and admits replacements in both polarities",
     }),
   ).toBe(true);
 });
+
+it("admits a validation-trace thread move beside a superseded attempt only while it spends no reserved funding input", () => {
+  // b, a superseded VerifySource, still holds reserved funding b1 and b2.
+  const b = attempt([hash("b1"), hash("b2")], [ref("b1"), ref("b2")]);
+  const uncovered = uncoveredSupersededAttempts({
+    abandoned: [abandoned(b)],
+    submissions: [b],
+  });
+  const reserved = [ref("b1"), ref("b2"), ref("d1")];
+  const admits = (inputs: readonly string[], stage: string) =>
+    excludesEveryUncoveredAttempt({
+      uncovered,
+      signedTransactionCborHex: attempt(inputs, []).signedTransactionCborHex,
+      reservedFundingOutRefs: reserved,
+      handoff: {
+        submissionIntent: {
+          actionInput: {
+            schemaVersion: "midgard-validation-trace-dispute-action-v1",
+            stage,
+            consumes: `${"7".repeat(64)}#0`,
+          },
+        },
+      },
+    });
+  // Every attempt at a move spends its thread f1: none of b's is forced.
+  for (const stage of ["reveal", "timeout", "close_thread"])
+    expect(admits([hash("f1")], stage)).toBe(true);
+  // A move that spends reserved funding is held to the rule like any action.
+  expect(admits([hash("f1"), hash("d1")], "timeout")).toBe(false);
+  // The dispute's other stages are not exempt.
+  expect(admits([hash("f1")], "verify_source")).toBe(false);
+});

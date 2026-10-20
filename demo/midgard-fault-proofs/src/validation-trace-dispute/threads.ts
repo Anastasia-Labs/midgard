@@ -2,36 +2,32 @@
  * does next on each.
  *
  * A thread carries one token of the case policy, which mints it only in a
- * Defend on that case, named hash(case id ‖ defender key hash). With no
- * spent-by query to follow our case output into the Defend that spent it,
- * the threads are found by that policy-unique token (the fallback path): the
- * candidate defenders are every operator in the hub's active and retired
- * operator lists, and each candidate's token is looked up at the game and
- * timeout validators. The threads found are checked against the case's own
- * count of open threads; a shortfall holds and reports, never decides.
+ * Defend on that case, named hash(case id ‖ defender key hash). The threads
+ * are found along our case output's spend chain (case-history.ts): the case
+ * token's complete L1 history names every thread a Defend left and every one
+ * a close burned, and each thread it holds open is re-read by its token at
+ * the game and timeout validators. The threads found are checked against the
+ * case's own count of open threads; a shortfall holds and reports, never
+ * decides.
  *
- * Each thread is played on its own: on our turn we reveal our midpoint; a
- * defender whose clock ran out is timed out and its thread closed into the
- * case; ReadyForOneStep stops at a resumable "one-step required" state. A
- * thread on our turn is never timed out. */
+ * Each thread is played on its own, the most pressing first: on our turn we
+ * reveal our midpoint; a defender whose clock ran out is timed out and its
+ * thread closed into the case; ReadyForOneStep stops at a resumable
+ * "one-step required" state. A thread on our turn is never timed out. */
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  Data,
-  type LucidEvolution,
-  type Network,
-  type UTxO,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FraudProofWorkflowObservation } from "../workflow/orchestrator.js";
 import { validationTraceAction } from "./actions.js";
-import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
-  hubOracleUtxo,
-  type ValidationTraceDisputeDeployment,
-} from "./transactions.js";
+  recordedValidationTraceThreads,
+  type ValidationTraceCaseHistory,
+} from "./case-history.js";
+import type { ValidationTraceClaimMaterial } from "./claim-material.js";
+import type { ValidationTraceDisputeDeployment } from "./transactions.js";
+
+export { validationTraceThreadTokenName } from "./case-history.js";
 
 /** A defended case whose threads are all closed; its close is not installed. */
 export const VALIDATION_TRACE_CASE_CONTESTED =
@@ -55,17 +51,8 @@ export const VALIDATION_TRACE_THREAD_COUNT_HOLD =
 /** Our turn on a thread, but no trace of ours matches its roots. */
 export const VALIDATION_TRACE_MATERIAL_HOLD = "validation-trace-material-hold";
 
-/** How the threads were found: by token, with no spent-by query. */
-export const VALIDATION_TRACE_THREAD_DISCOVERY = "fallback" as const;
-
-const blake2b256 = (hex: string): string =>
-  Effect.runSync(SDK.hashHexWithBlake2b(hex, 32));
-
-/** hash(case id ‖ defender key hash): a thread token's and receipt's name. */
-export const validationTraceThreadTokenName = (
-  caseId: string,
-  defenderVkh: string,
-): string => blake2b256(caseId + defenderVkh);
+/** How the threads were found: along our case output's spend chain. */
+export const VALIDATION_TRACE_THREAD_DISCOVERY = "spend-chain" as const;
 
 /** A thread of our case, as found and checked. */
 export type ValidationTraceThread = Readonly<{
@@ -78,22 +65,6 @@ export type ValidationTraceThread = Readonly<{
 
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-const addressOf = (network: Network, address: SDK.AddressData): string => {
-  const credential = (value: SDK.CredentialD) =>
-    "PublicKeyCredential" in value
-      ? { type: "Key" as const, hash: value.PublicKeyCredential[0] }
-      : { type: "Script" as const, hash: value.ScriptCredential[0] };
-  if (address.stakeCredential === null)
-    return credentialToAddress(network, credential(address.paymentCredential));
-  if ("Inline" in address.stakeCredential)
-    return credentialToAddress(
-      network,
-      credential(address.paymentCredential),
-      credential(address.stakeCredential.Inline[0]),
-    );
-  throw new Error("validation-trace operator list has a pointer address");
-};
 
 /**
  * `utxo` as a thread of case `caseId` for `defenderVkh` under `unit`, or
@@ -133,49 +104,31 @@ export const readValidationTraceThread = ({
 };
 
 /**
- * The live threads of case `caseId`, found by their tokens over every
- * operator the hub lists as active or retired, sorted by token.
+ * The live threads of case `caseUnit`: each thread its history held, re-read
+ * by its token at the game and timeout validators, sorted by token.
  */
 export const discoverValidationTraceThreads = async ({
   lucid,
   deployment,
-  hubOracle,
-  caseId,
+  caseHistory,
+  headerHash,
+  caseUnit,
   prover,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ValidationTraceDisputeDeployment;
-  readonly hubOracle: UTxO;
-  readonly caseId: string;
+  readonly caseHistory: ValidationTraceCaseHistory;
+  readonly headerHash: string;
+  readonly caseUnit: string;
   readonly prover: string;
 }): Promise<readonly ValidationTraceThread[]> => {
-  const hub = Data.from(hubOracle.datum!, SDK.HubOracleDatum);
-  const lists = [
-    {
-      address: addressOf(deployment.network, hub.active_operators_addr),
-      prefix: hub.active_operators + SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
-    },
-    {
-      address: addressOf(deployment.network, hub.retired_operators_addr),
-      prefix:
-        hub.retired_operators + SDK.RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
-    },
-  ];
-  const defenders = new Set<string>();
-  for (const { address, prefix } of lists)
-    for (const node of await lucid.utxosAt(address))
-      for (const [unit, quantity] of Object.entries(node.assets))
-        if (
-          quantity === 1n &&
-          unit.startsWith(prefix) &&
-          unit.length === prefix.length + 56
-        )
-          defenders.add(unit.slice(prefix.length));
+  const caseId = caseUnit.slice(56);
   const { chain } = deployment;
   const found: ValidationTraceThread[] = [];
-  for (const defenderVkh of [...defenders].sort()) {
-    const unit =
-      chain.case.policyId + validationTraceThreadTokenName(caseId, defenderVkh);
+  for (const { unit, defenderVkh } of recordedValidationTraceThreads({
+    transactions: await caseHistory.transactions({ headerHash, caseUnit }),
+    caseUnit,
+  }))
     for (const [at, address] of [
       ["game", chain.game.spendingScriptAddress],
       ["timeout", chain.timeout.spendingScriptAddress],
@@ -191,10 +144,7 @@ export const discoverValidationTraceThreads = async ({
         });
         if (read !== undefined) found.push(read);
       }
-  }
-  return Object.freeze(
-    found.sort((a, b) => (a.unit < b.unit ? -1 : a.unit > b.unit ? 1 : 0)),
-  );
+  return Object.freeze(found);
 };
 
 export type ValidationTraceThreadDecision =
@@ -225,7 +175,8 @@ export const isThreadMaterial = (
 
 /**
  * The next action over the threads of our case at `caseOutRef`. Our reveals
- * come first, then timeouts, then closes; otherwise the most pressing wait.
+ * come first, the earliest deadline first, then timeouts, earliest first,
+ * then closes; otherwise the most pressing wait.
  */
 export const decideValidationTraceThreads = ({
   threads,
@@ -279,9 +230,23 @@ export const decideValidationTraceThreads = ({
       });
     }
   }
-  for (const stage of ["reveal", "timeout", "close_thread"] as const)
-    if (moves[stage].length > 0)
-      return { kind: "move", stage, thread: moves[stage][0]! };
+  // The most pressing first: our reveal whose clock ends soonest, then the
+  // timeout whose defender's clock ended first.
+  const [reveal] = [...moves.reveal].sort(
+    (a, b) => challengerDeadlineMs(a.thread) - challengerDeadlineMs(b.thread),
+  );
+  if (reveal !== undefined)
+    return { kind: "move", stage: "reveal", thread: reveal };
+  const [timeout] = [...moves.timeout].sort(
+    (a, b) =>
+      validationTraceDefenderDeadlineMs(a.thread) -
+      validationTraceDefenderDeadlineMs(b.thread),
+  );
+  if (timeout !== undefined)
+    return { kind: "move", stage: "timeout", thread: timeout };
+  const [close] = moves.close_thread;
+  if (close !== undefined)
+    return { kind: "move", stage: "close_thread", thread: close };
   const pending = (reason: string) => ({ kind: "pending" as const, reason });
   if (oneStep.length > 0)
     return pending(
@@ -304,42 +269,39 @@ export const decideValidationTraceThreads = ({
 
 /**
  * The next step on our defended case `caseUnit` at `caseOutRef`: a move on
- * one of its threads, or why it waits. `caseOriginOutRef` is the case output
- * our VerifySource left, which every move's funding authority binds; a case
- * this workflow did not verify holds.
+ * one of its threads, or why it waits. The case is ours whoever verified it:
+ * its id derives from our opener.
  */
 export const observeValidationTraceThreads = async ({
   lucid,
   signer,
   deployment,
+  caseHistory,
+  headerHash,
   caseUnit,
   caseOutRef,
   caseDatum,
-  caseOriginOutRef,
   now,
   material,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly deployment: ValidationTraceDisputeDeployment;
+  readonly caseHistory: ValidationTraceCaseHistory;
+  readonly headerHash: string;
   readonly caseUnit: string;
   readonly caseOutRef: string;
   readonly caseDatum: SDK.Case;
-  readonly caseOriginOutRef: string | undefined;
   readonly now: number;
   readonly material: ValidationTraceClaimMaterial | undefined;
 }): Promise<FraudProofWorkflowObservation> => {
-  if (caseOriginOutRef === undefined)
-    return {
-      kind: "pending",
-      reason: `${VALIDATION_TRACE_CASE_CONTESTED}: case ${caseUnit} at ${caseOutRef} has a defender but this workflow did not verify it, so it waits`,
-    };
   const decision = decideValidationTraceThreads({
     threads: await discoverValidationTraceThreads({
       lucid,
       deployment,
-      hubOracle: await hubOracleUtxo(lucid, deployment),
-      caseId: caseUnit.slice(56),
+      caseHistory,
+      headerHash,
+      caseUnit,
       prover: signer.paymentKeyHash,
     }),
     caseUnit,

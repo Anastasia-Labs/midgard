@@ -157,9 +157,8 @@ export const validationDisputeMoveFunding = async ({
   const fundingPaymentKeyHash = policy.fundingPaymentKeyHash;
   const caseId = assertValidationDisputeMoveCase({
     authority,
-    terms,
     lineage: await state.port.resolveConfirmedInput({
-      outRef: authority.caseOriginOutRef,
+      outRef: authority.caseOpenerOutRef,
     }),
     fundingPaymentKeyHash,
   });

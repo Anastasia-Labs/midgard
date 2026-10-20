@@ -28,10 +28,12 @@ import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispu
 import {
   buildValidationTraceGameMove,
   challengerRevealedThread,
-  completeValidationTraceMove,
   validationTraceMoveWindow,
 } from "../src/validation-trace-dispute/move-builders.js";
+import { completeValidationTraceMove } from "../src/validation-trace-dispute/move-fee.js";
+import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { enrollSuccessor } from "./support/rotated-successor-operator.js";
@@ -62,6 +64,7 @@ import {
   threadOf,
   threadUnitOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
+import { DEPLOYMENT_FINGERPRINT } from "./workflow.make-adapter.js";
 
 type Side = Readonly<{
   defender: Defender;
@@ -111,21 +114,27 @@ const challengerReveal = ({
       lower: BigInt(validFrom),
       upper: BigInt(validTo - 1),
     });
+  const deployment = runnerDeployment(scene);
   return async () =>
-    await completeValidationTraceMove(
-      buildValidationTraceGameMove({
-        lucid,
-        deployment: runnerDeployment(scene),
-        thread,
-        action: { kind: "RevealChallenger", proof },
-        successor: {
-          address: thread.address,
-          datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
-        },
-        validFrom,
-        validTo,
-      }),
-    );
+    await completeValidationTraceMove({
+      lucid,
+      stage: "reveal",
+      referenced: [deployment.references.game],
+      build: (fee) =>
+        buildValidationTraceGameMove({
+          lucid,
+          deployment,
+          thread,
+          action: { kind: "RevealChallenger", proof },
+          successor: {
+            address: thread.address,
+            datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
+          },
+          fee,
+          validFrom,
+          validTo,
+        }),
+    });
 };
 
 /** Our proof of the midpoint the thread at `thread` waits on. */
@@ -269,7 +278,10 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
   it("bisects each thread on its own to ReadyForOneStep on the step after its defender's last agreed state, then stops at a resumable one-step-required state", async () => {
     const history: string[] = [];
     for (let turn = 0; ; turn += 1) {
-      if (turn > 200) throw new Error(`no end:\n${history.join("\n")}`);
+      if (turn > 400) throw new Error(`no end:\n${history.join("\n")}`);
+      // Each defender answers as soon as our move has landed, before our
+      // runner has seen it land: the runner confirms its move from the
+      // move's own signed bytes, never from the successor the answer spends.
       let ready = 0;
       for (const side of sides) {
         const utxo = await live(side);
@@ -281,18 +293,18 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
               .cbor,
           );
       }
-      // Each defender answers once our move has landed and been seen.
-      do {
-        final = await runner.runOnce(scene.failing);
-        history.push(
-          "reason" in final ? `${final.kind}: ${final.reason}` : final.kind,
-        );
-      } while (
-        final.kind === "pending" &&
-        final.reason.startsWith("transaction for ") &&
-        history.length < 400
+      final = await runner.runOnce(scene.failing);
+      history.push(
+        "reason" in final ? `${final.kind}: ${final.reason}` : final.kind,
       );
-      if (ready === sides.length) break;
+      if (
+        ready === sides.length &&
+        !(
+          final.kind === "pending" &&
+          final.reason.startsWith("transaction for ")
+        )
+      )
+        break;
     }
     expect(final.kind, history.join("\n")).toBe("pending");
     if (!("reason" in final)) throw new Error("no reason");
@@ -352,6 +364,30 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
     expect(confirmedValidationTraceStages(result.entries)).toHaveLength(before);
     expect(prepared).toHaveLength(count);
   }, 300_000);
+
+  // A session that kept polling would run to the 30-minute quiet bound.
+  it("hands the session back at once at the one-step-required state, under its own readiness state, without a continuation stall", async () => {
+    let runs = 0;
+    const result = await continuePendingWorkflow({
+      invocation: {
+        mode: "run",
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        category: "validationTraceDispute",
+        headerHash: scene.failing.evidence.headerHash,
+      },
+      journal: runner.journal,
+      execute: async () => {
+        runs += 1;
+        return validationTraceRunState(await runner.runOnce(scene.failing));
+      },
+    });
+    expect(runs).toBe(1);
+    expect(result).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false },
+    });
+  }, 120_000);
 
   it("fits every reveal within the transaction limits", () => {
     reportFit(

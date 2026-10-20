@@ -64,19 +64,19 @@ export const fundingPolicy = (
     validationDispute: terms,
   }) as never;
 
-/** The reservation lineage of the case output our VerifySource left. */
-export const caseOriginLineage = ({ caseOrigin }: FundedMoves) => ({
-  sourceActionKind: "verify_source",
-  sourceOutputIndex: caseOrigin.outputIndex,
-  outRef: outRefOf(caseOrigin),
-  resolvedOutputCborHex: exactResolvedOutputCbor(caseOrigin),
+/** The reservation lineage of the pending claim our Open left. */
+export const caseOpenerLineage = ({ opener }: FundedMoves) => ({
+  sourceActionKind: "open",
+  sourceOutputIndex: opener.outputIndex,
+  outRef: outRefOf(opener),
+  resolvedOutputCborHex: exactResolvedOutputCbor(opener),
 });
 
 /** The permit state the watcher's turn held while building `move`. */
 export const permitState = (
   journey: FundedMoves,
   move: CapturedMove,
-  lineage: unknown = caseOriginLineage(journey),
+  lineage: unknown = caseOpenerLineage(journey),
 ) =>
   ({
     category: CATEGORY,
@@ -89,7 +89,7 @@ export const permitState = (
     snapshot: { rollbackGeneration: "0" },
     port: {
       resolveConfirmedInput: async ({ outRef }: { outRef: string }) =>
-        outRef === move.authority.caseOriginOutRef ? lineage : null,
+        outRef === move.authority.caseOpenerOutRef ? lineage : null,
     },
   }) as never;
 
@@ -195,7 +195,7 @@ export const regranted = async (
     kind: authority.kind,
     deploymentFingerprint: authority.deploymentFingerprint,
     headerHash: authority.headerHash,
-    caseOriginOutRef: authority.caseOriginOutRef,
+    caseOpenerOutRef: authority.caseOpenerOutRef,
     thread: move.thread,
     ...(move.caseInput === undefined ? {} : { caseInput: move.caseInput }),
   });

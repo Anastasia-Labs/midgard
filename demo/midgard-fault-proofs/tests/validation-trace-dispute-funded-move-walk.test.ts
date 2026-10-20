@@ -3,7 +3,8 @@
  * funded watcher built and landed, it admits each move's thread (and a
  * close's case) as released custody and each move's own outputs, and it
  * refuses: a fee above the deployment's per-move cap, a move that also
- * carries a fraud slash, a move that omits its thread or a close that omits
+ * carries a fraud slash or a VerifySource authority, custody paid beyond a
+ * move's own outputs, a move that omits its thread or a close that omits
  * its case, any other contract input, a protocol top-up, a successor other
  * than its thread less the fee, a close that changes the case's value or
  * pays another receipt or leftover than case-v1 fixes, a move that pays
@@ -16,6 +17,7 @@
 import { CML } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { grantValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { VALIDATION_DISPUTE_MOVE_BINDING } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
 import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import {
@@ -153,6 +155,30 @@ describe("validation-trace dispute thread move walked under its authority", () =
       check: () => walk(journey, reveal, { slash: true }),
       refusal:
         "funding transaction carries both a fraud slash and a validation dispute move authority",
+    },
+    {
+      name: "a move that also carries a VerifySource authority",
+      check: async () => {
+        const signed = await regranted(journey, reveal, () => {});
+        const { address } = reveal.thread;
+        grantValidationDisputeFundingAuthority({
+          signed,
+          deploymentFingerprint: reveal.authority.deploymentFingerprint,
+          headerHash: reveal.authority.headerHash,
+          opener: reveal.thread,
+          bond: { address, unit: "", lovelace: 0n, datumCborHex: "" },
+          caseOutput: { address, unit: "", floorLovelace: 0n, lovelace: 0n },
+        });
+        return await walk(journey, reveal, { signed });
+      },
+      refusal:
+        "funding transaction carries both a VerifySource and a thread move authority",
+    },
+    {
+      name: "a move that pays custody beyond its thread's successors",
+      check: async () => (await openWalk(journey, reveal)).refuseOtherCustody(),
+      refusal:
+        "validation dispute move pays custody beyond its thread's successors",
     },
     {
       name: "a move that omits its thread",

@@ -1,8 +1,9 @@
 /** The transactions of the challenger's thread moves, before completion: a
  * game-v1 move of a thread (RevealChallenger, EnterChallengerTimeout), the
  * thread after our reveal, and the ThreadClose of a thread timed out on its
- * defender's side. The thread alone pays each move's fee, exactly the
- * deployment's per-move cap, so the wallet only lends collateral. */
+ * defender's side. The thread alone pays each move's fee, which the caller
+ * names (move-fee.ts settles it at the move's minimum, up to the cap), so
+ * the wallet only lends collateral. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -13,7 +14,6 @@ import {
   type LucidEvolution,
   type RedeemerContext,
   type TxBuilder,
-  type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -22,11 +22,6 @@ import {
   validationTraceThreadTokenName,
 } from "./threads.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
-
-/** The deployment's per-move fee cap, which each move pays exactly. */
-export const VALIDATION_TRACE_MOVE_FEE_LOVELACE = BigInt(
-  SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace,
-);
 
 /** `env.fraud_proof_output_lovelace`: what a lost-defense receipt holds. */
 const RECEIPT_LOVELACE = BigInt(
@@ -44,21 +39,13 @@ export const validationTraceMoveWindow = (lucid: LucidEvolution) => {
   };
 };
 
-/** Completes a move the thread pays for: exactly the cap, no change. */
-export const completeValidationTraceMove = async (
-  tx: TxBuilder,
-): Promise<TxSignBuilder> =>
-  await tx
-    .setMinFee(VALIDATION_TRACE_MOVE_FEE_LOVELACE)
-    .complete({ coinSelection: false, localUPLCEval: true });
-
 export type ValidationTraceGameAction =
   | Readonly<{ kind: "RevealChallenger"; proof: SDK.ValidationTraceProof }>
   | Readonly<{ kind: "EnterChallengerTimeout" }>;
 
 /**
  * A game move of `thread` to `successor`, which keeps the thread's tokens
- * and its lovelace less the fee, before completion.
+ * and its lovelace less `fee`, before completion.
  */
 export const buildValidationTraceGameMove = ({
   lucid,
@@ -66,6 +53,7 @@ export const buildValidationTraceGameMove = ({
   thread,
   action,
   successor,
+  fee,
   validFrom,
   validTo,
 }: {
@@ -74,6 +62,8 @@ export const buildValidationTraceGameMove = ({
   readonly thread: UTxO;
   readonly action: ValidationTraceGameAction;
   readonly successor: Readonly<{ address: string; datum: string }>;
+  /** What the thread pays for the move. */
+  readonly fee: bigint;
   readonly validFrom: number;
   readonly validTo: number;
 }): TxBuilder => {
@@ -102,7 +92,7 @@ export const buildValidationTraceGameMove = ({
       { kind: "inline", value: successor.datum },
       {
         ...thread.assets,
-        lovelace: lovelaceOf(thread) - VALIDATION_TRACE_MOVE_FEE_LOVELACE,
+        lovelace: lovelaceOf(thread) - fee,
       },
     )
     .validFrom(validFrom)
@@ -168,7 +158,7 @@ export const challengerRevealedThread = ({
  * The ThreadClose of `thread`, timed out on its defender's side, into the
  * case `caseUtxo`: the thread token burns, the defender's lost-defense
  * receipt is minted to the award validator, and the rest of the thread less
- * the fee goes to the case's bounty claimant. Before completion.
+ * `fee` goes to the case's bounty claimant. Before completion.
  */
 export const buildValidationTraceThreadClose = ({
   lucid,
@@ -176,6 +166,7 @@ export const buildValidationTraceThreadClose = ({
   thread,
   caseUtxo,
   caseConfig,
+  fee,
   validFrom,
   validTo,
 }: {
@@ -184,6 +175,8 @@ export const buildValidationTraceThreadClose = ({
   readonly thread: ValidationTraceThread;
   readonly caseUtxo: UTxO;
   readonly caseConfig: UTxO;
+  /** What the thread pays for the close. */
+  readonly fee: bigint;
   readonly validFrom: number;
   readonly validTo: number;
 }): Readonly<{ tx: TxBuilder; receiptUnit: string }> => {
@@ -272,10 +265,7 @@ export const buildValidationTraceThreadClose = ({
         ),
       },
       {
-        lovelace:
-          lovelaceOf(thread.utxo) -
-          RECEIPT_LOVELACE -
-          VALIDATION_TRACE_MOVE_FEE_LOVELACE,
+        lovelace: lovelaceOf(thread.utxo) - RECEIPT_LOVELACE - fee,
       },
     )
     .validFrom(validFrom)

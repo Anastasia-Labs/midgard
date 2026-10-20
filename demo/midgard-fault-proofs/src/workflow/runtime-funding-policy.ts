@@ -65,7 +65,15 @@ export const workflowRuntimeFundingMinimumFee = ({
   steps,
   referenceScriptBytes,
 }: {
-  parameters: DeploymentManifestCardanoProtocolParameters;
+  parameters: Pick<
+    DeploymentManifestCardanoProtocolParameters,
+    "minFeeA" | "minFeeB" | "priceMemory" | "priceSteps"
+  > & {
+    referenceScriptFee: Pick<
+      DeploymentManifestCardanoProtocolParameters["referenceScriptFee"],
+      "base" | "range" | "multiplier"
+    >;
+  };
   transactionBytes: bigint;
   memory: bigint;
   steps: bigint;
