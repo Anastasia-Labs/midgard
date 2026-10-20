@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
+import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
@@ -161,10 +162,6 @@ describe("supervisor execution adapter with durable funding", () => {
       "Watcher doubleSpend workflow did not progress: invalid execution outcome",
     ],
     [
-      { kind: "stalled", reason: "confirmed action still required" },
-      "Watcher doubleSpend workflow did not progress: confirmed action still required",
-    ],
-    [
       { kind: "no_fault_detected", classification: {} },
       "the family's own classification returned no_fault_detected for an admitted fault",
     ],
@@ -180,6 +177,47 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.setAlert).toHaveBeenCalledWith(
       expect.objectContaining({ code: "proof_submission_failure" }),
     );
+  });
+
+  it("quarantines a workflow stall outside preflight to its own objective and clears it on the next run that moves on", async () => {
+    const test = await setup();
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "stalled",
+      reason: "confirmed action still required",
+    });
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      expect(await test.execution.execute(test.input)).toMatchObject({
+        kind: "retryable",
+        resume: "backoff",
+        retryAfterMs: 1000,
+      });
+    } finally {
+      stderr.mockRestore();
+    }
+    expect(test.execution.readiness()).toEqual([
+      {
+        reason: WATCHER_FAULT_PROOF_QUARANTINED,
+        detail: expect.stringContaining(
+          ": workflow stalled: confirmed action still required",
+        ),
+      },
+    ]);
+    const alarms = () =>
+      test.setAlert.mock.calls
+        .map(([alert]) => alert as { code: string; active: boolean })
+        .filter(({ code }) => code === "proof_submission_failure")
+        .map(({ active }) => active);
+    expect(alarms()).toEqual([true]);
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      reason: "transaction for walk is pending",
+    });
+    await test.execution.execute(test.input);
+    expect(test.execution.readiness()).toEqual([]);
+    expect(alarms()).toEqual([true, false]);
   });
 
   it("refuses existing-only recovery without a durable reservation before querying the wallet", async () => {
@@ -367,15 +405,29 @@ describe("supervisor execution adapter with durable funding", () => {
     );
   });
 
-  it("keeps an authentication failure hard and preserves the signed reservation", async () => {
+  it("quarantines an authentication failure of the objective's own run and preserves the signed reservation", async () => {
     const test = await setup();
     const before = await test.fixture.records();
     test.runOrResume.mockRejectedValueOnce(
       new Error("authenticated proof datum changed"),
     );
-    await expect(test.execution.execute(test.input)).rejects.toThrow(
-      "authenticated proof datum changed",
-    );
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      expect(await test.execution.execute(test.input)).toMatchObject({
+        kind: "retryable",
+        resume: "backoff",
+      });
+    } finally {
+      stderr.mockRestore();
+    }
+    expect(test.execution.readiness()).toEqual([
+      {
+        reason: WATCHER_FAULT_PROOF_QUARANTINED,
+        detail: expect.stringContaining(": authenticated proof datum changed"),
+      },
+    ]);
     expect(await test.fixture.records()).toEqual(before);
     expect(test.setAlert).toHaveBeenCalledWith(
       expect.objectContaining({

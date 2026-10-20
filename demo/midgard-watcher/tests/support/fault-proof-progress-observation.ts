@@ -8,6 +8,8 @@ import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 export const progressObservation = (input: {
   deploymentFingerprint: string;
   header?: { header: Header; headerHash: string };
+  /** Several finalized headers, in queue order, in place of `header`. */
+  headers?: readonly { header: Header; headerHash: string }[];
   revision?: number;
   blockTimeMs?: bigint;
 }) => {
@@ -20,32 +22,31 @@ export const progressObservation = (input: {
     chainPointId: (revision + 100).toString(16).padStart(64, "0"),
     finalityDepth: "30",
   };
-  const header =
-    input.header === undefined
-      ? undefined
-      : {
-          headerHash: input.header.headerHash,
-          headerCborHex: Data.to(input.header.header, Header),
-          stateQueueNodeCborHex: Data.to(
-            {
-              proven_fraud: null,
-              header: input.header.header,
-              block_time: input.blockTimeMs ?? input.header.header.endTime,
-              da_attestation: "Unattested",
-            },
-            StateQueueNode,
-          ),
-          linkedListDatumCborHex: "80",
-          daAvailability: "Unattested" as const,
-          queueOutRef: `${"41".repeat(32)}#1`,
-          nextHeaderHash: null,
-          observedTransactionHash: "42".repeat(32),
-          observedBlockHash: point.blockHash,
-          observedSlot: point.slot,
-          observedBlockNo: point.blockNo,
-          observedChainPointId: point.chainPointId,
-          finalityDepth: "30",
-        };
+  const headers = (
+    input.headers ?? (input.header === undefined ? [] : [input.header])
+  ).map((entry, index, all) => ({
+    headerHash: entry.headerHash,
+    headerCborHex: Data.to(entry.header, Header),
+    stateQueueNodeCborHex: Data.to(
+      {
+        proven_fraud: null,
+        header: entry.header,
+        block_time: input.blockTimeMs ?? entry.header.endTime,
+        da_attestation: "Unattested",
+      },
+      StateQueueNode,
+    ),
+    linkedListDatumCborHex: "80",
+    daAvailability: "Unattested" as const,
+    queueOutRef: `${"41".repeat(32)}#${(index + 1).toString()}`,
+    nextHeaderHash: all[index + 1]?.headerHash ?? null,
+    observedTransactionHash: "42".repeat(32),
+    observedBlockHash: point.blockHash,
+    observedSlot: point.slot,
+    observedBlockNo: point.blockNo,
+    observedChainPointId: point.chainPointId,
+    finalityDepth: "30",
+  }));
   const value = {
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
     deploymentIdentityDigest: input.deploymentFingerprint,
@@ -58,11 +59,12 @@ export const progressObservation = (input: {
     checkpoints: [],
     finalizedQueue: [
       { headerHash: null, outRef: `${"41".repeat(32)}#0` },
-      ...(header === undefined
-        ? []
-        : [{ headerHash: header.headerHash, outRef: header.queueOutRef }]),
+      ...headers.map(({ headerHash, queueOutRef }) => ({
+        headerHash,
+        outRef: queueOutRef,
+      })),
     ],
-    finalizedHeaders: header === undefined ? [] : [header],
+    finalizedHeaders: headers,
     finalizedCorrectionLock: null,
     correctionLockWitnesses: [],
   };
