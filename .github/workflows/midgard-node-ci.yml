@@ -687,8 +687,11 @@ jobs:
           blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk
       # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner, and the validation job gates the same runs on work counts
+      # The step's own limit, well inside the job's, so a slow or hung bench
+      # fails only this step: a job that hits its timeout fails the gate.
       - name: Benchmark the CEK executor and trace commitment at the budget cap
         continue-on-error: true
+        timeout-minutes: 20
         run: pnpm --dir demo/midgard-validation run bench
 
   # The fault-proof package's build and typecheck, once per run. The test
