@@ -636,10 +636,13 @@ error such as a port in use) exits the process non-zero, its supervisor's
 restart policy (`restart: unless-stopped` in
 `demo/midgard-watcher/compose.yaml`) being the retry after that. A follower
 whose store transients outlast 15 min exits it the same way. A refused
-process configuration exits 78, before the operations server binds. This list covers the reasons and
-degradations added for the L1 follower; the full set is
-`WatcherOperationsReadinessReason` in
-`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts`.
+process configuration exits 78, before the operations server binds. Every
+reason in `WATCHER_OPERATIONS_READINESS_REASONS`
+(`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`)
+has an entry below
+`[script: scripts/ci/check-watcher-readiness-reasons-doc.test.mjs]`; the
+fault-proof execution holds and the L1 follower's reasons are listed by hand
+`[review]`.
 
 - `startup:<stage>`: the operations server binds before the L1-dependent
   startup stages, and until the runtime's observability exists `/readyz`
@@ -686,6 +689,44 @@ degradations added for the L1 follower; the full set is
 - `deadline_at_risk`, `deadline_unsafe`: a proof deadline is near or past its
   safe start. The watcher keeps running and keeps proving; read
   `deadlineHealth` and `remainingSafeStartMs` in `/v1/metrics`.
+- `supervisor_not_accepting`: the fault-proof supervisor is closing, closed
+  or blocked. A job failure it cannot classify blocks it and ends the
+  runtime, so the process exits non-zero and the restart policy applies. If
+  it lasts on a running watcher, read the log for the failure.
+- `recovery_incomplete`: the supervisor has not yet rebuilt its proof work
+  from the journals, at startup or after a `journal_busy` requeue. Wait; it
+  clears once the rebuild or the next progress admission succeeds.
+- `launch_scope_incomplete`: fewer fault-proof categories are installed than
+  the catalogue names; `launchScope` in `/v1/status` gives both counts. A
+  deployment that installs every category never shows it; check the
+  deployment's installed families.
+- `l1_source_unavailable`: no L1 source has been observed yet. Wait; check
+  the node and the follower if it lasts.
+- `l1_source_stale`: an L1 source reports stale or disagreeing, or its latest
+  observation is older than 120 s. Check the node and its providers.
+- `retained_da_transport_failed`: the shared retained-DA transport failed to
+  start; it is retried after a growing delay. Read the README paragraph on
+  the retained-DA transport (`demo/midgard-watcher/README.md`, Runtime and
+  commands) when it does not clear.
+- `active_alert`: a non-informational alert is active (`activeAlerts` in
+  `/v1/status`); a DA fetch failure counts only for 180 s unless repeated.
+  The DA bond pool, rollback and prepared-proof alerts never hold readiness.
+- `journal_integrity`, `journal_unavailable`, `journal_busy`,
+  `journal_capacity`, `journal_decision_missing`: the watcher's fault-proof
+  journals refused a record, could not be opened, met a lock, reached the
+  objective cap, or name a decision they do not hold. The watcher stays up.
+  Read the journal paragraphs of `demo/midgard-watcher/README.md` (Runtime
+  and commands) before moving journals aside or restarting.
+- `fault_proof_start_deadline_passed`: an objective's latest safe start passed
+  before it signed any attempt, so it never starts; the detail is
+  `<category>/<headerHash>`. Held, never run again, the process up; clears
+  once its header leaves the finalized queue. Report it.
+- `fault_proof_resubmission_required`: an objective running under
+  reconciliation-only authority (such as one past its latest safe start)
+  reached an action that needs a fresh submission; the detail is
+  `<category>/<headerHash>: <reason>`. It is held by name and runs again on
+  the next observation, which clears or renews the hold. The next action
+  needs manual submission; report it with the detail.
 
 Degradations (`l1Degradations`, status and metrics only):
 `l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed
