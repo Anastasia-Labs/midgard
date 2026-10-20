@@ -79,6 +79,12 @@ export const watcherOrphanCancelConfig = (
       };
 
 export const ORPHAN_CANCEL_IN_FLIGHT = "a cancel of its funding is in flight";
+/** A cancel that retired unlanded because its validity passed. */
+export const ORPHAN_CANCEL_EXPIRED = "its cancel expired unlanded";
+/** A cancel that retired unlanded because another transaction spent its
+ * funding first. */
+export const ORPHAN_CANCEL_INVALIDATED =
+  "its cancel was invalidated: another transaction spent its funding";
 
 /** The target an orphan's recorded handoffs name, or null. */
 const targetOf = async (
@@ -130,13 +136,16 @@ export const createWatcherOrphanCancels = (
   const { store, config } = input;
   /** Consecutive complete reads that found the orphan cancellable. */
   const rounds = new Map<string, number>();
-  /** Cancels submitted by this process. */
-  const submitted = new Set<string>();
-  const submit = async (cancel: {
-    transactionHash: string;
-    signedTransactionCborHex: string;
-  }) => {
-    submitted.add(cancel.transactionHash);
+  /** The cancel this process submitted for each orphan. */
+  const submitted = new Map<string, string>();
+  const submit = async (
+    reservationId: string,
+    cancel: {
+      transactionHash: string;
+      signedTransactionCborHex: string;
+    },
+  ) => {
+    submitted.set(reservationId, cancel.transactionHash);
     try {
       await config.wallet.submit(cancel.signedTransactionCborHex);
     } catch {
@@ -225,14 +234,17 @@ export const createWatcherOrphanCancels = (
             orphan: record,
             retirement: state.final,
           });
-          return "its cancel expired unlanded";
+          return state.final.reason === "expired"
+            ? ORPHAN_CANCEL_EXPIRED
+            : ORPHAN_CANCEL_INVALIDATED;
         }
         if (
           state !== undefined &&
           !state.landed &&
-          (state.stranded || !submitted.has(cancel.transactionHash))
+          (state.stranded ||
+            submitted.get(reservationId) !== cancel.transactionHash)
         )
-          await submit(cancel);
+          await submit(reservationId, cancel);
         return ORPHAN_CANCEL_IN_FLIGHT;
       }
       const inputs = await cancellable(record, attempts, states);
@@ -256,8 +268,14 @@ export const createWatcherOrphanCancels = (
       });
       const recorded = await store.readOrphanCancel?.({ reservationId });
       if (recorded == null) return null;
-      await submit(recorded);
+      await submit(reservationId, recorded);
       return ORPHAN_CANCEL_IN_FLIGHT;
+    },
+    /** Forgets every orphan but `held`: one that settled or left. */
+    retain: (held: ReadonlySet<string>) => {
+      for (const tracked of [rounds, submitted])
+        for (const reservationId of [...tracked.keys()])
+          if (!held.has(reservationId)) tracked.delete(reservationId);
     },
   });
 };

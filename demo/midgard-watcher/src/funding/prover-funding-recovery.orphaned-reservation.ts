@@ -422,6 +422,7 @@ export const createWatcherOrphanedReservations = (input: {
         ]),
       );
       const holds: WatcherDecisionHold[] = [];
+      const held = new Set<string>();
       for (const record of orphans) {
         let detail = "awaiting its next L1 read";
         const reading = readings.get(record.reservationId);
@@ -448,6 +449,7 @@ export const createWatcherOrphanedReservations = (input: {
             detail = `its funding cancel failed: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
+        held.add(record.reservationId);
         holds.push(
           Object.freeze({
             kind: "reservation",
@@ -458,6 +460,7 @@ export const createWatcherOrphanedReservations = (input: {
           }),
         );
       }
+      cancels?.retain(held);
       return Object.freeze(holds);
     },
   });

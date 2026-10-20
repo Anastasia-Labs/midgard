@@ -6,6 +6,10 @@ import {
   WATCHER_ORPHAN_CANCEL_VALIDITY_MS,
 } from "../../src/funding/prover-funding-orphan-cancel.transaction.js";
 import {
+  ORPHAN_CANCEL_EXPIRED,
+  ORPHAN_CANCEL_INVALIDATED,
+} from "../../src/funding/prover-funding-recovery.orphan-cancel.js";
+import {
   WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
   WatcherProverFundingOrphanedReservationError,
 } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
@@ -20,6 +24,7 @@ import {
   sweepToCancel,
 } from "./orphan-cancel-fixture.js";
 import { admitFresh, doublyLeased } from "./orphaned-reservation-fixture.js";
+import { completionHandoff } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import { fundingOf } from "./superseded-attempt-replacement.js";
 
 afterEach(async () => {
@@ -131,8 +136,16 @@ describe("an orphan whose attempt without expiry left the mempool, of a target t
     expect(await setup.orphan()).toMatchObject({ state: "active" });
     expect(wallet.submitted).toEqual([cancel]);
 
-    chain.set(fixture.transactionHash, "landed final");
+    // The cancel is final first: it is dropped, and none follows it.
     chain.set(hash, "invalidated final");
+    expect(await setup.sweep()).toEqual([
+      expect.objectContaining({
+        detail: expect.stringContaining(ORPHAN_CANCEL_INVALIDATED),
+      }),
+    ]);
+    expect(await recordedCancel(fixture)).toBeNull();
+
+    chain.set(fixture.transactionHash, "landed final");
     expect(await setup.sweep()).toEqual([]);
     expect(await setup.orphan()).toMatchObject({
       state: "released",
@@ -140,6 +153,24 @@ describe("an orphan whose attempt without expiry left the mempool, of a target t
     });
     expect(wallet.signed).toEqual([hash]);
     expect(await doublyLeased(fixture)).toEqual([]);
+  });
+
+  it("is cancelled once its workflow completed, while its target can still run", async () => {
+    const setup = await orphanToCancel();
+    const { fixture, gone, wallet } = setup;
+    gone.value = false;
+    const completed = completionHandoff(fixture.plan);
+    const read = fixture.store.readCompletionHandoff.bind(fixture.store);
+    setup.overrides.current = {
+      readCompletionHandoff: async (reserved) =>
+        reserved.reservationId === fixture.plan.reservationId
+          ? completed
+          : await read(reserved),
+    };
+    await setup.restart();
+    expect(await sweepToCancel(setup)).toBeDefined();
+    expect(wallet.signed).toHaveLength(1);
+    expect(setup.targets).toEqual([]);
   });
 
   it("sends one cancel when the process stops after signing one but before recording it", async () => {
@@ -236,7 +267,7 @@ describe("an orphan whose attempt without expiry left the mempool, of a target t
     chain.set(hashOf(first), "expired final");
     expect(await setup.sweep()).toEqual([
       expect.objectContaining({
-        detail: expect.stringContaining("its cancel expired unlanded"),
+        detail: expect.stringContaining(ORPHAN_CANCEL_EXPIRED),
       }),
     ]);
     expect(await recordedCancel(fixture)).toBeNull();

@@ -721,12 +721,23 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   bytes again, never a new one). The detail then reads "a cancel of its
   funding is in flight", and no fresh run takes the reservation over. It
   clears once the cancel and every transaction are final: the cancel
-  landed, or the old transaction landed first and the cancel was refused.
-  A cancel that expired unlanded past finality is dropped ("its cancel
-  expired unlanded") and a new one may follow; only one is live at a time.
-  "its funding cancel failed" means signing or recording it failed; it is
-  retried on the next read. Report it if it outlasts the transactions'
-  expiry plus the recovery depth.
+  landed (then "its cancel landed; it settles once its attempts are
+  release-final"), or the old transaction landed first. This holds when a
+  transaction also names a coin outside the follower's history, such as a
+  collateral from before its origin: a spend of another of its inputs by a
+  different transaction, once past the recovery depth, retires it. A cancel
+  that retired unlanded past finality is dropped: "its cancel expired
+  unlanded" means its hour passed, and a new one may follow; "its cancel
+  was invalidated: another transaction spent its funding" means an old
+  transaction landed first, and the reservation settles once that landing
+  is final. Only one cancel is live at a time. "its funding cancel failed"
+  means signing or recording it failed; it is retried on the next read.
+  When to report: with an expiry on every transaction, if the hold
+  outlasts the latest expiry plus the recovery depth. With a transaction
+  that has no expiry, the hold is expected, and is no fault, for as long as
+  its target's header stays in the finalized queue and no fresh run takes
+  it over. Report it if it outlasts an hour plus the recovery depth after
+  the header left the finalized queue (or its workflow completed).
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands
