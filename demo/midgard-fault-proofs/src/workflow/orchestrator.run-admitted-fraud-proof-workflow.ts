@@ -137,7 +137,9 @@ export const runAdmittedFraudProofWorkflow = async ({
     throw new Error("maxActions must be a positive safe integer");
   }
   if (
-    terminalVerifier.verifierVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER
+    terminalVerifier.verifierVersion !==
+      FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER ||
+    typeof terminalVerifier.observeSignedTransaction !== "function"
   ) {
     throw new Error("workflow requires the authenticated L1 terminal verifier");
   }

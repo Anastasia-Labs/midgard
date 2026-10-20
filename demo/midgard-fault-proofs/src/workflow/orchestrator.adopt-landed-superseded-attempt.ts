@@ -14,10 +14,6 @@ import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,
 } from "./journal.js";
-import {
-  FraudProofL1CheckpointChangedError,
-  isFraudProofL1WaitError,
-} from "./l1-source.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAdapterContext,
@@ -160,11 +156,8 @@ export const adoptLandedSupersededAttempt = async ({
       });
       actuation();
     } catch (cause) {
-      if (cause instanceof FraudProofL1CheckpointChangedError)
-        return resumeOnObservation(
-          `reading result ${result.txHash} of ${intent.actionId} awaits a stable boundary: ${cause.message}`,
-        );
-      if (isFraudProofL1WaitError(cause)) throw cause;
+      // The observer's own L1 errors read as unknown and hold below; what
+      // throws here is the permit, the store or the recorded bytes.
       return await stalled(
         `reading result ${result.txHash} of ${intent.actionId} failed: ${formatUnknownError(cause)}`,
       );
