@@ -50,10 +50,8 @@ import {
   expireChecks,
   type ImportCheckEntry,
   type ImportCheckKey,
-  type ImportCheckLoad,
   type ImportCheckState,
   isCheckHeld,
-  retrieveCheckLoads,
   retrieveCheckMaterial,
   retrieveChecks,
   retrieveNextPendingBlock,
@@ -61,6 +59,10 @@ import {
   skipPendingChecks,
   UNRUN_STATES,
 } from "../database/importChecks.js";
+import {
+  type ImportCheckLoad,
+  retrieveCheckLoads,
+} from "../database/importChecks.loads.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
 import { type ImportCheckLane } from "../services/validation-pool.js";
 import { type ImportCheckAlarmSink } from "./alarms.js";
