@@ -1,9 +1,9 @@
 /**
  * A VerifySource other than the one its builder evaluated, presented to the
  * prover funding permit: the builder's signed bytes with their outputs
- * edited or inputs added and signed again by the prover, carrying the
- * builder's own authority (or one amended) granted over them, or the same
- * bytes with no authority.
+ * edited, inputs added or the pending claim dropped, signed again by the
+ * prover, carrying the builder's own authority (or one amended) granted
+ * over them, or the same bytes with no authority.
  */
 import { CML, Lucid, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
@@ -36,6 +36,8 @@ export type VerifySourcePresentation = Readonly<{
   outputs?: VerifySourceTamper;
   /** Inputs spent besides the evaluated ones. */
   inputs?: readonly UTxO[];
+  /** Leaves the pending claim out of the spent inputs. */
+  dropOpener?: boolean;
   /** The authority granted over the presented bytes. */
   authority?: (grant: VerifySourceGrant) => VerifySourceGrant;
   /** The pending claim the authority is granted over, for the spent one. */
@@ -50,8 +52,8 @@ const FEE_BUMP = 200_000n;
 
 /**
  * Builds `signed`'s body again with `edit`'s outputs and `inputs` spent
- * besides its own, its change paying `feeBump` more fee, signed by the
- * prover.
+ * besides its own (less `dropped`, if named), its change paying `feeBump`
+ * more fee, signed by the prover.
  */
 const withOutputs = async (
   scene: Scene,
@@ -59,6 +61,7 @@ const withOutputs = async (
   edit: (outputs: CML.TransactionOutput[]) => CML.TransactionOutput[],
   feeBump: bigint,
   inputs: readonly UTxO[] = [],
+  dropped?: Readonly<{ txHash: string; outputIndex: number }>,
 ): Promise<TxSigned> => {
   const transaction = signed.toTransaction();
   const body = transaction.body();
@@ -76,7 +79,17 @@ const withOutputs = async (
         : output,
     ),
   );
-  const spent = body.inputs();
+  const evaluated = body.inputs();
+  const spent = CML.TransactionInputList.new();
+  for (let index = 0; index < evaluated.len(); index += 1) {
+    const input = evaluated.get(index);
+    if (
+      dropped === undefined ||
+      input.transaction_id().to_hex() !== dropped.txHash ||
+      input.index() !== BigInt(dropped.outputIndex)
+    )
+      spent.add(input);
+  }
   for (const input of inputs)
     spent.add(
       CML.TransactionInput.new(
@@ -177,6 +190,9 @@ export const presentVerifySource =
                 }) ?? outputs,
               FEE_BUMP,
               presentation.inputs,
+              presentation.dropOpener === true
+                ? parseOwnOutRef(authority.openerOutRef)
+                : undefined,
             );
       if (presentation !== null) {
         const [opener] = await scene.h.emulator.getUtxosByOutRef([

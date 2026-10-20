@@ -248,6 +248,11 @@ describe("validation-trace dispute VerifySource bound to other dispute terms", (
       refusal: `${BINDING} (opener)`,
     },
     {
+      name: "its pending claim left out of the spent inputs",
+      present: (): VerifySourcePresentation => ({ dropOpener: true }),
+      refusal: "validation dispute VerifySource omits its pending claim",
+    },
+    {
       name: "a second case output",
       present: (): VerifySourcePresentation => ({
         outputs: (outputs, addresses) => {
