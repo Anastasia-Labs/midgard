@@ -1,7 +1,4 @@
-import { join } from "node:path";
-
 import {
-  createWorkflowActuationPermitController,
   FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1CheckpointChangedError,
@@ -10,101 +7,16 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
-import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
-import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import { WatcherRetainedDaTransportUnavailableError } from "../../src/storage/retained-da-transport-unavailable.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  deploymentIdentity,
-  setupFundingRecoveryFixture,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 
-const setup = async (newReservation = false) => {
-  const fixture = await setupFundingRecoveryFixture();
-  const controller = createWorkflowActuationPermitController({
-    decision: fixture.fresh,
-    rollbackGeneration: "2",
-  });
-  const journalRoot = newReservation
-    ? join(fixture.journalRoot, "fresh")
-    : fixture.journalRoot;
-  const fundingFactory = newReservation
-    ? createWatcherProverFundingAuthorityFactory({
-        journalRoot,
-        journalAuthenticationKey: TEST_JOURNAL_KEY,
-        launchScope: installedLaunchScope(fixture.fresh.launchScope),
-        deploymentIdentity,
-        protocolParameters: fixture.protocolParameters,
-        store: fixture.store,
-      })
-    : fixture.fundingFactory();
-  const getUtxos = vi.fn(async () => fixture.walletUtxos);
-  const getUtxosByOutRef = vi.fn(async () => []);
-  const runOrResume = vi.fn(
-    async (invocation: WorkflowAdapterRunnerInput): Promise<unknown> =>
-      fixture.run(
-        fixture.bind(fixture.fresh, {
-          controller,
-          permit: invocation.fundingReservationPermit,
-          releaseUnused: () =>
-            fundingFactory.releaseUnused({
-              actuationPermit: controller.permit,
-            }),
-        }),
-      ),
-  );
-  const recordProofStep = vi.fn();
-  const setAlert = vi.fn();
-  const verifyCompleted = vi.fn(async () => {
-    throw new Error("unexpected completed verification");
-  });
-  const execution = createWatcherFaultProofExecution({
-    application: {
-      runners: { doubleSpend: fixture.runner },
-      runOrResume,
-      verifyCompleted,
-    },
-    fundingFactory,
-    walletAddress,
-    provider: { getUtxos, getUtxosByOutRef },
-    journalRoot,
-    runtimeConfigPath: "/unused-test-runtime.json",
-    deploymentFingerprint: deploymentIdentity.manifestId,
-    operationsSink: () => ({ recordProofStep, setAlert }),
-  });
-  const input = {
-    job: {
-      mode: "resume",
-      category: "doubleSpend",
-      headerHash: fixture.fresh.headerHash,
-      decisionDigest: fixture.fresh.decisionDigest,
-      rollbackGeneration: "2",
-      deadline: null,
-    },
-    actuationPermit: controller.permit,
-    admission: { mode: "resume", funding: "resume_only" },
-  } as const;
-  return {
-    fixture,
-    controller,
-    execution,
-    input,
-    getUtxos,
-    getUtxosByOutRef,
-    runOrResume,
-    verifyCompleted,
-    recordProofStep,
-    setAlert,
-  };
-};
+const setup = setupFaultProofExecution;
 
 describe("supervisor execution adapter with durable funding", () => {
   it("restores the signed objective without querying fresh wallet inputs", async () => {

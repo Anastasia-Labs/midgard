@@ -26,6 +26,8 @@ export const SCRIPT_DECODE_RECORD_UNDERFUNDED =
 /**
  * The prover wallet cannot pay for the next record transaction. The
  * workflow pauses on it, and resumes on a later observation once funded.
+ * Record transactions are funded from plain-ADA coins only, and the reason
+ * says so: a coin holding a token is never spent.
  */
 export class ScriptDecodeRecordUnderfundedError extends WorkflowFundingReservationUnavailableError {
   constructor(
@@ -34,7 +36,7 @@ export class ScriptDecodeRecordUnderfundedError extends WorkflowFundingReservati
   ) {
     super();
     this.name = "ScriptDecodeRecordUnderfundedError";
-    this.message = `${SCRIPT_DECODE_RECORD_UNDERFUNDED}: the prover wallet cannot fund ${stage}: ${cause instanceof Error ? cause.message : String(cause)}`;
+    this.message = `${SCRIPT_DECODE_RECORD_UNDERFUNDED}: the prover wallet cannot fund ${stage} from its plain-ADA coins (a coin holding a token is never spent): ${cause instanceof Error ? cause.message : String(cause)}`;
   }
 }
 

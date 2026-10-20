@@ -1,6 +1,7 @@
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs";
 
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 
@@ -26,8 +27,8 @@ export const isWatcherFaultProofContinuationStall = (
 
 /**
  * Holds a pending objective under its name: one that needs a new submission
- * after its latest safe start, or one whose session stalled, which is also
- * logged at error level.
+ * after its latest safe start, one paused because the prover wallet cannot
+ * fund it, or one whose session stalled, which is also logged at error level.
  */
 export const holdWatcherFaultProofPending = (
   holds: Map<string, Readonly<{ reason: string; detail: string }>>,
@@ -35,11 +36,12 @@ export const holdWatcherFaultProofPending = (
   result: Readonly<{ kind: unknown; reason: unknown }>,
 ): Readonly<{ kind: "pending"; reason: string }> | undefined => {
   const resubmission = holdWatcherFaultProofForResubmission(holds, job, result);
-  if (
-    resubmission !== undefined ||
-    !isWatcherFaultProofContinuationStall(result)
-  )
-    return resubmission;
+  if (resubmission !== undefined) return resubmission;
+  if (result.kind === "pending") {
+    const funding = holdWatcherFaultProofOnFunding(holds, job, result.reason);
+    if (funding !== undefined) return funding;
+  }
+  if (!isWatcherFaultProofContinuationStall(result)) return undefined;
   const objective = `${job.category}/${job.headerHash}`;
   const hold = {
     reason: WATCHER_FAULT_PROOF_CONTINUATION_STALLED,

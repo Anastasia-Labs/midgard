@@ -6,7 +6,7 @@
  * its durable recovery names the exact output it leaves.
  */
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import { CML, coreToTxOutput, type TxOutput } from "@lucid-evolution/lucid";
+import { CML, type TxOutput } from "@lucid-evolution/lucid";
 
 import {
   exact,
@@ -24,6 +24,7 @@ import {
   latestSubmissionIntent,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { claimOwnOutputs, type OwnOutputClaim } from "./own-outputs.js";
 import type { LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 export const SCRIPT_DECODE_PREREQUISITE =
@@ -213,8 +214,9 @@ export const scriptDecodeDatumDigest = (datumCbor: string): string =>
   sha256(CML.PlutusData.from_cbor_hex(datumCbor).to_canonical_cbor_hex());
 
 /**
- * The durable recovery of a captured script-decode transaction: the one
- * output at `address` that `matches`, which the next action continues from.
+ * The durable recovery of a captured script-decode transaction: the output
+ * of our own signed body at `address` that `matches` (inline datum, no
+ * reference script), which the next action continues from, by its out-ref.
  */
 export const scriptDecodeRecovery = ({
   stage,
@@ -229,33 +231,35 @@ export const scriptDecodeRecovery = ({
   readonly matches: (output: TxOutput) => boolean;
   readonly unit: string | null;
 }): JournalJsonObject => {
-  const outputs = transaction.signed.toTransaction().body().outputs();
-  const found: number[] = [];
-  let datumCbor: string | undefined;
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = outputs.get(index);
-    const decoded = coreToTxOutput(output);
-    const inline = output.datum()?.as_datum()?.to_cbor_hex();
-    if (
-      decoded.address === address &&
-      inline !== undefined &&
-      output.script_ref() === undefined &&
-      matches(decoded)
-    ) {
-      found.push(index);
-      datumCbor = inline;
-    }
+  let claim: OwnOutputClaim;
+  try {
+    [claim] = claimOwnOutputs({
+      signed: transaction.signed,
+      slots: [
+        {
+          address,
+          matches: (output) =>
+            typeof output.datum === "string" &&
+            output.scriptRef == null &&
+            matches(output),
+        },
+      ],
+    }) as [OwnOutputClaim];
+  } catch (cause) {
+    throw new Error(`script decode ${stage} body has no exact output`, {
+      cause,
+    });
   }
-  if (found.length !== 1 || datumCbor === undefined) {
-    throw new Error(`script decode ${stage} body has no unique exact output`);
+  if (!claim.outRef.startsWith(`${transaction.txHash}#`)) {
+    throw new Error(`script decode ${stage} body is not the captured one`);
   }
   return Object.freeze({
     scriptDecode: Object.freeze({
       schemaVersion: SCRIPT_DECODE_RECOVERY,
       stage,
-      outRef: `${transaction.txHash}#${found[0]!.toString()}`,
+      outRef: claim.outRef,
       address,
-      datumCborSha256: scriptDecodeDatumDigest(datumCbor),
+      datumCborSha256: scriptDecodeDatumDigest(claim.output.datum!),
       unit,
     }),
   });

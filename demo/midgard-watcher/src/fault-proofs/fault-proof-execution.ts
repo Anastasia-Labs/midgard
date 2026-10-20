@@ -31,6 +31,7 @@ import type {
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
 import * as stall from "./fault-proof-continuation-stall.js";
+import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
@@ -78,10 +79,11 @@ export type WatcherFaultProofExecution = Readonly<{
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
    * Objectives held on a refused L1 read, a resubmission due after the latest
-   * safe start or a stalled session (`fault_proof_l1_refused:<reason>`,
-   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`),
-   * until a run or completion check meets something else, a stalled one's
-   * later run journals progress, or it is settled.
+   * safe start, a stalled session or unfunded prover wallet
+   * (`fault_proof_l1_refused:<reason>`, `fault_proof_resubmission_required`,
+   * `fault_proof_continuation_stalled`, `prover_funding_unavailable`), until a
+   * run or completion check meets something else, a stalled one's later run
+   * journals progress, or it is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -476,6 +478,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           error instanceof FraudProofL1CheckpointChangedError ||
           error instanceof WatcherProverFundingUnavailableError
         ) {
+          held = holdWatcherFaultProofOnFunding(holds, job, error);
           record("reconciling");
           return {
             kind: "pending",

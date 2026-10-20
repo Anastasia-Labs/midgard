@@ -14,6 +14,12 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
+import {
+  asWorkflowFundingShortfall,
+  releaseIdleWorkflowFundingReservation,
+  releaseUnfundedWorkflowFundingInputs,
+  WorkflowFundingReservationUnavailableError,
+} from "../workflow/funding-reservation-permit.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
@@ -285,12 +291,30 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   let result;
   try {
     result = await runtime.runOrResume(evidence);
-  } catch (cause) {
-    if (!(cause instanceof MintItemWorkflowRecoveryPendingError)) throw cause;
+  } catch (failure) {
+    // As in the shared orchestrator's preflight, a build the prover wallet
+    // cannot fund pauses until a top-up: the idle reservation is released
+    // (only once every recorded attempt is resolved), and a later
+    // observation reserves the wallet as it is then.
+    const cause =
+      failure instanceof MintItemWorkflowRecoveryPendingError
+        ? failure
+        : asWorkflowFundingShortfall(
+            `mintItemNonCanonical:${headerHash}`,
+            failure,
+          );
+    if (cause instanceof WorkflowFundingReservationUnavailableError) {
+      await releaseIdleWorkflowFundingReservation({
+        journal,
+        workflowId: centralJournal.workflowId,
+      });
+      await releaseUnfundedWorkflowFundingInputs({ journal, cause });
+    } else if (!(cause instanceof MintItemWorkflowRecoveryPendingError))
+      throw failure;
     return {
       kind: "pending" as const,
       resumeOnObservation: true,
-      reason: cause.message,
+      reason: (cause as Error).message,
     };
   }
   if (result !== "removed") return result;

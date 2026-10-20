@@ -22,6 +22,7 @@ import {
   ScriptDecodeWalkRejectedError,
   transactionExUnits,
 } from "../src/script-decode/index.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./support/script-decode-emulator.js";
 import { delayChainScript } from "./support/script-decode-plutus-max-shape.js";
@@ -88,6 +89,8 @@ const openRuns = (
 describe("script-decode record resume and refit", () => {
   it("resumes the open run after a stop part-way, without a second Bind", async () => {
     const { deployment, lucid } = await setup();
+    // The chunks a run stages, kept by the out-refs it published.
+    const ownOutputs = createOwnOutputJournal();
     await expect(
       recordScriptDecode({
         lucid,
@@ -95,6 +98,7 @@ describe("script-decode record resume and refit", () => {
         language: PLUTUS_V3,
         scriptBytes: script,
         maxWalks: 2,
+        ownOutputs,
       }),
     ).rejects.toThrow(/needs more than 2 Walks/u);
     const [open, ...others] = await openRuns(lucid, deployment);
@@ -106,6 +110,7 @@ describe("script-decode record resume and refit", () => {
       deployment,
       language: PLUTUS_V3,
       scriptBytes: script,
+      ownOutputs,
     });
     expect(rerun.record).toEqual(scriptDecodeRecordOfScript(PLUTUS_V3, script));
     expect(rerun.walks.length).toBeGreaterThan(0);
@@ -113,7 +118,7 @@ describe("script-decode record resume and refit", () => {
     // and no run of the script is left open beside the record.
     expect(await lucid.utxosByOutRef([open!])).toEqual([]);
     expect(await openRuns(lucid, deployment)).toEqual([]);
-    // The staged bytes of the first attempt served the rerun.
+    // The staged bytes the first attempt published served the rerun.
     const staged = (await lucid.utxosAt(await lucid.wallet().address())).filter(
       ({ datum }) => scriptDecodeStagingDatums(script).includes(datum ?? ""),
     );

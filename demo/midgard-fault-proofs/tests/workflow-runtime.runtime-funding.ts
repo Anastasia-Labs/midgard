@@ -60,6 +60,8 @@ export const runtimeFunding = async (
       releaseStaleInputs: boolean;
     }) => Promise<unknown>;
     supersededAttemptFundingOutRefs?: readonly (readonly string[])[];
+    /** One more reserved funding coin, holding a token beside its ada. */
+    tokenFunding?: Readonly<{ outRef: string; lovelace: bigint; unit: string }>;
   }> = {},
 ) => {
   const actuation = await admittedActuation();
@@ -82,6 +84,8 @@ export const runtimeFunding = async (
     [`${"72".repeat(32)}#0`, 2_000_000n],
     [`${"73".repeat(32)}#0`, 10_000_000n],
   ]);
+  const token = options.tokenFunding;
+  if (token !== undefined) values.set(token.outRef, token.lovelace);
   const collateralCount =
     typeof options.collateral === "number"
       ? options.collateral
@@ -98,7 +102,9 @@ export const runtimeFunding = async (
           ? ("collateral" as const)
           : ("funding" as const),
         lovelace: lovelace.toString(),
-        assets: Object.freeze([]),
+        assets: Object.freeze(
+          outRef === token?.outRef ? [{ unit: token.unit, quantity: "1" }] : [],
+        ),
       }),
     ),
   );
@@ -140,7 +146,10 @@ export const runtimeFunding = async (
         txHash: txHash!,
         outputIndex: Number(outputIndex),
         address: fundingAddress,
-        assets: { lovelace: values.get(outRef) ?? 1_000_000n },
+        assets: {
+          lovelace: values.get(outRef) ?? 1_000_000n,
+          ...(outRef === token?.outRef ? { [token.unit]: 1n } : {}),
+        },
       };
     }),
   );

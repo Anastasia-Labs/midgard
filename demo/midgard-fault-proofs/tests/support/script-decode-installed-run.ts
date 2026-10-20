@@ -264,3 +264,54 @@ export const stagingOutputsOf = async (harness: Harness) =>
   (await harness.proverLucid.utxosAt(harness.proverSigner.address)).filter(
     isStaging,
   );
+
+/**
+ * A process that stops once, at the poll after `stopAtNextPoll()`, and is
+ * restarted with `pollCap` more polls. `during` takes the run's context,
+ * `onStopped` restarts it, `stops()` counts the stops.
+ */
+export const stopsOnceAndRestarts = (pollCap: number) => {
+  let context: Omit<InstalledTurnContext, "result" | "turn"> | undefined;
+  let stops = 0;
+  return {
+    during: (run: Omit<InstalledTurnContext, "result" | "turn">) => {
+      context = run;
+    },
+    harness: () => context!.harness,
+    stopAtNextPoll: () => {
+      context!.clock.state.crashAfterPolls = context!.clock.state.polls;
+    },
+    onStopped: async (
+      error: unknown,
+      { application, clock }: Omit<InstalledTurnContext, "result">,
+    ) => {
+      expect(String(error)).toContain("installed application process stopped");
+      stops += 1;
+      await application.restart();
+      clock.state.crashAfterPolls = clock.state.polls + pollCap;
+    },
+    stops: () => stops,
+  };
+};
+
+/**
+ * How far one transaction's fee may move between two runs that build the
+ * same transactions. Each run's chain has its own keys, so the out-ref order
+ * of a transaction's reference inputs, which its redeemers index, differs
+ * from run to run, and the fee by a few hundred lovelace with it.
+ */
+const FEE_SPREAD = 2_000n;
+
+/** The same transactions as the baseline, in the same order, at its fees. */
+export const expectBaselineCost = (
+  cost: readonly Readonly<{ kind: string; fee: bigint }>[],
+  baseline: readonly Readonly<{ kind: string; fee: bigint }>[],
+) => {
+  expect(cost.map(({ kind }) => kind)).toEqual(
+    baseline.map(({ kind }) => kind),
+  );
+  cost.forEach(({ fee }, index) => {
+    const spread = fee - baseline[index]!.fee;
+    expect(spread < 0n ? -spread : spread).toBeLessThanOrEqual(FEE_SPREAD);
+  });
+};

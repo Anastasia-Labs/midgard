@@ -245,10 +245,18 @@ export const recordCrossBlockRawEmulator = () => {
             pointId: boundary.pointId,
           }),
         },
+        // An out-ref scope serves only its out-refs, as the follower does.
         scopes: request.scopes.map((scope) => ({
           ...scope,
           utxos: utxos
-            .filter((utxo) => utxo.address === scope.address)
+            .filter(
+              (utxo) =>
+                utxo.address === scope.address &&
+                (scope.outRefs === undefined ||
+                  scope.outRefs.includes(
+                    `${utxo.txHash}#${utxo.outputIndex.toString()}`,
+                  )),
+            )
             .map(output),
         })),
         historyUnits: request.historyUnits,

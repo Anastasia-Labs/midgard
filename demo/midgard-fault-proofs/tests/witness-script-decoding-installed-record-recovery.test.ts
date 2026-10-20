@@ -6,10 +6,13 @@
  * again over its journal and reservation store and finishes the record it
  * began: it leaves exactly the outputs an uninterrupted run leaves, so no
  * record action is taken twice. A wallet that cannot pay for the next record
- * action pauses the objective with the typed underfunded reason, and a
- * top-up resumes it to conviction. A Walk the ledger rejects on every one of
- * its bounded attempts holds the objective instead of refitting it forever.
+ * action pauses the objective with the typed underfunded reason, which says
+ * it funds from plain-ADA coins only, and a top-up resumes it to conviction,
+ * a coin holding a token left unspent. A Walk the ledger rejects on every
+ * one of its bounded attempts holds the objective instead of refitting it
+ * forever.
  */
+import type { OutRef } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({
@@ -53,6 +56,11 @@ import {
   SCRIPT_DECODE_RECORD_HELD,
   SCRIPT_DECODE_RECORD_UNDERFUNDED,
 } from "../src/workflow/script-decode-prerequisite.port.js";
+import {
+  drainProver,
+  sendTokenCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import { interceptSubmissions } from "./support/script-decode-installed-host.js";
 import {
@@ -88,43 +96,6 @@ type Harness = InstalledTurnContext["harness"];
 /** The address every Bind, Walk and Finish pays its run or record to. */
 const recordAddress = (harness: Harness) =>
   scriptDecodeDeploymentOf(harness.emulator).validator.spendingScriptAddress;
-
-/**
- * Leaves the prover wallet a collateral output and `fundingLovelace` of
- * plain funding, everything else going to the funder: the operator's wallet
- * as it is when it runs low.
- */
-const drainProver = async (harness: Harness, fundingLovelace: bigint) => {
-  harness.emulator.awaitBlock();
-  const lucid = harness.proverLucid;
-  lucid.clearUTxOOverride();
-  const plain = (await lucid.wallet().getUtxos()).filter(
-    (utxo) =>
-      utxo.datum == null && utxo.datumHash == null && utxo.scriptRef == null,
-  );
-  const drained = await lucid
-    .newTx()
-    .collectFrom(plain)
-    .pay.ToAddress(harness.proverSigner.address, { lovelace: 2_000n * ADA })
-    .pay.ToAddress(harness.proverSigner.address, { lovelace: fundingLovelace })
-    .complete({
-      presetWalletInputs: plain,
-      coinSelection: false,
-      changeAddress: await harness.funderLucid.wallet().address(),
-    });
-  await (await drained.sign.withWallet().complete()).submit();
-  harness.emulator.awaitBlock();
-};
-
-/** The funder pays the prover wallet `lovelace`. */
-const topUpProver = async (harness: Harness, lovelace: bigint) => {
-  const topUp = await harness.funderLucid
-    .newTx()
-    .pay.ToAddress(harness.proverSigner.address, { lovelace })
-    .complete();
-  await (await topUp.sign.withWallet().complete()).submit();
-  harness.emulator.awaitBlock();
-};
 
 describe("script-decode record recovery in the installed watcher application", () => {
   it("resumes a record its stopped process began from the journal, taking no record action twice", async () => {
@@ -211,6 +182,47 @@ describe("script-decode record recovery in the installed watcher application", (
     expect(pausedReasons).toHaveLength(2);
     expect(toppedUp).toBe(true);
     expect(run.convicted).toBe(true);
+  }, 1_800_000);
+
+  it("pauses a record the wallet's plain-ADA coins cannot fund beside a coin holding a token, and convicts after a top-up without spending that coin", async () => {
+    let drained = false;
+    let toppedUp = false;
+    let tokenCoin: OutRef | undefined;
+    let harness: Harness | undefined;
+    const pausedReasons: string[] = [];
+    const run = await runInstalled(SCENARIO, hooks, {
+      beforeTurns: (context) => {
+        harness = context.harness;
+        context.clock.state.crashAfterPolls = POLL_CAP;
+        context.clock.state.onPoll = async () => {
+          if (drained || (await stagingOutputsOf(context.harness)).length === 0)
+            return;
+          drained = true;
+          await drainProver(context.harness, 1_500_000n);
+          // The wallet's ada now sits in a coin that also holds a token.
+          tokenCoin = await sendTokenCoin(context.harness, 5_000n * ADA);
+        };
+      },
+      afterTurn: async ({ harness, result }) => {
+        if (!drained || toppedUp) return;
+        if (
+          result.reason?.startsWith(SCRIPT_DECODE_RECORD_UNDERFUNDED) !== true
+        )
+          return;
+        pausedReasons.push(result.reason);
+        await topUpProver(harness, 5_000n * ADA);
+        toppedUp = true;
+      },
+    });
+
+    expect(pausedReasons).toHaveLength(1);
+    expect(pausedReasons[0]).toContain(
+      "from its plain-ADA coins (a coin holding a token is never spent)",
+    );
+    expect(run.convicted).toBe(true);
+    expect(await harness!.emulator.getUtxosByOutRef([tokenCoin!])).toHaveLength(
+      1,
+    );
   }, 1_800_000);
 
   it("holds a Walk the ledger rejects on every bounded attempt, submitting it no more", async () => {
