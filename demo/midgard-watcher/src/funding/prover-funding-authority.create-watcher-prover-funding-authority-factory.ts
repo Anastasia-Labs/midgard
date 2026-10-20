@@ -49,12 +49,20 @@ import {
 } from "./prover-funding-reservation.js";
 
 /**
- * VerifySource's deployment-bound custody terms: the manifest's dispute bond
- * (the case validator's applied bond) and the dispute contracts it pays.
+ * A validation-trace dispute policy's VerifySource custody terms, from the
+ * signed deployment: the manifest's dispute bond (the case validator's
+ * applied bond) and the dispute contracts it pays. Any other category's
+ * policy carries none.
  */
-const validationDisputeTerms = (
+export const watcherValidationDisputeFundingTerms = (
   identity: VerifiedWatcherDeploymentIdentity,
-) => {
+  category: string,
+): Readonly<{
+  validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
+}> => {
+  if (category !== "validationTraceDispute") return {};
   const hashes = watcherDeploymentAppliedScriptHashes(identity);
   const hash = (name: string) => {
     const scriptHash = hashes[name];
@@ -65,14 +73,16 @@ const validationDisputeTerms = (
   const address = (name: string) =>
     credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
   return {
-    deploymentFingerprint: identity.manifestId,
-    bondLovelace: BigInt(
-      watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
-        .challengerBondLovelace,
-    ),
-    bondAddress: address("validationTraceDisputeBond"),
-    caseAddress: address("validationTraceDisputeCase"),
-    casePolicyId: hash("validationTraceDisputeCaseMint"),
+    validationDispute: {
+      deploymentFingerprint: identity.manifestId,
+      bondLovelace: BigInt(
+        watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+          .challengerBondLovelace,
+      ),
+      bondAddress: address("validationTraceDisputeBond"),
+      caseAddress: address("validationTraceDisputeCase"),
+      casePolicyId: hash("validationTraceDisputeCaseMint"),
+    },
   };
 };
 
@@ -259,13 +269,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         economics,
         contracts: [...uniqueContracts.values()],
         referenceScripts: [...referenceScripts.values()],
-        ...(request.category === "validationTraceDispute"
-          ? {
-              validationDispute: validationDisputeTerms(
-                input.deploymentIdentity,
-              ),
-            }
-          : {}),
+        ...watcherValidationDisputeFundingTerms(
+          input.deploymentIdentity,
+          request.category,
+        ),
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;

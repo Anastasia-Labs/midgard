@@ -9,18 +9,25 @@
  *
  * The calling test stands in for the family's install (the category is not
  * installed until its defender exists); the deployment is the fixture
- * manifest's, whose dispute bond is the emulator deployment's.
+ * manifest's with the scene's dispute contracts, whose dispute bond is the
+ * emulator deployment's. The policy's dispute terms are the watcher's own,
+ * derived from that signed deployment.
  */
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { Lucid, type UTxO } from "@lucid-evolution/lucid";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
+  watcherValidationDisputeFundingTerms,
 } from "midgard-watcher";
-import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
+import {
+  makeWatcherAuthorityContracts,
+  makeWatcherDeploymentAuthorityFixture,
+} from "midgard-watcher/tests/support/deployment-authority-fixture";
 import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher/tests/support/prover-funding-hold";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
@@ -99,14 +106,54 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
 };
 
 /**
+ * The fixture's signed deployment, its dispute bond and case contracts (and
+ * their reference-script entries) the scene's.
+ */
+const signedDeployment = (scene: Scene) => {
+  const { chain } = scene;
+  const contractSet = makeWatcherAuthorityContracts();
+  const deployed = (name: string, script: Script, scriptHash: string) => {
+    contractSet.contracts[name] = {
+      ...contractSet.contracts[name]!,
+      contract: { type: script.type, cborHex: script.script },
+      scriptHash,
+    };
+    for (const [role, contract] of Object.entries(
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    ))
+      if (contract === name)
+        contractSet.referenceScripts[role] = {
+          ...contractSet.referenceScripts[role]!,
+          scriptHash,
+        };
+  };
+  deployed(
+    "validationTraceDisputeBond",
+    chain.disputeBond.spendingScript,
+    chain.disputeBond.spendingScriptHash,
+  );
+  deployed(
+    "validationTraceDisputeCase",
+    chain.case.spendingScript,
+    chain.case.spendingScriptHash,
+  );
+  deployed(
+    "validationTraceDisputeCaseMint",
+    chain.case.mintingScript,
+    chain.case.policyId,
+  );
+  return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
+};
+
+/**
  * Classifies the failing block's header, then returns one watcher turn for
  * its objective over the durable state in a fresh directory.
  */
 export const openFundedDispute = async (scene: Scene) => {
-  const { h, chain } = scene;
+  const { h } = scene;
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
-  const identity = makeWatcherDeploymentAuthorityFixture().result;
+  const identity = signedDeployment(scene);
   const fingerprint = identity.manifestId;
   const bondLovelace = BigInt(
     watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
@@ -177,13 +224,10 @@ export const openFundedDispute = async (scene: Scene) => {
   const journalDirectory = join(directory, "journal");
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   const deployment = runnerDeployment(scene, fingerprint);
-  const validationDispute = {
-    deploymentFingerprint: fingerprint,
-    bondLovelace,
-    bondAddress: chain.disputeBond.spendingScriptAddress,
-    caseAddress: chain.case.spendingScriptAddress,
-    casePolicyId: chain.case.policyId,
-  };
+  const { validationDispute } = watcherValidationDisputeFundingTerms(
+    identity,
+    CATEGORY,
+  );
   /** The watcher process's in-memory part; booting again is a restart. */
   const boot = async () =>
     await openInstalledProverFunding({
