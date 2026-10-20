@@ -5,13 +5,21 @@
  * off the import path, and its verdicts feed only alarms (`alarms.ts`).
  *
  * Checking an entry rebuilds its runs (`rebuild.ts`) and runs them in
- * order, each killed at `importCheckKillMs`. A run that faults is retried
- * once on a fresh instance; a kill is never a verdict, and neither is a run
- * cancelled because it was not started in time (the entry stays unrun).
+ * order, each killed at `importCheckKillMs`. A run that faults or is killed
+ * is retried once on a fresh instance. Neither a kill nor a run cancelled
+ * because it was not started in time is a verdict (the entry stays unrun):
+ * the kill is wall-clock time, which machine load stretches, so only the
+ * deterministic outcomes below decide an entry.
  * - every run accepted: the entry leaves the set;
- * - a run rejected: the entry stays as `rejected` (`import_check_rejected`);
- * - a run faulted again: the entry stays as `faulted`
- *   (`uplc_import_fault`), and its script enters the negative cache.
+ * - a run rejected, or over its declared budget: the entry stays as
+ *   `rejected` (`import_check_rejected`);
+ * - a run faulted again (crashed or failed to evaluate): the entry stays as
+ *   `faulted` (`uplc_import_fault`), and its script enters the negative
+ *   cache;
+ * - a run killed again: no verdict (`import_check_timeout`). The entry
+ *   stays unrun, no pass starts it until its retry is due
+ *   (`IMPORT_CHECK_TIMEOUT_RETRY_MS`, doubled with each timeout), and after
+ *   `IMPORT_CHECK_TIMEOUT_RETRIES` retries it waits for its deadline.
  * A verdict that arrives at or after the entry's deadline first raises
  * `unverified_deadline_missed` (once per entry), then applies as above.
  *
@@ -61,13 +69,29 @@ import { importCheckKillMs, importCheckLoadKillMs } from "./kill.js";
 import { type NegativeCache } from "./negative-cache.js";
 import { importCheckOutRefs, rebuildAndEvaluate } from "./rebuild.js";
 
+/** An entry whose last check was killed (`ImportCheckRuns.timedOut`). */
+export type TimedOutCheck = Readonly<{
+  key: ImportCheckKey;
+  deadlineMs: number;
+  /** Its timeouts so far. */
+  timeouts: number;
+  /** When a pass may start it again; never once its retries are spent. */
+  retryAtMs: number;
+}>;
+
 /**
  * The passes' shared state: the entries being checked now (no other pass
- * runs them, and the sweep leaves them in the set), and the entries
- * `unverified_deadline_missed` was raised for, by deadline.
+ * runs them, and the sweep leaves them in the set), the entries whose last
+ * check was killed, and the entries `unverified_deadline_missed` was raised
+ * for, by deadline.
  */
 export type ImportCheckRuns = Readonly<{
   inFlight: Map<string, ImportCheckEntry>;
+  /**
+   * In memory only, and dropped at the entry's deadline: after a restart
+   * each such entry is run again with its retries renewed.
+   */
+  timedOut: Map<string, TimedOutCheck>;
   /**
    * In memory only: after a restart, an entry alarmed while it was still
    * being checked past its deadline is alarmed once more when the sweep
@@ -78,6 +102,7 @@ export type ImportCheckRuns = Readonly<{
 
 export const makeImportCheckRuns = (): ImportCheckRuns => ({
   inFlight: new Map(),
+  timedOut: new Map(),
   missed: new Map(),
 });
 
@@ -92,12 +117,62 @@ export type ImportCheckPassInput = Readonly<{
 /** The most backlog entries one backlog pass reads. */
 export const BACKLOG_BATCH = 64;
 
+/** How long an entry whose check was killed waits before a pass runs it
+ * again; doubled with each further timeout. */
+export const IMPORT_CHECK_TIMEOUT_RETRY_MS = 5_000;
+
+/** The most times an entry whose check was killed is run again. */
+export const IMPORT_CHECK_TIMEOUT_RETRIES = 5;
+
 const keyOf = (key: ImportCheckKey) =>
   `${key.headerHash}:${key.transactionId.toString("hex")}`;
 
 const inFlight = (input: ImportCheckPassInput) => [
   ...input.runs.inFlight.values(),
 ];
+
+/** The entries being checked, and the killed ones whose retry is due after
+ * `nowMs` (all of them by default). */
+const held = (
+  input: ImportCheckPassInput,
+  nowMs = Number.NEGATIVE_INFINITY,
+): ImportCheckKey[] => [
+  ...input.runs.inFlight.values(),
+  ...[...input.runs.timedOut.values()]
+    .filter((check) => check.retryAtMs > nowMs)
+    .map((check) => check.key),
+];
+
+/** Records a killed check of `entry`: it is run again from its retry time,
+ * or, its retries spent, not before a restart. */
+const deferTimedOut = (
+  input: ImportCheckPassInput,
+  entry: ImportCheckEntry,
+  detail: string,
+) =>
+  Effect.gen(function* () {
+    const key = keyOf(entry);
+    const timeouts = (input.runs.timedOut.get(key)?.timeouts ?? 0) + 1;
+    const retryAtMs =
+      timeouts > IMPORT_CHECK_TIMEOUT_RETRIES
+        ? undefined
+        : (yield* Clock.currentTimeMillis) +
+          IMPORT_CHECK_TIMEOUT_RETRY_MS * 2 ** (timeouts - 1);
+    input.runs.timedOut.set(key, {
+      key: { headerHash: entry.headerHash, transactionId: entry.transactionId },
+      deadlineMs: entry.deadlineMs,
+      timeouts,
+      retryAtMs: retryAtMs ?? Number.POSITIVE_INFINITY,
+    });
+    yield* input.alarm({
+      alarm: "import_check_timeout",
+      headerHash: entry.headerHash,
+      transactionId: entry.transactionId.toString("hex"),
+      detail,
+      timeouts,
+      ...(retryAtMs === undefined ? {} : { retryAtMs }),
+    });
+  });
 
 /** Raises `unverified_deadline_missed` for `entry` unless it was raised
  * already or the entry left the set or the landed chain. */
@@ -129,7 +204,10 @@ const runEntry = (
 ) =>
   Effect.gen(function* () {
     const material = yield* retrieveCheckMaterial(entry, importCheckOutRefs);
-    if (material === undefined) return "done" as const;
+    if (material === undefined) {
+      input.runs.timedOut.delete(keyOf(entry));
+      return "done" as const;
+    }
     const verdict = yield* rebuildAndEvaluate(
       entry.transactionId,
       material,
@@ -144,11 +222,16 @@ const runEntry = (
             ...options,
             fresh: false,
           });
-          if (first.kind !== "fault") return first;
+          if (first.kind !== "fault" && first.kind !== "timeout") return first;
           return yield* evaluator.evaluate(run, { ...options, fresh: true });
         }),
     );
     if (verdict.kind === "cancelled") return "cancelled" as const;
+    if (verdict.kind === "timeout") {
+      yield* deferTimedOut(input, entry, verdict.detail);
+      return "deferred" as const;
+    }
+    input.runs.timedOut.delete(keyOf(entry));
     if ((yield* Clock.currentTimeMillis) >= entry.deadlineMs)
       yield* raiseMissed(input, entry, entry.state);
     const transactionId = entry.transactionId.toString("hex");
@@ -217,7 +300,7 @@ const checkBlock = (
       const page = yield* retrieveChecks(["pending"], {
         headerHash,
         dueAfterMs: now,
-        excluding: inFlight(input),
+        excluding: held(input, now),
       });
       progressed = false;
       for (const entry of page) {
@@ -237,11 +320,12 @@ const checkBlock = (
         );
         capped = result === "cancelled";
         if (capped) break;
-        progressed ||= result === "done";
+        progressed ||= result === "done" || result === "deferred";
       }
     }
     if (!capped) return;
-    const skipped = yield* skipPendingChecks(headerHash, inFlight(input));
+    // A killed entry stays pending: it was started, and a later pass retries it.
+    const skipped = yield* skipPendingChecks(headerHash, held(input));
     if (skipped > 0)
       yield* input.alarm({ alarm: "import_check_cap", headerHash, skipped });
   });
@@ -254,10 +338,8 @@ export const runImportCheckPass = (input: ImportCheckPassInput) =>
   Effect.gen(function* () {
     const evaluator = input.evaluator;
     if (evaluator === undefined) return false;
-    const headerHash = yield* retrieveNextPendingBlock(
-      yield* Clock.currentTimeMillis,
-      inFlight(input),
-    );
+    const now = yield* Clock.currentTimeMillis;
+    const headerHash = yield* retrieveNextPendingBlock(now, held(input, now));
     if (headerHash === undefined) return false;
     yield* checkBlock(input, evaluator, headerHash);
     return true;
@@ -273,9 +355,10 @@ export const runBacklogPass = (input: ImportCheckPassInput) =>
   Effect.gen(function* () {
     const evaluator = input.evaluator;
     if (evaluator === undefined) return 0;
+    const now = yield* Clock.currentTimeMillis;
     const entries = yield* retrieveChecks(UNRUN_STATES, {
-      dueAfterMs: yield* Clock.currentTimeMillis,
-      excluding: inFlight(input),
+      dueAfterMs: now,
+      excluding: held(input, now),
       limit: BACKLOG_BATCH,
     });
     yield* Effect.forEach(
@@ -352,6 +435,8 @@ export const runUnverifiedSweep = (
         input.runs.missed.delete(key);
     for (const deadlineMs of alarmed)
       if (deadlineMs <= now) alarmed.delete(deadlineMs);
+    for (const [key, check] of input.runs.timedOut)
+      if (check.deadlineMs <= now) input.runs.timedOut.delete(key);
     const evaluator = input.evaluator;
     if (evaluator === undefined) return;
     const loads = yield* retrieveCheckLoads(UNRUN_STATES);

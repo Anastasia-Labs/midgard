@@ -107,7 +107,7 @@ describe("import checker", () => {
     const [first, retry] = injected.threads();
     expect(retry).not.toBe(first);
     expect(await idsIn(["faulted"])).toEqual([hex(block.txIds[0]!)]);
-    // A kill or crash is never a verdict: later passes leave it as it is.
+    // A faulted entry is not run again: later passes leave it as it is.
     expect(await check.importPass()).toEqual([]);
     expect(await check.backlog()).toEqual([]);
     expect(await idsIn(["faulted"])).toEqual([hex(block.txIds[0]!)]);
@@ -158,7 +158,7 @@ describe("import checker", () => {
     expect(await entries()).toEqual([]);
   }, 60_000);
 
-  it("kills hanging runs, stops at the block's cap, and keeps the skipped transactions", async () => {
+  it("kills hanging runs without a verdict, stops at the block's cap, and keeps the skipped transactions", async () => {
     const block = await landBlock(["accept", "accept", "accept", "accept"]);
     // Three workers: a killed run's retry takes the third at once instead of
     // waiting for the killed worker's replacement.
@@ -170,22 +170,27 @@ describe("import checker", () => {
       blockCapMs: 900,
     }).importPass();
     expect(Date.now() - startedAt).toBeLessThan(10_000);
-    const faults = alarms.filter(
-      (alarm) => alarm.alarm === "uplc_import_fault",
+    const killed = alarms.filter(
+      (alarm) => alarm.alarm === "import_check_timeout",
     );
     const cap = alarms.filter((alarm) => alarm.alarm === "import_check_cap");
-    expect(faults.length).toBeGreaterThanOrEqual(1);
+    expect(killed.length).toBeGreaterThanOrEqual(1);
+    expect(
+      alarms.filter((alarm) => alarm.alarm === "uplc_import_fault"),
+    ).toEqual([]);
     expect(cap).toEqual([
       {
         alarm: "import_check_cap",
         headerHash: block.headerHash,
-        skipped: 4 - faults.length,
+        skipped: 4 - killed.length,
       },
     ]);
-    // Each hanging transaction costs at most one kill and one retry.
-    expect(injected.jobs()).toBe(2 * faults.length);
-    expect(await entries(["faulted"])).toHaveLength(faults.length);
-    expect(await entries(["cap_skipped"])).toHaveLength(4 - faults.length);
+    // Each hanging transaction costs at most one kill and one retry, and
+    // stays pending: a kill is no verdict.
+    expect(injected.jobs()).toBe(2 * killed.length);
+    expect(await entries(["faulted"])).toEqual([]);
+    expect(await entries(["pending"])).toHaveLength(killed.length);
+    expect(await entries(["cap_skipped"])).toHaveLength(4 - killed.length);
   }, 60_000);
 
   it("imports and processes the next block, spending a checked block's output, while a pass is still running", async () => {
@@ -232,7 +237,7 @@ describe("import checker", () => {
     ]);
   }, 60_000);
 
-  it("keeps faulted, skipped and rejected entries across a restart", async () => {
+  it("keeps killed, skipped and rejected entries across a restart", async () => {
     const block = await landBlock(["accept", "accept", "accept"]);
     const injected = await injectedEvaluator(
       { mode: "hang", rejectContexts: [block.runs[0]![0]!.contextCbor] },
@@ -247,7 +252,7 @@ describe("import checker", () => {
     }).importPass();
     await closePools();
     const states = (await entries()).map((entry) => entry.state);
-    expect(states).toEqual(["rejected", "faulted", "cap_skipped"]);
+    expect(states).toEqual(["rejected", "pending", "cap_skipped"]);
   }, 60_000);
 
   it("drops entries at their deadline, half the block maturity after the block's end, alarming only for unverified ones", async () => {
