@@ -682,9 +682,10 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   provider. On the testing profiles (15 min maturity) the bound is longer
   than maturity, so there it is an alarm only.
 - `prover_funding_unavailable`: an objective paused because the prover
-  wallet cannot fund its next transaction (too little plain ada for the
-  fee, collateral or change; a coin holding a token is never spent), or
-  its funding reservation could not be made; the detail is
+  wallet cannot fund its next transaction, a script-decode record
+  transaction included (too little plain ada for the fee, collateral or
+  change; a coin holding a token is never spent), or its funding
+  reservation could not be made; the detail is
   `<category>/<headerHash>: <reason>`. The objective resumes on each
   observation and is never failed for it; the hold clears once a later run
   meets something else. Top up the prover wallet with plain ada.

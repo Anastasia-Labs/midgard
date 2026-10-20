@@ -17,6 +17,7 @@ import "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import "./funding-reservation-permit.apply-transition.js";
 import "./funding-reservation-permit.restrict-workflow-funding-signer.js";
 import "./funding-reservation-permit.workflow-funding-shortfall.js";
+import "./funding-reservation-permit.is-workflow-funding-pause-reason.js";
 export {
   abandonWorkflowFundingReservationTransaction,
   acknowledgeWorkflowFundingAbandonment,
@@ -32,6 +33,7 @@ export {
   bindWorkflowFundingReservationJournal,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 export { createWorkflowFundingReservationPermit } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+export { isWorkflowFundingPauseReason } from "./funding-reservation-permit.is-workflow-funding-pause-reason.js";
 export {
   assertWorkflowFundingAbandonmentHandoffJournal,
   createWorkflowFundingAbandonmentHandoff,

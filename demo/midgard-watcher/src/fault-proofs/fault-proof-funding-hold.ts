@@ -1,7 +1,4 @@
-import {
-  WORKFLOW_FUNDING_SHORTFALL,
-  WorkflowFundingReservationUnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+import { isWorkflowFundingPauseReason } from "@al-ft/midgard-fault-proofs";
 
 import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
@@ -14,18 +11,11 @@ import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
  */
 export const WATCHER_PROVER_FUNDING_UNAVAILABLE = "prover_funding_unavailable";
 
-const RESERVATION_UNAVAILABLE = new WorkflowFundingReservationUnavailableError()
-  .message;
-
 /** The funding reason of a pending run's reason or of a run's failure. */
 const fundingReason = (cause: unknown): string | undefined => {
   if (cause instanceof WatcherProverFundingUnavailableError)
     return cause.message;
-  if (
-    typeof cause === "string" &&
-    (cause.startsWith(WORKFLOW_FUNDING_SHORTFALL) ||
-      cause === RESERVATION_UNAVAILABLE)
-  )
+  if (typeof cause === "string" && isWorkflowFundingPauseReason(cause))
     return cause;
   return undefined;
 };

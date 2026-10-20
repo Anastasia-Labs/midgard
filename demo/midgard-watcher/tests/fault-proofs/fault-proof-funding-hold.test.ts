@@ -47,6 +47,26 @@ describe("a fault-proof objective paused on prover funding", () => {
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
+  it("is named on readiness while a script-decode record transaction is unfunded, until a top-up", async () => {
+    const test = await setupFaultProofExecution();
+    const objective = `doubleSpend/${test.input.job.headerHash}`;
+    const underfunded =
+      "script-decode-record-underfunded: the prover wallet cannot fund bind from its plain-ADA coins (a coin holding a token is never spent): Your wallet does not have enough funds";
+    test.runOrResume.mockResolvedValueOnce({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: underfunded,
+    });
+    await test.execution.execute(test.input);
+    expect(test.execution.readiness()).toEqual([
+      { reason: HOLD, detail: `${objective}: ${underfunded}` },
+    ]);
+    // After a top-up the record transaction lands and the run moves on.
+    test.runOrResume.mockResolvedValueOnce({ kind: "pending", reason: OTHER });
+    await test.execution.execute(test.input);
+    expect(test.execution.readiness()).toEqual([]);
+  });
+
   it("is named on readiness while the wallet cannot fund a new reservation", async () => {
     const test = await setupFaultProofExecution(true);
     const run = {
