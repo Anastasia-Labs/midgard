@@ -8,6 +8,7 @@
  */
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   type Emulator,
   generateEmulatorAccount,
@@ -202,4 +203,78 @@ export const placeSameDatumBefore = async (
       return await watch.asOtherParty(async () => await signed.submit());
   }
   throw new Error("no copy sorting first was found");
+};
+
+/** The datum of the mint redeemer `transaction` carries, as CBOR. */
+const mintRedeemerOf = (transaction: CML.Transaction): string => {
+  const redeemers = transaction.witness_set().redeemers();
+  const legacy = redeemers?.as_arr_legacy_redeemer();
+  for (let index = 0; legacy !== undefined && index < legacy.len(); index += 1)
+    if (legacy.get(index).tag() === CML.RedeemerTag.Mint)
+      return legacy.get(index).data().to_cbor_hex();
+  const map = redeemers?.as_map_redeemer_key_to_redeemer_val();
+  const keys = map?.keys();
+  for (let index = 0; keys !== undefined && index < keys.len(); index += 1)
+    if (keys.get(index).tag() === CML.RedeemerTag.Mint)
+      return map!.get(keys.get(index))!.data().to_cbor_hex();
+  throw new Error("the transaction mints nothing");
+};
+
+/**
+ * Another party's own certificate for the field `certify` certifies: it
+ * reads the same publications, mints the certificate token with the same
+ * redeemer and pays the same certificate output, from its own coins, so it
+ * is as valid as the application's. Its transaction id sorts before
+ * `below`.
+ */
+export const placeCertificateBefore = async (
+  watch: LedgerWatch,
+  lucid: LucidEvolution,
+  {
+    certify,
+    certificate,
+    below,
+  }: {
+    certify: LedgerTransaction;
+    certificate: CarriageOutput;
+    below: string;
+  },
+) => {
+  const transaction = CML.Transaction.from_cbor_hex(certify.cbor);
+  const redeemer = mintRedeemerOf(transaction);
+  const output = certify.outputs[Number(certificate.outRef.split("#")[1])]!;
+  const references = await lucid.utxosByOutRef(
+    certify.referenceInputs.map((outRef) => {
+      const [txHash, index] = outRef.split("#");
+      return { txHash: txHash!, outputIndex: Number(index) };
+    }),
+  );
+  const self = await lucid.wallet().address();
+  lucid.clearUTxOOverride();
+  for (let attempt = 0n; attempt < 4_096n; attempt += 1n) {
+    // Output 0 and the reference inputs stay as the redeemer names them; a
+    // second output to the other party varies the transaction id.
+    const unsigned = await lucid
+      .newTx()
+      .readFrom(references)
+      .mintAssets(
+        Object.fromEntries(
+          Object.keys(output.assets)
+            .filter((unit) => unit !== "lovelace")
+            .map((unit) => [unit, 1n]),
+        ),
+        redeemer,
+      )
+      .pay.ToAddressWithData(
+        certificate.address,
+        { kind: "inline", value: certificate.datum },
+        output.assets,
+      )
+      .pay.ToAddress(self, { lovelace: 2_000_000n + attempt })
+      .complete();
+    const signed = await unsigned.sign.withWallet().complete();
+    if (signed.toHash() < below)
+      return await watch.asOtherParty(async () => await signed.submit());
+  }
+  throw new Error("no certificate sorting first was found");
 };

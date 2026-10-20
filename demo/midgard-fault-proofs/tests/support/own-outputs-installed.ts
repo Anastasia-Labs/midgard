@@ -96,6 +96,8 @@ export type LedgerTransaction = Readonly<{
   withdraws: boolean;
   /** True when another party placed it, not the application. */
   planted: boolean;
+  /** The signed transaction as submitted. */
+  cbor: string;
 }>;
 
 const outRefList = (
@@ -125,6 +127,7 @@ const decode = (cbor: string, planted: boolean): LedgerTransaction => {
     outputs,
     withdraws: withdrawals !== undefined && withdrawals.len() > 0,
     planted,
+    cbor,
   });
 };
 

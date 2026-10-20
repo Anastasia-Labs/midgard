@@ -59,6 +59,7 @@ import {
   fieldCarriageOf,
   type FieldCarriageSites,
   otherParty,
+  placeCertificateBefore,
   placeSameDatum,
   placeSameDatumBefore,
   publicationsOf,
@@ -262,12 +263,15 @@ const runWith = async (
 
 /**
  * Places, before each of the application's transactions that pays carriage
- * of a kind, other parties' outputs with that carriage's datums.
- * `confirmed` lands them a block ahead: an exact copy of each, and a copy
- * carrying a token of each that leaves room for one in a transaction.
- * Otherwise each is an exact copy landing in the same block whose
- * transaction id sorts first. A placement that fails is recorded, not swallowed
- * by the application's submission.
+ * of a kind, other parties' outputs for that carriage. For publications:
+ * with `confirmed`, an exact copy of each a block ahead, and a copy carrying
+ * a token of each that leaves room for one in a transaction; otherwise an
+ * exact copy of each landing in the same block whose transaction id sorts
+ * first. For the certificate: another party's own certificate of the same
+ * field, minted with the certificate token, whose transaction id sorts
+ * first, a block ahead with `confirmed` and otherwise in the same block. A
+ * placement that fails is recorded, not swallowed by the application's
+ * submission.
  */
 const placeBeside = (
   kind: "publication" | "certificate",
@@ -290,6 +294,16 @@ const placeBeside = (
           );
     if (outputs.length === 0 || seen.has(transaction.txHash)) return;
     seen.add(transaction.txHash);
+    if (kind === "certificate") {
+      copies += 1;
+      await placeCertificateBefore(watch, other, {
+        certify: transaction,
+        certificate: outputs[0]!,
+        below: transaction.txHash,
+      });
+      if (confirmed) harness.emulator.awaitBlock();
+      return;
+    }
     for (const { address, datum } of outputs) {
       copies += 1;
       if (!confirmed) {
@@ -349,7 +363,7 @@ describe("witness field carriage found by the out-refs it published, in the inst
       when: "sorting first in its block",
     },
   ] as const)(
-    "reads its own $kind past same-datum outputs $when",
+    "reads its own $kind past another party's outputs for it $when",
     async ({ kind, confirmed }) => {
       const beside = placeBeside(kind, { confirmed });
       const { run, watch, harness, cost } = await runWith(() => [], {
@@ -357,7 +371,8 @@ describe("witness field carriage found by the out-refs it published, in the inst
       });
       expect(beside.failures()).toEqual([]);
       expect(beside.copies()).toBeGreaterThan(0);
-      if (confirmed) expect(beside.withToken()).toBeGreaterThan(0);
+      if (confirmed && kind === "publication")
+        expect(beside.withToken()).toBeGreaterThan(0);
       expect(run.convicted).toBe(true);
       expect(watch.plantedOutRefs().size).toBeGreaterThan(0);
       expectOwnFieldCarriage(watch, harness);
