@@ -7,7 +7,7 @@ use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
-use midgard/rejection_reason_v1.{RedeemerMissing}
+use midgard/rejection_reason_v1.{RedeemerMissing, UnusedRedeemer}
 use midgard/script_proof_v1
 use midgard/transition_trace
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -831,6 +831,43 @@ test out_of_range_purpose_kind_refuses() fail {
     4,
     0,
   ).purpose_kind == 4
+}
+
+/// A forced rejection binds only the purpose its committed reason names.
+test forced_reason_at_another_purpose_index_refuses() fail {
+  rule.bind_purpose_v1(
+    subject(1, 0),
+    #"1111111111111111111111111111111111111111111111111111111111111111",
+    #"2222222222222222222222222222222222222222222222222222222222222222",
+    1,
+    0,
+    8,
+  ).purpose_index == 8
+}
+
+test forced_reason_for_another_purpose_kind_refuses() fail {
+  rule.bind_purpose_v1(
+    subject(1, 0),
+    #"1111111111111111111111111111111111111111111111111111111111111111",
+    #"2222222222222222222222222222222222222222222222222222222222222222",
+    1,
+    1,
+    7,
+  ).purpose_kind == 1
+}
+
+test forced_reason_of_another_constructor_refuses() fail {
+  rule.bind_purpose_v1(
+    substrate.VerdictSubjectV1 {
+      ..subject(1, 0),
+      rejection_reason: Some(UnusedRedeemer { redeemer_index: 7 }),
+    },
+    #"1111111111111111111111111111111111111111111111111111111111111111",
+    #"2222222222222222222222222222222222222222222222222222222222222222",
+    1,
+    0,
+    7,
+  ).purpose_index == 7
 }
 
 test honest_accepted_presence_is_not_a_contradiction() {
