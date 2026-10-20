@@ -105,6 +105,14 @@ export type WatcherProverFundingReservationStore = Readonly<{
   readSupersededAttemptFundingOutRefs?(input: {
     readonly reservationId: string;
   }): Promise<readonly (readonly string[])[]>;
+  /** The superseded, unretired attempt of `actionId` that this signed
+   * transaction or a reserved input descends from, or null: such an attempt
+   * landed, and is adopted instead of a fresh attempt. */
+  readLandedSupersededAttempt?(input: {
+    readonly reservationId: string;
+    readonly actionId: string;
+    readonly signedTransactionCborHex: string;
+  }): Promise<string | null>;
   readLegacyAbandonedTransactions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;

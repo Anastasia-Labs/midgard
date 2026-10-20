@@ -142,3 +142,61 @@ export const excludesEveryUncoveredAttempt = ({
       !shareAnInput(exclusion, reservedFundingOutRefs),
   );
 };
+
+/**
+ * Owner ruling (whichever lands wins): a superseded attempt that landed is
+ * its action's result. A fresh attempt of the same action that spends one of
+ * its outputs, directly or through recorded attempts, or whose reservation
+ * holds such an output, can only exist because that attempt landed: its
+ * inputs were consumed by the attempt itself, not by something else. Returns
+ * that attempt, which is adopted instead, or null. An attempt whose inputs
+ * something else consumed has no outputs, so it is never returned.
+ */
+export const landedSupersededAttemptOfAction = ({
+  abandoned,
+  submissions,
+  actionId,
+  signedTransactionCborHex,
+  reservedOutRefs,
+}: {
+  readonly abandoned: readonly Abandoned[];
+  readonly submissions: readonly WorkflowFundingPreparedTransition[];
+  readonly actionId: string;
+  readonly signedTransactionCborHex: string;
+  readonly reservedOutRefs: readonly string[];
+}): string | null => {
+  const sameAction = new Set(
+    abandoned
+      .filter(
+        ({ handoff }) =>
+          handoff.reconciliation.retirement === undefined &&
+          handoff.submissionIntent.actionId === actionId,
+      )
+      .map(({ transition }) => transition.transactionHash),
+  );
+  if (sameAction.size === 0) return null;
+  const recorded = new Map(
+    [...submissions, ...abandoned.map(({ transition }) => transition)].map(
+      (transition) => [transition.transactionHash, transition] as const,
+    ),
+  );
+  const visited = new Set<string>();
+  const pending = [
+    ...signedOrdinaryInputs(signedTransactionCborHex),
+    ...reservedOutRefs,
+  ];
+  while (pending.length !== 0) {
+    const outRef = pending.pop()!;
+    const parentHash = outRef.slice(0, outRef.indexOf("#"));
+    if (visited.has(parentHash)) continue;
+    visited.add(parentHash);
+    if (sameAction.has(parentHash)) return parentHash;
+    const parent = recorded.get(parentHash);
+    if (parent !== undefined)
+      pending.push(
+        ...signedOrdinaryInputs(parent.signedTransactionCborHex),
+        ...parent.consumedOutRefs,
+      );
+  }
+  return null;
+};

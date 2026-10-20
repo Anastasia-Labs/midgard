@@ -4,6 +4,7 @@ import {
   reobserveWorkflowFundingReservationTransaction,
 } from "./funding-reservation-permit.js";
 import type { readLegacyWorkflowFundingAbandonedTransactions } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
+import { recordBothAttemptsLanded } from "./funding-reservation-permit.reopen-legacy-abandonment.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
@@ -20,11 +21,13 @@ const UNRESOLVED = new Set([
 ]);
 
 /**
- * Owner ruling (whichever lands wins): a superseded attempt that lands after
- * a rollback is the action's result. It is adopted only while its action is
- * the latest one and that action has no result: an unresolved replacement is
- * reconciled first (it is impossible now, since it spends one of the landed
- * attempt's inputs), and a recorded result is left as the chain shows it.
+ * Owner ruling (whichever lands wins): a superseded attempt that lands is its
+ * action's result whenever that action has none yet, however many later
+ * actions were recorded since. Nothing may be in flight: an unresolved
+ * attempt is reconciled first (a replacement of the same action is impossible
+ * now, since it spends one of the landed attempt's inputs). A recorded result
+ * is left as the chain shows it; a different attempt of the same action that
+ * also landed is recorded once in the journal, and the workflow goes on.
  * Returns whether the journal now holds the adopted intent.
  */
 export const adoptLandedSupersededAttempt = async ({
@@ -47,11 +50,22 @@ export const adoptLandedSupersededAttempt = async ({
     .map(({ event }) => event)
     .find(({ kind }) => kind !== "stalled");
   const intent = landed.handoff.submissionIntent;
-  const latestIntent = [...current]
-    .reverse()
-    .map(({ event }) => event)
-    .find(({ kind }) => kind === "submission_intent");
   const last = lastActionEvent(current, intent.actionId);
+  if (
+    (last?.kind === "confirmed" ||
+      (last?.kind === "reconciled" && last.outcome === "confirmed")) &&
+    last.txHash !== undefined &&
+    last.txHash !== intent.txHash
+  ) {
+    await recordBothAttemptsLanded({
+      entries: current,
+      append,
+      actionId: intent.actionId,
+      result: last.txHash,
+      other: intent.txHash,
+    });
+    return false;
+  }
   const preflight = [...current]
     .reverse()
     .map(({ event }) => event)
@@ -66,11 +80,14 @@ export const adoptLandedSupersededAttempt = async ({
   if (
     recovery.transition !== null ||
     recovery.abandonmentHandoff !== null ||
+    recovery.completionHandoff !== null ||
+    current.some(
+      ({ event }) =>
+        event.kind === "terminal_included" || event.kind === "completed",
+    ) ||
     latest === undefined ||
     UNRESOLVED.has(latest.kind) ||
     (latest.kind === "reconciled" && latest.outcome === "pending") ||
-    latestIntent?.kind !== "submission_intent" ||
-    latestIntent.actionId !== intent.actionId ||
     last?.kind !== "reconciled" ||
     last.outcome !== "not_found" ||
     preflight === undefined

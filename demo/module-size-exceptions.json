@@ -1206,8 +1206,8 @@
   },
   {
     "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
-    "max": 530,
-    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations and the lifecycle legacy-retirement and submission-authority methods together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
+    "max": 540,
+    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations, the lifecycle legacy-retirement and submission-authority methods and the superseded-attempt reads together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
   },
   {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",

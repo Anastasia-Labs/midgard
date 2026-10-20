@@ -53,6 +53,7 @@ import {
 } from "./sqlite-prover-funding-reservation-store.row-parsers.js";
 import {
   excludesEveryUncoveredAttempt,
+  landedSupersededAttemptOfAction,
   supersededAttemptFundingOutRefs,
   uncoveredSupersededAttempts,
 } from "./sqlite-prover-funding-reservation-store.superseded-exclusion.js";
@@ -567,6 +568,21 @@ export const openInternal = async (
         });
   };
 
+  const landedSupersededAttempt = (
+    current: WatcherProverFundingReservationRecord,
+    actionId: string,
+    signedTransactionCborHex: string,
+  ) =>
+    landedSupersededAttemptOfAction({
+      abandoned: legacyAbandonedTransactions(current.reservationId),
+      submissions: recordedSubmissions(current.reservationId).map(
+        ({ transition }) => transition,
+      ),
+      actionId,
+      signedTransactionCborHex,
+      reservedOutRefs: current.activeInputs.map(({ outRef }) => outRef),
+    });
+
   const reobservationInputs = (
     reservationId: string,
     transactionHash: string,
@@ -901,6 +917,17 @@ export const openInternal = async (
         uncoveredSuperseded(reservationId),
       );
     },
+    readLandedSupersededAttempt: async ({
+      reservationId,
+      actionId,
+      signedTransactionCborHex,
+    }) => {
+      auditRead();
+      const current = readOne(reservationId);
+      return current === null
+        ? null
+        : landedSupersededAttempt(current, actionId, signedTransactionCborHex);
+    },
     readReobservationInputs: async ({ reservationId, transactionHash }) => {
       auditRead();
       return reobservationInputs(reservationId, transactionHash);
@@ -1085,6 +1112,16 @@ export const openInternal = async (
         ) {
           throw new Error("prover transition consumes an unreserved input");
         }
+        if (
+          landedSupersededAttempt(
+            current,
+            transitionInput.handoff.submissionIntent.actionId,
+            transitionInput.signedTransactionCborHex,
+          ) !== null
+        )
+          throw new Error(
+            "prover transition repeats an action whose superseded attempt landed",
+          );
         if (
           !excludesEveryUncoveredAttempt({
             uncovered: uncoveredSuperseded(current.reservationId),

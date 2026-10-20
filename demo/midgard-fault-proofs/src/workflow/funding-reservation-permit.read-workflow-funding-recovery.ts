@@ -30,9 +30,11 @@ import {
   type WorkflowFundingPreparedTransition,
   type WorkflowFundingReservedInput,
   type WorkflowFundingSubmissionHandoff,
+  WorkflowFundingSupersededAttemptLandedError,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import { journalJsonDigest } from "./journal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 import {
   workflowPreflightTransaction,
   workflowTransactionCollateralInputOutRefs,
@@ -166,6 +168,15 @@ export const prepareWorkflowFundingReservationTransaction = async ({
       allowEmpty: readFraudSlashFundingAuthority(signed) !== null,
     }),
   });
+  const landed = await state.port.readLandedSupersededAttempt?.({
+    actionId: action.actionId,
+    signedTransactionCborHex: transition.signedTransactionCborHex,
+  });
+  if (landed !== undefined && landed !== null) {
+    // Read it at once: the next pass adopts it.
+    supersededAttemptReadSchedule.forget(landed);
+    throw new WorkflowFundingSupersededAttemptLandedError(landed);
+  }
   state.snapshot = parseStateSnapshot(
     state,
     await state.port.prepare({
