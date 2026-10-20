@@ -13,7 +13,6 @@ import {
 } from "./completion-finality.js";
 import {
   assertWorkflowFundingAbandonmentHandoffJournal,
-  assertWorkflowFundingCompletionHandoffJournal,
   assertWorkflowFundingReservationReadyToSubmit,
   asWorkflowFundingShortfall,
   beginWorkflowFundingReservationAction,
@@ -21,7 +20,7 @@ import {
   conflictWorkflowFundingReservationTransaction,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  recoverWorkflowFundingSubmissionHandoff,
+  recoverWorkflowFundingJournal,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
@@ -259,21 +258,13 @@ export const runAdmittedFraudProofWorkflow = async ({
     });
   }
 
-  let fundingRecovery = await readWorkflowFundingRecovery(journal);
-  if (fundingRecovery.submissionHandoff !== null)
-    await recoverWorkflowFundingSubmissionHandoff({
-      journal,
-      workflowId,
-      identity,
-      entries: () => entries,
-      handoff: fundingRecovery.submissionHandoff,
-      append,
-    });
-  if (fundingRecovery.completionHandoff !== null)
-    assertWorkflowFundingCompletionHandoffJournal({
-      handoff: fundingRecovery.completionHandoff,
-      entries,
-    });
+  let fundingRecovery = await recoverWorkflowFundingJournal({
+    journal,
+    workflowId,
+    identity,
+    entries: () => entries,
+    append,
+  });
 
   // Limits bound work in this invocation, not the lifetime of the objective.
   // Journal attempt numbers remain monotonic across automatic continuations.

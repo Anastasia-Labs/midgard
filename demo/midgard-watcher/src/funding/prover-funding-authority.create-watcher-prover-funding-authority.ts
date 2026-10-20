@@ -117,8 +117,9 @@ export const createWatcherProverFundingAuthority = async (input: {
   if (existing?.state !== "released" && !reconciliationOnly)
     await input.store.reserve(plan);
 
+  const reserved = { reservationId: plan.reservationId };
   const load = async () =>
-    await readRecord({ store: input.store, reservationId: plan.reservationId });
+    await readRecord({ store: input.store, ...reserved });
   input.onReserved?.(await load());
   const port: WorkflowFundingReservationPort = Object.freeze({
     assertSubmissionAuthority,
@@ -203,9 +204,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       }
     },
     readSupersededAttemptFundingOutRefs: async () =>
-      (await input.store.readSupersededAttemptFundingOutRefs?.({
-        reservationId: plan.reservationId,
-      })) ?? [],
+      (await input.store.readSupersededAttemptFundingOutRefs?.(reserved)) ?? [],
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,
@@ -231,14 +230,12 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
+    readRecordedSubmissions: async () =>
+      (await input.store.readRecordedSubmissions?.(reserved)) ?? [],
     readLegacyAbandonedTransactions: async () =>
-      (await input.store.readLegacyAbandonedTransactions?.({
-        reservationId: plan.reservationId,
-      })) ?? [],
+      (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
     readAbandonmentHandoff: async () =>
-      await input.store.readAbandonmentHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readAbandonmentHandoff(reserved),
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
@@ -269,17 +266,11 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       }),
     readPendingHandoff: async () =>
-      await input.store.readPendingHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readPendingHandoff(reserved),
     readPendingTransition: async () =>
-      await input.store.readPendingTransition({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readPendingTransition(reserved),
     readCompletionHandoff: async () =>
-      await input.store.readCompletionHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readCompletionHandoff(reserved),
     load: async () =>
       snapshot({
         plan,
@@ -309,9 +300,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       if (
         current.state !== "active" ||
         current.pendingTransition !== null ||
-        (await input.store.readAbandonmentHandoff({
-          reservationId: plan.reservationId,
-        })) !== null
+        (await input.store.readAbandonmentHandoff(reserved)) !== null
       )
         throw new Error(
           "prover funding cannot refresh an unresolved reservation",
@@ -351,9 +340,9 @@ export const createWatcherProverFundingAuthority = async (input: {
           ),
           // A replacement spends a superseded attempt's input as funding.
           avoidCollateralOutRefs: (
-            (await input.store.readSupersededAttemptFundingOutRefs?.({
-              reservationId: plan.reservationId,
-            })) ?? []
+            (await input.store.readSupersededAttemptFundingOutRefs?.(
+              reserved,
+            )) ?? []
           ).flat(),
         });
         assertSubmission();
@@ -468,9 +457,7 @@ export const createWatcherProverFundingAuthority = async (input: {
           );
         transitionDigest = current.pendingTransition.transitionDigest;
       } else {
-        const saved = await input.store.readAbandonmentHandoff({
-          reservationId: plan.reservationId,
-        });
+        const saved = await input.store.readAbandonmentHandoff(reserved);
         if (
           saved === null ||
           typeof saved !== "object" ||

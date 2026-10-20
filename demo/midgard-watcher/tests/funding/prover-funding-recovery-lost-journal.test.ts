@@ -7,6 +7,8 @@ import {
   cleanupFundingRecoveryFixtures,
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
+import { fundingTerminal } from "./funding-handoff-fixture.js";
+import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 import {
   type Fixture,
   recordReplacement,
@@ -24,6 +26,33 @@ const restart = async (fixture: Fixture) =>
   fixture.bind(fixture.old, await fixture.createPermit(fixture.old, "2"));
 
 const STEP = { actionId: "step", actionKind: "proof.step" } as const;
+
+/** Loses the workflow journal. With `interrupted`, the first process to
+ * rebuild it stops once the journal is recreated, before it recovers anything
+ * from the store, so the next one is admitted over that recreated journal. Returns the journal of the process that runs on. */
+const loseJournal = async (fixture: Fixture, interrupted: boolean) => {
+  await rm(fixture.journalDirectory, { recursive: true, force: true });
+  if (interrupted) {
+    const stopped = await restart(fixture);
+    const append = stopped.append.bind(stopped);
+    const stop = new Error("process stopped while rebuilding");
+    const spy = vi
+      .spyOn(stopped, "append")
+      .mockImplementation(async (entry, at) => {
+        const appended = await append(entry, at);
+        if (entry.event.kind === "prepared") throw stop;
+        return appended;
+      });
+    await expect(fixture.run(stopped)).rejects.toBe(stop);
+    spy.mockRestore();
+    expect(
+      (await stopped.load(fixture.initial.workflowId)).map(
+        ({ event }) => event.kind,
+      ),
+    ).toEqual(["started", "prepared"]);
+  }
+  return await restart(fixture);
+};
 
 /** The init confirmed and the next action's signed attempt is in flight: its
  * handoff is anchored past the first records of any journal recreated for
@@ -108,4 +137,128 @@ describe("an objective whose workflow journal was lost proceeds", () => {
     expect(fixture.adapter.preflight).not.toHaveBeenCalled();
     expect(fixture.adapter.submit).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["before", false],
+    ["after", false],
+    ["before", true],
+    ["after", true],
+  ] as const)(
+    "re-records an attempt abandoned %s its abandonment was acknowledged and proceeds (rebuild interrupted: %s)",
+    async (boundary, interrupted) => {
+      const fixture = await setupFundingRecoveryFixture();
+      vi.mocked(fixture.adapter.reconcile).mockResolvedValue(
+        expiredNotFound(fixture.transactionHash),
+      );
+      const journal = await fixture.recover();
+      if (boundary === "before") {
+        // The process stops after the store abandons the attempt, before the
+        // journal records its outcome.
+        const append = journal.append.bind(journal);
+        const crash = new Error("crash before recording the abandonment");
+        const spy = vi
+          .spyOn(journal, "append")
+          .mockImplementation(async (entry, at) => {
+            if (entry.event.kind === "reconciled") throw crash;
+            return append(entry, at);
+          });
+        await expect(fixture.run(journal)).rejects.toBe(crash);
+        spy.mockRestore();
+      } else
+        expect(await fixture.run(journal)).toMatchObject({ kind: "pending" });
+      expect(await fixture.store.readAbandonmentHandoff(fixture.plan)).toEqual(
+        boundary === "before" ? expect.anything() : null,
+      );
+      vi.mocked(fixture.adapter.observe).mockClear();
+      const restarted = await loseJournal(fixture, interrupted);
+      expect(await fixture.run(restarted)).toMatchObject({
+        kind: "pending",
+        workflowId: fixture.initial.workflowId,
+      });
+      expect(
+        (await restarted.load(fixture.initial.workflowId))
+          .slice(2)
+          .map(({ event }) => event),
+      ).toEqual([
+        fixture.handoff.preflight,
+        fixture.handoff.submissionIntent,
+        {
+          kind: "reconciled",
+          actionId: "init",
+          outcome: "not_found",
+          txHash: fixture.transactionHash,
+          retirement: expect.anything(),
+        },
+      ]);
+      expect(
+        await fixture.store.readAbandonmentHandoff(fixture.plan),
+      ).toBeNull();
+      expect((await fixture.records())[0]).toMatchObject({
+        state: "active",
+        pendingTransition: null,
+      });
+      expect(fixture.adapter.observe).toHaveBeenCalledTimes(1);
+      expect(fixture.adapter.preflight).not.toHaveBeenCalled();
+      expect(fixture.adapter.submit).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "reports a completed objective done without acting again (rebuild interrupted: %s)",
+    async (interrupted) => {
+      const fixture = await setupFundingRecoveryFixture();
+      await fixture.run(await fixture.recover());
+      const terminal = fundingTerminal(
+        fixture.old.headerHash,
+        fixture.transactionHash,
+        "ee".repeat(32),
+      );
+      vi.mocked(fixture.adapter.observe).mockResolvedValue({
+        kind: "completed",
+        terminal,
+      });
+      expect(await fixture.run(await fixture.recover())).toMatchObject({
+        kind: "completed",
+        terminal,
+      });
+      vi.mocked(fixture.adapter.observe).mockClear();
+      fixture.terminalVerify.mockClear();
+      vi.mocked(fixture.adapter.reconcile).mockClear();
+      const journal = await loseJournal(fixture, interrupted);
+      expect(await fixture.run(journal)).toMatchObject({
+        kind: "completed",
+        workflowId: fixture.initial.workflowId,
+        terminal,
+      });
+      expect(
+        (await journal.load(fixture.initial.workflowId))
+          .slice(2)
+          .map(({ event }) => event),
+      ).toEqual([
+        fixture.handoff.preflight,
+        fixture.handoff.submissionIntent,
+        {
+          kind: "reconciled",
+          actionId: "init",
+          outcome: "confirmed",
+          txHash: fixture.transactionHash,
+        },
+        {
+          kind: "confirmed",
+          actionId: "init",
+          txHash: fixture.transactionHash,
+        },
+        { kind: "completed", terminal, terminalDigest: expect.any(String) },
+      ]);
+      expect((await fixture.records())[0]).toMatchObject({
+        state: "released",
+        activeInputs: [],
+      });
+      expect(fixture.terminalVerify).toHaveBeenCalledTimes(1);
+      expect(fixture.adapter.observe).not.toHaveBeenCalled();
+      expect(fixture.adapter.reconcile).not.toHaveBeenCalled();
+      expect(fixture.adapter.preflight).not.toHaveBeenCalled();
+      expect(fixture.adapter.submit).not.toHaveBeenCalled();
+    },
+  );
 });

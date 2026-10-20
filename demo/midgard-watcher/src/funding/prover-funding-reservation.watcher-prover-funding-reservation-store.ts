@@ -108,6 +108,10 @@ export type WatcherProverFundingReservationStore = Readonly<{
   readLegacyAbandonedTransactions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;
+  /** Every signed attempt with its submission handoff, as recorded. */
+  readRecordedSubmissions?(input: {
+    readonly reservationId: string;
+  }): Promise<readonly unknown[]>;
   retireLegacyAbandonment?(input: {
     readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;

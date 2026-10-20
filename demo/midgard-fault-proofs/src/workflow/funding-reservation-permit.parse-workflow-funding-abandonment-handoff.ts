@@ -9,7 +9,6 @@ import {
   type WorkflowFundingAbandonmentHandoff,
   type WorkflowFundingCompletionHandoff,
   type WorkflowFundingJournalHandoff,
-  type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   type FraudProofWorkflowJournalEntry,
@@ -262,24 +261,6 @@ export const parseWorkflowFundingCompletionHandoff = (
     }),
   });
 };
-
-/**
- * Whether the workflow journal was lost and recreated under a handoff the
- * reservation store kept: the journal holds no action, yet cannot anchor the
- * handoff where it was recorded. The store is then the authority for the
- * attempt, which is re-recorded at the recreated journal's tip. A fresh
- * journal that anchors the handoff is the ordinary crash before its intent.
- */
-export const workflowFundingHandoffJournalLost = (
-  handoff: WorkflowFundingSubmissionHandoff,
-  entries: readonly FraudProofWorkflowJournalEntry[],
-): boolean =>
-  entries[0]?.event.kind === "started" &&
-  entries[1]?.event.kind === "prepared" &&
-  entries.slice(2).every(({ event }) => event.kind === "stalled") &&
-  (entries.length < handoff.expectedJournalSequence ||
-    entries[1].event.artifactDigest !== handoff.preparedArtifactDigest ||
-    handoff.submissionIntent.attempt !== 1);
 
 export const assertHandoffJournal = (
   handoff: WorkflowFundingJournalHandoff,
