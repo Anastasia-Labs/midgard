@@ -294,6 +294,15 @@ export const missingCertificateReplacement = async ({
  * A replacement action stands only while its predecessor's output is gone
  * and the transaction that created it stays on chain. `unit` is the
  * certificate's, absent for a publication.
+ *
+ * The gate is the depth of the transaction that created the predecessor,
+ * past the recovery depth, not the depth of whatever spent its output: the
+ * spend is seen only as the output's absence at the current tip. A shallow
+ * spend from outside the workflow that is later rolled back therefore
+ * brings the predecessor back beside its replacement. At most one such
+ * duplicate remains per lost output, since a replacement is keyed by the
+ * out-ref it replaces; it costs its min-ADA only, as the certificate or the
+ * proof step reads just one of the two.
  */
 export const assertCarriageReplacement = async ({
   category,
