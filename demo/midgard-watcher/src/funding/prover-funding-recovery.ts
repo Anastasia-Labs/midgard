@@ -41,6 +41,7 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
 import type { WatcherFundingInputFacts } from "./prover-funding-input-facts.js";
+import { resumeWatcherProverFundingWithoutJournal } from "./prover-funding-recovery.resume-without-journal.js";
 import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
@@ -71,17 +72,20 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     input.category,
     authority.headerHash,
   );
+  // Reconciliation never creates a workflow journal, so it cannot resume one.
+  const withoutJournal = async () => {
+    if (authority.authority === "reconciliation")
+      throw new Error(
+        "reconciliation funding requires its existing durable workflow",
+      );
+    await resumeWatcherProverFundingWithoutJournal(input, authority);
+  };
   let names;
   try {
     names = await readdir(directory, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      if (authority.authority === "reconciliation")
-        throw new Error(
-          "reconciliation funding requires its existing durable workflow",
-        );
-      return;
-    }
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return await withoutJournal();
     throw error;
   }
   if ((await realpath(directory)) !== directory)
@@ -139,13 +143,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       "workflow recovery has multiple candidate executions for one target",
     );
   const candidate = candidates[0];
-  if (candidate === undefined) {
-    if (authority.authority === "reconciliation")
-      throw new Error(
-        "reconciliation funding requires its existing durable workflow",
-      );
-    return;
-  }
+  if (candidate === undefined) return await withoutJournal();
   const entries = await new DirectoryFraudProofWorkflowJournalStore(
     directory,
   ).load(candidate.name);
