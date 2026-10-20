@@ -146,8 +146,8 @@ directory, which the funding sweep reads. Queue rows a previous process left
 queued or active do not defer the cleanup, and a row a crash left with no
 execution is forgotten once its header leaves the queue. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
-`supervisor.objectiveCleanupFailures` in `/v1/status`; it is not a readiness
-reason. Only open objectives count toward the cap of 2,048; at the cap the
+`supervisor.objectiveCleanupFailures` in `/v1/status`, and `/readyz` reports
+`fault_proof_objective_cleanup_failed` until the removal succeeds. Only open objectives count toward the cap of 2,048; at the cap the
 watcher stays up and `/readyz` reports `journal_capacity` until objectives
 complete.
 
