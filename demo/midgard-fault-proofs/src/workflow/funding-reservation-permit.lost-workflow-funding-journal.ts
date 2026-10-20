@@ -77,7 +77,7 @@ export const lostWorkflowFundingJournalRecords = (input: {
     );
     const preflight = recorded[0]?.preflight;
     if (
-      // Rows are keyed by transition digest, so more than one is impossible.
+      // The filter is by txHash; anything but exactly one recorded attempt is refused.
       recorded.length !== 1 ||
       preflight?.txHash !== intent.txHash ||
       preflight.actionId !== intent.actionId ||
