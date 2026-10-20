@@ -1,7 +1,21 @@
-import { DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
+import {
+  type Data,
+  DataConstr,
+  DataI,
+  DataList,
+  DataMap,
+  DataPair,
+} from "@harmoniclabs/plutus-data";
 import { Builtin, constT, UPLCConst, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
+import {
+  MIDGARD_CEK_MAX_REVEALED_PAYLOAD_MEMORY,
+  MIDGARD_CEK_REVEALED_BYTE_MEMORY,
+  MIDGARD_CEK_REVEALED_ITEM_MEMORY,
+  midgardCekRevealIsCostly,
+} from "../src/cek-executor.reveal-cost.js";
 import {
   apply,
   data,
@@ -164,6 +178,117 @@ describe("semantic builtin steps present Data, list and pair values by summary",
       const step = semanticStep(term());
       expect(step.allVerify).toBe(true);
       expect(step.evidence.length).toBeLessThan(1_024);
+    },
+  );
+});
+
+/** Every Data item in `value`, itself included. */
+const dataItems = (value: Data): number => {
+  const children: Data[] =
+    value instanceof DataList
+      ? value.list
+      : value instanceof DataConstr
+        ? value.fields
+        : value instanceof DataMap
+          ? (value.map as DataPair<Data, Data>[]).flatMap((entry) => [
+              entry.fst,
+              entry.snd,
+            ])
+          : [];
+  return children.reduce((sum, child) => sum + dataItems(child), 1);
+};
+
+/** Whether revealing `value` in full costs more than one payload may. */
+const revealIsCostly = (value: Data) => {
+  const tree = commitMidgardCekDataTree(value);
+  const material = <T>(
+    nodes: ReadonlyMap<string, { readonly node: T }>,
+    root: Uint8Array,
+  ): T => {
+    const found = nodes.get(Buffer.from(root).toString("hex"));
+    if (found === undefined) throw new Error("missing committed node");
+    return found.node;
+  };
+  const itemLimit =
+    (MIDGARD_CEK_MAX_REVEALED_PAYLOAD_MEMORY -
+      tree.cborLength * MIDGARD_CEK_REVEALED_BYTE_MEMORY) /
+    MIDGARD_CEK_REVEALED_ITEM_MEMORY;
+  return {
+    itemLimit: Number(itemLimit),
+    costly: midgardCekRevealIsCostly(
+      {
+        node: (root) => material(tree.dataNodes, root),
+        link: (root) => material(tree.listNodes, root),
+        pairLink: (root) => material(tree.pairNodes, root),
+      },
+      { kind: "data" },
+      tree.root,
+    ),
+  };
+};
+
+const pair = (key: Data, value: Data) => new DataPair(key, value);
+
+/** Short payloads with exactly the item limit, and one item more. */
+const ITEM_LIMIT_ROWS: readonly {
+  readonly name: string;
+  readonly overLimit: boolean;
+  readonly value: Data;
+}[] = [
+  { name: "list at the limit", overLimit: false, value: new DataList(ints(7)) },
+  {
+    name: "list over the limit",
+    overLimit: true,
+    value: new DataList(ints(8)),
+  },
+  {
+    name: "map at the limit",
+    overLimit: false,
+    value: new DataMap([
+      pair(new DataI(1n), new DataI(2n)),
+      pair(new DataI(3n), new DataI(4n)),
+      pair(new DataI(5n), new DataList([new DataI(6n)])),
+    ]),
+  },
+  {
+    name: "map over the limit",
+    overLimit: true,
+    value: new DataMap([
+      pair(new DataI(1n), new DataI(2n)),
+      pair(new DataI(3n), new DataI(4n)),
+      pair(new DataI(5n), new DataI(6n)),
+      pair(new DataI(7n), new DataI(8n)),
+    ]),
+  },
+  {
+    name: "constr at the limit",
+    overLimit: false,
+    value: new DataConstr(0n, ints(7)),
+  },
+  {
+    name: "constr over the limit",
+    overLimit: true,
+    value: new DataConstr(0n, ints(8)),
+  },
+  {
+    name: "list whose last item holds the item at the limit",
+    overLimit: false,
+    value: new DataList([...ints(5), new DataList([new DataI(1n)])]),
+  },
+  {
+    name: "list whose last item holds the item over the limit",
+    overLimit: true,
+    value: new DataList([...ints(6), new DataList([new DataI(1n)])]),
+  },
+];
+
+describe("revealing a short Data payload in full", () => {
+  it.each(ITEM_LIMIT_ROWS)(
+    "$name is costly exactly when its items exceed the limit",
+    ({ overLimit, value }) => {
+      const { itemLimit, costly } = revealIsCostly(value);
+      expect(dataItems(value)).toBe(overLimit ? itemLimit + 1 : itemLimit);
+      expect(costly).toBe(overLimit);
     },
   );
 });
