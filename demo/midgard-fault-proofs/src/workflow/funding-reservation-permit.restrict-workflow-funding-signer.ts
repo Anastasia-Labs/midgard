@@ -7,6 +7,7 @@ import {
   type WalletApi,
 } from "@lucid-evolution/lucid";
 
+import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   assertWorkflowActuationPermitIdentity,
@@ -24,7 +25,7 @@ import {
 
 /**
  * Returns a signer whose wallet API exposes exactly the currently reserved
- * collateral and the reserved ordinary UTxOs carrying no datum or script.
+ * collateral and the reserved plain-ADA funding UTxOs.
  * Signing and submission still delegate to the original enterprise-key
  * wallet.
  */
@@ -68,18 +69,14 @@ export const restrictWorkflowFundingSigner = ({
             : state.currentCollateralOutRefs;
         return outRefs.map((outRef) => state.resolvedInputs.get(outRef)!);
       };
-      // Only reserved funding with no datum or script is offered, the same
-      // outputs the planner reserves from a fresh wallet. An action's own
-      // datum output at the wallet (staged bytes a later action reads) stays
-      // reserved, so no builder needs a preset that would hide the reserved
-      // collateral from Lucid (which takes collateral only from a preset).
+      // Only reserved plain-ADA funding is offered: no datum, no script, no
+      // token. An action's own datum output at the wallet (staged bytes a
+      // later action reads) and any coin holding a token stay reserved but
+      // out of coin selection, so no builder needs a preset that would hide
+      // the reserved collateral from Lucid (which takes collateral only from
+      // a preset).
       const selectable = (): readonly UTxO[] =>
-        inputs("funding").filter(
-          (utxo) =>
-            utxo.datum == null &&
-            utxo.datumHash == null &&
-            utxo.scriptRef == null,
-        );
+        inputs("funding").filter(isPlainFundingOutput);
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
         getNetworkId: async () =>

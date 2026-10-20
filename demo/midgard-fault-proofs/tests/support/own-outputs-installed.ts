@@ -45,6 +45,9 @@ const REFERENCE_SCRIPT = honestScript(2_048).toString("hex");
 /** Outputs per transaction of the mass plant. */
 const MASS_BATCH = 25;
 
+/** Distinct tokens in the token-bearing coin plant. */
+const TOKEN_BUNDLE = 40;
+
 /** The carriage roles a row covers, and where their outputs sit. */
 export type OwnOutputRole = Readonly<{
   role: "script_decode_staging" | "script_decode_run";
@@ -264,6 +267,37 @@ export const plantShapes = async (
         );
     return tx;
   });
+};
+
+/**
+ * One coin at `address` with no datum and no script, more ada than the
+ * largest coin there, and a bundle of `TOKEN_BUNDLE` tokens: the coin a
+ * wallet's coin selection would reach for first were tokens no bar.
+ */
+export const plantTokenCoin = async (
+  watch: LedgerWatch,
+  lucid: LucidEvolution,
+  address: string,
+) => {
+  const { policy } = otherPartyToken(await lucid.wallet().address());
+  const policyId = mintingPolicyToId(policy);
+  const bundle: Record<string, bigint> = {};
+  for (let index = 0; index < TOKEN_BUNDLE; index += 1)
+    bundle[`${policyId}${index.toString(16).padStart(4, "0")}`] = 1n;
+  const largest = (await lucid.utxosAt(address)).reduce(
+    (max, { assets }) => (assets.lovelace! > max ? assets.lovelace! : max),
+    0n,
+  );
+  await submitAs(watch, lucid, (other) =>
+    other
+      .newTx()
+      .mintAssets(bundle)
+      .attach.MintingPolicy(policy)
+      .pay.ToAddress(address, {
+        lovelace: largest + 1_000_000_000n,
+        ...bundle,
+      }),
+  );
 };
 
 /** Exact copies of `role`'s outputs: the same datums, ada only, inline. */

@@ -62,12 +62,14 @@ import {
   plantForeignRun,
   plantMass,
   plantShapes,
+  plantTokenCoin,
   removeOutput,
   scriptDecodeRoles,
   stagedChunkOf,
   watchLedger,
 } from "./support/own-outputs-installed.js";
 import {
+  expectBaselineCost,
   INSTALLED_WITNESS,
   type InstalledTurnContext,
   runInstalled,
@@ -127,14 +129,6 @@ const setUp = async (
   harness.emulator.awaitBlock(SETUP_BLOCKS - used);
 };
 
-/**
- * How far one transaction's fee may move between two runs that build the
- * same transactions. Each run's chain has its own keys, so the out-ref order
- * of a transaction's reference inputs, which its redeemers index, differs
- * from run to run, and the fee by a few hundred lovelace with it.
- */
-const FEE_SPREAD = 2_000n;
-
 /** What a run's own transactions were and what they cost. */
 const costOf = (watch: LedgerWatch, harness: Harness) => {
   const { staging, run } = rolesOf(harness);
@@ -142,20 +136,6 @@ const costOf = (watch: LedgerWatch, harness: Harness) => {
     kind: kindOf(transaction, staging, run),
     fee: transaction.fee,
   }));
-};
-
-/** The same transactions as the baseline, in the same order, at its fees. */
-const expectBaselineCost = (
-  cost: ReturnType<typeof costOf>,
-  baseline: ReturnType<typeof costOf>,
-) => {
-  expect(cost.map(({ kind }) => kind)).toEqual(
-    baseline.map(({ kind }) => kind),
-  );
-  cost.forEach(({ fee }, index) => {
-    const spread = fee - baseline[index]!.fee;
-    expect(spread < 0n ? -spread : spread).toBeLessThanOrEqual(FEE_SPREAD);
-  });
 };
 
 /** Every input and reference input of the application's own transactions is not another party's. */
@@ -262,6 +242,20 @@ describe("script-decode staging found by the out-refs it published, in the insta
           plantForeignRun(watch, other, { emulator: harness.emulator, script }),
       ];
     });
+    expect(run.convicted).toBe(true);
+    expectOwnOutputsOnly(watch);
+    expectBaselineCost(cost, baseline);
+  }, 900_000);
+
+  it("funds the record from plain coins, leaving a larger token-bearing coin at the prover address unspent", async () => {
+    const { run, watch, cost } = await runWith((harness, watch) => [
+      () =>
+        plantTokenCoin(
+          watch,
+          harness.funderLucid,
+          harness.proverSigner.address,
+        ),
+    ]);
     expect(run.convicted).toBe(true);
     expectOwnOutputsOnly(watch);
     expectBaselineCost(cost, baseline);

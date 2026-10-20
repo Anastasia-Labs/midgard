@@ -293,3 +293,25 @@ export const stopsOnceAndRestarts = (pollCap: number) => {
     stops: () => stops,
   };
 };
+
+/**
+ * How far one transaction's fee may move between two runs that build the
+ * same transactions. Each run's chain has its own keys, so the out-ref order
+ * of a transaction's reference inputs, which its redeemers index, differs
+ * from run to run, and the fee by a few hundred lovelace with it.
+ */
+const FEE_SPREAD = 2_000n;
+
+/** The same transactions as the baseline, in the same order, at its fees. */
+export const expectBaselineCost = (
+  cost: readonly Readonly<{ kind: string; fee: bigint }>[],
+  baseline: readonly Readonly<{ kind: string; fee: bigint }>[],
+) => {
+  expect(cost.map(({ kind }) => kind)).toEqual(
+    baseline.map(({ kind }) => kind),
+  );
+  cost.forEach(({ fee }, index) => {
+    const spread = fee - baseline[index]!.fee;
+    expect(spread < 0n ? -spread : spread).toBeLessThanOrEqual(FEE_SPREAD);
+  });
+};
