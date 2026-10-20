@@ -307,7 +307,11 @@ export const openFundedDispute = async (scene: Scene) => {
         launchScope: [CATEGORY],
       }),
       journal,
-      terminalVerifier,
+      // Superseded attempts are read where the emulator holds them.
+      terminalVerifier: {
+        ...terminalVerifier,
+        observeSignedTransaction: emulatorRecovery.observeSignedTransaction,
+      },
       releaseFinalityAuthority,
       now: () => new Date(h.emulator.now()),
     });
