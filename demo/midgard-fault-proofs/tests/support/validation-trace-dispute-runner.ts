@@ -60,6 +60,11 @@ export const runnerDeployment = (
       spendingScriptAddress: h.contracts.stateQueue.spendingScriptAddress,
     },
     chain,
+    fraudProof: {
+      policyId: h.contracts.fraudProof.policyId,
+      mintingScript: h.contracts.fraudProof.mintingScript,
+      spendingScriptAddress: h.contracts.fraudProof.spendingScriptAddress,
+    },
     references: scene.references,
     bondLovelace: BOND_LOVELACE,
   };

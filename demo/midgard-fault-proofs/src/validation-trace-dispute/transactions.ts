@@ -1,6 +1,7 @@
 /** The open step's three transactions, each built, locally evaluated and
  * signed from the prover wallet, and captured at the pre-submit boundary
- * with the durable recovery that names the outputs of ours it leaves. */
+ * with the durable recovery that names the outputs of ours it leaves; and
+ * what the close (close.ts) shares with them. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -8,6 +9,7 @@ import {
   Data,
   type LucidEvolution,
   type Network,
+  type Script,
   scriptHashToCredential,
   toUnit,
   type UTxO,
@@ -66,8 +68,14 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     DisputeChain,
     "opener" | "source" | "case" | "disputeBond" | "caseConfig"
   >;
-  /** The published reference scripts of the opener, source and case. */
-  references: Readonly<{ opener: UTxO; source: UTxO; case: UTxO }>;
+  /** The hub's fraud-proof policy and address, where a conviction records. */
+  fraudProof: Readonly<{
+    policyId: string;
+    mintingScript: Script;
+    spendingScriptAddress: string;
+  }>;
+  /** The published reference scripts of the opener, source, case and bond. */
+  references: Readonly<{ opener: UTxO; source: UTxO; case: UTxO; bond: UTxO }>;
   /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;
 }>;
@@ -77,7 +85,7 @@ export type CapturedValidationTraceStage = Readonly<{
   durableRecovery: JournalJsonObject;
 }>;
 
-type StageInput = Readonly<{
+export type StageInput = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   deployment: ValidationTraceDisputeDeployment;
@@ -117,7 +125,8 @@ export const challengedBlockUtxo = async (
   return nodes[0]!;
 };
 
-const ours = async (
+/** Our output at `outRef`, or the action changed. */
+export const ours = async (
   lucid: LucidEvolution,
   outRef: string,
   label: string,
@@ -130,7 +139,8 @@ const ours = async (
   return utxo;
 };
 
-const captured = (
+/** The signed body with the published reference scripts it reads. */
+export const captured = (
   signed: Parameters<
     typeof workflowReferenceScriptsUsedByTransaction
   >[0]["signed"],
@@ -144,6 +154,41 @@ const captured = (
     referenceScripts: Object.freeze(
       workflowReferenceScriptsUsedByTransaction({ signed, candidates }),
     ),
+  });
+
+/** The deployment's hub oracle, by its unique token. */
+export const hubOracleUtxo = async (
+  lucid: LucidEvolution,
+  deployment: ValidationTraceDisputeDeployment,
+): Promise<UTxO> => {
+  const hubOraclePolicyId = deployment.init.contracts.hubOraclePolicyId;
+  return await requireSingletonUtxo({
+    lucid,
+    address: credentialToAddress(
+      deployment.network,
+      scriptHashToCredential(hubOraclePolicyId),
+    ),
+    unit: toUnit(hubOraclePolicyId, SDK.HUB_ORACLE_ASSET_NAME),
+    label: "validation-trace hub oracle",
+  });
+};
+
+/** The validation case configuration, by its unique token. */
+export const caseConfigUtxo = async (
+  lucid: LucidEvolution,
+  deployment: ValidationTraceDisputeDeployment,
+): Promise<UTxO> =>
+  await requireSingletonUtxo({
+    lucid,
+    address: SDK.validationCaseConfigAddress(
+      deployment.network,
+      deployment.chain.caseConfig,
+    ),
+    unit: toUnit(
+      deployment.chain.caseConfig.policyId,
+      SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+    ),
+    label: "validation case configuration",
   });
 
 /** Init: mints our thread on the challenged block, at the opener. */
@@ -214,16 +259,7 @@ export const captureValidationTraceOpen = async ({
   const challenged = await Effect.runPromise(
     SDK.validationDisputeChallengedBlock(block, deployment.stateQueue.policyId),
   );
-  const hubOraclePolicyId = deployment.init.contracts.hubOraclePolicyId;
-  const hubOracle = await requireSingletonUtxo({
-    lucid,
-    address: credentialToAddress(
-      deployment.network,
-      scriptHashToCredential(hubOraclePolicyId),
-    ),
-    unit: toUnit(hubOraclePolicyId, SDK.HUB_ORACLE_ASSET_NAME),
-    label: "validation-trace open hub oracle",
-  });
+  const hubOracle = await hubOracleUtxo(lucid, deployment);
   signer.selectWallet(lucid);
   const validTo =
     lucid.slotToUnixTime(lucid.currentSlot()) +
@@ -272,18 +308,7 @@ export const captureValidationTraceVerifySource = async ({
 }): Promise<CapturedValidationTraceStage> => {
   const { chain, references } = deployment;
   const opener = await ours(lucid, openerOutRef, "pending claim");
-  const caseConfig = await requireSingletonUtxo({
-    lucid,
-    address: SDK.validationCaseConfigAddress(
-      deployment.network,
-      chain.caseConfig,
-    ),
-    unit: toUnit(
-      chain.caseConfig.policyId,
-      SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
-    ),
-    label: "validation case configuration",
-  });
+  const caseConfig = await caseConfigUtxo(lucid, deployment);
   signer.selectWallet(lucid);
   const validFrom = lucid.slotToUnixTime(lucid.currentSlot());
   const { tx, opening } = SDK.appendValidationSourceVerification(

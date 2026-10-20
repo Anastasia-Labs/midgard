@@ -80,6 +80,7 @@ export type Scene = {
     readonly opener: UTxO;
     readonly source: UTxO;
     readonly case: UTxO;
+    readonly bond: UTxO;
   };
   readonly failing: Block;
   readonly passing: Block;
@@ -132,6 +133,13 @@ export const setUpScene = async (): Promise<Scene> => {
       lucid: h.proverLucid,
       script: chain.case.spendingScript,
       label: "validation case",
+    })
+  ).utxo;
+  const bondReference = (
+    await publishPlainReferenceScriptUtxo({
+      lucid: h.proverLucid,
+      script: chain.disputeBond.spendingScript,
+      label: "validation dispute bond",
     })
   ).utxo;
   const caseConfigReference = (
@@ -247,6 +255,7 @@ export const setUpScene = async (): Promise<Scene> => {
       opener: publishedReference(h, chain.opener.spendingScriptHash),
       source: publishedReference(h, chain.source.spendingScriptHash),
       case: caseReference,
+      bond: bondReference,
     },
     failing,
     passing,

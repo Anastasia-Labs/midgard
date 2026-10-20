@@ -1,6 +1,7 @@
 /** The validation-trace dispute workflow adapter: from a detected failing
- * Plutus execution it Inits a thread, Opens the challenger's claim and
- * VerifySources it into a case and its bond, through the shared workflow
+ * Plutus execution it Inits a thread, Opens the challenger's claim,
+ * VerifySources it into a case and its bond, and closes the case nobody
+ * defended into its fraud-proof record, through the shared workflow
  * orchestrator. Every output of ours is claimed by out-ref from our own
  * signed body before submission and read back by that out-ref; chain state,
  * not the journal's idea of the step, decides the next action. */
@@ -40,6 +41,10 @@ import {
   encodeValidationTraceDisputeArtifact,
   parseValidationTraceDisputeArtifact,
 } from "./artifact.js";
+import {
+  captureValidationTraceClose,
+  validationTraceFraudProofUnit,
+} from "./close.js";
 import { detectedValidationTraceClaim } from "./detected-claim.js";
 import {
   type CapturedValidationTraceStage,
@@ -48,7 +53,10 @@ import {
   captureValidationTraceVerifySource,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
-import { validationTraceCaseOpenReason } from "./waiting.js";
+import {
+  validationTraceCaseOpenReason,
+  validationTraceDefenseDeadlineMs,
+} from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 
@@ -63,6 +71,14 @@ export { VALIDATION_TRACE_CASE_OPEN } from "./waiting.js";
  */
 export const VALIDATION_TRACE_CASE_CONTESTED =
   "validation-trace-case-contested";
+
+/**
+ * Our case convicted and its fraud-proof record is on chain. Handing the
+ * convicted block to its removal is not installed yet, so the workflow
+ * raises this and waits.
+ */
+export const VALIDATION_TRACE_CASE_CONVICTED =
+  "validation-trace-case-convicted";
 
 /**
  * How long an output of ours the provider does not show after its
@@ -113,6 +129,30 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
   const recent = (confirmedAt: string): boolean =>
     now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
+  const convicted = (unit: string, outRef: string) => ({
+    kind: "pending" as const,
+    reason: `${VALIDATION_TRACE_CASE_CONVICTED}: fraud-proof record ${unit} at ${outRef}; the convicted block's removal is not installed, so it waits`,
+  });
+  // The record a close of our case minted, whoever closed it: the policy
+  // mints it once per block, and it names its prover.
+  const recordAt = async (headerHash: string) => {
+    const unit = validationTraceFraudProofUnit(deployment, headerHash);
+    const [found] = (
+      await lucid.utxosAtWithUnit(
+        deployment.fraudProof.spendingScriptAddress,
+        unit,
+      )
+    ).filter(
+      (utxo) =>
+        utxo.assets[unit] === 1n &&
+        typeof utxo.datum === "string" &&
+        Data.from(utxo.datum, SDK.FraudProofTokenDatum).fraud_prover ===
+          signer.paymentKeyHash,
+    );
+    return found === undefined
+      ? undefined
+      : convicted(unit, `${found.txHash}#${found.outputIndex.toString()}`);
+  };
   const caseAt = async (caseUnit: string) => {
     const [found] = (
       await lucid.utxosAtWithUnit(
@@ -149,16 +189,29 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         .filter((confirmed) => confirmed.action.stage === stage)
         .map(({ outputs }) => outputs[0]!)
         .find((claim) => isClaimedOutput(claim, live.get(claim.outRef)));
+    const record = liveClaim("close");
+    if (record !== undefined) return convicted(record.unit, record.outRef);
+    // Our case as VerifySource left it: nobody has defended it.
     const openCase = liveClaim("verify_source");
-    if (openCase !== undefined)
-      return {
-        kind: "pending",
-        reason: validationTraceCaseOpenReason({
-          caseUnit: openCase.unit,
-          outRef: openCase.outRef,
-          caseDatum: Data.from(live.get(openCase.outRef)!.datum!, SDK.Case),
-        }),
-      };
+    if (openCase !== undefined) {
+      const caseDatum = Data.from(live.get(openCase.outRef)!.datum!, SDK.Case);
+      return now() > validationTraceDefenseDeadlineMs(caseDatum)
+        ? {
+            kind: "action_required",
+            action: validationTraceAction({
+              stage: "close",
+              consumes: openCase.outRef,
+            }),
+          }
+        : {
+            kind: "pending",
+            reason: validationTraceCaseOpenReason({
+              caseUnit: openCase.unit,
+              outRef: openCase.outRef,
+              caseDatum,
+            }),
+          };
+    }
     const opener = liveClaim("open");
     if (opener !== undefined)
       return {
@@ -207,6 +260,10 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             }),
           };
     }
+    if (newestFirst.some(({ action }) => action.stage === "verify_source")) {
+      const recorded = await recordAt(artifact.headerHash);
+      if (recorded !== undefined) return recorded;
+    }
     const newest = newestFirst[0];
     if (newest !== undefined && recent(newest.confirmedAt))
       return {
@@ -226,6 +283,22 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         consumes: replaced?.outputs[0]!.outRef ?? null,
       }),
     };
+  };
+
+  /** The bond VerifySource left beside our case at `caseOutRef`. */
+  const bondOf = (
+    context: FraudProofWorkflowAdapterContext,
+    caseOutRef: string,
+  ): string => {
+    const verified = confirmedValidationTraceStages(context.entries).find(
+      ({ action, outputs }) =>
+        action.stage === "verify_source" && outputs[0]!.outRef === caseOutRef,
+    );
+    if (verified === undefined)
+      throw new WorkflowActionChangedError(
+        `validation-trace case ${caseOutRef} is not one VerifySource left`,
+      );
+    return verified.outputs[1]!.outRef;
   };
 
   const capture = async (
@@ -251,6 +324,12 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           return await captureValidationTraceVerifySource({
             ...input,
             openerOutRef: action.consumes!,
+          });
+        case "close":
+          return await captureValidationTraceClose({
+            ...input,
+            caseOutRef: action.consumes!,
+            bondOutRef: bondOf(context, action.consumes!),
           });
       }
     } catch (cause) {

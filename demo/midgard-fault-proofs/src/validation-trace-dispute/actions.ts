@@ -1,8 +1,9 @@
-/** The journaled actions of the validation-trace open step: Init the thread,
- * Open the claim, and VerifySource it into a case and its bond. Each action
- * is keyed by the output of ours it consumes, and its durable recovery names
- * the outputs of our own signed body it leaves, by out-ref, which every later
- * read follows. */
+/** The journaled actions of the validation-trace dispute: Init the thread,
+ * Open the claim, VerifySource it into a case and its bond, and close the
+ * convicted case into its fraud-proof record. Each action is keyed by the
+ * output of ours it consumes, and its durable recovery names the outputs of
+ * our own signed body it leaves, by out-ref, which every later read
+ * follows. */
 import { CML, type TxOutput, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -26,32 +27,34 @@ export const VALIDATION_TRACE_DISPUTE_ACTION =
 export const VALIDATION_TRACE_DISPUTE_RECOVERY =
   "midgard-validation-trace-dispute-recovery-v1" as const;
 
-export const VALIDATION_TRACE_OPEN_STAGES = [
+export const VALIDATION_TRACE_STAGES = [
   "init",
   "open",
   "verify_source",
+  "close",
 ] as const;
 
-export type ValidationTraceOpenStage =
-  (typeof VALIDATION_TRACE_OPEN_STAGES)[number];
+export type ValidationTraceStage = (typeof VALIDATION_TRACE_STAGES)[number];
 
 /** The outputs each stage leaves, in the order its recovery lists them. */
 export const VALIDATION_TRACE_STAGE_ROLES = {
   init: ["thread"],
   open: ["opener"],
   verify_source: ["case", "bond"],
-} as const satisfies Record<ValidationTraceOpenStage, readonly string[]>;
+  close: ["proof"],
+} as const satisfies Record<ValidationTraceStage, readonly string[]>;
 
 export type ValidationTraceOutputRole =
-  (typeof VALIDATION_TRACE_STAGE_ROLES)[ValidationTraceOpenStage][number];
+  (typeof VALIDATION_TRACE_STAGE_ROLES)[ValidationTraceStage][number];
 
 const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){1,32}$/u;
 
 export type ParsedValidationTraceAction = Readonly<{
-  stage: ValidationTraceOpenStage;
+  stage: ValidationTraceStage;
   /**
    * Init: the thread of ours it replaces after that one vanished (null
    * first). Open: our thread it spends. VerifySource: our opener it spends.
+   * Close: our case it spends, beside the case's bond.
    */
   consumes: string | null;
 }>;
@@ -83,11 +86,11 @@ export const parseValidationTraceAction = (
     ["schemaVersion", "stage", "consumes"],
     "validation-trace action",
   );
-  const stage = input.stage as ValidationTraceOpenStage;
+  const stage = input.stage as ValidationTraceStage;
   const consumes = input.consumes;
   if (
     input.schemaVersion !== VALIDATION_TRACE_DISPUTE_ACTION ||
-    !VALIDATION_TRACE_OPEN_STAGES.includes(stage) ||
+    !VALIDATION_TRACE_STAGES.includes(stage) ||
     !(
       (consumes === null && stage === "init") ||
       (typeof consumes === "string" && OUT_REF.test(consumes))
@@ -134,7 +137,7 @@ export const validationTraceRecovery = ({
   transaction,
   slots,
 }: {
-  readonly stage: ValidationTraceOpenStage;
+  readonly stage: ValidationTraceStage;
   readonly transaction: LocallyEvaluatedTransaction;
   readonly slots: readonly Readonly<{ address: string; unit: string }>[];
 }): JournalJsonObject => {
@@ -181,7 +184,7 @@ export const parseValidationTraceRecovery = ({
   txHash,
 }: {
   readonly value: JournalJsonObject | undefined;
-  readonly stage: ValidationTraceOpenStage;
+  readonly stage: ValidationTraceStage;
   readonly txHash: string;
 }): readonly ValidationTraceOutputClaim[] => {
   const outer = exact(value, ["validationTrace"], "validation-trace recovery");
