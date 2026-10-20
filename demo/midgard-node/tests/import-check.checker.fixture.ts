@@ -107,6 +107,8 @@ export type InjectedWorker = Readonly<{
   acceptContexts?: readonly Uint8Array[];
   slowContexts?: readonly Uint8Array[];
   slowMs?: number;
+  overBudgetContexts?: readonly Uint8Array[];
+  crashContexts?: readonly Uint8Array[];
 }>;
 
 /** A pool on the test worker; `jobs()` counts the script jobs decided by
@@ -129,6 +131,8 @@ export const injectedEvaluator = async (
       rejectContexts: hexes(worker.rejectContexts),
       acceptContexts: hexes(worker.acceptContexts),
       slowContexts: hexes(worker.slowContexts),
+      overBudgetContexts: hexes(worker.overBudgetContexts),
+      crashContexts: hexes(worker.crashContexts),
     } as unknown as ValidationWorkerInit,
     options.backlogShare,
   );
@@ -255,12 +259,12 @@ export const checker = (
     importPass: (nowMs?: number) =>
       raised(nowMs === undefined ? imports : at(nowMs, imports)),
     /** Backlog passes until one reads no entry. */
-    backlog: () =>
-      raised(
-        runBacklogPass(input).pipe(
-          Effect.repeat({ while: (read) => read > 0 }),
-        ),
-      ),
+    backlog: (nowMs?: number) => {
+      const backlog = runBacklogPass(input).pipe(
+        Effect.repeat({ while: (read) => read > 0 }),
+      );
+      return raised(nowMs === undefined ? backlog : at(nowMs, backlog));
+    },
     sweep: (nowMs?: number) =>
       raised(
         nowMs === undefined

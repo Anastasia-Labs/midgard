@@ -3,7 +3,9 @@
 // `cek_verdict` job by its context (`request.contextCbor`, hex), else by
 // `workerData.mode`:
 // - a context in `rejectContexts` is rejected, one in `acceptContexts`
-//   accepted, and one in `slowContexts` accepted after `slowMs` of busy work;
+//   accepted, one in `slowContexts` accepted after `slowMs` of busy work, one
+//   in `overBudgetContexts` accepted with more cpu than any run may declare,
+//   and one in `crashContexts` makes the worker throw;
 // - "hang": never answers;
 // - "crash": the worker throws;
 // - "crash-even": the 1st, 3rd, 5th... job across all instances throws, every
@@ -25,6 +27,8 @@ const {
   rejectContexts = [],
   acceptContexts = [],
   slowContexts = [],
+  overBudgetContexts = [],
+  crashContexts = [],
 } = workerData;
 const busy = (ms) => {
   const startedAt = Date.now();
@@ -59,6 +63,12 @@ parentPort.on("message", (request) => {
       detail: "injected rejection",
     });
   if (acceptContexts.includes(context)) return answer(request.jobId, accepted);
+  if (overBudgetContexts.includes(context))
+    return answer(request.jobId, {
+      kind: "accepted",
+      budget: { cpu: 10n ** 12n, memory: 0n },
+    });
+  if (crashContexts.includes(context)) throw new Error("injected worker fault");
   if (slowContexts.includes(context)) {
     busy(slowMs);
     return answer(request.jobId, accepted);
