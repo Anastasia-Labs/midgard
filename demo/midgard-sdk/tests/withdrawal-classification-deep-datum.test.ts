@@ -130,9 +130,14 @@ const misshapen = (eventInfoCbor: string) =>
     "00",
   );
 
+// Building, signing and classifying a withdrawal around a 30,000-deep datum
+// takes about 2 s on a developer machine and over 5 s on a loaded CI runner.
+const DEEP_ROW_TIMEOUT_MS = 60_000;
+
 describe("withdrawal classification of deeply nested datums", () => {
   it.each(DEEP_PLUTUS_DATA_CASES)(
     "classifies a signed payable withdrawal with a $shape datum $depth deep ($bound) as valid",
+    { timeout: DEEP_ROW_TIMEOUT_MS },
     async (deep) => {
       const datum = deepPlutusDataCbor(deep);
       const result = await classify(await withdrawal(datum));
@@ -147,6 +152,7 @@ describe("withdrawal classification of deeply nested datums", () => {
 
   it.each(DEEP_PLUTUS_DATA_CASES)(
     "classifies a withdrawal with a $shape datum $depth deep ($bound) and no ledger output as non-existent",
+    { timeout: DEEP_ROW_TIMEOUT_MS },
     async (deep) => {
       const datum = deepPlutusDataCbor(deep);
       const input = await withdrawal(datum, false);
