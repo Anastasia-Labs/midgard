@@ -1,6 +1,6 @@
 /** The work held validation-trace re-executions cost is bounded: one replay
- * pass re-executes at most one held event, carrying the rest to the next
- * pass; a hold forgotten past the replayer's capacity keeps its backoff; and
+ * pass re-executes at most one held event, the block's least recently
+ * retried, carrying the rest to the next pass; a hold forgotten past the replayer's capacity keeps its backoff; and
  * an event that fails the same way five times in a row is stuck, a readiness
  * reason of its own raised with exactly one alert, still retried at the
  * capped backoff and never a verdict, until it re-executes to an outcome.
@@ -171,6 +171,87 @@ describe("validation-trace dispute replay: the work held events cost is bounded"
     expect([verdictRuns(block, 0), verdictRuns(block, 1)]).toStrictEqual([
       2, 2,
     ]);
+  });
+
+  it("gives each pass's retry to the block's held event retried least recently, so none is starved", async () => {
+    const block = await plutusExecutionEventsBlockFixture([
+      "failing",
+      "failing",
+      "failing",
+      "failing",
+    ]);
+    const positions = [0, 1, 2, 3];
+    const { clock, replayer } = clockedReplayer();
+    for (const position of positions)
+      inject(block, position, indeterminate(block, position));
+    await heldBy(replayer, block);
+    // Passes 30 s apart: four held events take longer to go round than the
+    // 60 s backoff cap, so a later event is due whenever an earlier one is.
+    const retried: number[] = [];
+    for (let pass = 0; pass < 24; pass += 1) {
+      clock.now += 30_000;
+      const before = positions.map((position) => verdictRuns(block, position));
+      await heldBy(replayer, block);
+      const ran = positions.filter(
+        (position) => verdictRuns(block, position) > before[position]!,
+      );
+      expect(ran).toHaveLength(1);
+      retried.push(ran[0]!);
+    }
+    // Every four consecutive passes retry each held event once.
+    for (let start = 0; start + 4 <= retried.length; start += 1)
+      expect(new Set(retried.slice(start, start + 4))).toStrictEqual(
+        new Set(positions),
+      );
+  });
+
+  it("keeps no due held event waiting on another block's hold or on a hold not yet due", async () => {
+    const first = await oneEventBlock();
+    const second = await plutusExecutionEventsBlockFixture([
+      "passing",
+      "failing",
+    ]);
+    const { clock, replayer } = clockedReplayer();
+    inject(first, 0, indeterminate(first, 0));
+    inject(second, 1, indeterminate(second, 1));
+    await heldBy(replayer, first);
+    await heldBy(replayer, second);
+    // Both due; the first block's hold failed earlier.
+    clock.now = 1_000;
+    await heldBy(replayer, second);
+    expect(verdictRuns(second, 1)).toBe(2);
+    injected.faults.clear();
+    injected.verdictRuns.clear();
+
+    // Event 0 is held with a long backoff; event 1 then fails afresh, later
+    // in the same pass, with a short one.
+    const block = await plutusExecutionEventsBlockFixture([
+      "failing",
+      "failing",
+    ]);
+    const later = clockedReplayer();
+    inject(block, 0, indeterminate(block, 0));
+    later.clock.now = 10_000;
+    for (const retryAtMs of [11_000, 13_000, 17_000]) {
+      await decide(later.replayer, block);
+      later.clock.now = retryAtMs;
+    }
+    inject(block, 1, indeterminate(block, 1));
+    const held = await heldBy(later.replayer, block);
+    expect(held.holds).toStrictEqual([
+      expect.objectContaining({
+        txId: block.txs[0]!.txId,
+        retryAtMs: 17_000 + 8_000,
+      }),
+      expect.objectContaining({
+        txId: block.txs[1]!.txId,
+        retryAtMs: 17_000 + 1_000,
+      }),
+    ]);
+    const before = verdictRuns(block, 1);
+    later.clock.now = 18_000;
+    await heldBy(later.replayer, block);
+    expect(verdictRuns(block, 1)).toBe(before + 1);
   });
 
   it("keeps a forgotten hold's retry time and attempt count past the replayer's capacity", async () => {

@@ -100,8 +100,8 @@ export type ValidationTraceReplayEvent = Pick<
 export type ValidationTraceReplayPass = Readonly<{
   /**
    * The hold that keeps `key` from re-executing in this pass, if any: its
-   * retry time has not come, or this pass has already re-executed its share
-   * of held events.
+   * retry time has not come, or this pass's share of held events goes to its
+   * block's due holds that were re-executed less recently (failed earlier).
    */
   waiting: (
     key: string,
@@ -183,6 +183,24 @@ export const createValidationTraceReplayHolds = ({
   return Object.freeze({
     pass: () => {
       let retries = 0;
+      /** The keys this pass re-executes, by block: the block's due holds
+       * that failed least recently. Holds that failed in the same pass are
+       * in that pass's (step) order. */
+      const granted = new Map<string, ReadonlySet<string>>();
+      const grantedFor = (headerHash: string) => {
+        let keys = granted.get(headerHash);
+        if (keys === undefined) {
+          const due = new Set<string>();
+          for (const [key, hold] of holds) {
+            if (due.size >= VALIDATION_TRACE_REPLAY_RETRIES_PER_PASS) break;
+            if (hold.headerHash === headerHash && now() >= hold.retryAtMs)
+              due.add(key);
+          }
+          keys = due;
+          granted.set(headerHash, keys);
+        }
+        return keys;
+      };
       return Object.freeze({
         waiting: (key: string, event: ValidationTraceReplayEvent) => {
           const hold = holds.get(key);
@@ -199,7 +217,10 @@ export const createValidationTraceReplayHolds = ({
               : undefined;
           }
           if (now() < hold.retryAtMs) return visible(hold);
-          if (retries >= VALIDATION_TRACE_REPLAY_RETRIES_PER_PASS)
+          if (
+            retries >= VALIDATION_TRACE_REPLAY_RETRIES_PER_PASS ||
+            !grantedFor(event.headerHash).has(key)
+          )
             return visible(hold);
           retries += 1;
           return undefined;
