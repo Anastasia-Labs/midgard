@@ -113,6 +113,11 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly actionId: string;
     readonly signedTransactionCborHex: string;
   }): Promise<string | null>;
+  /** The exact signed bytes of a recorded attempt, or null. */
+  readRecordedSignedTransaction(input: {
+    readonly reservationId: string;
+    readonly transactionHash: string;
+  }): Promise<string | null>;
   readLegacyAbandonedTransactions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;

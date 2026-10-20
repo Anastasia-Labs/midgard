@@ -211,6 +211,15 @@ export const createWatcherProverFundingAuthority = async (input: {
         ...candidate,
         reservationId: plan.reservationId,
       }),
+    readRecordedSignedTransaction: async ({
+      transactionHash,
+    }: {
+      transactionHash: string;
+    }) =>
+      await input.store.readRecordedSignedTransaction({
+        reservationId: plan.reservationId,
+        transactionHash,
+      }),
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,

@@ -127,6 +127,11 @@ export interface WorkflowFundingReservationPort {
     readonly actionId: string;
     readonly signedTransactionCborHex: string;
   }): Promise<string | null>;
+  /** The exact signed bytes of an attempt this reservation recorded, or null
+   * when it recorded none with this hash. */
+  readRecordedSignedTransaction(input: {
+    readonly transactionHash: string;
+  }): Promise<string | null>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;

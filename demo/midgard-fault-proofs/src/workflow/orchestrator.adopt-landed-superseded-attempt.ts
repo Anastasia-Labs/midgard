@@ -1,6 +1,7 @@
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
   parseWorkflowFundingSubmissionHandoff,
+  readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
 } from "./funding-reservation-permit.js";
@@ -21,10 +22,13 @@ import {
 import { lastActionEvent } from "./orchestrator.normalize-workflow-terminal.js";
 import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
 import {
-  readSubmissionOnChain,
+  readSubmission,
   reobserveRequiredWorkflowParent,
 } from "./orchestrator.reobserve-required-parent.js";
-import { supersedeDisplacedFundingAttempt } from "./orchestrator.supersede-funding-attempt.js";
+import {
+  supersedeDisplacedFundingAttempt,
+  supersedeWorkflowFundingAttempt,
+} from "./orchestrator.supersede-funding-attempt.js";
 import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 
 const UNRESOLVED = new Set([
@@ -46,11 +50,12 @@ type Submission = Extract<
  * actions were recorded since, until the workflow's final completion. Nothing
  * may be in flight: an unresolved attempt is reconciled first (a replacement
  * of the same action is impossible now, since it spends one of the landed
- * attempt's inputs). A recorded result is read first. When a rollback dropped
- * it, it is reobserved as any rolled-back action is, so what was built on it
- * reopens, and the landed attempt is adopted once it is reconciled as absent.
- * When it is on chain too, the journal records the pair once and the workflow
- * goes on with it.
+ * attempt's inputs). A recorded result is read first, by its own signed
+ * bytes. When it is impossible at the tip, a rollback dropped it: it is
+ * reobserved as any rolled-back action is, so what was built on it reopens,
+ * closed as absent, and the landed attempt is adopted on the next pass. When
+ * it is on chain too, the journal records the pair once and the workflow goes
+ * on with it. Any other read holds, and nothing is written.
  *
  * Returns "continue" when the journal moved on, a run result to return, or
  * null when there is nothing to adopt in this pass.
@@ -119,17 +124,38 @@ export const adoptLandedSupersededAttempt = async ({
       );
     if (recovery.abandonmentHandoff !== null || result === undefined)
       return null;
-    const onChain = await readSubmissionOnChain({
-      adapter,
-      context,
-      headerHash,
+    // Read the result by its own signed bytes, never against the family's
+    // stage: that stage moved on with whichever attempt landed.
+    const signed = await readWorkflowFundingRecordedSignedTransaction(
       journal,
-      submission: result,
-      stalled,
-      resumeOnObservation,
-    });
-    if (typeof onChain !== "boolean") return onChain;
-    if (onChain) {
+      result.txHash,
+    );
+    const outcome =
+      signed === null
+        ? {
+            read: {
+              kind: "unknown",
+              reason: "no recorded signed bytes",
+            } as const,
+          }
+        : await readSubmission({
+            adapter,
+            context,
+            headerHash,
+            journal,
+            submission: result,
+            signedTransactionCborHex: signed,
+            retirementOnly: true,
+            stalled,
+            resumeOnObservation,
+          });
+    if (!("read" in outcome)) return outcome;
+    const { read } = outcome;
+    // Included, at any depth: both attempts are on chain.
+    if (
+      read.kind === "confirmed" ||
+      (read.kind === "pending" && read.retirement !== undefined)
+    ) {
       await recordBothAttemptsLanded({
         entries: current,
         append,
@@ -139,7 +165,13 @@ export const adoptLandedSupersededAttempt = async ({
       });
       return null;
     }
-    // The recorded result was rolled back: reopen its action.
+    // Only a read that the result is impossible at the tip reopens it.
+    if (read.kind !== "not_found")
+      return resumeOnObservation(
+        `attempt ${intent.txHash} of ${intent.actionId} landed; its result ${result.txHash} reads ${read.kind}`,
+      );
+    // The result was rolled back: reopen its action, so what was built on it
+    // reopens too, and close the result as read.
     const reobservation = await reobserveRequiredWorkflowParent({
       adapter,
       context,
@@ -160,8 +192,20 @@ export const adoptLandedSupersededAttempt = async ({
       stalled,
       resumeOnObservation,
     });
-    if (reobservation.kind === "reobserved") return "continue";
-    return reobservation.kind === "included" ? null : reobservation;
+    if (reobservation.kind === "included") return null;
+    if (reobservation.kind !== "reobserved") return reobservation;
+    await supersedeWorkflowFundingAttempt({
+      journal,
+      assertReconcile,
+      entries,
+      append,
+      transactionHash: result.txHash,
+      retirement: read.retirement,
+      savedHandoff: null,
+    });
+    // Read the landed attempt at once: the next pass adopts it.
+    supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
+    return "continue";
   }
   const preflight = [...current]
     .reverse()

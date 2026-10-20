@@ -27,14 +27,16 @@ type Submission = Extract<
   { kind: "submission_intent" }
 >;
 
-/** Reads, without replay authority, whether `submission` is on chain. */
-export const readSubmissionOnChain = async ({
+/** Reads `submission` without replay authority: through the family's
+ * reconcile, or with `retirementOnly`, by its own signed bytes alone. */
+export const readSubmission = async ({
   adapter,
   context,
   headerHash,
   journal,
   submission,
   signedTransactionCborHex,
+  retirementOnly = false,
   stalled,
   resumeOnObservation,
 }: {
@@ -44,11 +46,15 @@ export const readSubmissionOnChain = async ({
   readonly journal: FraudProofWorkflowJournalStore;
   readonly submission: Submission;
   readonly signedTransactionCborHex?: string;
+  readonly retirementOnly?: boolean;
   readonly stalled: (reason: string) => Promise<FraudProofWorkflowRunResult>;
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
-}): Promise<boolean | FraudProofWorkflowRunResult> => {
+}): Promise<
+  | { readonly read: FraudProofWorkflowReconcileResult }
+  | FraudProofWorkflowRunResult
+> => {
   const { deploymentFingerprint, category } = context.identity;
-  let inclusion: FraudProofWorkflowReconcileResult;
+  let read: FraudProofWorkflowReconcileResult;
   try {
     assertWorkflowJournalActuation({
       journal,
@@ -57,9 +63,10 @@ export const readSubmissionOnChain = async ({
       headerHash,
       checkpoint: "before_reconcile",
     });
-    inclusion = await adapter.reconcile({
+    read = await adapter.reconcile({
       ...context,
       reconciliationOnly: true,
+      ...(retirementOnly ? { retirementOnly } : {}),
       action: validateAction({
         actionId: submission.actionId,
         input: submission.actionInput,
@@ -89,15 +96,15 @@ export const readSubmissionOnChain = async ({
       `reconciliation failed for ${submission.actionId}: ${formatUnknownError(cause)}`,
     );
   }
-  if (inclusion.kind !== "confirmed") return false;
   if (
-    normalizeTxHash(inclusion.txHash, "reconciled transaction hash") !==
-    submission.txHash
+    read.kind === "confirmed" &&
+    normalizeTxHash(read.txHash, "reconciled transaction hash") !==
+      submission.txHash
   )
     return await stalled(
-      `reconciliation for ${submission.actionId} returned ${inclusion.txHash}, expected ${submission.txHash}`,
+      `reconciliation for ${submission.actionId} returned ${read.txHash}, expected ${submission.txHash}`,
     );
-  return true;
+  return { read };
 };
 
 export const reobserveRequiredWorkflowParent = async ({
@@ -138,11 +145,12 @@ export const reobserveRequiredWorkflowParent = async ({
   const { workflowId } = context;
   const identity = context.identity;
   const entries = context.entries;
+  // Reads, without replay authority, whether `submission` is on chain.
   const onChain = async (
     submission: Submission,
     signedTransactionCborHex?: string,
-  ) =>
-    await readSubmissionOnChain({
+  ): Promise<boolean | FraudProofWorkflowRunResult> => {
+    const result = await readSubmission({
       adapter,
       context,
       headerHash,
@@ -154,6 +162,8 @@ export const reobserveRequiredWorkflowParent = async ({
       stalled,
       resumeOnObservation,
     });
+    return "read" in result ? result.read.kind === "confirmed" : result;
+  };
   // A descendant can consume a parent's effects while its inclusion
   // remains canonical. Authenticate that inclusion without replay
   // authority before displacing the descendant's unresolved intent.

@@ -49,6 +49,7 @@ export {
   assertWorkflowFundingReservationReadyToSubmit,
   prepareWorkflowFundingReservationTransaction,
   readLegacyWorkflowFundingAbandonedTransactions,
+  readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
   workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.read-workflow-funding-recovery.js";

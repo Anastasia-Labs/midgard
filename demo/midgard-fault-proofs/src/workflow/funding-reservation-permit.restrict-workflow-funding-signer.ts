@@ -224,6 +224,7 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     readCompletionHandoff: async () => null,
     readAbandonmentHandoff: async () => null,
     readLandedSupersededAttempt: async () => null,
+    readRecordedSignedTransaction: async () => null,
     acknowledgeAbandonment: async () => snapshot,
     resolveInputs: async () => [],
     resolveConfirmedInput: async () => {

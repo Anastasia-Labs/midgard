@@ -928,6 +928,17 @@ export const openInternal = async (
         ? null
         : landedSupersededAttempt(current, actionId, signedTransactionCborHex);
     },
+    readRecordedSignedTransaction: async ({
+      reservationId,
+      transactionHash,
+    }) => {
+      auditRead();
+      return (
+        recordedSubmissions(reservationId).find(
+          ({ transition }) => transition.transactionHash === transactionHash,
+        )?.transition.signedTransactionCborHex ?? null
+      );
+    },
     readReobservationInputs: async ({ reservationId, transactionHash }) => {
       auditRead();
       return reobservationInputs(reservationId, transactionHash);

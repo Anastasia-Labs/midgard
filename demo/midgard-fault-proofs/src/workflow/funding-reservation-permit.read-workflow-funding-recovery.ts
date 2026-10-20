@@ -364,3 +364,19 @@ export const readLegacyWorkflowFundingAbandonedTransactions = async (
     return { transition, handoff };
   });
 };
+
+/** The exact signed bytes of `transactionHash` as the bound reservation
+ * recorded them, or null without a reservation or such a record. */
+export const readWorkflowFundingRecordedSignedTransaction = async (
+  journal: object,
+  transactionHash: string,
+): Promise<string | null> => {
+  const state = stateForJournal(journal);
+  if (state === undefined) return null;
+  const signed = await state.port.readRecordedSignedTransaction({
+    transactionHash,
+  });
+  if (signed !== null && typeof signed !== "string")
+    throw new Error("funding store returned malformed signed bytes");
+  return signed;
+};
