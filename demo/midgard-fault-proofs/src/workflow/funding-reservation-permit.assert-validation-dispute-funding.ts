@@ -4,8 +4,10 @@
  * VerifySource locks the deployment's dispute bond and raises the pending
  * claim to the case floor; neither is released custody or a min-Ada top-up,
  * so the runtime funding bound refuses the transaction without this
- * authority. The authority admits exactly one bond output and one case
- * output, each at its deployment-bound value, derived again here from the
+ * authority. The authority admits exactly one bond output, at the signed
+ * deployment's bond, and one case output, at the larger of the claim's
+ * lovelace and the case floor, which the compiled profile's constant fixes
+ * rather than the signed deployment; both are derived again here from the
  * spent pending claim and the policy's dispute terms. It binds the exact
  * signed bytes evaluated locally and is minted only by the VerifySource
  * builder, for category 00000006.
@@ -152,7 +154,8 @@ const refuse = (names: readonly string[]): never => {
 
 /**
  * The authority's binding to this workflow, its action and the policy's
- * deployment-bound terms. Each refusal names the failed binding.
+ * dispute terms: the deployment-bound bond and addresses, and the compiled
+ * profile's case floor. Each refusal names the failed binding.
  */
 export const assertValidationDisputeFundingAuthorityBinding = ({
   authority,
@@ -410,7 +413,8 @@ export const validationDisputeFunding = ({
     /**
      * A bond or case output's custody and allocation: the bond is new
      * custody at its bound value; the case keeps the claim's released
-     * lovelace and is raised to the bound floor. `null` for any other output.
+     * lovelace and is raised to the compiled profile's case floor. `null`
+     * for any other output.
      */
     output: (
       raw: CML.TransactionOutput,

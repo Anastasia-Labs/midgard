@@ -94,10 +94,13 @@ export const workflowRuntimeFundingMinimumFee = ({
 };
 
 /**
- * The validation-trace dispute's deployment-bound VerifySource custody: the
- * dispute bond the case validator is applied with (the manifest's
- * `availabilityChallenge.challengerBondLovelace`) and the compiled profile's
- * case floor (`fraud_proof_output_lovelace + max_dispute_move_fee_lovelace`).
+ * The validation-trace dispute's VerifySource custody terms: the dispute
+ * bond the case validator is applied with, bound by the signed deployment
+ * (the manifest's `availabilityChallenge.challengerBondLovelace`), and its
+ * contract addresses. The case floor is not among them: it is fixed by the
+ * compiled profile's constant `VALIDATION_CASE_FLOOR_LOVELACE`
+ * (`fraud_proof_output_lovelace + max_dispute_move_fee_lovelace`), not by
+ * the signed deployment.
  */
 export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
   deploymentFingerprint: string;
