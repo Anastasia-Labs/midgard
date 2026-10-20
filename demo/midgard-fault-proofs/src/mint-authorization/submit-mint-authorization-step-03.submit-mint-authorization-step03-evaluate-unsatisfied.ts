@@ -24,6 +24,7 @@ import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
@@ -115,6 +116,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
   const carriageUtxos =
     shared.publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs: shared.ownOutputs ?? createOwnOutputJournal(),
       lucid: shared.lucid,
       signer: shared.signer,
       planned,

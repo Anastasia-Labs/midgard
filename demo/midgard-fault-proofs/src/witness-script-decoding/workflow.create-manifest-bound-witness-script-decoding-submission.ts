@@ -7,6 +7,10 @@ import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { createWitnessScriptDecodingCentralJournalAdapter } from "./central-journal.js";
 import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
@@ -36,6 +40,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundWitnessScriptDecodingConfig;
   readonly observe: (
@@ -52,6 +57,8 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
     typeof createWitnessScriptDecodingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -171,6 +178,7 @@ export const createManifestBoundWitnessScriptDecodingSubmission = ({
         label: WITNESS_SCRIPT_DECODING_CATEGORY_LABEL,
       });
       const result = await submitWitnessScriptDecodingStep02({
+        ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,

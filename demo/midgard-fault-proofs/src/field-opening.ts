@@ -48,6 +48,7 @@ import "./workflow/transaction-boundary.js";
 import "./field-opening.plan-fault-proof-field-opening.js";
 import "./field-opening.publish-fault-proof-field-carriage.js";
 import "./field-opening.certify-fault-proof-field-carriage.js";
+import "./field-opening.own-field-carriage.js";
 export {
   type CertifiedFaultProofFieldCarriage,
   certifyFaultProofFieldCarriage,
@@ -55,6 +56,10 @@ export {
   resolveFaultProofFieldPreimageCertificate,
   reuseOrCertifyFaultProofFieldCarriage,
 } from "./field-opening.certify-fault-proof-field-carriage.js";
+export {
+  fieldCertificateClaimKey,
+  fieldPublicationClaimKey,
+} from "./field-opening.own-field-carriage.js";
 export {
   type FaultProofFieldOpeningPlan,
   parseNativeTxCompactCbor,
@@ -64,8 +69,6 @@ export {
   faultProofFieldCarriage,
   faultProofFieldOpening,
   faultProofRawFieldCarriage,
-  findMissingFaultProofFieldPublication,
-  type MissingFaultProofFieldPublication,
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
 } from "./field-opening.publish-fault-proof-field-carriage.js";

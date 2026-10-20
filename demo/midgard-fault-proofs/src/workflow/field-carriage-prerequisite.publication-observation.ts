@@ -2,9 +2,13 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import { fieldPreimageCertificateAddress } from "../field-opening.js";
+import {
+  fieldCertificateClaimKey,
+  fieldCertificateSlot,
+  lucidOwnOutputReader,
+} from "../field-opening.own-field-carriage.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import {
-  outRef,
   type Requirement,
   sameJson,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
@@ -13,67 +17,69 @@ import { certifiedRequirement } from "./field-carriage-prerequisite.requirement-
 import type { FraudProofWorkflowJournalEntry } from "./journal.js";
 import { latestSubmissionIntent } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import {
+  inlineDatumCarriageSlot,
+  type OwnOutputClaimed,
+  type OwnOutputJournal,
+  readOwnOutputs,
+} from "./own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "./raw-l1-publication-observation.js";
 
-export const createPublicationCandidate =
-  (publications: FraudProofAuthenticatedPublicationObserver) =>
-  async ({
-    headerHash,
-    kind,
-    address,
-    datumCbor,
-    unit,
-    utxos,
-    claimed,
-    expectedReferenceOutRef,
-  }: {
-    readonly utxos: readonly UTxO[];
-    readonly claimed?: ReadonlySet<string>;
-    readonly expectedReferenceOutRef?: string;
-    readonly headerHash: string;
-    readonly kind: "field_publication" | "field_certificate";
-    readonly address: string;
-    readonly datumCbor: string;
-    readonly unit: string | null;
-  }): Promise<{
-    readonly kind: "absent" | "pending" | "confirmed";
-    readonly utxo?: UTxO;
-  }> => {
-    const matches = utxos
-      .filter(
-        (utxo) =>
-          !claimed?.has(outRef(utxo)) &&
-          utxo.datum === datumCbor &&
-          utxo.datumHash == null &&
-          utxo.scriptRef == null &&
-          (unit === null
-            ? Object.entries(utxo.assets).every(
-                ([asset, quantity]) => asset === "lovelace" || quantity === 0n,
-              )
-            : utxo.assets[unit] === 1n &&
-              Object.entries(utxo.assets).every(
-                ([asset, quantity]) =>
-                  asset === "lovelace" || asset === unit || quantity === 0n,
-              )),
-      )
-      .sort((left, right) => outRef(left).localeCompare(outRef(right)));
-    if (matches.length === 0) return { kind: "absent" };
-    for (const utxo of matches) {
-      const observed = await publications.observeExact({
-        headerHash,
-        kind,
-        address,
-        expectedOutRef: outRef(utxo),
-        expectedDatumCbor: datumCbor,
-        ...(unit === null ? {} : { expectedUnit: unit }),
-        ...(expectedReferenceOutRef === undefined
-          ? {}
-          : { expectedReferenceOutRef }),
-      });
-      if (observed.kind === "confirmed") return { kind: "confirmed", utxo };
-    }
-    return { kind: "pending" };
-  };
+export type OwnCarriageObservation =
+  | Readonly<{ kind: "confirmed"; utxo: UTxO }>
+  | Readonly<{ kind: "pending" | "absent" }>;
+
+/**
+ * Where one carriage slot stands, from our own claims on it alone, the newest
+ * first: confirmed when a claim is both authenticated on the current chain
+ * and visible to the provider the step is built with; pending when it is only
+ * one of the two (one source lags the other); absent when no claim is either.
+ */
+export const observeOwnCarriage = async ({
+  publications,
+  lucid,
+  headerHash,
+  kind,
+  address,
+  datumCbor,
+  unit,
+  claims,
+}: {
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+  readonly lucid: Pick<LucidEvolution, "utxosByOutRef">;
+  readonly headerHash: string;
+  readonly kind: "field_publication" | "field_certificate";
+  readonly address: string;
+  readonly datumCbor: string;
+  readonly unit: string | null;
+  readonly claims: readonly OwnOutputClaimed[];
+}): Promise<OwnCarriageObservation> => {
+  const slot =
+    unit === null
+      ? inlineDatumCarriageSlot(address, datumCbor)
+      : fieldCertificateSlot(address, datumCbor, unit);
+  const live = await readOwnOutputs(
+    lucidOwnOutputReader(lucid),
+    claims.map(({ outRef }) => outRef),
+  );
+  for (const { outRef } of [...claims].reverse()) {
+    const utxo = live.get(outRef);
+    const visible = utxo !== undefined && slot.matches(utxo);
+    const observed = await publications.observeExact({
+      headerHash,
+      kind,
+      address,
+      expectedOutRef: outRef,
+      expectedDatumCbor: datumCbor,
+      ...(unit === null ? {} : { expectedUnit: unit }),
+    });
+    if (visible && observed.kind === "confirmed")
+      return Object.freeze({ kind: "confirmed", utxo: utxo! });
+    if (visible || observed.kind === "confirmed")
+      return Object.freeze({ kind: "pending" });
+  }
+  return Object.freeze({ kind: "absent" });
+};
 
 export const publicationStillIncluded = async ({
   headerHash,
@@ -81,8 +87,8 @@ export const publicationStillIncluded = async ({
   required,
   transactionConfirmed,
   publications,
-  lucid,
   network,
+  ownOutputs,
 }: {
   readonly headerHash: string;
   readonly oldOutRef: string;
@@ -92,8 +98,9 @@ export const publicationStillIncluded = async ({
     txHash: string;
   }) => Promise<boolean>;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
-  readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly network: Network;
+  /** The workflow's own carriage claims (its certificates among them). */
+  readonly ownOutputs: OwnOutputJournal;
 }): Promise<boolean> => {
   if (
     await transactionConfirmed({ headerHash, txHash: oldOutRef.split("#")[0]! })
@@ -104,16 +111,25 @@ export const publicationStillIncluded = async ({
     network,
     certificatePolicyId: certifiedRequirement(required).certificate.policyId,
   });
-  const observed = await createPublicationCandidate(publications)({
-    headerHash,
-    kind: "field_certificate",
-    address,
-    datumCbor: required.certificateDatumCbor!,
-    unit: required.certificateUnit!,
-    utxos: await lucid.utxosAt(address),
-    expectedReferenceOutRef: oldOutRef,
-  });
-  return observed.kind === "confirmed";
+  // A certificate of ours that referenced the old output proves its creation
+  // stayed on the chain even when the output itself is gone.
+  for (const { outRef } of [
+    ...ownOutputs.claims(
+      fieldCertificateClaimKey(required.certificateDatumCbor!),
+    ),
+  ].reverse()) {
+    const observed = await publications.observeExact({
+      headerHash,
+      kind: "field_certificate",
+      address,
+      expectedOutRef: outRef,
+      expectedDatumCbor: required.certificateDatumCbor!,
+      expectedUnit: required.certificateUnit!,
+      expectedReferenceOutRef: oldOutRef,
+    });
+    if (observed.kind === "confirmed") return true;
+  }
+  return false;
 };
 
 /** Reacquisition has its own stable identity; inclusion of the old tx remains true. */
@@ -127,8 +143,8 @@ export const missingPublicationReplacement = async ({
   address,
   publications,
   transactionConfirmed,
-  lucid,
   network,
+  ownOutputs,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
@@ -140,8 +156,8 @@ export const missingPublicationReplacement = async ({
     headerHash: string;
     txHash: string;
   }) => Promise<boolean>;
-  readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly network: Network;
+  readonly ownOutputs: OwnOutputJournal;
   readonly address: string;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
 }): Promise<
@@ -182,8 +198,8 @@ export const missingPublicationReplacement = async ({
       required,
       transactionConfirmed,
       publications,
-      lucid,
       network,
+      ownOutputs,
     }))
       ? { kind: "required", replacementOutRef: recovered.outRef }
       : { kind: "required" };
@@ -198,8 +214,8 @@ export const assertPublicationReplacement = async ({
   required,
   transactionConfirmed,
   publications,
-  lucid,
   network,
+  ownOutputs,
   address,
   datumCbor,
 }: Omit<Parameters<typeof publicationStillIncluded>[0], "oldOutRef"> & {
@@ -230,8 +246,8 @@ export const assertPublicationReplacement = async ({
       required,
       transactionConfirmed,
       publications,
-      lucid,
       network,
+      ownOutputs,
     }))
   )
     throw new WorkflowActionChangedError(

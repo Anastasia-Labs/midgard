@@ -10,6 +10,7 @@ import {
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   type BoundScriptIntegrityHashMissingActuatorConfig,
   captured,
@@ -55,7 +56,11 @@ export const createScriptIntegrityHashMissingTransactionPort = (
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "scriptIntegrityHashMissing",
   prepare: prepareScriptIntegrityHashMissingArtifact,
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "scriptIntegrityHashMissing",
+      entries,
+    });
     const admitted = admitScriptIntegrityHashMissingArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -187,7 +192,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
             awaitConfirmation: false,
           });
         });
-      const field = await resolveField(config, admitted.scriptPlan);
+      const field = await resolveField(config, admitted.scriptPlan, ownOutputs);
       const first = admitted.staged.grammar[0]!;
       return await captured(async (preSubmitBoundary) => {
         await submitScriptIntegrityHashMissingStep03({
@@ -222,7 +227,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
     }
 
     if (input.stage === "step_04") {
-      const field = await resolveField(config, admitted.scriptPlan);
+      const field = await resolveField(config, admitted.scriptPlan, ownOutputs);
       const currentHash = phaseHash(
         await threadDatum(config, threadOutRef(), 4),
         "ScriptGrammar",
@@ -301,7 +306,7 @@ export const createScriptIntegrityHashMissingTransactionPort = (
     }
 
     if (input.stage === "step_05") {
-      const field = await resolveField(config, admitted.scriptPlan);
+      const field = await resolveField(config, admitted.scriptPlan, ownOutputs);
       const currentHash = phaseHash(
         await threadDatum(config, threadOutRef(), 5),
         "ScriptScan",
@@ -360,7 +365,11 @@ export const createScriptIntegrityHashMissingTransactionPort = (
     }
 
     if (input.stage === "step_06") {
-      const field = await resolveField(config, admitted.redeemerPlan);
+      const field = await resolveField(
+        config,
+        admitted.redeemerPlan,
+        ownOutputs,
+      );
       const state = await threadDatum(config, threadOutRef(), 6);
       const phase = state.data.phase as Record<string, unknown>;
       if ("ScriptComplete" in phase) {

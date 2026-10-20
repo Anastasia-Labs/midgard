@@ -50,10 +50,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { extractForcedLeafEvidence } from "../src/evidence/forced-leaf-evidence.js";
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.js";
@@ -117,8 +115,10 @@ import {
   REASON,
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
+import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { installFieldCarriage } from "./support/install-field-carriage.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -474,6 +474,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       const captured = await port.capture({
         action: actorAction(stage, threadOutRef),
         artifact,
+        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -534,6 +535,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact,
+        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -763,6 +765,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact: forcedArtifact,
+        entries: [],
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -966,45 +969,45 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const redeemerPlan = plan(8, redeemerItems);
     expect(scriptPlan.plan.tier).toBe("Certified");
     expect(redeemerPlan.plan.tier).toBe("Certified");
+    // The field's carriage lands through the production prerequisite, so
+    // the port reads it back from the journal of those actions.
+    const journal = createConfirmedActionJournal({
+      category: "scriptIntegrityHashMissing",
+      headerHash: setup.headerHash,
+    });
     const publishAndCertify = async (planned: typeof scriptPlan) => {
       console.info(
-        `[script-integrity-max] publishing field ${planned.plan.fieldIndex.toString()}`,
+        `[script-integrity-max] installing field ${planned.plan.fieldIndex.toString()}`,
       );
-      const chunks = await measured(
-        `field-${planned.plan.fieldIndex.toString()}-chunks`,
+      const installed = await measured(
+        `field-${planned.plan.fieldIndex.toString()}-carriage`,
         () =>
-          publishFaultProofFieldCarriage({
+          installFieldCarriage({
+            category: "scriptIntegrityHashMissing",
+            headerHash: setup.headerHash,
             lucid: harness.proverLucid,
-            signer: harness.proverSigner,
-            planned,
-            publisherAddress: harness.proverSigner.address,
-            label: "integrity max carriage",
-          }),
-      );
-      console.info(
-        `[script-integrity-max] certifying field ${planned.plan.fieldIndex.toString()}`,
-      );
-      const certified = await measured(
-        `field-${planned.plan.fieldIndex.toString()}-certificate`,
-        () =>
-          certifyFaultProofFieldCarriage({
-            lucid: harness.proverLucid,
+            emulator: harness.emulator,
             network,
             signer: harness.proverSigner,
-            planned,
-            certificatePolicyId: family.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              family.fieldPreimageCertificateMintingScript!,
-            certificateReferenceScriptUtxo: certificateRef,
-            chunkUtxos: chunks,
-            compactCbor,
-            witnessSetCompactCbor: witnessSetCbor,
+            requirement: {
+              planned,
+              compactCbor,
+              witnessSetCompactCbor: witnessSetCbor,
+              certificate: {
+                policyId: family.fieldPreimageCertificatePolicyId,
+                mintingScript: family.fieldPreimageCertificateMintingScript!,
+                referenceScriptUtxo: certificateRef,
+              },
+            },
+            journal,
           }),
       );
       console.info(
-        `[script-integrity-max] certified field ${planned.plan.fieldIndex.toString()}`,
+        `[script-integrity-max] installed field ${planned.plan.fieldIndex.toString()}`,
       );
-      return { chunks, certificate: certified.certificateUtxo };
+      if (installed.certificate === undefined)
+        throw new Error("the certified field has no certificate");
+      return { chunks: installed.chunks, certificate: installed.certificate };
     };
     const scriptPublished = await publishAndCertify(scriptPlan);
     const redeemerPublished = await publishAndCertify(redeemerPlan);
@@ -1113,6 +1116,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact: productionArtifact,
+        entries: journal.entries(),
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
@@ -1769,14 +1773,40 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const redeemerPlan = plan(8, redeemerItems);
     expect(scriptPlan.plan.tier).toBe("RawUtxo");
     expect(redeemerPlan.plan.tier).toBe("RawUtxo");
-    const publish = (planned: typeof scriptPlan) =>
-      publishFaultProofFieldCarriage({
-        lucid: s.harness.proverLucid,
-        signer: s.harness.proverSigner,
-        planned,
-        publisherAddress: s.harness.proverSigner.address,
-        label: "integrity small carriage",
-      });
+    // The fields' carriage lands through the production prerequisite, so the
+    // port reads it back from the journal of those actions.
+    const journal = createConfirmedActionJournal({
+      category: "scriptIntegrityHashMissing",
+      headerHash: s.setup.headerHash,
+    });
+    const certificateRef = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: s.harness.funderLucid,
+        script: s.family.fieldPreimageCertificateMintingScript!,
+        label: "integrity small certificate mint",
+      })
+    ).utxo;
+    const publish = async (planned: typeof scriptPlan) =>
+      (
+        await installFieldCarriage({
+          category: "scriptIntegrityHashMissing",
+          headerHash: s.setup.headerHash,
+          lucid: s.harness.proverLucid,
+          emulator: s.harness.emulator,
+          network,
+          signer: s.harness.proverSigner,
+          requirement: {
+            planned,
+            compactCbor: s.compactCbor,
+            certificate: {
+              policyId: s.family.fieldPreimageCertificatePolicyId,
+              mintingScript: s.family.fieldPreimageCertificateMintingScript!,
+              referenceScriptUtxo: certificateRef,
+            },
+          },
+          journal,
+        })
+      ).chunks;
     await publish(scriptPlan);
     const redeemerPublished = await publish(redeemerPlan);
     const port = createScriptIntegrityHashMissingTransactionPort({
@@ -1837,6 +1867,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           },
         },
         artifact,
+        entries: journal.entries(),
       });
       const txHash = await submitCapturedTransaction(captured.transaction);
       await s.harness.proverLucid.awaitTx(txHash);

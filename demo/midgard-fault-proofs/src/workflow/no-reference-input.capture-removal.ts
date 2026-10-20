@@ -13,6 +13,7 @@ import {
   type LinearFamilyReferenceScripts,
 } from "./family-definition.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -84,8 +85,10 @@ export const stringField = (
 export const resolveField = async (
   config: BoundConfig,
   planned: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -94,6 +97,7 @@ export const resolveField = async (
     throw new Error("no-reference-input field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.binding.network,
     planned,

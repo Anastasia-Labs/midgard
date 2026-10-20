@@ -292,6 +292,15 @@ export const forcedHarness = ({
         : address === CERTIFICATE_ADDRESS
           ? (certificateUtxos ?? [])
           : [],
+    utxosByOutRef: async (
+      refs: readonly { txHash: string; outputIndex: number }[],
+    ) =>
+      refs.flatMap((ref) =>
+        [...walletUtxos, ...(certificateUtxos ?? [])].filter(
+          (utxo) =>
+            utxo.txHash === ref.txHash && utxo.outputIndex === ref.outputIndex,
+        ),
+      ),
   } as unknown as LucidEvolution;
   const step = {
     spendingScript: SCRIPT,

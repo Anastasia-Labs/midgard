@@ -23,6 +23,7 @@ import {
   type FamilyDeploymentContext,
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -207,7 +208,7 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
         category,
         prepare: material.prepare,
         validatePreparedArtifact: material.validatePreparedArtifact,
-        capture: async ({ action, artifact }) => {
+        capture: async ({ action, artifact, entries }) => {
           const input = cursorFamilyActionInput({ category, action });
           if (input.stage === "remove")
             return await captureCursorRemoval({
@@ -242,6 +243,10 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
             async (preSubmitBoundary) => {
               const submission =
                 createManifestBoundSpendInputSignerMissingSubmission({
+                  ownOutputs: workflowFieldCarriageOwnOutputs({
+                    category,
+                    entries,
+                  }),
                   config,
                   preSubmitBoundary,
                   observe: async () =>

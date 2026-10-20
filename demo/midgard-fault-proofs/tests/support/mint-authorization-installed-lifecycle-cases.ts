@@ -655,6 +655,9 @@ const captureAndRestart = async (name: string): Promise<void> => {
       kind: "submission_intent",
       actionId: action.actionId,
       actionInput: action.input,
+      ...(preflight.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: preflight.durableRecovery }),
       attempt: 1,
       txHash: preflight.txHash,
     });

@@ -36,6 +36,10 @@ import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
@@ -80,6 +84,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -99,6 +104,8 @@ export const submitSpendInputSignerMissingStep02 = async ({
   readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -145,6 +152,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -155,6 +163,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           network,
           signer,

@@ -14,16 +14,17 @@ import {
   base,
   baseAction,
   certificateAction,
+  confirmedCarriage,
   context,
   headerHash,
-  identity,
+  outRefReader,
   prerequisite,
   publicationAction,
   txHash,
 } from "./field-carriage-prerequisite.prerequisite.js";
 
 describe("production field-carriage prerequisite V1", () => {
-  it("queries publication candidates once per call and reauthenticates every chunk", async () => {
+  it("reads each journaled chunk back by its out-ref and reauthenticates it on every call", async () => {
     const requirement = createRawDatumPreimageRequirement({
       preimage: Buffer.concat([
         Buffer.alloc(15_000, 1),
@@ -37,16 +38,27 @@ describe("production field-carriage prerequisite V1", () => {
       paymentKeyHash: "12".repeat(28),
       selectWallet: () => undefined,
     };
+    const publicationTxHash = (index: number) =>
+      (index + 1).toString(16).padStart(2, "0").repeat(32);
     let candidates: UTxO[] = requirement.publicationDatums.map(
-      (datum, outputIndex) => ({
-        txHash,
-        outputIndex,
+      (datum, index) => ({
+        txHash: publicationTxHash(index),
+        outputIndex: 0,
         address: signer.address,
         datum,
         assets: { lovelace: 2_000_000n },
       }),
     );
-    const utxosAt = vi.fn(async () => candidates);
+    const utxosByOutRef = vi.fn(
+      async (refs: readonly { txHash: string; outputIndex: number }[]) =>
+        candidates.filter((candidate) =>
+          refs.some(
+            (ref) =>
+              ref.txHash === candidate.txHash &&
+              ref.outputIndex === candidate.outputIndex,
+          ),
+        ),
+    );
     const observeExact = vi.fn(
       async ({ expectedOutRef }: { expectedOutRef: string }) => ({
         kind: "confirmed" as const,
@@ -55,7 +67,7 @@ describe("production field-carriage prerequisite V1", () => {
     );
     const port = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "nonExistentInput",
-      lucid: { utxosAt } as unknown as LucidEvolution,
+      lucid: { utxosByOutRef } as unknown as LucidEvolution,
       network: "Preview",
       signer,
       publications: {
@@ -65,26 +77,69 @@ describe("production field-carriage prerequisite V1", () => {
       requirementForAction: () => requirement,
       transactionConfirmed: async () => true,
     });
+    // Each chunk is published by its own action, in plan order, and the
+    // journal keeps the out-ref its signed body gave the chunk.
+    let entries: readonly FraudProofWorkflowJournalEntry[] = [];
+    for (const [index, datumCbor] of requirement.publicationDatums.entries()) {
+      const required = await port.inspect({
+        headerHash,
+        baseAction,
+        artifact: context.artifact,
+        entries,
+      });
+      if (required.kind !== "required")
+        throw new Error("missing publication requirement");
+      expect(required.action.input.publicationIndex).toBe(index);
+      entries = confirmedCarriage(entries, {
+        action: required.action,
+        txHash: publicationTxHash(index),
+        durableRecovery: {
+          fieldCarriage: {
+            schemaVersion: FIELD_CARRIAGE_RECOVERY,
+            kind: "publication",
+            requirementSha256: required.action.input
+              .requirementSha256 as string,
+            outRef: `${publicationTxHash(index)}#0`,
+            datumCbor,
+            unit: null,
+          },
+        },
+      });
+    }
+    const journaled = candidates.map(
+      ({ txHash: hash, outputIndex }) => `${hash}#${outputIndex.toString()}`,
+    );
     const input = {
       headerHash,
       artifact: context.artifact,
       baseAction,
-      entries: [],
+      entries,
     };
+    utxosByOutRef.mockClear();
+    observeExact.mockClear();
     await expect(port.inspect(input)).resolves.toEqual({ kind: "satisfied" });
-    expect(utxosAt).toHaveBeenCalledTimes(1);
     expect(observeExact).toHaveBeenCalledTimes(3);
     await expect(
       port.resolveAuthenticated({ ...input, action: baseAction }),
     ).resolves.toMatchObject({ publications: candidates });
-    expect(utxosAt).toHaveBeenCalledTimes(2);
     expect(observeExact).toHaveBeenCalledTimes(6);
-    candidates = candidates.slice(0, 2);
+    expect(
+      utxosByOutRef.mock.calls.flatMap(([refs]) =>
+        refs.map(
+          ({ txHash: hash, outputIndex }) =>
+            `${hash}#${outputIndex.toString()}`,
+        ),
+      ),
+    ).toEqual([...journaled, ...journaled]);
+    // The last chunk leaves the provider's view; an output elsewhere with the
+    // same datum does not stand in for it.
+    candidates = [
+      ...candidates.slice(0, 2),
+      { ...candidates[2]!, txHash: "ee".repeat(32) },
+    ];
     await expect(port.inspect(input)).resolves.toMatchObject({
-      kind: "required",
-      action: { input: { publicationIndex: 2 } },
+      kind: "pending",
     });
-    expect(utxosAt).toHaveBeenCalledTimes(3);
     await expect(
       port.resolveAuthenticated({ ...input, action: baseAction }),
     ).rejects.toThrow("unauthenticated field publication");
@@ -144,7 +199,7 @@ describe("production field-carriage prerequisite V1", () => {
     let included = false;
     const port = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "nonExistentInput",
-      lucid: { utxosAt: async () => candidates } as unknown as LucidEvolution,
+      lucid: outRefReader(() => candidates),
       network: "Preview",
       signer,
       publications: {
@@ -185,6 +240,15 @@ describe("production field-carriage prerequisite V1", () => {
         },
       },
     } as const;
+    // The workflow as it resumes with the publication journaled.
+    const resumed = {
+      ...context,
+      entries: confirmedCarriage([], {
+        action: required.action,
+        txHash,
+        durableRecovery: input.durableRecovery,
+      }),
+    };
     await expect(port.reconcile(input)).resolves.toEqual({
       kind: "pending",
       txHash,
@@ -204,13 +268,13 @@ describe("production field-carriage prerequisite V1", () => {
       base: underlying,
       prerequisite: port,
     });
-    await expect(wrapped.observe(context)).resolves.toEqual({
+    await expect(wrapped.observe(resumed)).resolves.toEqual({
       kind: "pending",
       reason:
         "nonExistentInput field publication 0 is not authenticated on the current chain",
     });
     await expect(
-      wrapped.preflight({ ...context, action: baseAction }),
+      wrapped.preflight({ ...resumed, action: baseAction }),
     ).rejects.toThrow("cannot bypass authenticated field carriage");
     included = true;
     await expect(port.reconcile(input)).resolves.toMatchObject({
@@ -222,40 +286,6 @@ describe("production field-carriage prerequisite V1", () => {
       kind: "confirmed",
       txHash,
     });
-    await expect(wrapped.observe(context)).resolves.toEqual({
-      kind: "action_required",
-      action: baseAction,
-    });
-    const journalBase = {
-      schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
-      workflowId: context.workflowId,
-      identity,
-      recordedAt: "2026-09-14T00:00:00.000Z",
-    } as const;
-    const entries: readonly FraudProofWorkflowJournalEntry[] = [
-      {
-        ...journalBase,
-        sequence: 0,
-        event: {
-          kind: "submission_intent",
-          actionId: required.action.actionId,
-          actionInput: required.action.input,
-          txHash,
-          attempt: 1,
-          durableRecovery: input.durableRecovery,
-        },
-      },
-      {
-        ...journalBase,
-        sequence: 1,
-        event: {
-          kind: "confirmed",
-          actionId: required.action.actionId,
-          txHash,
-        },
-      },
-    ];
-    const resumed = { ...context, entries };
     await expect(wrapped.observe(resumed)).resolves.toEqual({
       kind: "action_required",
       action: baseAction,

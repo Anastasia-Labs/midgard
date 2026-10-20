@@ -153,6 +153,16 @@ export const doubleSpendHarness = ({
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],
+      utxosByOutRef: async (
+        refs: readonly { txHash: string; outputIndex: number }[],
+      ) =>
+        refs.flatMap((ref) =>
+          [...walletUtxos, ...certificateUtxos].filter(
+            (utxo) =>
+              utxo.txHash === ref.txHash &&
+              utxo.outputIndex === ref.outputIndex,
+          ),
+        ),
     } as unknown as LucidEvolution,
     blueprint: {},
     deploymentInfo: {},

@@ -23,6 +23,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
@@ -61,6 +65,7 @@ export const submitInputSetUniquenessStep03 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -77,6 +82,8 @@ export const submitInputSetUniquenessStep03 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 2 as const;
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
@@ -117,6 +124,7 @@ export const submitInputSetUniquenessStep03 = async ({
   ) => [
     ...(supplied ??
       (await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,

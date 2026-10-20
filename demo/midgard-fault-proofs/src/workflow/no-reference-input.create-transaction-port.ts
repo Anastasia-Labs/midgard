@@ -6,6 +6,7 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   admitLedgerAbsenceArtifact,
   inputExistenceProofForStage,
@@ -39,7 +40,11 @@ export const createTransactionPort = (
       classification,
       owner: config.signer.paymentKeyHash,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "noReferenceInput",
+      entries,
+    });
     const admitted = admitLedgerAbsenceArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -91,7 +96,8 @@ export const createTransactionPort = (
       stepIndex === 1
         ? await resolveInputExistenceFieldCarriage({
             prepared,
-            resolveField: (planned) => resolveField(config, planned),
+            resolveField: (planned) =>
+              resolveField(config, planned, ownOutputs),
           })
         : [];
     const proof = inputExistenceProofForStage(prepared, input.stage as string);

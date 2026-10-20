@@ -19,6 +19,11 @@ import {
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../src/workflow/own-outputs.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
@@ -32,6 +37,7 @@ import {
   driveCapturedStep,
   fieldPreimageCertificateCount,
 } from "./support/captured-step-turns.js";
+import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -119,8 +125,10 @@ const stepTwoReady = async () => {
 const submitStepTwo = (
   ready: Awaited<ReturnType<typeof stepTwoReady>>,
   boundary: FraudProofPreSubmitBoundary,
+  ownOutputs: OwnOutputJournal,
 ) =>
   submitTransactionOutputNonCanonicalStep02({
+    ownOutputs,
     lucid: ready.harness.proverLucid,
     contracts: ready.contracts,
     categoryId: ready.category.categoryId,
@@ -141,11 +149,15 @@ const submitStepTwo = (
 describe("transactionOutputNonCanonical step 02 under the workflow capture boundary", () => {
   it("reuses the field certificate already on chain, so the next captured transaction is the step", async () => {
     const ready = await stepTwoReady();
+    // One run of the step: the carriage it publishes on one turn is what it
+    // reads back on the next.
+    const ownOutputs = createOwnOutputJournal();
     const drive = await driveCapturedStep({
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 6,
-      invoke: async (boundary) => await submitStepTwo(ready, boundary),
+      invoke: async (boundary) =>
+        await submitStepTwo(ready, boundary, ownOutputs),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(1);
     expect(
@@ -199,6 +211,11 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
           : { kind: "confirmed" as const, outRef: input.expectedOutRef };
       },
     };
+    const headerHash = "00".repeat(28);
+    const journal = createConfirmedActionJournal({
+      category: "transactionOutputNonCanonical",
+      headerHash,
+    });
     const port = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "transactionOutputNonCanonical",
       lucid,
@@ -208,7 +225,6 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
       requirementForAction: () => requirement,
       transactionConfirmed: async () => false,
     });
-    const headerHash = "00".repeat(28);
     const baseAction = {
       actionId: "transactionOutputNonCanonical:step_02",
       input: { stage: "step_02", threadOutRef: ready.threadOutRef },
@@ -220,7 +236,7 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
         headerHash,
         baseAction,
         artifact: {},
-        entries: [],
+        entries: journal.entries(),
       });
       if (inspected.kind === "satisfied") break;
       if (inspected.kind !== "required")
@@ -229,6 +245,7 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
         headerHash,
         action: inspected.action,
         artifact: {},
+        entries: journal.entries(),
       });
       await submitCapturedTransaction(transaction);
       ready.harness.emulator.awaitBlock();
@@ -241,6 +258,11 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
           durableRecovery,
         }),
       ).resolves.toEqual({ kind: "confirmed", txHash: transaction.txHash });
+      journal.confirm({
+        action: inspected.action,
+        txHash: transaction.txHash,
+        durableRecovery,
+      });
       if (inspected.action.input.stage === "certify_field_carriage")
         certification = capturedOutputHolding(transaction, certificateUnit);
     }
@@ -251,7 +273,15 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 1,
-      invoke: async (boundary) => await submitStepTwo(ready, boundary),
+      invoke: async (boundary) =>
+        await submitStepTwo(
+          ready,
+          boundary,
+          workflowFieldCarriageOwnOutputs({
+            category: "transactionOutputNonCanonical",
+            entries: journal.entries(),
+          }),
+        ),
     });
     expect(drive.prerequisites).toEqual([]);
     const referenceInputs = drive.step.signed

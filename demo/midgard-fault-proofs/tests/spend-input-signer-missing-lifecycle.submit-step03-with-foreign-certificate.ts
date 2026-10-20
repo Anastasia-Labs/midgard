@@ -29,6 +29,7 @@ import {
   SpendInputSignerStep04DatumSchema,
 } from "../src/spend-input-signer-missing/schemas.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   FAMILY,
   type Family,
@@ -67,6 +68,7 @@ export const submitStep03WithForeignCertificate = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReference: UTxO;
 }) => {
+  const ownOutputs = createOwnOutputJournal();
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const { contracts, category } = family;
@@ -93,6 +95,7 @@ export const submitStep03WithForeignCertificate = async ({
   expect(planned.plan.tier).toBe("Certified");
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -100,6 +103,7 @@ export const submitStep03WithForeignCertificate = async ({
     label: "foreign address witnesses",
   });
   const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     network,
     signer,

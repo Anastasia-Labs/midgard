@@ -22,6 +22,7 @@ import {
 } from "../workflow/deployment-manifest-binding.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import { defineFamily } from "../workflow/family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { completeReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -177,7 +178,7 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
         category,
         prepare: material.prepare,
         validatePreparedArtifact: material.validatePreparedArtifact,
-        capture: async ({ action, artifact }) => {
+        capture: async ({ action, artifact, entries }) => {
           const input = cursorFamilyActionInput({ category, action });
           if (input.stage === "remove")
             return await captureCursorRemoval({
@@ -210,6 +211,10 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
             async (preSubmitBoundary) => {
               const submission =
                 createManifestBoundFieldItemWidthIllegalSubmission({
+                  ownOutputs: workflowFieldCarriageOwnOutputs({
+                    category,
+                    entries,
+                  }),
                   config,
                   preSubmitBoundary,
                   observe: async () =>

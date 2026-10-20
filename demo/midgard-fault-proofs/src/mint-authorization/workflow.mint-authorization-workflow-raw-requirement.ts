@@ -32,6 +32,7 @@ import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { admitMintAuthorizationWorkflowArtifact } from "./artifact.js";
@@ -271,13 +272,17 @@ export const mintAuthorizationWorkflowRawRequirement = async (
 export const resolveField = async ({
   config,
   plan,
+  ownOutputs,
 }: {
   readonly config: BoundConfig;
   readonly plan: NonNullable<
     ReturnType<typeof planMintAuthorizationWorkflowField>
   >;
+  /** Our carriage claims, which the carriage is read by. */
+  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: plan,
@@ -286,6 +291,7 @@ export const resolveField = async ({
     throw new Error("mint-authorization field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.binding.network,
     planned: plan,

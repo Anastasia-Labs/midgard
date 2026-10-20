@@ -27,6 +27,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
@@ -77,16 +81,20 @@ export const resolveMintDeclaredFieldCarriage = async ({
   contracts,
   signer,
   planned,
+  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
   readonly signer: ResolvedProverSigner;
   readonly planned: PlannedMintDeclaredFieldOpening;
+  /** Our carriage claims, which the carriage is read by. */
+  readonly ownOutputs: OwnOutputJournal;
 }): Promise<{
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
 }> => {
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -96,6 +104,7 @@ export const resolveMintDeclaredFieldCarriage = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,
@@ -371,6 +380,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -384,6 +394,8 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const planned = planMintDeclaredFieldOpening({
     evidence,
@@ -394,6 +406,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   if (action.kind === "direct" && planned.plan.tier === "Certified")
     throw new Error("mintDeclaredAssetLimit: certified field requires grammar");
   const carriage = await resolveMintDeclaredFieldCarriage({
+    ownOutputs,
     lucid,
     contracts,
     signer,

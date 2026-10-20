@@ -44,6 +44,7 @@ import {
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../../src/transition-trace/reconstruct.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
@@ -68,6 +69,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     ForcedTxInvalid: { reason: "FeeBelowMinimum" },
   },
 ) => {
+  const ownOutputs = createOwnOutputJournal();
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: { realMinFee: true },
   });
@@ -293,6 +295,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
         label: "min-fee maximum field",
       });
       const published = await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -307,6 +310,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
           label: "min-fee field certificate",
         });
         const certificate = await certifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,
@@ -329,6 +333,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     unsafeSkipLocalViolationCheckForTest = false,
   ) =>
     submitMinFeeStep02({
+      ownOutputs,
       lucid: h.proverLucid,
       contracts,
       categoryId: category.categoryId,

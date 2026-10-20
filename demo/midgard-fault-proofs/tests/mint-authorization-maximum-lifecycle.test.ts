@@ -31,6 +31,7 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import { submitResolvedInit } from "../src/submit-init.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import {
   addressWitnessItemCbors,
@@ -49,6 +50,7 @@ import {
 it.each(["signers", "native", "cancel"])(
   "measures maximum %s through the real registered native-policy path",
   async (shape) => {
+    const ownOutputs = createOwnOutputJournal();
     try {
       const h = await makeMintAuthorizationEmulatorHarness();
       const nativePayload = Buffer.from(
@@ -126,6 +128,7 @@ it.each(["signers", "native", "cancel"])(
         witnessReferenceScripts: setup.witnessReferenceScripts,
       });
       const two = await submitMintAuthorizationStep02({
+        ownOutputs,
         ...common,
         threadOutRef: one.nextThreadOutRef,
         reconstruction: block.reconstruction,
@@ -152,6 +155,7 @@ it.each(["signers", "native", "cancel"])(
       );
       if (shape === "signers") expect(planned.plan.tier).toBe("Certified");
       const publishedCarriageUtxos = await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -167,6 +171,7 @@ it.each(["signers", "native", "cancel"])(
         planned.plan.tier !== "Certified"
           ? { certificateUtxo: undefined }
           : await certifyFaultProofFieldCarriage({
+              ownOutputs,
               lucid: h.proverLucid,
               network,
               signer: h.proverSigner,

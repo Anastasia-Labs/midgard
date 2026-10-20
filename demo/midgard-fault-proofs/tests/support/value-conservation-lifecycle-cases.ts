@@ -54,7 +54,9 @@ import {
   ConservationTerminalArgs,
   ConservationUpdateArgs,
 } from "../../src/value-not-preserved/union-schemas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
+import { createConfirmedActionJournal } from "./confirmed-action-journal.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 import { registerChunkedVerifyRewardAccount } from "./submit-init-emulator-shared.js";
 import {
@@ -845,6 +847,12 @@ export const registerValueConservationCases = (
           )
         ).utxo
       : undefined;
+    const journal = createConfirmedActionJournal({
+      category: "valueNotPreserved",
+      headerHash: setup.headerHash,
+    });
+    // The direct path's own carriage, read back by its later steps.
+    const ownOutputs = createOwnOutputJournal();
     for (const fieldIndex of [0, 2, 5] as const) {
       if (maximum) {
         if (certificateReference === undefined)
@@ -893,7 +901,7 @@ export const registerValueConservationCases = (
             headerHash: setup.headerHash,
             baseAction,
             artifact,
-            entries: [],
+            entries: journal.entries(),
           });
           if (next.kind === "satisfied" || next.kind === "not_required") break;
           if (next.kind !== "required")
@@ -902,12 +910,16 @@ export const registerValueConservationCases = (
             headerHash: setup.headerHash,
             action: next.action,
             artifact,
+            entries: journal.entries(),
           });
           const txHash = await record(
             `installed:field:${fieldIndex}:${attempt}`,
             () => captured.transaction.signed.submit(),
           );
           harness.emulator.awaitBlock(1);
+          const durableRecovery = JSON.parse(
+            JSON.stringify(captured.durableRecovery),
+          );
           expect(
             (
               await makePort().reconcile({
@@ -915,17 +927,17 @@ export const registerValueConservationCases = (
                 action: next.action,
                 artifact,
                 txHash,
-                durableRecovery: JSON.parse(
-                  JSON.stringify(captured.durableRecovery),
-                ),
+                durableRecovery,
               })
             ).kind,
           ).toBe("confirmed");
+          journal.confirm({ action: next.action, txHash, durableRecovery });
         }
         const resolved = await makePort().resolveAuthenticated({
           headerHash: setup.headerHash,
           action: baseAction,
           artifact,
+          entries: journal.entries(),
         });
         const planned = planFaultProofFieldOpening({
           anchorSourceKind: forced ? 1n : 0n,
@@ -967,6 +979,7 @@ export const registerValueConservationCases = (
           ? []
           : await record(`field:${fieldIndex}:publish`, async () =>
               publishFaultProofFieldCarriage({
+                ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned,
@@ -979,6 +992,7 @@ export const registerValueConservationCases = (
           ? (
               await record(`field:${fieldIndex}:certify`, async () =>
                 certifyFaultProofFieldCarriage({
+                  ownOutputs,
                   lucid: harness.proverLucid,
                   network,
                   signer: harness.proverSigner,

@@ -18,6 +18,7 @@ import {
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -37,12 +38,14 @@ import {
   record,
   witnessSetCore,
 } from "./min-fee.parse-artifact.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 const resolveFieldCarriages = async (
   config: BoundConfig,
   admitted: Pick<AdmittedMinFeeArtifact, "fieldPlans">,
+  ownOutputs: OwnOutputJournal,
 ): Promise<
   Readonly<{ publications: readonly UTxO[]; certificates: readonly UTxO[] }>
 > => {
@@ -51,6 +54,7 @@ const resolveFieldCarriages = async (
   for (const plan of admitted.fieldPlans) {
     const resolvedPublications =
       await resolveFaultProofFieldCarriagePublications({
+        ownOutputs,
         lucid: config.lucid,
         publisherAddress: config.signer.address,
         planned: plan,
@@ -62,6 +66,7 @@ const resolveFieldCarriages = async (
     }
     publications.push(...resolvedPublications);
     const certificate = await resolveFaultProofFieldPreimageCertificate({
+      ownOutputs,
       lucid: config.lucid,
       network: config.network,
       planned: plan,
@@ -107,7 +112,11 @@ export const createTransactionPort = (
       categoryId: config.category.categoryId,
     });
   },
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "minFee",
+      entries,
+    });
     const admitted = await admitWorkflowArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -194,11 +203,16 @@ export const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const carriages = await resolveFieldCarriages(config, admitted);
+      const carriages = await resolveFieldCarriages(
+        config,
+        admitted,
+        ownOutputs,
+      );
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMinFeeStep02({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

@@ -16,6 +16,7 @@ import {
 } from "../src/workflow/field-carriage-prerequisite.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
+import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import {
   captureEmulatorSubmission,
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -68,6 +69,10 @@ describe("bound typed publication prerequisite", () => {
       },
     });
     const confirmed = new Set<string>();
+    const journal = createConfirmedActionJournal({
+      category: "validationTraceDispute",
+      headerHash,
+    });
     const port = () =>
       createAuthenticatedFieldCarriagePrerequisitePort({
         category: "validationTraceDispute",
@@ -110,7 +115,7 @@ describe("bound typed publication prerequisite", () => {
         headerHash,
         baseAction: action,
         artifact: {},
-        entries: [],
+        entries: journal.entries(),
       });
     expect((await inspect()).kind).toBe("required");
     let oldOutRef: string | undefined;
@@ -125,6 +130,7 @@ describe("bound typed publication prerequisite", () => {
         headerHash,
         action: inspection.action,
         artifact: {},
+        entries: journal.entries(),
       });
       const submitted = await captureEmulatorSubmission(emulator, () =>
         captured.transaction.signed.submit(),
@@ -145,6 +151,11 @@ describe("bound typed publication prerequisite", () => {
           ...overrides,
         });
       expect((await reconcile()).kind).toBe("confirmed");
+      journal.confirm({
+        action: inspection.action,
+        txHash: captured.transaction.txHash,
+        durableRecovery: recovered,
+      });
       expect((await reconcile({ headerHash: "ff".repeat(28) })).kind).toBe(
         "conflict",
       );
@@ -163,12 +174,14 @@ describe("bound typed publication prerequisite", () => {
           headerHash: "ff".repeat(28),
           action: inspection.action,
           artifact: {},
+          entries: journal.entries(),
         }),
       ).rejects.toThrow("header");
       const resolved = await port().resolveAuthenticated({
         headerHash,
         action,
         artifact: {},
+        entries: journal.entries(),
       });
       expect(resolved.publications).toHaveLength(1);
       const utxo = resolved.publications[0]!;
@@ -233,6 +246,15 @@ describe("bound typed publication prerequisite", () => {
       (await chainUtxosAt(target)).filter(
         (utxo) => !unavailable.has(`${utxo.txHash}#${utxo.outputIndex}`),
       );
+    const chainUtxosByOutRef = lucid.utxosByOutRef.bind(lucid);
+    lucid.utxosByOutRef = async (refs) =>
+      (await chainUtxosByOutRef(refs)).filter(
+        (utxo) => !unavailable.has(`${utxo.txHash}#${utxo.outputIndex}`),
+      );
+    const journal = createConfirmedActionJournal({
+      category: "validationTraceDispute",
+      headerHash,
+    });
     const port = () =>
       createAuthenticatedFieldCarriagePrerequisitePort({
         category: "validationTraceDispute",
@@ -264,7 +286,7 @@ describe("bound typed publication prerequisite", () => {
         headerHash,
         baseAction: action,
         artifact: {},
-        entries: [],
+        entries: journal.entries(),
       });
       if (inspection.kind !== "required")
         throw new Error("missing typed publication requirement");
@@ -272,6 +294,7 @@ describe("bound typed publication prerequisite", () => {
         headerHash,
         action: inspection.action,
         artifact: {},
+        entries: journal.entries(),
       });
       await captured.transaction.signed.submit();
       emulator.awaitBlock();
@@ -290,10 +313,16 @@ describe("bound typed publication prerequisite", () => {
           })
         ).kind,
       ).toBe("confirmed");
+      journal.confirm({
+        action: inspection.action,
+        txHash: captured.transaction.txHash,
+        durableRecovery,
+      });
       const authenticated = await port().resolveAuthenticated({
         headerHash,
         action,
         artifact: {},
+        entries: journal.entries(),
       });
       const outRef = `${authenticated.publications[0]!.txHash}#${authenticated.publications[0]!.outputIndex}`;
       expect(outRef).not.toBe(previous);

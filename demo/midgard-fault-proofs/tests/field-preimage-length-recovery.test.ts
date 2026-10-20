@@ -137,6 +137,7 @@ it("readmits exact raw proof material after durable JSON roundtrip and clears re
         stateQueueBlockOutRef: outRef("66"),
       }),
       artifact,
+      entries: [],
     }),
   ).rejects.toThrow("not freshly authenticated");
 });
@@ -179,6 +180,7 @@ it.each(["init", "dispatch", "authenticate", "finalize"] as const)(
     const result = await recovery.transactions.capture({
       action: required(headerHash, stage),
       artifact,
+      entries: [],
     });
     expect(result.transaction).toBe(transaction);
     expect(submit).toHaveBeenCalledOnce();
@@ -203,6 +205,7 @@ it("rejects a mismatched physical branch and yields a changed selected header be
     recovery.transactions.capture({
       action: required(headerHash, stage.value),
       artifact,
+      entries: [],
     }),
   ).rejects.toThrow("changed proof direction");
   const action = required(headerHash, {
@@ -212,7 +215,7 @@ it("rejects a mismatched physical branch and yields a changed selected header be
   stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("88") };
   const submit = vi.spyOn(submitters, "submitFieldPreimageLengthInit");
   await expect(
-    recovery.transactions.capture({ action, artifact }),
+    recovery.transactions.capture({ action, artifact, entries: [] }),
   ).rejects.toBeInstanceOf(WorkflowActionChangedError);
   expect(submit).not.toHaveBeenCalled();
 });

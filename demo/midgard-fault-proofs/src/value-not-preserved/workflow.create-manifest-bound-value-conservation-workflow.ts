@@ -481,6 +481,7 @@ export const createManifestBoundValueConservationWorkflow = async (
               headerHash: config.headerHash,
               action: context.action,
               artifact: context.artifact,
+              entries: context.entries,
             });
             const field =
               fieldIndex === undefined

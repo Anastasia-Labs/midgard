@@ -36,6 +36,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../../src/witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { type RawStepConfig } from "./reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step02.js";
 import { network } from "./submit-init-emulator-shared.js";
 
@@ -61,6 +62,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
   readonly nativeTxCompactCbor: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
+  const ownOutputs = createOwnOutputJournal();
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
       blueprint,
@@ -103,6 +105,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
   });
   signer.selectWallet(lucid);
   const published = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
