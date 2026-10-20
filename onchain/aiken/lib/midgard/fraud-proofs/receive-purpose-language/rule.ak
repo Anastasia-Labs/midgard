@@ -244,8 +244,9 @@ pub fn terminal_contradiction_v1(state: AuthenticatedReceiveLanguageV1) -> Bool 
 }
 
 // The bound reason is the exact rejection-code preimage the authenticated Step 01
-// continuation carries. Deliberately forged intermediate subjects are refused
-// instead of widening that domain.
+// continuation carries. This helper builds its forced-rejection subject
+// directly; on chain the subject comes from the Step 01 opener, which is what
+// refuses a non-canonical one.
 fn publication_test_bound(
   reason: rejection_reason_v1.RejectionReasonV1,
 ) -> BoundExecutionV1 {

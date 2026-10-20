@@ -154,6 +154,23 @@ test proof_thread_subject_rejects_an_accepted_transaction_with_a_short_id() fail
   ).source_kind == substrate.source_kind_accepted
 }
 
+/// The accepted opener refuses a verified view of any other native
+/// transaction version.
+test proof_thread_subject_rejects_an_accepted_transaction_of_another_version() fail {
+  substrate.open_subject_v1(
+    tf.header_asset_name_v1(
+      fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
+    ),
+    substrate.AcceptedSource {
+      header: fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()).header,
+      tx_inclusion: native_types.VerifiedTxSourceView {
+        ..accepted_verified_v1(),
+        version: 2,
+      },
+    },
+  ).source_kind == substrate.source_kind_accepted
+}
+
 test proof_thread_subject_binds_a_forced_acceptance() {
   let subject = forced_accepted_subject_v1()
   and {

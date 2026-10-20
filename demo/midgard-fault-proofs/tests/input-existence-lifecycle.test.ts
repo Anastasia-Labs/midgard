@@ -1,7 +1,9 @@
 /** Actual registered four-step input-existence route. The chronology cases
  * compute all event roots from full ledger outputs and execute the selected
- * event's pre-root. They do not claim full machine or live withdrawal validity;
- * maximum-carriage and final integrated gates remain separate. */
+ * event's pre-root. They do not claim full machine validity; the withdrawal
+ * chronology runs on a submitted withdrawal in
+ * input-existence-real-withdrawal.test.ts, and maximum-carriage and final
+ * integrated gates remain separate. */
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
@@ -11,14 +13,11 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
-import { submitInit } from "../src/submit-init.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   type InputChronology,
@@ -27,10 +26,7 @@ import {
 import { chronologySeedDeposits } from "./helpers/input-existence-chronology-seed.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
+import { runInputExistenceRoute } from "./support/emulator/input-existence-route.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
@@ -38,10 +34,7 @@ import { buildDecodingBlockFixture } from "./support/native-script-decoding-emul
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.deposit-events-retained-block.js";
@@ -52,7 +45,7 @@ type Case =
   | "honest_forced_rejection"
   | "out_of_domain_rejection"
   | "prior_ledger_present_rejection"
-  | InputChronology;
+  | Exclude<InputChronology, `withdrawal_${string}`>;
 const cases: readonly Case[] = [
   "normal_missing",
   "forced_missing",
@@ -64,15 +57,9 @@ const cases: readonly Case[] = [
   "later_creator",
   "forced_spend",
   "normal_spend",
-  "withdrawal_consumed",
   "rejected_creator",
   "forced_target",
 ];
-const checkFit = (measurement: CompleteSignedTransactionMeasurement) => {
-  expect(measurement.completeSignedBytes).toBeLessThanOrEqual(16_384);
-  expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
-  expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
-};
 
 describe("registered event-relative input-existence lifecycle", () => {
   for (const field of [0, 1] as const) {
@@ -88,12 +75,6 @@ describe("registered event-relative input-existence lifecycle", () => {
           registerAdditionalRewardAccounts:
             registerPexcludesExclusionRewardAccount,
         });
-        const category = field === 0 ? "nonExistentInput" : "noReferenceInput";
-        const family = h.contracts.fraudProofContracts[category];
-        for (const step of family.steps)
-          expect(step.spendingScript.script.length / 2).toBeLessThanOrEqual(
-            16_384,
-          );
         const key = encodeMidgardSpendInputItem({
           txId: Buffer.alloc(32, 0x66),
           outputIndex: 0,
@@ -114,7 +95,6 @@ describe("registered event-relative input-existence lifecycle", () => {
             "later_creator",
             "forced_spend",
             "normal_spend",
-            "withdrawal_consumed",
             "rejected_creator",
             "forced_target",
             "prior_ledger_present_rejection",
@@ -284,115 +264,19 @@ describe("registered event-relative input-existence lifecycle", () => {
         else if (outOfDomain)
           expect(prepared.ledgerEvidence).toBe("OutOfDomain");
         else expect(prepared.ledgerEvidence).toHaveProperty("Absent");
-        const stepReferences: UTxO[] = [];
-        for (const [index, step] of family.steps.entries())
-          stepReferences.push(
-            (
-              await publishPlainReferenceScriptUtxo({
-                lucid: h.funderLucid,
-                script: step.spendingScript,
-                label: `input existence ${category} step${index + 1}`,
-              })
-            ).utxo,
-          );
-        const ct = (
-          await publishPlainReferenceScriptUtxo({
-            lucid: h.funderLucid,
-            script: h.contracts.computationThread.mintingScript,
-            label: "input existence CT mint",
-          })
-        ).utxo;
-        const fp = (
-          await publishPlainReferenceScriptUtxo({
-            lucid: h.funderLucid,
-            script: h.contracts.fraudProof.mintingScript,
-            label: "input existence proof mint",
-          })
-        ).utxo;
-        const deploymentInfo = buildRemovalDeploymentInfo(
-          h.contracts,
-          h.catalogue,
-        );
-        const init = await captureEmulatorSubmission(h.emulator, () =>
-          submitInit({
-            lucid: h.proverLucid,
-            blueprint: h.realBlueprint,
-            deploymentInfo,
-            network,
-            signer: h.proverSigner,
-            fraudCategory: category,
-            fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-            witnessReferenceScripts: h.witnessReferenceScripts,
-          }),
-        );
-        checkFit(init.measurement);
-        let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
-        const send = (stepIndex: 0 | 1 | 2 | 3) =>
-          submitInputExistenceStep({
-            lucid: h.proverLucid,
-            blueprint: h.realBlueprint,
-            network,
-            contracts: {
-              hubOraclePolicyId: h.contracts.hubOracle.policyId,
-              steps: family.steps,
-              computationThread: h.contracts.computationThread,
-              fraudProof: h.contracts.fraudProof,
-            },
-            categoryId: h.catalogue.categories[category].categoryId,
-            signer: h.proverSigner,
-            threadOutRef,
-            prepared,
-            stepIndex,
-            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-            referenceScripts: {
-              steps: stepReferences,
-              computationThreadMint: ct,
-              fraudProofMint: fp,
-            },
-            witnessReferenceScripts: h.witnessReferenceScripts,
-          });
-        for (const index of [0, 1, 2] as const) {
-          const submitted = await captureEmulatorSubmission(h.emulator, () =>
-            send(index),
-          );
-          checkFit(submitted.measurement);
-          threadOutRef = submitted.result.nextThreadOutRef;
-        }
-        if (kind === "honest_forced_rejection" || (present && !rejected)) {
-          await expectOnchainRefusal(() => send(3));
-          // A refusal must preserve the actual step-04 thread and mint no proof.
-          const [txHash, index] = threadOutRef.split("#");
-          expect(
-            await h.proverLucid.utxosByOutRef([
-              { txHash: txHash!, outputIndex: Number(index) },
-            ]),
-          ).toHaveLength(1);
-        } else {
-          const final = await captureEmulatorSubmission(h.emulator, () =>
-            send(3),
-          );
-          checkFit(final.measurement);
-          expect(final.result.fraudProofOutRef).toBe(
-            final.result.nextThreadOutRef,
-          );
-          const [txHash, index] = final.result.fraudProofOutRef!.split("#");
-          const [proof] = await h.proverLucid.utxosByOutRef([
-            { txHash: txHash!, outputIndex: Number(index) },
-          ]);
-          expect(proof!.address).toBe(
-            h.contracts.fraudProof.spendingScriptAddress,
-          );
-          expect(
-            Object.entries(proof!.assets).filter(([unit]) =>
-              unit.startsWith(h.contracts.fraudProof.policyId),
-            ),
-          ).toHaveLength(1);
-          expect(
-            Object.entries(proof!.assets).filter(([unit]) =>
-              unit.startsWith(h.contracts.computationThread.policyId),
-            ),
-          ).toHaveLength(0);
-        }
+        await runInputExistenceRoute({
+          h,
+          field,
+          prepared,
+          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+          outcome:
+            kind === "honest_forced_rejection" || (present && !rejected)
+              ? {
+                  kind: "refusal",
+                  refuse: (step04) => expectOnchainRefusal(step04),
+                }
+              : { kind: "conviction" },
+        });
       },
       600_000,
     );

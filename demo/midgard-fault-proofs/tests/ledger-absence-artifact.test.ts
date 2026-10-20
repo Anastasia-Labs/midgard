@@ -189,6 +189,8 @@ describe("production ledger-absence artifacts V1", () => {
   });
 });
 
+// The withdrawal chronology needs a submitted withdrawal; its detection and
+// artifact checks run on the emulator in input-existence-real-withdrawal.test.ts.
 describe("input-existence event chronology", () => {
   const scenarios: readonly InputChronology[] = [
     "forced_creator",
@@ -196,7 +198,6 @@ describe("input-existence event chronology", () => {
     "later_creator",
     "forced_spend",
     "normal_spend",
-    "withdrawal_consumed",
     "rejected_creator",
     "forced_target",
   ];
@@ -254,8 +255,7 @@ describe("input-existence event chronology", () => {
           scenario === "forced_creator" ||
           scenario === "normal_creator" ||
           scenario === "forced_spend" ||
-          scenario === "normal_spend" ||
-          scenario === "withdrawal_consumed"
+          scenario === "normal_spend"
         ) {
           expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
         }

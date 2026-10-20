@@ -439,6 +439,38 @@ describe("bounded pending continuation", () => {
     expect(onProgress).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps its bound when the progress callback throws", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const journal = recordJournal();
+    const execute = vi.fn(async () =>
+      execute.mock.calls.length === 2
+        ? journal.confirm("walk")
+        : journal.pollPending(),
+    );
+    const onProgress = vi.fn(() => {
+      throw new Error("alarm hook failed");
+    });
+    const runner = await runnerFor(execute, onProgress);
+    const running = settledFlag(
+      runner
+        .runOrResume("run")
+        .catch((error: unknown) => ({ rejected: String(error) })),
+    );
+    await vi.advanceTimersByTimeAsync(
+      WORKFLOW_CONTINUATION_QUIET_BOUND_MS + 2_000,
+    );
+    await waitFor(() => running.settled);
+    expect(running.value).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      reason: expect.stringContaining(
+        FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+      ),
+    });
+    expect(onProgress).toHaveBeenCalledOnce();
+    expect(runner.close).toHaveBeenCalledOnce();
+  });
+
   it("hands the caller's progress callback through the CLI to the installed runner", async () => {
     const actuation = await admittedActuation();
     const onProgress = vi.fn();

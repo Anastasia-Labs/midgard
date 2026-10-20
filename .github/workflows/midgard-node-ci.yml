@@ -1199,6 +1199,7 @@ jobs:
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
+            watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
