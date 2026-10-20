@@ -155,8 +155,12 @@ export const openInstalledProverFunding = async ({
   readonly referenceUtxos: readonly UTxO[];
   /** Durable home of the SQLite reservation store. */
   readonly directory: string;
-  /** The watcher's journal root: decisions and objective workflow journals. */
-  readonly journalRoot: string;
+  /**
+   * The watcher's journal root: decisions and objective workflow journals.
+   * Null for a category the watcher does not install, which has no recovery
+   * authorization: its decisions are never journaled.
+   */
+  readonly journalRoot: string | null;
   /** A validation dispute's deployment-bound VerifySource custody terms. */
   readonly validationDispute?: Parameters<
     typeof createWorkflowRuntimeFundingPolicy
@@ -223,15 +227,16 @@ export const openInstalledProverFunding = async ({
     readonly actuationPermit: WorkflowActuationPermit;
     readonly decisionDigest: string;
   }) => {
-    await authorizeWatcherProverFundingRecovery({
-      journalRoot,
-      journalAuthenticationKey: TEST_JOURNAL_KEY,
-      deploymentIdentity: identity,
-      actuationPermit,
-      category,
-      rollbackGeneration: "0",
-      store: opened.store,
-    });
+    if (journalRoot !== null)
+      await authorizeWatcherProverFundingRecovery({
+        journalRoot,
+        journalAuthenticationKey: TEST_JOURNAL_KEY,
+        deploymentIdentity: identity,
+        actuationPermit,
+        category,
+        rollbackGeneration: "0",
+        store: opened.store,
+      });
     const existing = (await opened.store.readAll()).some(
       (record) =>
         (record as { readonly decisionDigest?: unknown }).decisionDigest ===

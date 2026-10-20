@@ -246,7 +246,10 @@ export const openFundedDispute = async (scene: Scene) => {
       walletAddress: h.proverSigner.address,
       scriptHashes: scriptHashes(scene),
       referenceUtxos: referenceUtxos(scene),
+      computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
+      // The watcher does not install the dispute until its defender exists.
+      journalRoot: null,
       validationDispute,
     });
   let funding = await boot();

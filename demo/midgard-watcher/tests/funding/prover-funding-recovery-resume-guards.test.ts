@@ -385,6 +385,8 @@ describe("a lost workflow journal resumes beside another objective's funding", (
       readPendingTransition: async () => null,
       readCompletionHandoff: async () => null,
       readConfirmedInput: async () => null,
+      readLandedSupersededAttempt: async () => null,
+      readRecordedSignedTransaction: async () => null,
       reserve: forbidden,
       prepareTransition: forbidden,
       confirmTransition: forbidden,
