@@ -149,6 +149,7 @@ const fixtureFor = async (category: Category) => {
     terminalVerifier: {
       verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
       verify: forbidden,
+      observeSignedTransaction: forbidden,
     },
     releaseFinalityAuthority,
   };

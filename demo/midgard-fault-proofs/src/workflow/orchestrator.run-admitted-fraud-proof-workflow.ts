@@ -298,6 +298,7 @@ export const runAdmittedFraudProofWorkflow = async ({
 
     const adoption = await adoptLandedSupersededAttempt({
       adapter,
+      verifier: terminalVerifier,
       context,
       headerHash,
       journal,

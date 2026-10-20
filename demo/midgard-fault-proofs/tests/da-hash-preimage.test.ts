@@ -449,6 +449,9 @@ describe("production da-hash-preimage workflow V1", () => {
         terminalVerifier: {
           verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
           verify: async ({ candidate }) => candidate,
+          observeSignedTransaction: async () => {
+            throw new Error("no signed transaction read expected");
+          },
         },
         releaseFinalityAuthority: {
           authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

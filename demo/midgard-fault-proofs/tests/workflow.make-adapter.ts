@@ -206,6 +206,9 @@ export const retiredNotFound = (transactionHash: string) => {
 export const terminalVerifier: FraudProofWorkflowTerminalVerifier = {
   verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   verify: async ({ candidate }) => candidate,
+  observeSignedTransaction: async () => {
+    throw new Error("no signed transaction read expected");
+  },
 };
 
 export const makeAdapter = (

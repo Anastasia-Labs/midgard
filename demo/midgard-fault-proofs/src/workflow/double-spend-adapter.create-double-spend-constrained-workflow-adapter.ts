@@ -774,16 +774,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       txHash,
       durableRecovery,
       signedTransactionCborHex,
-      retirementOnly,
       authorizeResubmission,
     }) => {
-      if (retirementOnly && txHash !== undefined)
-        return await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex,
-          observe: config.l1?.observeSignedTransaction,
-          reportInclusion: true,
-        });
       if (txHash === undefined) {
         return { kind: "conflict", reason: "durable intent omitted tx hash" };
       }

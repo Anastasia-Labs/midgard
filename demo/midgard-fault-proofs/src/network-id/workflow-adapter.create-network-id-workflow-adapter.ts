@@ -1290,13 +1290,6 @@ export const createNetworkIdWorkflowAdapter = (
       }
     },
     reconcile: async (context): Promise<FraudProofWorkflowReconcileResult> => {
-      if (context.retirementOnly && context.txHash !== undefined)
-        return await reconcileSignedWorkflowTransaction({
-          transactionHash: context.txHash,
-          signedTransactionCborHex: context.signedTransactionCborHex,
-          observe: config.rawL1?.observeSignedTransaction,
-          reportInclusion: true,
-        });
       const admitted = admitNetworkIdWorkflowArtifact(context.artifact);
       const prepared = admitted.prepared;
       const kind = actionKind(context.action);

@@ -75,6 +75,9 @@ const verify = async (
       throw new Error("unused");
     },
     transactionConfirmed: async () => true,
+    observeSignedTransaction: async (): Promise<never> => {
+      throw new Error("unused");
+    },
     observe: async () => ({
       provenance: {
         trustClass: "authenticated_cardano_l1",

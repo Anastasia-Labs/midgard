@@ -113,7 +113,7 @@ it("adopts the expired attempt as the result when it lands late, and retires the
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   // A rollback lands the original attempt; the replacement, which spends one
   // of its inputs, can no longer land.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === fixture.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "not_found" },
@@ -171,7 +171,7 @@ it("does not adopt a late landing while the replacement is unresolved or once th
   const before = await journal.load(fixture.initial.workflowId);
   // Unresolved replacement: the late landing is reported, the replacement is
   // still pending, so nothing is adopted yet.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === fixture.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "pending", txHash: txHash! },
@@ -192,9 +192,10 @@ it("does not adopt a late landing while the replacement is unresolved or once th
   );
   // Recorded result: the replacement confirms. A conflicting report for the
   // superseded attempt does not reopen the action.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(
-    async ({ txHash }) => ({ kind: "confirmed", txHash: txHash! }),
-  );
+  fixture.chain.mockImplementation(async (txHash) => ({
+    kind: "confirmed",
+    txHash: txHash!,
+  }));
   for (let run = 0; run < 2; run += 1) await fixture.run(journal);
   const events = (await journal.load(fixture.initial.workflowId)).map(
     ({ event }) => event,
@@ -227,7 +228,7 @@ it("admits a replacement that spends the superseded attempt's input as before, a
       signedTransactionCborHex: replacement.signedTransactionCborHex,
     }),
   ).toBeNull();
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === replacement.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "not_found" },

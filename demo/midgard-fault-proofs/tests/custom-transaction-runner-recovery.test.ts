@@ -61,6 +61,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
 const categories = [
@@ -348,6 +349,7 @@ const recovery = async (
     terminalVerifier: {
       verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
       verify: forbidden,
+      observeSignedTransaction: forbidden,
     },
     releaseFinalityAuthority: {
       authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -596,12 +598,9 @@ it.each(categories)(
         launchScope: [category],
       }),
       journal,
-      terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-        verify: async () => {
-          throw new Error("unconfirmed init has no terminal");
-        },
-      },
+      terminalVerifier: terminalVerifierOf(async () => {
+        throw new Error("unconfirmed init has no terminal");
+      }),
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
         verifyForWorkflow: async () => releaseFinality,
@@ -684,7 +683,7 @@ it.each(categories)(
       workflow: {
         ...fixture.workflow,
         terminalVerifier: {
-          verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+          ...fixture.workflow.terminalVerifier,
           verify,
         },
       },

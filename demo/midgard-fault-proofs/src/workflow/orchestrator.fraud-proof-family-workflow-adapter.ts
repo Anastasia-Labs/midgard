@@ -11,6 +11,10 @@ import {
   type JournalJsonObject,
 } from "./journal.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import {
+  type SignedTransactionRecoveryObservation,
+  type SignedWorkflowTransaction,
+} from "./signed-transaction-reconciliation.js";
 
 export const FRAUD_PROOF_WORKFLOW_ADAPTER =
   "midgard-fraud-proof-workflow-adapter-v1" as const;
@@ -102,12 +106,21 @@ export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER =
   "midgard-authenticated-l1-workflow-terminal-verifier-v1" as const;
 
 /**
- * Independent chain-state authority used only for terminal closure.  It must
- * inspect authenticated Cardano L1 state; a family adapter's own observation
- * is deliberately insufficient to mark a workflow complete.
+ * Independent chain-state authority for terminal closure and for reading a
+ * superseded attempt and its action's result. It must inspect authenticated
+ * Cardano L1 state; a family adapter's own observation is deliberately
+ * insufficient to mark a workflow complete or to say an attempt is gone.
  */
 export interface FraudProofWorkflowTerminalVerifier {
   readonly verifierVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER;
+  /**
+   * Where the exact signed transaction stands on the canonical chain. The
+   * workflow reads every superseded attempt, and the recorded result of the
+   * action it belongs to, by this alone, whatever the family.
+   */
+  observeSignedTransaction(
+    input: SignedWorkflowTransaction,
+  ): Promise<SignedTransactionRecoveryObservation>;
   /** Authenticate reversible inclusion with the same checks except anchor depth. */
   verifyIncluded?(
     input: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
@@ -199,8 +212,6 @@ export interface FraudProofFamilyWorkflowAdapter {
     context: FraudProofWorkflowAdapterContext & {
       readonly action: FraudProofWorkflowAction;
       readonly txHash?: string;
-      /** Inspects a superseded attempt: inclusion within k is `confirmed`. */
-      readonly retirementOnly?: boolean;
       readonly durableRecovery?: JournalJsonObject;
       readonly signedTransactionCborHex?: string;
       readonly authorizeResubmission?: (input: {

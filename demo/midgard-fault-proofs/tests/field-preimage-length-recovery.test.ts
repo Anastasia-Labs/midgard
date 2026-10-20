@@ -75,7 +75,6 @@ import {
   type JournalJsonObject,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
-import { FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER } from "../src/workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "../src/workflow/release-finality-policy.js";
 import {
@@ -102,6 +101,7 @@ import {
   emptyRosterReferenceScriptResolver,
   familyCommonInfrastructureForTest,
 } from "./support/family-common-infrastructure.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -462,9 +462,8 @@ it.each([
         "midgard-field-preimage-length-mismatch-production-workflow-v1",
       decisionDigest: decision.decisionDigest,
       terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+        ...terminalVerifierOf(async ({ candidate }) => candidate),
         verifyIncluded: async ({ candidate }) => candidate,
-        verify: async ({ candidate }) => candidate,
       },
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

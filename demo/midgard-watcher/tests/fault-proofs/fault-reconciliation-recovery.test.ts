@@ -267,6 +267,7 @@ describe("existing signed workflow recovery authority", () => {
       terminalVerifier: {
         verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
         verify: forbidden,
+        observeSignedTransaction: forbidden,
       },
       releaseFinalityAuthority: {
         authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

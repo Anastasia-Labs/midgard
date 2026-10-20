@@ -5,7 +5,6 @@ import {
   type FraudProofWorkflowJournalStore,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
-import { vi } from "vitest";
 
 import {
   type setupFundingRecoveryFixture,
@@ -133,7 +132,7 @@ export const recordReplacement = async (
  * the reader reports absence without retirement. */
 export const supersedeAtTip = async (fixture: Fixture) => {
   fixture.useUnspentPendingInputs();
-  vi.mocked(fixture.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
+  fixture.chain.mockResolvedValue({ kind: "not_found" });
   const journal = await fixture.recover();
   await fixture.run(journal);
   return journal;

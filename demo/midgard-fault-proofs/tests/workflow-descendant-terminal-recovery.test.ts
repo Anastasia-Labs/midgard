@@ -206,8 +206,12 @@ it("resumes an included descendant intent twice after another caller completes c
         launchScope: ["doubleSpend"],
       }),
       journal,
-      terminalVerifier:
-        createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+      terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier({
+        ...l1,
+        observeSignedTransaction: async () => {
+          throw new Error("no signed transaction read expected");
+        },
+      }),
       releaseFinality,
       maxActions,
     });

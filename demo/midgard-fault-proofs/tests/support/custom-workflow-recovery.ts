@@ -188,6 +188,7 @@ export const customWorkflowRecoveryFixture = async (
       observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
       observeExact: forbidden,
     },
+    observeSignedTransaction: forbidden,
   };
   const lease = { acquire: forbidden };
   const capture = vi.fn(async () => built);
