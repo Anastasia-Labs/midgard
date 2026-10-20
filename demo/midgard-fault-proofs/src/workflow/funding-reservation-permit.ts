@@ -39,6 +39,7 @@ export {
   createWorkflowFundingAbandonmentHandoff,
   parseWorkflowFundingAbandonmentHandoff,
   parseWorkflowFundingCompletionHandoff,
+  workflowFundingHandoffJournalLost,
 } from "./funding-reservation-permit.parse-workflow-funding-abandonment-handoff.js";
 export {
   createWorkflowFundingSubmissionHandoff,
@@ -56,6 +57,7 @@ export {
   assertWorkflowFundingCompletionHandoffJournal,
   reconcileWorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+export { recoverWorkflowFundingSubmissionHandoff } from "./funding-reservation-permit.recover-workflow-funding-submission-handoff.js";
 export {
   restrictWorkflowFundingSigner,
   unsafeCreateWorkflowFundingReservationPermitForTest,

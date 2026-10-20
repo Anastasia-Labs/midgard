@@ -21,7 +21,7 @@ import {
   conflictWorkflowFundingReservationTransaction,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  reconcileWorkflowFundingSubmissionHandoff,
+  recoverWorkflowFundingSubmissionHandoff,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
@@ -258,18 +258,15 @@ export const runAdmittedFraudProofWorkflow = async ({
   }
 
   let fundingRecovery = await readWorkflowFundingRecovery(journal);
-  if (fundingRecovery.submissionHandoff !== null) {
-    for (const event of reconcileWorkflowFundingSubmissionHandoff({
-      handoff: fundingRecovery.submissionHandoff,
-      entries,
-    }))
-      await append(event);
-    validateFraudProofWorkflowJournal({
+  if (fundingRecovery.submissionHandoff !== null)
+    await recoverWorkflowFundingSubmissionHandoff({
+      journal,
       workflowId,
-      entries,
-      expectedIdentity: identity,
+      identity,
+      entries: () => entries,
+      handoff: fundingRecovery.submissionHandoff,
+      append,
     });
-  }
   if (fundingRecovery.completionHandoff !== null)
     assertWorkflowFundingCompletionHandoffJournal({
       handoff: fundingRecovery.completionHandoff,

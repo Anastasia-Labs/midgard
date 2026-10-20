@@ -19,6 +19,7 @@ import {
   parseWorkflowFundingSubmissionHandoff,
   reconcileWorkflowFundingSubmissionHandoff,
   type WorkflowActuationPermit,
+  workflowFundingHandoffJournalLost,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
@@ -294,7 +295,9 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       const transition = parseWorkflowFundingPreparedTransition(
         recovered.transition,
       );
-      reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
+      // A lost journal is re-recorded from this exact handoff by the runner.
+      if (!workflowFundingHandoffJournalLost(handoff, entries))
+        reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
       if (
         journalJsonDigest(normalizeJournalJson(transition)) !==
         pending.transitionDigest
