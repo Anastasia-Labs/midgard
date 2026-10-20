@@ -1,5 +1,5 @@
 /**
- * The import checker's durable set (migration 0028): each Plutus
+ * The import checker's durable set (migrations 0028, 0030): each Plutus
  * transaction of an imported foreign block, applied by its committed
  * verdict, with what its script runs are rebuilt from. An entry is written
  * in the transaction that processes its block, and leaves the set on an
@@ -15,6 +15,9 @@
  * - `cap_skipped`: not run, the block's checker time was spent (backlog);
  * - `cache_skipped`: not run, a script of it is in the negative cache
  *   (backlog);
+ * - `timed_out`: its last check was killed at its wall-clock limit, which
+ *   is no verdict; the backlog lane runs it again from `retry_at_ms`, on
+ *   spare capacity only, until its deadline;
  * - `faulted`: a run faulted twice, the second time on a fresh instance;
  * - `rejected`: the local evaluator rejected a run. It stays, for a
  *   challenge, until its deadline or its block's removal.
@@ -37,11 +40,12 @@ export type ImportCheckState =
   | "pending"
   | "cap_skipped"
   | "cache_skipped"
+  | "timed_out"
   | "faulted"
   | "rejected";
 
-/** The states that have no local verdict yet and wait for a run; the
- * backlog lane serves all of them. */
+/** The states that have no local verdict and were never run to a kill:
+ * the backlog lane serves them before any `timed_out` entry. */
 export const UNRUN_STATES = [
   "pending",
   "cap_skipped",
@@ -59,6 +63,8 @@ export type ImportCheckEntry = ImportCheckKey &
     position: number;
     deadlineMs: number;
     state: ImportCheckState;
+    /** How many times its check was killed. */
+    timeouts: number;
     /** The sha256 of each distinct script its runs execute. */
     scriptHashes: readonly Buffer[];
   }>;
@@ -198,6 +204,23 @@ export const setCheckState = (key: ImportCheckKey, state: ImportCheckState) =>
     sqlErrorToDatabaseError(tableName, "Failed to update an import check"),
   );
 
+/** Records that `key`'s check was killed for the `timeouts`th time: it
+ * waits as `timed_out` until `retryAtMs`. */
+export const deferCheck = (
+  key: ImportCheckKey,
+  timeouts: number,
+  retryAtMs: number,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE node_import_checks
+      SET state = 'timed_out', timeouts = ${timeouts}, retry_at_ms = ${retryAtMs}
+      WHERE header_hash = ${Buffer.from(key.headerHash, "hex")}
+        AND tx_id = ${key.transactionId}`;
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to update an import check"),
+  );
+
 /** The `(header_hash, tx_id)` pairs of `keys`, for an `unnest` join. */
 const keyArrays = (pg: PgClient, keys: readonly ImportCheckKey[]) => ({
   headers: pg.array(hashBytes(keys.map((key) => key.headerHash))),
@@ -257,6 +280,8 @@ export type RetrieveChecksOptions = Readonly<{
   headerHash?: string;
   /** Only entries due after this time. */
   dueAfterMs?: number;
+  /** Only entries whose retry is due by this time (`timed_out` ones). */
+  retryDueByMs?: number;
   /** Not these entries. */
   excluding?: readonly ImportCheckKey[];
   /** At most this many entries (default `READ_PAGE_ROWS`). */
@@ -284,12 +309,13 @@ export const retrieveChecks = (
       block_position: number;
       deadline_ms: string;
       state: ImportCheckState;
+      timeouts: number;
       script_hashes: Buffer;
       preceding_bytes: string;
     }>`
       SELECT * FROM (
         SELECT c.header_hash, c.tx_id, c.block_position, c.deadline_ms,
-          c.state, c.script_hashes,
+          c.state, c.timeouts, c.script_hashes,
           SUM(octet_length(c.tx_cbor))
             OVER (ORDER BY c.deadline_ms, c.header_hash, c.block_position
               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
@@ -300,6 +326,7 @@ export const retrieveChecks = (
           AND (b.state IS NULL OR b.state <> 'removed')
           ${options.headerHash === undefined ? sql`` : sql`AND c.header_hash = ${Buffer.from(options.headerHash, "hex")}`}
           ${options.dueAfterMs === undefined ? sql`` : sql`AND c.deadline_ms > ${options.dueAfterMs}`}
+          ${options.retryDueByMs === undefined ? sql`` : sql`AND c.retry_at_ms <= ${options.retryDueByMs}`}
           AND NOT EXISTS (SELECT 1 FROM unnest(${excluded.headers}::bytea[],
               ${excluded.txIds}::bytea[]) AS k(header_hash, tx_id)
             WHERE k.header_hash = c.header_hash AND k.tx_id = c.tx_id)
@@ -314,6 +341,7 @@ export const retrieveChecks = (
         position: entry.block_position,
         deadlineMs: Number(entry.deadline_ms),
         state: entry.state,
+        timeouts: entry.timeouts,
         scriptHashes: Array.from(
           { length: entry.script_hashes.byteLength / 32 },
           (_, index) =>
