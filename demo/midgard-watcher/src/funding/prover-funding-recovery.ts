@@ -8,9 +8,7 @@ import {
   assertWorkflowFundingAbandonmentHandoffJournal,
   assertWorkflowFundingCompletionHandoffJournal,
   bindWorkflowActuationRecoveryIdentity,
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   journalJsonDigest,
   lostWorkflowFundingJournalRecords,
   normalizeJournalJson,
@@ -41,7 +39,11 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
 import type { WatcherFundingInputFacts } from "./prover-funding-input-facts.js";
-import { resumeWatcherProverFundingWithoutJournal } from "./prover-funding-recovery.resume-without-journal.js";
+import {
+  emptyExecutionHistory,
+  resumeWatcherProverFundingWithoutJournal,
+  watcherProverFundingDecisionMissing,
+} from "./prover-funding-recovery.resume-without-journal.js";
 import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
@@ -73,16 +75,22 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     authority.headerHash,
   );
   // Reconciliation never creates a workflow journal, so it cannot resume one.
-  const withoutJournal = async (history = false) => {
+  const withoutJournal = async (history: string | null = null) => {
     if (authority.authority === "reconciliation")
       throw new Error(
         "reconciliation funding requires its existing durable workflow",
       );
+    // An empty workflow directory with history and nothing to resume holds
+    // too. TODO(option-A lane): release or adopt it, as the hold's doc says.
     if (
       !(await resumeWatcherProverFundingWithoutJournal(input, authority)) &&
-      history
+      history !== null
     )
-      throw new Error("empty workflow directory has durable funding history");
+      throw watcherProverFundingDecisionMissing(
+        input.category,
+        authority.headerHash,
+        history,
+      );
   };
   let names;
   try {
@@ -103,7 +111,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       "workflow recovery target contains an invalid journal entry",
     );
   const candidates: typeof names = [];
-  let history = false;
+  let history: string | null = null;
   for (const candidate of names) {
     const candidateDirectory = join(directory, candidate.name);
     if ((await realpath(candidateDirectory)) !== candidateDirectory)
@@ -115,35 +123,11 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       candidates.push(candidate);
       continue;
     }
-    const reservations = (await input.store.readAll())
-      .map(parseWatcherProverFundingReservationRecord)
-      .filter(
-        (record) =>
-          computeFraudProofWorkflowId({
-            schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-            deploymentFingerprint: record.deploymentFingerprint,
-            category: input.category,
-            target: {
-              kind: "state_queue_header",
-              headerHash: authority.headerHash,
-            },
-            decisionDigest: record.decisionDigest,
-          }) === candidate.name,
-      );
-    for (const record of reservations) {
-      if (
-        record.state !== "active" ||
-        record.pendingTransition !== null ||
-        record.lastConfirmedTransitionDigest !== null ||
-        input.store.hasSignedHistory === undefined ||
-        (await input.store.hasSignedHistory({
-          reservationId: record.reservationId,
-        }))
-      )
-        history = true;
-    }
+    history =
+      (await emptyExecutionHistory(input, authority, candidate.name)) ??
+      history;
   }
-  if (history && candidates.length !== 0)
+  if (history !== null && candidates.length !== 0)
     throw new Error("empty workflow directory has durable funding history");
   if (candidates.length > 1)
     throw new Error(

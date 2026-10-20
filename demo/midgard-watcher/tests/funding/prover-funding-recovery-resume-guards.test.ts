@@ -21,8 +21,16 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.js";
+import {
+  openWatcherFaultDecisionJournal,
+  unsafeOpenWatcherFaultDecisionJournalForTest,
+} from "../../src/fault-proofs/fault-decision-journal.js";
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
+import {
+  closeWatcherJournalDatabase,
+  WATCHER_JOURNAL_DATABASE_FILE,
+} from "../../src/fault-proofs/watcher-journal-database.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
 import type {
@@ -39,7 +47,10 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { directories } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { createFundingRecoveryDirectory } from "../support/test-storage-root.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import {
+  recordObjectives,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 import {
   type Fixture,
   signReplacement,
@@ -56,10 +67,41 @@ const CONFLICTED =
   "workflow recovery has no unique non-conflicted original funding reservation";
 const EMPTY_BESIDE = "empty workflow directory has durable funding history";
 
+/** Loses every journal under the journal root, the decision journal and each
+ * workflow journal, as a lost data directory beside a surviving funding
+ * store would. The queue records the objective again, and the decision
+ * journal holds only `decisions`. */
+const loseJournals = async (
+  fixture: Fixture,
+  decisions: readonly HeaderFaultDecision[],
+) => {
+  closeWatcherJournalDatabase(fixture.journalRoot);
+  const database = join(fixture.journalRoot, WATCHER_JOURNAL_DATABASE_FILE);
+  for (const suffix of ["", "-wal", "-shm"])
+    await rm(database + suffix, { force: true });
+  await rm(join(fixture.journalRoot, "fault-proofs"), {
+    recursive: true,
+    force: true,
+  });
+  recordObjectives(fixture.journalRoot, [
+    { category: "doubleSpend", headerHash: fixture.old.headerHash },
+  ]);
+  const journal = await openWatcherFaultDecisionJournal({
+    directory: fixture.journalRoot,
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
+    authenticationKey: TEST_JOURNAL_KEY,
+  });
+  for (const decision of decisions) await journal.appendLiveDecision(decision);
+};
+
 /** A restarted process is refused the objective before any funding is
  * minted: no wallet query, no second reservation, no action, and the store
  * unchanged. */
-const refused = async (fixture: Fixture, message: string) => {
+const refused = async (
+  fixture: Fixture,
+  refusal: string | (new (...args: never[]) => Error),
+) => {
   const records = await fixture.records();
   for (const mock of [
     fixture.readWalletUtxos,
@@ -67,7 +109,9 @@ const refused = async (fixture: Fixture, message: string) => {
     fixture.adapter.submit,
   ])
     vi.mocked(mock).mockClear();
-  await expect(fixture.recover()).rejects.toThrow(message);
+  const recovered = expect(fixture.recover()).rejects;
+  if (typeof refusal === "string") await recovered.toThrow(refusal);
+  else await recovered.toBeInstanceOf(refusal);
   expect(await fixture.records()).toEqual(records);
   expect(fixture.readWalletUtxos).not.toHaveBeenCalled();
   expect(fixture.adapter.preflight).not.toHaveBeenCalled();
@@ -187,6 +231,30 @@ const secondReservation = async (fixture: Fixture) => {
   expect(await fixture.records()).toHaveLength(2);
   return plan;
 };
+
+// Signed funding whose decision the restarted process no longer holds is
+// never run beside: the objective holds until its header leaves the queue.
+describe("signed funding without its original decision holds its objective", () => {
+  it("holds when the whole journal directory is lost with an attempt in flight", async () => {
+    const fixture = await setupFundingRecoveryFixture();
+    await loseJournals(fixture, [fixture.fresh]);
+    fundWallet(fixture);
+    await refused(fixture, WatcherProofDecisionMissingError);
+    expect(await fixture.records()).toHaveLength(1);
+  });
+
+  it("holds an empty workflow directory whose signed funding names no handoff", async () => {
+    // A store written before attempts were recorded beside their handoff.
+    const fixture = await setupFundingRecoveryFixture(false, true);
+    await loseJournals(fixture, [fixture.fresh]);
+    await mkdir(join(fixture.journalDirectory, fixture.initial.workflowId), {
+      recursive: true,
+    });
+    fundWallet(fixture);
+    await refused(fixture, WatcherProofDecisionMissingError);
+    expect(await fixture.records()).toHaveLength(1);
+  });
+});
 
 // A lost workflow journal is resumed only from the one signed original
 // execution for its target.

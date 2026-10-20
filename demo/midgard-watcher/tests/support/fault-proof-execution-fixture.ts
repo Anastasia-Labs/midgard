@@ -26,7 +26,14 @@ export const setupFaultProofExecution = async (
   newReservation = false,
   { installedRunner = true }: { readonly installedRunner?: boolean } = {},
 ) => {
-  const fixture = await setupFundingRecoveryFixture();
+  // A new reservation's journal root holds no decision. The store shares
+  // only an unsigned reservation with it: signed funding for the same target
+  // without its decision would hold the objective.
+  const fixture = await setupFundingRecoveryFixture(
+    false,
+    false,
+    newReservation,
+  );
   const controller = createWorkflowActuationPermitController({
     decision: fixture.fresh,
     rollbackGeneration: "2",
