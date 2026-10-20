@@ -1,10 +1,10 @@
 /** Opening a validation case on the emulator. Open and VerifySource over a
  * committed normal transaction whose script fails land, with the case datum
- * the off-chain claim material derives, each within the transaction limits.
- * source-v1 refuses each claim the committed data does not support: a
- * Rejected terminal for a transaction whose script passes, a forced
- * transaction (R-DESC), a state 0 the header does not derive (N5), a bond one
- * lovelace short, and a VerifySource after `block_end + M/2`. */
+ * the off-chain claim material derives, each within the transaction limits,
+ * also when the validity bounds are not on a slot boundary. source-v1
+ * refuses a terminal the challenger's own committed root does not prove, a
+ * forced transaction (R-DESC), a state 0 the header does not derive (N5), a
+ * bond one lovelace short, and a VerifySource after `block_end + M/2`. */
 import {
   hashMidgardValidationMachineState,
   MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
@@ -127,7 +127,7 @@ describe("validation-trace dispute: Open and VerifySource", () => {
     );
   });
 
-  it("refuses a Rejected terminal for a transaction whose script passes", async () => {
+  it("refuses a terminal the challenger's own committed root does not prove", async () => {
     const honest = await passingTrace(scene);
     const { opener } = await initAndOpen(scene, scene.passing, honest.claim);
     const pin = {
