@@ -2,6 +2,7 @@ import "./complete-replay.resolved-output-non-canonical-complete-canonical-repla
 
 import { createHash } from "node:crypto";
 
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
@@ -26,6 +27,7 @@ import {
   detectNetworkIds,
   replayDecisionJson,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { detectPlutusExecutionFailures } from "./complete-replay.detect-accepted-transaction-faults.js";
 import {
   completeReplayer,
   detectWithdrawnReferenceInputs,
@@ -282,4 +284,14 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 export const MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["mintItemNonCanonical"], async (evidence) =>
     detectMintItemNonCanonicalCompleteReplay(evidence),
+  );
+
+/** Complete script re-execution scan for the validation-trace dispute. The
+ * deployment's slot mapping places each transaction's validity range in the
+ * script context. */
+export const createValidationTraceDisputeCompleteCanonicalReplay = (
+  l1SlotConfig: L1SlotConfig,
+): CompleteCanonicalReplay =>
+  completeReplayer(["validationTraceDispute"], async (evidence, context) =>
+    detectPlutusExecutionFailures({ evidence, context, l1SlotConfig }),
   );

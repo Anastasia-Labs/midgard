@@ -3,11 +3,13 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   CANONICAL_DECODABILITY_VIOLATION_ID,
   canonicalDecodabilityEvidenceFromCommittedField,
   COMMITTED_FIELD_SHAPE_VIOLATION_ID,
   decodeAddressWitnessPreimage,
+  EMPTY_MERKLE_TREE_ROOT,
   invalidRangeViolationReason,
   MIN_FEE_VIOLATION_ID,
   minimumFeeFromProofSource,
@@ -19,11 +21,32 @@ import {
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  EventLedgerReplayRefusal,
+  ledgerBeforeTransactionEvent,
+} from "../input-existence/event-ledger.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
+import {
+  eventRunsPlutus,
+  replayPlutusExecution,
+} from "../validation-trace-dispute/replay.js";
 import { detectZeroInputForcedReplay } from "../zero-input/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
-import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
+import {
+  EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+  PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+} from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import {
+  type CompleteCanonicalReplayContext,
+  requireReplayPredecessorLedger,
+} from "./complete-replay.replay-context-identity.js";
+import {
+  acceptedTransactionSubject,
+  sourceEventSubject,
+  subjectOf,
+} from "./detection-subject.js";
 import {
   completeReplayFindings,
   type ReplayPrerequisiteFailure,
@@ -263,4 +286,99 @@ export const detectMissingSignatures = async (
     );
   });
   return completeReplayFindings(detections, prerequisites);
+};
+
+export const VALIDATION_TRACE_VIOLATION_ID = "validation-trace" as const;
+/** The verdict replay saw a failed script run that the trace replay did not
+ * reproduce; no claim is built on it. Unregistered, so it classifies as a gap. */
+export const VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID =
+  "validation-trace-replay-disagreement" as const;
+
+/**
+ * Accepted normal transactions with redeemers (rule R-DESC) whose honest
+ * re-execution from DA replay ends Terminal Rejected with
+ * `PlutusExecutionFailed`. Each detection names the event and the honest
+ * trace's step count. Forced transactions are excluded, as R-DESC excludes
+ * them on chain.
+ */
+export const detectPlutusExecutionFailures = async ({
+  evidence,
+  context,
+  l1SlotConfig,
+}: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly context: CompleteCanonicalReplayContext | undefined;
+  readonly l1SlotConfig: L1SlotConfig;
+}): Promise<readonly CanonicalViolationDetection[]> => {
+  const predecessor = requireReplayPredecessorLedger({ evidence, context });
+  const detections: CanonicalViolationDetection[] = [];
+  let position = -1;
+  for (const event of evidence.reconstruction.sourceEvents) {
+    if (event.phase !== "L2Transaction") continue;
+    position += 1;
+    if (!eventRunsPlutus(event)) continue;
+    const found = (violationId: string, detail: string): void => {
+      detections.push({
+        ...sourceEventSubject(event),
+        detectionId: `${violationId}:${position.toString()}:${event.entry.txId}`,
+        headerHash: evidence.headerHash,
+        violationId,
+        position: BigInt(position),
+        diagnostic: detail,
+      });
+    };
+    if (
+      predecessor === undefined &&
+      evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT
+    ) {
+      found(
+        PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+        "script re-execution requires the authenticated predecessor ledger",
+      );
+      continue;
+    }
+    const opening = evidence.reconstruction.eventToStepByFingerprint.get(
+      event.fingerprint,
+    );
+    if (opening === undefined || opening.value.phase !== event.phase) {
+      found(
+        EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+        "script re-execution requires the exact committed event-to-step opening",
+      );
+      continue;
+    }
+    let ledger: CheckedLedger;
+    try {
+      ledger = await ledgerBeforeTransactionEvent({
+        block: evidence,
+        eventKey: event.eventKey,
+        stepIndex: opening.value.step_index,
+        predecessor,
+      });
+    } catch (cause) {
+      if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
+      found(
+        EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+        `script re-execution event-pre-state hold: ${cause.reason}`,
+      );
+      continue;
+    }
+    const replay = await replayPlutusExecution({
+      evidence,
+      event,
+      ledger,
+      l1SlotConfig,
+    });
+    if (replay.kind === "fails")
+      found(
+        VALIDATION_TRACE_VIOLATION_ID,
+        `accepted transaction ${event.entry.txId} fails Plutus execution; its honest trace has ${replay.stepCount.toString()} steps`,
+      );
+    else if (replay.kind === "trace_disagrees")
+      found(
+        VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID,
+        `accepted transaction ${event.entry.txId}: ${replay.detail}`,
+      );
+  }
+  return detections;
 };
