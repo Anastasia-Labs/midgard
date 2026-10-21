@@ -4,6 +4,10 @@
  * Terminal Accepted; an event our block accepted that the replay rejects is
  * our own fault, and is never defended. */
 import {
+  decodeMidgardValidationMachineState,
+  decodeMidgardValidationTraceDescriptor,
+  encodeMidgardValidationMachineState,
+  encodeMidgardValidationTraceDescriptor,
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
@@ -14,6 +18,7 @@ import {
   DirectValidationTraceUnavailable,
   openValidationTraceV1,
   type RejectedTx,
+  validationTraceLevelsAtStepCountV1,
   ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -54,6 +59,57 @@ export type ValidationTraceDefenseMaterial =
   | Readonly<{ kind: "trace_disagrees"; detail: string }>;
 
 /**
+ * Our defense in bytes and numbers only, which a structured clone carries
+ * across a thread boundary intact: our state at S and our honest trace's
+ * descriptor in their canonical CBOR, our honest state hashes, and our
+ * trace's materialised levels at S (the O(T) part of the material).
+ */
+export type PortableValidationTraceDefense = Readonly<{
+  kind: "defend";
+  stepCount: number;
+  stateAtSCbor: Uint8Array;
+  honestDescriptorCbor: Uint8Array;
+  honestStepCount: number;
+  stateHashes: Uint8Array;
+  levels: readonly Uint8Array[];
+}>;
+
+export type PortableValidationTraceDefenseMaterial =
+  | PortableValidationTraceDefense
+  | Exclude<ValidationTraceDefenseMaterial, { kind: "defend" }>;
+
+const bytes = (view: Uint8Array): Buffer =>
+  Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+
+/** The defense material `portable` carries; it rebuilds nothing O(T). */
+export const validationTraceDefenseFromPortable = (
+  portable: PortableValidationTraceDefense,
+): Extract<ValidationTraceDefenseMaterial, { kind: "defend" }> => {
+  const { stepCount } = portable;
+  const trace = buildTraceAtStepCountV1(
+    {
+      stepCount: portable.honestStepCount,
+      stateHashes: bytes(portable.stateHashes),
+      descriptor: decodeMidgardValidationTraceDescriptor(
+        portable.honestDescriptorCbor,
+      ),
+    },
+    stepCount,
+    portable.levels.map(bytes),
+  );
+  return {
+    kind: "defend",
+    root: trace.descriptor.traceRoot.toString("hex"),
+    stepCount,
+    stateAtS: decodeMidgardValidationMachineState(portable.stateAtSCbor),
+    proofAtS: trace.proof(stepCount),
+    proofAt: trace.proof,
+    initialStateHash: trace.stateHash(0),
+    honestStepCount: portable.honestStepCount,
+  };
+};
+
+/**
  * Our defense material for a case on `evidence`'s event `eventKey` at
  * `stepCount` steps, over the event's pre-state ledger walked from
  * `predecessor` (our landed ledger at the parent header, already checked
@@ -62,7 +118,17 @@ export type ValidationTraceDefenseMaterial =
  * Only a deterministic outcome is returned. Anything else throws, including
  * a trace build stopped as `unavailable`, so the caller retries.
  */
-export const buildValidationTraceDefenseMaterial = async ({
+export const buildValidationTraceDefenseMaterial = async (
+  input: Parameters<typeof buildPortableValidationTraceDefenseMaterial>[0],
+): Promise<ValidationTraceDefenseMaterial> => {
+  const material = await buildPortableValidationTraceDefenseMaterial(input);
+  return material.kind === "defend"
+    ? validationTraceDefenseFromPortable(material)
+    : material;
+};
+
+/** `buildValidationTraceDefenseMaterial`, its defense left portable. */
+export const buildPortableValidationTraceDefenseMaterial = async ({
   evidence,
   predecessor,
   eventKey,
@@ -74,7 +140,7 @@ export const buildValidationTraceDefenseMaterial = async ({
   readonly eventKey: SDK.EventKey;
   readonly stepCount: number;
   readonly l1SlotConfig: L1SlotConfig;
-}): Promise<ValidationTraceDefenseMaterial> => {
+}): Promise<PortableValidationTraceDefenseMaterial> => {
   const keyCbor = Data.to(eventKey, SDK.EventKey);
   const event = evidence.reconstruction.sourceEvents.find(
     (candidate) => Data.to(candidate.eventKey, SDK.EventKey) === keyCbor,
@@ -134,15 +200,15 @@ export const buildValidationTraceDefenseMaterial = async ({
       kind: "trace_disagrees",
       detail: "the accepted trace replay ended other than Accepted",
     };
-  const trace = buildTraceAtStepCountV1(leaves, stepCount);
   return {
     kind: "defend",
-    root: trace.descriptor.traceRoot.toString("hex"),
     stepCount,
-    stateAtS,
-    proofAtS: trace.proof(stepCount),
-    proofAt: trace.proof,
-    initialStateHash: trace.stateHash(0),
+    stateAtSCbor: encodeMidgardValidationMachineState(stateAtS),
+    honestDescriptorCbor: encodeMidgardValidationTraceDescriptor(
+      leaves.descriptor,
+    ),
     honestStepCount: leaves.stepCount,
+    stateHashes: leaves.stateHashes,
+    levels: validationTraceLevelsAtStepCountV1(leaves, stepCount),
   };
 };

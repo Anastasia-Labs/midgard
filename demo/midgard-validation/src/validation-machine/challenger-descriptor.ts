@@ -53,26 +53,22 @@ const assertStepCount = (stepCount: number): void => {
 };
 
 /**
- * The descriptor and proofs of the honest trace `leaves` at
- * `stepCount` steps: the challenger's at the operator's step count,
- * or the defender's at the case's. The verdict and rejection hash are the
- * honest run's.
+ * The materialised levels of the honest trace `leaves` at `stepCount` steps:
+ * level k holds the subtree roots at height k that cover at least one index
+ * <= m; every other node at that height is padding. They are the O(m) part
+ * of `buildTraceAtStepCountV1`, which takes them back when another thread
+ * built them.
  */
-export const buildTraceAtStepCountV1 = (
-  leaves: Pick<
-    ValidationTraceLeavesV1,
-    "stepCount" | "stateHashes" | "descriptor"
-  >,
+export const validationTraceLevelsAtStepCountV1 = (
+  leaves: Pick<ValidationTraceLeavesV1, "stepCount" | "stateHashes">,
   stepCount: number,
-): ValidationTraceAtStepCountV1 => {
+): readonly Buffer[] => {
   assertStepCount(stepCount);
   const lastHonestIndex = Math.min(stepCount, leaves.stepCount);
   const depth = validationTraceDepthForStepCount(stepCount);
   const padding = new MidgardValidationTracePadding(
     validationTraceStateHashV1(leaves, lastHonestIndex),
   );
-  // levels[k] holds the subtree roots at height k that cover at least one
-  // index <= m; every other node at that height is padding.root(k).
   const levels: Buffer[] = [];
   const level0 = Buffer.alloc((lastHonestIndex + 1) * 32);
   for (let index = 0; index <= lastHonestIndex; index += 1) {
@@ -96,6 +92,33 @@ export const buildTraceAtStepCountV1 = (
     }
     levels.push(level);
   }
+  return levels;
+};
+
+/**
+ * The descriptor and proofs of the honest trace `leaves` at
+ * `stepCount` steps: the challenger's at the operator's step count,
+ * or the defender's at the case's. The verdict and rejection hash are the
+ * honest run's. `levels` are its materialised levels, built here unless
+ * given.
+ */
+export const buildTraceAtStepCountV1 = (
+  leaves: Pick<
+    ValidationTraceLeavesV1,
+    "stepCount" | "stateHashes" | "descriptor"
+  >,
+  stepCount: number,
+  levels: readonly Buffer[] = validationTraceLevelsAtStepCountV1(
+    leaves,
+    stepCount,
+  ),
+): ValidationTraceAtStepCountV1 => {
+  assertStepCount(stepCount);
+  const lastHonestIndex = Math.min(stepCount, leaves.stepCount);
+  const depth = validationTraceDepthForStepCount(stepCount);
+  const padding = new MidgardValidationTracePadding(
+    validationTraceStateHashV1(leaves, lastHonestIndex),
+  );
   const node = (height: number, index: number): Buffer => {
     const level = levels[height]!;
     return index * 32 < level.length
