@@ -109,3 +109,20 @@ export const rejectBackgroundJobs = (
     job.reject(error);
   }
 };
+
+/**
+ * Rejects the jobs of `slot`, whose worker failed (`cause`): the one it
+ * ran, and the import-check job reserved for it, which never ran (its
+ * worker failed before the job was sent to it: `workerUnavailable`).
+ */
+export const rejectSlotJobs = (slot: WorkerSlot, cause: unknown): void => {
+  const message = `validation worker ${slot.index} failed`;
+  slot.inFlight?.reject(new ValidationWorkerError({ message, cause }));
+  slot.reservedFor?.reject(
+    new ValidationWorkerError({
+      message: `${message} before the job was sent to it`,
+      cause,
+      workerUnavailable: true,
+    }),
+  );
+};

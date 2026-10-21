@@ -23,6 +23,9 @@ export class ValidationWorkerError extends Data.TaggedError(
   readonly cause?: unknown;
   /** An import-check job cancelled before it started (its `startBy`). */
   readonly notStarted?: true;
+  /** An import-check job whose reserved worker failed (or its start timed
+   * out) before the job was sent to it: the job never ran. */
+  readonly workerUnavailable?: true;
 }> {}
 
 /** The failure a worker's `job_failed` response stands for: its Ed25519

@@ -6,12 +6,22 @@
  *
  * Checking an entry rebuilds its runs (`rebuild.ts`) and runs them in
  * order, each killed at `importCheckKillMs`. A run that faults is retried
- * once on a fresh instance; a kill is never a verdict, and neither is a run
- * cancelled because it was not started in time (the entry stays unrun).
+ * once on a fresh instance. Neither a kill (nor a worker that failed before
+ * the run was sent to it) nor a run cancelled because it was not started
+ * in time is a verdict: the kill is wall-clock time, which machine load
+ * stretches, so only the deterministic outcomes below decide an entry.
  * - every run accepted: the entry leaves the set;
- * - a run rejected: the entry stays as `rejected` (`import_check_rejected`);
- * - a run faulted again: the entry stays as `faulted`
- *   (`uplc_import_fault`), and its script enters the negative cache.
+ * - a run rejected, or over its declared budget: the entry stays as
+ *   `rejected` (`import_check_rejected`);
+ * - a run faulted again (crashed or failed to evaluate): the entry stays as
+ *   `faulted` (`uplc_import_fault`), and its script enters the negative
+ *   cache;
+ * - a run killed: no verdict, and no retry on a fresh instance. The entry
+ *   waits as `timed_out` (`import_check_timeout`, raised for its first
+ *   kill only) and the backlog lane runs it again from its retry time,
+ *   `IMPORT_CHECK_TIMEOUT_RETRY_MS` after the kill, doubled with each
+ *   further kill up to `IMPORT_CHECK_TIMEOUT_RETRY_CAP_MS`, until its
+ *   deadline. The retry state is durable, so a restart keeps it.
  * A verdict that arrives at or after the entry's deadline first raises
  * `unverified_deadline_missed` (once per entry), then applies as above.
  *
@@ -24,13 +34,16 @@
  *   is not run and waits as `cache_skipped`;
  * - the backlog pass (`runBacklogPass`), on the pool's reserved backlog
  *   share: every unrun entry (`pending` ones included), earliest deadline
- *   first, cached scripts included; a run not started by its entry's
- *   deadline is cancelled;
+ *   first, cached scripts included; only when none waits, the `timed_out`
+ *   entries whose retry is due, at most one per backlog worker before it
+ *   reads unrun entries again, so a first check waits at most for the
+ *   retries already running. A run not started by its entry's deadline is
+ *   cancelled;
  * - the sweep (`runUnverifiedSweep`), which never waits on a run: entries
- *   past their deadline leave the set, and entries being checked past
- *   their deadline raise `unverified_deadline_missed`; the backlog's
- *   projected completion is checked against every deadline
- *   (`unverified_near_deadline`).
+ *   past their deadline leave the set (a `timed_out` one included), and
+ *   entries being checked past their deadline raise
+ *   `unverified_deadline_missed`; the backlog's projected completion is
+ *   checked against every deadline (`unverified_near_deadline`).
  *
  * With no evaluator (the validation pool is disabled) nothing is run, and
  * entries leave the set only by deadline or block removal.
@@ -38,14 +51,13 @@
 import { Clock, Effect } from "effect";
 
 import {
+  deferCheck,
   deleteCheck,
   expireChecks,
   type ImportCheckEntry,
   type ImportCheckKey,
-  type ImportCheckLoad,
   type ImportCheckState,
   isCheckHeld,
-  retrieveCheckLoads,
   retrieveCheckMaterial,
   retrieveChecks,
   retrieveNextPendingBlock,
@@ -53,6 +65,10 @@ import {
   skipPendingChecks,
   UNRUN_STATES,
 } from "../database/importChecks.js";
+import {
+  type ImportCheckLoad,
+  retrieveCheckLoads,
+} from "../database/importChecks.loads.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
 import { type ImportCheckLane } from "../services/validation-pool.js";
 import { type ImportCheckAlarmSink } from "./alarms.js";
@@ -92,12 +108,45 @@ export type ImportCheckPassInput = Readonly<{
 /** The most backlog entries one backlog pass reads. */
 export const BACKLOG_BATCH = 64;
 
+/** How long an entry whose check was killed waits before the backlog lane
+ * runs it again; doubled with each further kill, up to
+ * `IMPORT_CHECK_TIMEOUT_RETRY_CAP_MS`. */
+export const IMPORT_CHECK_TIMEOUT_RETRY_MS = 5_000;
+export const IMPORT_CHECK_TIMEOUT_RETRY_CAP_MS = 600_000;
+
 const keyOf = (key: ImportCheckKey) =>
   `${key.headerHash}:${key.transactionId.toString("hex")}`;
 
 const inFlight = (input: ImportCheckPassInput) => [
   ...input.runs.inFlight.values(),
 ];
+
+/** Records a killed check of `entry`: it waits as `timed_out` until its
+ * retry time. Only its first kill is alarmed. */
+const deferTimedOut = (
+  input: ImportCheckPassInput,
+  entry: ImportCheckEntry,
+  detail: string,
+) =>
+  Effect.gen(function* () {
+    const timeouts = entry.timeouts + 1;
+    const retryAtMs =
+      (yield* Clock.currentTimeMillis) +
+      Math.min(
+        IMPORT_CHECK_TIMEOUT_RETRY_CAP_MS,
+        IMPORT_CHECK_TIMEOUT_RETRY_MS * 2 ** (timeouts - 1),
+      );
+    // The alarm comes first, as for a rejection.
+    if (timeouts === 1 && (yield* isCheckHeld(entry)))
+      yield* input.alarm({
+        alarm: "import_check_timeout",
+        headerHash: entry.headerHash,
+        transactionId: entry.transactionId.toString("hex"),
+        detail,
+        retryAtMs,
+      });
+    yield* deferCheck(entry, timeouts, retryAtMs);
+  });
 
 /** Raises `unverified_deadline_missed` for `entry` unless it was raised
  * already or the entry left the set or the landed chain. */
@@ -149,6 +198,10 @@ const runEntry = (
         }),
     );
     if (verdict.kind === "cancelled") return "cancelled" as const;
+    if (verdict.kind === "timeout") {
+      yield* deferTimedOut(input, entry, verdict.detail);
+      return "deferred" as const;
+    }
     if ((yield* Clock.currentTimeMillis) >= entry.deadlineMs)
       yield* raiseMissed(input, entry, entry.state);
     const transactionId = entry.transactionId.toString("hex");
@@ -237,7 +290,7 @@ const checkBlock = (
         );
         capped = result === "cancelled";
         if (capped) break;
-        progressed ||= result === "done";
+        progressed ||= result === "done" || result === "deferred";
       }
     }
     if (!capped) return;
@@ -254,10 +307,8 @@ export const runImportCheckPass = (input: ImportCheckPassInput) =>
   Effect.gen(function* () {
     const evaluator = input.evaluator;
     if (evaluator === undefined) return false;
-    const headerHash = yield* retrieveNextPendingBlock(
-      yield* Clock.currentTimeMillis,
-      inFlight(input),
-    );
+    const now = yield* Clock.currentTimeMillis;
+    const headerHash = yield* retrieveNextPendingBlock(now, inFlight(input));
     if (headerHash === undefined) return false;
     yield* checkBlock(input, evaluator, headerHash);
     return true;
@@ -265,53 +316,104 @@ export const runImportCheckPass = (input: ImportCheckPassInput) =>
 
 /**
  * The backlog pass: up to `BACKLOG_BATCH` unrun entries due after now,
- * earliest deadline first, as many at a time as the backlog's share (one
- * on a single-worker pool). Returns the number of entries it read; the
- * fiber runs it again at once while it reads any.
+ * earliest deadline first, or, when there is none, as many `timed_out`
+ * entries whose retry is due as the backlog's share (one on a
+ * single-worker pool); as many at a time as that share. Returns the
+ * number of entries it read; the fiber runs it again at once while it
+ * reads any.
  */
 export const runBacklogPass = (input: ImportCheckPassInput) =>
   Effect.gen(function* () {
     const evaluator = input.evaluator;
     if (evaluator === undefined) return 0;
-    const entries = yield* retrieveChecks(UNRUN_STATES, {
-      dueAfterMs: yield* Clock.currentTimeMillis,
+    const now = yield* Clock.currentTimeMillis;
+    const options = {
+      dueAfterMs: now,
       excluding: inFlight(input),
       limit: BACKLOG_BATCH,
-    });
+    };
+    const unrun = yield* retrieveChecks(UNRUN_STATES, options);
+    const share = Math.max(1, evaluator.backlogShare);
+    const entries =
+      unrun.length > 0
+        ? unrun
+        : yield* retrieveChecks(["timed_out"], {
+            ...options,
+            limit: share,
+            retryDueByMs: now,
+          });
     yield* Effect.forEach(
       entries,
       (entry) =>
         checkEntry(input, evaluator, entry, "backlog", entry.deadlineMs),
-      { concurrency: Math.max(1, evaluator.backlogShare), discard: true },
+      { concurrency: share, discard: true },
     );
     return entries.length;
   });
 
 /**
- * The deadlines the backlog cannot serve in time: for each deadline d, two
- * kills of every unrun entry due by d, over the backlog's `share` of
- * workers, end past d minus the opener's margin. With no share (a
- * single-worker pool) no completion is projected, and every deadline with
- * an unrun entry is at risk. Faulted entries are not counted: each already
- * raised `uplc_import_fault`.
+ * The deadlines the backlog cannot serve in time, over its `share` of
+ * workers, each entry costing two kills. For each deadline d:
+ * - the unrun entries due by d (`unrun`) end past d minus the opener's
+ *   margin; or
+ * - the `timed_out` entries due by d (`retries`; only those that can still
+ *   run) end past it. They run after every unrun entry and not before
+ *   their latest retry time.
+ * With no share (a single-worker pool) no completion is projected, and
+ * every deadline with an entry is at risk. Faulted entries are not
+ * counted: each already raised `uplc_import_fault`.
  */
 export const projectUnverified = (
-  loads: readonly ImportCheckLoad[],
+  unrun: readonly ImportCheckLoad[],
+  retries: readonly ImportCheckLoad[],
   config: ImportCheckConfig,
   nowMs: number,
   share: number,
 ) => {
+  const killsMs = (load: ImportCheckLoad) =>
+    2 * importCheckLoadKillMs(load, config);
+  const endMs = (startMs: number, workMs: number) =>
+    share > 0 ? Math.ceil(startMs + workMs / share) : Number.MAX_SAFE_INTEGER;
+  const unrunEndMs = endMs(
+    nowMs,
+    unrun.reduce((sum, load) => sum + killsMs(load), 0),
+  );
+  const byDeadline = new Map<
+    number,
+    { unrun?: ImportCheckLoad; retry?: ImportCheckLoad }
+  >();
+  for (const load of unrun) byDeadline.set(load.deadlineMs, { unrun: load });
+  for (const load of retries)
+    byDeadline.set(load.deadlineMs, {
+      ...byDeadline.get(load.deadlineMs),
+      retry: load,
+    });
   const atRisk: { deadlineMs: number; entries: number; projectedMs: number }[] =
     [];
   let entries = 0;
-  let killsMs = 0;
-  for (const load of loads) {
-    entries += load.entries;
-    killsMs += 2 * importCheckLoadKillMs(load, config);
-    const projectedMs =
-      share > 0 ? Math.ceil(nowMs + killsMs / share) : Number.MAX_SAFE_INTEGER;
-    if (projectedMs > load.deadlineMs - config.openerMarginMs)
-      atRisk.push({ deadlineMs: load.deadlineMs, entries, projectedMs });
+  let unrunMs = 0;
+  let retryMs = 0;
+  let retryStartMs: number | undefined;
+  for (const deadlineMs of [...byDeadline.keys()].sort((a, b) => a - b)) {
+    const { unrun: first, retry } = byDeadline.get(deadlineMs)!;
+    if (first !== undefined) {
+      entries += first.entries;
+      unrunMs += killsMs(first);
+    }
+    if (retry !== undefined) {
+      entries += retry.entries;
+      retryMs += killsMs(retry);
+      retryStartMs = Math.max(
+        retryStartMs ?? unrunEndMs,
+        retry.retryAtMs ?? nowMs,
+      );
+    }
+    const projectedMs = Math.max(
+      endMs(nowMs, unrunMs),
+      retryStartMs === undefined ? 0 : endMs(retryStartMs, retryMs),
+    );
+    if (projectedMs > deadlineMs - config.openerMarginMs)
+      atRisk.push({ deadlineMs, entries, projectedMs });
   }
   return atRisk;
 };
@@ -354,9 +456,9 @@ export const runUnverifiedSweep = (
       if (deadlineMs <= now) alarmed.delete(deadlineMs);
     const evaluator = input.evaluator;
     if (evaluator === undefined) return;
-    const loads = yield* retrieveCheckLoads(UNRUN_STATES);
     for (const risk of projectUnverified(
-      loads,
+      yield* retrieveCheckLoads(UNRUN_STATES),
+      yield* retrieveCheckLoads(["timed_out"]),
       input.config,
       now,
       evaluator.backlogShare,
