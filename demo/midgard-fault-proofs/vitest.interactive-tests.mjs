@@ -13,6 +13,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-conviction.test.ts",
   "./tests/validation-trace-dispute-one-step-context-assemble.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-107.test.ts",
+  "./tests/validation-trace-dispute-one-step-context-item-108.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-111.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-95.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-96.test.ts",
