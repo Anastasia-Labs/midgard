@@ -1240,6 +1240,7 @@ jobs:
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
             watcher-journeys/replayed-ledger.test.ts \
+            watcher-journeys/script-validation-trace-case.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stage-timing.test.ts \
