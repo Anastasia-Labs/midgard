@@ -110,6 +110,7 @@ export const defendTwoThreads = async ({
   contexts = false,
   canonicalDecode = false,
   phases = false,
+  failingRedeemerData,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -123,6 +124,8 @@ export const defendTwoThreads = async ({
   /** Whether the deployment drives the steps of the phases one-step-phase.ts
    * names. */
   readonly phases?: boolean;
+  /** The failing transaction's redeemer, as Plutus Data CBOR. */
+  readonly failingRedeemerData?: Uint8Array;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -131,23 +134,27 @@ export const defendTwoThreads = async ({
   // Published before the scene's blocks, so the publications take none of
   // the source verification's window from the failing block's end.
   let oneStep: ValidationTraceOneStepReferences | undefined;
-  const scene = await setUpScene(async (contracts) => {
-    oneStep = {
-      ...(await publishOneStepReferences(contracts)),
-      ...(selections
-        ? { cekSelection: await publishSelectionReferences(contracts) }
-        : {}),
-      ...(contexts
-        ? { cekContext: await publishContextReferences(contracts) }
-        : {}),
-      ...(canonicalDecode
-        ? {
-            canonicalDecode: await publishCanonicalDecodeReferences(contracts),
-          }
-        : {}),
-      ...(phases ? { phases: await publishPhaseReferences(contracts) } : {}),
-    };
-  });
+  const scene = await setUpScene(
+    async (contracts) => {
+      oneStep = {
+        ...(await publishOneStepReferences(contracts)),
+        ...(selections
+          ? { cekSelection: await publishSelectionReferences(contracts) }
+          : {}),
+        ...(contexts
+          ? { cekContext: await publishContextReferences(contracts) }
+          : {}),
+        ...(canonicalDecode
+          ? {
+              canonicalDecode:
+                await publishCanonicalDecodeReferences(contracts),
+            }
+          : {}),
+        ...(phases ? { phases: await publishPhaseReferences(contracts) } : {}),
+      };
+    },
+    failingRedeemerData === undefined ? {} : { failingRedeemerData },
+  );
   const removal =
     recorder === undefined ? undefined : await recordedRemoval(scene, recorder);
   const successor = await enrollSuccessor(

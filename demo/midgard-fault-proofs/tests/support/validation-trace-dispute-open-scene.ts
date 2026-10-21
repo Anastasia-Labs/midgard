@@ -109,10 +109,12 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
 /**
  * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
  * its blocks are committed, so what it does takes none of the time a
- * dispute move has from the failing block's end.
+ * dispute move has from the failing block's end. The failing transaction's
+ * redeemer is `failingRedeemerData` when given.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
+  { failingRedeemerData }: { readonly failingRedeemerData?: Uint8Array } = {},
 ): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
@@ -196,6 +198,9 @@ export const setUpScene = async (
     const endTime = previous.endTime + 60_000n;
     const block = await plutusExecutionBlockFixture(scenario, {
       seedByte: seeds[scenario as keyof typeof seeds],
+      ...(scenario === "failing" && failingRedeemerData !== undefined
+        ? { redeemerData: failingRedeemerData }
+        : {}),
       predecessorEntries: previous.entries,
       header: {
         operatorVkey,

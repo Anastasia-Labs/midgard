@@ -46,6 +46,14 @@ export const CANONICAL_DECODE_ITEM_SEMANTIC_RESOLVER_INDEX = 1;
 const TRANSACTION_FIELD_ITEM_AUXILIARY = 28;
 const INLINE_CARRIAGE = 0;
 
+/** The longest field preimage whose `Inline` carriage the observe move
+ * carries within the transaction size limit less its 512-byte reserve,
+ * measured on the move paid from our wallet
+ * (tests/validation-trace-dispute-one-step-canonical-decode-8-inline-cap.test.ts).
+ * An item of a longer field is not driven: its step waits under the
+ * one-step-required alarm. */
+export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_623;
+
 /** The holders of a canonical-decode step's resolution, in the order the
  * thread visits them, with the deployment manifest's name for each. */
 export const CANONICAL_DECODE_CONTRACT_NAMES = Object.freeze({
@@ -187,6 +195,12 @@ export const planValidationTraceCanonicalDecodeStep = ({
       driven: false,
       reason: "a canonical-decode item delivered by reference",
     };
+  const preimage = auxiliary.fieldPreimage;
+  if (preimage.length > VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES)
+    return {
+      driven: false,
+      reason: `a canonical-decode item of a ${preimage.length.toString()}-byte field, over the ${VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES.toString()}-byte inline observe limit`,
+    };
   const control = decodeSingleCbor(witness.cbor);
   if (!Array.isArray(control) || control.length !== 9)
     throw new Error("canonical-decode control is not its 9 fields");
@@ -197,7 +211,6 @@ export const planValidationTraceCanonicalDecodeStep = ({
     asInteger(control[7], "item_count"),
     asInteger(control[8], "encoded_length"),
   ];
-  const preimage = auxiliary.fieldPreimage;
   const items = decodeMidgardFieldPreimage(preimage);
   const item = items[itemIndex];
   if (item === undefined)

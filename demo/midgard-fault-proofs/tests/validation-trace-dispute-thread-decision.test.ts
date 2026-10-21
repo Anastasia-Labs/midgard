@@ -15,6 +15,7 @@
  * award closes into the case. On a case a defender won, every other thread
  * is still played to its own end, and the run stops once none has a move
  * left; a case with no open thread settles. */
+import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import type { ValidationTraceOneStepPlanning } from "../src/validation-trace-dispute/one-step-plan.js";
@@ -136,6 +137,7 @@ const decide = (
       open_threads: BigInt(threads.length + resolving.length),
       defender_won: false,
       neither_claim_valid: false,
+      started_at: BigInt(NOW),
       ...caseDatum,
     } as never,
     now: NOW,
@@ -255,7 +257,7 @@ describe("validation-trace dispute runner's choice among threads", () => {
   it("waits under one-step-required on a ReadyForOneStep thread whose resolution is not installed or whose step it does not drive, never entering it", () => {
     const step = ready("5");
     const deadline = (NOW + Number(CLOCK) / 2).toString();
-    const label = `case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${deadline}`;
+    const label = `case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${deadline}`;
     expect(decide([step])).toStrictEqual({
       kind: "pending",
       reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; the one-step resolution is not installed, so it waits`,
@@ -280,8 +282,25 @@ describe("validation-trace dispute runner's choice among threads", () => {
       namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true },
     });
     expect("reason" in result && result.reason).toBe(
-      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${(NOW + Number(CLOCK) / 2).toString()}; the one-step resolution is not installed, so it waits`,
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${(NOW + Number(CLOCK) / 2).toString()}; the one-step resolution is not installed, so it waits`,
     );
+  });
+
+  it("names the case's expiry as the one-step-required deadline when the case expires before our clock ends", () => {
+    const step = ready("5");
+    const expiry = NOW + Number(CLOCK) / 4;
+    expect(
+      decide([step], {
+        caseDatum: {
+          started_at: BigInt(
+            expiry - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+          ),
+        },
+      }),
+    ).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${expiry.toString()}; the one-step resolution is not installed, so it waits`,
+    });
   });
 
   it("reports a ReadyForOneStep thread past our clock as lost, and holds one on a trace it does not hold, never entering either", () => {

@@ -30,6 +30,7 @@ import {
   validationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
+import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
@@ -37,6 +38,7 @@ import {
   type TwoThreadCase,
 } from "./validation-trace-dispute-one-step-case.js";
 import {
+  isPendingFor,
   playThreads,
   type PreparedMove,
   threadPlace,
@@ -62,6 +64,7 @@ export const resolutionDrive = <
   path,
   labels,
   installs,
+  minFeeA,
   planAt,
 }: {
   readonly from: number;
@@ -70,8 +73,11 @@ export const resolutionDrive = <
   readonly labels: readonly string[];
   readonly installs: Pick<
     Parameters<typeof defendTwoThreads>[0],
-    "canonicalDecode" | "phases"
+    "canonicalDecode" | "phases" | "failingRedeemerData"
   >;
+  /** The ledger's per-byte fee while the resolution plays, when raised so
+   * its largest moves are priced over the per-move cap. */
+  readonly minFeeA?: number;
   readonly planAt: (
     dispute: TwoThreadCase,
     holder: Holder,
@@ -81,6 +87,8 @@ export const resolutionDrive = <
   let dispute: TwoThreadCase;
   /** The successor thread's moves past the game. */
   let moves: PreparedMove[];
+  /** Each move's transaction, by its fit label. */
+  const reported = new Map<string, string>();
 
   const bodyOf = (hash: string) =>
     CML.Transaction.from_cbor_hex(
@@ -99,6 +107,26 @@ export const resolutionDrive = <
   const paidTo = (move: PreparedMove) =>
     coreToTxOutput(bodyOf(move.hash).outputs().get(threadOutput(move.cbor)!))
       .address;
+
+  /** Runs `play` with the ledger's parameters `overrides`, which our
+   * wallet's lucid reads from its provider, and restores them after. */
+  const withParameters = async <T>(
+    overrides: Partial<
+      TwoThreadCase["scene"]["h"]["emulator"]["protocolParameters"]
+    >,
+    play: () => Promise<T>,
+  ): Promise<T> => {
+    const { emulator, proverLucid } = dispute.scene.h;
+    const parameters = emulator.protocolParameters;
+    emulator.protocolParameters = { ...parameters, ...overrides };
+    await proverLucid.switchProvider(emulator);
+    try {
+      return await play();
+    } finally {
+      emulator.protocolParameters = parameters;
+      await proverLucid.switchProvider(emulator);
+    }
+  };
 
   const placeOfB = async () => {
     const found = await threadPlace(
@@ -202,18 +230,50 @@ export const resolutionDrive = <
         },
       })),
 
+    /** Plays the runner under a transaction size limit of `maxTxSize`
+     * bytes until the thread's next move does not build under it: the
+     * operator's alarm, with the thread unmoved. Its reason. */
+    unbuilt: async (maxTxSize: number) => {
+      const { scene, runner, a, b } = dispute;
+      const before = await placeOfB();
+      const { result } = await withParameters(
+        { maxTxSize },
+        async () =>
+          await playThreads({
+            scene,
+            runner,
+            sides: [a, b],
+            until: async (run) =>
+              isPendingFor(run, VALIDATION_TRACE_ONE_STEP_REQUIRED) &&
+              "reason" in run &&
+              run.reason.includes("does not build"),
+            limit: 4,
+          }),
+      );
+      expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo));
+      if (result.kind !== "pending") throw new Error("the run is not pending");
+      return result.reason;
+    },
+
     /** Plays the thread through the resolution to the award and its close. */
     awards: async () => {
       const { scene, deployment, runner, prepared, a, b } = dispute;
-      await playThreads({
-        scene,
-        runner,
-        sides: [a, b],
-        until: async () =>
-          (await threadClosed(dispute, a.unit)) &&
-          (await threadClosed(dispute, b.unit)),
-        limit: 40 + 2 * path.length,
-      });
+      await withParameters(
+        minFeeA === undefined ? {} : { minFeeA },
+        async () =>
+          await playThreads({
+            scene,
+            runner,
+            sides: [a, b],
+            // Over a failing transaction of its own, our other thread's trace
+            // parts from ours at a step of another phase, and it waits there.
+            until: async () =>
+              (installs.failingRedeemerData !== undefined ||
+                (await threadClosed(dispute, a.unit))) &&
+              (await threadClosed(dispute, b.unit)),
+            limit: 40 + 2 * path.length,
+          }),
+      );
       moves = prepared.filter(
         ({ stage: moved, cbor }) =>
           (moved === "enter_resolution" || moved === "resolve") &&
@@ -239,10 +299,15 @@ export const resolutionDrive = <
         "EnterResolution",
         "PrepareResolution",
         ...labels,
-      ].entries())
+      ].entries()) {
         reportFit(label, [moves[index]!.cbor]);
+        reported.set(label, moves[index]!.cbor);
+      }
       reportFit("CloseAwardedThread", [close!.cbor]);
     },
+
+    /** The size in bytes of the move reported under `label`. */
+    bytesOf: (label: string) => reported.get(label)!.length / 2,
 
     /** Each move's fee is paid by its thread when it fits under the cap, and
      * by our wallet when it does not; every move the runner landed fits the

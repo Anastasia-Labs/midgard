@@ -3,9 +3,11 @@
  * resolution's (one-step-moves.ts), which read the case's recorded threads
  * for the defender a thread past the game no longer names. A move our wallet
  * cannot fund raises the operator's alarm, naming the case, the thread and
- * the deadline the move must land by. */
+ * the deadline the move must land by; so does a move of the one-step
+ * resolution that does not build, under the one-step-required state. */
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import {
@@ -26,11 +28,12 @@ import {
   captureValidationTraceResolve,
 } from "./one-step-moves.js";
 import { validationTraceRecordedThreads } from "./thread-observation.js";
-import { type CapturedValidationTraceStage, ours } from "./transactions.js";
 import {
+  VALIDATION_TRACE_ONE_STEP_REQUIRED,
   validationTraceCaseExpiryMs,
-  validationTraceMoveDeadlineMs,
-} from "./wallet-move-unfunded.js";
+} from "./threads.js";
+import { type CapturedValidationTraceStage, ours } from "./transactions.js";
+import { validationTraceMoveDeadlineMs } from "./wallet-move-unfunded.js";
 
 type ThreadMove = Readonly<{
   stage: ValidationTraceStage;
@@ -81,9 +84,47 @@ const capture = async ({
   }
 };
 
+/** The moves of a thread's one-step resolution. */
+const ONE_STEP_STAGES: ReadonlySet<ValidationTraceStage> = new Set([
+  "enter_resolution",
+  "resolve",
+  "close_awarded",
+]);
+
+/**
+ * A move of a thread's one-step resolution that does not build: the
+ * operator's alarm under the one-step-required state, naming the case, the
+ * thread and the deadline the move must land by. The run resumes on the
+ * next observation and builds the move again.
+ */
+export class ValidationTraceOneStepUnbuiltError extends WorkflowActionChangedError {
+  constructor(
+    input: Readonly<{
+      stage: ValidationTraceStage;
+      caseUnit: string;
+      threadOutRef: string;
+      deadlineMs: number | undefined;
+      cause: unknown;
+    }>,
+  ) {
+    const deadline =
+      input.deadlineMs === undefined
+        ? "its deadline"
+        : input.deadlineMs.toString();
+    const cause =
+      input.cause instanceof Error ? input.cause.message : String(input.cause);
+    super(
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: the ${input.stage} move on thread ${input.threadOutRef} of case ${input.caseUnit} does not build, and must land by ${deadline}: ${cause}`,
+    );
+    this.name = "ValidationTraceOneStepUnbuiltError";
+  }
+}
+
 /**
  * The move on a thread of our case, whose datum is `caseDatum`. A build our
- * wallet is short of ada for is the operator's alarm.
+ * wallet is short of ada for is the operator's alarm, and so is a one-step
+ * resolution move that does not build for any other reason than the thread
+ * having moved.
  */
 export const captureValidationTraceThreadMove = async ({
   caseDatum,
@@ -94,15 +135,17 @@ export const captureValidationTraceThreadMove = async ({
   try {
     return await capture(input);
   } catch (cause) {
-    if (!isWorkflowFundingShortfall(cause)) throw cause;
+    const unfunded = isWorkflowFundingShortfall(cause);
+    if (
+      !unfunded &&
+      (cause instanceof WorkflowActionChangedError ||
+        !ONE_STEP_STAGES.has(input.stage))
+    )
+      throw cause;
     const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(
       () => undefined,
     );
-    throw new ValidationDisputeWalletMoveUnfundedError({
-      actionId: validationTraceActionId({
-        stage: input.stage,
-        consumes: move.threadOutRef,
-      }),
+    const named = {
       caseUnit: move.caseUnit,
       threadOutRef: move.threadOutRef,
       deadlineMs: validationTraceMoveDeadlineMs({
@@ -111,6 +154,18 @@ export const captureValidationTraceThreadMove = async ({
         thread,
       }),
       cause,
+    };
+    if (!unfunded)
+      throw new ValidationTraceOneStepUnbuiltError({
+        stage: input.stage,
+        ...named,
+      });
+    throw new ValidationDisputeWalletMoveUnfundedError({
+      actionId: validationTraceActionId({
+        stage: input.stage,
+        consumes: move.threadOutRef,
+      }),
+      ...named,
     });
   }
 };

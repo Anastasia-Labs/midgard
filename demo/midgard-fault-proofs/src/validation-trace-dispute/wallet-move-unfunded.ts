@@ -2,16 +2,11 @@
  * alarm names when our wallet cannot fund the move: the case's expiry, and
  * for a move on our own clock (a reveal, or the entry into the one-step
  * resolution) the end of that clock if it comes first. */
-import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceStage } from "./actions.js";
 import { validationTraceChallengerDeadlineMs } from "./threads.js";
-
-/** The case's expiry: `started_at + D_case`, the validators' own bound. */
-export const validationTraceCaseExpiryMs = (caseDatum: SDK.Case): number =>
-  Number(caseDatum.started_at) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
 
 /** Whether a move of `stage` is lost once our clock on its thread runs out. */
 const onOurClock = (stage: ValidationTraceStage): boolean =>

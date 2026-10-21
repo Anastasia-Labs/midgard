@@ -1,16 +1,16 @@
 /** Where a thread of ours stands during the one-step resolution of a step
  * the runner drives: the boundary game-v1 EnterResolution sends it to; for
- * a CEK step the CEK phase resolver, then for a core step the CEK core step binder, the arm
- * its step selects and the settle, for a script selection the selection
- * resolver, or for a context step the context step resolver, the context
- * control, the stage it routes the step to (at the item bind stage, then the
- * redeemer item step's holders, one-step-context-item-holders.ts, and past
- * a multi-hop stage's first holder, its followers,
- * one-step-context-followers.ts) and the context settle; for a
- * canonical-decode step, its resolver and semantic resolvers and the item's
- * stages (one-step-canonical-decode.ts); for a step of another phase, the
- * phase's resolver and semantic resolvers (one-step-phase.ts); and the
- * award.
+ * a CEK step the CEK phase resolver, then for a core step the CEK core step
+ * binder, the arm its step selects and the settle, for a script selection
+ * the selection resolver, or for a context step the context step resolver,
+ * the context control, the stage it routes the step to (at the item bind
+ * stage, then the redeemer item step's holders,
+ * one-step-context-item-holders.ts, and past a multi-hop stage's first
+ * holder, its followers, one-step-context-followers.ts) and the context
+ * settle; for a canonical-decode step, its resolver and semantic resolvers
+ * and the item's stages (one-step-canonical-decode.ts); for a step of
+ * another phase, the phase's resolver and semantic resolvers
+ * (one-step-phase.ts); and the award.
  * Each holder is a deployment contract, found by its spending address; the
  * thread token, minted once for its defender, is what makes an output there
  * ours. */

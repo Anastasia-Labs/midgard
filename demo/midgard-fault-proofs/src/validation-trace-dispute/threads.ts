@@ -21,6 +21,7 @@
  * win on one thread decides only the case: every other thread is still
  * played to its own end (its resolution, timeout and close), and the run
  * stops under its own state once no thread of ours has a move left. */
+import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
@@ -43,7 +44,8 @@ export const VALIDATION_TRACE_THREAD_AWAITING =
 
 /** A thread reached ReadyForOneStep: the one-step resolution must run.
  * Only our move leaves ReadyForOneStep, so our clock runs on a thread
- * waiting here, and it is lost at that clock's end. */
+ * waiting here; our entry must land by the earlier of that clock's end and
+ * the case's expiry, the deadline the alarm names. */
 export const VALIDATION_TRACE_ONE_STEP_REQUIRED =
   "validation-trace-one-step-required";
 
@@ -153,6 +155,10 @@ export const validationTraceDefenderDeadlineMs = (
   thread: SDK.CaseThread,
 ): number => Number(thread.turn_started_at + thread.defender_clock_ms);
 
+/** The case's expiry: `started_at + D_case`, the validators' own bound. */
+export const validationTraceCaseExpiryMs = (caseDatum: SDK.Case): number =>
+  Number(caseDatum.started_at) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
+
 /** The end of our turn: our move's lower bound may not pass it. */
 export const validationTraceChallengerDeadlineMs = (
   thread: SDK.CaseThread,
@@ -233,7 +239,7 @@ export const decideValidationTraceThreads = ({
       else if (planning?.kind === "plan") moves.enter_resolution.push(found);
       else
         oneStep.push(
-          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}, on our clock until ${validationTraceChallengerDeadlineMs(thread).toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
+          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}, and must enter its resolution by ${Math.min(validationTraceCaseExpiryMs(caseDatum), validationTraceChallengerDeadlineMs(thread)).toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
         );
     } else if (now > validationTraceDefenderDeadlineMs(thread))
       moves.timeout.push(found);

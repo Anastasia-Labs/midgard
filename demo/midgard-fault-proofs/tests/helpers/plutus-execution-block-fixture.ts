@@ -147,10 +147,12 @@ export const plutusExecutionSeedDeposit = (
   honest: true,
 });
 
-/** The transaction the scenario commits, over its seed output. */
+/** The transaction the scenario commits, over its seed output; a script
+ * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
+  redeemerData?: Uint8Array,
 ) => {
   const outputs = [makeOutput(SEED_LOVELACE)];
   const key = ownerKey();
@@ -173,7 +175,11 @@ export const scenarioTransaction = (
         ? { requiredSignerItems: [Buffer.alloc(28, 0x71)] }
         : {}),
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-        { tag: MidgardRedeemerTag.Spend, index: 0n },
+        {
+          tag: MidgardRedeemerTag.Spend,
+          index: 0n,
+          ...(redeemerData === undefined ? {} : { data: redeemerData }),
+        },
       ]),
       scriptLanguages: ["PlutusV3"],
     });
@@ -217,6 +223,8 @@ export type PlutusExecutionBlockOptions = {
    * default the scenario's script seed and a key-owned seed.
    */
   readonly predecessorEntries?: readonly LedgerEntry[];
+  /** The script spend's redeemer, as Plutus Data CBOR; by default `Constr 0 []`. */
+  readonly redeemerData?: Uint8Array;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -225,6 +233,7 @@ export const plutusExecutionBlockFixture = async (
     header: headerFields = {},
     seedByte = DEFAULT_SCRIPT_SEED_BYTE,
     predecessorEntries: requestedPredecessor,
+    redeemerData,
   }: PlutusExecutionBlockOptions = {},
 ) => {
   const scriptSeed = depositSeed(seedByte, scriptCredential(scenario));
@@ -233,7 +242,7 @@ export const plutusExecutionBlockFixture = async (
   const seed = scenario === "no_redeemers" ? keySeed : scriptSeed;
   if (!predecessorEntries.some((entry) => entry.outRef.equals(seed.outRef)))
     throw new Error("the predecessor ledger does not hold the spent seed");
-  const native = scenarioTransaction(scenario, seed);
+  const native = scenarioTransaction(scenario, seed, redeemerData);
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
     canonicalCbor: native.txCbor,

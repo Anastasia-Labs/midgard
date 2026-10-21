@@ -87,16 +87,26 @@ export const canonicalDecodeDrive = ({
   from,
   kind,
   at,
+  failingRedeemerData,
+  minFeeA,
 }: {
   readonly from: number;
   readonly kind: CanonicalDecodeKind;
   readonly at: ValidationTraceCanonicalDecodeHolder;
+  /** The failing transaction's redeemer, as Plutus Data CBOR. */
+  readonly failingRedeemerData?: Uint8Array;
+  /** The ledger's per-byte fee while the resolution plays. */
+  readonly minFeeA?: number;
 }) => {
   const drive = resolutionDrive({
     from,
     at,
     ...ROUTES[kind],
-    installs: { canonicalDecode: true },
+    installs: {
+      canonicalDecode: true,
+      ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
+    },
+    ...(minFeeA === undefined ? {} : { minFeeA }),
     /** Our plan of the step, by the successor hash the holder keeps. */
     planAt: async (
       dispute,
@@ -123,6 +133,8 @@ export const canonicalDecodeDrive = ({
     setUp: drive.setUp,
     awards: drive.awards,
     pays: drive.pays,
+    bytesOf: drive.bytesOf,
+    unbuilt: drive.unbuilt,
 
     /** Our plan sends the thread's step to the semantic resolver of
      * `kind`, committing the transition alone. */
