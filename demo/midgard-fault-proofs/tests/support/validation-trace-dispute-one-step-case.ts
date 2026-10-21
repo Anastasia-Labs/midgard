@@ -32,6 +32,7 @@ import {
   type Defender,
   sceneOperator,
 } from "./validation-trace-dispute-defend.js";
+import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import {
   oneStepDeployment,
   publishOneStepReferences,
@@ -100,9 +101,12 @@ const outRef = (text: string) => ({
 export const defendTwoThreads = async ({
   withRemoval,
   successorFrom = MACHINE_STEP_FROM,
+  wrap,
 }: {
   readonly withRemoval: boolean;
   readonly successorFrom?: number;
+  /** Rewrites the adapter beneath the record of what it signs. */
+  readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = withRemoval ? recordCrossBlockRawEmulator() : undefined;
@@ -120,7 +124,10 @@ export const defendTwoThreads = async ({
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,
-    wrap: capturePrepared(prepared),
+    wrap: (adapter) =>
+      capturePrepared(prepared)(
+        wrap === undefined ? adapter : wrap(scene)(adapter),
+      ),
     ...(removal === undefined
       ? {}
       : {

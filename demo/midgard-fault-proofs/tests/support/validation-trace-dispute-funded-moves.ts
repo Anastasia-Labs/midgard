@@ -110,6 +110,37 @@ export const recordedOutput = (scene: Scene, outRef: string): UTxO => {
   };
 };
 
+/** Records into `moves` each thread move the adapter signs, with what it
+ * spends as it was then. */
+export const captureMoves =
+  (scene: Scene, moves: CapturedMove[]): AdapterWrap =>
+  (adapter) => ({
+    ...adapter,
+    preflight: async (context) => {
+      const preflight = await adapter.preflight(context);
+      const signed = workflowPreflightTransaction(preflight);
+      const authority =
+        signed === undefined
+          ? null
+          : readValidationDisputeMoveAuthority(signed);
+      if (authority === null) return preflight;
+      const [spent, caseInput] = await scene.h.emulator.getUtxosByOutRef([
+        parseOwnOutRef(authority.threadOutRef),
+        ...(authority.caseOutRef === null
+          ? []
+          : [parseOwnOutRef(authority.caseOutRef)]),
+      ]);
+      moves.push({
+        signed: signed!,
+        authority,
+        action: context.action,
+        thread: spent!,
+        caseInput,
+      });
+      return preflight;
+    },
+  });
+
 /** The pending claim our confirmed Open left, as it was before VerifySource. */
 export const ourOpener = (
   scene: Scene,
@@ -154,32 +185,7 @@ export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
     parseOwnOutRef(threadOutRef),
   ]);
   const moves: CapturedMove[] = [];
-  const capture: AdapterWrap = (adapter) => ({
-    ...adapter,
-    preflight: async (context) => {
-      const preflight = await adapter.preflight(context);
-      const signed = workflowPreflightTransaction(preflight);
-      const authority =
-        signed === undefined
-          ? null
-          : readValidationDisputeMoveAuthority(signed);
-      if (authority === null) return preflight;
-      const [spent, caseInput] = await scene.h.emulator.getUtxosByOutRef([
-        parseOwnOutRef(authority.threadOutRef),
-        ...(authority.caseOutRef === null
-          ? []
-          : [parseOwnOutRef(authority.caseOutRef)]),
-      ]);
-      moves.push({
-        signed: signed!,
-        authority,
-        action: context.action,
-        thread: spent!,
-        caseInput,
-      });
-      return preflight;
-    },
-  });
+  const capture = captureMoves(scene, moves);
   return {
     scene,
     removal,

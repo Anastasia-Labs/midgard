@@ -3,8 +3,9 @@
  * other category, and a funding permit refuses the authority on any other
  * category's workflow. Within it, the policy binds the thread moves'
  * contracts only when each is a rostered proof-thread contract of its own,
- * with the compiled profile's per-move fee cap and receipt lovelace. The
- * emulator suite covers the authorities' own category. */
+ * with the compiled profile's per-move fee cap and receipt lovelace, and
+ * the one-step holders a thread visits likewise. The emulator suite covers
+ * the authorities' own category. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -34,6 +35,15 @@ const CASE_ADDRESS = scriptAddress("c5".repeat(28));
 const GAME_ADDRESS = scriptAddress("6a".repeat(28));
 const TIMEOUT_ADDRESS = scriptAddress("7a".repeat(28));
 const AWARD_ADDRESS = scriptAddress("8a".repeat(28));
+const BOUNDARY_ADDRESS = scriptAddress("0b".repeat(28));
+const RESOLVER_ADDRESSES = [
+  scriptAddress("1c".repeat(28)),
+  scriptAddress("2c".repeat(28)),
+];
+const ONE_STEP = {
+  boundaryAddress: BOUNDARY_ADDRESS,
+  resolverAddresses: RESOLVER_ADDRESSES,
+};
 const MOVES = {
   gameAddress: GAME_ADDRESS,
   timeoutAddress: TIMEOUT_ADDRESS,
@@ -61,6 +71,9 @@ const disputePolicyInput = () => {
       proofThread(GAME_ADDRESS, "6a".repeat(28)),
       proofThread(TIMEOUT_ADDRESS, "7a".repeat(28)),
       proofThread(AWARD_ADDRESS, "8a".repeat(28)),
+      proofThread(BOUNDARY_ADDRESS, "0b".repeat(28)),
+      proofThread(RESOLVER_ADDRESSES[0]!, "1c".repeat(28)),
+      proofThread(RESOLVER_ADDRESSES[1]!, "2c".repeat(28)),
     ],
   });
   return {
@@ -126,6 +139,68 @@ describe("validation-trace dispute funding outside its category", () => {
       moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
       fraudProofOutputLovelace: limits.fraud_proof_output_lovelace.toString(),
     });
+  });
+
+  it("binds the one-step holders a thread visits between the game and the award", () => {
+    const { constructorInput, terms } = disputePolicyInput();
+    const policy = readWorkflowRuntimeFundingPolicy(
+      createWorkflowRuntimeFundingPolicy({
+        ...constructorInput,
+        category: "validationTraceDispute",
+        runner: disputeRunner,
+        validationDispute: { ...terms, moves: { ...MOVES, oneStep: ONE_STEP } },
+      }),
+    );
+    expect(policy.validationDispute?.moves?.oneStep).toStrictEqual(ONE_STEP);
+  });
+
+  it.each([
+    {
+      name: "no resolver",
+      oneStep: { resolverAddresses: [] },
+      refusal:
+        "runtime funding validation dispute one-step terms name no resolver",
+    },
+    {
+      name: "a boundary at an unrostered address",
+      oneStep: { boundaryAddress: scriptAddress("e5".repeat(28)) },
+      refusal:
+        "runtime funding validation dispute boundary address is not a rostered proof-thread contract",
+    },
+    {
+      name: "a resolver at an unrostered address",
+      oneStep: {
+        resolverAddresses: [
+          RESOLVER_ADDRESSES[0]!,
+          scriptAddress("e5".repeat(28)),
+        ],
+      },
+      refusal:
+        "runtime funding validation dispute one-step resolver address is not a rostered proof-thread contract",
+    },
+    {
+      name: "a resolver at the boundary address",
+      oneStep: { resolverAddresses: [BOUNDARY_ADDRESS] },
+      refusal: "runtime funding validation dispute contract addresses coincide",
+    },
+    {
+      name: "a boundary at the game address",
+      oneStep: { boundaryAddress: GAME_ADDRESS },
+      refusal: "runtime funding validation dispute contract addresses coincide",
+    },
+  ])("refuses one-step terms with $name", ({ oneStep, refusal }) => {
+    const { constructorInput, terms } = disputePolicyInput();
+    expect(() =>
+      createWorkflowRuntimeFundingPolicy({
+        ...constructorInput,
+        category: "validationTraceDispute",
+        runner: disputeRunner,
+        validationDispute: {
+          ...terms,
+          moves: { ...MOVES, oneStep: { ...ONE_STEP, ...oneStep } },
+        },
+      }),
+    ).toThrow(refusal);
   });
 
   it.each([

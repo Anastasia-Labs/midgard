@@ -18,18 +18,26 @@ import type {
   Policy,
   Terms,
 } from "../../src/workflow/funding-reservation-permit.validation-dispute-move-authority.js";
-import type {
-  CapturedMove,
-  FundedMoves,
-} from "./validation-trace-dispute-funded-moves.js";
+import type { CapturedMove } from "./validation-trace-dispute-funded-moves.js";
+import type { FundedDispute } from "./validation-trace-dispute-funded-runner.js";
+import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 const CATEGORY = "validationTraceDispute" as const;
+
+/** The moves a runner built for our case, with what the walk binds them to:
+ * the header's classification and the pending claim our Open left. */
+export type WalkJourney = Readonly<{
+  scene: Scene;
+  dispute: Pick<FundedDispute, "decision">;
+  opener: UTxO;
+  moves: readonly CapturedMove[];
+}>;
 
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 /** The thread-move terms the watcher's policy carries for the scene. */
-export const moveTerms = ({ scene }: FundedMoves): Moves => ({
+export const moveTerms = ({ scene }: WalkJourney): Moves => ({
   gameAddress: scene.chain.game.spendingScriptAddress,
   timeoutAddress: scene.chain.timeout.spendingScriptAddress,
   awardAddress: scene.chain.award.spendingScriptAddress,
@@ -42,7 +50,7 @@ export const moveTerms = ({ scene }: FundedMoves): Moves => ({
 
 /** The dispute terms the watcher's policy carries for the scene. */
 export const disputeTerms = (
-  journey: FundedMoves,
+  journey: WalkJourney,
   moves: Partial<Moves> = {},
 ): Terms =>
   ({
@@ -54,7 +62,7 @@ export const disputeTerms = (
 
 /** The watcher's funding policy, its terms as given. */
 export const fundingPolicy = (
-  journey: FundedMoves,
+  journey: WalkJourney,
   terms: Terms | undefined = disputeTerms(journey),
 ): Policy =>
   ({
@@ -65,7 +73,7 @@ export const fundingPolicy = (
   }) as never;
 
 /** The reservation lineage of the pending claim our Open left. */
-export const caseOpenerLineage = ({ opener }: FundedMoves) => ({
+export const caseOpenerLineage = ({ opener }: WalkJourney) => ({
   sourceActionKind: "open",
   sourceOutputIndex: opener.outputIndex,
   outRef: outRefOf(opener),
@@ -74,7 +82,7 @@ export const caseOpenerLineage = ({ opener }: FundedMoves) => ({
 
 /** The permit state the watcher's turn held while building `move`. */
 export const permitState = (
-  journey: FundedMoves,
+  journey: WalkJourney,
   move: CapturedMove,
   lineage: unknown = caseOpenerLineage(journey),
 ) =>
@@ -94,7 +102,7 @@ export const permitState = (
   }) as never;
 
 /** The moves the watcher built of `kind`, in order. */
-export const movesOf = (journey: FundedMoves, kind: string) =>
+export const movesOf = (journey: WalkJourney, kind: string) =>
   journey.moves.filter(({ authority }) => authority.kind === kind);
 
 /** The move's spent contract inputs by out-ref. */
@@ -119,7 +127,7 @@ export const bodyOutputs = (signed: TxSigned) => {
  * the watcher's) under `policy`.
  */
 export const openWalk = async (
-  journey: FundedMoves,
+  journey: WalkJourney,
   move: CapturedMove,
   {
     signed = move.signed,
@@ -148,7 +156,7 @@ export const openWalk = async (
  * what each step admitted.
  */
 export const walk = async (
-  journey: FundedMoves,
+  journey: WalkJourney,
   move: CapturedMove,
   options: Parameters<typeof openWalk>[2] = {},
 ) => {
@@ -170,7 +178,7 @@ export const walk = async (
  * authority over them again, as a builder that evaluated them would.
  */
 export const regranted = async (
-  journey: FundedMoves,
+  journey: WalkJourney,
   move: CapturedMove,
   edit: (body: CML.TransactionBody) => void,
 ): Promise<TxSigned> => {

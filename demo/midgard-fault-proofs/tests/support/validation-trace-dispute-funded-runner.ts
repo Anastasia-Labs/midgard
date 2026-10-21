@@ -169,42 +169,19 @@ const signedDeployment = (scene: Scene) => {
 };
 
 /**
- * Classifies the failing block's header, then returns one watcher turn for
- * its objective over the durable state in a fresh directory. By default the
- * runner observes no convicted block's removal.
+ * The fixture's signed deployment and its release finality, and the failing
+ * block's header classified through the production classifier under them.
  */
-export const openFundedDispute = async (
-  scene: Scene,
-  options: { readonly removal?: ValidationTraceRemovalConfig } = {},
-) => {
-  const { h } = scene;
+export const classifyFailingHeader = async (scene: Scene) => {
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
   const identity = signedDeployment(scene);
   const fingerprint = identity.manifestId;
-  const bondLovelace = BigInt(
-    watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
-      .challengerBondLovelace,
-  );
-  if (bondLovelace !== BOND_LOVELACE)
-    throw new Error("the fixture manifest binds another dispute bond");
   const releaseFinalityAuthority =
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint: fingerprint,
   });
-  const caseHistory = createValidationTraceCaseHistory({
-    authority: scene.l1.authority,
-    releaseFinality,
-  });
-  const economics = await watcherDeploymentReleaseEconomicsAuthority(
-    identity,
-  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
-  const protocolParameters = await emulatorProtocolParameterAuthority(
-    identity,
-    h.proverLucid,
-  );
-
   const sources = [
     new FixtureRetainedDaSource(
       fingerprint,
@@ -240,6 +217,51 @@ export const openFundedDispute = async (
     (decision.category as string) !== CATEGORY
   )
     throw new Error(`header classified ${decision.decision}`);
+  return {
+    identity,
+    fingerprint,
+    releaseFinalityAuthority,
+    releaseFinality,
+    decision,
+  } as const;
+};
+
+/**
+ * Classifies the failing block's header, then returns one watcher turn for
+ * its objective over the durable state in a fresh directory. By default the
+ * runner observes no convicted block's removal.
+ */
+export const openFundedDispute = async (
+  scene: Scene,
+  options: { readonly removal?: ValidationTraceRemovalConfig } = {},
+) => {
+  const { h } = scene;
+  const block = scene.failing;
+  const headerHash = block.evidence.headerHash;
+  const {
+    identity,
+    fingerprint,
+    releaseFinalityAuthority,
+    releaseFinality,
+    decision,
+  } = await classifyFailingHeader(scene);
+  const bondLovelace = BigInt(
+    watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+      .challengerBondLovelace,
+  );
+  if (bondLovelace !== BOND_LOVELACE)
+    throw new Error("the fixture manifest binds another dispute bond");
+  const caseHistory = createValidationTraceCaseHistory({
+    authority: scene.l1.authority,
+    releaseFinality,
+  });
+  const economics = await watcherDeploymentReleaseEconomicsAuthority(
+    identity,
+  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
+  const protocolParameters = await emulatorProtocolParameterAuthority(
+    identity,
+    h.proverLucid,
+  );
   const actuationPermit = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "0",
