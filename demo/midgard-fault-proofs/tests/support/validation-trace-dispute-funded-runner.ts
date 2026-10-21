@@ -240,6 +240,18 @@ export const openFundedDispute = async (
       // The watcher does not install the dispute until its defender exists.
       journalRoot: null,
       validationDispute,
+      // The supervisor's factory queries its node's parameters afresh at
+      // each turn.
+      ...(options.liveParameters === true
+        ? {
+            currentParameters: async () =>
+              await emulatorProtocolParameterAuthority(
+                identity,
+                h.proverLucid,
+                h.emulator,
+              ),
+          }
+        : {}),
     });
   let funding = await boot();
   /** Every signed transaction the emulator recovery rebroadcast. */

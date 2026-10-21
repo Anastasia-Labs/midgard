@@ -231,9 +231,22 @@ export const createWorkflowFundingReservationPermit = async ({
   const capacityFunding = readWorkflowRuntimeFundingPolicy(capacityPolicy);
   // Only L1 parameters and their derived bounds may change. The admitted
   // original policy still pins every durable lease and signed journal intent.
+  // The validation dispute's wallet-move reserve is such a bound: the permit
+  // checks each move our wallet pays against it at today's parameters.
   const stableIdentity = (value: typeof funding) =>
     computeDeploymentManifestJsonDigest({
       ...value,
+      ...(value.validationDispute?.moves === undefined
+        ? {}
+        : {
+            validationDispute: {
+              ...value.validationDispute,
+              moves: {
+                ...value.validationDispute.moves,
+                walletMoveReserveLovelace: "",
+              },
+            },
+          }),
       contracts: [],
       policyDigest: "",
       protocolParameters: null,

@@ -79,11 +79,15 @@ let journey: FundedMoves;
 let restoreFees: () => void;
 /** The silent defender's thread, before our timeout. */
 let silent: UTxO;
+/** The wallet-move reserve at the fees the reservation was admitted at. */
+let admittedReserve: bigint;
 
+/** The `kind` moves that landed; a move the permit refused was signed only. */
 const hashesOf = (kind: string) =>
   journey.moves
     .filter(({ authority }) => authority.kind === kind)
-    .map(({ signed }) => signed.toHash());
+    .map(({ signed }) => signed.toHash())
+    .filter((hash) => journey.scene.l1.signedCbors.has(hash));
 
 /** Each input of `txHash`'s signed bytes, as out-refs. */
 const inputsOf = (txHash: string) => {
@@ -108,6 +112,7 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       await liveFundedThread(journey),
       trace,
     );
+    admittedReserve = BigInt(await journey.dispute.walletMoveReserve());
   }, TIMEOUT);
 
   afterAll(async () => {
@@ -194,6 +199,39 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
           for (const reservation of await dispute.readReservations())
             expect(reservation).toMatchObject({ activeInputs: [] });
         }
+        expect(watch.ours()).toHaveLength(0);
+      } finally {
+        watch.restore();
+      }
+      expect(hashesOf("timeout")).toStrictEqual([]);
+      expect(outRefOf(await liveFundedThread(journey))).toBe(outRefOf(silent));
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "prices the reserve at the fees at move time: a wallet holding more than the reserve its reservation was admitted at, short of today's, holds the timeout under the alarm naming today's reserve",
+    async () => {
+      const { scene, dispute, capture } = journey;
+      const reserve = BigInt(await dispute.walletMoveReserve());
+      // More than the reservation's admitted reserve, and enough for the
+      // builder to select the move's coins; less than today's reserve.
+      const held = reserve / 2n;
+      expect(held).toBeGreaterThan(admittedReserve);
+      await topUpProver(scene.h as never, 100n * ADA);
+      await drainProver(scene.h as never, held);
+      const watch = watchLedger(scene.h.emulator);
+      try {
+        const { result, history } = await turnUntil(
+          dispute,
+          VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+          { wrap: capture },
+        );
+        expect(result.kind, history.join("\n")).toBe("pending");
+        if (result.kind !== "pending") return;
+        expect(result.reason).toContain(
+          `held=${held.toString()} reserve=${reserve.toString()}`,
+        );
         expect(watch.ours()).toHaveLength(0);
       } finally {
         watch.restore();
