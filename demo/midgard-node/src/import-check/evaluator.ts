@@ -1,10 +1,11 @@
 /**
  * The import checker's evaluator: one script run of an imported
  * transaction, under a kill. A crash or any other evaluator failure is a
- * `fault`, a run killed at its kill is a `timeout`, and a run not started
- * in time is `cancelled`; none is a verdict. The kill is wall-clock time,
- * which machine load stretches, so a `timeout` says nothing about the
- * transaction. The evaluator in use is the validation pool's verdict-mode
+ * `fault`, a run killed at its kill or whose worker failed before the run
+ * was sent to it is a `timeout`, and a run not started in time is
+ * `cancelled`; none is a verdict. The kill is wall-clock time, which
+ * machine load stretches, and a worker that cannot start says nothing
+ * about the run, so a `timeout` says nothing about the transaction. The evaluator in use is the validation pool's verdict-mode
  * CEK evaluator (`poolImportCheckEvaluator`); another one only implements
  * `ImportCheckEvaluator`.
  */
@@ -25,7 +26,8 @@ import {
  * - `evaluated`: the evaluator's result, compared with the declared budget
  *   by the rebuilt replay as in any Phase B run;
  * - `fault`: crashed, or failed to evaluate;
- * - `timeout`: killed at its kill (or its fresh worker's start timed out);
+ * - `timeout`: killed at its kill, or its worker failed (or its start timed
+ *   out) before the run was sent to it;
  * - `cancelled`: not started by its `startBy`.
  */
 export type ImportCheckOutcome =
@@ -88,7 +90,8 @@ export const poolImportCheckEvaluator = (
               ? error.message
               : `${error.message}: ${formatUnknownError(error.cause)}`;
           return Effect.succeed<ImportCheckOutcome>(
-            error.cause instanceof ValidationJobTimeoutError
+            error.workerUnavailable === true ||
+              error.cause instanceof ValidationJobTimeoutError
               ? { kind: "timeout", detail }
               : { kind: "fault", detail },
           );

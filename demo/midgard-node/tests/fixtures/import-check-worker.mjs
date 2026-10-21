@@ -16,6 +16,9 @@
 // `workerData.log` (an Int32Array over a SharedArrayBuffer) records, after a
 // counter at index 0, the thread id of each `cek_verdict` job decided by
 // `mode`. `workerData.startDelayMs` delays the worker's start by busy-waiting.
+// With `workerData.startsAllowed`, only that many warm-ups across all
+// instances (counted in `workerData.starts`) are answered; every later one
+// throws, as a replacement worker that cannot start.
 import { parentPort, threadId, workerData } from "node:worker_threads";
 
 const {
@@ -29,6 +32,8 @@ const {
   slowContexts = [],
   overBudgetContexts = [],
   crashContexts = [],
+  starts,
+  startsAllowed,
 } = workerData;
 const busy = (ms) => {
   const startedAt = Date.now();
@@ -46,6 +51,11 @@ const accepted = { kind: "accepted", budget: { cpu: 0n, memory: 0n } };
 
 parentPort.on("message", (request) => {
   if (request.kind === "phase_a") {
+    if (
+      startsAllowed !== undefined &&
+      Atomics.add(starts, 0, 1) >= startsAllowed
+    )
+      throw new Error("injected start failure");
     parentPort.postMessage({
       kind: "phase_a",
       jobId: request.jobId,

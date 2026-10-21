@@ -20,6 +20,7 @@ import {
 } from "../src/landed-blocks/store.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {
+  CANCELLED,
   checker,
   closePools,
   CONFIG,
@@ -28,9 +29,12 @@ import {
   hex,
   idsIn,
   injectedEvaluator,
+  KILLED,
   landBlock,
   processBlock,
   realEvaluator,
+  REJECTED,
+  scriptedEvaluator,
   useCheckerDatabase,
 } from "./import-check.checker.fixture.js";
 import { committedBlock, fundedBy } from "./import-check.fixture.js";
@@ -160,16 +164,13 @@ describe("import checker", () => {
 
   it("kills hanging runs without a verdict, stops at the block's cap, and keeps the skipped transactions", async () => {
     const block = await landBlock(["accept", "accept", "accept", "accept"]);
-    // Three workers: a killed run's retry takes the third at once instead of
-    // waiting for the killed worker's replacement.
+    // Every script job hangs, so every run that starts is killed.
     const injected = await injectedEvaluator({ mode: "hang" }, { size: 3 });
-    const startedAt = Date.now();
     const alarms = await checker(injected.evaluator, {
       ...CONFIG,
       killFloorMs: 500,
       blockCapMs: 900,
     }).importPass();
-    expect(Date.now() - startedAt).toBeLessThan(10_000);
     const killed = alarms.filter(
       (alarm) => alarm.alarm === "import_check_timeout",
     );
@@ -185,11 +186,11 @@ describe("import checker", () => {
         skipped: 4 - killed.length,
       },
     ]);
-    // Each hanging transaction costs at most one kill and one retry, and
-    // stays pending: a kill is no verdict.
-    expect(injected.jobs()).toBe(2 * killed.length);
+    // Each hanging transaction costs one kill, with no retry on a fresh
+    // worker, and waits as timed out: a kill is no verdict.
+    expect(injected.jobs()).toBe(killed.length);
     expect(await entries(["faulted"])).toEqual([]);
-    expect(await entries(["pending"])).toHaveLength(killed.length);
+    expect(await entries(["timed_out"])).toHaveLength(killed.length);
     expect(await entries(["cap_skipped"])).toHaveLength(4 - killed.length);
   }, 60_000);
 
@@ -239,20 +240,22 @@ describe("import checker", () => {
 
   it("keeps killed, skipped and rejected entries across a restart", async () => {
     const block = await landBlock(["accept", "accept", "accept"]);
-    const injected = await injectedEvaluator(
-      { mode: "hang", rejectContexts: [block.runs[0]![0]!.contextCbor] },
-      { size: 3 },
+    const [rejected, killed] = block.runs.map((runs) =>
+      hex(runs[0]!.contextCbor),
     );
-    // The second transaction's run and retry start within the cap and are
-    // killed past it; the third does not start.
-    await checker(injected.evaluator, {
-      ...CONFIG,
-      killFloorMs: 700,
-      blockCapMs: 1_200,
-    }).importPass();
+    // The first transaction is rejected, the second's run killed, and the
+    // third does not start before the block's cap.
+    const scripted = scriptedEvaluator((call) =>
+      call.context === rejected
+        ? REJECTED
+        : call.context === killed
+          ? KILLED
+          : CANCELLED,
+    );
+    await checker(scripted.evaluator).importPass();
     await closePools();
     const states = (await entries()).map((entry) => entry.state);
-    expect(states).toEqual(["rejected", "pending", "cap_skipped"]);
+    expect(states).toEqual(["rejected", "timed_out", "cap_skipped"]);
   }, 60_000);
 
   it("drops entries at their deadline, half the block maturity after the block's end, alarming only for unverified ones", async () => {

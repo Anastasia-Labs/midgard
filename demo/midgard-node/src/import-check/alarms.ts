@@ -7,12 +7,13 @@
  * - `uplc_import_fault`: a run that faulted (crashed, or failed to
  *   evaluate) twice, the second time on a fresh instance; it stays in the
  *   set as `faulted`, and its script enters the negative cache;
- * - `import_check_timeout`: a run killed at its kill, the second time on a
- *   fresh instance. A kill is wall-clock time, which a loaded machine
- *   stretches, so it is no verdict: the entry stays unrun, its script is
- *   not cached, and it is run again from `retryAtMs`. With no `retryAtMs`
- *   its retries are spent, and it waits for its deadline (the sweep's
- *   alarms) or a restart;
+ * - `import_check_timeout`: a run killed at its kill, or whose worker failed
+ *   before the run was sent to it. That is wall-clock time and machine
+ *   state, not the transaction, so it is no verdict: the entry waits as
+ *   `timed_out`, its script is not cached, and the backlog lane runs it
+ *   again from `retryAtMs`, backing off, until its deadline. Raised for the
+ *   entry's first kill only; its deadline, if no verdict comes first,
+ *   raises `unverified_deadline_missed`;
  * - `import_check_cap`: the block's checker time ran out; its unstarted
  *   transactions stay in the set as skipped, for the backlog lane;
  * - `unverified_near_deadline`: the backlog's projected completion of the
@@ -48,10 +49,8 @@ export type ImportCheckAlarm =
       headerHash: string;
       transactionId: string;
       detail: string;
-      /** The entry's timeouts so far, this one included. */
-      timeouts: number;
-      /** When it is run again; absent once its retries are spent. */
-      retryAtMs?: number;
+      /** When the backlog lane runs it again. */
+      retryAtMs: number;
     }>
   | Readonly<{
       alarm: "import_check_cap";
