@@ -1,3 +1,4 @@
+import { VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS } from "../validation-trace-dispute/one-step-references.js";
 import {
   createManifestBoundValidationTraceDisputeWorkflow,
   type ManifestBoundValidationTraceDisputeWorkflow,
@@ -28,7 +29,9 @@ const REQUIRES = Object.freeze(["replayContext"] as const);
  * scripts. It re-executes the challenged block's scripts on the admitted
  * predecessor, so it requires the replay context. Its state-queue removal
  * spends the removal set through the deployment binding, so the roster
- * carries no removal roles.
+ * carries no removal roles. Its one-step resolution's holders and yields,
+ * and the script-decode deployment a CEK script selection reads, are roster
+ * entries named by their manifest members.
  */
 export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
   defineFamilyApplication<
@@ -40,6 +43,7 @@ export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
     roster: Object.freeze({
       ...VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS,
       ...Object.fromEntries(WITNESS_ROLES.map((role) => [role, role])),
+      ...VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS,
     }),
     requires: REQUIRES,
     bindConfig: ({ infrastructure, references }) =>
@@ -52,6 +56,10 @@ export const VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD =
             rolesOf(VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS),
           ),
           witnesses: resolvedRoles(references, WITNESS_ROLES),
+          oneStep: resolvedRoles(
+            references,
+            rolesOf(VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS),
+          ),
         }),
       }),
     constructWorkflow: createManifestBoundValidationTraceDisputeWorkflow,

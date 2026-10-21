@@ -40,8 +40,13 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
+import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
+import {
+  validationTraceOneStepReferences,
+  validationTraceScriptDecodeReferences,
+} from "./one-step-references.js";
 import { validationTraceComputationSteps } from "./removal.js";
 import { createValidationTraceReplayHolds } from "./replay-hold.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
@@ -83,6 +88,10 @@ export type ManifestBoundValidationTraceDisputeWorkflowConfig = Readonly<{
         fraudProofMint: UTxO;
         phasMembershipWithdraw: UTxO;
       }>;
+      /** The one-step resolution's and the script-decode deployment's
+       * references, by manifest member
+       * (`VALIDATION_TRACE_ONE_STEP_REFERENCE_SCRIPTS`). */
+      oneStep: Readonly<Record<string, UTxO>>;
     }
   >;
   now?: () => number;
@@ -135,6 +144,14 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
     ) as Record<DisputeRole, UTxO>,
   );
   const witnesses = config.referenceScripts.witnesses;
+  const member = (contractName: string): UTxO => {
+    const utxo = config.referenceScripts.oneStep[contractName];
+    if (utxo === undefined)
+      throw new Error(
+        `validation-trace workflow config omitted reference script ${contractName}`,
+      );
+    return bound(contractName, utxo);
+  };
   const deployment: ValidationTraceDisputeDeployment = Object.freeze({
     deploymentFingerprint: binding.deploymentFingerprint,
     network: binding.network,
@@ -171,10 +188,18 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       spendingScriptAddress:
         contracts.contracts.fraudProof.spendingScriptAddress,
     },
-    references,
+    references: {
+      ...references,
+      oneStep: validationTraceOneStepReferences(member),
+    },
     bondLovelace: parseContractDeploymentDisputeBondLovelace(
       binding.deploymentInfo,
     ),
+    scriptDecode: scriptDecodeDeploymentFromReferences({
+      blueprint: binding.blueprint,
+      network: binding.network,
+      references: validationTraceScriptDecodeReferences(member),
+    }),
   });
   const l1 = createFraudProofFamilyL1ObservationPort({
     l1: config.l1Source,
