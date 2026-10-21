@@ -10,7 +10,8 @@
  * and the node's main thread keeps committing meanwhile.
  *
  * Every transient lack (no retained payload, a parent off the landed
- * ledger, a ledger that does not open its root, a build that throws) is
+ * ledger, a ledger that does not open its root, a build that throws, a
+ * worker that fails or outruns its bound) is
  * `unavailable` with its detail; the tick retries it. A deterministic
  * outcome (our own fault, or a trace that disagrees) is final for the case.
  */
@@ -54,31 +55,68 @@ const unavailable = (
   detail,
 });
 
-/** `job`'s outcome, built in its own worker thread; the thread is ended
- * when the outcome arrives, when it fails, and when the build is
- * interrupted. */
-const buildInWorker = (job: DefenseMaterialJob) =>
+/**
+ * The worker a build runs in: its entry module, and how long a build may
+ * run before its worker is ended and the build is `unavailable`.
+ */
+export type DefenseMaterialWorker = Readonly<{ entry: URL; timeoutMs: number }>;
+
+/**
+ * A build's bound: the consensus-maximum build measured about 8.4 s, and
+ * this leaves fourteen times that for a slower or busier host.
+ */
+export const DEFENSE_MATERIAL_BUILD_TIMEOUT_MS = 120_000;
+
+/** The node's own material worker, bundled beside it. */
+export const nodeDefenseMaterialWorker = (): DefenseMaterialWorker => ({
+  entry: resolveWorkerEntry(
+    import.meta.url,
+    "validation-trace-defense-material.js",
+  ),
+  timeoutMs: DEFENSE_MATERIAL_BUILD_TIMEOUT_MS,
+});
+
+/** `job`'s outcome, built in its own worker thread (`using`, the node's own
+ * by default); the thread is ended when the outcome arrives, when it fails,
+ * when it outruns its bound, and when the build is interrupted. */
+const buildInWorker = (
+  job: DefenseMaterialJob,
+  using: DefenseMaterialWorker | undefined,
+) =>
   Effect.async<PortableDefenseOutcome>((resume) => {
     let worker: Worker;
+    let timeoutMs: number;
     try {
-      worker = new Worker(
-        resolveWorkerEntry(
-          import.meta.url,
-          "validation-trace-defense-material.js",
-        ),
-        { execArgv: [...BUNDLED_WORKER_EXEC_ARGV], workerData: job },
-      );
+      const { entry, timeoutMs: bound } = using ?? nodeDefenseMaterialWorker();
+      timeoutMs = bound;
+      worker = new Worker(entry, {
+        execArgv: [...BUNDLED_WORKER_EXEC_ARGV],
+        workerData: job,
+      });
     } catch (cause) {
       resume(Effect.succeed(unavailable(formatUnknownError(cause))));
       return;
     }
     let settled = false;
+    const end = () => {
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate();
+    };
     const settle = (outcome: PortableDefenseOutcome) => {
       if (settled) return;
-      settled = true;
-      void worker.terminate();
+      end();
       resume(Effect.succeed(outcome));
     };
+    const timer = setTimeout(
+      () =>
+        settle(
+          unavailable(
+            `the defense material worker did not answer within ${timeoutMs.toString()} ms`,
+          ),
+        ),
+      timeoutMs,
+    );
     worker.once("message", settle);
     worker.once("error", (cause) =>
       settle(
@@ -94,10 +132,7 @@ const buildInWorker = (job: DefenseMaterialJob) =>
         ),
       ),
     );
-    return Effect.sync(() => {
-      settled = true;
-      void worker.terminate();
-    });
+    return Effect.sync(end);
   });
 
 /**
@@ -112,6 +147,8 @@ export const validationTraceDefenseOutcome = (
     caseDatum: SDK.Case;
     point: DefenseObservationPoint;
     l1SlotConfig: L1SlotConfig;
+    /** The worker the build runs in; the node's own by default. */
+    worker?: DefenseMaterialWorker | undefined;
   }>,
 ) =>
   Effect.gen(function* () {
@@ -143,7 +180,7 @@ export const validationTraceDefenseOutcome = (
       stepCount: Number(caseDatum.step_count),
       l1SlotConfig: input.l1SlotConfig,
     };
-    const outcome = yield* buildInWorker(job);
+    const outcome = yield* buildInWorker(job, input.worker);
     if (outcome.kind !== "defend") return outcome;
     try {
       return {

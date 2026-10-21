@@ -20,6 +20,7 @@ import {
 import { Effect } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
+import type { DefenseMaterialWorker } from "./material.js";
 import { type DefenseMaterialCache, DefenseSurveyFailed } from "./survey.js";
 
 export type ValidationTraceDisputeContracts =
@@ -59,6 +60,8 @@ export type ValidationTraceDefensePort = Readonly<{
   pollMs: number;
   /** Deterministic defense material by case, kept across ticks. */
   cache: DefenseMaterialCache;
+  /** The worker defense material is built in; the node's own by default. */
+  materialWorker?: DefenseMaterialWorker | undefined;
 }>;
 
 /** The outputs a Defend reads beside the case; undefined when absent. */
