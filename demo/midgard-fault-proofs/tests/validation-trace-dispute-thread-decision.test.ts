@@ -355,7 +355,7 @@ describe("validation-trace dispute runner's choice among threads", () => {
     ).toStrictEqual({ kind: "move", stage: "enter_resolution", thread: step });
   });
 
-  it("after timeouts, closes an awarded thread into the case first, then moves a thread in its resolution on, then closes a timed-out thread", () => {
+  it("after timeouts, closes an awarded thread into the case first, then closes a timed-out thread, then moves a thread in its resolution on", () => {
     const [s, c] = [silent(), timedOut()];
     const boundary = thread("7", "boundary", "ReadyForOneStep", 0n);
     const core = resolving("8", "core");
@@ -370,18 +370,18 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
     expect(decide([c, boundary], { resolving: [core] })).toStrictEqual({
       kind: "move",
+      stage: "close_thread",
+      thread: c,
+    });
+    expect(decide([boundary], { resolving: [core] })).toStrictEqual({
+      kind: "move",
       stage: "resolve",
       thread: boundary,
     });
-    expect(decide([c], { resolving: [core] })).toStrictEqual({
+    expect(decide([], { resolving: [core] })).toStrictEqual({
       kind: "move",
       stage: "resolve",
       thread: core,
-    });
-    expect(decide([c])).toStrictEqual({
-      kind: "move",
-      stage: "close_thread",
-      thread: c,
     });
   });
 
@@ -423,13 +423,13 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
     expect(decide([c], { ...won, resolving: [core] })).toStrictEqual({
       kind: "move",
-      stage: "resolve",
-      thread: core,
-    });
-    expect(decide([c], won)).toStrictEqual({
-      kind: "move",
       stage: "close_thread",
       thread: c,
+    });
+    expect(decide([], { ...won, resolving: [core] })).toStrictEqual({
+      kind: "move",
+      stage: "resolve",
+      thread: core,
     });
     // A thread awaiting its defender may still give us a move.
     const awaiting = thread(

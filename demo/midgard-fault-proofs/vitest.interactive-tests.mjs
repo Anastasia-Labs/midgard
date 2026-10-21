@@ -57,6 +57,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step.test.ts",
   "./tests/validation-trace-dispute-timeout.test.ts",
   "./tests/validation-trace-dispute-unbuilt-moves.test.ts",
+  "./tests/validation-trace-dispute-unbuilt-stages.test.ts",
 ];
 
 /**

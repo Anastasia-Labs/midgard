@@ -187,7 +187,7 @@ export const isThreadMaterial = (
  * Our reveals and entries into the one-step resolution come first, the
  * earliest deadline first, then timeouts, earliest first; then the moves
  * bounded only by the case's expiry, the shortest first: an awarded
- * thread's close, a resolution hop, a timed-out thread's close. Otherwise
+ * thread's close, a timed-out thread's close, a resolution hop. Otherwise
  * the most pressing wait. A thread on our turn past the case's expiry is
  * lost. A thread ReadyForOneStep enters its resolution only on the
  * step `plannings` (by the thread's out-ref) plans for it; with none, the
@@ -291,8 +291,8 @@ export const decideValidationTraceThreads = ({
   if (timeout !== undefined)
     return { kind: "move", stage: "timeout", thread: timeout };
   // Then the moves bounded only by the case's expiry, the shortest first: an
-  // awarded thread closes in one move.
-  for (const stage of ["close_awarded", "resolve", "close_thread"] as const) {
+  // awarded or timed-out thread closes in one move, a resolution in many.
+  for (const stage of ["close_awarded", "close_thread", "resolve"] as const) {
     const [next] = moves[stage];
     if (next !== undefined) return { kind: "move", stage, thread: next };
   }

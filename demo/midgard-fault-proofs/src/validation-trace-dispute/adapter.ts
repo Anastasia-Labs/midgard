@@ -63,6 +63,7 @@ import {
   type ValidationTraceRemovalConfig,
 } from "./removal.js";
 import { withValidationTraceScriptDecodeRecords } from "./script-decode-records.js";
+import { validationTraceStageUnbuilt } from "./stage-unbuilt.js";
 import { observeValidationTraceThreads } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
@@ -77,9 +78,6 @@ import {
 } from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
-
-/** A non-thread stage that does not build; it is retried on observation. */
-export const VALIDATION_TRACE_STAGE_HELD = "validation-trace-stage-held";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
@@ -99,18 +97,6 @@ export { VALIDATION_TRACE_CASE_CONVICTED };
  * transaction was confirmed is taken for provider lag rather than spent.
  */
 export const VALIDATION_TRACE_PROVIDER_GRACE_MS = 10 * 60_000;
-
-export class ValidationTraceStageHeldError extends WorkflowActionChangedError {
-  constructor(
-    readonly stage: string,
-    override readonly cause: unknown,
-  ) {
-    super(
-      `${VALIDATION_TRACE_STAGE_HELD}: ${stage} does not build: ${cause instanceof Error ? cause.message : String(cause)}`,
-    );
-    this.name = "ValidationTraceStageHeldError";
-  }
-}
 
 export const createValidationTraceDisputeWorkflowAdapter = ({
   lucid,
@@ -276,6 +262,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       deployment,
       artifact: requireIdentity(context),
     };
+    let found: Awaited<ReturnType<typeof ourCase>> = undefined;
     try {
       switch (action.stage) {
         case "init":
@@ -299,7 +286,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         case "close_awarded":
           break;
       }
-      const found = await ourCase(
+      found = await ourCase(
         input.artifact,
         confirmedValidationTraceStages(context.entries),
       );
@@ -343,7 +330,14 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         isWorkflowFundingShortfall(cause)
       )
         throw cause;
-      throw new ValidationTraceStageHeldError(action.stage, cause);
+      throw await validationTraceStageUnbuilt({
+        stage: action.stage,
+        lucid,
+        deployment,
+        headerHash: input.artifact.headerHash,
+        found,
+        cause,
+      });
     }
   };
 
