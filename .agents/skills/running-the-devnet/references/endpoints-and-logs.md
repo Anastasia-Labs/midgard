@@ -762,7 +762,11 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   informational `validation_trace_replay_stuck` alert. A classification hold
   clears when the header is classified, or 180 s after its last retry; an
   objective's hold clears at its next run that meets something else. Check
-  the watcher's memory if it lasts; report it with the detail.
+  the watcher's memory if it lasts; report it with the detail. Once half the
+  header's case open window (`block_time + M/2`) or less is left, or its
+  block time cannot be read, a classification hold is an alarm logged at
+  error level, its detail naming the window's end: the case must open by
+  then. Report it with the detail at once.
 - `validation-trace-claim-build-held`: a validation-trace objective could not
   build its claim because the claim's re-execution or pre-state read ended
   without a result; nothing was journaled. It is rebuilt on each

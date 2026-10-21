@@ -49,6 +49,11 @@ const validationTraceBondUnlockMs = (caseDatum: SDK.Case): number =>
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS +
   POST_CASE_ALLOWANCE_MS;
 
+/** The end of the case open window on a block whose state-queue node has
+ * the `block_time` `blockTime`: `block_time + M/2`. */
+export const validationTraceCaseOpenWindowEndMs = (blockTime: bigint): number =>
+  Number(blockTime) + MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS;
+
 /** The end of the case open window on the block `headerHash`, by its
  * state-queue `block_time`; `undefined` when the block cannot be read. */
 const openWindowEndMs = async (
@@ -63,7 +68,7 @@ const openWindowEndMs = async (
         deployment.stateQueue.policyId,
       ),
     );
-    return Number(blockTime) + MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS;
+    return validationTraceCaseOpenWindowEndMs(blockTime);
   } catch {
     return undefined;
   }
@@ -75,6 +80,27 @@ const openWindowEndMs = async (
 export const VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS = Math.floor(
   MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS / 2,
 );
+
+/**
+ * The deadline an alarm on a hold of a block names, at `nowMs`, when the
+ * block's case open window ends at `endMs`: `undefined` while more than
+ * `VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS` of the window is left; once that
+ * or less is left, or the block cannot be read to tell (`endMs` undefined),
+ * the end of the window, by which our case must open.
+ */
+export const validationTraceCaseOpenAtRisk = (
+  endMs: number | undefined,
+  nowMs: number,
+): string | undefined => {
+  if (
+    endMs !== undefined &&
+    endMs - nowMs > VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS
+  )
+    return undefined;
+  return endMs === undefined
+    ? "the end of the case open window"
+    : `${endMs.toString()}, the end of the case open window`;
+};
 
 /**
  * Rethrows a held claim build of the block `headerHash` (claim-material.ts)
@@ -98,16 +124,11 @@ export const heldClaimBuildAlarm =
   async (cause: unknown): Promise<never> => {
     // The claim build's is the only artifact hold this family raises.
     if (!isWorkflowArtifactPendingError(cause)) throw cause;
-    const endMs = await openWindowEndMs(lucid, deployment, headerHash);
-    if (
-      endMs !== undefined &&
-      endMs - now() > VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS
-    )
-      throw cause;
-    const by =
-      endMs === undefined
-        ? "the end of the case open window"
-        : `${endMs.toString()}, the end of the case open window`;
+    const by = validationTraceCaseOpenAtRisk(
+      await openWindowEndMs(lucid, deployment, headerHash),
+      now(),
+    );
+    if (by === undefined) throw cause;
     throw new WorkflowArtifactPendingError(
       `${VALIDATION_TRACE_CLAIM_BUILD_HELD}: the claim on block ${headerHash} does not build, and our case must open by ${by}: ${cause.message.slice(VALIDATION_TRACE_CLAIM_BUILD_HELD.length + 2)}`,
       Object.freeze({ name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: true }),

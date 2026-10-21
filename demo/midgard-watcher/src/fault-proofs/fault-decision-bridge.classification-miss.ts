@@ -6,6 +6,8 @@ import {
   isValidationTraceReplayHeldError,
   type VALIDATION_TRACE_REPLAY_HELD,
   type VALIDATION_TRACE_REPLAY_STUCK,
+  validationTraceCaseOpenAtRisk,
+  validationTraceCaseOpenWindowEndMs,
 } from "@al-ft/midgard-fault-proofs";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -17,6 +19,7 @@ import type {
 } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
   awaitsRetainedDaPayload,
@@ -77,6 +80,20 @@ const challengeability = (
     past: decision.reasonCode === "past_challengeability_horizon",
     challengeableUntilMs: decision.challengeableUntilMs,
   };
+};
+
+/** The end of `header`'s case open window; `undefined` when its node
+ * cannot be read. */
+const caseOpenWindowEndMs = (
+  header: WatcherStateQueueHeaderObservation,
+): number | undefined => {
+  try {
+    return validationTraceCaseOpenWindowEndMs(
+      Data.from(header.stateQueueNodeCborHex, StateQueueNode).block_time,
+    );
+  } catch {
+    return undefined;
+  }
 };
 
 const MAXIMUM_WARNED_HEADERS = 4_096;
@@ -159,16 +176,29 @@ export const classificationMissRecorder = (
     }
     // Its script re-execution threw on an event that may be the one that
     // fails, and no earlier finding decides the block: not a verdict, so it
-    // is classified again on a later wake, held by name meanwhile.
+    // is classified again on a later wake, held by name meanwhile. Once the
+    // case its finding would open is at risk (stage-unbuilt.ts), the hold
+    // is an alarm, logged at error level.
     if (isValidationTraceReplayHeldError(error)) {
+      const by = validationTraceCaseOpenAtRisk(
+        caseOpenWindowEndMs(header),
+        Number(nowMs()),
+      );
+      const hold = {
+        reason: error.readiness,
+        detail:
+          by === undefined
+            ? error.message
+            : `${error.message}, and its case must open by ${by}`,
+      };
       replayHolds.delete(header.headerHash);
       if (replayHolds.size >= MAXIMUM_WARNED_HEADERS)
         replayHolds.delete(replayHolds.keys().next().value!);
-      replayHolds.set(header.headerHash, {
-        reason: error.readiness,
-        detail: error.message,
-        atMs: nowMs(),
-      });
+      replayHolds.set(header.headerHash, { ...hold, atMs: nowMs() });
+      if (by !== undefined)
+        process.stderr.write(
+          `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
+        );
       warnOnce({
         event: "classification_deferred",
         headerHash: header.headerHash,
