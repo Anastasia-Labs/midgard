@@ -28,6 +28,7 @@ import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { drainProver } from "./installed-prover-wallet.js";
+import { enrollSuccessor } from "./rotated-successor-operator.js";
 import {
   type Defender,
   sceneOperator,
@@ -153,6 +154,18 @@ export const ourOpener = (
   return recordedOutput(scene, open.outputs[0]!.outRef);
 };
 
+type FundedOptions = Pick<
+  NonNullable<Parameters<typeof openFundedDispute>[1]>,
+  "liveParameters"
+>;
+
+/** A second defender of our case: its operator, trace and thread token. */
+export type SecondDefense = Readonly<{
+  defender: Defender;
+  trace: ScriptedTrace;
+  unit: string;
+}>;
+
 /**
  * A fresh scene whose funded watcher has opened our case, which the
  * scene's operator then defends with a trace agreeing up to a third of the
@@ -160,20 +173,44 @@ export const ourOpener = (
  * watcher convicts waits on it.
  */
 export const openDefendedFundedCase = async (
-  options: Pick<
-    NonNullable<Parameters<typeof openFundedDispute>[1]>,
-    "liveParameters"
-  > = {},
-): Promise<FundedMoves> => {
+  options: FundedOptions = {},
+): Promise<FundedMoves> => (await openFundedCase(options, false)).journey;
+
+/**
+ * As `openDefendedFundedCase`, with a successor operator, enrolled before
+ * the case opens, defending it on a second thread with a trace agreeing up
+ * to half of the steps. `beforeOpen` runs on the scene just before the
+ * watcher's first turn.
+ */
+export const openTwoDefendedFundedCase = async (
+  options: FundedOptions & {
+    readonly beforeOpen?: (scene: Scene) => void;
+  } = {},
+): Promise<FundedMoves & Readonly<{ second: SecondDefense }>> => {
+  const { journey, second } = await openFundedCase(options, true);
+  return { ...journey, second: second! };
+};
+
+const openFundedCase = async (
+  {
+    beforeOpen,
+    ...options
+  }: FundedOptions & { readonly beforeOpen?: (scene: Scene) => void },
+  twoDefenders: boolean,
+): Promise<{ journey: FundedMoves; second: SecondDefense | undefined }> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = recordCrossBlockRawEmulator();
   const scene = await setUpScene();
+  const successor = twoDefenders
+    ? await enrollSuccessor(scene.h as never, scene.operator.vkey)
+    : undefined;
   const removal = await recordedRemoval(scene, recorder);
   removal.holdView();
   await removal
     .l1For(scene.failing.evidence.headerHash)
     .observe({ headerHash: scene.failing.evidence.headerHash });
   await drainProver(scene.h as never, FUNDED);
+  beforeOpen?.(scene);
   const dispute = await openFundedDispute(scene, {
     ...options,
     removal: removal.removal,
@@ -194,7 +231,7 @@ export const openDefendedFundedCase = async (
   ]);
   const moves: CapturedMove[] = [];
   const capture = captureMoves(scene, moves);
-  return {
+  const journey: FundedMoves = {
     scene,
     removal,
     dispute,
@@ -206,6 +243,37 @@ export const openDefendedFundedCase = async (
     unit: threadUnitOf(scene, thread!),
     moves,
     capture,
+  };
+  if (successor === undefined) return { journey, second: undefined };
+  const second: Defender = {
+    vkey: successor.keyHash,
+    nodeUnit: successor.activeNodeUnit,
+    lucid: successor.lucid,
+  };
+  const secondTrace = scriptedTrace(
+    material,
+    Math.floor(Number(material.stepCount) / 2),
+  );
+  const [defendedCase] = await scene.h.emulator.getUtxosByOutRef([
+    { ...parseOwnOutRef(threadOutRef), outputIndex: 0 },
+  ]);
+  const secondThreadOutRef = await defendScripted(
+    scene,
+    defendedCase!,
+    second,
+    secondTrace,
+    [defender.vkey],
+  );
+  const [secondThread] = await scene.h.emulator.getUtxosByOutRef([
+    parseOwnOutRef(secondThreadOutRef),
+  ]);
+  return {
+    journey,
+    second: {
+      defender: second,
+      trace: secondTrace,
+      unit: threadUnitOf(scene, secondThread!),
+    },
   };
 };
 

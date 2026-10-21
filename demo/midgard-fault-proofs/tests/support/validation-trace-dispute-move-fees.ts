@@ -116,20 +116,18 @@ export const landedMoveShape = async (scene: Scene, txHash: string) => {
   };
 };
 
-/** Each landed move of `hashes` fits, in signed and reference-script
- * bytes, the move the wallet-move reserve is priced at; the reserve budgets
- * execution at the protocol's limit. */
+/** Each landed move of `hashes` reads no more reference-script bytes than
+ * the move the wallet-move reserve is priced at; the reserve budgets the
+ * signed size and execution at the protocol's limits. */
 export const expectWithinWalletMoveShape = async (
   scene: Scene,
   hashes: readonly string[],
 ): Promise<void> => {
-  for (const hash of hashes) {
-    const shape = await landedMoveShape(scene, hash);
-    for (const key of Object.keys(shape) as (keyof typeof shape)[])
-      expect(shape[key], `${hash} ${key}`).toBeLessThanOrEqual(
-        VALIDATION_DISPUTE_WALLET_MOVE[key],
-      );
-  }
+  for (const hash of hashes)
+    expect(
+      (await landedMoveShape(scene, hash)).referenceScriptBytes,
+      `${hash} referenceScriptBytes`,
+    ).toBeLessThanOrEqual(VALIDATION_DISPUTE_WALLET_MOVE.referenceScriptBytes);
 };
 
 /**

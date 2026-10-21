@@ -2,7 +2,10 @@ import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
-import { workflowRuntimeFundingMinimumFee } from "../src/workflow/runtime-funding-fee.js";
+import {
+  validationDisputeWalletMoveReserve,
+  workflowRuntimeFundingMinimumFee,
+} from "../src/workflow/runtime-funding-fee.js";
 import {
   assertWorkflowRuntimeFundingPolicyRunner,
   createWorkflowRuntimeFundingPolicy,
@@ -62,6 +65,22 @@ describe("runtime-owned workflow funding policy", () => {
         referenceScriptBytes: 25_601n,
       }),
     ).toBe(155_381n + 25_600n * 15n + 18n);
+  });
+
+  it("prices the validation dispute's wallet-move reserve at the protocol's largest signed transaction, whatever size the moves measured so far", () => {
+    const { constructorInput } = fixture();
+    const reserveAt = (maxTxSize: bigint) =>
+      validationDisputeWalletMoveReserve({
+        parameters: {
+          ...RUNTIME_FUNDING_TEST_PARAMETERS,
+          maxTxSize: maxTxSize.toString(),
+        },
+        fundingPaymentKeyHash: constructorInput.fundingPaymentKeyHash,
+      });
+    const minFeeA = BigInt(RUNTIME_FUNDING_TEST_PARAMETERS.minFeeA);
+    // Each byte the protocol admits is a byte our wallet may pay for.
+    expect(reserveAt(16_384n) - reserveAt(8_192n)).toBe(8_192n * minFeeA);
+    expect(reserveAt(16_384n)).toBeGreaterThan(16_384n * minFeeA);
   });
 
   it("refuses foreign economics, repeated contracts and foreign script addresses", () => {

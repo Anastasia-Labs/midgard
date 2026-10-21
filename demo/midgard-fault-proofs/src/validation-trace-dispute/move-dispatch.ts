@@ -1,8 +1,17 @@
 /** The challenger's move of stage `stage` on a thread of our defended case:
  * the game's moves and the timeout's close (moves.ts), and the one-step
  * resolution's (one-step-moves.ts), which read the case's recorded threads
- * for the defender a thread past the game no longer names. */
-import type { ValidationTraceStage } from "./actions.js";
+ * for the defender a thread past the game no longer names. A move our wallet
+ * cannot fund raises the operator's alarm, naming the case, the thread and
+ * the deadline the move must land by. */
+import type * as SDK from "@al-ft/midgard-sdk";
+
+import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import {
+  validationTraceActionId,
+  type ValidationTraceStage,
+} from "./actions.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
@@ -17,26 +26,32 @@ import {
   captureValidationTraceResolve,
 } from "./one-step-moves.js";
 import { validationTraceRecordedThreads } from "./thread-observation.js";
-import type { CapturedValidationTraceStage } from "./transactions.js";
+import { type CapturedValidationTraceStage, ours } from "./transactions.js";
+import {
+  validationTraceCaseExpiryMs,
+  validationTraceMoveDeadlineMs,
+} from "./wallet-move-unfunded.js";
 
-export const captureValidationTraceThreadMove = async ({
-  stage,
-  move,
-  caseOutRef,
-  history,
-}: {
-  readonly stage: ValidationTraceStage;
-  readonly move: ValidationTraceMoveInput & {
+type ThreadMove = Readonly<{
+  stage: ValidationTraceStage;
+  move: ValidationTraceMoveInput & {
     readonly material: ValidationTraceClaimMaterial | undefined;
   };
   /** Our case as it stands now. */
-  readonly caseOutRef: string;
-  readonly history: Readonly<{
+  caseOutRef: string;
+  history: Readonly<{
     caseHistory: ValidationTraceCaseHistory;
     headerHash: string;
     caseUnit: string;
   }>;
-}): Promise<CapturedValidationTraceStage> => {
+}>;
+
+const capture = async ({
+  stage,
+  move,
+  caseOutRef,
+  history,
+}: ThreadMove): Promise<CapturedValidationTraceStage> => {
   switch (stage) {
     case "reveal":
       return await captureValidationTraceReveal(move);
@@ -63,5 +78,44 @@ export const captureValidationTraceThreadMove = async ({
     case "verify_source":
     case "close":
       throw new Error(`validation-trace ${stage} is not a thread move`);
+  }
+};
+
+/**
+ * The move on a thread of our case, whose datum is `caseDatum`. A build our
+ * wallet is short of ada for is the operator's alarm.
+ */
+export const captureValidationTraceThreadMove = async ({
+  caseDatum,
+  ...input
+}: ThreadMove &
+  Readonly<{ caseDatum: SDK.Case }>): Promise<CapturedValidationTraceStage> => {
+  const caseExpiresAtMs = validationTraceCaseExpiryMs(caseDatum);
+  const move = { ...input.move, caseExpiresAtMs };
+  try {
+    return await capture({ ...input, move });
+  } catch (cause) {
+    if (
+      !isWorkflowFundingShortfall(cause) ||
+      cause instanceof ValidationDisputeWalletMoveUnfundedError
+    )
+      throw cause;
+    const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(
+      () => undefined,
+    );
+    throw new ValidationDisputeWalletMoveUnfundedError({
+      actionId: validationTraceActionId({
+        stage: input.stage,
+        consumes: move.threadOutRef,
+      }),
+      caseUnit: move.caseUnit,
+      threadOutRef: move.threadOutRef,
+      deadlineMs: validationTraceMoveDeadlineMs({
+        stage: input.stage,
+        caseExpiresAtMs,
+        thread,
+      }),
+      cause,
+    });
   }
 };

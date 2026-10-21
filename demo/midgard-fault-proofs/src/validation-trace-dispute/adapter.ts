@@ -324,6 +324,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           caseOpenerOutRef: found.openerOutRef,
         });
       return await captureValidationTraceThreadMove({
+        caseDatum: found.caseDatum,
         stage: action.stage,
         move: {
           ...input,

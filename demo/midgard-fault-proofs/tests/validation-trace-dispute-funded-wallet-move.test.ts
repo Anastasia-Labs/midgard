@@ -1,11 +1,13 @@
 /** The validation-trace dispute's wallet-paid thread moves under the
  * watcher's prover funding, its terms following the emulator's live fees.
- * A defender opens a thread on our case and reveals, the watcher reveals,
- * and the defender goes silent. Fees then rise until the timeout and the
+ * A defender opens a thread on our case and reveals, the watcher reveals
+ * from a wallet holding less than the wallet-move reserve, its thread paying
+ * the fee, and the defender goes silent. Fees then rise until the timeout and the
  * thread's close are priced over the per-move cap, so our plain-Ada wallet
  * pays each of them whole. A wallet holding less than the timeout needs
- * pauses it on the funding-shortfall hold before any byte reaches the
- * ledger, releasing what it reserved, and keeps pausing without wedging. A
+ * holds it under the operator's alarm, naming the case, the thread and the
+ * deadline, before any byte reaches the ledger, releasing what it reserved,
+ * and keeps retrying at each observation without wedging. A
  * wallet holding exactly the terms' wallet-move reserve lands the timeout,
  * its successor keeping all of the thread's lovelace; refilled to that
  * reserve, it lands the thread's close, which pays the thread's rest less
@@ -22,7 +24,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/removal.js";
 import { VALIDATION_TRACE_THREAD_AWAITING } from "../src/validation-trace-dispute/threads.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
+import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
+import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/wallet-move-unfunded.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
 import { network } from "./support/submit-init-emulator-shared.js";
@@ -97,30 +101,13 @@ const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
 describe("validation-trace dispute wallet-paid thread moves under the prover funding permit", () => {
   beforeAll(async () => {
     journey = await openDefendedFundedCase({ liveParameters: true });
-    const { scene, dispute, defender, trace, capture } = journey;
+    const { scene, defender, trace } = journey;
     await revealAsDefender(
       scene,
       defender,
       await liveFundedThread(journey),
       trace,
     );
-    const revealed = await turnUntil(
-      dispute,
-      VALIDATION_TRACE_THREAD_AWAITING,
-      { wrap: capture },
-    );
-    if (revealed.result.kind !== "pending")
-      throw new Error(`no reveal: ${revealed.history.join("\n")}`);
-    silent = await liveFundedThread(journey);
-    await passDefenderDeadline(journey);
-    // Fees rise until the timeout's and the close's minimums pass the
-    // per-move cap.
-    const { emulator } = scene.h;
-    const parameters = emulator.protocolParameters;
-    emulator.protocolParameters = { ...parameters, minFeeA: 1_500 };
-    restoreFees = () => {
-      emulator.protocolParameters = parameters;
-    };
   }, TIMEOUT);
 
   afterAll(async () => {
@@ -129,16 +116,56 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
   });
 
   it(
-    "pauses a timeout priced over the cap on the funding-shortfall hold when the wallet holds less than it needs, before any byte reaches the ledger, and keeps pausing without wedging",
+    "lands a reveal its thread pays from a wallet holding less than the wallet-move reserve: only a move our wallet pays needs it",
     async () => {
       const { scene, dispute, capture } = journey;
+      const thread = await liveFundedThread(journey);
       await drainProver(scene.h as never, SHORT);
+      expect(SHORT).toBeLessThan(BigInt(await dispute.walletMoveReserve()));
+      const { result, history } = await turnUntil(
+        dispute,
+        VALIDATION_TRACE_THREAD_AWAITING,
+        { wrap: capture },
+      );
+      expect(result.kind, history.join("\n")).toBe("pending");
+      const [reveal, ...again] = hashesOf("reveal");
+      expect(reveal).toBeDefined();
+      expect(again).toStrictEqual([]);
+      const fee = await landedMoveFee(scene, reveal!);
+      expect(fee.paid).toBeLessThanOrEqual(
+        VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+      );
+      // The thread pays the fee: it is the move's only spent input.
+      expect(inputsOf(reveal!)).toStrictEqual([outRefOf(thread)]);
+      silent = await liveFundedThread(journey);
+      await passDefenderDeadline(journey);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "holds a timeout priced over the cap under the operator's alarm, naming the case, the thread and the deadline, when the wallet holds less than it needs, before any byte reaches the ledger, and keeps retrying without wedging",
+    async () => {
+      const { scene, dispute, capture, caseOrigin } = journey;
+      // Fees rise until the timeout's and the close's minimums pass the
+      // per-move cap.
+      const { emulator } = scene.h;
+      const parameters = emulator.protocolParameters;
+      emulator.protocolParameters = { ...parameters, minFeeA: 1_500 };
+      restoreFees = () => {
+        emulator.protocolParameters = parameters;
+      };
+      const caseDatum = Data.from(caseOrigin.datum!, SDK.Case);
+      const caseUnit = Object.keys(caseOrigin.assets).find((unit) =>
+        unit.startsWith(scene.chain.case.policyId),
+      )!;
+      // Our wallet still holds the short balance the reveal left it.
       const watch = watchLedger(scene.h.emulator);
       try {
         for (let pause = 0; pause < 2; pause += 1) {
           const { result, history } = await turnUntil(
             dispute,
-            WORKFLOW_FUNDING_SHORTFALL,
+            VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
             { wrap: capture },
           );
           expect(result.kind, history.join("\n")).toBe("pending");
@@ -146,8 +173,23 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
           expect(result.reason).toContain(
             "cannot fund validation-trace-timeout:",
           );
-          // A pause the next observation resumes, not a stall.
-          expect(result).not.toHaveProperty("resumeOnObservation", false);
+          expect(result.reason).toContain(
+            `on thread ${outRefOf(silent)} of case ${caseUnit},`,
+          );
+          // A timeout is not on our clock: it must land before the case
+          // expires.
+          expect(result.reason).toContain(
+            `before its deadline ${validationTraceCaseExpiryMs(caseDatum).toString()};`,
+          );
+          // An alarm the next observation retries, not a stall.
+          expect(validationTraceRunState(result)).toMatchObject({
+            kind: "pending",
+            resumeOnObservation: true,
+            namedState: {
+              name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+              alarm: true,
+            },
+          });
           // The refused attempt released every input it held.
           for (const reservation of await dispute.readReservations())
             expect(reservation).toMatchObject({ activeInputs: [] });

@@ -6,18 +6,20 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Five other states are named for readiness, so a session hands its turn
+ * Six other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
  * needs a one-step resolution the runner does not drive, a thread lost, a
  * case a defender won, a move whose fee would pass the funding permit's
- * per-transaction fee ceiling, and a thread whose history does not decide
- * its pending item step, the last two alarms. */
+ * per-transaction fee ceiling, a thread whose history does not decide its
+ * pending item step, and a move our wallet cannot fund before its deadline,
+ * the last three alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type {
   FraudProofWorkflowNamedState,
   FraudProofWorkflowRunResult,
@@ -109,8 +111,10 @@ export const awaitingValidationTraceCounterparty = (
  * a one-step resolution the runner does not drive, a lost thread has no move
  * of ours left, a case a defender won has none either, and a wallet-paid
  * move whose fee would pass the funding permit's per-transaction fee ceiling
- * cannot be sent at all, and a thread whose history does not decide its
- * pending item step cannot move on, both of which the operator must see.
+ * cannot be sent at all, a thread whose history does not decide its
+ * pending item step cannot move on, and a move our wallet cannot fund waits
+ * on a top-up, retried at each observation, before its deadline passes: all
+ * three the operator must see.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),
@@ -118,6 +122,7 @@ const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_DEFENDER_WON, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_ITEM_PENDING_HOLD, alarm: true }),
+  Object.freeze({ name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED, alarm: true }),
 ]);
 
 /**

@@ -102,31 +102,26 @@ export const workflowRuntimeFundingMaximumFee = (
   });
 
 /**
- * The largest thread move of a validation-trace dispute measured so far,
- * component by component: the signed bytes of a CEK context item step's
- * settlement hop (a data scan's value-finishing step) and the
- * reference-script bytes of a CEK script selection's hop.
- * Whether a move's thread or our wallet pays for it turns on the live
- * prices, so the shape bounds every measured move, not only those over the
- * per-move cap at today's prices.
+ * The reference-script bytes of the largest thread move of a validation-trace
+ * dispute measured so far: a CEK script selection's hop. Whether a move's
+ * thread or our wallet pays for it turns on the live prices, so this bounds
+ * every measured move, not only those over the per-move cap at today's
+ * prices.
  */
 export const VALIDATION_DISPUTE_WALLET_MOVE = Object.freeze({
-  transactionBytes: 7_724n,
   referenceScriptBytes: 27_951n,
 });
 
-/** The bytes our wallet's funding adds to a move it pays: two plain-ADA
- * inputs and the change output (one input and the change measured 106). */
-const WALLET_MOVE_FUNDING_BYTES = 160n;
-
 /**
  * What a reservation must hold for one move our wallet pays, under
- * `parameters`: the fee of the largest measured move, with our wallet's
- * inputs and change, at the protocol's per-transaction execution limit, and
- * the minimum ada of its change, a plain coin returned to the funding key.
- * The builder selects our wallet's coins with the move's scripts budgeted at
- * that limit before it evaluates them, so a reserve priced at the move's own
- * execution units would not let it select.
+ * `parameters`: the fee of a move of the protocol's largest signed size, our
+ * wallet's inputs and change included, at the protocol's per-transaction
+ * execution limit, reading the largest measured move's reference scripts,
+ * and the minimum ada of its change, a plain coin returned to the funding
+ * key. The builder selects our wallet's coins with the move's scripts
+ * budgeted at that limit before it evaluates them, so a reserve priced at
+ * the move's own execution units would not let it select. The funding
+ * permit checks it at every move our wallet pays.
  */
 export const validationDisputeWalletMoveReserve = ({
   parameters,
@@ -135,13 +130,12 @@ export const validationDisputeWalletMoveReserve = ({
   readonly parameters: DeploymentManifestCardanoProtocolParameters;
   readonly fundingPaymentKeyHash: string;
 }): bigint => {
-  const move = VALIDATION_DISPUTE_WALLET_MOVE;
   const fee = workflowRuntimeFundingMinimumFee({
     parameters,
-    transactionBytes: move.transactionBytes + WALLET_MOVE_FUNDING_BYTES,
+    transactionBytes: BigInt(parameters.maxTxSize),
     memory: BigInt(parameters.maxTxExUnits.memory),
     steps: BigInt(parameters.maxTxExUnits.steps),
-    referenceScriptBytes: move.referenceScriptBytes,
+    referenceScriptBytes: VALIDATION_DISPUTE_WALLET_MOVE.referenceScriptBytes,
   });
   // The largest plain change: a base address, the largest coin.
   const key = CML.Credential.new_pub_key(
