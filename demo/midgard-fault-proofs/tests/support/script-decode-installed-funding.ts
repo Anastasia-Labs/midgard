@@ -9,8 +9,10 @@
  * emulator deployment's, mapped to custody roles exactly as the factory maps
  * them. Each mint first passes the factory's recovery authorization over the
  * watcher's journal root. Given the node's parameters at each turn, a mint
- * prices its policy at them, as the factory does with its fresh query, while
- * an existing reservation keeps the basis it was admitted on.
+ * prices its policy at them, while an existing reservation keeps the basis
+ * it was admitted on. The factory differs in one place: it checks an
+ * existing reservation's capacity at the parameters it remembered when the
+ * reservation was made, where this checks it at the parameters of the turn.
  */
 import { join } from "node:path";
 

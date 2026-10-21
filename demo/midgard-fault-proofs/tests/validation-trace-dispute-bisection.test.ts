@@ -425,7 +425,7 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
   }, 300_000);
 
   // A session that kept polling would run to the 30-minute quiet bound.
-  it("hands the session back at once at the one-step-required state, under its own readiness state, without a continuation stall", async () => {
+  it("hands the session back at once at the one-step-required state, under its own readiness state, an operator alarm, without a continuation stall", async () => {
     let runs = 0;
     const result = await continuePendingWorkflow({
       invocation: {
@@ -444,7 +444,7 @@ describe("validation-trace dispute runner: bisecting defended threads", () => {
     expect(result).toMatchObject({
       kind: "pending",
       resumeOnObservation: true,
-      namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false },
+      namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true },
     });
   }, 120_000);
 

@@ -11,7 +11,8 @@
  * reserve but enough for the move, it lands the timeout with no alarm, its
  * successor keeping all of the thread's lovelace; refilled to that reserve,
  * it lands the thread's close, which pays the thread's rest less the receipt
- * to our funding key, and the case closes Convicted. *
+ * to our funding key, and the case closes Convicted.
+ *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */

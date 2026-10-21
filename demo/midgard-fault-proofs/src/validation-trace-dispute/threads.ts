@@ -41,7 +41,9 @@ export const VALIDATION_TRACE_DEFENDER_WON = "validation-trace-defender-won";
 export const VALIDATION_TRACE_THREAD_AWAITING =
   "validation-trace-thread-awaiting-defender";
 
-/** A thread reached ReadyForOneStep: the one-step resolution must run. */
+/** A thread reached ReadyForOneStep: the one-step resolution must run.
+ * Only our move leaves ReadyForOneStep, so our clock runs on a thread
+ * waiting here, and it is lost at that clock's end. */
 export const VALIDATION_TRACE_ONE_STEP_REQUIRED =
   "validation-trace-one-step-required";
 
@@ -231,7 +233,7 @@ export const decideValidationTraceThreads = ({
       else if (planning?.kind === "plan") moves.enter_resolution.push(found);
       else
         oneStep.push(
-          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
+          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}, on our clock until ${validationTraceChallengerDeadlineMs(thread).toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
         );
     } else if (now > validationTraceDefenderDeadlineMs(thread))
       moves.timeout.push(found);
@@ -282,7 +284,7 @@ export const decideValidationTraceThreads = ({
     );
   if (oneStep.length > 0)
     return pending(
-      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${oneStep.join("; ")}, so it waits`,
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${caseUnit} at ${caseOutRef}: ${oneStep.join("; ")}, so it waits`,
     );
   if (lost.length > 0)
     return pending(`${VALIDATION_TRACE_THREAD_LOST}: ${lost.join("; ")}`);

@@ -12,7 +12,7 @@
  * case a defender won, a move whose fee would pass the funding permit's
  * per-transaction fee ceiling, a thread whose history does not decide its
  * pending item step, and a move our wallet cannot fund before its deadline,
- * the last three alarms. */
+ * the first and the last three alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -108,16 +108,17 @@ export const awaitingValidationTraceCounterparty = (
 
 /**
  * The run states named for readiness: a thread at ReadyForOneStep waits on
- * a one-step resolution the runner does not drive, a lost thread has no move
- * of ours left, a case a defender won has none either, and a wallet-paid
+ * a one-step resolution the runner does not drive, while our clock runs on
+ * it, and is lost at its end unless the operator acts; a lost thread has no
+ * move of ours left, a case a defender won has none either; a wallet-paid
  * move whose fee would pass the funding permit's per-transaction fee ceiling
  * cannot be sent at all, a thread whose history does not decide its
  * pending item step cannot move on, and a move our wallet cannot fund waits
- * on a top-up, retried at each observation, before its deadline passes: all
- * three the operator must see.
+ * on a top-up, retried at each observation, before its deadline passes. The
+ * operator must see the first and the last three.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
-  Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),
+  Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_THREAD_LOST, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_DEFENDER_WON, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),

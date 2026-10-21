@@ -9,6 +9,8 @@
  *
  * A thread ReadyForOneStep enters its one-step resolution on our turn,
  * ordered with our reveals by our deadline, only on a step the runner plans;
+ * on any other, it waits under the operator's alarm, which names the case,
+ * the thread, the step and our deadline;
  * a thread in its resolution moves on before any close, and a thread at the
  * award closes into the case. On a case a defender won, every other thread
  * is still played to its own end, and the run stops once none has a move
@@ -27,6 +29,8 @@ import {
   type ValidationTraceResolvingThread,
   type ValidationTraceThread,
 } from "../src/validation-trace-dispute/threads.js";
+import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 
 const ROOT = "a1".repeat(32);
 const STEPS = 12n;
@@ -250,7 +254,8 @@ describe("validation-trace dispute runner's choice among threads", () => {
 
   it("waits under one-step-required on a ReadyForOneStep thread whose resolution is not installed or whose step it does not drive, never entering it", () => {
     const step = ready("5");
-    const label = `thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12`;
+    const deadline = (NOW + Number(CLOCK) / 2).toString();
+    const label = `case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${deadline}`;
     expect(decide([step])).toStrictEqual({
       kind: "pending",
       reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; the one-step resolution is not installed, so it waits`,
@@ -262,6 +267,21 @@ describe("validation-trace dispute runner's choice among threads", () => {
       kind: "pending",
       reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; a step apart, so it waits`,
     });
+  });
+
+  it("raises the operator's alarm on a thread waiting under one-step-required while our clock runs, the state naming the case, the thread, the step and our deadline", () => {
+    const step = ready("5");
+    const result = validationTraceRunState(
+      decide([step]) as FraudProofWorkflowRunResult,
+    );
+    expect(result).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true },
+    });
+    expect("reason" in result && result.reason).toBe(
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${(NOW + Number(CLOCK) / 2).toString()}; the one-step resolution is not installed, so it waits`,
+    );
   });
 
   it("reports a ReadyForOneStep thread past our clock as lost, and holds one on a trace it does not hold, never entering either", () => {

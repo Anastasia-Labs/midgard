@@ -12,10 +12,10 @@ afterEach(cleanupFundingRecoveryFixtures);
 describe("supervisor execution adapter with a family's named run state", () => {
   it.each([
     {
-      name: "validation-trace-one-step-required",
+      name: "validation-trace-thread-lost",
       alarm: false,
       reason:
-        "validation-trace-one-step-required: thread a at b#1 is ReadyForOneStep",
+        "validation-trace-thread-lost: thread a at b#1 ran out of the challenger's clock",
     },
     {
       name: "validation-trace-move-fee-over-cap",

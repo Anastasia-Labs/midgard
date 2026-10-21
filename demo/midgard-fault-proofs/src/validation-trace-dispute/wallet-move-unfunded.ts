@@ -19,7 +19,8 @@ const onOurClock = (stage: ValidationTraceStage): boolean =>
 
 /**
  * The deadline the `stage` move spending `thread` must land by, given the
- * case's expiry `caseExpiresAtMs`; `undefined` when it is not known.
+ * case's expiry `caseExpiresAtMs`; `undefined` for a move on our clock
+ * whose thread's clock is not known.
  */
 export const validationTraceMoveDeadlineMs = ({
   stage,
@@ -27,11 +28,10 @@ export const validationTraceMoveDeadlineMs = ({
   thread,
 }: {
   readonly stage: ValidationTraceStage;
-  readonly caseExpiresAtMs: number | undefined;
+  readonly caseExpiresAtMs: number;
   readonly thread: UTxO | undefined;
 }): number | undefined => {
-  if (caseExpiresAtMs === undefined || !onOurClock(stage))
-    return caseExpiresAtMs;
+  if (!onOurClock(stage)) return caseExpiresAtMs;
   if (typeof thread?.datum !== "string") return undefined;
   try {
     const { data } = Data.from(thread.datum, SDK.CaseThreadDatum);
