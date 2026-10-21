@@ -51,13 +51,17 @@ export const sceneOperator = (scene: Scene): Defender => ({
 });
 
 /**
- * Defend `caseUtxo` by the scene's operator, now, signed by its wallet, with
- * a trace still pending at the case's last state: never the challenger's
- * Terminal Rejected one. Returns the Defend's hash once it lands.
+ * Defend `caseUtxo` by `defender` (the scene's operator by default), now,
+ * signed by its wallet, with a trace still pending at the case's last
+ * state: never the challenger's Terminal Rejected one. `priorDefenders`
+ * are the keys that already defended the case. Returns the Defend's hash
+ * once it lands.
  */
-export const defendAsOperator = async (
+export const defendPending = async (
   scene: Scene,
   caseUtxo: UTxO,
+  defender: Defender = sceneOperator(scene),
+  priorDefenders: readonly string[] = [],
   decoys: readonly string[] = [],
 ): Promise<string> => {
   const stepCount = Number(Data.from(caseUtxo.datum!, SDK.Case).step_count);
@@ -68,16 +72,28 @@ export const defendAsOperator = async (
   return await defendWith(
     scene,
     caseUtxo,
-    sceneOperator(scene),
+    defender,
     {
       root: hex(claim.descriptor.traceRoot),
       lastState: claim.stateAt(stepCount),
       lastStateProof: claim.proofAt(stepCount),
     },
-    [],
+    priorDefenders,
     decoys,
   );
 };
+
+/**
+ * Defend `caseUtxo` by the scene's operator, now, signed by its wallet, with
+ * a trace still pending at the case's last state. Returns the Defend's hash
+ * once it lands.
+ */
+export const defendAsOperator = async (
+  scene: Scene,
+  caseUtxo: UTxO,
+  decoys: readonly string[] = [],
+): Promise<string> =>
+  await defendPending(scene, caseUtxo, sceneOperator(scene), [], decoys);
 
 /** The defender's active-operator node, by its unit. */
 export const activeNodeOf = async (

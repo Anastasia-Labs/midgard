@@ -12,6 +12,7 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type EmulatorAccount,
   generateEmulatorAccount,
   type LucidEvolution,
   type Script,
@@ -81,6 +82,8 @@ export type Scene = {
   readonly forced: Block;
   /** The operator that committed the blocks, and its active-operator node. */
   readonly operator: { readonly vkey: string; readonly nodeUnit: string };
+  /** The operator's account: the funder wallet, which signed the blocks. */
+  readonly funder: EmulatorAccount;
   /** The raw L1 view of every transaction after the scene's setup. */
   readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
@@ -113,13 +116,14 @@ export const setUpScene = async (
     readonly failingReferenceInputs?: number;
   } = {},
 ): Promise<Scene> => {
+  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValidationTraceDispute: true,
       alwaysFraudProofCatalogue: true,
     },
     accounts: {
-      funder: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
+      funder,
       prover: fundedProverEmulatorAccount(60_000_000_000n),
       publisher: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
     },
@@ -273,6 +277,7 @@ export const setUpScene = async (
     passing,
     forced,
     operator: { vkey: operatorVkey, nodeUnit: setup.activeOperatorNodeUnit },
+    funder,
   };
 };
 

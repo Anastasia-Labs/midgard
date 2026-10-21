@@ -411,6 +411,8 @@ export const attachIntentFollower = async (
     follow,
     applyForkBlock,
     rewindTo,
+    /** The height of the follower's tip (0: the origin). */
+    tipHeight: () => tip.height,
     sent,
     accepted,
     record,

@@ -18,9 +18,11 @@ import {
   type LucidEvolution,
   type RedeemerContext,
   type TxBuilder,
+  type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import { validationTraceThreadTokenName } from "./case-history.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
@@ -289,4 +291,41 @@ export const buildValidationTraceDefend = ({
     .validFrom(validFrom)
     .validTo(validTo);
   return { tx, threadUnit, thread };
+};
+
+/** What a Defend leaves in its defender's pocket, for the thread moves'
+ * collateral and its return, when the pocket holds no plain-ADA output to
+ * lend. */
+export const VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE = 5_000_000n;
+
+/**
+ * Completes the Defend `tx`, funded from `funding` alone: the thread's
+ * floor, the fee and the collateral come from those inputs, which must all
+ * hold plain ADA. With `pocket`, one more output pays it
+ * `VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE`, the collateral the thread's
+ * moves take from it.
+ */
+export const completeValidationTraceDefend = async ({
+  tx,
+  funding,
+  pocket,
+}: {
+  readonly tx: TxBuilder;
+  readonly funding: readonly UTxO[];
+  readonly pocket?: string;
+}): Promise<TxSignBuilder> => {
+  if (funding.length === 0)
+    throw new Error("validation defense: no funding input");
+  if (!funding.every(isPlainFundingOutput))
+    throw new Error("validation defense: a funding input is not plain ADA");
+  const paid =
+    pocket === undefined
+      ? tx
+      : tx.pay.ToAddress(pocket, {
+          lovelace: VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
+        });
+  return await paid.complete({
+    presetWalletInputs: [...funding],
+    localUPLCEval: true,
+  });
 };

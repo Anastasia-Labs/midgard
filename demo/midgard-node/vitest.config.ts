@@ -105,6 +105,15 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/reserve-payout-economic-acceptance-emulator.test.ts
  *   tests/reserve-payout-reference-resolution-emulator.test.ts
  *   tests/script-reward-registration.test.ts
+ *   tests/validation-trace-defense-survey-emulator.test.ts
+ *   tests/defense-pocket-emulator.test.ts
+ *   tests/validation-trace-defense-fiber-emulator.test.ts
+ *   tests/validation-trace-defense-funding-emulator.test.ts
+ *   tests/validation-trace-defense-race-emulator.test.ts
+ *   tests/validation-trace-defense-restart-emulator.test.ts
+ *   tests/validation-trace-defense-replacement-emulator.test.ts
+ *   tests/validation-trace-defense-readiness.test.ts
+ *   tests/block-commitment-validation-trace-defense-skip.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

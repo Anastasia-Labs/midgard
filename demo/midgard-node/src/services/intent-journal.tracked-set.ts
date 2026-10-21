@@ -127,14 +127,26 @@ const VALIDATION_TRACE_DISPUTE_HOLDERS = [
 /**
  * The payment credentials of the protocol addresses (§8.2: protocol
  * addresses are always tracked), the validation-trace dispute's holders
- * among them. Every output there is created after the protocol-init
- * transaction, which is after the follower's origin.
+ * among them, and the case configuration's address, which a defense reads.
+ * Every output there is created after the protocol-init transaction, which
+ * is after the follower's origin.
  */
 export const protocolPaymentCredentials = (
-  contracts: Pick<
-    SDK.MidgardValidators,
-    (typeof PROTOCOL_SPENDING_VALIDATORS)[number] | "fraudProofContracts"
-  >,
+  contracts: Readonly<
+    Record<
+      (typeof PROTOCOL_SPENDING_VALIDATORS)[number],
+      Readonly<{ spendingScriptHash: string }>
+    >
+  > & {
+    readonly fraudProofContracts: {
+      readonly validationTraceDispute: Readonly<
+        Record<
+          (typeof VALIDATION_TRACE_DISPUTE_HOLDERS)[number],
+          Readonly<{ spendingScriptHash: string }>
+        >
+      > & { readonly caseConfig: Readonly<{ policyId: string }> };
+    };
+  },
 ): string[] => {
   const dispute = contracts.fraudProofContracts.validationTraceDispute;
   return [
@@ -142,7 +154,11 @@ export const protocolPaymentCredentials = (
       [
         ...PROTOCOL_SPENDING_VALIDATORS.map((name) => contracts[name]),
         ...VALIDATION_TRACE_DISPUTE_HOLDERS.map((name) => dispute[name]),
-      ].map(({ spendingScriptHash }) => spendingScriptHash.toLowerCase()),
+      ]
+        .map(({ spendingScriptHash }) => spendingScriptHash)
+        // The case configuration's address is its minting policy's own.
+        .concat(dispute.caseConfig.policyId)
+        .map((hash) => hash.toLowerCase()),
     ),
   ];
 };

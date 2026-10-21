@@ -154,6 +154,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "intent_reconcile_failed",
   "intent_reconcile_transient",
   "intent_resubmit_rejected",
+  "intent_unbounded_validity",
   "intent_undecodable",
   "intersection_outside_history",
   "invalid_output",
@@ -271,6 +272,9 @@ const identityField =
 // These are complete server-authored structured reason formats, never message excerpts.
 const boundedReason =
   /^(?:(?:provider_query_unhealthy|provider_query_degraded):l1-provider(?::[0-9]+)?|(?:pending_finalization_age|durable_admission_oldest_age_exceeded):[0-9]+:[0-9]+|(?:unfinished_local_mutation_jobs|da_publication_conflict|l1_own_block_forced_order_orphaned|l1_event_undecodable):[0-9]+|stale_heartbeat:(?:blockCommitment|blockConfirmation|merge|txQueueProcessor):[0-9]+|(?:queue_depth_exceeded|validation_worker_job_timeout|unresolved_block_submission|attestation_timeout_queue_unknown):[0-9]+:[0-9]+|validation_worker_pool_degraded:[0-9]+:[0-9]+:[0-9]+|state_queue_lease_stale:(?:commit|merge|initialize|state_correction|reconcile|unknown):-?[0-9]+|attestation_timeout_correction_(?:failing|stalled):[0-9a-f]{56}:[0-9]+:[0-9]+|native_mpf_full_index_near_cap:FULL_INDEX_MAX_(?:RECORDS|BYTES):[0-9]+:[0-9]+|(?:landed_frontier|intent_journal_replay|operator_activity_record)_prune_floor:[0-9]+|l1_transport_unready:(?:sidecar_starting|sidecar_restarting|sidecar_unavailable|node_unreachable|node_connection_lost|stopped|node_handshake_failed|version_unsupported|malformed_frame|client_protocol_violation)|commit_da_frame_pressure:(?:candidate|initial_candidate|required_work):[0-9]+(?:\.[0-9]+)?)$/u;
+// The validation-trace defender's named states: subject unit, deadline, shortfall.
+const validationTraceDefenseReason =
+  /^(?:validation-trace-defense-(?:awaiting|one-step|won-pending-expiry|thread-lost|operator-fault|trace-disagrees|material-unavailable|underfunded|not-active|late):[0-9a-f]{56,120}:(?:[0-9]+|none)(?::[0-9]+)?|validation-trace-defense-stalled:[0-9]+)$/u;
 
 // Fixed stage vocabulary from the actual commit-build alarm producers.
 const commitAlarmReason =
@@ -340,7 +344,9 @@ export const publicReadinessPresentation = (
           return "settlement_worker_failing";
         if (safe.startsWith("settlement_jobs_stuck:"))
           return "settlement_jobs_stuck";
-        return observedReasons.has(safe) || boundedReason.test(safe)
+        return observedReasons.has(safe) ||
+          boundedReason.test(safe) ||
+          validationTraceDefenseReason.test(safe)
           ? safe
           : DIAGNOSTIC_REDACTED;
       }
