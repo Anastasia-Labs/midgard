@@ -134,6 +134,41 @@ describe("supervisor execution adapter with a family's named run state", () => {
     }
   });
 
+  it("names the run's own unbuilt action once when it is also in the run's alarms", async () => {
+    const test = await setupFaultProofExecution();
+    const logged: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((line) => logged.push(String(line)) > 0);
+    const reason =
+      "validation-trace-move-unbuilt: the reveal move on thread a#1 of case c does not build, and must land by 1000: Transaction size exceeds the limit";
+    const close =
+      "validation-trace-move-unbuilt: the close_thread move on thread d#1 of case c does not build, and must land by 2000: Transaction size exceeds the limit";
+    const hold = {
+      reason: "validation-trace-move-unbuilt",
+      detail: `doubleSpend/${test.input.job.headerHash}: ${reason}; ${close}`,
+    };
+    try {
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "pending",
+        resumeOnObservation: true,
+        reason,
+        namedState: { name: "validation-trace-move-unbuilt", alarm: true },
+        alarms: [
+          { actionId: "validation-trace-reveal:a#1", reason },
+          { actionId: "validation-trace-close-thread:d#1", reason: close },
+        ],
+      });
+      await test.execution.execute(test.input);
+      expect(test.execution.readiness()).toEqual([hold]);
+      expect(logged).toEqual([
+        `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...hold })}\n`,
+      ]);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it("holds nothing for a pending run whose named state is malformed", async () => {
     const test = await setupFaultProofExecution();
     test.runOrResume.mockResolvedValueOnce({
