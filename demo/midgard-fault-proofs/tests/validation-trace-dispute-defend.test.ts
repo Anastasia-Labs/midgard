@@ -36,7 +36,6 @@ import {
 } from "./support/validation-trace-dispute-open-scene.js";
 import { passingTrace } from "./support/validation-trace-dispute-passing-trace.js";
 
-const CASE_V1 = "fraud_proofs/validation_trace/case_v1";
 const DECOY = "d0".repeat(28);
 
 type Defense = Extract<ValidationTraceDefenseMaterial, { kind: "defend" }>;
@@ -245,7 +244,7 @@ describe("validation-trace dispute Defend", () => {
       defenders,
     );
     await expectOnchainRefusal(() => tx.complete({ localUPLCEval: true }), {
-      refusedBy: CASE_V1,
+      refusedBy: "fraud_proofs/validation_trace/case_v1",
       check: /defense_is_valid/u,
     });
   });
@@ -260,7 +259,7 @@ describe("validation-trace dispute Defend", () => {
       defenders,
     );
     await expectOnchainRefusal(() => tx.complete({ localUPLCEval: true }), {
-      refusedBy: CASE_V1,
+      refusedBy: "fraud_proofs/validation_trace/case_v1",
       check: /validation_case_v1\.defend\(/u,
     });
   });
@@ -290,7 +289,7 @@ describe("validation-trace dispute Defend", () => {
     await defend();
     scene.h.emulator.awaitSlot(1);
     await expectOnchainRefusal(defend, {
-      refusedBy: CASE_V1,
+      refusedBy: "fraud_proofs/validation_trace/case_v1",
       check: /expect elapsed <= clock/u,
     });
   });

@@ -413,6 +413,8 @@ describe("validation-trace dispute defender moves", () => {
     expect(lucid.slotToUnixTime(lucid.currentSlot() + 1)).toBeGreaterThan(
       expiresAfter,
     );
+    // The expiry's lower bound is not past the case's end, so its rule
+    // returns false.
     await expectOnchainRefusal(
       () =>
         threadExpiry({
@@ -425,7 +427,7 @@ describe("validation-trace dispute defender moves", () => {
         }),
       {
         refusedBy: "fraud_proofs/validation_trace/thread_expiry_v1",
-        check: /header\.started_at \+ case_duration_milliseconds/u,
+        check: /^Validator returned false$/u,
       },
     );
   });
