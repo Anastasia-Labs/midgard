@@ -20,14 +20,22 @@ import {
   planValidationTraceOneStep,
   type ValidationTracePhasePlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
+import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
 import type { TwoThreadCase } from "./validation-trace-dispute-one-step-case.js";
 import { resolutionDrive } from "./validation-trace-dispute-one-step-resolution-drive.js";
 
-/** The evidence a step's semantic resolver takes: none, or the item
- * `itemIndex` of the field `fieldIndex`, whose preimage it carries inline. */
+/** `SignerMembershipProof`'s constructor among the signer-set proofs. */
+const SIGNER_MEMBERSHIP_PROOF = 1;
+
+/** The evidence a step's semantic resolver takes: none, the item
+ * `itemIndex` of the field `fieldIndex` (by default whichever item our
+ * trace reads at the step), whose preimage it carries inline,
+ * or a required-signer item, whose field it carries inline beside the proof
+ * that the signer signed. */
 export type PhaseEvidence =
   | undefined
-  | Readonly<{ fieldIndex: number; itemIndex: number }>;
+  | Readonly<{ fieldIndex: number; itemIndex?: number }>
+  | Readonly<{ requiredSigner: true }>;
 
 /**
  * The drive of the successor's thread through the step of `phase` after our
@@ -43,6 +51,7 @@ export const phaseDrive = ({
   at,
   minFeeA,
   failingReferenceInputs,
+  failingSigners,
 }: {
   readonly from: number;
   readonly phase: ValidationTracePhase;
@@ -54,6 +63,8 @@ export const phaseDrive = ({
   /** How many reference inputs the failing transaction reads; by default
    * none. */
   readonly failingReferenceInputs?: number;
+  /** Who signs the failing transaction beside its owner. */
+  readonly failingSigners?: ScenarioSigners;
 }) => {
   const resolution = PHASE_RESOLUTIONS[phase];
   const semanticHolder: ValidationTracePhaseHolder =
@@ -73,6 +84,7 @@ export const phaseDrive = ({
       ...(failingReferenceInputs === undefined
         ? {}
         : { failingReferenceInputs }),
+      ...(failingSigners === undefined ? {} : { failingSigners }),
     },
     ...(minFeeA === undefined ? {} : { minFeeA }),
     /** Our plan of the step, by the successor hash the holder keeps. */
@@ -115,8 +127,14 @@ export const phaseDrive = ({
       expect(plan.preState.phase).toBe(phase);
       expect(plan.resolverIndex).toBe(resolution.resolverIndex);
       expect(plan.semanticResolverIndex).toBe(semantic);
-      const expected = await expectedEvidence(drive.dispute(), from, evidence);
-      expect(Data.from(plan.auxiliaryCbor)).toStrictEqual(expected);
+      const auxiliary = Data.from<Constr<Data>>(plan.auxiliaryCbor);
+      const expected = await expectedEvidence(
+        drive.dispute(),
+        from,
+        evidence,
+        auxiliary,
+      );
+      expect(auxiliary).toStrictEqual(expected);
       const { evidenceCbors, ...holders } = plan.phase;
       expect(holders).toStrictEqual({
         phase,
@@ -131,22 +149,39 @@ export const phaseDrive = ({
 };
 
 /** The auxiliary evidence of the step after our trace's state `from`: none,
- * or `TransactionFieldChunkWitness` over the preimage of the field our
- * trace reads at the step, carried `Inline`. */
+ * `TransactionFieldChunkWitness` over the preimage of the field our trace
+ * reads at the step, carried `Inline`, or `RequiredSignerItemWitness` over
+ * the required-signer field carried `Inline` and the signer's membership
+ * among the transaction's signers (`plan`'s own proof, whose kind is
+ * checked). */
 const expectedEvidence = async (
   dispute: TwoThreadCase,
   from: number,
   evidence: PhaseEvidence,
+  plan: Constr<Data>,
 ): Promise<Constr<Data>> => {
   if (evidence === undefined) return Data.from(NO_AUXILIARY_WITNESS_CBOR);
   const auxiliary = (await dispute.material.trace()).witnesses[from]!.auxiliary;
+  if ("requiredSigner" in evidence) {
+    if (auxiliary?.kind !== "requiredSignerItem")
+      throw new Error("our trace reads no required signer at the step");
+    const proof = plan.fields[1];
+    expect(proof instanceof Constr && Number(proof.index)).toBe(
+      SIGNER_MEMBERSHIP_PROOF,
+    );
+    return new Constr(2, [
+      new Constr(0, [auxiliary.fieldPreimage.toString("hex")]),
+      proof!,
+    ]);
+  }
   if (auxiliary?.kind !== "transactionFieldChunk")
     throw new Error("our trace reads no field item at the step");
   expect(auxiliary.fieldIndex).toBe(evidence.fieldIndex);
-  expect(auxiliary.itemIndex).toBe(evidence.itemIndex);
+  if (evidence.itemIndex !== undefined)
+    expect(auxiliary.itemIndex).toBe(evidence.itemIndex);
   return new Constr(1, [
     BigInt(evidence.fieldIndex),
-    BigInt(evidence.itemIndex),
+    BigInt(auxiliary.itemIndex),
     new Constr(0, [auxiliary.fieldPreimage.toString("hex")]),
   ]);
 };

@@ -220,6 +220,26 @@ const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
     contract: "validationTraceDisputeInputSetsItemSemantic",
     role: "V1 validation-trace input-sets item semantic",
   },
+  {
+    contract: "validationTraceDisputeSignaturesPrepare",
+    role: "V1 validation-trace signatures prepare",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAdvanceSemantic",
+    role: "V1 validation-trace signatures advance semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAddressItemSemantic",
+    role: "V1 validation-trace signatures address item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesRequiredItemSemantic",
+    role: "V1 validation-trace signatures required item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesHandoffSemantic",
+    role: "V1 validation-trace signatures handoff semantic",
+  },
 ] as const;
 
 export const phaseResolverContracts = new Set<string>(

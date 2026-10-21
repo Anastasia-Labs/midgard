@@ -27,6 +27,7 @@ import {
   type ValidationTraceDisputeDeployment,
   type ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
+import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
 import {
@@ -112,6 +113,7 @@ export const defendTwoThreads = async ({
   phases = false,
   failingRedeemerData,
   failingReferenceInputs,
+  failingSigners,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -129,6 +131,8 @@ export const defendTwoThreads = async ({
   readonly failingRedeemerData?: Uint8Array;
   /** How many reference inputs the failing transaction reads. */
   readonly failingReferenceInputs?: number;
+  /** Who signs the failing transaction beside its owner. */
+  readonly failingSigners?: ScenarioSigners;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -161,6 +165,7 @@ export const defendTwoThreads = async ({
       ...(failingReferenceInputs === undefined
         ? {}
         : { failingReferenceInputs }),
+      ...(failingSigners === undefined ? {} : { failingSigners }),
     },
   );
   const removal =

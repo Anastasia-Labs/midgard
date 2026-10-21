@@ -78,6 +78,7 @@ export const resolutionDrive = <
     | "phases"
     | "failingRedeemerData"
     | "failingReferenceInputs"
+    | "failingSigners"
   >;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
@@ -256,6 +257,7 @@ export const resolutionDrive = <
             until: async () =>
               (installs.failingRedeemerData !== undefined ||
                 installs.failingReferenceInputs !== undefined ||
+                installs.failingSigners !== undefined ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,

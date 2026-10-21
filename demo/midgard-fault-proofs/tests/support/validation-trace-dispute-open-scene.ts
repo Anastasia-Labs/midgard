@@ -33,6 +33,7 @@ import {
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
   referenceSeedDeposits,
+  type ScenarioSigners,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
@@ -98,17 +99,20 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
  * its blocks are committed, so what it does takes none of the time a
  * dispute move has from the failing block's end. The failing transaction's
- * redeemer is `failingRedeemerData` when given, and it reads
- * `failingReferenceInputs` outputs the deposits create as reference inputs.
+ * redeemer is `failingRedeemerData` when given, it reads
+ * `failingReferenceInputs` outputs the deposits create as reference inputs,
+ * and `failingSigners` sign it beside its owner.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
   {
     failingRedeemerData,
     failingReferenceInputs = 0,
+    failingSigners,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
+    readonly failingSigners?: ScenarioSigners;
   } = {},
 ): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
@@ -201,7 +205,12 @@ export const setUpScene = async (
         ? { redeemerData: failingRedeemerData }
         : {}),
       ...(scenario === "failing"
-        ? { referenceInputs: references.outRefs }
+        ? {
+            referenceInputs: references.outRefs,
+            ...(failingSigners === undefined
+              ? {}
+              : { signers: failingSigners }),
+          }
         : {}),
       predecessorEntries: previous.entries,
       header: {

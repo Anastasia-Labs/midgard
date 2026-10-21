@@ -105,5 +105,75 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "12"],
       ],
     },
+    validationTraceDisputeSignaturesPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures prepare",
+      manifestPosition: 550,
+      publicationPosition: 545,
+      referenceRolePosition: 545,
+      commands: [],
+      validatorTitle: "fraud_proofs/validation_trace/signatures_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "4"],
+        ["resolvers", "4"],
+        ["steps", "159"],
+      ],
+    },
+    validationTraceDisputeSignaturesAdvanceSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures advance semantic",
+      manifestPosition: 551,
+      publicationPosition: 546,
+      referenceRolePosition: 546,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "6"],
+        ["steps", "13"],
+      ],
+    },
+    validationTraceDisputeSignaturesAddressItemSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures address item semantic",
+      manifestPosition: 552,
+      publicationPosition: 547,
+      referenceRolePosition: 547,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_address_item_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "7"],
+        ["steps", "14"],
+      ],
+    },
+    validationTraceDisputeSignaturesRequiredItemSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures required item semantic",
+      manifestPosition: 553,
+      publicationPosition: 548,
+      referenceRolePosition: 548,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_required_item_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "8"],
+        ["steps", "15"],
+      ],
+    },
+    validationTraceDisputeSignaturesHandoffSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures handoff semantic",
+      manifestPosition: 554,
+      publicationPosition: 549,
+      referenceRolePosition: 549,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_handoff_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "9"],
+        ["steps", "16"],
+      ],
+    },
   },
 );

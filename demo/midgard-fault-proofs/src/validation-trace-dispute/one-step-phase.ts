@@ -4,7 +4,8 @@
  * and its auxiliary evidence and hands the step to the semantic resolver
  * the evidence selects, which verifies the transition beside that evidence
  * (none, or one item of a field whose preimage the evidence carries
- * inline) and awards the step. */
+ * inline, with a required signer's proof of signing beside it) and awards
+ * the step. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -22,6 +23,13 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
   inputSetsPrepare: "validationTraceDisputeInputSetsPrepare",
   inputSetsEmptySemantic: "validationTraceDisputeInputSetsEmptySemantic",
   inputSetsItemSemantic: "validationTraceDisputeInputSetsItemSemantic",
+  signaturesPrepare: "validationTraceDisputeSignaturesPrepare",
+  signaturesAdvanceSemantic: "validationTraceDisputeSignaturesAdvanceSemantic",
+  signaturesAddressItemSemantic:
+    "validationTraceDisputeSignaturesAddressItemSemantic",
+  signaturesRequiredItemSemantic:
+    "validationTraceDisputeSignaturesRequiredItemSemantic",
+  signaturesHandoffSemantic: "validationTraceDisputeSignaturesHandoffSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -53,6 +61,16 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     resolverIndex: 3,
     prepare: "inputSetsPrepare",
     semantics: ["inputSetsEmptySemantic", "inputSetsItemSemantic"],
+  },
+  signatures: {
+    resolverIndex: 4,
+    prepare: "signaturesPrepare",
+    semantics: [
+      "signaturesAdvanceSemantic",
+      "signaturesAddressItemSemantic",
+      "signaturesRequiredItemSemantic",
+      "signaturesHandoffSemantic",
+    ],
   },
 } as const satisfies Readonly<
   Partial<
@@ -118,6 +136,16 @@ export const phaseValidators = (
  * the longest such field that fits. */
 export const VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES = 13_683;
 
+/** The same for a signatures step over an address-witness item, a field
+ * of 103-byte witnesses
+ * (tests/validation-trace-dispute-one-step-signatures-address-inline-cap.test.ts). */
+export const VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES = 13_701;
+
+/** The same for a signatures step over a required-signer item, a field of
+ * 30-byte key hashes, which may repeat one signer
+ * (tests/validation-trace-dispute-one-step-signatures-required-inline-cap.test.ts). */
+export const VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES = 13_623;
+
 /** The auxiliary evidence each semantic resolver that takes any verifies
  * the transition beside: its constructor among the auxiliary witnesses, the
  * position among its fields of the carriage that delivers the field
@@ -143,6 +171,19 @@ const PHASE_SEMANTIC_EVIDENCE: Readonly<
     carriage: 2,
     inlineMaxPreimageBytes:
       VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES,
+  },
+  signaturesAddressItemSemantic: {
+    auxiliary: 1,
+    carriage: 2,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES,
+  },
+  // `RequiredSignerItemWitness { carriage, signer_proof }`.
+  signaturesRequiredItemSemantic: {
+    auxiliary: 2,
+    carriage: 0,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES,
   },
 });
 

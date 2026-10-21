@@ -760,4 +760,11 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace input-sets prepare": "V1VtInputSetsPrepare",
   "V1 validation-trace input-sets empty semantic": "V1VtInputSetsEmptySem",
   "V1 validation-trace input-sets item semantic": "V1VtInputSetsItemSem",
+  "V1 validation-trace signatures prepare": "V1VtSignaturesPrepare",
+  "V1 validation-trace signatures advance semantic": "V1VtSigAdvanceSem",
+  "V1 validation-trace signatures address item semantic":
+    "V1VtSigAddressItemSem",
+  "V1 validation-trace signatures required item semantic":
+    "V1VtSigRequiredItemSem",
+  "V1 validation-trace signatures handoff semantic": "V1VtSigHandoffSem",
 } as const);

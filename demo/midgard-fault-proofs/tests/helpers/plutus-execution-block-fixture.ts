@@ -168,17 +168,37 @@ export const referenceSeedDeposits = (count: number) => {
   return { deposits, outRefs };
 };
 
+/** Who signs a script spend beyond its owner: `extraSigners` other keys,
+ * each adding an address witness, and how many times the spend lists the
+ * owner's key among its required signers (`requiredOwner`). */
+export type ScenarioSigners = Readonly<{
+  extraSigners?: number;
+  requiredOwner?: number;
+}>;
+
+/** The `index`th key beyond the owner's. */
+const extraSignerKey = (index: number) => {
+  const bytes = Buffer.alloc(32, 0x73);
+  bytes.writeUInt16BE(index);
+  return CML.PrivateKey.from_normal_bytes(bytes);
+};
+
 /** The transaction the scenario commits, over its seed output; a script
- * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, and it
- * reads `referenceInputs` (out-refs) as reference inputs. */
+ * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, it
+ * reads `referenceInputs` (out-refs) as reference inputs, and `signers`
+ * sign it beside its owner. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
   redeemerData?: Uint8Array,
   referenceInputs: readonly Buffer[] = [],
+  { extraSigners = 0, requiredOwner = 0 }: ScenarioSigners = {},
 ) => {
   const outputs = [makeOutput(SEED_LOVELACE)];
   const key = ownerKey();
+  const extraKeys = Array.from({ length: extraSigners }, (_, index) =>
+    extraSignerKey(index),
+  );
   try {
     if (scenario === "no_redeemers")
       return makeNativeTx({
@@ -197,7 +217,14 @@ export const scenarioTransaction = (
         : {}),
       ...(scenario === "unsigned_required_signer"
         ? { requiredSignerItems: [Buffer.alloc(28, 0x71)] }
-        : {}),
+        : requiredOwner > 0
+          ? {
+              requiredSignerItems: Array.from({ length: requiredOwner }, () =>
+                Buffer.from(ownerKeyHash(), "hex"),
+              ),
+            }
+          : {}),
+      ...(extraKeys.length > 0 ? { extraVkeyWitnessKeys: extraKeys } : {}),
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -209,6 +236,7 @@ export const scenarioTransaction = (
     });
   } finally {
     key.free();
+    for (const extra of extraKeys) extra.free();
   }
 };
 
@@ -253,6 +281,8 @@ export type PlutusExecutionBlockOptions = {
   /** The out-refs the spend reads as reference inputs, each held by the
    * predecessor ledger; by default none. */
   readonly referenceInputs?: readonly Buffer[];
+  /** Who signs the script spend beside its owner; by default no one. */
+  readonly signers?: ScenarioSigners;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -263,6 +293,7 @@ export const plutusExecutionBlockFixture = async (
     predecessorEntries: requestedPredecessor,
     redeemerData,
     referenceInputs,
+    signers,
   }: PlutusExecutionBlockOptions = {},
 ) => {
   const scriptSeed = depositSeed(seedByte, scriptCredential(scenario));
@@ -276,6 +307,7 @@ export const plutusExecutionBlockFixture = async (
     seed,
     redeemerData,
     referenceInputs,
+    signers,
   );
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),

@@ -97,7 +97,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     compactBinding: title("validationTraceDisputeCompactBindingPrepare"),
     staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesPrepare"),
     inputSets: title("validationTraceDisputeInputSetsPrepare"),
-    signatures: "fraud_proofs/validation_trace/signatures_v1.main.spend",
+    signatures: title("validationTraceDisputeSignaturesPrepare"),
     phaseANativeScripts:
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
     phaseAScriptPreconditions:
@@ -121,14 +121,14 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesSemantic"),
     inputSetsEmpty: title("validationTraceDisputeInputSetsEmptySemantic"),
     inputSetsItem: title("validationTraceDisputeInputSetsItemSemantic"),
-    signaturesAdvance:
-      "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
-    signaturesAddressItem:
-      "fraud_proofs/validation_trace/signatures_address_item_semantic_v1.main.spend",
-    signaturesRequiredItem:
-      "fraud_proofs/validation_trace/signatures_required_item_semantic_v1.main.spend",
-    signaturesHandoff:
-      "fraud_proofs/validation_trace/signatures_handoff_semantic_v1.main.spend",
+    signaturesAdvance: title("validationTraceDisputeSignaturesAdvanceSemantic"),
+    signaturesAddressItem: title(
+      "validationTraceDisputeSignaturesAddressItemSemantic",
+    ),
+    signaturesRequiredItem: title(
+      "validationTraceDisputeSignaturesRequiredItemSemantic",
+    ),
+    signaturesHandoff: title("validationTraceDisputeSignaturesHandoffSemantic"),
     phaseANativeScriptsAdvance: title(
       "validationTraceDisputePhaseANativeScriptsAdvanceSemantic",
     ),
