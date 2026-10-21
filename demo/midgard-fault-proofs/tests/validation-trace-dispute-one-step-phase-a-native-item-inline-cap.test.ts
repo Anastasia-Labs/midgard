@@ -12,7 +12,7 @@ import {
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { fromHex } from "@lucid-evolution/lucid";
 
-import { VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase.js";
+import { VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase-evidence.js";
 import { FAILING_SCRIPT } from "./helpers/plutus-execution-block-fixture.js";
 import { applyExpectedScriptParams } from "./support/expected-parameter-application.js";
 import { describeInlineCap } from "./support/validation-trace-dispute-one-step-inline-cap.js";

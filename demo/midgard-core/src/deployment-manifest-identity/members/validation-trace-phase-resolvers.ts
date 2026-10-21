@@ -205,5 +205,20 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "161"],
       ],
     },
+    validationTraceDisputeResolveInputsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace resolve-inputs prepare",
+      manifestPosition: 557,
+      publicationPosition: 552,
+      referenceRolePosition: 552,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "7"],
+        ["resolvers", "7"],
+        ["steps", "162"],
+      ],
+    },
   },
 );

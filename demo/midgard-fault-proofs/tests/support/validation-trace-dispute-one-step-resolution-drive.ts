@@ -29,7 +29,10 @@ import {
   type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
-import { phaseYieldReads } from "../../src/validation-trace-dispute/one-step-phase.js";
+import {
+  phaseYieldListReads,
+  phaseYieldReads,
+} from "../../src/validation-trace-dispute/one-step-phase.js";
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
@@ -150,7 +153,10 @@ export const resolutionDrive = <
       utxo: before.utxo,
       prover,
       ...(plan.kind === "phase" && plan.phase.semantic === at
-        ? { phaseYield: phaseYieldReads(deployment, plan.phase) }
+        ? {
+            phaseYield: phaseYieldReads(deployment, plan.phase),
+            phaseYieldList: phaseYieldListReads(deployment, plan.phase),
+          }
         : {}),
     });
     const rewritten = { ...honest, ...rewrite(honest, plan) };

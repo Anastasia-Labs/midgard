@@ -5,6 +5,7 @@
  * tokens and the script-decode deployment whose records it reads; the
  * canonical-decode holders; and the phase holders, with the yields their
  * semantic resolvers invoke under their roles' authentication tokens. */
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
 import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
@@ -33,8 +34,11 @@ import {
   type ValidationTraceContextStageHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import {
+  isValidationTracePhase,
   PHASE_HOLDERS,
+  PHASE_RESOLUTIONS,
   phaseValidators,
+  phaseYields,
   type ValidationTracePhaseHolder,
   type ValidationTracePhaseYield,
 } from "../../src/validation-trace-dispute/one-step-phase.js";
@@ -267,31 +271,36 @@ export const publishPhaseReferences = async (
   return Object.freeze(references as Record<ValidationTracePhaseHolder, UTxO>);
 };
 
-/** Each phase yield's role. */
-const PHASE_YIELD_ROLES = Object.freeze({
-  phaseANativeItemNative:
-    "V1 validation-trace phase-A native item native yield",
-  phaseANativeItemForeign:
-    "V1 validation-trace phase-A native item foreign yield",
-} as const satisfies Readonly<Record<ValidationTracePhaseYield, string>>);
+/** The role of the phase yield `name`: its manifest member's. */
+const yieldRole = (name: ValidationTracePhaseYield) => {
+  const role = Object.values(DEPLOYMENT_MEMBERS).find(
+    ({ family, familyPaths }) =>
+      family === "validationTraceDispute" &&
+      familyPaths.some(([kind, path]) => kind === "yields" && path === name),
+  )?.referenceRole;
+  if (role === undefined || role === null)
+    throw new Error(`the ${name} yield has no manifest role`);
+  return role as Parameters<typeof publishAuthenticated>[1];
+};
 
 /** Publishes the yields the phases' semantic resolvers invoke, under their
  * roles' authentication tokens; the scene's setup registers the yields'
  * reward accounts. */
 export const publishPhaseYieldReferences = async (
   scene: SceneContracts,
-): Promise<Readonly<Record<ValidationTracePhaseYield, UTxO>>> => {
+): Promise<Readonly<Partial<Record<ValidationTracePhaseYield, UTxO>>>> => {
   const references: Partial<Record<ValidationTracePhaseYield, UTxO>> = {};
-  for (const [name, role] of Object.entries(PHASE_YIELD_ROLES) as [
-    ValidationTracePhaseYield,
-    (typeof PHASE_YIELD_ROLES)[ValidationTracePhaseYield],
-  ][])
+  for (const name of new Set(
+    Object.keys(PHASE_RESOLUTIONS)
+      .filter(isValidationTracePhase)
+      .flatMap(phaseYields),
+  ))
     references[name] = await publishAuthenticated(
       scene,
-      role,
+      yieldRole(name),
       scene.chain.yields[name].withdrawalScript,
     );
-  return Object.freeze(references as Record<ValidationTracePhaseYield, UTxO>);
+  return Object.freeze(references);
 };
 
 /**

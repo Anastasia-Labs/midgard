@@ -3,7 +3,7 @@
  * 40-byte out-refs the prepare and semantic moves carry whole, inline: at,
  * one item over, and far over the inline input-sets limit
  * (support/validation-trace-dispute-one-step-inline-cap.ts). */
-import { VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase.js";
+import { VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase-evidence.js";
 import { describeInlineCap } from "./support/validation-trace-dispute-one-step-inline-cap.js";
 
 describeInlineCap({

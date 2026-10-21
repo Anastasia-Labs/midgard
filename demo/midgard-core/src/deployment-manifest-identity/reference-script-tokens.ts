@@ -771,4 +771,5 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtPhaseANativePrepare",
   "V1 validation-trace phase-A script preconditions prepare":
     "V1VtPhaseAPrecondPrepare",
+  "V1 validation-trace resolve-inputs prepare": "V1VtResolveInputsPrepare",
 } as const);

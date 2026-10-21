@@ -312,6 +312,10 @@ export const planValidationTraceOneStep = async ({
     const phase = planValidationTracePhaseStep({
       ...common,
       phase: preState.phase,
+      successorWitnessCbor:
+        successor.phase === "terminal"
+          ? undefined
+          : trace.witnesses[stateIndex + 1]?.cbor,
     });
     if ("reason" in phase) return unsupported(phase.reason);
     return {

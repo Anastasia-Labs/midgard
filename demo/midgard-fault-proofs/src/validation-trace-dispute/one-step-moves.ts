@@ -50,6 +50,7 @@ import {
 } from "./one-step-holders.js";
 import {
   PHASE_CHALLENGER_SUCCESSOR_HASH,
+  phaseYieldListReads,
   phaseYieldReads,
 } from "./one-step-phase.js";
 import {
@@ -389,7 +390,10 @@ export const captureValidationTraceResolve = async (
       ? { item: contextItemReads(deployment, pendingCbor) }
       : {}),
     ...(plan.kind === "phase" && from.holder === plan.phase.semantic
-      ? { phaseYield: phaseYieldReads(deployment, plan.phase) }
+      ? {
+          phaseYield: phaseYieldReads(deployment, plan.phase),
+          phaseYieldList: phaseYieldListReads(deployment, plan.phase),
+        }
       : {}),
   });
   const to = validationTraceOneStepHolder(deployment, hop.next);

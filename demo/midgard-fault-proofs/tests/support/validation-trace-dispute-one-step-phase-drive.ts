@@ -8,6 +8,7 @@
  * (validation-trace-dispute-one-step-resolution-drive.ts). */
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -16,6 +17,7 @@ import {
   PHASE_CHALLENGER_SUCCESSOR_HASH,
   PHASE_RESOLUTIONS,
   phaseSemanticHop,
+  phaseYieldListReads,
   phaseYieldReads,
   type ValidationTracePhase,
   type ValidationTracePhaseHolder,
@@ -37,9 +39,16 @@ const SIGNER_MEMBERSHIP_PROOF = 1;
  * trace reads at the step), whose preimage it carries inline, with the
  * yield `itemYield` its semantic resolver invokes beside it, at its
  * `yield_kind` `kind`, if any; or a required-signer item, whose field it
- * carries inline beside the proof that the signer signed. */
+ * carries inline beside the proof that the signer signed; or our trace's
+ * own auxiliary witness at the step, of the constructor `auxiliary`, whose
+ * fields the semantic resolver takes, or, with `yieldList`, from which it
+ * derives its evidence, invoking the yields `yieldList` in order. */
 export type PhaseEvidence =
   | undefined
+  | Readonly<{
+      auxiliary: number;
+      yieldList?: readonly ValidationTracePhaseYield[];
+    }>
   | Readonly<{
       fieldIndex: number;
       itemIndex?: number;
@@ -89,6 +98,10 @@ export const phaseDrive = ({
   const itemYield =
     evidence !== undefined && "itemYield" in evidence
       ? evidence.itemYield
+      : undefined;
+  const yieldList =
+    evidence !== undefined && "yieldList" in evidence
+      ? evidence.yieldList
       : undefined;
   const drive = resolutionDrive({
     from,
@@ -158,6 +171,24 @@ export const phaseDrive = ({
         return { redeemer: hop.redeemer, reads: hop.reads! };
       }),
 
+    /** The semantic resolver's hop invoking the yields `other` in place of
+     * those its evidence names. */
+    otherYieldList: async (other: readonly ValidationTracePhaseYield[]) =>
+      await drive.rewrittenHop((_, plan) => {
+        const hop = phaseSemanticHop({
+          prover: "",
+          transitionCbor: plan.transitionCbor,
+          evidenceCbors: plan.phase.evidenceCbors,
+          yieldList: phaseYieldListReads(drive.dispute().deployment, {
+            ...plan.phase,
+            yieldList: other,
+          })!,
+        });
+        return hop.reads === undefined
+          ? { redeemer: hop.redeemer }
+          : { redeemer: hop.redeemer, reads: hop.reads };
+      }),
+
     /** Our plan sends the thread's step through the phase's resolver to the
      * semantic resolver its evidence selects, committing the transition
      * beside that evidence: none, or the item of the field our trace reads
@@ -182,10 +213,12 @@ export const phaseDrive = ({
         prepare: resolution.prepare,
         semantic: semanticHolder,
         ...(itemYield === undefined ? {} : { itemYield }),
+        ...(yieldList === undefined ? {} : { yieldList }),
       });
-      expect(evidenceCbors.map((field) => Data.from(field))).toStrictEqual(
-        expected.fields,
-      );
+      if (yieldList === undefined)
+        expect(evidenceCbors.map((field) => Data.from(field))).toStrictEqual(
+          expected.fields,
+        );
     },
   };
 };
@@ -203,7 +236,18 @@ const expectedEvidence = async (
   plan: Constr<Data>,
 ): Promise<Constr<Data>> => {
   if (evidence === undefined) return Data.from(NO_AUXILIARY_WITNESS_CBOR);
-  const auxiliary = (await dispute.material.trace()).witnesses[from]!.auxiliary;
+  const trace = await dispute.material.trace();
+  if ("auxiliary" in evidence) {
+    const own = Data.from<Constr<Data>>(
+      buildValidationOneStepArgument({
+        trace,
+        stateIndex: from,
+      }).auxiliaryCbor.toString("hex"),
+    );
+    expect(Number(own.index)).toBe(evidence.auxiliary);
+    return own;
+  }
+  const auxiliary = trace.witnesses[from]!.auxiliary;
   if ("requiredSigner" in evidence) {
     if (auxiliary?.kind !== "requiredSignerItem")
       throw new Error("our trace reads no required signer at the step");

@@ -58,6 +58,7 @@ import {
 import {
   isValidationTracePhaseHolder,
   phaseSemanticHop,
+  type ValidationTracePhaseYieldListReads,
   type ValidationTracePhaseYieldReads,
 } from "./one-step-phase.js";
 import {
@@ -178,6 +179,7 @@ export const validationTraceHop = ({
   selection,
   item,
   phaseYield,
+  phaseYieldList,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
@@ -186,6 +188,7 @@ export const validationTraceHop = ({
   readonly selection?: ValidationTraceSelectionReads;
   readonly item?: ValidationTraceContextItemReads;
   readonly phaseYield?: ValidationTracePhaseYieldReads | undefined;
+  readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
   if (isValidationTraceContextHolder(holder))
@@ -222,6 +225,9 @@ export const validationTraceHop = ({
           transitionCbor: plan.transitionCbor,
           evidenceCbors: plan.phase.evidenceCbors,
           ...(phaseYield === undefined ? {} : { itemYield: phaseYield }),
+          ...(phaseYieldList === undefined
+            ? {}
+            : { yieldList: phaseYieldList }),
         });
   }
   switch (holder) {
