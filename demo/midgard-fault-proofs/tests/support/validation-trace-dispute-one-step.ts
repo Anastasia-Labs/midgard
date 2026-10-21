@@ -43,6 +43,11 @@ import {
   type ValidationTracePhaseYield,
 } from "../../src/validation-trace-dispute/one-step-phase.js";
 import { CEK_RESOLVER_INDEX } from "../../src/validation-trace-dispute/one-step-plan.js";
+import {
+  SCRIPT_SOURCES_REDEEMER_HOLDERS,
+  scriptSourcesRedeemerValidators,
+  type ValidationTraceScriptSourcesRedeemerHolder,
+} from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import type {
   ValidationTraceDisputeDeployment,
   ValidationTraceOneStepReferences,
@@ -96,6 +101,9 @@ export const oneStepScripts = (
     contextSettle: context.settle,
     ...canonicalDecodeValidators(chain),
     ...phaseValidators(chain),
+    ...scriptSourcesRedeemerValidators(
+      chain.scriptSourcesStageOneRedeemerStages,
+    ),
   });
 };
 
@@ -269,6 +277,30 @@ export const publishPhaseReferences = async (
       })
     ).utxo;
   return Object.freeze(references as Record<ValidationTracePhaseHolder, UTxO>);
+};
+
+/** Publishes the reference scripts of the script-sources redeemer item
+ * chain's holders past its entry. */
+export const publishScriptSourcesRedeemerReferences = async (
+  scene: SceneContracts,
+): Promise<
+  NonNullable<ValidationTraceOneStepReferences["scriptSourcesRedeemers"]>
+> => {
+  const scripts = oneStepScripts(scene);
+  const references: Partial<
+    Record<ValidationTraceScriptSourcesRedeemerHolder, UTxO>
+  > = {};
+  for (const holder of SCRIPT_SOURCES_REDEEMER_HOLDERS)
+    references[holder] = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: scripts[holder].spendingScript,
+        label: holder,
+      })
+    ).utxo;
+  return Object.freeze(
+    references as Record<ValidationTraceScriptSourcesRedeemerHolder, UTxO>,
+  );
 };
 
 /** The role of the phase yield `name`: its manifest member's. */

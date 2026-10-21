@@ -29,28 +29,33 @@ export const VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES = 13_683;
 
 /** The same for a signatures step over an address-witness item, a field
  * of 103-byte witnesses
- * (tests/validation-trace-dispute-one-step-signatures-address-inline-cap.test.ts). */
+ * (the validation-trace dispute one-step signatures-address
+ * inline-cap test). */
 export const VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES = 13_701;
 
 /** The same for a signatures step over a required-signer item, a field of
  * 30-byte key hashes, which may repeat one signer
- * (tests/validation-trace-dispute-one-step-signatures-required-inline-cap.test.ts). */
+ * (the validation-trace dispute one-step signatures-required
+ * inline-cap test). */
 export const VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES = 13_623;
 
 /** The same for a phase-A native scripts step over a witness script, a
  * field of versioned scripts of any length, so measured to the byte
- * (tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts). */
+ * (the validation-trace dispute one-step phase-a-native-item
+ * inline-cap test). */
 export const VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES = 13_659;
 
 /** The same for a script-sources step over a witness script, also
  * measured to the byte; its moves carry more beside the field than a
  * phase-A native scripts step's do
- * (tests/validation-trace-dispute-one-step-script-sources-witness-script-inline-cap.test.ts). */
+ * (the validation-trace dispute one-step script-sources-witness-script
+ * inline-cap test). */
 export const VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES = 13_544;
 
 /** The same for a script-sources step over the redeemer field, a field of
  * redeemers of any length, so measured to the byte
- * (tests/validation-trace-dispute-one-step-script-sources-redeemer-inline-cap.test.ts). */
+ * (the validation-trace dispute one-step script-sources-redeemer
+ * inline-cap test). */
 export const VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES = 13_508;
 
 /** The auxiliary evidence each semantic resolver that takes any verifies

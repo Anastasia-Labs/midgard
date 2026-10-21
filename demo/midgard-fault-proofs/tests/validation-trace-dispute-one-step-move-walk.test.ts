@@ -137,6 +137,7 @@ describe("validation-trace dispute one-step moves walked under their authority",
       contexts: true,
       canonicalDecode: true,
       phases: true,
+      scriptSourcesRedeemers: true,
       wrap: (scene) => captureMoves(scene, moves),
     });
     const { scene, runner, a, b, deployment } = dispute;

@@ -29,6 +29,7 @@ import {
   type ValidationTracePhaseYieldListReads,
   type ValidationTracePhaseYieldReads,
 } from "./one-step-phase-yields.js";
+import { SCRIPT_SOURCES_REDEEMER_SEMANTIC } from "./one-step-script-sources-redeemer.js";
 
 export {
   phaseYieldListReads,
@@ -112,6 +113,8 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
     "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
   scriptSourcesStageSevenFinishSemantic:
     "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
+  [SCRIPT_SOURCES_REDEEMER_SEMANTIC]:
+    "validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -183,8 +186,11 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     ],
   },
   // The semantic resolvers that verify the transition beside the auxiliary
-  // evidence our trace carries, or none; the rest, whose resolution invokes
-  // a yield or runs over several hops, are not yet driven.
+  // evidence our trace carries, or none, invoking beside it the yields its
+  // ledger-output proof names, if any; and the redeemer normalization
+  // semantic resolver, whose resolution runs on through the redeemer item
+  // chain when the deployment publishes it
+  // (one-step-script-sources-redeemer.ts). The rest are not yet driven.
   scriptSources: {
     resolverIndex: 8,
     prepare: "scriptSourcesPrepare",
@@ -217,7 +223,7 @@ export const PHASE_RESOLUTIONS = Object.freeze({
       undefined,
       undefined,
       "scriptSourcesStageSevenFinishSemantic",
-      undefined,
+      SCRIPT_SOURCES_REDEEMER_SEMANTIC,
     ],
   },
 } as const satisfies Readonly<
@@ -320,6 +326,7 @@ export const planValidationTracePhaseStep = ({
   transitionCbor,
   auxiliaryCbor,
   successorWitnessCbor,
+  redeemerChain = false,
 }: {
   readonly phase: ValidationTracePhase;
   readonly resolverIndex: number;
@@ -327,6 +334,9 @@ export const planValidationTracePhaseStep = ({
   readonly transitionCbor: string;
   readonly auxiliaryCbor: string;
   readonly successorWitnessCbor: Uint8Array | undefined;
+  /** Whether the deployment publishes the script-sources redeemer item
+   * chain past its entry. */
+  readonly redeemerChain?: boolean;
 }): ValidationTracePhaseStep | Readonly<{ reason: string }> => {
   const resolution = PHASE_RESOLUTIONS[phase];
   if (resolverIndex !== resolution.resolverIndex)
@@ -348,6 +358,13 @@ export const planValidationTracePhaseStep = ({
       evidenceCbors: Object.freeze(evidenceCbors),
       ...(itemYield === undefined ? {} : { itemYield }),
     });
+  // The redeemer item chain derives its states from the evidence whole.
+  if (semantic === SCRIPT_SOURCES_REDEEMER_SEMANTIC)
+    return redeemerChain
+      ? step([])
+      : {
+          reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
+        };
   const derived = LEDGER_OUTPUT_PROOF_SEMANTICS[semantic];
   if (derived !== undefined) {
     const { evidenceCbors, yieldList } = derived.evidence({

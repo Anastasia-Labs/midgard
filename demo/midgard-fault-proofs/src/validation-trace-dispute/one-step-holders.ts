@@ -10,7 +10,9 @@
  * settle; for a canonical-decode step, its resolver and semantic resolvers
  * and the item's stages (one-step-canonical-decode.ts); for a step of
  * another phase, the phase's resolver and semantic resolvers
- * (one-step-phase.ts); and the award.
+ * (one-step-phase.ts), and past the script-sources redeemer normalization
+ * semantic resolver, the redeemer item chain
+ * (one-step-script-sources-redeemer.ts); and the award.
  * Each holder is a deployment contract, found by its spending address; the
  * thread token, minted once for its defender, is what makes an output there
  * ours. */
@@ -57,6 +59,13 @@ import {
   type SingleHopCoreGroup,
   type ValidationTraceOneStepDrives,
 } from "./one-step-plan.js";
+import {
+  isSharedRedeemerItemHolder,
+  SCRIPT_SOURCES_REDEEMER_CONTRACT_NAMES,
+  SCRIPT_SOURCES_REDEEMER_HOLDERS,
+  scriptSourcesRedeemerValidators,
+  type ValidationTraceScriptSourcesRedeemerOwnHolder,
+} from "./one-step-script-sources-redeemer.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 export type ValidationTraceArmHolder =
@@ -98,6 +107,7 @@ export type ValidationTraceOneStepHolder =
   | "contextSettle"
   | ValidationTraceCanonicalDecodeHolder
   | ValidationTracePhaseHolder
+  | ValidationTraceScriptSourcesRedeemerOwnHolder
   | "award";
 
 export type ValidationTraceOneStepContract = Readonly<{
@@ -147,6 +157,7 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   contextSettle: "validationTraceDisputeCekContextSettle",
   ...CANONICAL_DECODE_CONTRACT_NAMES,
   ...PHASE_CONTRACT_NAMES,
+  ...SCRIPT_SOURCES_REDEEMER_CONTRACT_NAMES,
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
 >);
@@ -216,6 +227,10 @@ export const validationTraceOneStepDrives = (
   deployment: ValidationTraceDisputeDeployment,
 ): ValidationTraceOneStepDrives =>
   Object.freeze({
+    // The redeemer normalization semantic resolver drives a step only with
+    // the redeemer item chain past it; without the chain, that step waits.
+    scriptSourcesRedeemers:
+      deployment.references.oneStep?.scriptSourcesRedeemers !== undefined,
     decodeRecords: validationTraceDrivesSelections(deployment),
     contexts: deployment.references.oneStep?.cekContext !== undefined,
     canonicalDecode:
@@ -269,6 +284,10 @@ export const validationTraceOneStepContracts = (
   const decoders = canonicalDecodeValidators(chain);
   const phases = references.phases ?? {};
   const resolvers = phaseValidators(chain);
+  const redeemers = references.scriptSourcesRedeemers;
+  const redeemerChain = scriptSourcesRedeemerValidators(
+    chain.scriptSourcesStageOneRedeemerStages,
+  );
   return Object.freeze([
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
@@ -321,6 +340,15 @@ export const validationTraceOneStepContracts = (
         ? []
         : [contract(holder, resolvers[holder], reference)];
     }),
+    // The holders the CEK item chain shares are listed once.
+    ...(redeemers === undefined
+      ? []
+      : SCRIPT_SOURCES_REDEEMER_HOLDERS.filter(
+          (holder) =>
+            context === undefined || !isSharedRedeemerItemHolder(holder),
+        ).map((holder) =>
+          contract(holder, redeemerChain[holder], redeemers[holder]),
+        )),
     contract("award", chain.award, undefined),
   ]);
 };

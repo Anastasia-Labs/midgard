@@ -34,6 +34,7 @@ import {
   phaseYieldReads,
 } from "../../src/validation-trace-dispute/one-step-phase.js";
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
+import { scriptSourcesRedeemerReads } from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
@@ -79,7 +80,9 @@ export const resolutionDrive = <
   readonly installs: Pick<
     Parameters<typeof defendTwoThreads>[0],
     | "canonicalDecode"
+    | "contexts"
     | "phases"
+    | "scriptSourcesRedeemers"
     | "failingRedeemerData"
     | "failingReferenceInputs"
     | "failingSigners"
@@ -157,6 +160,9 @@ export const resolutionDrive = <
             phaseYield: phaseYieldReads(deployment, plan.phase),
             phaseYieldList: phaseYieldListReads(deployment, plan.phase),
           }
+        : {}),
+      ...(plan.kind === "phase"
+        ? { redeemerChain: scriptSourcesRedeemerReads(deployment, undefined) }
         : {}),
     });
     const rewritten = { ...honest, ...rewrite(honest, plan) };

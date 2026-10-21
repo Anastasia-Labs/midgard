@@ -11,7 +11,6 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
-import { findScriptDecodeRecord } from "../script-decode/record.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type {
   ValidationTraceCaseHistory,
@@ -33,14 +32,14 @@ import {
 import {
   buildValidationTraceHop,
   validationTraceHop,
-  type ValidationTraceSelectionReads,
 } from "./one-step-builders.js";
 import { CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH } from "./one-step-canonical-decode.js";
 import { isValidationTraceContextHolder } from "./one-step-context-hops.js";
 import { isValidationTraceContextItemChainHolder } from "./one-step-context-item-holders.js";
 import {
-  contextItemPending,
   contextItemReads,
+  redeemerItemCarried,
+  type ValidationTraceRedeemerItemCarried,
 } from "./one-step-context-item-hops.js";
 import {
   type ValidationTraceOneStepContract,
@@ -59,6 +58,12 @@ import {
   type ValidationTraceOneStepPlan,
   type ValidationTraceOneStepPlanning,
 } from "./one-step-plan.js";
+import {
+  isScriptSourcesRedeemerOwnHolder,
+  PREPARED_CHALLENGER_SUCCESSOR_HASH,
+  scriptSourcesRedeemerReads,
+} from "./one-step-script-sources-redeemer.js";
+import { validationTraceSelectionReads } from "./one-step-selection-reads.js";
 import { validationTraceOneStepProver } from "./thread-observation.js";
 import { isThreadMaterial } from "./threads.js";
 import {
@@ -153,8 +158,8 @@ export const captureValidationTraceEnterResolution = async (
  * the staged context once more, and past the redeemer select authenticate,
  * the selection once more, and the purpose or initial pending again, and
  * past the finalize authenticate, the pending finalization once more. A
- * holder of the shared item chain keeps it in the pending item step alone
- * (contextItemPending). */
+ * holder of the shared item chain keeps it in the state the thread carried
+ * into the chain's entry alone (redeemerItemCarried). */
 const CHALLENGER_SUCCESSOR_HASH = {
   prepare: [1, 0, 3],
   core: [1, 0, 1, 3],
@@ -182,8 +187,13 @@ const CHALLENGER_SUCCESSOR_HASH = {
   ...PHASE_CHALLENGER_SUCCESSOR_HASH,
 } as const;
 
-/** Where the pending item step keeps our successor's hash. */
-const PENDING_CHALLENGER_SUCCESSOR_HASH = [0, 0, 0, 1, 3] as const;
+/** Where the state each item chain's entry took keeps our successor's
+ * hash: the CEK item step's pending step, and the script-sources redeemer
+ * normalization step's prepared resolution. */
+const CARRIED_CHALLENGER_SUCCESSOR_HASH = {
+  cek: [0, 0, 0, 1, 3],
+  scriptSources: PREPARED_CHALLENGER_SUCCESSOR_HASH,
+} as const;
 
 const challengerSuccessorPath = (
   holder: ValidationTraceOneStepContract["holder"],
@@ -243,7 +253,7 @@ const resolvingThread = async (
  * The plan the thread `utxo` at `holder` resolves, from our trace in
  * `material`: at the boundary, by its case thread `caseThread`; past it, by
  * our successor's hash its holder keeps, or, along the shared item chain,
- * its pending item step `pendingCbor` keeps.
+ * the state it carried into the chain's entry, `carried`, keeps.
  */
 const resolvingPlan = async ({
   deployment,
@@ -251,14 +261,14 @@ const resolvingPlan = async ({
   utxo,
   holder,
   caseThread,
-  pendingCbor,
+  carried,
 }: {
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly material: ValidationTraceClaimMaterial | undefined;
   readonly utxo: UTxO;
   readonly holder: ValidationTraceOneStepContract["holder"];
   readonly caseThread: SDK.CaseThread | undefined;
-  readonly pendingCbor: string | undefined;
+  readonly carried: ValidationTraceRedeemerItemCarried | undefined;
 }): Promise<ValidationTraceOneStepPlan> => {
   const drives = validationTraceOneStepDrives(deployment);
   if (caseThread !== undefined) {
@@ -276,12 +286,12 @@ const resolvingPlan = async ({
     await planValidationTraceOneStep({
       material,
       challengerHighHash: Data.from<string>(
-        pendingCbor === undefined
+        carried === undefined
           ? plutusConstrFieldCbor(utxo.datum!, [
               ...challengerSuccessorPath(holder),
             ])
-          : plutusConstrFieldCbor(pendingCbor, [
-              ...PENDING_CHALLENGER_SUCCESSOR_HASH,
+          : plutusConstrFieldCbor(carried.stateCbor, [
+              ...CARRIED_CHALLENGER_SUCCESSOR_HASH[carried.carrier],
             ]),
       ),
       ...drives,
@@ -289,62 +299,9 @@ const resolvingPlan = async ({
   );
 };
 
-/**
- * What the selection resolver's hop of `plan` reads on `deployment`: the
- * selection's yields and the selected script's decode record, which the
- * script-decode prerequisite has made before the thread entered its
- * resolution.
- */
-const selectionReads = async ({
-  input,
-  plan,
-}: {
-  readonly input: MaterialInput;
-  readonly plan: ValidationTraceOneStepPlan;
-}): Promise<ValidationTraceSelectionReads> => {
-  const { lucid, deployment, material } = input;
-  const references = deployment.references.oneStep?.cekSelection;
-  const { scriptDecode } = deployment;
-  if (
-    plan.kind !== "selection" ||
-    references === undefined ||
-    scriptDecode === undefined ||
-    material === undefined
-  )
-    throw new Error(
-      "validation-trace selection hop has no CEK script selection to drive",
-    );
-  let record: UTxO | undefined;
-  if (plan.script !== undefined) {
-    record = await findScriptDecodeRecord({
-      lucid,
-      deployment: scriptDecode,
-      scriptHashHex: plan.script.scriptHashHex,
-    });
-    if (record === undefined)
-      throw new Error(
-        `validation-trace selection's script ${plan.script.scriptHashHex} has no decode record`,
-      );
-  }
-  const { cekSelectionAuthenticate, cekSelectionSuccessor } =
-    deployment.chain.yields;
-  return Object.freeze({
-    trace: await material.trace(),
-    yields: {
-      references: [references.authenticate, references.successor] as const,
-      scripts: [
-        cekSelectionAuthenticate.withdrawalScript,
-        cekSelectionSuccessor.withdrawalScript,
-      ] as const,
-    },
-    record,
-    scriptDecodePolicyId: scriptDecode.validator.policyId,
-  });
-};
-
 /** A hop of our thread through its one-step resolution, now; along the
- * shared item chain, reading its pending item step from the thread's
- * history in `history`. */
+ * shared item chain, reading the state it carried into the chain's entry
+ * from the thread's history in `history`. */
 export const captureValidationTraceResolve = async (
   input: MaterialInput & {
     readonly defenders: readonly ValidationTraceRecordedThread[];
@@ -361,22 +318,30 @@ export const captureValidationTraceResolve = async (
     throw new WorkflowActionChangedError(
       `validation-trace thread ${input.threadOutRef} has reached its award`,
     );
-  const pendingCbor = isValidationTraceContextItemChainHolder(from.holder)
-    ? await contextItemPending({
-        history: history.caseHistory,
-        headerHash: history.headerHash,
-        unit: thread.unit,
-        entryAddress:
-          deployment.chain.cekContextItemStages.entry.spendingScriptAddress,
-      })
-    : undefined;
+  const { cekContextItemStages, scriptSourcesStageOneRedeemerStages } =
+    deployment.chain;
+  const carried =
+    isValidationTraceContextItemChainHolder(from.holder) ||
+    isScriptSourcesRedeemerOwnHolder(from.holder)
+      ? await redeemerItemCarried({
+          history: history.caseHistory,
+          headerHash: history.headerHash,
+          unit: thread.unit,
+          entries: {
+            cek: cekContextItemStages.entry.spendingScriptAddress,
+            scriptSources:
+              scriptSourcesStageOneRedeemerStages.envelope
+                .spendingScriptAddress,
+          },
+        })
+      : undefined;
   const plan = await resolvingPlan({
     deployment,
     material: input.material,
     utxo: thread.utxo,
     holder: from.holder,
     caseThread: thread.caseThread,
-    pendingCbor,
+    carried,
   });
   const hop = validationTraceHop({
     plan,
@@ -384,15 +349,23 @@ export const captureValidationTraceResolve = async (
     utxo: thread.utxo,
     prover: signer.paymentKeyHash,
     ...(from.holder === "selection"
-      ? { selection: await selectionReads({ input, plan }) }
+      ? { selection: await validationTraceSelectionReads({ input, plan }) }
       : {}),
     ...(plan.kind === "context" && plan.context.item !== undefined
-      ? { item: contextItemReads(deployment, pendingCbor) }
+      ? { item: contextItemReads(deployment, carried?.stateCbor) }
       : {}),
     ...(plan.kind === "phase" && from.holder === plan.phase.semantic
       ? {
           phaseYield: phaseYieldReads(deployment, plan.phase),
           phaseYieldList: phaseYieldListReads(deployment, plan.phase),
+        }
+      : {}),
+    ...(plan.kind === "phase"
+      ? {
+          redeemerChain: scriptSourcesRedeemerReads(
+            deployment,
+            carried?.stateCbor,
+          ),
         }
       : {}),
   });

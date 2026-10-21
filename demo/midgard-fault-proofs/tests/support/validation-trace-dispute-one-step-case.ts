@@ -43,6 +43,7 @@ import {
   publishOneStepReferences,
   publishPhaseReferences,
   publishPhaseYieldReferences,
+  publishScriptSourcesRedeemerReferences,
   publishSelectionReferences,
 } from "./validation-trace-dispute-one-step.js";
 import {
@@ -113,6 +114,7 @@ export const defendTwoThreads = async ({
   contexts = false,
   canonicalDecode = false,
   phases = false,
+  scriptSourcesRedeemers = false,
   failingRedeemerData,
   failingReferenceInputs,
   failingSigners,
@@ -132,6 +134,9 @@ export const defendTwoThreads = async ({
   /** Whether the deployment drives the steps of the phases one-step-phase.ts
    * names. */
   readonly phases?: boolean;
+  /** Whether the deployment publishes the script-sources redeemer item
+   * chain past its entry. */
+  readonly scriptSourcesRedeemers?: boolean;
   /** The failing transaction's redeemer, as Plutus Data CBOR. */
   readonly failingRedeemerData?: Uint8Array;
   /** How many reference inputs the failing transaction reads. */
@@ -174,6 +179,12 @@ export const defendTwoThreads = async ({
           ? {
               phases: await publishPhaseReferences(contracts),
               phaseYields: await publishPhaseYieldReferences(contracts),
+            }
+          : {}),
+        ...(scriptSourcesRedeemers
+          ? {
+              scriptSourcesRedeemers:
+                await publishScriptSourcesRedeemerReferences(contracts),
             }
           : {}),
       };

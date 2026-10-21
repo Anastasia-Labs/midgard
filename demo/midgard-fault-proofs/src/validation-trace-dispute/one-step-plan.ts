@@ -172,6 +172,9 @@ export type ValidationTraceOneStepDrives = Readonly<{
   canonicalDecode?: boolean;
   /** The phases whose resolution the deployment installs. */
   phases?: readonly ValidationTracePhase[];
+  /** Whether the deployment installs the script-sources redeemer item
+   * chain. */
+  scriptSourcesRedeemers?: boolean;
 }>;
 
 export type ValidationTraceOneStepPlanning =
@@ -248,6 +251,7 @@ export const planValidationTraceOneStep = async ({
   contexts = false,
   canonicalDecode = false,
   phases = [],
+  scriptSourcesRedeemers = false,
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
@@ -312,6 +316,7 @@ export const planValidationTraceOneStep = async ({
     const phase = planValidationTracePhaseStep({
       ...common,
       phase: preState.phase,
+      redeemerChain: scriptSourcesRedeemers,
       successorWitnessCbor:
         successor.phase === "terminal"
           ? undefined

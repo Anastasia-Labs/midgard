@@ -12,7 +12,9 @@
  * resolver and on to the award (one-step-canonical-decode.ts), and a step
  * of another phase from the boundary to the phase's resolver
  * (PrepareSelected) and from its semantic resolver to the award
- * (one-step-phase.ts). Each hop
+ * (one-step-phase.ts), or, for a script-sources redeemer normalization
+ * step, on through the redeemer item chain
+ * (one-step-script-sources-redeemer.ts). Each hop
  * spends the thread, which pays
  * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
  * successor keeps the thread's single token and carries the state the next
@@ -67,6 +69,12 @@ import {
   type ValidationTraceCoreStepPlan,
   type ValidationTraceOneStepPlan,
 } from "./one-step-plan.js";
+import {
+  isScriptSourcesRedeemerChainHolder,
+  isScriptSourcesRedeemerOwnHolder,
+  scriptSourcesRedeemerHop,
+  type ValidationTraceScriptSourcesRedeemerReads,
+} from "./one-step-script-sources-redeemer.js";
 
 /** The holders a hop spends, past the game. */
 export type ValidationTraceHopHolder = Exclude<
@@ -168,8 +176,10 @@ const datumOf = (utxo: UTxO): string => {
 /**
  * The hop of the thread `utxo` of prover `prover`, held by `holder`, in the
  * one-step resolution `plan`; a selection's hop reads `selection`, a hop
- * through a context step's redeemer item step reads `item`, and a phase
- * semantic resolver's hop reads `phaseYield`, the yield it invokes.
+ * through a context step's redeemer item step reads `item`, a phase
+ * semantic resolver's hop reads `phaseYield`, the yield it invokes, and a
+ * hop through a script-sources redeemer normalization step reads
+ * `redeemerChain`.
  */
 export const validationTraceHop = ({
   plan,
@@ -180,6 +190,7 @@ export const validationTraceHop = ({
   item,
   phaseYield,
   phaseYieldList,
+  redeemerChain,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
@@ -189,8 +200,18 @@ export const validationTraceHop = ({
   readonly item?: ValidationTraceContextItemReads;
   readonly phaseYield?: ValidationTracePhaseYieldReads | undefined;
   readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
+  readonly redeemerChain?: ValidationTraceScriptSourcesRedeemerReads;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
+  if (plan.kind === "phase" && isScriptSourcesRedeemerChainHolder(holder))
+    return scriptSourcesRedeemerHop({
+      holder,
+      datum,
+      prover,
+      transitionCbor: plan.transitionCbor,
+      auxiliaryCbor: plan.auxiliaryCbor,
+      reads: redeemerChain,
+    });
   if (isValidationTraceContextHolder(holder))
     return validationTraceContextHop({
       plan,
@@ -230,6 +251,10 @@ export const validationTraceHop = ({
             : { yieldList: phaseYieldList }),
         });
   }
+  if (isScriptSourcesRedeemerOwnHolder(holder))
+    throw new Error(
+      `validation-trace ${holder} holds a thread whose step is not a script-sources redeemer normalization step`,
+    );
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;

@@ -44,6 +44,7 @@ import type {
   ValidationTracePhaseHolder,
   ValidationTracePhaseYield,
 } from "./one-step-phase.js";
+import type { ValidationTraceScriptSourcesRedeemerReferences } from "./one-step-script-sources-redeemer.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
 export const VALIDATION_TRACE_OPEN_VALIDITY_MS = 15 * 60_000;
@@ -112,6 +113,9 @@ export type ValidationTraceOneStepReferences = Readonly<{
    * each carrying its role's reference-script authentication token; a
    * thread at a step of a phase whose yields are not here waits. */
   phaseYields?: Readonly<Partial<Record<ValidationTracePhaseYield, UTxO>>>;
+  /** The script-sources redeemer item chain past its entry; without it a
+   * thread at a script-sources redeemer normalization step waits. */
+  scriptSourcesRedeemers?: ValidationTraceScriptSourcesRedeemerReferences;
 }>;
 
 /** The deployment the open step builds against. */
@@ -149,6 +153,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "cekContextStages"
     | "cekContextItemStages"
     | "canonicalDecodeItemStages"
+    | "scriptSourcesStageOneRedeemerStages"
     | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */
