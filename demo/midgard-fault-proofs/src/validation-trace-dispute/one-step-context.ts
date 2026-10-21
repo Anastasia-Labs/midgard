@@ -16,6 +16,10 @@ import {
   planValidationTraceContextItem,
   type ValidationTraceContextItem,
 } from "./one-step-context-item.js";
+import {
+  planValidationTraceContextRedeemerSelect,
+  type ValidationTraceContextRedeemerSelect,
+} from "./one-step-context-redeemer-select.js";
 
 /**
  * The stage each context route reaches, in the context control's order of
@@ -43,8 +47,10 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
 /**
  * The stages the runner drives: each verifies its step in one hop and sends
  * the thread to the context settle, but the item bind stage, whose step the
- * redeemer item chain verifies, and the observer authenticate, whose step's
- * opening the observer fold folds (one-step-context-followers.ts).
+ * redeemer item chain verifies, the observer authenticate, whose step's
+ * opening the observer fold folds, and the redeemer select authenticate,
+ * whose select the initialize, hash and finish carry on
+ * (one-step-context-followers.ts).
  */
 export const DRIVEN_CEK_CONTEXT_STAGES = [
   "redeemerBegin",
@@ -55,6 +61,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "signer",
   "observerAuthenticate",
   "mintInit",
+  "redeemerSelectAuthenticate",
   "assemble",
   "txInfo",
   "seed",
@@ -81,6 +88,9 @@ export type ValidationTraceContextStep = Readonly<{
   item: ValidationTraceContextItem | undefined;
   /** At the observer authenticate, the step's `ObserverOpening`. */
   observerOpeningCbor: string | undefined;
+  /** At the redeemer select authenticate, the step's select; undefined for
+   * the skip of a native execution. */
+  redeemerSelect: ValidationTraceContextRedeemerSelect | undefined;
 }>;
 
 type Item = bigint | string | readonly Item[];
@@ -257,18 +267,19 @@ export const planValidationTraceContextStep = ({
   )
     return { stage, driven: false };
   const successor = envelope(successorWitnessCbor, 11, "successor witness");
+  const nativeFactsCbor = Data.to(
+    new Constr(
+      0,
+      NATIVE_FACTS.map((index) => native[index]!),
+    ),
+  );
   return Object.freeze({
     stage,
     controlCbor: Data.to(
       new Constr(0, [new Constr(0, native), ...witness.slice(1).map(scalar)]),
     ),
     contextCbor: Data.to(context),
-    nativeFactsCbor: Data.to(
-      new Constr(
-        0,
-        NATIVE_FACTS.map((index) => native[index]!),
-      ),
-    ),
+    nativeFactsCbor,
     executionCursor: integer(witness[2]),
     successorCbor: Data.to(
       (stage as CekContextRoute) === "seed"
@@ -289,6 +300,14 @@ export const planValidationTraceContextStep = ({
           })
         : undefined,
     observerOpeningCbor,
+    redeemerSelect:
+      stage === "redeemerSelectAuthenticate"
+        ? planValidationTraceContextRedeemerSelect({
+            auxiliaryCbor,
+            context,
+            nativeFactsCbor,
+          })
+        : undefined,
   });
 };
 

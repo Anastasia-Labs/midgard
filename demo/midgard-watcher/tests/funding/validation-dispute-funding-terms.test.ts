@@ -56,6 +56,7 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekContextSigner",
         "validationTraceDisputeCekContextObserverAuthenticate",
         "validationTraceDisputeCekContextMintInit",
+        "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
         "validationTraceDisputeCekContextAssemble",
         "validationTraceDisputeCekContextTxInfo",
         "validationTraceDisputeCekContextSeed",
@@ -91,6 +92,9 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekContextItemDataContinue",
         "validationTraceDisputeCekContextItemDataFinishValue",
         "validationTraceDisputeCekContextObserverFold",
+        "validationTraceDisputeCekContextRedeemerSelectInitialize",
+        "validationTraceDisputeCekContextRedeemerSelectHash",
+        "validationTraceDisputeCekContextRedeemerSelectFinish",
         "validationTraceDisputeCekContextSettle",
       ].map(manifestAddress),
     );

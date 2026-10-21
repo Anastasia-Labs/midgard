@@ -144,8 +144,10 @@ export const captureValidationTraceEnterResolution = async (
  * checked one level deeper; past the item bind stage, the verified item step
  * nests the staged context once more, and its hash or value result once
  * more again; past the observer authenticate, the pending opening nests
- * the staged context once more. A holder of the shared item chain keeps it in the pending item
- * step alone (contextItemPending). */
+ * the staged context once more, and past the redeemer select authenticate,
+ * the selection once more, and the purpose or initial pending again. A
+ * holder of the shared item chain keeps it in the pending item step alone
+ * (contextItemPending). */
 const CHALLENGER_SUCCESSOR_HASH = {
   prepare: [1, 0, 3],
   core: [1, 0, 1, 3],
@@ -165,6 +167,9 @@ const CHALLENGER_SUCCESSOR_HASH = {
   contextItemDataContinue: [1, 0, 0, 0, 0, 0, 1, 3],
   contextItemDataFinishValue: [1, 0, 0, 0, 0, 0, 1, 3],
   contextObserverFold: [1, 0, 0, 0, 0, 1, 3],
+  contextRedeemerSelectInitialize: [1, 0, 0, 0, 0, 1, 3],
+  contextRedeemerSelectHash: [1, 0, 0, 0, 0, 0, 1, 3],
+  contextRedeemerSelectFinish: [1, 0, 0, 0, 0, 0, 1, 3],
 } as const;
 
 /** Where the pending item step keeps our successor's hash. */

@@ -52,6 +52,7 @@ export const CEK_CONTEXT_STAGE_HOLDERS = Object.freeze({
   signer: "contextSigner",
   observerAuthenticate: "contextObserverAuthenticate",
   mintInit: "contextMintInit",
+  redeemerSelectAuthenticate: "contextRedeemerSelectAuthenticate",
   assemble: "contextAssemble",
   txInfo: "contextTxInfo",
   seed: "contextSeed",
@@ -111,6 +112,8 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   contextObserverAuthenticate:
     "validationTraceDisputeCekContextObserverAuthenticate",
   contextMintInit: "validationTraceDisputeCekContextMintInit",
+  contextRedeemerSelectAuthenticate:
+    "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
   contextAssemble: "validationTraceDisputeCekContextAssemble",
   contextTxInfo: "validationTraceDisputeCekContextTxInfo",
   contextSeed: "validationTraceDisputeCekContextSeed",

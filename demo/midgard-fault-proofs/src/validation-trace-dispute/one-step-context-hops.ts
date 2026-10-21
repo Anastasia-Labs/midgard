@@ -7,7 +7,9 @@
  * settle, or from the item bind stage through the redeemer item step
  * (one-step-context-item-hops.ts), or from the observer authenticate, which
  * binds the step's observer opening (ObserverPending), through the observer
- * fold; and from the settle to the award. Every
+ * fold, or from the redeemer select authenticate, which binds the select
+ * (RedeemerSelectionPending), through its initialize (RedeemerPurposePending),
+ * hash (RedeemerInitialPending) and finish; and from the settle to the award. Every
  * hop is redeemed with the step's witness and evidence (`VerifyContext`),
  * and each successor carries the state its next holder checks, derived from
  * our trace (one-step-context.ts). */
@@ -27,6 +29,7 @@ import {
   validationTraceContextItemHop,
   type ValidationTraceContextItemReads,
 } from "./one-step-context-item-hops.js";
+import type { ValidationTraceContextRedeemerSelect } from "./one-step-context-redeemer-select.js";
 import {
   bytes,
   constr,
@@ -67,6 +70,17 @@ export const isValidationTraceContextHolder = (
   STAGE_HOLDERS.has(holder) ||
   isValidationTraceContextItemHolder(holder) ||
   isValidationTraceContextFollowerHolder(holder);
+
+const redeemerSelectOf = (
+  holder: ValidationTraceContextHolder,
+  select: ValidationTraceContextRedeemerSelect | undefined,
+): ValidationTraceContextRedeemerSelect => {
+  if (select === undefined)
+    throw new Error(
+      `validation-trace ${holder} holds a thread whose step selects no redeemer`,
+    );
+  return select;
+};
 
 /**
  * The hop of the thread whose datum is `datum`, of prover `prover`, held by
@@ -161,6 +175,39 @@ export const validationTraceContextHop = ({
       plutusConstrFieldCbor(datum, [1, 0, 0]),
       context.successorCbor,
     ]);
-  // A stage: ContextVerified { staged, successor }.
+  const select = context.redeemerSelect;
+  if (
+    holder === CEK_CONTEXT_STAGE_HOLDERS.redeemerSelectAuthenticate &&
+    select !== undefined
+  )
+    // RedeemerSelectionPending { staged, control, item_index, ... }.
+    return hop("contextRedeemerSelectInitialize", [
+      state,
+      ...select.selectionFieldsCbor,
+    ]);
+  if (holder === "contextRedeemerSelectInitialize")
+    // RedeemerPurposePending { selection, purpose }.
+    return hop("contextRedeemerSelectHash", [
+      state,
+      redeemerSelectOf(holder, select).purposeCbor,
+    ]);
+  if (holder === "contextRedeemerSelectHash") {
+    // RedeemerInitialPending { selection, purpose, initial_hash }.
+    const { purposeCbor, initialHashCbor } = redeemerSelectOf(holder, select);
+    return hop("contextRedeemerSelectFinish", [
+      plutusConstrFieldCbor(datum, [1, 0, 0]),
+      purposeCbor,
+      initialHashCbor,
+    ]);
+  }
+  if (holder === "contextRedeemerSelectFinish")
+    // ContextVerified { staged, successor }, from the selection's staged
+    // context.
+    return hop("contextSettle", [
+      plutusConstrFieldCbor(datum, [1, 0, 0, 0]),
+      context.successorCbor,
+    ]);
+  // A stage, or the redeemer select authenticate's skip of a native
+  // execution: ContextVerified { staged, successor }.
   return hop("contextSettle", [state, context.successorCbor]);
 };
