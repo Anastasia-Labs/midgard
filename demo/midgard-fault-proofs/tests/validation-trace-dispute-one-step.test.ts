@@ -311,6 +311,9 @@ describe("validation-trace dispute runner: one-step resolution of a CEK compute 
     await advanceTo("boundary");
     const before = await place();
     const plan = await ourPlan();
+    // The honest move differs only in its index and the resolver it pays,
+    // the one that index names; the boundary's checks carry no trace of
+    // their own, so the refusal is the validator's.
     await expectOnchainRefusal(
       hopFrom({
         holder: "boundary",
@@ -321,7 +324,7 @@ describe("validation-trace dispute runner: one-step resolution of a CEK compute 
       }),
       {
         refusedBy: "fraud_proofs/validation_trace/boundary_v1",
-        check: /resolver_index == validation_resolution_v1\.resolver_index/u,
+        check: /^Validator returned false$/u,
       },
     );
     expect(outRefOf((await place()).utxo)).toBe(outRefOf(before.utxo));
