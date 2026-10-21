@@ -9,6 +9,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import {
   confirmedValidationTraceStages,
   parseValidationTraceAction,
+  VALIDATION_TRACE_DISPUTE_ACTION,
   validationTraceActionId,
   type ValidationTraceStage,
 } from "../../src/validation-trace-dispute/actions.js";
@@ -130,7 +131,8 @@ export type PreparedMove = Readonly<{
   cbor: string;
 }>;
 
-/** Records each transaction the adapter signs into `prepared`. */
+/** Records each validation-trace transaction the adapter signs into
+ * `prepared`. */
 export const capturePrepared =
   (prepared: PreparedMove[]) =>
   (
@@ -140,7 +142,11 @@ export const capturePrepared =
     preflight: async (context) => {
       const preflight = await adapter.preflight(context);
       const signed = workflowPreflightTransaction(preflight);
-      if (signed !== undefined) {
+      // The shared remove stage's action is not ours to record.
+      if (
+        signed !== undefined &&
+        context.action.input.schemaVersion === VALIDATION_TRACE_DISPUTE_ACTION
+      ) {
         const { stage, consumes } = parseValidationTraceAction(context.action);
         prepared.push({
           stage,
