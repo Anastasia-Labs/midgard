@@ -8,7 +8,8 @@
  * - its Defend lands, and our follower sees it, while our tick waits for
  *   the L1 control plane: ours is not built over the case it spent;
  * - either way, the next tick rebuilds ours joining the case's defenders
- *   after it, and it lands in time.
+ *   after it, and it lands in time;
+ * - after two other operators' Defends, ours joins both, and lands.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
 import {
@@ -43,20 +44,25 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
+/** Another active operator, enrolled after the one keyed `lowerKey`. */
+const enrollOther = async (
+  s: DefenseScene,
+  lowerKey: string,
+): Promise<Defender> => {
+  const successor = await enrollSuccessor(s.scene.h as never, lowerKey);
+  return {
+    vkey: successor.keyHash,
+    nodeUnit: successor.activeNodeUnit,
+    lucid: successor.lucid,
+  };
+};
+
 /** The scene with a second active operator, and a false claim opened on
  * our passing block. */
 const openWithOther = async () => {
   const s = await openDefenseScene(databases);
   opened.push(s);
-  const successor = await enrollSuccessor(
-    s.scene.h as never,
-    s.scene.operator.vkey,
-  );
-  const other: Defender = {
-    vkey: successor.keyHash,
-    nodeUnit: successor.activeNodeUnit,
-    lucid: successor.lucid,
-  };
+  const other = await enrollOther(s, s.scene.operator.vkey);
   const claim = await openFalseClaim(
     s.scene,
     await falseClaimMaterial(s.scene),
@@ -151,5 +157,16 @@ describe("the validation-trace defender beside another defender", () => {
     const otherDefend = s.liveByUnit(claim.caseUnit)!;
     expect(otherDefend.txHash).toBe(raced);
     await landsAfter(s, claim, otherDefend);
+  });
+
+  it("joins two other operators' Defends on the case, and lands", async () => {
+    const { s, other, claim } = await openWithOther();
+    const third = await enrollOther(s, other.vkey);
+    await defendPending(s.scene, claim.caseUtxo, other);
+    await defendPending(s.scene, s.liveByUnit(claim.caseUnit)!, third, [
+      other.vkey,
+    ]);
+    await s.env.follow();
+    await landsAfter(s, claim, s.liveByUnit(claim.caseUnit)!);
   });
 });
