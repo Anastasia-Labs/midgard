@@ -279,7 +279,12 @@ describe("validation-trace dispute through the installed watcher application", (
         scene.failing.evidence.header.prevHeaderHash,
         scene.failing.evidence.headerHash,
       ]);
-      expect(result.reason).toMatch(/^funding reservation failed for remove:/u);
+      // The convicted block's removal carries the slash fee, which only a
+      // finalized manifest's slash funding authority admits; this scene
+      // binds none.
+      expect(result.reason).toMatch(
+        /^funding reservation failed for remove:\S+: Error: funding transaction fee is outside the live protocol funding bounds$/u,
+      );
 
       // Every transaction the dispute sent, as it landed.
       const measured = intents.map(({ txHash, actionInput }) => {
