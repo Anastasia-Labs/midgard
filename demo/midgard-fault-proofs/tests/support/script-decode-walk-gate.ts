@@ -90,14 +90,20 @@ const WALK_GATE_GROUPS = {
     "lists 4 deep, [] ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]",
     "lists 4 deep, a one-path list ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]",
   ],
-  "application chains": [
-    "apply chain of unit",
-    "apply chain of empty value",
+  // The application chains walk longest; they are four groups so that no
+  // one test file holds a CI shard past its time limit.
+  "application chains of unit": ["apply chain of unit"],
+  "application chains of integers": [
     "apply chain of integer 0",
-    "apply chain of Data I 0 and list unit [()], alternating",
     "apply chain of 200-bit integer",
-    "apply chain of integer 0 and empty value, alternating",
+  ],
+  "application chains of empty value and list unit": [
+    "apply chain of empty value",
     "apply chain of list unit [()]",
+  ],
+  "alternating application chains": [
+    "apply chain of Data I 0 and list unit [()], alternating",
+    "apply chain of integer 0 and empty value, alternating",
   ],
 } as const satisfies Record<string, readonly WalkShape[]>;
 
