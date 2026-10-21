@@ -7,7 +7,7 @@ import {
   type MidgardCommittedScriptRun,
 } from "@al-ft/midgard-validation";
 
-import { type ImportCheckLoad } from "../database/importChecks.js";
+import { type ImportCheckLoad } from "../database/importChecks.loads.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
 
 /** The bytes a run decodes: its script and its context (`contextBytes`). */

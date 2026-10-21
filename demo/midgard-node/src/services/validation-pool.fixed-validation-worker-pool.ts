@@ -14,6 +14,7 @@ import {
   isIdle,
   queueBackgroundJob,
   rejectBackgroundJobs,
+  rejectSlotJobs,
   takeBackgroundJob,
 } from "./validation-pool.background-lanes.js";
 import {
@@ -461,12 +462,7 @@ export class FixedValidationWorkerPool {
     slot.restarting = true;
     if (slot.timeout !== null) clearTimeout(slot.timeout);
     slot.timeout = null;
-    const error = new ValidationWorkerError({
-      message: `validation worker ${slot.index} failed`,
-      cause,
-    });
-    slot.inFlight?.reject(error);
-    slot.reservedFor?.reject(error);
+    rejectSlotJobs(slot, cause);
     slot.heldLane = slot.lane ?? slot.reservedFor?.lane ?? null;
     slot.inFlight = null;
     slot.reservedFor = null;
