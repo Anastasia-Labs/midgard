@@ -313,10 +313,12 @@ export const contextStepDrive = ({
   };
 };
 
-/** The drive of the successor's thread through the context step at
- * `stage`'s first step of our trace. */
-export const contextStageDrive = (stage: SingleHopCekContextStage) => {
-  const from = CONTEXT_STAGE_STEP_FROM[stage];
+/** The drive of the successor's thread through the context step of `stage`
+ * after our trace's state `from`, by default the stage's first. */
+export const contextStageDrive = (
+  stage: SingleHopCekContextStage,
+  from: number = CONTEXT_STAGE_STEP_FROM[stage],
+) => {
   const holder = CEK_CONTEXT_STAGE_HOLDERS[stage];
   const drive = contextStepDrive({
     from,

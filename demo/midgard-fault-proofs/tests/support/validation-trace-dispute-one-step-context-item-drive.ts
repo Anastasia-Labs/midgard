@@ -45,6 +45,16 @@ export const CONTEXT_ITEM_STEPS = Object.freeze({
     route: "contextItemDataHash",
     executor: "redeemerItemOpenTailExecutor",
   },
+  /** A data scan's step that heads a sequence of the item's value. */
+  109: {
+    route: "contextItemDataHash",
+    executor: "redeemerItemHeadSequenceExecutor",
+  },
+  /** A data scan's step that finalizes a frame of the item's value. */
+  110: {
+    route: "contextItemDataHash",
+    executor: "redeemerItemFinalizeFrameExecutor",
+  },
   /** A data scan's step that finishes the item's value. */
   111: {
     route: "contextItemFinalize",
