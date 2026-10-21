@@ -21,7 +21,7 @@ import {
   Data,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import {
@@ -60,22 +60,6 @@ import {
   withAddress,
   withCoin,
 } from "./support/validation-trace-dispute-tampered-verify-source.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 let scene: Scene;
 

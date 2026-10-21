@@ -4,6 +4,7 @@ import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
   watcherDaFetchAlertSubject,
+  watcherValidationTraceReplayStuckAlertSubject,
 } from "../../src/runtime/operations-observability.alert-book.js";
 import type { WatcherAlertDiagnostic } from "../../src/runtime/operations-observability.js";
 
@@ -152,6 +153,60 @@ describe("watcher alert book", () => {
     expect(kept.size).toBe(1_000);
     expect(kept.has(watcherDaFetchAlertSubject(hashes[0]!))).toBe(false);
     expect(kept.has(watcherDaFetchAlertSubject(hashes.at(-1)!))).toBe(true);
+  });
+
+  it("lists a stuck script replay per header without holding readiness, until the header's outcome clears it", () => {
+    const { alerts } = book();
+    const stuck = (headerHash: string, active: boolean, observedAtMs: string) =>
+      alerts.set({
+        code: "validation_trace_replay_stuck",
+        subjectDigest:
+          watcherValidationTraceReplayStuckAlertSubject(headerHash),
+        active,
+        observedAtMs,
+      });
+    stuck(HEADER, true, "1");
+    stuck(HEADER, true, "2");
+    stuck(OTHER, true, "2");
+    expect(alerts.active()).toHaveLength(2);
+    expect(alerts.holdsReadiness(3n)).toBe(false);
+    alerts.settleHeader(HEADER, "pending_da", "3");
+    expect(alerts.active()).toHaveLength(2);
+    alerts.settleHeader(HEADER, "fault_detected", "4");
+    expect(alerts.active()).toEqual([
+      expect.objectContaining({
+        code: "validation_trace_replay_stuck",
+        subjectDigest: watcherValidationTraceReplayStuckAlertSubject(OTHER),
+      }),
+    ]);
+    // A cleared per-header record is dropped, not kept for deduplication.
+    expect(
+      alerts.state(
+        "validation_trace_replay_stuck",
+        watcherValidationTraceReplayStuckAlertSubject(HEADER),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("bounds the stuck script replays it keeps, evicting the oldest first", () => {
+    const { alerts } = book();
+    const hashes = Array.from({ length: 1_001 }, (_, index) =>
+      index.toString(16).padStart(56, "0"),
+    );
+    for (const hash of hashes)
+      alerts.set({
+        code: "validation_trace_replay_stuck",
+        subjectDigest: watcherValidationTraceReplayStuckAlertSubject(hash),
+        active: true,
+        observedAtMs: "1",
+      });
+    const kept = new Set(
+      alerts.active().map(({ subjectDigest }) => subjectDigest),
+    );
+    expect(kept.size).toBe(1_000);
+    expect(
+      kept.has(watcherValidationTraceReplayStuckAlertSubject(hashes[0]!)),
+    ).toBe(false);
   });
 
   it("refuses an invalid alert and an invalid age bound", () => {

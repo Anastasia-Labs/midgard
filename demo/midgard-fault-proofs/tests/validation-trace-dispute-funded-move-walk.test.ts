@@ -20,7 +20,7 @@
  * objective's actuation permit. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import {
@@ -51,22 +51,6 @@ import {
 } from "./support/validation-trace-dispute-funded-moves.js";
 import { TIMEOUT } from "./support/validation-trace-dispute-funded-verify-source.js";
 import { withCoin } from "./support/validation-trace-dispute-tampered-verify-source.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 let journey: FundedMoves;
 let reveal: CapturedMove;

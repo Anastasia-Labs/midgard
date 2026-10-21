@@ -144,6 +144,7 @@ export const setup = async (
   };
   const replayer = createCatalogueCompleteCanonicalReplay({
     history: { deposit: history, withdrawal: history },
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     lucid: unusedEventProvider,
     network: "Preprod",
     hubOraclePolicyId,

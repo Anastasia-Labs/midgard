@@ -231,6 +231,7 @@ export const NO_DIGEST_FAMILIES = [
   "transitionTrace",
   "missingSignature",
   "networkId",
+  "validationTraceDispute",
   "valueNotPreserved",
 ];
 
@@ -243,6 +244,7 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "transitionTrace",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
+  "validationTraceDispute",
 ];
 
 /**

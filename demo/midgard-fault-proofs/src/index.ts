@@ -106,6 +106,14 @@ export * from "./transition-trace/index.js";
 export * from "./validation-cek-selection.js";
 export * from "./validation-trace-dispute/defender.js";
 export { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "./validation-trace-dispute/one-step-holders.js";
+export {
+  isValidationTraceReplayHeldError,
+  VALIDATION_TRACE_REPLAY_HELD,
+  VALIDATION_TRACE_REPLAY_STUCK,
+  ValidationTraceReplayHeldError,
+  type ValidationTraceReplayHold,
+} from "./validation-trace-dispute/replay-hold.js";
+export { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "./validation-trace-dispute/workflow.js";
 export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-classification-fault.js";
 export * from "./withdrawal-mistag/index.js";

@@ -28,6 +28,7 @@ import {
   DOUBLE_SPEND_FAMILY_APPLICATION_RECORD,
   LINEAR_FAMILY_APPLICATION_RECORDS,
 } from "./family-application-registry.linear-family-application-record.js";
+import { VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD } from "./family-application-registry.validation-trace-dispute-family-application-record.js";
 import {
   type FamilyApplicationRegistryEntry,
   MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
@@ -75,4 +76,5 @@ export const FAMILY_APPLICATION_REGISTRY: {
   missingSignature: MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,
   networkId: NETWORK_ID_FAMILY_APPLICATION_RECORD,
   valueNotPreserved: VALUE_NOT_PRESERVED_FAMILY_APPLICATION_RECORD,
+  validationTraceDispute: VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD,
 });

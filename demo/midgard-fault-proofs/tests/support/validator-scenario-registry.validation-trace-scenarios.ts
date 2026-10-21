@@ -169,3 +169,27 @@ export const VALIDATION_TRACE_SCENARIOS: Readonly<
     ],
   },
 };
+
+/**
+ * The dispute family: a failing script's block convicted and removed, and the
+ * case refusing the challenger once the honest operator defends.
+ */
+export const VALIDATION_TRACE_DISPUTE_FAMILY_SCENARIOS: ValidatorScenarioPair =
+  {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-trace-dispute-conviction.test.ts",
+        test: "removes the convicted block and its descendants through the shared removal once the L1 view has seen the record, keeping the record, and completes on the authenticated terminal",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-trace-dispute-defend.test.ts",
+        test: "refuses a Defend that carries the challenger's own Terminal Rejected state",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "forfeits the bond to the treasury when a defender won, and refuses paying it to the challenger",
+      },
+    ],
+  };
