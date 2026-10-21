@@ -15,6 +15,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deriveCanonicalOriginalDepositTransitionEffect,
@@ -52,7 +53,10 @@ export const PASSING_SCRIPT = plutusV3ScriptWitness(
 
 /** The per-transaction execution-unit cap admission enforces (the consensus
  * profile's Cardano `maxTxExUnits`), as `[memory, steps]`. */
-export const ADMITTED_TX_EX_UNITS = [16_500_000n, 10_000_000_000n] as const;
+export const ADMITTED_TX_EX_UNITS = [
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits),
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits),
+] as const;
 
 /**
  * A passing PlutusV3 script that runs as long as admission allows:
