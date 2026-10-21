@@ -21,10 +21,7 @@ import type {
   ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
 import { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
-import {
-  registerEmulatorRewardAccount,
-  scriptDecodeDeploymentOf,
-} from "./script-decode-emulator.js";
+import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import type {
   Scene,
@@ -106,8 +103,8 @@ export const publishOneStepReferences = async (
 
 /**
  * Publishes the selection resolver's reference script, and its two yields'
- * under their roles' authentication tokens, with the yields' reward accounts
- * registered.
+ * under their roles' authentication tokens; the scene's setup registers the
+ * yields' reward accounts.
  */
 export const publishSelectionReferences = async (
   scene: SceneContracts,
@@ -118,9 +115,8 @@ export const publishSelectionReferences = async (
       | "V1 validation-trace CEK selection authenticate yield"
       | "V1 validation-trace CEK selection successor yield",
     script: Script,
-  ) => {
-    registerEmulatorRewardAccount(h.emulator, script);
-    return (
+  ) =>
+    (
       await publishAuthenticatedValidationDisputeControl({
         lucid: h.proverLucid,
         authPolicy: h.contracts.referenceScriptAuth as Awaited<
@@ -130,7 +126,6 @@ export const publishSelectionReferences = async (
         target: { name, control: name, script },
       })
     ).utxo;
-  };
   return Object.freeze({
     semantic: (
       await publishPlainReferenceScriptUtxo({
