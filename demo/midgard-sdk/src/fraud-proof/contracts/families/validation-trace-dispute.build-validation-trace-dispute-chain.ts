@@ -33,7 +33,10 @@ import {
 import { buildValidationCaseContracts } from "./validation-trace-dispute.case-contracts.js";
 import { type ValidationTraceDisputeFaultProofContracts } from "./validation-trace-dispute.types.js";
 import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES as validationTraceTitles } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
-import { VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES } from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
+import {
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
+} from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
 
 export const buildValidationTraceDisputeChain = ({
   blueprint,
@@ -1005,100 +1008,9 @@ export const buildValidationTraceDisputeChain = ({
           ]),
         ),
     );
-    const semanticResolverGroups = [
-      [semanticResolvers[0], semanticResolvers[1]],
-      [semanticResolvers[2]],
-      [semanticResolvers[3]],
-      [semanticResolvers[4], semanticResolvers[5]],
-      [
-        semanticResolvers[6],
-        semanticResolvers[7],
-        semanticResolvers[8],
-        semanticResolvers[9],
-      ],
-      [
-        semanticResolvers[10],
-        semanticResolvers[11],
-        semanticResolvers[12],
-        semanticResolvers[13],
-        semanticResolvers[14],
-        semanticResolvers[15],
-        semanticResolvers[16],
-        semanticResolvers[17],
-        semanticResolvers[18],
-        semanticResolvers[19],
-        semanticResolvers[20],
-        semanticResolvers[21],
-        semanticResolvers[22],
-        semanticResolvers[23],
-      ],
-      [semanticResolvers[24], semanticResolvers[25]],
-      [
-        semanticResolvers[26],
-        semanticResolvers[27],
-        semanticResolvers[28],
-        semanticResolvers[29],
-        semanticResolvers[30],
-        semanticResolvers[31],
-      ],
-      [
-        semanticResolvers[32],
-        semanticResolvers[33],
-        semanticResolvers[34],
-        semanticResolvers[35],
-        semanticResolvers[36],
-        semanticResolvers[37],
-        semanticResolvers[38],
-        semanticResolvers[39],
-        semanticResolvers[40],
-        semanticResolvers[41],
-        semanticResolvers[42],
-        semanticResolvers[43],
-        semanticResolvers[44],
-        semanticResolvers[45],
-        semanticResolvers[46],
-        semanticResolvers[47],
-        semanticResolvers[48],
-        semanticResolvers[49],
-        semanticResolvers[50],
-        semanticResolvers[51],
-        semanticResolvers[52],
-        semanticResolvers[53],
-        semanticResolvers[54],
-        semanticResolvers[55],
-        semanticResolvers[56],
-        semanticResolvers[57],
-        semanticResolvers[58],
-        semanticResolvers[59],
-        semanticResolvers[82],
-      ],
-      [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
-      [
-        semanticResolvers[63],
-        semanticResolvers[64],
-        semanticResolvers[65],
-        semanticResolvers[66],
-      ],
-      [
-        semanticResolvers[67],
-        semanticResolvers[68],
-        semanticResolvers[69],
-        semanticResolvers[70],
-      ],
-      [
-        semanticResolvers[71],
-        semanticResolvers[72],
-        semanticResolvers[73],
-        semanticResolvers[74],
-        semanticResolvers[75],
-        semanticResolvers[76],
-        semanticResolvers[77],
-        semanticResolvers[78],
-        semanticResolvers[79],
-        semanticResolvers[80],
-        semanticResolvers[81],
-      ],
-    ] as const;
+    const semanticResolverGroups = Object.values(
+      VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
+    ).map((group) => group.map((index) => semanticResolvers[index]!));
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
     type SemanticResolverHashes = Data.Static<
       typeof semanticResolverHashesSchema

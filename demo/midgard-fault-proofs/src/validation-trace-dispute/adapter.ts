@@ -4,7 +4,9 @@
  * defended into its fraud-proof record, and removes the convicted block
  * through the shared remove stage (removal.ts), all through the shared
  * workflow orchestrator. On a defended case it plays each thread (threads.ts,
- * moves.ts) up to the one-step resolution, which is not installed. Every
+ * moves.ts) through the one-step resolution the deployment installs
+ * (one-step-moves.ts), closes each thread won into the case and, once none is
+ * open, closes the case as an undefended one. Every
  * output of ours is claimed by out-ref from our own signed body before
  * submission and read back by that out-ref; chain state, not the journal's
  * idea of the step, decides the next action. A thread move needs the claim
@@ -51,17 +53,13 @@ import {
   prepareValidationTraceArtifact,
   validateValidationTraceArtifact,
 } from "./detected-claim.js";
-import {
-  captureValidationTraceReveal,
-  captureValidationTraceThreadClose,
-  captureValidationTraceTimeout,
-} from "./moves.js";
+import { captureValidationTraceThreadMove } from "./move-dispatch.js";
 import {
   createValidationTraceRemoval,
   VALIDATION_TRACE_CASE_CONVICTED,
   type ValidationTraceRemovalConfig,
 } from "./removal.js";
-import { observeValidationTraceThreads } from "./threads.js";
+import { observeValidationTraceThreads } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
   captureValidationTraceInit,
@@ -81,6 +79,7 @@ export const VALIDATION_TRACE_STAGE_HELD = "validation-trace-stage-held";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
+  VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_COUNT_HOLD,
@@ -287,6 +286,9 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         case "reveal":
         case "timeout":
         case "close_thread":
+        case "enter_resolution":
+        case "resolve":
+        case "close_awarded":
           break;
       }
       const found = await ourCase(
@@ -297,36 +299,35 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         throw new WorkflowActionChangedError(
           `validation-trace ${action.stage} has no case of ours to play`,
         );
+      const history = {
+        caseHistory,
+        headerHash: input.artifact.headerHash,
+        caseUnit: found.caseUnit,
+      };
       if (action.stage === "close")
-        // The case and bond its VerifySource left, by its L1 history.
+        // The case as it stands now, and the bond its VerifySource left, by
+        // its L1 history.
         return await captureValidationTraceClose({
           ...input,
-          ...validationTraceCaseOrigin({
-            transactions: await caseHistory.transactions({
-              headerHash: input.artifact.headerHash,
-              caseUnit: found.caseUnit,
-            }),
+          bondOutRef: validationTraceCaseOrigin({
+            transactions: await caseHistory.transactions(history),
             caseUnit: found.caseUnit,
-          }),
+          }).bondOutRef,
+          caseOutRef: found.outRef,
           caseOpenerOutRef: found.openerOutRef,
         });
-      const move = {
-        ...input,
-        threadOutRef: action.consumes!,
-        caseUnit: found.caseUnit,
-        caseOpenerOutRef: found.openerOutRef,
-      };
-      if (action.stage === "reveal")
-        return await captureValidationTraceReveal({
-          ...move,
+      return await captureValidationTraceThreadMove({
+        stage: action.stage,
+        move: {
+          ...input,
+          threadOutRef: action.consumes!,
+          caseUnit: found.caseUnit,
+          caseOpenerOutRef: found.openerOutRef,
           material: materials.get(input.artifact.headerHash),
-        });
-      return action.stage === "timeout"
-        ? await captureValidationTraceTimeout(move)
-        : await captureValidationTraceThreadClose({
-            ...move,
-            caseOutRef: found.outRef,
-          });
+        },
+        caseOutRef: found.outRef,
+        history,
+      });
     } catch (cause) {
       if (
         cause instanceof WorkflowActionChangedError ||

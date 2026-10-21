@@ -5,13 +5,24 @@
  * and among timeouts, the earliest deadline goes first, whatever the order
  * of the threads' tokens. A thread
  * timed out on our side is reported lost, and a thread on our turn that
- * commits a trace this workflow does not hold is held, never revealed. */
+ * commits a trace this workflow does not hold is held, never revealed.
+ *
+ * A thread ReadyForOneStep enters its one-step resolution on our turn,
+ * ordered with our reveals by our deadline, only on a step the runner plans;
+ * a thread in its resolution moves on before any close, and a thread at the
+ * award closes into the case. A case a defender won stops; a case with no
+ * open thread settles. */
 import { describe, expect, it } from "vitest";
 
+import type { ValidationTraceOneStepPlanning } from "../src/validation-trace-dispute/one-step-plan.js";
 import {
   decideValidationTraceThreads,
+  VALIDATION_TRACE_CASE_CONTESTED,
+  VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_MATERIAL_HOLD,
+  VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_LOST,
+  type ValidationTraceResolvingThread,
   type ValidationTraceThread,
 } from "../src/validation-trace-dispute/threads.js";
 
@@ -23,7 +34,7 @@ const material = { challengerRoot: ROOT, stepCount: STEPS } as never;
 
 const thread = (
   label: string,
-  at: "game" | "timeout",
+  at: ValidationTraceThread["at"],
   turn: unknown,
   startedAt: bigint,
   root = ROOT,
@@ -74,14 +85,55 @@ const lostOnOurSide = () =>
     0n,
   );
 
-const decide = (threads: readonly ValidationTraceThread[]) =>
+/** ReadyForOneStep, our clock still running from `startedAt`. */
+const ready = (label: string, startedAt = BigInt(NOW) - CLOCK / 2n) =>
+  thread(label, "game", "ReadyForOneStep", startedAt);
+/** A thread of ours in its one-step resolution at `holder`. */
+const resolving = (
+  label: string,
+  holder: ValidationTraceResolvingThread["holder"],
+): ValidationTraceResolvingThread =>
+  ({
+    utxo: {},
+    outRef: `${label.repeat(64)}#0`,
+    unit: label.repeat(60),
+    defenderVkh: "d".repeat(56),
+    holder,
+  }) as never;
+const PLANNED: ValidationTraceOneStepPlanning = {
+  kind: "plan",
+  plan: {} as never,
+};
+
+const decide = (
+  threads: readonly ValidationTraceThread[],
+  {
+    resolving = [],
+    plannings = new Map<string, ValidationTraceOneStepPlanning>(),
+    caseDatum = {},
+    held = material,
+  }: {
+    resolving?: readonly ValidationTraceResolvingThread[];
+    plannings?: ReadonlyMap<string, ValidationTraceOneStepPlanning>;
+    caseDatum?: object;
+    /** The workflow's trace; null for none. */
+    held?: typeof material | null;
+  } = {},
+) =>
   decideValidationTraceThreads({
     threads,
+    resolving,
+    plannings,
     caseUnit: "c".repeat(64),
     caseOutRef: `${"c".repeat(64)}#0`,
-    caseDatum: { open_threads: BigInt(threads.length) } as never,
+    caseDatum: {
+      open_threads: BigInt(threads.length + resolving.length),
+      defender_won: false,
+      neither_claim_valid: false,
+      ...caseDatum,
+    } as never,
     now: NOW,
-    material,
+    material: held ?? undefined,
   });
 
 describe("validation-trace dispute runner's choice among threads", () => {
@@ -164,6 +216,141 @@ describe("validation-trace dispute runner's choice among threads", () => {
     expect(decide([foreign])).toStrictEqual({
       kind: "pending",
       reason: `${VALIDATION_TRACE_MATERIAL_HOLD}: thread ${foreign.unit} at ${foreign.outRef} commits a trace this workflow does not hold`,
+    });
+  });
+
+  it("enters the one-step resolution of a planned ReadyForOneStep thread in order of our deadlines with reveals, before any timeout", () => {
+    const [s, c] = [silent(), timedOut()];
+    const sooner = ready("5", BigInt(NOW) - (CLOCK * 3n) / 4n);
+    const later = ready("6", BigInt(NOW) - CLOCK / 4n);
+    const plannings = new Map([
+      [sooner.outRef, PLANNED],
+      [later.outRef, PLANNED],
+    ]);
+    // Our reveal's clock ends between the two entries'.
+    const reveal = ours();
+    expect(decide([c, s, later, reveal, sooner], { plannings })).toStrictEqual({
+      kind: "move",
+      stage: "enter_resolution",
+      thread: sooner,
+    });
+    expect(decide([c, s, later, reveal], { plannings })).toStrictEqual({
+      kind: "move",
+      stage: "reveal",
+      thread: reveal,
+    });
+    expect(decide([c, s, later], { plannings })).toStrictEqual({
+      kind: "move",
+      stage: "enter_resolution",
+      thread: later,
+    });
+  });
+
+  it("waits under one-step-required on a ReadyForOneStep thread whose resolution is not installed or whose step it does not drive, never entering it", () => {
+    const step = ready("5");
+    const label = `thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12`;
+    expect(decide([step])).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; the one-step resolution is not installed, so it waits`,
+    });
+    const plannings = new Map([
+      [step.outRef, { kind: "unsupported" as const, reason: "a step apart" }],
+    ]);
+    expect(decide([step], { plannings })).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; a step apart, so it waits`,
+    });
+  });
+
+  it("reports a ReadyForOneStep thread past our clock as lost, and holds one on a trace it does not hold, never entering either", () => {
+    const spent = ready("5", BigInt(NOW) - CLOCK - 1n);
+    const plannings = new Map([[spent.outRef, PLANNED]]);
+    expect(decide([spent], { plannings })).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_THREAD_LOST}: thread ${spent.unit} at ${spent.outRef} ran out of the challenger's clock`,
+    });
+    const foreign = thread(
+      "5",
+      "game",
+      "ReadyForOneStep",
+      BigInt(NOW),
+      "b2".repeat(32),
+    );
+    expect(
+      decide([foreign], { plannings: new Map([[foreign.outRef, PLANNED]]) }),
+    ).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_MATERIAL_HOLD}: thread ${foreign.unit} at ${foreign.outRef} commits a trace this workflow does not hold`,
+    });
+  });
+
+  it("moves a thread in its resolution on after timeouts and before closes, then closes the awarded thread into the case", () => {
+    const [s, c] = [silent(), timedOut()];
+    const boundary = thread("7", "boundary", "ReadyForOneStep", 0n);
+    const core = resolving("8", "core");
+    const award = resolving("a", "award");
+    expect(
+      decide([c, s, boundary], { resolving: [award, core] }),
+    ).toStrictEqual({ kind: "move", stage: "timeout", thread: s });
+    expect(decide([c, boundary], { resolving: [award, core] })).toStrictEqual({
+      kind: "move",
+      stage: "resolve",
+      thread: boundary,
+    });
+    expect(decide([c], { resolving: [award, core] })).toStrictEqual({
+      kind: "move",
+      stage: "resolve",
+      thread: core,
+    });
+    expect(decide([c], { resolving: [award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_thread",
+      thread: c,
+    });
+    expect(decide([], { resolving: [award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_awarded",
+      thread: award,
+    });
+  });
+
+  it("holds a thread in its resolution without our trace, still closing an awarded one", () => {
+    const core = resolving("8", "core");
+    const award = resolving("a", "award");
+    expect(decide([], { resolving: [core, award], held: null })).toStrictEqual({
+      kind: "move",
+      stage: "close_awarded",
+      thread: award,
+    });
+    expect(decide([], { resolving: [core], held: null })).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_MATERIAL_HOLD}: thread ${core.unit} at ${core.outRef} is in its one-step resolution without our trace`,
+    });
+  });
+
+  it("stops under defender-won on a case a defender won, whatever its threads offer", () => {
+    expect(
+      decide([ours(), timedOut()], {
+        resolving: [resolving("a", "award")],
+        caseDatum: { defender_won: true },
+      }),
+    ).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${"c".repeat(64)} at ${"c".repeat(64)}#0, which cannot convict, so the run stops`,
+    });
+  });
+
+  it("settles a case with no open thread, and waits contested on one with no valid claim", () => {
+    expect(decide([])).toStrictEqual({ kind: "settle" });
+    expect(decide([], { caseDatum: { neither_claim_valid: true } })).toEqual({
+      kind: "pending",
+      reason: expect.stringMatching(
+        new RegExp(`^${VALIDATION_TRACE_CASE_CONTESTED}: `, "u"),
+      ),
+    });
+    // A thread the case counts but discovery did not find is never settled.
+    expect(decide([], { caseDatum: { open_threads: 1n } })).not.toStrictEqual({
+      kind: "settle",
     });
   });
 });

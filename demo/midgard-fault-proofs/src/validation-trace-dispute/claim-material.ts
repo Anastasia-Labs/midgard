@@ -9,6 +9,8 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildChallengerDescriptorV1,
+  buildDeterministicValidationMachineTrace,
+  type DeterministicValidationMachineTrace,
   openValidationTraceV1,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
@@ -97,6 +99,12 @@ export type ValidationTraceClaimMaterial = {
   readonly initialState: MidgardValidationMachineState;
   /** The proof of any leaf under `challengerRoot`, for later moves. */
   readonly leafProof: (index: number) => MidgardValidationTraceProof;
+  /**
+   * The same trace in full, its states and work witnesses, rebuilt from the
+   * same replay on first use: a one-step resolution reads its evidence from
+   * it.
+   */
+  readonly trace: () => Promise<DeterministicValidationMachineTrace>;
 };
 
 /**
@@ -115,16 +123,14 @@ export const buildValidationTraceClaimMaterial = async ({
   readonly ledger: CheckedLedger;
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceClaimMaterial> => {
+  const input = plutusFailureReplayInput({
+    header: evidence.header,
+    event,
+    ledger,
+    l1SlotConfig,
+  });
   const leaves = await Effect.runPromise(
-    openValidationTraceV1(
-      plutusFailureReplayInput({
-        header: evidence.header,
-        event,
-        ledger,
-        l1SlotConfig,
-      }),
-      { revealStates: [0] },
-    ),
+    openValidationTraceV1(input, { revealStates: [0] }),
   );
   const terminal = leaves.states.get(leaves.stepCount);
   const initialState = leaves.states.get(0);
@@ -138,6 +144,7 @@ export const buildValidationTraceClaimMaterial = async ({
       "validation claim: the honest trace is not Terminal Rejected",
     );
   const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
+  let full: Promise<DeterministicValidationMachineTrace> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(
       "validation claim: trace root does not match its commitment",
@@ -153,5 +160,9 @@ export const buildValidationTraceClaimMaterial = async ({
     terminalLeafProof: trace.proof(leaves.stepCount),
     initialState,
     leafProof: trace.proof,
+    trace: () =>
+      (full ??= Effect.runPromise(
+        buildDeterministicValidationMachineTrace(input),
+      )),
   };
 };

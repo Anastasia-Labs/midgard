@@ -196,6 +196,7 @@ export const regranted = async (
     deploymentFingerprint: authority.deploymentFingerprint,
     headerHash: authority.headerHash,
     caseOpenerOutRef: authority.caseOpenerOutRef,
+    defenderVkh: authority.defenderVkh,
     thread: move.thread,
     ...(move.caseInput === undefined ? {} : { caseInput: move.caseInput }),
   });

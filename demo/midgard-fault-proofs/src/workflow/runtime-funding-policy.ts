@@ -122,15 +122,25 @@ export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
   casePolicyId: string;
   /**
    * The thread moves' contracts, present when the runner plays threads: the
-   * game, timeout and award spending addresses and the receipt policy. The
-   * per-move fee cap and the receipt's lovelace are the compiled profile's.
+   * game, timeout and award spending addresses and the receipt policy, and
+   * when the runner drives the one-step resolution, the boundary's and the
+   * one-step resolvers' spending addresses a thread visits between the game
+   * and the award. The per-move fee cap and the receipt's lovelace are the
+   * compiled profile's.
    */
   moves?: Readonly<{
     gameAddress: string;
     timeoutAddress: string;
     awardAddress: string;
     awardPolicyId: string;
+    oneStep?: ValidationDisputeOneStepTerms;
   }>;
+}>;
+
+/** The holders a thread of ours visits in its one-step resolution. */
+export type ValidationDisputeOneStepTerms = Readonly<{
+  boundaryAddress: string;
+  resolverAddresses: readonly string[];
 }>;
 
 type ValidationDisputeTermsValue = Readonly<{
@@ -146,6 +156,7 @@ type ValidationDisputeTermsValue = Readonly<{
     awardPolicyId: string;
     moveFeeCapLovelace: string;
     fraudProofOutputLovelace: string;
+    oneStep?: ValidationDisputeOneStepTerms;
   }>;
 }>;
 
@@ -215,6 +226,17 @@ const validationDisputeTerms = ({
     if (!/^[0-9a-f]{56}$/u.test(moves.awardPolicyId))
       throw new Error("runtime funding validation award policy is malformed");
     addresses.push(moves.gameAddress, moves.timeoutAddress, moves.awardAddress);
+    const { oneStep } = moves;
+    if (oneStep !== undefined) {
+      if (oneStep.resolverAddresses.length === 0)
+        throw new Error(
+          "runtime funding validation dispute one-step terms name no resolver",
+        );
+      custody(oneStep.boundaryAddress, "boundary");
+      for (const resolver of oneStep.resolverAddresses)
+        custody(resolver, "one-step resolver");
+      addresses.push(oneStep.boundaryAddress, ...oneStep.resolverAddresses);
+    }
   }
   if (new Set(addresses).size !== addresses.length)
     throw new Error(
@@ -238,6 +260,16 @@ const validationDisputeTerms = ({
             moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
             fraudProofOutputLovelace:
               limits.fraud_proof_output_lovelace.toString(),
+            ...(moves.oneStep === undefined
+              ? {}
+              : {
+                  oneStep: Object.freeze({
+                    boundaryAddress: moves.oneStep.boundaryAddress,
+                    resolverAddresses: Object.freeze([
+                      ...moves.oneStep.resolverAddresses,
+                    ]),
+                  }),
+                }),
           }),
         }),
   });

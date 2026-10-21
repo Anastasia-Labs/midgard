@@ -1,7 +1,8 @@
 /** The transactions of the challenger's thread moves, before completion: a
- * game-v1 move of a thread (RevealChallenger, EnterChallengerTimeout), the
- * thread after our reveal, and the ThreadClose of a thread timed out on its
- * defender's side. The thread alone pays each move's fee, which the caller
+ * game-v1 move of a thread (RevealChallenger, EnterResolution,
+ * EnterChallengerTimeout), the thread after our reveal or our entry into the
+ * resolution, and the ThreadClose of a thread timed out on its defender's
+ * side or awarded to us. The thread alone pays each move's fee, which the caller
  * names (move-fee.ts settles it at the move's minimum, up to the cap), so
  * the wallet only lends collateral. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
@@ -17,10 +18,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  type ValidationTraceThread,
-  validationTraceThreadTokenName,
-} from "./threads.js";
+import { validationTraceThreadTokenName } from "./threads.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** `env.fraud_proof_output_lovelace`: what a lost-defense receipt holds. */
@@ -41,11 +39,13 @@ export const validationTraceMoveWindow = (lucid: LucidEvolution) => {
 
 export type ValidationTraceGameAction =
   | Readonly<{ kind: "RevealChallenger"; proof: SDK.ValidationTraceProof }>
+  | Readonly<{ kind: "EnterResolution" }>
   | Readonly<{ kind: "EnterChallengerTimeout" }>;
 
 /**
  * A game move of `thread` to `successor`, which keeps the thread's tokens
- * and its lovelace less `fee`, before completion.
+ * and its lovelace less `fee`, before completion; signed by `signer` when
+ * given (EnterResolution is the prover's alone).
  */
 export const buildValidationTraceGameMove = ({
   lucid,
@@ -56,6 +56,7 @@ export const buildValidationTraceGameMove = ({
   fee,
   validFrom,
   validTo,
+  signer,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ValidationTraceDisputeDeployment;
@@ -66,6 +67,7 @@ export const buildValidationTraceGameMove = ({
   readonly fee: bigint;
   readonly validFrom: number;
   readonly validTo: number;
+  readonly signer?: string;
 }): TxBuilder => {
   const redeemer = (ctx: RedeemerContext) => {
     const indices = {
@@ -77,13 +79,15 @@ export const buildValidationTraceGameMove = ({
         Continue: [
           action.kind === "RevealChallenger"
             ? { RevealChallenger: { ...indices, proof: action.proof } }
-            : { EnterChallengerTimeout: indices },
+            : action.kind === "EnterResolution"
+              ? { EnterResolution: indices }
+              : { EnterChallengerTimeout: indices },
         ],
       },
       SDK.ValidationGameSpendRedeemer,
     );
   };
-  return lucid
+  const tx = lucid
     .newTx()
     .collectFrom([thread], redeemer)
     .readFrom([deployment.references.game])
@@ -97,6 +101,7 @@ export const buildValidationTraceGameMove = ({
     )
     .validFrom(validFrom)
     .validTo(validTo);
+  return signer === undefined ? tx : tx.addSignerKey(signer);
 };
 
 const charge = (clock: bigint, startedAt: bigint, lower: bigint): bigint => {
@@ -104,6 +109,32 @@ const charge = (clock: bigint, startedAt: bigint, lower: bigint): bigint => {
   if (elapsed > clock)
     throw new Error("validation-trace challenger's clock has run out");
   return clock - elapsed;
+};
+
+/**
+ * The thread after our EnterResolution (case-thread-v1 `enter_resolution`)
+ * by a move whose inclusive bounds are `lower` and `upper`.
+ */
+export const challengerEnteredResolution = ({
+  thread,
+  lower,
+  upper,
+}: {
+  readonly thread: SDK.CaseThread;
+  readonly lower: bigint;
+  readonly upper: bigint;
+}): SDK.CaseThread => {
+  if (thread.turn !== "ReadyForOneStep")
+    throw new Error("validation-trace thread is not ReadyForOneStep");
+  return {
+    ...thread,
+    turn_started_at: upper,
+    challenger_clock_ms: charge(
+      thread.challenger_clock_ms,
+      thread.turn_started_at,
+      lower,
+    ),
+  };
 };
 
 /**
@@ -155,15 +186,20 @@ export const challengerRevealedThread = ({
 };
 
 /**
- * The ThreadClose of `thread`, timed out on its defender's side, into the
- * case `caseUtxo`: the thread token burns, the defender's lost-defense
- * receipt is minted to the award validator, and the rest of the thread less
- * `fee` goes to the case's bounty claimant. Before completion.
+ * The ThreadClose of `thread` of defender `defenderVkh` on case `caseId`,
+ * won by us at `via` (timed out on its defender's side, or awarded by its
+ * one-step resolution), into the case `caseUtxo`: the thread token burns,
+ * the defender's lost-defense receipt is minted to the award validator, and
+ * the rest of the thread less `fee` goes to the case's bounty claimant.
+ * Before completion.
  */
 export const buildValidationTraceThreadClose = ({
   lucid,
   deployment,
+  via,
   thread,
+  caseId,
+  defenderVkh,
   caseUtxo,
   caseConfig,
   fee,
@@ -172,7 +208,10 @@ export const buildValidationTraceThreadClose = ({
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ValidationTraceDisputeDeployment;
-  readonly thread: ValidationTraceThread;
+  readonly via: "timeout" | "award";
+  readonly thread: Readonly<{ utxo: UTxO; unit: string }>;
+  readonly caseId: string;
+  readonly defenderVkh: string;
   readonly caseUtxo: UTxO;
   readonly caseConfig: UTxO;
   /** What the thread pays for the close. */
@@ -182,10 +221,10 @@ export const buildValidationTraceThreadClose = ({
 }): Readonly<{ tx: TxBuilder; receiptUnit: string }> => {
   const { chain, references } = deployment;
   const caseDatum = Data.from(caseUtxo.datum!, SDK.Case);
-  const defenderVkh = thread.thread.header.defender_vkh;
   const receiptUnit =
-    chain.award.policyId +
-    validationTraceThreadTokenName(thread.thread.case_id, defenderVkh);
+    chain.award.policyId + validationTraceThreadTokenName(caseId, defenderVkh);
+  const threadReference =
+    via === "timeout" ? references.timeout : references.award;
   const outcome = "ChallengerWins" as const;
   const caseRedeemer = (ctx: RedeemerContext) =>
     Data.to(
@@ -203,15 +242,18 @@ export const buildValidationTraceThreadClose = ({
     SDK.requireInputIndex(ctx, caseUtxo, "case");
   const tx = lucid
     .newTx()
-    .collectFrom([thread.utxo], (ctx) =>
-      Data.to(
-        {
-          input_index: SDK.requireInputIndex(ctx, thread.utxo, "thread"),
-          case_input_index: caseIndex(ctx),
-        },
-        SDK.ValidationTimeoutSpendRedeemer,
-      ),
-    )
+    .collectFrom([thread.utxo], (ctx) => {
+      const indices = {
+        input_index: SDK.requireInputIndex(ctx, thread.utxo, "thread"),
+        case_input_index: caseIndex(ctx),
+      };
+      return via === "timeout"
+        ? Data.to(indices, SDK.ValidationTimeoutSpendRedeemer)
+        : Data.to(
+            { CloseAwardedThread: indices },
+            SDK.ValidationAwardSpendRedeemer,
+          );
+    })
     .collectFrom([caseUtxo], caseRedeemer)
     .mintAssets({ [thread.unit]: -1n }, caseRedeemer)
     .mintAssets({ [receiptUnit]: 1n }, (ctx) =>
@@ -223,8 +265,7 @@ export const buildValidationTraceThreadClose = ({
     .readFrom([
       caseConfig,
       references.case,
-      references.timeout,
-      references.award,
+      ...new Set([threadReference, references.award]),
     ])
     .pay.ToContract(
       caseUtxo.address,
@@ -243,7 +284,7 @@ export const buildValidationTraceThreadClose = ({
         kind: "inline",
         value: Data.to(
           {
-            case_id: thread.thread.case_id,
+            case_id: caseId,
             defender_vkh: defenderVkh,
             outcome,
             bounty_claimant: caseDatum.bounty_claimant,

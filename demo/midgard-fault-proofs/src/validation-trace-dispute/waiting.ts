@@ -6,10 +6,11 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Three other states are named for readiness, so a session hands its turn
+ * Four other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
- * needs the one-step resolution, a thread lost, and a move whose fee would
- * pass the per-move cap, the last an alarm. */
+ * needs a one-step resolution the runner does not drive, a thread lost, a
+ * case a defender won, and a move whose fee would pass the per-move cap, the
+ * last an alarm. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -22,6 +23,7 @@ import type {
 } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
 import {
+  VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_LOST,
@@ -102,13 +104,15 @@ export const awaitingValidationTraceCounterparty = (
 
 /**
  * The run states named for readiness: a thread at ReadyForOneStep waits on
- * the one-step resolution, a lost thread has no move of ours left, and a
- * move whose fee would pass the cap cannot be paid by its thread, which the
- * operator must see.
+ * a one-step resolution the runner does not drive, a lost thread has no move
+ * of ours left, a case a defender won has none either, and a move whose fee
+ * would pass the cap cannot be paid by its thread, which the operator must
+ * see.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_THREAD_LOST, alarm: false }),
+  Object.freeze({ name: VALIDATION_TRACE_DEFENDER_WON, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
 ]);
 

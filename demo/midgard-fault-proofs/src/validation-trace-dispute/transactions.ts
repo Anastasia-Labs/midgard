@@ -46,6 +46,24 @@ const MAX_RANGE_MS =
 type DisputeChain =
   SDK.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
 
+/**
+ * The published reference scripts of the one-step resolution of a CEK core
+ * step: the boundary, the CEK phase resolver, the CEK core step binder, the
+ * arms that settle in one hop, and the settle.
+ */
+export type ValidationTraceOneStepReferences = Readonly<{
+  boundary: UTxO;
+  cekPrepare: UTxO;
+  cekCore: UTxO;
+  settle: UTxO;
+  arms: Readonly<{
+    compute: UTxO;
+    machine: UTxO;
+    mapConversion: UTxO;
+    caseConstant: UTxO;
+  }>;
+}>;
+
 /** The deployment the open step builds against. */
 export type ValidationTraceDisputeDeployment = Readonly<{
   /** The deployment VerifySource's funding authority is bound to. */
@@ -74,6 +92,10 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "game"
     | "timeout"
     | "award"
+    | "boundary"
+    | "prepareResolvers"
+    | "semanticResolvers"
+    | "cekCoreStages"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */
   fraudProof: Readonly<{
@@ -93,6 +115,11 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     game: UTxO;
     timeout: UTxO;
     award: UTxO;
+    /**
+     * The one-step resolution's scripts the runner drives (one-step-moves.ts);
+     * without them a thread at ReadyForOneStep waits.
+     */
+    oneStep?: ValidationTraceOneStepReferences;
   }>;
   /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;

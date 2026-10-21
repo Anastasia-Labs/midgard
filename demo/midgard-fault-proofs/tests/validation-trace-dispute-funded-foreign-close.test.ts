@@ -461,6 +461,7 @@ describe("validation-trace dispute close of our case after another party verifie
             deploymentFingerprint: closed().authority.deploymentFingerprint,
             headerHash: closed().authority.headerHash,
             caseOpenerOutRef: journey.opener,
+            defenderVkh: "00".repeat(28),
             thread: journey.verified.caseOutput,
           });
           return await walk({ signed });

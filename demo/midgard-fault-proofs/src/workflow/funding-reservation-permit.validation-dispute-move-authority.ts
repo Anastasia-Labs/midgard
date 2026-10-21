@@ -7,13 +7,15 @@
  * admits exactly one thread input: one token of the case policy, named from
  * our own confirmed case (the case id our pending claim derives, the claim
  * our Open left, read back from this reservation's lineage, whoever then
- * verified it) and the defender key in the thread's datum, with the funding
- * wallet as its fraud prover. A reveal or timeout
- * pays one successor, the thread less the fee at the game or timeout
- * validator; a thread close pays the case back unchanged but for its datum,
- * the defender's lost-defense receipt at the award validator, and the rest
- * of the thread less the receipt and the fee to the funding key, as case-v1
- * requires. Nothing is topped up; the fee is at most the deployment's
+ * verified it) and the defender key the move names, with the funding
+ * wallet as its fraud prover. A reveal, timeout, entry into the one-step
+ * resolution or resolution hop pays one successor, the thread less the fee
+ * at the holder the move sends it to (the game, the timeout validator, the
+ * boundary, a one-step resolver or the award); a thread close, from the
+ * timeout validator or the award, pays the case back unchanged but for its
+ * datum, the defender's lost-defense receipt at the award validator, and the
+ * rest of the thread less the receipt and the fee to the funding key, as
+ * case-v1 requires. Nothing is topped up; the fee is at most the deployment's
  * per-move cap; the wallet lends only collateral. It binds the exact signed
  * bytes evaluated locally and is minted only by the move builders, for
  * category 00000006. The funding walk under it is in
@@ -25,6 +27,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  Constr,
   coreToTxOutput,
   Data,
   type TxSigned,
@@ -44,7 +47,18 @@ import type { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.
 const CATEGORY = "validationTraceDispute" as const;
 const OPEN = "open";
 
-export type ValidationDisputeMoveKind = "reveal" | "timeout" | "close_thread";
+export type ValidationDisputeMoveKind =
+  | "reveal"
+  | "timeout"
+  | "close_thread"
+  | "enter_resolution"
+  | "resolve"
+  | "close_awarded";
+
+/** The kinds that close a thread into the case. */
+export const isValidationDisputeThreadClose = (
+  kind: ValidationDisputeMoveKind,
+): boolean => kind === "close_thread" || kind === "close_awarded";
 
 export type ValidationDisputeMoveAuthority = Readonly<{
   category: typeof CATEGORY;
@@ -53,6 +67,8 @@ export type ValidationDisputeMoveAuthority = Readonly<{
   headerHash: string;
   /** The pending claim our Open left, in this reservation's lineage. */
   caseOpenerOutRef: string;
+  /** The thread's defender, whose key names its token. */
+  defenderVkh: string;
   threadOutRef: string;
   threadResolvedOutputCborHex: string;
   /** A thread close's case input; null for a reveal or timeout. */
@@ -85,6 +101,7 @@ export const grantValidationDisputeMoveAuthority = ({
   deploymentFingerprint,
   headerHash,
   caseOpenerOutRef,
+  defenderVkh,
   thread,
   caseInput,
 }: {
@@ -93,6 +110,7 @@ export const grantValidationDisputeMoveAuthority = ({
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
   readonly caseOpenerOutRef: string;
+  readonly defenderVkh: string;
   readonly thread: UTxO;
   readonly caseInput?: UTxO;
 }): void => {
@@ -105,6 +123,7 @@ export const grantValidationDisputeMoveAuthority = ({
       deploymentFingerprint,
       headerHash,
       caseOpenerOutRef,
+      defenderVkh,
       threadOutRef: outRefLabel(thread),
       threadResolvedOutputCborHex: exactResolvedOutputCbor(thread),
       caseOutRef: caseInput === undefined ? null : outRefLabel(caseInput),
@@ -170,6 +189,11 @@ export const assertValidationDisputeMoveBinding = ({
     ["category", state.category === CATEGORY],
     ["policy category", policy.category === CATEGORY],
     ["move terms", terms?.moves !== undefined],
+    [
+      "one-step terms",
+      (authority.kind !== "enter_resolution" && authority.kind !== "resolve") ||
+        terms?.moves?.oneStep !== undefined,
+    ],
     ["current action kind", state.currentActionKind === authority.kind],
     ["action kind", actionKind(action) === authority.kind],
     [
@@ -260,11 +284,81 @@ export const exactAssets = (
   );
 };
 
+/** Where a move of `kind` may find its thread. */
+export const validationDisputeMoveThreadAddresses = (
+  kind: ValidationDisputeMoveKind,
+  moves: Moves,
+): readonly string[] => {
+  switch (kind) {
+    case "reveal":
+    case "timeout":
+    case "enter_resolution":
+      return [moves.gameAddress];
+    case "close_thread":
+      return [moves.timeoutAddress];
+    case "resolve":
+      return moves.oneStep === undefined
+        ? []
+        : [moves.oneStep.boundaryAddress, ...moves.oneStep.resolverAddresses];
+    case "close_awarded":
+      return [moves.awardAddress];
+  }
+};
+
+/** Where a move of `kind` pays its thread's successor; none for a close. */
+export const validationDisputeMoveSuccessorAddresses = (
+  kind: ValidationDisputeMoveKind,
+  moves: Moves,
+): readonly string[] => {
+  switch (kind) {
+    case "reveal":
+      return [moves.gameAddress];
+    case "timeout":
+      return [moves.timeoutAddress];
+    case "enter_resolution":
+      return moves.oneStep === undefined ? [] : [moves.oneStep.boundaryAddress];
+    case "resolve":
+      return moves.oneStep === undefined
+        ? []
+        : [...moves.oneStep.resolverAddresses, moves.awardAddress];
+    case "close_thread":
+    case "close_awarded":
+      return [];
+  }
+};
+
 /**
- * The spent thread: the authority's exact output, at the game (a reveal or
- * timeout) or the timeout validator (a close), holding its lovelace and only
- * the case policy's token named from our case and the defender key in its
- * datum, with the funding key its fraud prover. Returns its token's name.
+ * The prover of `thread` and, where the holder keeps the case thread (the
+ * game, the timeout validator and the boundary), its case and defender; a
+ * holder past the boundary keeps only its prover as its datum's first field.
+ */
+const threadDatum = (
+  thread: UTxO,
+  moves: Moves,
+): Readonly<{ prover: unknown; caseId?: string; defenderVkh?: string }> => {
+  const keepsCaseThread =
+    thread.address === moves.gameAddress ||
+    thread.address === moves.timeoutAddress ||
+    thread.address === moves.oneStep?.boundaryAddress;
+  if (keepsCaseThread) {
+    const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+    return {
+      prover: datum.fraud_prover,
+      caseId: datum.data?.case_id ?? "",
+      defenderVkh: datum.data?.header.defender_vkh ?? "",
+    };
+  }
+  const datum = Data.from(thread.datum!);
+  if (!(datum instanceof Constr)) throw new Error("not a step datum");
+  return { prover: datum.fields[0] };
+};
+
+/**
+ * The spent thread: the authority's exact output, at a holder a move of its
+ * kind spends, holding its lovelace and only the case policy's token named
+ * from our case and the authority's defender, with the funding key its
+ * fraud prover (and, where the holder keeps the case thread, our case and
+ * that defender). Returns its token's name.
  */
 export const assertValidationDisputeMoveThread = ({
   authority,
@@ -281,13 +375,13 @@ export const assertValidationDisputeMoveThread = ({
   readonly thread: UTxO;
   readonly fundingPaymentKeyHash: string;
 }): string => {
-  let datum: SDK.CaseThreadDatum | null = null;
+  let datum: ReturnType<typeof threadDatum> | null = null;
   try {
-    datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+    datum = threadDatum(thread, moves);
   } catch {
     refuse(["thread datum"]);
   }
-  const name = threadName(caseId, datum!.data?.header.defender_vkh ?? "");
+  const name = threadName(caseId, authority.defenderVkh);
   const differing = failing([
     [
       "thread output",
@@ -295,10 +389,9 @@ export const assertValidationDisputeMoveThread = ({
     ],
     [
       "thread address",
-      thread.address ===
-        (authority.kind === "close_thread"
-          ? moves.timeoutAddress
-          : moves.gameAddress),
+      validationDisputeMoveThreadAddresses(authority.kind, moves).includes(
+        thread.address,
+      ),
     ],
     [
       "thread token",
@@ -307,8 +400,13 @@ export const assertValidationDisputeMoveThread = ({
         [terms.casePolicyId + name]: 1n,
       }),
     ],
-    ["thread prover", datum!.fraud_prover === fundingPaymentKeyHash],
-    ["thread case", datum!.data?.case_id === caseId],
+    ["thread prover", datum!.prover === fundingPaymentKeyHash],
+    ["thread case", datum!.caseId === undefined || datum!.caseId === caseId],
+    [
+      "thread defender",
+      datum!.defenderVkh === undefined ||
+        datum!.defenderVkh === authority.defenderVkh,
+    ],
   ]);
   if (differing.length > 0) refuse(differing);
   return name;

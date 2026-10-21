@@ -16,8 +16,8 @@ import {
 import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
+import { VALIDATION_TRACE_CASE_CONVICTED } from "../../src/validation-trace-dispute/removal.js";
 import {
-  VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_THREAD_AWAITING,
   validationTraceDefenderDeadlineMs,
 } from "../../src/validation-trace-dispute/threads.js";
@@ -26,6 +26,7 @@ import type { ValidationDisputeMoveAuthority } from "../../src/workflow/funding-
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
+import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { drainProver } from "./installed-prover-wallet.js";
 import {
   type Defender,
@@ -48,6 +49,10 @@ import {
   setUpScene,
 } from "./validation-trace-dispute-open-scene.js";
 import {
+  type RecordedRemoval,
+  recordedRemoval,
+} from "./validation-trace-dispute-removal-l1.js";
+import {
   defendScripted,
   liveThread,
   revealAsDefender,
@@ -68,6 +73,8 @@ export type CapturedMove = Readonly<{
 
 export type FundedMoves = Readonly<{
   scene: Scene;
+  /** The convicted block's removal, its L1 view held from before the case. */
+  removal: RecordedRemoval;
   dispute: FundedDispute;
   material: ValidationTraceClaimMaterial;
   defender: Defender;
@@ -118,12 +125,20 @@ export const ourOpener = (
 /**
  * A fresh scene whose funded watcher has opened our case, which the
  * scene's operator then defends with a trace agreeing up to a third of the
- * steps.
+ * steps. The removal's L1 view is held from before the case, so a case the
+ * watcher convicts waits on it.
  */
 export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
+  // Before the scene, so the raw L1 view has the whole history.
+  const recorder = recordCrossBlockRawEmulator();
   const scene = await setUpScene();
+  const removal = await recordedRemoval(scene, recorder);
+  removal.holdView();
+  await removal
+    .l1For(scene.failing.evidence.headerHash)
+    .observe({ headerHash: scene.failing.evidence.headerHash });
   await drainProver(scene.h as never, FUNDED);
-  const dispute = await openFundedDispute(scene);
+  const dispute = await openFundedDispute(scene, { removal: removal.removal });
   const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
   if (opened.result.kind !== "pending")
     throw new Error(`the case did not open: ${opened.history.join("\n")}`);
@@ -167,6 +182,7 @@ export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
   });
   return {
     scene,
+    removal,
     dispute,
     material,
     defender,
@@ -203,7 +219,8 @@ export const passDefenderDeadline = async (journey: FundedMoves) => {
 
 /**
  * The defender reveals, the watcher reveals in turn, the defender goes
- * silent, and the watcher times its thread out and closes it into our case.
+ * silent, and the watcher times its thread out, closes it into our case and,
+ * the case's defense deadline passed, closes the case Convicted.
  */
 export const playFundedMovesToClose = async (journey: FundedMoves) => {
   const { scene, dispute, defender, trace, capture } = journey;
@@ -219,7 +236,7 @@ export const playFundedMovesToClose = async (journey: FundedMoves) => {
   if (revealed.result.kind !== "pending")
     throw new Error(`no reveal: ${revealed.history.join("\n")}`);
   await passDefenderDeadline(journey);
-  const closed = await turnUntil(dispute, VALIDATION_TRACE_CASE_CONTESTED, {
+  const closed = await turnUntil(dispute, VALIDATION_TRACE_CASE_CONVICTED, {
     wrap: capture,
   });
   if (closed.result.kind !== "pending")

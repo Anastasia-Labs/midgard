@@ -1,8 +1,8 @@
 /**
  * A validation-trace dispute thread move's funding, walked by the runtime
  * bound under its authority (funding-reservation-permit.validation-dispute-
- * move-authority.ts): the exact outputs game-v1 and case-v1 fix, the mint a
- * thread close makes, and nothing topped up.
+ * move-authority.ts): the exact outputs game-v1, the one-step holders and
+ * case-v1 fix, the mint a thread close makes, and nothing topped up.
  */
 import {
   CML,
@@ -22,12 +22,14 @@ import {
   assertValidationDisputeMoveCaseInput,
   assertValidationDisputeMoveThread,
   exactAssets,
+  isValidationDisputeThreadClose,
   type Moves,
   type Policy,
   readValidationDisputeMoveAuthority,
   refuse,
   type Terms,
   type ValidationDisputeMoveAuthority,
+  validationDisputeMoveSuccessorAddresses,
 } from "./funding-reservation-permit.validation-dispute-move-authority.js";
 import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
@@ -71,10 +73,13 @@ export const validationDisputeMoveOutput = ({
   const fail = (what: string): never => {
     throw new Error(`validation dispute ${what}`);
   };
-  if (authority.kind !== "close_thread") {
-    const at =
-      authority.kind === "reveal" ? moves.gameAddress : moves.timeoutAddress;
-    if (output.address !== at) return null;
+  if (!isValidationDisputeThreadClose(authority.kind)) {
+    if (
+      !validationDisputeMoveSuccessorAddresses(authority.kind, moves).includes(
+        output.address,
+      )
+    )
+      return null;
     if (
       !inline ||
       !exactAssets(output.assets, {
@@ -177,7 +182,7 @@ export const validationDisputeMoveFunding = async ({
   const body = signed.toTransaction().body();
   const fee = body.fee();
   if (fee > BigInt(moves.moveFeeCapLovelace)) refuse(["fee"]);
-  const close = authority.kind === "close_thread";
+  const close = isValidationDisputeThreadClose(authority.kind);
   let thread: UTxO | undefined;
   let caseInput: UTxO | undefined;
   let name = "";

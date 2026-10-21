@@ -18,11 +18,14 @@ import {
   validationTraceMoveWindow,
 } from "./move-builders.js";
 import { completeValidationTraceMove } from "./move-fee.js";
+import { validationTraceOneStepContracts } from "./one-step-holders.js";
 import {
   isThreadMaterial,
   readValidationTraceThread,
   validationTraceDefenderDeadlineMs,
   type ValidationTraceThread,
+  type ValidationTraceThreadHolder,
+  type ValidationTraceThreadMove,
   validationTraceThreadTokenName,
 } from "./threads.js";
 import {
@@ -44,7 +47,7 @@ export type ValidationTraceMoveInput = StageInput &
   }>;
 
 /** The thread at `threadOutRef`, a thread of our case at `at`, or changed. */
-const liveThread = async (
+export const liveThread = async (
   {
     lucid,
     signer,
@@ -52,7 +55,7 @@ const liveThread = async (
     threadOutRef,
     caseUnit,
   }: ValidationTraceMoveInput,
-  at: "game" | "timeout",
+  at: ValidationTraceThreadHolder,
 ): Promise<ValidationTraceThread> => {
   const utxo = await ours(lucid, threadOutRef, "thread");
   const caseId = caseUnit.slice(56);
@@ -61,10 +64,7 @@ const liveThread = async (
       ? Data.from(utxo.datum, SDK.CaseThreadDatum)
       : undefined;
   const defenderVkh = datum?.data?.header.defender_vkh ?? "";
-  const address =
-    at === "game"
-      ? deployment.chain.game.spendingScriptAddress
-      : deployment.chain.timeout.spendingScriptAddress;
+  const address = deployment.chain[at].spendingScriptAddress;
   const thread =
     utxo.address === address
       ? readValidationTraceThread({
@@ -88,19 +88,24 @@ const liveThread = async (
 const awaiting = (thread: SDK.CaseThread) =>
   typeof thread.turn !== "string" && "AwaitingOperator" in thread.turn;
 
-/** Signs, grants the move authority and names the move's own outputs. */
-const captureMove = async ({
+/**
+ * Signs, grants the move authority over the thread `thread` of `defenderVkh`
+ * and names the move's own outputs.
+ */
+export const captureMove = async ({
   input,
   stage,
   unsigned,
   thread,
+  defenderVkh,
   caseInput,
   slots,
 }: {
   readonly input: ValidationTraceMoveInput;
-  readonly stage: "reveal" | "timeout" | "close_thread";
+  readonly stage: ValidationTraceThreadMove;
   readonly unsigned: TxSignBuilder;
-  readonly thread: ValidationTraceThread;
+  readonly thread: Readonly<{ utxo: UTxO }>;
+  readonly defenderVkh: string;
   readonly caseInput?: UTxO;
   readonly slots: readonly Readonly<{ address: string; unit: string }>[];
 }): Promise<CapturedValidationTraceStage> => {
@@ -112,6 +117,7 @@ const captureMove = async ({
     headerHash: input.artifact.headerHash,
     caseOpenerOutRef: input.caseOpenerOutRef,
     thread: thread.utxo,
+    defenderVkh,
     ...(caseInput === undefined ? {} : { caseInput }),
   });
   const { references } = input.deployment;
@@ -120,6 +126,12 @@ const captureMove = async ({
     { role: "validation-case", utxo: references.case },
     { role: "validation-trace-timeout", utxo: references.timeout },
     { role: "validation-trace-award", utxo: references.award },
+    ...validationTraceOneStepContracts(input.deployment).map(
+      ({ holder, reference }) => ({
+        role: `validation-trace-${holder}`,
+        utxo: reference,
+      }),
+    ),
   ]);
   return {
     transaction,
@@ -183,6 +195,7 @@ export const captureValidationTraceReveal = async (
     stage: "reveal",
     unsigned,
     thread,
+    defenderVkh: thread.thread.header.defender_vkh,
     slots: [{ address, unit: thread.unit }],
   });
 };
@@ -226,6 +239,7 @@ export const captureValidationTraceTimeout = async (
     stage: "timeout",
     unsigned,
     thread,
+    defenderVkh: thread.thread.header.defender_vkh,
     slots: [{ address, unit: thread.unit }],
   });
 };
@@ -256,7 +270,10 @@ export const captureValidationTraceThreadClose = async (
     buildValidationTraceThreadClose({
       lucid,
       deployment,
+      via: "timeout",
       thread,
+      caseId: thread.thread.case_id,
+      defenderVkh: thread.thread.header.defender_vkh,
       caseUtxo,
       caseConfig,
       fee,
@@ -280,6 +297,7 @@ export const captureValidationTraceThreadClose = async (
     stage: "close_thread",
     unsigned,
     thread,
+    defenderVkh: thread.thread.header.defender_vkh,
     caseInput: caseUtxo,
     slots: [
       { address: deployment.chain.case.spendingScriptAddress, unit: caseUnit },

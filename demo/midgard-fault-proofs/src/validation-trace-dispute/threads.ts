@@ -6,32 +6,34 @@
  * are found along our case output's spend chain (case-history.ts): the case
  * token's complete L1 history names every thread a Defend left and every one
  * a close burned, and each thread it holds open is re-read by its token at
- * the game and timeout validators. The threads found are checked against the
- * case's own count of open threads; a shortfall holds and reports, never
- * decides.
+ * the game, timeout and boundary validators and, in its one-step resolution,
+ * at the holders it visits on its way to the award (thread-observation.ts).
+ * The threads found are checked against the case's own count of open
+ * threads; a shortfall holds and reports, never decides.
  *
  * Each thread is played on its own, the most pressing first: on our turn we
- * reveal our midpoint; a defender whose clock ran out is timed out and its
- * thread closed into the case; ReadyForOneStep stops at a resumable
- * "one-step required" state. A thread on our turn is never timed out. */
+ * reveal our midpoint, or on ReadyForOneStep enter the one-step resolution,
+ * the earliest of our deadlines first; a defender whose clock ran out is
+ * timed out; a thread in its resolution moves on hop by hop; a thread won
+ * either way is closed into the case. A one step the runner does not drive
+ * stops at a resumable "one-step required" state. A thread on our turn is
+ * never timed out. With every thread closed the case settles, unless a
+ * defender won one: then the run stops under its own state. */
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type UTxO } from "@lucid-evolution/lucid";
 
-import type { ResolvedProverSigner } from "../runtime.js";
-import type { FraudProofWorkflowObservation } from "../workflow/orchestrator.js";
-import { validationTraceAction } from "./actions.js";
-import {
-  recordedValidationTraceThreads,
-  type ValidationTraceCaseHistory,
-} from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
-import type { ValidationTraceDisputeDeployment } from "./transactions.js";
+import type { ValidationTraceOneStepHolder } from "./one-step-holders.js";
+import type { ValidationTraceOneStepPlanning } from "./one-step-plan.js";
 
 export { validationTraceThreadTokenName } from "./case-history.js";
 
-/** A defended case whose threads are all closed; its close is not installed. */
+/** A defended case whose threads are all closed with no valid claim. */
 export const VALIDATION_TRACE_CASE_CONTESTED =
   "validation-trace-case-contested";
+
+/** A defender won a thread of our case, which can no longer convict. */
+export const VALIDATION_TRACE_DEFENDER_WON = "validation-trace-defender-won";
 
 /** A thread of our case waits on its defender's move until a deadline. */
 export const VALIDATION_TRACE_THREAD_AWAITING =
@@ -54,13 +56,29 @@ export const VALIDATION_TRACE_MATERIAL_HOLD = "validation-trace-material-hold";
 /** How the threads were found: along our case output's spend chain. */
 export const VALIDATION_TRACE_THREAD_DISCOVERY = "spend-chain" as const;
 
+/** The validators that hold a thread with its case thread datum. */
+export type ValidationTraceThreadHolder = "game" | "timeout" | "boundary";
+
 /** A thread of our case, as found and checked. */
 export type ValidationTraceThread = Readonly<{
   utxo: UTxO;
   outRef: string;
   unit: string;
-  at: "game" | "timeout";
+  at: ValidationTraceThreadHolder;
   thread: SDK.CaseThread;
+}>;
+
+/**
+ * A thread of ours in its one-step resolution past the boundary, as found
+ * and checked: its token, its defender (from the case's history), and the
+ * holder it is at, whose datum names us its prover.
+ */
+export type ValidationTraceResolvingThread = Readonly<{
+  utxo: UTxO;
+  outRef: string;
+  unit: string;
+  defenderVkh: string;
+  holder: Exclude<ValidationTraceOneStepHolder, "boundary">;
 }>;
 
 const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
@@ -83,7 +101,7 @@ export const readValidationTraceThread = ({
   readonly caseId: string;
   readonly defenderVkh: string;
   readonly prover: string;
-  readonly at: "game" | "timeout";
+  readonly at: ValidationTraceThreadHolder;
 }): ValidationTraceThread | undefined => {
   if (utxo.assets[unit] !== 1n || typeof utxo.datum !== "string") return;
   let datum: SDK.CaseThreadDatum;
@@ -103,66 +121,33 @@ export const readValidationTraceThread = ({
   return Object.freeze({ utxo, outRef: outRefOf(utxo), unit, at, thread });
 };
 
-/**
- * The live threads of case `caseUnit`: each thread its history held, re-read
- * by its token at the game and timeout validators, sorted by token.
- */
-export const discoverValidationTraceThreads = async ({
-  lucid,
-  deployment,
-  caseHistory,
-  headerHash,
-  caseUnit,
-  prover,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly deployment: ValidationTraceDisputeDeployment;
-  readonly caseHistory: ValidationTraceCaseHistory;
-  readonly headerHash: string;
-  readonly caseUnit: string;
-  readonly prover: string;
-}): Promise<readonly ValidationTraceThread[]> => {
-  const caseId = caseUnit.slice(56);
-  const { chain } = deployment;
-  const found: ValidationTraceThread[] = [];
-  for (const { unit, defenderVkh } of recordedValidationTraceThreads({
-    transactions: await caseHistory.transactions({ headerHash, caseUnit }),
-    caseUnit,
-  }))
-    for (const [at, address] of [
-      ["game", chain.game.spendingScriptAddress],
-      ["timeout", chain.timeout.spendingScriptAddress],
-    ] as const)
-      for (const utxo of await lucid.utxosAtWithUnit(address, unit)) {
-        const read = readValidationTraceThread({
-          utxo,
-          unit,
-          caseId,
-          defenderVkh,
-          prover,
-          at,
-        });
-        if (read !== undefined) found.push(read);
-      }
-  return Object.freeze(found);
-};
+export type ValidationTraceThreadMove =
+  | "reveal"
+  | "timeout"
+  | "close_thread"
+  | "enter_resolution"
+  | "resolve"
+  | "close_awarded";
 
 export type ValidationTraceThreadDecision =
   | Readonly<{
       kind: "move";
-      stage: "reveal" | "timeout" | "close_thread";
-      thread: ValidationTraceThread;
+      stage: ValidationTraceThreadMove;
+      thread: ValidationTraceThread | ValidationTraceResolvingThread;
     }>
-  | Readonly<{ kind: "pending"; reason: string }>;
+  | Readonly<{ kind: "pending"; reason: string }>
+  /** Every thread is closed and none went the defender's way. */
+  | Readonly<{ kind: "settle" }>;
 
 /** The end of a defender's turn: a timeout lands with its lower bound past it. */
 export const validationTraceDefenderDeadlineMs = (
   thread: SDK.CaseThread,
 ): number => Number(thread.turn_started_at + thread.defender_clock_ms);
 
-/** The end of our turn: a reveal's lower bound may not pass it. */
-const challengerDeadlineMs = (thread: SDK.CaseThread): number =>
-  Number(thread.turn_started_at + thread.challenger_clock_ms);
+/** The end of our turn: our move's lower bound may not pass it. */
+export const validationTraceChallengerDeadlineMs = (
+  thread: SDK.CaseThread,
+): number => Number(thread.turn_started_at + thread.challenger_clock_ms);
 
 /** Whether `material` is the trace the thread's challenger root commits. */
 export const isThreadMaterial = (
@@ -174,12 +159,19 @@ export const isThreadMaterial = (
   material.stepCount === thread.step_count;
 
 /**
- * The next action over the threads of our case at `caseOutRef`. Our reveals
- * come first, the earliest deadline first, then timeouts, earliest first,
- * then closes; otherwise the most pressing wait.
+ * The next action over the threads of our case at `caseOutRef`: `threads`
+ * at the game, timeout and boundary, and `resolving` past the boundary. A
+ * case a defender won stops. Our reveals and entries into the one-step
+ * resolution come first, the earliest deadline first, then timeouts,
+ * earliest first, then resolution hops, then closes; otherwise the most
+ * pressing wait. A thread ReadyForOneStep enters its resolution only on the
+ * step `plannings` (by the thread's out-ref) plans for it; with none, the
+ * resolution is not installed. With every thread closed the case settles.
  */
 export const decideValidationTraceThreads = ({
   threads,
+  resolving = [],
+  plannings = new Map(),
   caseUnit,
   caseOutRef,
   caseDatum,
@@ -187,16 +179,27 @@ export const decideValidationTraceThreads = ({
   material,
 }: {
   readonly threads: readonly ValidationTraceThread[];
+  readonly resolving?: readonly ValidationTraceResolvingThread[];
+  readonly plannings?: ReadonlyMap<string, ValidationTraceOneStepPlanning>;
   readonly caseUnit: string;
   readonly caseOutRef: string;
   readonly caseDatum: SDK.Case;
   readonly now: number;
   readonly material: ValidationTraceClaimMaterial | undefined;
 }): ValidationTraceThreadDecision => {
-  const moves: Record<"reveal" | "timeout" | "close_thread", typeof threads> = {
+  const pending = (reason: string) => ({ kind: "pending" as const, reason });
+  if (caseDatum.defender_won)
+    return pending(
+      `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${caseUnit} at ${caseOutRef}, which cannot convict, so the run stops`,
+    );
+  type Found = ValidationTraceThread | ValidationTraceResolvingThread;
+  const moves: Record<ValidationTraceThreadMove, Found[]> = {
     reveal: [],
+    enter_resolution: [],
     timeout: [],
+    resolve: [],
     close_thread: [],
+    close_awarded: [],
   };
   const oneStep: string[] = [];
   const lost: string[] = [];
@@ -208,20 +211,25 @@ export const decideValidationTraceThreads = ({
     const label = `thread ${unit} at ${outRef}`;
     if (found.at === "timeout") {
       if (typeof turn !== "string" && "AwaitingOperator" in turn)
-        moves.close_thread = [...moves.close_thread, found];
+        moves.close_thread.push(found);
       else lost.push(`${label} timed out on the challenger's side`);
-    } else if (turn === "ReadyForOneStep")
-      oneStep.push(
-        `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}`,
-      );
-    else if ("AwaitingChallenger" in turn) {
-      if (now > challengerDeadlineMs(thread))
+    } else if (found.at === "boundary") {
+      if (isThreadMaterial(thread, material)) moves.resolve.push(found);
+      else held.push(`${label} commits a trace this workflow does not hold`);
+    } else if (turn === "ReadyForOneStep" || "AwaitingChallenger" in turn) {
+      const planning = plannings.get(outRef);
+      if (now > validationTraceChallengerDeadlineMs(thread))
         lost.push(`${label} ran out of the challenger's clock`);
       else if (!isThreadMaterial(thread, material))
         held.push(`${label} commits a trace this workflow does not hold`);
-      else moves.reveal = [...moves.reveal, found];
+      else if (turn !== "ReadyForOneStep") moves.reveal.push(found);
+      else if (planning?.kind === "plan") moves.enter_resolution.push(found);
+      else
+        oneStep.push(
+          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
+        );
     } else if (now > validationTraceDefenderDeadlineMs(thread))
-      moves.timeout = [...moves.timeout, found];
+      moves.timeout.push(found);
     else {
       const deadline = validationTraceDefenderDeadlineMs(thread);
       awaiting.push({
@@ -230,93 +238,53 @@ export const decideValidationTraceThreads = ({
       });
     }
   }
-  // The most pressing first: our reveal whose clock ends soonest, then the
+  for (const found of resolving)
+    if (found.holder === "award") moves.close_awarded.push(found);
+    else if (material === undefined)
+      held.push(
+        `thread ${found.unit} at ${found.outRef} is in its one-step resolution without our trace`,
+      );
+    else moves.resolve.push(found);
+  const by =
+    (deadline: (thread: SDK.CaseThread) => number) => (found: Found) =>
+      "thread" in found ? deadline(found.thread) : Number.POSITIVE_INFINITY;
+  const ours = by(validationTraceChallengerDeadlineMs);
+  const theirs = by(validationTraceDefenderDeadlineMs);
+  // The most pressing first: our move whose clock ends soonest, then the
   // timeout whose defender's clock ended first.
-  const [reveal] = [...moves.reveal].sort(
-    (a, b) => challengerDeadlineMs(a.thread) - challengerDeadlineMs(b.thread),
-  );
-  if (reveal !== undefined)
-    return { kind: "move", stage: "reveal", thread: reveal };
-  const [timeout] = [...moves.timeout].sort(
-    (a, b) =>
-      validationTraceDefenderDeadlineMs(a.thread) -
-      validationTraceDefenderDeadlineMs(b.thread),
-  );
+  const [first] = [
+    ...moves.reveal.map((thread) => ["reveal", thread] as const),
+    ...moves.enter_resolution.map(
+      (thread) => ["enter_resolution", thread] as const,
+    ),
+  ].sort(([, a], [, b]) => ours(a) - ours(b));
+  if (first !== undefined)
+    return { kind: "move", stage: first[0], thread: first[1] };
+  const [timeout] = [...moves.timeout].sort((a, b) => theirs(a) - theirs(b));
   if (timeout !== undefined)
     return { kind: "move", stage: "timeout", thread: timeout };
-  const [close] = moves.close_thread;
-  if (close !== undefined)
-    return { kind: "move", stage: "close_thread", thread: close };
-  const pending = (reason: string) => ({ kind: "pending" as const, reason });
+  for (const stage of ["resolve", "close_thread", "close_awarded"] as const) {
+    const [next] = moves[stage];
+    if (next !== undefined) return { kind: "move", stage, thread: next };
+  }
   if (oneStep.length > 0)
     return pending(
-      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${oneStep.join("; ")}; the one-step resolution is not installed, so it waits`,
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${oneStep.join("; ")}, so it waits`,
     );
   if (lost.length > 0)
     return pending(`${VALIDATION_TRACE_THREAD_LOST}: ${lost.join("; ")}`);
   if (held.length > 0)
     return pending(`${VALIDATION_TRACE_MATERIAL_HOLD}: ${held.join("; ")}`);
-  if (BigInt(threads.length) !== caseDatum.open_threads)
+  const found = threads.length + resolving.length;
+  if (BigInt(found) !== caseDatum.open_threads)
     return pending(
-      `${VALIDATION_TRACE_THREAD_COUNT_HOLD}: case ${caseUnit} at ${caseOutRef} counts ${caseDatum.open_threads.toString()} open threads; ${VALIDATION_TRACE_THREAD_DISCOVERY} discovery found ${threads.length.toString()}, so it holds until they agree`,
+      `${VALIDATION_TRACE_THREAD_COUNT_HOLD}: case ${caseUnit} at ${caseOutRef} counts ${caseDatum.open_threads.toString()} open threads; ${VALIDATION_TRACE_THREAD_DISCOVERY} discovery found ${found.toString()}, so it holds until they agree`,
     );
-  const [first] = awaiting.sort((a, b) => a.deadline - b.deadline);
-  if (first !== undefined) return pending(first.reason);
-  return pending(
-    `${VALIDATION_TRACE_CASE_CONTESTED}: case ${caseUnit} at ${caseOutRef} was defended and has no open thread; its close is not installed, so it waits`,
-  );
-};
-
-/**
- * The next step on our defended case `caseUnit` at `caseOutRef`: a move on
- * one of its threads, or why it waits. The case is ours whoever verified it:
- * its id derives from our opener.
- */
-export const observeValidationTraceThreads = async ({
-  lucid,
-  signer,
-  deployment,
-  caseHistory,
-  headerHash,
-  caseUnit,
-  caseOutRef,
-  caseDatum,
-  now,
-  material,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly signer: ResolvedProverSigner;
-  readonly deployment: ValidationTraceDisputeDeployment;
-  readonly caseHistory: ValidationTraceCaseHistory;
-  readonly headerHash: string;
-  readonly caseUnit: string;
-  readonly caseOutRef: string;
-  readonly caseDatum: SDK.Case;
-  readonly now: number;
-  readonly material: ValidationTraceClaimMaterial | undefined;
-}): Promise<FraudProofWorkflowObservation> => {
-  const decision = decideValidationTraceThreads({
-    threads: await discoverValidationTraceThreads({
-      lucid,
-      deployment,
-      caseHistory,
-      headerHash,
-      caseUnit,
-      prover: signer.paymentKeyHash,
-    }),
-    caseUnit,
-    caseOutRef,
-    caseDatum,
-    now,
-    material,
-  });
-  return decision.kind === "pending"
-    ? decision
-    : {
-        kind: "action_required",
-        action: validationTraceAction({
-          stage: decision.stage,
-          consumes: decision.thread.outRef,
-        }),
-      };
+  const [soonest] = awaiting.sort((a, b) => a.deadline - b.deadline);
+  if (soonest !== undefined) return pending(soonest.reason);
+  if (caseDatum.neither_claim_valid)
+    return pending(
+      `${VALIDATION_TRACE_CASE_CONTESTED}: case ${caseUnit} at ${caseOutRef} has no open thread and no valid claim; its close is not installed, so it waits`,
+    );
+  return { kind: "settle" };
 };
