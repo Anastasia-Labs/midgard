@@ -63,7 +63,10 @@ import {
   type ValidationTraceRemovalConfig,
 } from "./removal.js";
 import { withValidationTraceScriptDecodeRecords } from "./script-decode-records.js";
-import { validationTraceStageUnbuilt } from "./stage-unbuilt.js";
+import {
+  heldClaimBuildAlarm,
+  validationTraceStageUnbuilt,
+} from "./stage-unbuilt.js";
 import { observeValidationTraceThreads } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
@@ -129,6 +132,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   )
     throw new Error("validation-trace Init must start at the dispute opener");
   const prepared = new Map<string, LocallyEvaluatedTransaction>();
+  const claimHeld = heldClaimBuildAlarm({ lucid, deployment, now });
   // Each block's claim material, as its saved artifact was last validated.
   const materials = new Map<string, ValidationTraceClaimMaterial>();
   const removalStage = createValidationTraceRemoval({
@@ -353,7 +357,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         classification,
         l1SlotConfig,
         onMaterial: (material) => materials.set(evidence.headerHash, material),
-      }),
+      }).catch(claimHeld(evidence.headerHash)),
     validatePreparedArtifact: async ({
       evidence,
       replayContext,
@@ -367,7 +371,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         artifact,
         l1SlotConfig,
         onMaterial: (material) => materials.set(evidence.headerHash, material),
-      }),
+      }).catch(claimHeld(evidence.headerHash)),
     observe,
     preflight: async (context) => {
       const { action, workflowId } = context;

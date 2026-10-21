@@ -8,7 +8,9 @@
  * (validation-case-v1 `defense_bond_unlock_time`). A thread move names its
  * thread and deadline once it reaches its own build (move-dispatch.ts); one
  * that fails before it names its stage only. The run resumes on the next
- * observation and builds the stage again. */
+ * observation and builds the stage again. A claim that does not build
+ * before Init (claim-material.ts) is held without an alarm until the case
+ * open window it must open our case in is at risk. */
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
@@ -20,10 +22,15 @@ import { Effect } from "effect";
 
 import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
 import {
+  isWorkflowArtifactPendingError,
+  WorkflowArtifactPendingError,
+} from "../workflow/workflow-artifact-pending.js";
+import {
   isValidationTraceMove,
   type ParsedValidationTraceAction,
   validationTraceActionId,
 } from "./actions.js";
+import { VALIDATION_TRACE_CLAIM_BUILD_HELD } from "./claim-material.js";
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "./threads.js";
 import {
   challengedBlockUtxo,
@@ -61,6 +68,52 @@ const openWindowEndMs = async (
     return undefined;
   }
 };
+
+/** How near the end of the case open window a claim that does not build
+ * becomes an alarm: once half the window or less is left, while a retry on
+ * the next observation can still open the case in time. */
+export const VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS = Math.floor(
+  MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS / 2,
+);
+
+/**
+ * Rethrows a held claim build of the block `headerHash` (claim-material.ts)
+ * as an alarm naming the end of the case open window, once
+ * `VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS` or less of the window is left,
+ * or the block cannot be read to tell; earlier, and any other error, as it
+ * came. The window bounds Init, Open and VerifySource, so a claim still
+ * held near its end can lose the case before it opens.
+ */
+export const heldClaimBuildAlarm =
+  ({
+    lucid,
+    deployment,
+    now,
+  }: {
+    readonly lucid: LucidEvolution;
+    readonly deployment: ValidationTraceDisputeDeployment;
+    readonly now: () => number;
+  }) =>
+  (headerHash: string) =>
+  async (cause: unknown): Promise<never> => {
+    // The claim build's is the only artifact hold this family raises.
+    if (!isWorkflowArtifactPendingError(cause)) throw cause;
+    const endMs = await openWindowEndMs(lucid, deployment, headerHash);
+    if (
+      endMs !== undefined &&
+      endMs - now() > VALIDATION_TRACE_CLAIM_BUILD_AT_RISK_MS
+    )
+      throw cause;
+    const by =
+      endMs === undefined
+        ? "the end of the case open window"
+        : `${endMs.toString()}, the end of the case open window`;
+    throw new WorkflowArtifactPendingError(
+      `${VALIDATION_TRACE_CLAIM_BUILD_HELD}: the claim on block ${headerHash} does not build, and our case must open by ${by}: ${cause.message.slice(VALIDATION_TRACE_CLAIM_BUILD_HELD.length + 2)}`,
+      Object.freeze({ name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: true }),
+      { cause: cause.cause },
+    );
+  };
 
 class ValidationTraceStageUnbuiltError extends WorkflowActionUnbuiltError {
   constructor(
