@@ -169,6 +169,13 @@ export const openFundedDispute = async (
     readonly caseHistory?: (
       authentic: ValidationTraceCaseHistory,
     ) => ValidationTraceCaseHistory;
+    /** Rewrites the contracts the watcher's roster governs, by their
+     * manifest names; by default it governs the scene's. */
+    readonly roster?: (
+      hashes: Readonly<Record<string, string>>,
+    ) => Readonly<Record<string, string>>;
+    /** Whether the watcher observes publications; by default it does. */
+    readonly publications?: boolean;
   } = {},
 ) => {
   const { h } = scene;
@@ -233,7 +240,9 @@ export const openFundedDispute = async (
       protocolParameters,
       fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
       walletAddress: h.proverSigner.address,
-      scriptHashes: scriptHashes(scene, deployment),
+      scriptHashes: (options.roster ?? ((hashes) => hashes))(
+        scriptHashes(scene, deployment),
+      ),
       referenceUtxos: referenceUtxos(scene, deployment),
       computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
@@ -301,12 +310,16 @@ export const openFundedDispute = async (
       signedRecovery,
       caseHistory,
       // A script-decode record transaction stands as the emulator shows it.
-      publications: {
-        ...emulatorPublicationObserver(h.proverLucid),
-        observeSignedTransaction: signedRecovery.observeSignedTransaction,
-        rebroadcastSignedTransaction:
-          emulatorRecovery.rebroadcastSignedTransaction,
-      },
+      ...(options.publications === false
+        ? {}
+        : {
+            publications: {
+              ...emulatorPublicationObserver(h.proverLucid),
+              observeSignedTransaction: signedRecovery.observeSignedTransaction,
+              rebroadcastSignedTransaction:
+                emulatorRecovery.rebroadcastSignedTransaction,
+            },
+          }),
       now: () => h.emulator.now(),
     });
     const result = await runFraudProofWorkflow({
