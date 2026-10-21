@@ -1,10 +1,15 @@
+import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
 import {
   FraudProofL1UnavailableError,
   ReplayLocalFault,
   RetainedDaPayloadUnavailableError,
+  VALIDATION_TRACE_REPLAY_HELD,
+  VALIDATION_TRACE_REPLAY_STUCK,
+  ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
+import { WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS } from "../../src/fault-proofs/fault-decision-bridge.classification-miss.js";
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
@@ -200,6 +205,180 @@ describe("fault decision bridge deferral on a transient", () => {
       "active_alert",
     );
     expect(warn).toHaveBeenCalledOnce();
+  });
+});
+
+/** `headerHash`'s classification waits on one held script re-execution,
+ * stuck when `stuck`. */
+const replayHeld = (headerHash: string, stuck = false) =>
+  new ValidationTraceReplayHeldError(
+    headerHash,
+    [
+      {
+        headerHash,
+        position: 0,
+        txId: "0c".repeat(32),
+        attempts: 1,
+        retryAtMs: 1_000,
+        detail: "spend: Plutus evaluation stopped without a verdict",
+        stuck,
+      },
+    ],
+    0,
+    [],
+  );
+
+/** The state-queue `block_time` of the held header in the window rows. */
+const BLOCK_TIME = 1_000_000;
+
+/** The end of that header's case open window: `block_time + M/2`. */
+const OPEN_WINDOW_END = BLOCK_TIME + MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS;
+
+/** Half the case open window. */
+const HALF_WINDOW = Math.floor(MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS / 2);
+
+/** One pass over `current`, whose only header's classification stays
+ * stuck at `nowMs`: its readiness and the lines it wrote to stderr. */
+const stuckPass = async (
+  current: ReturnType<typeof observation>,
+  nowMs: number,
+) => {
+  const [held] = current.finalizedHeaders;
+  const h = harness({
+    current,
+    categoryByHeader: { [held!.headerHash]: "validationTraceDispute" },
+    nowMs: () => BigInt(nowMs),
+    classifyOverride: () => {
+      throw replayHeld(held!.headerHash, true);
+    },
+  });
+  const logged: string[] = [];
+  const stderr = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((line) => logged.push(String(line)) > 0);
+  try {
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+  } finally {
+    stderr.mockRestore();
+  }
+  expect(h.enqueued).toEqual([]);
+  return {
+    message: replayHeld(held!.headerHash, true).message,
+    readiness: h.bridge.readiness(),
+    logged,
+  };
+};
+
+const errorLine = (hold: Readonly<{ reason: string; detail: string }>) =>
+  `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...hold })}\n`;
+
+describe("fault decision bridge deferral on a held script re-execution", () => {
+  it("defers the header under the hold's reason, warns once and targets the fault once it decides", async () => {
+    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const [faulty] = current.finalizedHeaders;
+    const warn = vi.fn();
+    let held = 2;
+    const h = harness({
+      current,
+      categoryByHeader: { [faulty!.headerHash]: "validationTraceDispute" },
+      nowMs: IN_WINDOW,
+      warn,
+      classifyOverride: (fresh) => {
+        if (held > 0) {
+          held -= 1;
+          throw replayHeld(faulty!.headerHash);
+        }
+        return fresh;
+      },
+    });
+    expect(h.bridge.readiness()).toEqual([]);
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(h.enqueued).toEqual([]);
+    expect(h.bridge.readiness()).toEqual([
+      {
+        reason: VALIDATION_TRACE_REPLAY_HELD,
+        detail: replayHeld(faulty!.headerHash).message,
+      },
+    ]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith({
+      event: "classification_deferred",
+      headerHash: faulty!.headerHash,
+      cause: VALIDATION_TRACE_REPLAY_HELD,
+    });
+
+    await h.bridge.reconcileAndDispatch(current);
+    expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
+      faulty!.headerHash,
+    ]);
+    expect(h.bridge.readiness()).toEqual([]);
+  });
+
+  it("stops naming a hold that is no longer retried once it is too old", async () => {
+    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const [faulty] = current.finalizedHeaders;
+    let now = 3n;
+    const h = harness({
+      current,
+      categoryByHeader: { [faulty!.headerHash]: "validationTraceDispute" },
+      nowMs: () => now,
+      classifyOverride: () => {
+        throw replayHeld(faulty!.headerHash);
+      },
+    });
+    await h.bridge.reconcileAndDispatch(current);
+    now += BigInt(WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS);
+    expect(h.bridge.readiness()).toHaveLength(1);
+    now += 1n;
+    expect(h.bridge.readiness()).toEqual([]);
+  });
+});
+
+describe("fault decision bridge holding a stuck script re-execution near the case open window's end", () => {
+  it.each([
+    { left: HALF_WINDOW + 1, alarm: false },
+    { left: HALF_WINDOW, alarm: true },
+  ])(
+    "with $left ms of the window left holds the header, alarm $alarm",
+    async ({ left, alarm }) => {
+      const current = observation(
+        [headerFixture("01")],
+        "Idle",
+        [ATTESTED],
+        [BigInt(BLOCK_TIME)],
+      );
+      const { message, readiness, logged } = await stuckPass(
+        current,
+        OPEN_WINDOW_END - left,
+      );
+      const hold = {
+        reason: VALIDATION_TRACE_REPLAY_STUCK,
+        detail: alarm
+          ? `${message}, and its case must open by ${OPEN_WINDOW_END.toString()}, the end of the case open window`
+          : message,
+      };
+      expect(readiness).toEqual([hold]);
+      expect(logged).toEqual(alarm ? [errorLine(hold)] : []);
+    },
+  );
+
+  it("alarms when the header's block time cannot be read", async () => {
+    const readable = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const current = Object.freeze({
+      ...readable,
+      finalizedHeaders: Object.freeze(
+        readable.finalizedHeaders.map((header) =>
+          Object.freeze({ ...header, stateQueueNodeCborHex: "d87980" }),
+        ),
+      ),
+    });
+    const { message, readiness, logged } = await stuckPass(current, 3);
+    const hold = {
+      reason: VALIDATION_TRACE_REPLAY_STUCK,
+      detail: `${message}, and its case must open by the end of the case open window`,
+    };
+    expect(readiness).toEqual([hold]);
+    expect(logged).toEqual([errorLine(hold)]);
   });
 });
 

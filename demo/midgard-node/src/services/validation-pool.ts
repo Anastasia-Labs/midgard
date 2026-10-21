@@ -11,6 +11,7 @@ import "./validation-pool.fixed-validation-worker-pool.js";
 import "./validation-pool.make-validation-pool.js";
 export {
   type ImportCheckLane,
+  ValidationJobTimeoutError,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,

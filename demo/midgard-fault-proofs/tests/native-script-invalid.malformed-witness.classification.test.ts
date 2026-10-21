@@ -29,7 +29,7 @@ describe(
   "a malformed native witness item through the installed catalogue",
   replayBudget,
   () => {
-    it("classifies the block through all 42 installed categories as fault_detected", async () => {
+    it("classifies the block through all 43 installed categories as fault_detected", async () => {
       const fixture = await malformedNativeFixture();
       const { classifyInput } = await setup(fixture, "normal");
       const decision = await classifyHeader(classifyInput);
@@ -78,7 +78,7 @@ describe(
   "a forced claim over a witness item that does not decode",
   replayBudget,
   () => {
-    it("classifies the block through all 42 installed categories", async () => {
+    it("classifies the block through all 43 installed categories", async () => {
       const fixture = await forcedClaimFixture();
       const { classifyInput } = await setup(fixture, "forced");
       await expect(classifyHeader(classifyInput)).resolves.toMatchObject({

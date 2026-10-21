@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -191,6 +192,7 @@ const classify = async ({
           deploymentFingerprint: DEPLOYMENT,
           replayer: createCatalogueCompleteCanonicalReplay({
             history: { deposit: history, withdrawal: history },
+            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
             lucid: {
               utxosByOutRef: refuse,
               utxosAtWithUnit: refuse,
@@ -215,8 +217,7 @@ const classify = async ({
           releaseFinalityAuthority,
         },
   );
-  // Every retained-DA read is recorded: a predecessor fetch would request a
-  // header other than the classified block.
+  // Every retained-DA read is recorded, so a predecessor fetch would show.
   const requested: string[] = [];
   const sources: readonly RetainedDaPayloadSource[] = [
     {
@@ -387,7 +388,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     });
   });
 
-  it("accepts a normal Plutus transaction with empty witnesses through all 42 installed categories", async () => {
+  it("accepts a normal Plutus transaction with empty witnesses through all 43 installed categories", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture({
       verdict: "accepted",
     });
@@ -405,7 +406,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
       block: fixture.block,
       installed: true,
     });
-    expect(installed.classifier.launchScope).toHaveLength(42);
+    expect(installed.classifier.launchScope).toHaveLength(43);
     expect(installed.classifier.launchScope).toEqual(
       INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
     );
@@ -430,7 +431,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
     expect(uninstalled.decision.decision).toBe("healthy");
   });
 
-  it("accepts a normal Plutus transaction whose output carries the program as its reference script through all 42 installed categories", async () => {
+  it("accepts a normal Plutus transaction whose output carries the program as its reference script through all 43 installed categories", async () => {
     const fixture = await buildRetainedPlutusIdentityFixture(
       { verdict: "accepted" },
       { outputReferenceScript: true },
@@ -484,7 +485,7 @@ describe("pre-union transition trace structural route", replayBudget, () => {
       block,
       installed: true,
     });
-    expect(classifier.launchScope).toHaveLength(42);
+    expect(classifier.launchScope).toHaveLength(43);
     expect(classifier.launchScope).toEqual(
       INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
     );

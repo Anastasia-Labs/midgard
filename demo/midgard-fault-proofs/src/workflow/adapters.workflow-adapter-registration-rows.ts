@@ -106,14 +106,16 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "validationTraceDispute",
     status: "missing",
-    reason: "challenger_runner_not_written",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
     existingSurface: [
-      "onchain validation-trace/{dispute,source,case,game,boundary,timeout,award}-v1.ak",
-      "@al-ft/midgard-sdk fraud-proof/validation-{dispute,case}.ts schemas",
-      "@al-ft/midgard-validation buildDeterministicValidationMachineTrace",
+      "validation-trace-dispute/{adapter,workflow,removal}.ts",
+      "workflow/family-application-registry.ts#VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD",
+      "workflow/runtime.ts#WORKFLOW_RUNNER_FACTORIES.validationTraceDispute",
+      "workflow/complete-replay.ts#createValidationTraceDisputeCompleteCanonicalReplay",
+      "remove-fraudulent-block.ts",
     ],
     requiredClosure:
-      "a chain-state-resumable challenger runner over DA replay (detect, open, bisect, one-step, close), built on own-outputs",
+      "install and exercise the manifest-bound validation-trace dispute runner in a compiled application with the concrete public retained-DA libp2p runtime loader",
   },
   {
     category: "daHashPreimage",

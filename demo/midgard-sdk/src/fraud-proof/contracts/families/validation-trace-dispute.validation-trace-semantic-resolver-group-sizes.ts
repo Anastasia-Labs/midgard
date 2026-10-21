@@ -23,3 +23,31 @@ export const VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES = {
   cek: 4,
   valueAndMint: 11,
 } as const;
+
+const range = (from: number, to: number): readonly number[] =>
+  Array.from({ length: to - from + 1 }, (_, offset) => from + offset);
+
+/**
+ * The deployed semantic resolvers each prepare validator routes into, by
+ * their index in the chain's `semanticResolvers`, in the order each prepare
+ * validator's list holds them (its `semantic_resolver_index`). A one-step
+ * resolution reads the resolver its step selects from here.
+ */
+export const VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS = {
+  canonicalDecode: range(0, 1),
+  compactBinding: range(2, 2),
+  staticLedgerRules: range(3, 3),
+  inputSets: range(4, 5),
+  signatures: range(6, 9),
+  phaseANativeScripts: range(10, 23),
+  phaseAScriptPreconditions: range(24, 25),
+  resolveInputs: range(26, 31),
+  scriptSources: [...range(32, 59), 82],
+  nativeScripts: range(60, 62),
+  scriptIntegrity: range(63, 66),
+  cek: range(67, 70),
+  valueAndMint: range(71, 81),
+} as const satisfies Record<
+  keyof typeof VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  readonly number[]
+>;

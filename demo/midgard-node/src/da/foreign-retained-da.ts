@@ -1,9 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import {
-  DA_TRANSPORT_LIMITS,
-  daRequestResponseProtocolId,
-} from "@al-ft/midgard-core/da-transport";
+import { daRequestResponseProtocolId } from "@al-ft/midgard-core/da-transport";
 import {
   DaLibp2pRetainedDaSource,
   fetchRetainedDaPayloadByHeaderHash,
@@ -26,22 +22,7 @@ import {
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
 import { getPublicationTransport } from "./libp2p-producer.publish-da-payload-insert-from-env.js";
-
-/** Decodes a stored DA payload envelope; only the canonical V1 schema is accepted. */
-export const decodeStoredPayload = ({
-  payloadCbor,
-  schemaVersion,
-}: {
-  readonly payloadCbor: Buffer;
-  readonly schemaVersion: number;
-}): Promise<SDK.DaPayload> =>
-  schemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)
-    ? Promise.reject(
-        new Error("Stored DA payload schema version must equal canonical V1"),
-      )
-    : unwrapDaPayload(payloadCbor, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-      }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
+import { decodeStoredPayload } from "./stored-payload.js";
 
 /** Construct a retained row from the canonical header, the acquired bytes and
  * the verified body's roots and counts. The header pins the validation-trace

@@ -521,6 +521,15 @@ automatically. See the operator lifecycle page in the docs site
 (`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
 vocabulary table, recovery paths, and the status report.
 
+## Validation-Trace Defense
+
+The node defends the blocks it accepted against validation-trace dispute
+cases, from the operator wallet and its defense pocket. Keep the operator
+wallet at least about 185 ADA above its normal commit float. See the
+[validation-trace defense runbook](docs/validation-trace-defense.md) for the
+funding, the pocket, the commit pause and every named state with its
+`/readyz` effect.
+
 ## DA Bond Pool and Availability Challenges
 
 One pooled DA bond backs every attestation of the DA committee. The `da-bond`
@@ -732,6 +741,17 @@ run, and refuse to write a node environment that leaves the follower
 unconfigured. A run state without a recorded origin is refused. For the full
 stack on preprod, an `L1_ORIGIN` in the stack env file must equal the recorded
 origin.
+
+Upgrading a node to a release that adds protocol validators to its follower's
+tracked set (the release that tracks the validation-trace dispute's holders is
+one) resets the follower's store at the first start and replays it from the
+origin (see [the tracked-set record](../midgard-l1-follower/README.md#the-tracked-set-record)).
+Until the replay is back at the tip the node is unready with
+`tracked_set_changed` and performs no duties: it commits no blocks and submits
+nothing. It needs no operator step, and a restart during the replay resumes it.
+The replay takes longer the longer the chain since the origin, so schedule the
+upgrade for a quiet period, with no forced transaction near its inclusion
+deadline.
 
 ```sh
 node dist/index.js deploy-reference-script-node-runtime

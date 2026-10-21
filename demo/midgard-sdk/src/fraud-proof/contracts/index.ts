@@ -337,6 +337,7 @@ export {
   outRefData,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
   type ValidationCaseContracts,
   type ValidationTraceDisputeFaultProofContracts,
 } from "./families/validation-trace-dispute.js";

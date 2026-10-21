@@ -9,28 +9,33 @@
  *
  * The calling test stands in for the family's install (the category is not
  * installed until its defender exists); the deployment is the fixture
- * manifest's with the scene's dispute contracts, whose dispute bond is the
- * emulator deployment's. The policy's dispute terms are the watcher's own,
- * derived from that signed deployment.
+ * manifest's with the scene's dispute contracts and one-step holders, whose
+ * dispute bond is the emulator deployment's. The policy's dispute terms are
+ * the watcher's own, derived from that signed deployment. Given the one-step
+ * holders' published references, the runner drives the resolution; when
+ * those references include a script selection, the deployment names the
+ * emulator's script-decode deployment, whose records the watcher writes
+ * through the shared script-decode prerequisite under the same permits.
  */
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
+import { Lucid } from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
   watcherValidationDisputeFundingTerms,
 } from "midgard-watcher";
-import {
-  makeWatcherAuthorityContracts,
-  makeWatcherDeploymentAuthorityFixture,
-} from "midgard-watcher/tests/support/deployment-authority-fixture";
 import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher/tests/support/prover-funding-hold";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import {
+  createValidationTraceCaseHistory,
+  type ValidationTraceCaseHistory,
+} from "../../src/validation-trace-dispute/case-history.js";
+import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
+import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
@@ -54,15 +59,23 @@ import {
   runFraudProofWorkflow,
 } from "../../src/workflow/orchestrator.js";
 import { createAdmittedWorkflowRunner } from "../../src/workflow/runner-admission.js";
+import { validationDisputeWalletMoveReserve } from "../../src/workflow/runtime-funding-fee.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifier } from "../workflow.make-adapter.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
+import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import {
   emulatorProtocolParameterAuthority,
   openInstalledProverFunding,
 } from "./script-decode-installed-funding.js";
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
+import {
+  referenceUtxos,
+  scriptHashes,
+  signedDeployment,
+} from "./validation-trace-dispute-funded-roster.js";
+import { oneStepDeployment } from "./validation-trace-dispute-one-step.js";
 import {
   BOND_LOVELACE,
   detectOn,
@@ -80,105 +93,20 @@ export type AdapterWrap = (
   adapter: FraudProofFamilyWorkflowAdapter,
 ) => FraudProofFamilyWorkflowAdapter;
 
-/** The published reference scripts a dispute transaction may read. */
-const referenceUtxos = (scene: Scene): readonly UTxO[] => {
-  const { h } = scene;
-  const byOutRef = new Map<string, UTxO>();
-  for (const utxo of [
-    ...Object.values(h.faultProofReferenceScripts).map(({ utxo }) => utxo),
-    ...Object.values(
-      h.witnessReferenceScripts as Readonly<Record<string, UTxO | undefined>>,
-    ).filter((utxo): utxo is UTxO => utxo !== undefined),
-    ...Object.values(scene.references),
-  ])
-    byOutRef.set(`${utxo.txHash}#${utxo.outputIndex.toString()}`, utxo);
-  return [...byOutRef.values()];
-};
-
-/** The dispute contracts by the names a manifest gives them. */
-const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
-  const { chain, h } = scene;
-  return {
-    fraudProofValidationTraceDispute:
-      h.contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
-    validationTraceDisputeOpener: chain.opener.spendingScriptHash,
-    validationTraceDisputeSource: chain.source.spendingScriptHash,
-    validationTraceDisputeCase: chain.case.spendingScriptHash,
-    validationTraceDisputeBond: chain.disputeBond.spendingScriptHash,
-    // A protocol-state contract, as every deployment's roster governs.
-    stateQueueSpend: h.contracts.stateQueue.spendingScriptHash,
-  };
-};
-
 /**
- * The fixture's signed deployment, its dispute bond and case contracts (and
- * their reference-script entries) the scene's.
+ * The fixture's signed deployment and its release finality, and the failing
+ * block's header classified through the production classifier under them.
  */
-const signedDeployment = (scene: Scene) => {
-  const { chain } = scene;
-  const contractSet = makeWatcherAuthorityContracts();
-  const deployed = (name: string, script: Script, scriptHash: string) => {
-    contractSet.contracts[name] = {
-      ...contractSet.contracts[name]!,
-      contract: { type: script.type, cborHex: script.script },
-      scriptHash,
-    };
-    for (const [role, contract] of Object.entries(
-      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ))
-      if (contract === name)
-        contractSet.referenceScripts[role] = {
-          ...contractSet.referenceScripts[role]!,
-          scriptHash,
-        };
-  };
-  deployed(
-    "validationTraceDisputeBond",
-    chain.disputeBond.spendingScript,
-    chain.disputeBond.spendingScriptHash,
-  );
-  deployed(
-    "validationTraceDisputeCase",
-    chain.case.spendingScript,
-    chain.case.spendingScriptHash,
-  );
-  deployed(
-    "validationTraceDisputeCaseMint",
-    chain.case.mintingScript,
-    chain.case.policyId,
-  );
-  return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
-};
-
-/**
- * Classifies the failing block's header, then returns one watcher turn for
- * its objective over the durable state in a fresh directory.
- */
-export const openFundedDispute = async (scene: Scene) => {
-  const { h } = scene;
+export const classifyFailingHeader = async (scene: Scene) => {
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
   const identity = signedDeployment(scene);
   const fingerprint = identity.manifestId;
-  const bondLovelace = BigInt(
-    watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
-      .challengerBondLovelace,
-  );
-  if (bondLovelace !== BOND_LOVELACE)
-    throw new Error("the fixture manifest binds another dispute bond");
   const releaseFinalityAuthority =
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint: fingerprint,
   });
-  const economics = await watcherDeploymentReleaseEconomicsAuthority(
-    identity,
-  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
-  const protocolParameters = await emulatorProtocolParameterAuthority(
-    identity,
-    h.proverLucid,
-  );
-
   const sources = [
     new FixtureRetainedDaSource(
       fingerprint,
@@ -214,6 +142,71 @@ export const openFundedDispute = async (scene: Scene) => {
     (decision.category as string) !== CATEGORY
   )
     throw new Error(`header classified ${decision.decision}`);
+  return {
+    identity,
+    fingerprint,
+    releaseFinalityAuthority,
+    releaseFinality,
+    decision,
+  } as const;
+};
+
+/**
+ * Classifies the failing block's header, then returns one watcher turn for
+ * its objective over the durable state in a fresh directory. By default the
+ * runner observes no convicted block's removal, and does not drive the
+ * one-step resolution; given the one-step holders' references, it does.
+ */
+export const openFundedDispute = async (
+  scene: Scene,
+  options: {
+    readonly removal?: ValidationTraceRemovalConfig;
+    readonly oneStep?: ValidationTraceOneStepReferences;
+    /** Whether the watcher's funding follows the emulator's live fees. */
+    readonly liveParameters?: boolean;
+    /** Rewrites the case history the watcher reads; by default it reads the
+     * authenticated one. */
+    readonly caseHistory?: (
+      authentic: ValidationTraceCaseHistory,
+    ) => ValidationTraceCaseHistory;
+    /** Rewrites the contracts the watcher's roster governs, by their
+     * manifest names; by default it governs the scene's. */
+    readonly roster?: (
+      hashes: Readonly<Record<string, string>>,
+    ) => Readonly<Record<string, string>>;
+    /** Whether the watcher observes publications; by default it does. */
+    readonly publications?: boolean;
+  } = {},
+) => {
+  const { h } = scene;
+  const block = scene.failing;
+  const headerHash = block.evidence.headerHash;
+  const {
+    identity,
+    fingerprint,
+    releaseFinalityAuthority,
+    releaseFinality,
+    decision,
+  } = await classifyFailingHeader(scene);
+  const bondLovelace = BigInt(
+    watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+      .challengerBondLovelace,
+  );
+  if (bondLovelace !== BOND_LOVELACE)
+    throw new Error("the fixture manifest binds another dispute bond");
+  const authentic = createValidationTraceCaseHistory({
+    authority: scene.l1.authority,
+    releaseFinality,
+  });
+  const caseHistory = options.caseHistory?.(authentic) ?? authentic;
+  const economics = await watcherDeploymentReleaseEconomicsAuthority(
+    identity,
+  ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
+  const protocolParameters = await emulatorProtocolParameterAuthority(
+    identity,
+    h.proverLucid,
+    options.liveParameters === true ? h.emulator : undefined,
+  );
   const actuationPermit = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "0",
@@ -228,7 +221,10 @@ export const openFundedDispute = async (scene: Scene) => {
   const directory = await mkdtemp(join(homedir(), "validation-dispute-"));
   const journalDirectory = join(directory, "journal");
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-  const deployment = runnerDeployment(scene, fingerprint);
+  const deployment =
+    options.oneStep === undefined
+      ? runnerDeployment(scene, fingerprint)
+      : oneStepDeployment(scene, options.oneStep, fingerprint);
   const { validationDispute } = watcherValidationDisputeFundingTerms(
     identity,
     CATEGORY,
@@ -244,13 +240,27 @@ export const openFundedDispute = async (scene: Scene) => {
       protocolParameters,
       fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
       walletAddress: h.proverSigner.address,
-      scriptHashes: scriptHashes(scene),
-      referenceUtxos: referenceUtxos(scene),
+      scriptHashes: (options.roster ?? ((hashes) => hashes))(
+        scriptHashes(scene, deployment),
+      ),
+      referenceUtxos: referenceUtxos(scene, deployment),
       computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
       // The watcher does not install the dispute until its defender exists.
       journalRoot: null,
       validationDispute,
+      // The supervisor's factory queries its node's parameters afresh at
+      // each turn.
+      ...(options.liveParameters === true
+        ? {
+            currentParameters: async () =>
+              await emulatorProtocolParameterAuthority(
+                identity,
+                h.proverLucid,
+                h.emulator,
+              ),
+          }
+        : {}),
     });
   let funding = await boot();
   /** Every signed transaction the emulator recovery rebroadcast. */
@@ -296,8 +306,20 @@ export const openFundedDispute = async (scene: Scene) => {
       signer,
       deployment,
       l1SlotConfig,
-      removal: unobservedRemoval,
+      removal: options.removal ?? unobservedRemoval,
       signedRecovery,
+      caseHistory,
+      // A script-decode record transaction stands as the emulator shows it.
+      ...(options.publications === false
+        ? {}
+        : {
+            publications: {
+              ...emulatorPublicationObserver(h.proverLucid),
+              observeSignedTransaction: signedRecovery.observeSignedTransaction,
+              rebroadcastSignedTransaction:
+                emulatorRecovery.rebroadcastSignedTransaction,
+            },
+          }),
       now: () => h.emulator.now(),
     });
     const result = await runFraudProofWorkflow({
@@ -325,6 +347,8 @@ export const openFundedDispute = async (scene: Scene) => {
   return {
     decision,
     deployment,
+    /** The case token's authenticated L1 history. */
+    caseHistory: authentic,
     rebroadcasts,
     turn,
     /** Stops the watcher process and starts another over its durable state. */
@@ -333,6 +357,19 @@ export const openFundedDispute = async (scene: Scene) => {
       funding = await boot();
     },
     readReservations: async () => await funding.readReservations(),
+    /** What the watcher's terms keep for a move our wallet pays, at the
+     * emulator's fees now. */
+    walletMoveReserve: async () =>
+      validationDisputeWalletMoveReserve({
+        parameters: (
+          await emulatorProtocolParameterAuthority(
+            identity,
+            h.proverLucid,
+            h.emulator,
+          )
+        ).snapshot,
+        fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
+      }),
     close: async () => {
       funding.close();
       await rm(directory, { recursive: true, force: true });

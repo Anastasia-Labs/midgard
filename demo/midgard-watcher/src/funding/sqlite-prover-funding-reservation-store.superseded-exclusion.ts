@@ -1,6 +1,7 @@
-import type {
-  WorkflowFundingAbandonmentHandoff,
-  WorkflowFundingPreparedTransition,
+import {
+  type WorkflowFundingAbandonmentHandoff,
+  workflowFundingExclusiveProtocolInput,
+  type WorkflowFundingPreparedTransition,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -123,19 +124,39 @@ export const supersededAttemptFundingOutRefs = (
  * shares an input with that attempt's exclusion set, or nothing in that set
  * is still a reserved funding input. In the second case no shared input is
  * possible: whatever lands first wins, and protocol state makes a duplicate
- * proof fail on-chain. Nothing waits for retirement past k.
+ * proof fail on-chain. Nothing waits for retirement past k. An action whose
+ * attempts all spend one protocol input (a validation-trace thread move) is
+ * admitted without one when it spends that input and no reserved funding
+ * input: that input already makes it exclusive, and it needs none of the
+ * wallet's.
  */
 export const excludesEveryUncoveredAttempt = ({
   uncovered,
   signedTransactionCborHex,
   reservedFundingOutRefs,
+  handoff,
 }: {
   readonly uncovered: readonly UncoveredSupersededAttempt[];
   readonly signedTransactionCborHex: string;
   readonly reservedFundingOutRefs: readonly string[];
+  /** The fresh attempt's handoff, which names its workflow and action. */
+  readonly handoff?: Readonly<{
+    identity: Readonly<{ category: string }>;
+    submissionIntent: Readonly<{ actionInput: unknown }>;
+  }>;
 }): boolean => {
   if (uncovered.length === 0) return true;
   const inputs = signedOrdinaryInputs(signedTransactionCborHex);
+  const exclusive = workflowFundingExclusiveProtocolInput({
+    category: handoff?.identity.category,
+    actionInput: handoff?.submissionIntent.actionInput,
+  });
+  if (
+    exclusive !== null &&
+    inputs.includes(exclusive) &&
+    !shareAnInput(inputs, reservedFundingOutRefs)
+  )
+    return true;
   return uncovered.every(
     ({ exclusion }) =>
       shareAnInput(inputs, exclusion) ||

@@ -236,8 +236,9 @@ export const planWatcherProverFundingReservation = (input: {
 
 /**
  * Plans an objective's first reservation. A validation dispute's holds its
- * deployment-bound VerifySource custody, the bond and the case floor; later
- * reservations spend from it and never re-require the bond.
+ * deployment-bound VerifySource custody, the bond and the case floor, and
+ * the reserve for a move our wallet pays; later reservations spend from it
+ * and never re-require the bond.
  */
 export const planFirstWatcherProverFundingReservation = (
   input: Parameters<typeof planWatcherProverFundingReservation>[0],
@@ -246,7 +247,7 @@ export const planFirstWatcherProverFundingReservation = (
   const required = input.calculation.validationDisputeCustodyLovelace;
   if (required !== undefined && BigInt(plan.fundingLovelace) < BigInt(required))
     throw new WatcherProverFundingUnavailableError(
-      `prover wallet cannot reserve the validation dispute bond and case floor: required=${required} available=${plan.fundingLovelace}`,
+      `prover wallet cannot reserve the validation dispute bond, case floor and wallet-move reserve: required=${required} available=${plan.fundingLovelace}`,
     );
   return plan;
 };

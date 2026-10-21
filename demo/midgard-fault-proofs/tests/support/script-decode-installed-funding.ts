@@ -8,7 +8,11 @@
  * the fixture manifest's scripts, not the emulator's. The roster here is the
  * emulator deployment's, mapped to custody roles exactly as the factory maps
  * them. Each mint first passes the factory's recovery authorization over the
- * watcher's journal root.
+ * watcher's journal root. Given the node's parameters at each turn, a mint
+ * prices its policy at them, while an existing reservation keeps the basis
+ * it was admitted on. The factory differs in one place: it checks an
+ * existing reservation's capacity at the parameters it remembered when the
+ * reservation was made, where this checks it at the parameters of the turn.
  */
 import { join } from "node:path";
 
@@ -59,18 +63,21 @@ const rational = (value: number): readonly [bigint, bigint] => {
 
 /**
  * The local node's protocol-parameter authority, answering the emulator's
- * own parameters, so funding bounds are those the ledger enforces.
+ * own parameters, so funding bounds are those the ledger enforces: `lucid`'s
+ * at the authority's creation, or, given `live`, that emulator's at each
+ * query, so the watcher's funding follows a change of its fees.
  */
 export const emulatorProtocolParameterAuthority = async (
   identity: VerifiedWatcherDeploymentIdentity,
   lucid: LucidEvolution,
+  live?: Emulator,
 ) => {
-  const parameters = lucid.config().protocolParameters;
-  if (parameters === undefined)
+  const booted = lucid.config().protocolParameters;
+  if (booted === undefined)
     throw new Error("emulator Lucid has no protocol parameters");
-  return await createWatcherProtocolParameterRuntimeAuthority({
-    deploymentIdentity: identity,
-    query: ledgerParameterQuery({
+  const query = async () => {
+    const parameters = live?.protocolParameters ?? booted;
+    return await ledgerParameterQuery({
       minFeeA: BigInt(parameters.minFeeA),
       minFeeB: BigInt(parameters.minFeeB),
       maxTxSize: BigInt(parameters.maxTxSize),
@@ -87,7 +94,11 @@ export const emulatorProtocolParameterAuthority = async (
       minFeeRefScriptCostPerByte: rational(
         parameters.minFeeRefScriptCostPerByte,
       ),
-    }),
+    })();
+  };
+  return await createWatcherProtocolParameterRuntimeAuthority({
+    deploymentIdentity: identity,
+    query,
   });
 };
 
@@ -136,6 +147,7 @@ export const openInstalledProverFunding = async ({
   directory,
   journalRoot,
   validationDispute,
+  currentParameters,
 }: {
   readonly emulator: Emulator;
   readonly identity: VerifiedWatcherDeploymentIdentity;
@@ -165,6 +177,11 @@ export const openInstalledProverFunding = async ({
   readonly validationDispute?: Parameters<
     typeof createWorkflowRuntimeFundingPolicy
   >[0]["validationDispute"];
+  /** The node's parameters at a turn; `protocolParameters` at every turn
+   * when absent. */
+  readonly currentParameters?: () => ReturnType<
+    typeof emulatorProtocolParameterAuthority
+  >;
 }) => {
   const fundingContracts = new Map<
     string,
@@ -196,22 +213,41 @@ export const openInstalledProverFunding = async ({
         scriptHash: validatorToScriptHash(utxo.scriptRef),
       });
     }
-  const policy = createWorkflowRuntimeFundingPolicy({
-    category,
-    runner,
-    deploymentFingerprint: identity.manifestId,
-    fundingPaymentKeyHash,
-    protocolParameters: protocolParameters.snapshot,
-    economics,
-    contracts: [...fundingContracts.values()],
-    referenceScripts: [...references.values()],
-    ...(validationDispute === undefined ? {} : { validationDispute }),
-  });
-  const calculation = await calculateWatcherRuntimeProverFunding({
-    deploymentIdentity: identity,
-    protocolParameters,
-    policy,
-  });
+  /** The policy and its funding calculation at `parameters`. */
+  const basisAt = async (parameters: typeof protocolParameters) => {
+    const policy = createWorkflowRuntimeFundingPolicy({
+      category,
+      runner,
+      deploymentFingerprint: identity.manifestId,
+      fundingPaymentKeyHash,
+      protocolParameters: parameters.snapshot,
+      economics,
+      contracts: [...fundingContracts.values()],
+      referenceScripts: [...references.values()],
+      ...(validationDispute === undefined ? {} : { validationDispute }),
+    });
+    const calculation = await calculateWatcherRuntimeProverFunding({
+      deploymentIdentity: identity,
+      protocolParameters: parameters,
+      policy,
+    });
+    return { parameters, policy, calculation } as const;
+  };
+  const booted = await basisAt(protocolParameters);
+  /** Every basis a mint has priced at, by its policy digest: a
+   * reservation's own is the one it was admitted on. */
+  const bases = new Map([[booted.calculation.policyDigest, booted]]);
+  /** The basis at the node's parameters now. */
+  const currentBasis = async () => {
+    const parameters = (await currentParameters?.()) ?? protocolParameters;
+    const known = [...bases.values()].find(
+      (basis) => basis.parameters.snapshotDigest === parameters.snapshotDigest,
+    );
+    if (known !== undefined) return known;
+    const basis = await basisAt(parameters);
+    bases.set(basis.calculation.policyDigest, basis);
+    return basis;
+  };
   const opened = await openWatcherSqliteProverFundingReservationStore({
     path: join(directory, "watcher.sqlite"),
     protocolParameterHistory: {
@@ -237,11 +273,18 @@ export const openInstalledProverFunding = async ({
         rollbackGeneration: "0",
         store: opened.store,
       });
-    const existing = (await opened.store.readAll()).some(
+    const existing = (await opened.store.readAll()).find(
       (record) =>
         (record as { readonly decisionDigest?: unknown }).decisionDigest ===
         decisionDigest,
-    );
+    ) as { readonly policyDigest?: unknown } | undefined;
+    const current = await currentBasis();
+    // An existing lease keeps its admitted basis; a new one is admitted on
+    // today's parameters.
+    const admitted =
+      existing === undefined
+        ? current
+        : (bases.get(String(existing.policyDigest)) ?? booted);
     return (
       await createWatcherProverFundingAuthority({
         category,
@@ -249,11 +292,14 @@ export const openInstalledProverFunding = async ({
         actuationPermit,
         rollbackGeneration: "0",
         deploymentIdentity: identity,
-        calculation,
-        policy,
+        calculation: admitted.calculation,
+        selectionCalculation: current.calculation,
+        policy: current.policy,
+        reservationPolicy: admitted.policy,
+        capacityPolicy: current.policy,
         decisionDigest,
         walletAddress,
-        walletUtxos: existing ? [] : await readWalletUtxos(),
+        walletUtxos: existing === undefined ? await readWalletUtxos() : [],
         readWalletUtxos,
         store: opened.store,
         resolveInputs: async (outRefs) =>

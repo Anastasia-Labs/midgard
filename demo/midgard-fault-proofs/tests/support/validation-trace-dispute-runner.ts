@@ -1,6 +1,7 @@
 /** Drives the validation-trace dispute workflow on the Open scene through the
  * shared orchestrator, one emulator block per run. */
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import type { ValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
 import {
@@ -20,8 +21,11 @@ import {
   releaseFinalityAuthority,
   terminalVerifier,
 } from "../workflow.make-adapter.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
+import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { network } from "./submit-init-emulator-shared.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
+import { sceneCaseHistory } from "./validation-trace-dispute-case-history.js";
 import {
   type Block,
   BOND_LOVELACE,
@@ -100,7 +104,12 @@ export const makeRunner = (
   scene: Scene,
   options: {
     readonly journal?: FraudProofWorkflowJournalStore;
+    /** By default the scene's deployment, without the one-step resolution. */
+    readonly deployment?: ValidationTraceDisputeDeployment;
+    /** By default the emulator's own view of each signed transaction. */
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+    /** By default the scene's recorded case history. */
+    readonly caseHistory?: ValidationTraceCaseHistory;
     /** The convicted block's removal; by default none is observed. */
     readonly removal?: ValidationTraceRemovalConfig;
     /** Verifies the completed removal; by default the candidate is kept. */
@@ -109,20 +118,29 @@ export const makeRunner = (
     readonly wrap?: (
       adapter: FraudProofFamilyWorkflowAdapter,
     ) => FraudProofFamilyWorkflowAdapter;
+    /** The adapter's clock; by default the emulator's. */
+    readonly now?: () => number;
   } = {},
 ): Runner => {
   const { h } = scene;
   const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
+  const signedRecovery =
+    options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
   const adapter = createValidationTraceDisputeWorkflowAdapter({
     lucid: h.proverLucid,
     signer: h.proverSigner,
-    deployment: runnerDeployment(scene),
+    deployment: options.deployment ?? runnerDeployment(scene),
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
-    ...(options.signedRecovery === undefined
-      ? {}
-      : { signedRecovery: options.signedRecovery }),
-    now: () => h.emulator.now(),
+    signedRecovery,
+    caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
+    // A script-decode record transaction stands as the emulator shows it.
+    publications: {
+      ...emulatorPublicationObserver(h.proverLucid),
+      observeSignedTransaction: signedRecovery.observeSignedTransaction,
+      rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
+    },
+    now: options.now ?? (() => h.emulator.now()),
   });
   const registry = createFraudProofWorkflowRegistry({
     adapters: [options.wrap?.(adapter) ?? adapter],

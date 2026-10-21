@@ -36,6 +36,7 @@ import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
+import { validationTraceDefenseReadiness } from "../validation-trace-defense/health.js";
 import { commitPlanningReadiness } from "../workers/commit-planning-notice.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
 import { publicReadinessPresentation } from "./listen-readiness-public-presentation.js";
@@ -300,6 +301,13 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   reasons.push(...commitBuildAlarms.reasons);
   details.push(...commitBuildAlarms.details);
+  // The validation-trace defender: underfunded, not-active and late fail.
+  const defense = validationTraceDefenseReadiness(
+    yield* Ref.get(globals.VALIDATION_TRACE_DEFENSE_HEALTH),
+    nowMillis,
+  );
+  reasons.push(...defense.reasons);
+  details.push(...defense.details);
   const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
   const commitDaFramePressure =
     daFramePressure === null

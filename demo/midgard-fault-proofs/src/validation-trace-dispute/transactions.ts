@@ -18,6 +18,7 @@ import { Effect } from "effect";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireSingletonUtxo } from "../runtime.js";
+import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import type {
   ResolvedInitCatalogueCategory,
   ResolvedInitContracts,
@@ -35,6 +36,15 @@ import {
 } from "../workflow/transaction-boundary.js";
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
+import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-decode.js";
+import type { DrivenCekContextStage } from "./one-step-context.js";
+import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
+import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
+import type {
+  ValidationTracePhaseHolder,
+  ValidationTracePhaseYield,
+} from "./one-step-phase.js";
+import type { ValidationTraceScriptSourcesRedeemerReferences } from "./one-step-script-sources-redeemer.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
 export const VALIDATION_TRACE_OPEN_VALIDITY_MS = 15 * 60_000;
@@ -45,6 +55,68 @@ const MAX_RANGE_MS =
 
 type DisputeChain =
   SDK.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
+
+/**
+ * The published reference scripts of the one-step resolution of a CEK core
+ * step: the boundary, the CEK phase resolver, the CEK core step binder, the
+ * arms that settle in one hop, and the settle; and of a CEK script
+ * selection, when the deployment drives it.
+ */
+export type ValidationTraceOneStepReferences = Readonly<{
+  boundary: UTxO;
+  cekPrepare: UTxO;
+  cekCore: UTxO;
+  settle: UTxO;
+  arms: Readonly<{
+    compute: UTxO;
+    machine: UTxO;
+    mapConversion: UTxO;
+    caseConstant: UTxO;
+  }>;
+  /**
+   * The selection resolver, and its two yields' references, each carrying
+   * its role's reference-script authentication token; without them a thread
+   * at a CEK script selection waits.
+   */
+  cekSelection?: Readonly<{
+    semantic: UTxO;
+    authenticate: UTxO;
+    successor: UTxO;
+  }>;
+  /**
+   * The context step resolver, the context control and settle, and each
+   * context stage the runner drives; without them a thread at a CEK context
+   * step waits.
+   */
+  cekContext?: Readonly<{
+    semantic: UTxO;
+    control: UTxO;
+    settle: UTxO;
+    stages: Readonly<Record<DrivenCekContextStage, UTxO>>;
+    /** The holders of the redeemer item step the item bind stage binds. */
+    items: Readonly<Record<ValidationTraceContextItemHolder, UTxO>>;
+    /** The holders past a multi-hop stage's first. */
+    followers: Readonly<Record<ValidationTraceContextFollowerHolder, UTxO>>;
+  }>;
+  /**
+   * The canonical-decode resolver, its empty and item semantic resolvers,
+   * and the item's stages; without them a thread at a canonical-decode step
+   * waits.
+   */
+  canonicalDecode?: Readonly<
+    Record<ValidationTraceCanonicalDecodeHolder, UTxO>
+  >;
+  /** The phase resolvers and their semantic resolvers the deployment
+   * publishes; a thread at a step of a phase without them waits. */
+  phases?: Readonly<Partial<Record<ValidationTracePhaseHolder, UTxO>>>;
+  /** The references of the yields the phases' semantic resolvers invoke,
+   * each carrying its role's reference-script authentication token; a
+   * thread at a step of a phase whose yields are not here waits. */
+  phaseYields?: Readonly<Partial<Record<ValidationTracePhaseYield, UTxO>>>;
+  /** The script-sources redeemer item chain past its entry; without it a
+   * thread at a script-sources redeemer normalization step waits. */
+  scriptSourcesRedeemers?: ValidationTraceScriptSourcesRedeemerReferences;
+}>;
 
 /** The deployment the open step builds against. */
 export type ValidationTraceDisputeDeployment = Readonly<{
@@ -66,7 +138,23 @@ export type ValidationTraceDisputeDeployment = Readonly<{
   stateQueue: Readonly<{ policyId: string; spendingScriptAddress: string }>;
   chain: Pick<
     DisputeChain,
-    "opener" | "source" | "case" | "disputeBond" | "caseConfig"
+    | "opener"
+    | "source"
+    | "case"
+    | "disputeBond"
+    | "caseConfig"
+    | "game"
+    | "timeout"
+    | "award"
+    | "boundary"
+    | "prepareResolvers"
+    | "semanticResolvers"
+    | "cekCoreStages"
+    | "cekContextStages"
+    | "cekContextItemStages"
+    | "canonicalDecodeItemStages"
+    | "scriptSourcesStageOneRedeemerStages"
+    | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */
   fraudProof: Readonly<{
@@ -74,10 +162,32 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     mintingScript: Script;
     spendingScriptAddress: string;
   }>;
-  /** The published reference scripts of the opener, source, case and bond. */
-  references: Readonly<{ opener: UTxO; source: UTxO; case: UTxO; bond: UTxO }>;
+  /**
+   * The published reference scripts of the opener, source, case and bond,
+   * and of the game, timeout and award the thread moves run.
+   */
+  references: Readonly<{
+    opener: UTxO;
+    source: UTxO;
+    case: UTxO;
+    bond: UTxO;
+    game: UTxO;
+    timeout: UTxO;
+    award: UTxO;
+    /**
+     * The one-step resolution's scripts the runner drives (one-step-moves.ts);
+     * without them a thread at ReadyForOneStep waits.
+     */
+    oneStep?: ValidationTraceOneStepReferences;
+  }>;
   /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;
+  /**
+   * The script-decode deployment whose records a CEK script selection reads,
+   * the one the selection's successor yield is applied with; without it a
+   * thread at a Plutus script selection waits.
+   */
+  scriptDecode?: ScriptDecodeDeployment;
 }>;
 
 export type CapturedValidationTraceStage = Readonly<{

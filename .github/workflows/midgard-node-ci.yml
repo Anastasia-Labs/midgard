@@ -715,13 +715,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
 
-  # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
-  # on two forks (the five-run median per file in the package's
+  # Six shards keep each job near 30 minutes. The suite is ~19,900
+  # fork-seconds on two forks (the three-run median per file in the package's
   # tests/support/ci-file-durations.json), each job adds a few minutes of setup
   # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
-  # which that table reserves. At the median each shard projects ~675 s (~17.3
-  # min jobs, measured with a build and typecheck on every shard); three
-  # shards projected ~28.5 min, five ~19.5. The matrix is the one count this
+  # which that table reserves. At the median each shard projects ~1,690 s; the
+  # longest single file (a script-decode walk-cost gate group) is ~1,690 s,
+  # so a group that walks longer is split into its own file rather than
+  # holding one shard past the job's time limit. The matrix is the one count this
   # workflow reads (the jobs and test-durations take it from the matrix);
   # change it together with tests/duration-shards.test.ts, which
   # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
@@ -1239,6 +1240,7 @@ jobs:
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
             watcher-journeys/replayed-ledger.test.ts \
+            watcher-journeys/script-validation-trace-case.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stage-timing.test.ts \

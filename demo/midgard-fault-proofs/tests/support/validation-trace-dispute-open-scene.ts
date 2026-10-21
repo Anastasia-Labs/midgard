@@ -9,16 +9,14 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-  openValidationTraceV1,
-} from "@al-ft/midgard-validation";
-import {
+  type EmulatorAccount,
   generateEmulatorAccount,
+  type LucidEvolution,
+  type Script,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -26,42 +24,38 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
-import {
-  buildValidationClaimWitness,
-  type ValidationTraceClaimMaterial,
-} from "../../src/validation-trace-dispute/claim-material.js";
+import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
-import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
 } from "../../src/workflow/complete-replay.js";
 import {
+  nativeSpendSeedDeposit,
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
+  referenceSeedDeposits,
+  type ScenarioSigners,
+  type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
+import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
-import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { submitSuccessorBlockTx } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  type CompleteSignedTransactionMeasurement,
   type FaultProofEmulatorHarness,
   fixtureBlockSlot,
   fundedProverEmulatorAccount,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarness,
-  measureCompleteSignedTransaction,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
-import {
-  eventAndLedger,
-  l1SlotConfig,
-} from "./validation-trace-claim-material.js";
+import { l1SlotConfig } from "./validation-trace-claim-material.js";
+import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
 /** L_d: the longest validity range VerifySource admits. */
 const MAX_RANGE_MS =
@@ -81,31 +75,25 @@ export type Scene = {
     readonly source: UTxO;
     readonly case: UTxO;
     readonly bond: UTxO;
+    readonly game: UTxO;
+    readonly timeout: UTxO;
+    readonly award: UTxO;
+    /** The active-operators spending script, which a Defend runs. */
+    readonly activeOperators: UTxO;
   };
   readonly failing: Block;
   readonly passing: Block;
   readonly forced: Block;
   /** The operator that committed the blocks, and its active-operator node. */
   readonly operator: { readonly vkey: string; readonly nodeUnit: string };
+  /** The operator's account: the funder wallet, which signed the blocks. */
+  readonly funder: EmulatorAccount;
+  /** The raw L1 view of every transaction after the scene's setup. */
+  readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
 
-/** The signed transaction's size and execution units, each within the
- * emulator's transaction limits. */
-export const measureWithinTransactionLimits = (
-  transactionCbor: string,
-): CompleteSignedTransactionMeasurement => {
-  const measured = measureCompleteSignedTransaction(transactionCbor);
-  expect(measured.completeSignedBytes).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
-  );
-  expect(measured.executionMemory).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-  );
-  expect(measured.executionSteps).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
-  );
-  return measured;
-};
+/** The scene's harness and dispute contracts, before its blocks exist. */
+export type SceneContracts = Pick<Scene, "h" | "chain">;
 
 const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
   const entry = Object.values(h.faultProofReferenceScripts).find(
@@ -115,40 +103,76 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
   return entry.utxo;
 };
 
-export const setUpScene = async (): Promise<Scene> => {
+/**
+ * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
+ * its blocks are committed, so what it does takes none of the time a
+ * dispute move has from the failing block's end. The failing transaction's
+ * redeemer is `failingRedeemerData` when given, it reads
+ * `failingReferenceInputs` outputs the deposits create as reference inputs,
+ * `failingSigners` sign it beside its owner, its spend runs
+ * `failingScript`, by default the failing script, and with
+ * `failingNativeSpend` it also spends an output a native script holds;
+ * with `failingNativeMint` it also mints under a native script's policy.
+ * The passing transaction spends under `passingSpend` when given.
+ */
+export const setUpScene = async (
+  beforeBlocks?: (scene: SceneContracts) => Promise<void>,
+  {
+    failingRedeemerData,
+    failingReferenceInputs = 0,
+    failingSigners,
+    failingScript,
+    failingNativeSpend = false,
+    failingNativeMint = false,
+    passingSpend,
+  }: {
+    readonly failingRedeemerData?: Uint8Array;
+    readonly failingReferenceInputs?: number;
+    readonly failingSigners?: ScenarioSigners;
+    readonly failingScript?: MidgardVersionedScript;
+    readonly failingNativeSpend?: boolean;
+    readonly failingNativeMint?: boolean;
+    readonly passingSpend?: ScriptSpend;
+  } = {},
+): Promise<Scene> => {
+  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValidationTraceDispute: true,
       alwaysFraudProofCatalogue: true,
     },
     accounts: {
-      funder: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
+      funder,
       prover: fundedProverEmulatorAccount(60_000_000_000n),
       publisher: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
     },
   });
   const chain = h.contracts.fraudProofContracts.validationTraceDispute;
-  const caseReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.case.spendingScript,
-      label: "validation case",
-    })
-  ).utxo;
-  const bondReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.disputeBond.spendingScript,
-      label: "validation dispute bond",
-    })
-  ).utxo;
-  const caseConfigReference = (
-    await publishPlainReferenceScriptUtxo({
-      lucid: h.proverLucid,
-      script: chain.caseConfig.mintingScript,
-      label: "validation case configuration",
-    })
-  ).utxo;
+  const publish = async (script: Script, label: string) =>
+    (
+      await publishPlainReferenceScriptUtxo({
+        lucid: h.proverLucid,
+        script,
+        label,
+      })
+    ).utxo;
+  const caseReference = await publish(chain.case.spendingScript, "case");
+  const bondReference = await publish(chain.disputeBond.spendingScript, "bond");
+  const caseConfigReference = await publish(
+    chain.caseConfig.mintingScript,
+    "validation case configuration",
+  );
+  const gameReference = await publish(chain.game.spendingScript, "game");
+  const timeoutReference = await publish(
+    chain.timeout.spendingScript,
+    "timeout",
+  );
+  const awardReference = await publish(chain.award.spendingScript, "award");
+  const activeOperatorsReference = await publish(
+    h.contracts.activeOperators.spendingScript,
+    "active operators",
+  );
+  await beforeBlocks?.({ h, chain });
 
   const operatorVkey = await funderPaymentKeyHash(h.funderLucid);
   const now = BigInt(
@@ -157,11 +181,17 @@ export const setUpScene = async (): Promise<Scene> => {
       h.emulator.now() + 120_000,
     ) - 1,
   );
-  const seeds = {
-    failing: 0x61,
-    passing: 0x64,
-    forced_failing: 0x65,
-  } as const;
+  const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  /** The script spend `scenario` runs in place of its own, if any. */
+  const scenarioSpend = (
+    scenario: PlutusExecutionScenario,
+  ): ScriptSpend | undefined =>
+    scenario === "failing" && failingScript !== undefined
+      ? { script: failingScript }
+      : scenario === "passing"
+        ? passingSpend
+        : undefined;
+  const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
     startTime: now,
@@ -170,9 +200,17 @@ export const setUpScene = async (): Promise<Scene> => {
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     priorLedger: [],
-    events: Object.entries(seeds).map(([scenario, byte]) =>
-      plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
-    ),
+    events: [
+      ...Object.entries(seeds).map(([scenario, byte]) =>
+        plutusExecutionSeedDeposit(
+          scenario as PlutusExecutionScenario,
+          byte,
+          scenarioSpend(scenario as PlutusExecutionScenario),
+        ),
+      ),
+      ...references.deposits,
+      ...(failingNativeSpend ? [nativeSpendSeedDeposit()] : []),
+    ],
   });
   const setup = await submitSetupTx({
     lucid: h.funderLucid,
@@ -200,8 +238,23 @@ export const setUpScene = async (): Promise<Scene> => {
   };
   const commit = async (scenario: PlutusExecutionScenario) => {
     const endTime = previous.endTime + 60_000n;
+    const spend = scenarioSpend(scenario);
     const block = await plutusExecutionBlockFixture(scenario, {
       seedByte: seeds[scenario as keyof typeof seeds],
+      ...(scenario === "failing" && failingRedeemerData !== undefined
+        ? { redeemerData: failingRedeemerData }
+        : {}),
+      ...(scenario === "failing"
+        ? {
+            referenceInputs: references.outRefs,
+            ...(failingSigners === undefined
+              ? {}
+              : { signers: failingSigners }),
+            nativeSpend: failingNativeSpend,
+            nativeMint: failingNativeMint,
+          }
+        : {}),
+      ...(spend === undefined ? {} : { spend }),
       predecessorEntries: previous.entries,
       header: {
         operatorVkey,
@@ -247,6 +300,7 @@ export const setUpScene = async (): Promise<Scene> => {
   if (caseConfig === undefined)
     throw new Error("the case configuration was not initialized");
   return {
+    l1: recordCrossBlockRawEmulator({ emulator: h.emulator }),
     h,
     chain,
     hubOracle: setup.hubOracle,
@@ -256,11 +310,16 @@ export const setUpScene = async (): Promise<Scene> => {
       source: publishedReference(h, chain.source.spendingScriptHash),
       case: caseReference,
       bond: bondReference,
+      game: gameReference,
+      timeout: timeoutReference,
+      award: awardReference,
+      activeOperators: activeOperatorsReference,
     },
     failing,
     passing,
     forced,
     operator: { vkey: operatorVkey, nodeUnit: setup.activeOperatorNodeUnit },
+    funder,
   };
 };
 
@@ -293,60 +352,6 @@ export const failingMaterial = async (
       l1SlotConfig,
     })
   ).material;
-};
-
-/** The honest trace of the passing transaction: Terminal Accepted. */
-export const passingTrace = async (scene: Scene) => {
-  const block = scene.passing;
-  const { event, ledger } = await eventAndLedger(block);
-  const expectedLedgerOps = [
-    { type: "delete" as const, key: block.seed.outRef },
-    buildValidationMachineLedgerInsertOp({
-      key: block.created.outRef,
-      outputCbor: block.created.output,
-    }),
-  ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
-    initialEntries: ledger.entries.map(({ outRef, output }) => ({
-      outRef,
-      output,
-    })),
-    operations: expectedLedgerOps,
-  });
-  const leaves = await Effect.runPromise(
-    openValidationTraceV1(
-      {
-        ...plutusFailureReplayInput({
-          header: block.evidence.header,
-          event,
-          ledger,
-          l1SlotConfig,
-        }),
-        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
-        expectedLedgerOps,
-        ledgerMutationSteps,
-        expectedVerdict: "accepted",
-        expectedRejectionCode: null,
-      },
-      { revealStates: [0] },
-    ),
-  );
-  const terminal = leaves.states.get(leaves.stepCount)!;
-  expect(terminal).toMatchObject({ phase: "terminal", verdict: "accepted" });
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
-  return {
-    claim: {
-      claimWitness: await buildValidationClaimWitness({
-        reconstruction: block.evidence.reconstruction,
-        eventKey: event.eventKey,
-      }),
-      challengerRoot: trace.descriptor.traceRoot.toString("hex"),
-      stepCount: BigInt(leaves.stepCount),
-    },
-    terminal,
-    terminalProof: trace.proof(leaves.stepCount),
-    initialState: leaves.states.get(0)!,
-  };
 };
 
 const liveBlock = async (scene: Scene, block: Block): Promise<UTxO> => {
@@ -434,8 +439,7 @@ export const initAndOpen = async (
   return { opener };
 };
 
-/** VerifySource over `opener`, valid for L_d from the emulator's now (plus
- * `offsetMs`). */
+/** VerifySource over `opener`, valid for L_d from now (plus `offsetMs`). */
 export const verifySource = (
   scene: Scene,
   opener: UTxO,
@@ -446,13 +450,15 @@ export const verifySource = (
     readonly bondLovelace?: bigint;
     /** Shifts both bounds off the emulator's slot boundary. */
     readonly offsetMs?: number;
+    /** Who submits it; by default the prover, whose claim it verifies. */
+    readonly lucid?: LucidEvolution;
   },
 ) => {
   const { h, chain } = scene;
   const validFrom = h.emulator.now() + (presented.offsetMs ?? 0);
   const validTo = validFrom + MAX_RANGE_MS;
   const { tx, opening } = SDK.appendValidationSourceVerification(
-    h.proverLucid.newTx(),
+    (presented.lucid ?? h.proverLucid).newTx(),
     {
       contracts: {
         source: chain.source,

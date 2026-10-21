@@ -205,8 +205,10 @@ export type WatcherRuntimeProverFundingCalculation = Readonly<{
   maximumCollateralLovelace: string;
   maximumSlashCollateralLovelace: string;
   /**
-   * A validation-trace dispute's VerifySource custody, the deployment-bound
-   * dispute bond plus the case floor: what its first reservation must hold.
+   * What a validation-trace dispute's first reservation must hold: its
+   * VerifySource custody, the deployment-bound dispute bond plus the case
+   * floor, and, when the runner plays threads, the reserve for a move our
+   * wallet pays.
    */
   validationDisputeCustodyLovelace?: string;
   reservationBasisDigest: string;
@@ -255,7 +257,9 @@ export const calculateWatcherRuntimeProverFunding = async (input: {
         `runtime prover funding validation dispute bond differs from the deployment-bound bond: policy=${policy.validationDispute.bondLovelace} deployment=${bound.toString()}`,
       );
     validationDisputeCustodyLovelace = (
-      bound + BigInt(policy.validationDispute.caseFloorLovelace)
+      bound +
+      BigInt(policy.validationDispute.caseFloorLovelace) +
+      BigInt(policy.validationDispute.moves?.walletMoveReserveLovelace ?? 0n)
     ).toString();
   }
   const basis = Object.freeze({

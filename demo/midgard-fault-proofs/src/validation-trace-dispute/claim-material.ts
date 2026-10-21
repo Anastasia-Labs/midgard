@@ -8,8 +8,12 @@ import {
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
+  buildDeterministicValidationMachineTrace,
+  buildTraceAtStepCountV1,
+  type DeterministicValidationMachineTrace,
+  DirectValidationTraceUnavailable,
   openValidationTraceV1,
+  ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
@@ -23,9 +27,33 @@ import {
   membershipProof,
   sourceEventOrThrow,
 } from "../transition-trace/witnesses.build-source-membership-proof.js";
-import { type CommittedL2Event, plutusFailureReplayInput } from "./replay.js";
+import { WorkflowArtifactPendingError } from "../workflow/workflow-artifact-pending.js";
+import { type CommittedL2Event, plutusReplayInput } from "./replay.js";
+import {
+  selectedScriptItemReader,
+  type ValidationTraceSelectionSource,
+} from "./selected-scripts.js";
 
 export const VALIDATION_CLAIM_WITNESS_VERSION = 1n;
+
+/** The readiness state of a claim whose build failed without a result. */
+export const VALIDATION_TRACE_CLAIM_BUILD_HELD =
+  "validation-trace-claim-build-held";
+
+/**
+ * The claim's re-execution or pre-state read failed without a result (the
+ * evaluator's own failure, such as running out of memory): not a verdict on
+ * the claim, so the run builds it again on the next observation. It is an
+ * alarm once the case open window is at risk (stage-unbuilt.ts).
+ */
+export const validationTraceClaimBuildHeld = (
+  cause: unknown,
+): WorkflowArtifactPendingError =>
+  new WorkflowArtifactPendingError(
+    `${VALIDATION_TRACE_CLAIM_BUILD_HELD}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    Object.freeze({ name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false }),
+    { cause },
+  );
 
 /**
  * The claim witness for `eventKey`: its transition step and event-to-step
@@ -97,6 +125,18 @@ export type ValidationTraceClaimMaterial = {
   readonly initialState: MidgardValidationMachineState;
   /** The proof of any leaf under `challengerRoot`, for later moves. */
   readonly leafProof: (index: number) => MidgardValidationTraceProof;
+  /**
+   * The same trace in full, its states and work witnesses, rebuilt from the
+   * same replay on first use: a one-step resolution reads its evidence from
+   * it.
+   */
+  readonly trace: () => Promise<DeterministicValidationMachineTrace>;
+  /**
+   * The versioned item of the script a CEK script selection of the trace
+   * runs, from the disputed transaction or its resolved inputs; throws
+   * unless it is the item the selection commits to.
+   */
+  readonly scriptItem: (selection: ValidationTraceSelectionSource) => Buffer;
 };
 
 /**
@@ -115,17 +155,32 @@ export const buildValidationTraceClaimMaterial = async ({
   readonly ledger: CheckedLedger;
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceClaimMaterial> => {
-  const leaves = await Effect.runPromise(
-    openValidationTraceV1(
-      plutusFailureReplayInput({
-        header: evidence.header,
-        event,
-        ledger,
-        l1SlotConfig,
-      }),
-      { revealStates: [0] },
-    ),
-  );
+  const input = plutusReplayInput({
+    header: evidence.header,
+    event,
+    ledger,
+    l1SlotConfig,
+    verdict: { verdict: "rejected" },
+  });
+  const opened = await Effect.runPromise(
+    Effect.either(openValidationTraceV1(input, { revealStates: [0] })),
+  ).catch((defect: unknown) => {
+    throw validationTraceClaimBuildHeld(defect);
+  });
+  if (opened._tag === "Left") {
+    const stop = opened.left;
+    // The same deterministic outcomes the detector names a disagreement.
+    if (
+      (stop instanceof ValidationTraceStopped &&
+        stop.reason === "disagreement") ||
+      stop instanceof DirectValidationTraceUnavailable
+    )
+      throw new Error(
+        `validation claim: the trace replay disagrees: ${stop.message}`,
+      );
+    throw validationTraceClaimBuildHeld(stop);
+  }
+  const leaves = opened.right;
   const terminal = leaves.states.get(leaves.stepCount);
   const initialState = leaves.states.get(0);
   if (
@@ -137,7 +192,8 @@ export const buildValidationTraceClaimMaterial = async ({
     throw new Error(
       "validation claim: the honest trace is not Terminal Rejected",
     );
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
+  const trace = buildTraceAtStepCountV1(leaves, leaves.stepCount);
+  let full: Promise<DeterministicValidationMachineTrace> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(
       "validation claim: trace root does not match its commitment",
@@ -153,5 +209,13 @@ export const buildValidationTraceClaimMaterial = async ({
     terminalLeafProof: trace.proof(leaves.stepCount),
     initialState,
     leafProof: trace.proof,
+    trace: () =>
+      (full ??= Effect.runPromise(
+        buildDeterministicValidationMachineTrace(input),
+      )),
+    scriptItem: selectedScriptItemReader({
+      transactionCbor: event.entry.fullTransactionCbor,
+      ledger,
+    }),
   };
 };

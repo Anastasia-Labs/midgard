@@ -75,6 +75,18 @@ export const FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED =
 export const FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED =
   "Canonical workflow journaled no progress within its continuation bound";
 
+/** A pending run's own readiness state, named by its family. */
+export type FraudProofWorkflowNamedState = Readonly<{
+  name: string;
+  alarm: boolean;
+}>;
+
+/** An action of the run that did not build, and why: the operator's alarm. */
+export type FraudProofWorkflowAlarm = Readonly<{
+  actionId: string;
+  reason: string;
+}>;
+
 export type FraudProofWorkflowRunResult =
   | {
       readonly kind: "no_fault_detected" | "unprovable_gap";
@@ -110,6 +122,21 @@ export type FraudProofWorkflowRunResult =
        * once it has caught up.
        */
       readonly phase?: "preflight";
+      /**
+       * A state its family names for readiness, which is neither a wait on
+       * the counterparty nor a stall: the run hands its turn back at once
+       * and resumes on observation, and the objective is held under `name`
+       * until a later run reports something else. An `alarm` state is one
+       * the operator must act on.
+       */
+      readonly namedState?: FraudProofWorkflowNamedState;
+      /**
+       * The actions this run skipped because they did not build, each an
+       * alarm, in the order met; absent when none was. The run went on to
+       * the moves ranked after them, so the alarms stand even when one of
+       * those landed.
+       */
+      readonly alarms?: readonly FraudProofWorkflowAlarm[];
     };
 
 /**

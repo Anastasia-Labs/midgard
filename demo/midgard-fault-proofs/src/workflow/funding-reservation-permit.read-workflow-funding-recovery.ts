@@ -4,6 +4,7 @@ import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
+import { readValidationDisputeMoveAuthority } from "./funding-reservation-permit.assert-validation-dispute-move.js";
 import {
   assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
@@ -166,7 +167,11 @@ export const prepareWorkflowFundingReservationTransaction = async ({
       // A validated bond-backed slash spends no reserved wallet funding and
       // may pay a different authenticated prover. Its unspent reservation
       // inputs remain owned by the caller; the reward is not caller change.
-      allowEmpty: readFraudSlashFundingAuthority(signed) !== null,
+      // A dispute thread move spends only its thread, the wallet only lending
+      // collateral.
+      allowEmpty:
+        readFraudSlashFundingAuthority(signed) !== null ||
+        readValidationDisputeMoveAuthority(signed) !== null,
     }),
   });
   const landed = await state.port.readLandedSupersededAttempt({
@@ -225,6 +230,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
     }
     readFraudSlashFundingAuthority(signed);
     readValidationDisputeFundingAuthority(signed);
+    readValidationDisputeMoveAuthority(signed);
   }
   if (
     state.snapshot.state !== "active" ||

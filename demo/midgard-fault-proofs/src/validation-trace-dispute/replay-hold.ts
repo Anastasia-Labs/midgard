@@ -10,6 +10,8 @@
  * an event that keeps failing the same way is named stuck rather than
  * held, still never a verdict. */
 
+import type { CanonicalViolationDetection } from "../workflow/classification.js";
+
 /** The readiness reason a held objective names. */
 export const VALIDATION_TRACE_REPLAY_HELD = "validation_trace_replay_held";
 
@@ -63,11 +65,20 @@ export class ValidationTraceReplayHeldError extends Error {
     | typeof VALIDATION_TRACE_REPLAY_HELD
     | typeof VALIDATION_TRACE_REPLAY_STUCK;
   readonly category = "validationTraceDispute";
+  readonly _tag = "ValidationTraceReplayHeldError";
   readonly retryAtMs: number;
 
+  /**
+   * `heldFromOrder` is the earliest block event order of a held event, and
+   * `detections` the findings the pass did decide. A replay union that has a
+   * finding strictly before `heldFromOrder` may decide the block without the
+   * held events, which can only add findings at or after it.
+   */
   constructor(
     readonly headerHash: string,
     readonly holds: readonly ValidationTraceReplayHold[],
+    readonly heldFromOrder: number,
+    readonly detections: readonly CanonicalViolationDetection[],
   ) {
     super(
       `validationTraceDispute/${headerHash}: script re-execution held for ${holds
@@ -85,10 +96,14 @@ export class ValidationTraceReplayHeldError extends Error {
   }
 }
 
+/** Matched by tag: the package ships more than one entry bundle. */
 export const isValidationTraceReplayHeldError = (
   error: unknown,
 ): error is ValidationTraceReplayHeldError =>
-  error instanceof ValidationTraceReplayHeldError;
+  typeof error === "object" &&
+  error !== null &&
+  (error as { readonly _tag?: unknown })._tag ===
+    "ValidationTraceReplayHeldError";
 
 /** The event a hold names. */
 export type ValidationTraceReplayEvent = Pick<
@@ -217,11 +232,17 @@ export const createValidationTraceReplayHolds = ({
               : undefined;
           }
           if (now() < hold.retryAtMs) return visible(hold);
+          // A due hold this pass carries is retried in a later pass, so it
+          // never reports a retry time already past: a scheduler honouring it
+          // would replay the block back to back.
           if (
             retries >= VALIDATION_TRACE_REPLAY_RETRIES_PER_PASS ||
             !grantedFor(event.headerHash).has(key)
           )
-            return visible(hold);
+            return Object.freeze({
+              ...visible(hold),
+              retryAtMs: now() + backoff.initialMs,
+            });
           retries += 1;
           return undefined;
         },

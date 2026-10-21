@@ -32,6 +32,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "da_bond_pool_under_backed",
   "da_bond_pool_withdrawing",
   "prepared_proof_awaiting_submission",
+  "validation_trace_replay_stuck",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -42,7 +43,10 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * watcher `not_ready` (spec #685 E5): a short or withdrawing DA bond pool
  * pauses attestations, while the watcher keeps verifying and challenging. An
  * L1 rollback is routine before finality and the watcher replays through it.
- * A prepared proof waits on an allow-listed key, not on this watcher.
+ * A prepared proof waits on an allow-listed key, not on this watcher. A
+ * stuck script re-execution already holds its objective by name, and keeps
+ * retrying, so the alert only tells the operator; the header's outcome
+ * clears it.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -50,6 +54,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "da_bond_pool_withdrawing",
     "chain_rollback",
     "prepared_proof_awaiting_submission",
+    "validation_trace_replay_stuck",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */

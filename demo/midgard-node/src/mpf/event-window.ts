@@ -23,7 +23,6 @@ import "./event-window.classify-forced-transactions.js";
 export { classifyForcedTransactions } from "./event-window.classify-forced-transactions.js";
 export {
   acceptedTransactionLedgerWitnesses,
-  applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";

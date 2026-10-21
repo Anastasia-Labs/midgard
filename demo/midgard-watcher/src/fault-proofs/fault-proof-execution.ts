@@ -3,7 +3,6 @@ import { mkdir, realpath } from "node:fs/promises";
 import {
   assertWorkflowActuationPermitIdentity,
   FraudProofL1CheckpointChangedError,
-  FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
@@ -31,6 +30,10 @@ import type {
   WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
 import * as stall from "./fault-proof-continuation-stall.js";
+import {
+  holdWatcherFaultProofOnReplay,
+  l1RefusalOf,
+} from "./fault-proof-execution-holds.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import {
   type WatcherProofObjective,
@@ -85,10 +88,11 @@ export type WatcherFaultProofExecution = Readonly<{
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
    * Objectives held on a refused L1 read, a resubmission due after the latest
-   * safe start, a stalled session, unfunded prover wallet or quarantined run
-   * (`fault_proof_l1_refused:<reason>`, `fault_proof_resubmission_required`,
-   * `fault_proof_continuation_stalled`, `prover_funding_unavailable`,
-   * `fault_proof_objective_quarantined`), until a run or completion check
+   * safe start, a stalled session, unfunded prover wallet, quarantined run or
+   * held script re-execution (`fault_proof_l1_refused:<reason>`,
+   * `fault_proof_resubmission_required`, `fault_proof_continuation_stalled`,
+   * `prover_funding_unavailable`, `fault_proof_objective_quarantined`,
+   * `validation_trace_replay_held`), until a run or completion check
    * meets something else, a stalled one's later run journals progress, or it
    * is settled.
    */
@@ -106,17 +110,6 @@ export type WatcherFaultProofExecution = Readonly<{
 // workflow hands it back from any step instead of stalling on it.
 class FundingProviderTransportUnavailable extends FraudProofL1UnavailableError {}
 
-/** How far down a `cause` chain a wrapped refusal is still recognised. */
-const MAXIMUM_CAUSE_DEPTH = 8;
-const l1RefusalOf = (error: unknown): FraudProofL1RefusedError | undefined => {
-  let current = error;
-  for (let depth = 0; depth <= MAXIMUM_CAUSE_DEPTH; depth++) {
-    if (current instanceof FraudProofL1RefusedError) return current;
-    if (!(current instanceof Error)) return undefined;
-    current = current.cause;
-  }
-  return undefined;
-};
 const readFundingProvider = async <T>(read: () => Promise<T>): Promise<T> => {
   try {
     return await read();
@@ -512,6 +505,12 @@ export const createWatcherFaultProofExecution = (dependencies: {
             resume: "await_observation",
             reason: error.message,
           };
+        }
+        const replay = holdWatcherFaultProofOnReplay(holds, job, error);
+        if (replay !== undefined) {
+          held = { kind: "pending", reason: replay.reason };
+          record("reconciling");
+          return replay;
         }
         // Any read that only failed to reach the follower, the node or a
         // provider, or found this watcher's own DA node not up yet, waits and

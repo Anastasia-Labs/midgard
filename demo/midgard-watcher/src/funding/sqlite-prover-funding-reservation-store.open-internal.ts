@@ -1149,8 +1149,8 @@ export const openInternal = async (
           );
         if (
           !excludesEveryUncoveredAttempt({
+            ...transitionInput,
             uncovered: uncoveredSuperseded(current.reservationId),
-            signedTransactionCborHex: transitionInput.signedTransactionCborHex,
             reservedFundingOutRefs: current.activeInputs
               .filter(({ role }) => role === "funding")
               .map(({ outRef }) => outRef),

@@ -15,3 +15,4 @@ export * from "./operator-watchdog.js";
 export * from "./operator-watchdog-policy.js";
 export * from "./retention-sweeper.js";
 export * from "./tx-queue-processor.js";
+export * from "./validation-trace-defense-fiber.js";

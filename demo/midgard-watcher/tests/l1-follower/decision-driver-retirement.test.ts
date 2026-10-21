@@ -18,6 +18,7 @@ import {
   AUTHORITY,
   chainEvents,
   collaborators,
+  driverOver,
   openStore,
   RELEASE_DEPTH,
   SOURCE_ID,
@@ -164,5 +165,29 @@ describe("the decision driver's retirement gate", () => {
       BigInt(driver.current().nativePoint.blockNo) -
         BigInt(checkpointDepth - 1),
     );
+  });
+});
+
+describe("the decision driver's readiness", () => {
+  it("names the bridge's holds alongside its own, for as long as the bridge reports them", async () => {
+    const store = openStore(":memory:");
+    closers.push(() => store.close());
+    expect((await store.start()).kind).toBe("ready");
+    expect((await store.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applyAll(store, chainEvents(8));
+    const c = collaborators();
+    const hold = { reason: "validation_trace_replay_held", detail: "held" };
+    let holds: (typeof hold)[] = [];
+    c.bridge.readiness = () => holds;
+    const driver = driverOver(store, c, []);
+    closers.push(() => driver.close());
+    driver.wake();
+    await until("a decision", () => c.seen.dispatched.length > 0);
+    await driver.idle();
+    expect(driver.readiness()).toEqual([]);
+    holds = [hold];
+    expect(driver.readiness()).toEqual([hold]);
+    holds = [];
+    expect(driver.readiness()).toEqual([]);
   });
 });

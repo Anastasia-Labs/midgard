@@ -7,7 +7,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { ledgerBeforeTransactionEvent } from "../input-existence/event-ledger.js";
+import {
+  EventLedgerReplayRefusal,
+  ledgerBeforeTransactionEvent,
+} from "../input-existence/event-ledger.js";
 import type {
   CanonicalBlockClassification,
   CanonicalViolationDetection,
@@ -25,6 +28,7 @@ import {
 } from "./artifact.js";
 import {
   buildValidationTraceClaimMaterial,
+  validationTraceClaimBuildHeld,
   type ValidationTraceClaimMaterial,
 } from "./claim-material.js";
 import { detectedLedger } from "./detected-ledgers.js";
@@ -82,6 +86,12 @@ export const detectedValidationTraceClaim = async ({
       eventKey: event.eventKey,
       stepIndex: opening.value.step_index,
       ...(predecessor === undefined ? {} : { predecessor }),
+    }).catch((cause: unknown) => {
+      // A refused pre-state is the block's own, and decides; a read that
+      // failed otherwise is held, as the detector holds it.
+      throw cause instanceof EventLedgerReplayRefusal
+        ? cause
+        : validationTraceClaimBuildHeld(cause);
     }));
   return {
     event,
@@ -105,11 +115,14 @@ export const prepareValidationTraceArtifact = async ({
   context,
   classification,
   l1SlotConfig,
+  onMaterial,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly classification: FaultClassification;
   readonly l1SlotConfig: L1SlotConfig;
+  /** Receives the claim material the artifact was built from. */
+  readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;
 }): Promise<JournalJsonObject> => {
   if (classification.category !== "validationTraceDispute")
     throw new Error("validation-trace adapter received another family");
@@ -119,6 +132,7 @@ export const prepareValidationTraceArtifact = async ({
     detection: classification.selected,
     l1SlotConfig,
   });
+  onMaterial?.(material);
   return encodeValidationTraceDisputeArtifact({
     headerHash: evidence.headerHash,
     material,
@@ -137,12 +151,15 @@ export const validateValidationTraceArtifact = async ({
   classification,
   artifact,
   l1SlotConfig,
+  onMaterial,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly classification: FaultClassification;
   readonly artifact: JournalJsonObject;
   readonly l1SlotConfig: L1SlotConfig;
+  /** Receives the material of the artifact, once it matches. */
+  readonly onMaterial?: (material: ValidationTraceClaimMaterial) => void;
 }): Promise<void> => {
   const { eventKeyCbor } = parseValidationTraceDisputeArtifact(artifact);
   const named = classification.detections.find(
@@ -154,6 +171,7 @@ export const validateValidationTraceArtifact = async ({
           Data.to(event.eventKey, SDK.EventKey) === eventKeyCbor,
       ),
   );
+  const built: { material?: ValidationTraceClaimMaterial } = {};
   const rebuilt =
     named === undefined
       ? undefined
@@ -162,9 +180,13 @@ export const validateValidationTraceArtifact = async ({
           context,
           classification: { ...classification, selected: named },
           l1SlotConfig,
+          onMaterial: (material) => {
+            built.material = material;
+          },
         });
   if (rebuilt === undefined || !sameJson(rebuilt, artifact))
     throw new Error(
       "validation-trace artifact differs from this evidence's replay",
     );
+  if (built.material !== undefined) onMaterial?.(built.material);
 };

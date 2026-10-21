@@ -274,6 +274,22 @@ export const bindFraudProofWorkflowDeployment = <
 ): Promise<FraudProofWorkflowDeploymentBinding<Category>> =>
   bindFraudProofDeployment(input);
 
+/**
+ * Executable binding of a family whose thread does not walk its published
+ * chain step by step: the family replaces `definition.computationThread.steps`
+ * with the steps its thread token actually visits, each with its datum
+ * schema, so no per-chain-step schema is taken here.
+ */
+export const bindFraudProofDisputeDeployment = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  input: Omit<
+    Parameters<typeof bindFraudProofDeployment<Category>>[0],
+    "stepDatumSchemas"
+  >,
+): Promise<FraudProofWorkflowDeploymentBinding<Category>> =>
+  bindFraudProofDeployment({ ...input, stepDatumSchemas: null });
+
 export type FraudProofTerminalDeploymentBinding = Pick<
   FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
   "deploymentFingerprint" | "releaseFinality" | "releaseEconomics"

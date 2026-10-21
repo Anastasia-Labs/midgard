@@ -26,6 +26,7 @@ import {
   releaseWorkflowFundingReservation,
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
+  WorkflowFundingShortfallError,
   type WorkflowFundingSubmissionHandoff,
   workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.js";
@@ -63,7 +64,6 @@ import {
   attemptCount,
   FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
-  journalRepeatsStall,
   latestSubmissionIntent,
   repeatsPendingReconciliation,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
@@ -86,7 +86,12 @@ import {
   supersedeDisplacedFundingAttempt,
   supersedeWorkflowFundingAttempt,
 } from "./orchestrator.supersede-funding-attempt.js";
+import {
+  createUnbuiltWorkflowActions,
+  workflowRunOutcomes,
+} from "./orchestrator.unbuilt-actions.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
  * ambiguous result, reconciliation, submitted hash, and confirmation are
@@ -191,30 +196,15 @@ export const runAdmittedFraudProofWorkflow = async ({
   };
   const assertReconcile = () =>
     assertWorkflowJournalReconciliation(journal, identity);
-  const stalled = async (
-    reason: string,
-    phase?: "preflight",
-  ): Promise<FraudProofWorkflowRunResult> => {
-    if (!journalRepeatsStall(entries, reason))
-      await append({ kind: "stalled", reason });
-    return {
-      kind: "stalled",
-      workflowId,
-      identity,
-      reason,
-      entries,
-      ...(phase === undefined ? {} : { phase }),
-    };
-  };
-  const resumeOnObservation = (
-    reason: string,
-  ): FraudProofWorkflowRunResult => ({
-    kind: "pending",
-    resumeOnObservation: true,
+  // An action that does not build is skipped for the rest of the run, so a
+  // lower-ranked move still goes; every result carries it as an alarm.
+  const unbuilt = createUnbuiltWorkflowActions();
+  const { stalled, pending, resumeOnObservation } = workflowRunOutcomes({
     workflowId,
     identity,
-    reason,
-    entries,
+    entries: () => entries,
+    append,
+    unbuilt,
   });
 
   if (entries.length === 0) {
@@ -234,10 +224,15 @@ export const runAdmittedFraudProofWorkflow = async ({
       throw new Error(
         "reconciliation authority requires an existing prepared workflow",
       );
-    const familyArtifact = normalizeJournalJson(
-      await prepareFamilyArtifact(adapter),
-      `${category} prepared artifact`,
-    ) as JournalJsonObject;
+    let familyArtifact: JournalJsonObject;
+    try {
+      familyArtifact = normalizeJournalJson(
+        await prepareFamilyArtifact(adapter),
+        `${category} prepared artifact`,
+      ) as JournalJsonObject;
+    } catch (cause) {
+      return artifactPendingResult(cause, resumeOnObservation);
+    }
     envelope = persistedArtifact({
       evidenceBinding,
       releaseFinality,
@@ -252,7 +247,11 @@ export const runAdmittedFraudProofWorkflow = async ({
     validateFamilyArtifact !== undefined &&
     !workflowJournalIsReconciliationOnly(journal)
   ) {
-    await validateFamilyArtifact(adapter, envelope.familyArtifact);
+    try {
+      await validateFamilyArtifact(adapter, envelope.familyArtifact);
+    } catch (cause) {
+      return artifactPendingResult(cause, resumeOnObservation);
+    }
     assertWorkflowJournalActuation({
       journal,
       deploymentFingerprint,
@@ -286,6 +285,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       workflowId,
       artifact: envelope.familyArtifact,
       entries,
+      unbuiltActionIds: unbuilt.ids,
     };
 
     const adoption = await adoptLandedSupersededAttempt({
@@ -536,7 +536,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       ) {
         const reason = `abandoned transaction ${intent.txHash} no longer has authenticated replacement evidence: ${reconciled.kind}; exact outcome remains unresolved`;
         if (workflowJournalIsReconciliationOnly(journal))
-          return { kind: "pending", workflowId, identity, reason, entries };
+          return pending(reason);
         return await stalled(reason);
       }
       if (reconciled.kind === "unknown") {
@@ -602,13 +602,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           return resumeOnObservation(
             `recorded transaction for ${action.actionId} awaits canonical reconciliation`,
           );
-        return {
-          kind: "pending",
-          workflowId,
-          identity,
-          reason: `transaction for ${action.actionId} is pending`,
-          entries,
-        };
+        return pending(`transaction for ${action.actionId} is pending`);
       }
       // Owner ruling (whichever lands wins): an attempt that expired or was
       // invalidated at the tip no longer holds the workflow or its funding.
@@ -656,15 +650,9 @@ export const runAdmittedFraudProofWorkflow = async ({
             kind: "completed",
             terminal: fundingRecovery.completionHandoff.completion.terminal,
           };
-    if (observation.kind === "pending") {
-      return {
-        kind: "pending",
-        workflowId,
-        identity,
-        reason: observation.reason,
-        entries,
-      };
-    }
+    const held = unbuilt.held(observation);
+    if (held !== undefined) return resumeOnObservation(held);
+    if (observation.kind === "pending") return pending(observation.reason);
     if (observation.kind === "completed") {
       let terminal: FraudProofWorkflowTerminal;
       const inclusionOnly =
@@ -770,13 +758,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       return await stalled(`chain conflict: ${observation.reason}`);
     }
     if (workflowJournalIsReconciliationOnly(journal))
-      return {
-        kind: "pending",
-        workflowId,
-        identity,
-        entries,
-        reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
-      };
+      return pending(FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED);
     const action = validateAction(observation.action);
     const latest = lastActionEvent(entries, action.actionId);
     if (latest?.kind === "confirmed") {
@@ -823,6 +805,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       }
       preflight = validatePreflight({ action, preflight: captured });
     } catch (cause) {
+      if (unbuilt.skip(cause)) continue;
       if (
         cause instanceof WorkflowActionChangedError ||
         cause instanceof WorkflowFundingReservationUnavailableError
@@ -868,6 +851,10 @@ export const runAdmittedFraudProofWorkflow = async ({
         },
       });
     } catch (cause) {
+      // A transaction the reservation cannot fund, as its preflight would:
+      // released, so a top-up resumes it.
+      if (cause instanceof WorkflowFundingShortfallError)
+        await releaseUnfundedWorkflowFundingInputs({ journal, cause });
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
       if (isFraudProofL1WaitError(cause)) throw cause;

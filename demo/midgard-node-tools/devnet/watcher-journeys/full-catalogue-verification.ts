@@ -6,6 +6,7 @@ import {
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
@@ -210,6 +211,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   } as unknown as LucidEvolution;
   const replayer = createCatalogueCompleteCanonicalReplay({
     lucid,
+    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     network: "Preprod",
     hubOraclePolicyId,
     minimumConfirmationDepth: policy.confirmationDepth,

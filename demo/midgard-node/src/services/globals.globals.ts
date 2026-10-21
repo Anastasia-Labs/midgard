@@ -3,6 +3,10 @@ import { Deferred, Effect, Ref, SubscriptionRef } from "effect";
 
 import type { OperatorMembershipState } from "../l1-operator-set/membership.js";
 import type { PublishedOperatorSet } from "../l1-operator-set/snapshot.js";
+import {
+  initialValidationTraceDefenseHealth,
+  type ValidationTraceDefenseHealth,
+} from "../validation-trace-defense/health.js";
 import type { CommitPlanningSnapshot } from "../workers/commit-planning-notice.js";
 import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import type { CommitDaFramePressureSnapshot } from "../workers/utils/commit-block-planner.commit-da-frame-notice.js";
@@ -257,6 +261,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         consecutiveFailures: 0,
         oldestUnattestedHeader: null,
       });
+    const VALIDATION_TRACE_DEFENSE_HEALTH =
+      yield* Ref.make<ValidationTraceDefenseHealth>(
+        initialValidationTraceDefenseHealth(now),
+      );
 
     return {
       BLOCKS_IN_QUEUE,
@@ -293,6 +301,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       HEARTBEAT_MERGE,
       HEARTBEAT_TX_QUEUE_PROCESSOR,
       ATTESTATION_TIMEOUT_CORRECTION_HEALTH,
+      VALIDATION_TRACE_DEFENSE_HEALTH,
       L1_CONTROL_PLANE_ACTIVITY,
       LIVENESS_REASONS,
       TRANSIENT_EXHAUSTION,

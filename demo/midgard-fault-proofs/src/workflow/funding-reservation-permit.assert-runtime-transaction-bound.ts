@@ -34,10 +34,8 @@ import {
 } from "./funding-reservation-permit.ledger-accounting.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import {
-  readWorkflowRuntimeFundingPolicy,
-  workflowRuntimeFundingMinimumFee,
-} from "./runtime-funding-policy.js";
+import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
+import { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
 import { workflowTransactionReferenceInputOutRefs } from "./transaction-boundary.js";
 export const assertRuntimeTransactionBound = async ({
   state,
@@ -137,8 +135,8 @@ export const assertRuntimeTransactionBound = async ({
         `fraud slash funding authority differs from its exact removal action or economics (${differing.join(", ")})`,
       );
   }
-  // VerifySource's exact bond and case floor; absent, it is refused as before.
-  const dispute = validationDisputeFunding({
+  // VerifySource's bond and case floor, or a thread move; else refused as before.
+  const dispute = await validationDisputeFunding({
     signed,
     slash: slash !== null,
     policy,
@@ -340,7 +338,6 @@ export const assertRuntimeTransactionBound = async ({
       throw new Error(
         "funding transaction consumed an ungoverned contract input",
       );
-    dispute?.admitContractInput(outRef);
     if (
       slash !== null &&
       slash.inputs.find((value) => value.outRef === outRef)
@@ -359,10 +356,11 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated bond",
       );
     }
-    // Slashes reacquire live authority even for confirmed workflow lineage.
+    // Slashes reacquire live authority; a thread move's thread is its lineage.
     const lineage =
       slash === null
-        ? await state.port.resolveConfirmedInput({ outRef })
+        ? (dispute?.admitContractInput(outRef, input) ??
+          (await state.port.resolveConfirmedInput({ outRef })))
         : null;
     if (lineage !== null) {
       const confirmed = parseConfirmedActionOutput(lineage);
@@ -487,6 +485,7 @@ export const assertRuntimeTransactionBound = async ({
     throw new Error(
       "signed transaction loses reserved wallet value outside fees and governed custody",
     );
+  dispute?.keepWalletMoveReserve(walletSpent);
   for (const [unit, quantity] of walletAssets) {
     if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
       throw new Error("signed transaction loses reserved wallet native assets");

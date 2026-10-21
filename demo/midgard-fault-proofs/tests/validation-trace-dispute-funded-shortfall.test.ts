@@ -49,22 +49,6 @@ import {
   setUpScene,
 } from "./support/validation-trace-dispute-open-scene.js";
 
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
-
 type Submitted = Readonly<{
   inputs: readonly string[];
   collateral: readonly string[];
@@ -185,42 +169,48 @@ describe("validation-trace dispute funding under the prover funding permit", () 
     "pauses VerifySource on a wallet whose ada sits in coins carrying an inline datum, a datum hash or a reference script, and lands after a top-up without spending them or offering them as collateral",
     async () => {
       const { h } = scene;
-      // Plain funding for Init and Open, not VerifySource besides.
-      await drainProver(h as never, BOND_LOVELACE + FLOOR + 2n * ADA);
-      const address = h.proverSigner.address;
-      // Each shaped coin alone could pay VerifySource's bond.
-      const lovelace = BOND_LOVELACE + 1_000n * ADA;
-      const scriptRef = scriptFromNative({
-        type: "sig",
-        keyHash: getAddressDetails(address).paymentCredential!.hash,
-      });
-      h.funderLucid.clearUTxOOverride();
-      const planting = await h.funderLucid
-        .newTx()
-        .pay.ToAddressWithData(
-          address,
-          { kind: "inline", value: Data.void() },
-          { lovelace },
-        )
-        .pay.ToAddressWithData(
-          address,
-          { kind: "asHash", value: Data.void() },
-          { lovelace },
-        )
-        .pay.ToAddressWithData(address, undefined, { lovelace }, scriptRef)
-        .complete();
-      const planted = await (
-        await planting.sign.withWallet().complete()
-      ).submit();
-      h.emulator.awaitBlock(1);
-      const shaped = [0, 1, 2].map((index) => `${planted}#${index.toString()}`);
-      expect(
-        await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
-      ).toHaveLength(3);
-
-      const recorded = recordSubmitted(h.emulator);
       const dispute = await openFundedDispute(scene);
+      let recorded: ReturnType<typeof recordSubmitted> | undefined;
       try {
+        // Plain funding for Init and Open, not VerifySource besides.
+        await drainProver(
+          h as never,
+          BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
+        );
+        const address = h.proverSigner.address;
+        // Each shaped coin alone could pay VerifySource's bond.
+        const lovelace = BOND_LOVELACE + 1_000n * ADA;
+        const scriptRef = scriptFromNative({
+          type: "sig",
+          keyHash: getAddressDetails(address).paymentCredential!.hash,
+        });
+        h.funderLucid.clearUTxOOverride();
+        const planting = await h.funderLucid
+          .newTx()
+          .pay.ToAddressWithData(
+            address,
+            { kind: "inline", value: Data.void() },
+            { lovelace },
+          )
+          .pay.ToAddressWithData(
+            address,
+            { kind: "asHash", value: Data.void() },
+            { lovelace },
+          )
+          .pay.ToAddressWithData(address, undefined, { lovelace }, scriptRef)
+          .complete();
+        const planted = await (
+          await planting.sign.withWallet().complete()
+        ).submit();
+        h.emulator.awaitBlock(1);
+        const shaped = [0, 1, 2].map(
+          (index) => `${planted}#${index.toString()}`,
+        );
+        expect(
+          await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
+        ).toHaveLength(3);
+
+        recorded = recordSubmitted(h.emulator);
         const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
         expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
         if (paused.result.kind !== "pending") return;
@@ -254,7 +244,7 @@ describe("validation-trace dispute funding under the prover funding permit", () 
           await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
         ).toHaveLength(3);
       } finally {
-        recorded.restore();
+        recorded?.restore();
         await dispute.close();
       }
     },

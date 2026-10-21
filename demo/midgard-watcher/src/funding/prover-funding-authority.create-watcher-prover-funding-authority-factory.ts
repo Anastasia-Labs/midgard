@@ -2,6 +2,7 @@ import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowRuntimeFundingPolicy,
   readWorkflowRuntimeFundingPolicy,
+  VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -59,9 +60,11 @@ import {
 } from "./prover-funding-reservation.js";
 
 /**
- * A validation-trace dispute policy's VerifySource custody terms, from the
- * signed deployment: the manifest's dispute bond (the case validator's
- * applied bond) and the dispute contracts it pays. Any other category's
+ * A validation-trace dispute policy's custody terms, from the signed
+ * deployment: the manifest's dispute bond (the case validator's applied
+ * bond), the dispute contracts VerifySource pays, and those the thread
+ * moves spend and pay, among them the boundary and the one-step resolvers
+ * a thread visits between the game and the award. Any other category's
  * policy carries none.
  */
 export const watcherValidationDisputeFundingTerms = (
@@ -82,6 +85,7 @@ export const watcherValidationDisputeFundingTerms = (
   };
   const address = (name: string) =>
     credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
+  const { boundary, ...resolvers } = VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES;
   return {
     validationDispute: {
       deploymentFingerprint: identity.manifestId,
@@ -92,6 +96,16 @@ export const watcherValidationDisputeFundingTerms = (
       bondAddress: address("validationTraceDisputeBond"),
       caseAddress: address("validationTraceDisputeCase"),
       casePolicyId: hash("validationTraceDisputeCaseMint"),
+      moves: {
+        gameAddress: address("validationTraceDisputeGame"),
+        timeoutAddress: address("validationTraceDisputeTimeout"),
+        awardAddress: address("validationTraceDisputeAward"),
+        awardPolicyId: hash("validationTraceDisputeAwardMint"),
+        oneStep: {
+          boundaryAddress: address(boundary),
+          resolverAddresses: Object.values(resolvers).map(address),
+        },
+      },
     },
   };
 };

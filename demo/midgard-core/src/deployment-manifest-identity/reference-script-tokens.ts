@@ -748,4 +748,29 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "availability-challenge close withdrawal": "AvailabilityChallengeCloseYield",
   "availability-challenge timeout withdrawal":
     "AvailabilityChallengeExpiryYield",
+  "V1 validation-trace CEK prepare": "V1VtCekPrepare",
+  "V1 validation-trace CEK finish semantic": "V1VtCekFinishSem",
+  "V1 validation-trace CEK execution selection semantic": "V1VtCekSelectionSem",
+  "V1 validation-trace CEK context step semantic": "V1VtCekContextStepSem",
+  "V1 validation-trace CEK core step semantic": "V1VtCekCoreStepSem",
+  "V1 validation-trace compact-binding prepare": "V1VtCompactBindingPrepare",
+  "V1 validation-trace compact-binding semantic": "V1VtCompactBindingSem",
+  "V1 validation-trace static-ledger-rules prepare": "V1VtStaticLedgerPrepare",
+  "V1 validation-trace static-ledger-rules semantic": "V1VtStaticLedgerSem",
+  "V1 validation-trace input-sets prepare": "V1VtInputSetsPrepare",
+  "V1 validation-trace input-sets empty semantic": "V1VtInputSetsEmptySem",
+  "V1 validation-trace input-sets item semantic": "V1VtInputSetsItemSem",
+  "V1 validation-trace signatures prepare": "V1VtSignaturesPrepare",
+  "V1 validation-trace signatures advance semantic": "V1VtSigAdvanceSem",
+  "V1 validation-trace signatures address item semantic":
+    "V1VtSigAddressItemSem",
+  "V1 validation-trace signatures required item semantic":
+    "V1VtSigRequiredItemSem",
+  "V1 validation-trace signatures handoff semantic": "V1VtSigHandoffSem",
+  "V1 validation-trace phase-A native scripts prepare":
+    "V1VtPhaseANativePrepare",
+  "V1 validation-trace phase-A script preconditions prepare":
+    "V1VtPhaseAPrecondPrepare",
+  "V1 validation-trace resolve-inputs prepare": "V1VtResolveInputsPrepare",
+  "V1 validation-trace script-sources prepare": "V1VtScriptSourcesPrepare",
 } as const);

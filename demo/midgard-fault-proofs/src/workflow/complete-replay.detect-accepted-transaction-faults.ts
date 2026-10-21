@@ -54,6 +54,7 @@ import {
 } from "./complete-replay.replay-context-identity.js";
 import {
   acceptedTransactionSubject,
+  detectionEventOrder,
   sourceEventSubject,
   subjectOf,
 } from "./detection-subject.js";
@@ -332,11 +333,12 @@ const plutusEventsInStepOrder = (evidence: CanonicalBlockEvidence) => {
  * them on chain.
  *
  * A re-execution that throws holds only its own event (`holds`): the other
- * events still replay, and a failure proven on any of them decides the block.
- * The replay is one pass of `holds`, so it re-executes a bounded number of
- * held events.
- * With none proven while an event is held, the replay throws
- * `ValidationTraceReplayHeldError` rather than deciding.
+ * events still replay, and a finding strictly before every held event decides
+ * the block. The replay is one pass of `holds`, so it re-executes a bounded
+ * number of held events.
+ * With no such finding while an event is held, the replay throws
+ * `ValidationTraceReplayHeldError`, carrying its findings, rather than
+ * deciding.
  */
 export const detectPlutusExecutionFailures = async ({
   evidence,
@@ -352,6 +354,16 @@ export const detectPlutusExecutionFailures = async ({
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const detections: CanonicalViolationDetection[] = [];
   const held: ValidationTraceReplayHold[] = [];
+  let heldFromOrder = Number.POSITIVE_INFINITY;
+  const heldAt = (event: CommittedL2Event): void => {
+    heldFromOrder = Math.min(
+      heldFromOrder,
+      detectionEventOrder(evidence.reconstruction, {
+        ...sourceEventSubject(event),
+        detectionId: event.fingerprint,
+      }),
+    );
+  };
   // One walk of the block's steps serves every event's pre-state, so the
   // events replay in step order.
   let walk: EventLedgerWalk | undefined;
@@ -365,9 +377,11 @@ export const detectPlutusExecutionFailures = async ({
     });
     if (waiting !== undefined) {
       held.push(waiting);
+      heldAt(event);
       continue;
     }
     const hold = (cause: unknown): void => {
+      heldAt(event);
       held.push(
         holds.failed(holdKey, {
           headerHash: evidence.headerHash,
@@ -454,12 +468,20 @@ export const detectPlutusExecutionFailures = async ({
         `accepted transaction ${event.entry.txId}: ${replay.detail}`,
       );
   }
+  // A held event can only add findings at or after its own order, so the
+  // pass decides only on a finding strictly before every held event.
   if (
     held.length > 0 &&
     !detections.some(
-      ({ violationId }) => violationId === VALIDATION_TRACE_VIOLATION_ID,
+      (detection) =>
+        detectionEventOrder(evidence.reconstruction, detection) < heldFromOrder,
     )
   )
-    throw new ValidationTraceReplayHeldError(evidence.headerHash, held);
+    throw new ValidationTraceReplayHeldError(
+      evidence.headerHash,
+      held,
+      heldFromOrder,
+      detections,
+    );
   return detections;
 };

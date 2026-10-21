@@ -99,6 +99,7 @@ export type WatcherDecisionDriverInput = Readonly<{
     | "recoverExisting"
     | "reconcileAndDispatch"
     | "invalidateForRollback"
+    | "readiness"
   >;
   availability: Pick<
     WatcherAvailabilityRuntime,
@@ -137,7 +138,8 @@ export type WatcherDecisionDriver = Readonly<{
    * the pass that first decides.
    */
   inclusion(): WatcherAuthenticatedStateQueueObservation | null;
-  /** Why decisions are held; empty when the last pass completed. */
+  /** Why decisions are held, then the bridge's held headers; empty when
+   * the last pass completed and no header's classification is held. */
   readiness(): readonly WatcherDecisionReadiness[];
   /** Settles with the recovered workflow count after the first completed pass. */
   recovered: Promise<number>;
@@ -460,7 +462,7 @@ export const createWatcherDecisionDriver = (
       return current;
     },
     inclusion: () => inclusion,
-    readiness: () => Object.freeze([...held]),
+    readiness: () => Object.freeze([...held, ...input.bridge.readiness()]),
     recovered,
     caughtUp,
     wake,

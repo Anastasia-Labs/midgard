@@ -3,6 +3,7 @@ import {
   type DeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   type FraudProofCatalogueCategoryName,
   VALIDATION_CASE_FLOOR_LOVELACE,
@@ -15,6 +16,10 @@ import {
   type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "./release-economics-policy.js";
 import { isAdmittedWorkflowRunner } from "./runner-admission.js";
+import {
+  validationDisputeWalletMoveReserve,
+  workflowRuntimeFundingMaximumFee,
+} from "./runtime-funding-fee.js";
 
 export type WorkflowRuntimeFundingContract = Readonly<{
   address: string;
@@ -31,67 +36,6 @@ export type WorkflowRuntimeFundingContract = Readonly<{
 export interface WorkflowRuntimeFundingPolicy {
   readonly policyVersion: "midgard-workflow-runtime-funding-policy-v1";
 }
-
-type Rational = Readonly<{ numerator: bigint; denominator: bigint }>;
-const rational = (value: {
-  numerator: string;
-  denominator: string;
-}): Rational => ({
-  numerator: BigInt(value.numerator),
-  denominator: BigInt(value.denominator),
-});
-const add = (left: Rational, right: Rational): Rational => ({
-  numerator:
-    left.numerator * right.denominator + right.numerator * left.denominator,
-  denominator: left.denominator * right.denominator,
-});
-const multiply = (left: Rational, right: Rational): Rational => ({
-  numerator: left.numerator * right.numerator,
-  denominator: left.denominator * right.denominator,
-});
-const scale = (value: Rational, quantity: bigint): Rational => ({
-  numerator: value.numerator * quantity,
-  denominator: value.denominator,
-});
-const ceil = (value: Rational): bigint =>
-  (value.numerator + value.denominator - 1n) / value.denominator;
-
-/** Uses the signed protocol's exact rational prices, including reference tiers. */
-export const workflowRuntimeFundingMinimumFee = ({
-  parameters,
-  transactionBytes,
-  memory,
-  steps,
-  referenceScriptBytes,
-}: {
-  parameters: DeploymentManifestCardanoProtocolParameters;
-  transactionBytes: bigint;
-  memory: bigint;
-  steps: bigint;
-  referenceScriptBytes: bigint;
-}): bigint => {
-  let remaining = referenceScriptBytes;
-  let price = rational(parameters.referenceScriptFee.base);
-  let referenceFee: Rational = { numerator: 0n, denominator: 1n };
-  const range = BigInt(parameters.referenceScriptFee.range);
-  while (remaining > 0n) {
-    const bytes = remaining > range ? range : remaining;
-    referenceFee = add(referenceFee, scale(price, bytes));
-    remaining -= bytes;
-    price = multiply(price, rational(parameters.referenceScriptFee.multiplier));
-  }
-  return (
-    BigInt(parameters.minFeeA) * transactionBytes +
-    BigInt(parameters.minFeeB) +
-    ceil(
-      add(
-        scale(rational(parameters.priceMemory), memory),
-        scale(rational(parameters.priceSteps), steps),
-      ),
-    ) +
-    ceil(referenceFee)
-  );
-};
 
 /**
  * The validation-trace dispute's VerifySource custody terms: the dispute
@@ -111,6 +55,28 @@ export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
   caseAddress: string;
   /** The case minting policy, which mints the case NFT and the bond marker. */
   casePolicyId: string;
+  /**
+   * The thread moves' contracts, present when the runner plays threads: the
+   * game, timeout and award spending addresses and the receipt policy, and
+   * when the runner drives the one-step resolution, the boundary's and the
+   * one-step resolvers' spending addresses a thread visits between the game
+   * and the award. The per-move fee cap and the receipt's lovelace are the
+   * compiled profile's; what a reservation keeps for a move our wallet pays
+   * is priced under the policy's parameters.
+   */
+  moves?: Readonly<{
+    gameAddress: string;
+    timeoutAddress: string;
+    awardAddress: string;
+    awardPolicyId: string;
+    oneStep?: ValidationDisputeOneStepTerms;
+  }>;
+}>;
+
+/** The holders a thread of ours visits in its one-step resolution. */
+export type ValidationDisputeOneStepTerms = Readonly<{
+  boundaryAddress: string;
+  resolverAddresses: readonly string[];
 }>;
 
 type ValidationDisputeTermsValue = Readonly<{
@@ -119,6 +85,18 @@ type ValidationDisputeTermsValue = Readonly<{
   bondAddress: string;
   caseAddress: string;
   casePolicyId: string;
+  moves?: Readonly<{
+    gameAddress: string;
+    timeoutAddress: string;
+    awardAddress: string;
+    awardPolicyId: string;
+    moveFeeCapLovelace: string;
+    fraudProofOutputLovelace: string;
+    /** What a reservation keeps for one move our wallet pays, under the
+     * policy's parameters: `validationDisputeWalletMoveReserve`. */
+    walletMoveReserveLovelace: string;
+    oneStep?: ValidationDisputeOneStepTerms;
+  }>;
 }>;
 
 type PolicyValue = Readonly<{
@@ -147,11 +125,15 @@ const admitted = new WeakMap<
 const validationDisputeTerms = ({
   category,
   deploymentFingerprint,
+  fundingPaymentKeyHash,
+  parameters,
   terms,
   roster,
 }: {
   category: FraudProofCatalogueCategoryName;
   deploymentFingerprint: string;
+  fundingPaymentKeyHash: string;
+  parameters: DeploymentManifestCardanoProtocolParameters;
   terms: WorkflowRuntimeValidationDisputeTerms;
   roster: readonly WorkflowRuntimeFundingContract[];
 }): ValidationDisputeTermsValue => {
@@ -178,16 +160,65 @@ const validationDisputeTerms = ({
   };
   custody(terms.bondAddress, "bond");
   custody(terms.caseAddress, "case");
-  if (terms.bondAddress === terms.caseAddress)
+  const moves = terms.moves;
+  const addresses = [terms.bondAddress, terms.caseAddress];
+  if (moves !== undefined) {
+    custody(moves.gameAddress, "game");
+    custody(moves.timeoutAddress, "timeout");
+    custody(moves.awardAddress, "award");
+    if (!/^[0-9a-f]{56}$/u.test(moves.awardPolicyId))
+      throw new Error("runtime funding validation award policy is malformed");
+    addresses.push(moves.gameAddress, moves.timeoutAddress, moves.awardAddress);
+    const { oneStep } = moves;
+    if (oneStep !== undefined) {
+      if (oneStep.resolverAddresses.length === 0)
+        throw new Error(
+          "runtime funding validation dispute one-step terms name no resolver",
+        );
+      custody(oneStep.boundaryAddress, "boundary");
+      for (const resolver of oneStep.resolverAddresses)
+        custody(resolver, "one-step resolver");
+      addresses.push(oneStep.boundaryAddress, ...oneStep.resolverAddresses);
+    }
+  }
+  if (new Set(addresses).size !== addresses.length)
     throw new Error(
-      "runtime funding validation dispute bond and case addresses coincide",
+      "runtime funding validation dispute contract addresses coincide",
     );
+  const { limits } = SELECTED_DEPLOYMENT_PROFILE;
   return Object.freeze({
     bondLovelace: terms.bondLovelace.toString(),
     caseFloorLovelace: VALIDATION_CASE_FLOOR_LOVELACE.toString(),
     bondAddress: terms.bondAddress,
     caseAddress: terms.caseAddress,
     casePolicyId: terms.casePolicyId,
+    ...(moves === undefined
+      ? {}
+      : {
+          moves: Object.freeze({
+            gameAddress: moves.gameAddress,
+            timeoutAddress: moves.timeoutAddress,
+            awardAddress: moves.awardAddress,
+            awardPolicyId: moves.awardPolicyId,
+            moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
+            fraudProofOutputLovelace:
+              limits.fraud_proof_output_lovelace.toString(),
+            walletMoveReserveLovelace: validationDisputeWalletMoveReserve({
+              parameters,
+              fundingPaymentKeyHash,
+            }).toString(),
+            ...(moves.oneStep === undefined
+              ? {}
+              : {
+                  oneStep: Object.freeze({
+                    boundaryAddress: moves.oneStep.boundaryAddress,
+                    resolverAddresses: Object.freeze([
+                      ...moves.oneStep.resolverAddresses,
+                    ]),
+                  }),
+                }),
+          }),
+        }),
   });
 };
 
@@ -276,21 +307,15 @@ export const createWorkflowRuntimeFundingPolicy = ({
       return Object.freeze({ ...reference });
     })
     .sort((left, right) => left.outRef.localeCompare(right.outRef));
-  const maximumFee = workflowRuntimeFundingMinimumFee({
-    parameters,
-    transactionBytes: BigInt(parameters.maxTxSize),
-    memory: BigInt(parameters.maxTxExUnits.memory),
-    steps: BigInt(parameters.maxTxExUnits.steps),
-    referenceScriptBytes: BigInt(
-      parameters.referenceScriptFee.maximumSizeBytes,
-    ),
-  });
+  const maximumFee = workflowRuntimeFundingMaximumFee(parameters);
   const disputeTerms =
     validationDispute === undefined
       ? undefined
       : validationDisputeTerms({
           category,
           deploymentFingerprint,
+          fundingPaymentKeyHash,
+          parameters,
           terms: validationDispute,
           roster,
         });

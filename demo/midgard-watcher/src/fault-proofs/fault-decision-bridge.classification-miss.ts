@@ -3,6 +3,11 @@ import {
   isFraudProofL1WaitError,
   isReplayLocalFault,
   isRetainedDaPayloadUnavailableError,
+  isValidationTraceReplayHeldError,
+  type VALIDATION_TRACE_REPLAY_HELD,
+  type VALIDATION_TRACE_REPLAY_STUCK,
+  validationTraceCaseOpenAtRisk,
+  validationTraceCaseOpenWindowEndMs,
 } from "@al-ft/midgard-fault-proofs";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -14,6 +19,7 @@ import type {
 } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
   awaitsRetainedDaPayload,
@@ -39,7 +45,9 @@ export type WatcherClassificationWarning = Readonly<
         | "l1_source_unavailable"
         | "retained_da_transport_unavailable"
         | "retained_da_payload_unavailable"
-        | "replay_local_fault";
+        | "replay_local_fault"
+        | typeof VALIDATION_TRACE_REPLAY_HELD
+        | typeof VALIDATION_TRACE_REPLAY_STUCK;
     }
   | {
       event: "unverified_past_horizon";
@@ -74,7 +82,29 @@ const challengeability = (
   };
 };
 
+/** The end of `header`'s case open window; `undefined` when its node
+ * cannot be read. */
+const caseOpenWindowEndMs = (
+  header: WatcherStateQueueHeaderObservation,
+): number | undefined => {
+  try {
+    return validationTraceCaseOpenWindowEndMs(
+      Data.from(header.stateQueueNodeCborHex, StateQueueNode).block_time,
+    );
+  } catch {
+    return undefined;
+  }
+};
+
 const MAXIMUM_WARNED_HEADERS = 4_096;
+
+/**
+ * A header whose classification waits on held script re-executions names
+ * its hold on readiness while its classification keeps being retried: each
+ * retry renews it, so one never retried again (classified, merged, removed
+ * or rolled back) stops holding readiness on its own once this old.
+ */
+export const WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS = 180_000;
 
 type MissInput = Readonly<{
   error: unknown;
@@ -102,6 +132,10 @@ export const classificationMissRecorder = (
     dependencies.warn?.(warning);
   };
   const nowMs = dependencies.nowMs ?? (() => BigInt(Date.now()));
+  const replayHolds = new Map<
+    string,
+    Readonly<{ reason: string; detail: string; atMs: bigint }>
+  >();
   /**
    * The missing payload is now accounted for by this header's own record, so
    * its failed fetch stops holding readiness; the deferral stays visible.
@@ -137,6 +171,38 @@ export const classificationMissRecorder = (
         event: "classification_deferred",
         headerHash: header.headerHash,
         cause: "replay_local_fault",
+      });
+      return "defer";
+    }
+    // Its script re-execution threw on an event that may be the one that
+    // fails, and no earlier finding decides the block: not a verdict, so it
+    // is classified again on a later wake, held by name meanwhile. Once the
+    // case its finding would open is at risk (stage-unbuilt.ts), the hold
+    // is an alarm, logged at error level.
+    if (isValidationTraceReplayHeldError(error)) {
+      const by = validationTraceCaseOpenAtRisk(
+        caseOpenWindowEndMs(header),
+        Number(nowMs()),
+      );
+      const hold = {
+        reason: error.readiness,
+        detail:
+          by === undefined
+            ? error.message
+            : `${error.message}, and its case must open by ${by}`,
+      };
+      replayHolds.delete(header.headerHash);
+      if (replayHolds.size >= MAXIMUM_WARNED_HEADERS)
+        replayHolds.delete(replayHolds.keys().next().value!);
+      replayHolds.set(header.headerHash, { ...hold, atMs: nowMs() });
+      if (by !== undefined)
+        process.stderr.write(
+          `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
+        );
+      warnOnce({
+        event: "classification_deferred",
+        headerHash: header.headerHash,
+        cause: error.readiness,
       });
       return "defer";
     }
@@ -192,6 +258,22 @@ export const classificationMissRecorder = (
     return "defer";
   };
   return Object.freeze({
+    /** `headerHash` was classified: it no longer waits on a hold. */
+    classified: (headerHash: string): void => {
+      replayHolds.delete(headerHash);
+    },
+    /** The headers whose classification waits on held re-executions. */
+    readiness: (): readonly Readonly<{ reason: string; detail: string }>[] => {
+      const now = nowMs();
+      for (const [headerHash, { atMs }] of replayHolds)
+        if (now - atMs > BigInt(WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS))
+          replayHolds.delete(headerHash);
+      return Object.freeze(
+        [...replayHolds.values()].map(({ reason, detail }) =>
+          Object.freeze({ reason, detail }),
+        ),
+      );
+    },
     /**
      * A header already skipped past its horizon stays skipped: time only
      * moves it further past, so its DA is not read again.
