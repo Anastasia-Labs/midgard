@@ -155,3 +155,35 @@ export const caseContracts = new Set<string>(
 export const caseRoles = new Set<string>(
   CASE_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The CEK phase's one-step resolver and its four semantic resolvers, which a
+// validation-trace thread visits between the boundary and the CEK stages.
+const CEK_RESOLVER_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeCekPrepare",
+    role: "V1 validation-trace CEK prepare",
+  },
+  {
+    contract: "validationTraceDisputeCekFinishSemantic",
+    role: "V1 validation-trace CEK finish semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekExecutionSelectionSemantic",
+    role: "V1 validation-trace CEK execution selection semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekContextStepSemantic",
+    role: "V1 validation-trace CEK context step semantic",
+  },
+  {
+    contract: "validationTraceDisputeCekCoreStepSemantic",
+    role: "V1 validation-trace CEK core step semantic",
+  },
+] as const;
+
+export const cekResolverContracts = new Set<string>(
+  CEK_RESOLVER_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const cekResolverRoles = new Set<string>(
+  CEK_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);

@@ -9,9 +9,10 @@
  *
  * The calling test stands in for the family's install (the category is not
  * installed until its defender exists); the deployment is the fixture
- * manifest's with the scene's dispute contracts, whose dispute bond is the
- * emulator deployment's. The policy's dispute terms are the watcher's own,
- * derived from that signed deployment.
+ * manifest's with the scene's dispute contracts and one-step holders, whose
+ * dispute bond is the emulator deployment's. The policy's dispute terms are
+ * the watcher's own, derived from that signed deployment. Given the one-step
+ * holders' published references, the runner drives the resolution.
  */
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -32,7 +33,9 @@ import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
 import { createValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "../../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
+import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
@@ -66,6 +69,10 @@ import {
 import { FixtureRetainedDaSource } from "./script-decode-installed-host.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import {
+  oneStepDeployment,
+  oneStepScripts,
+} from "./validation-trace-dispute-one-step.js";
+import {
   BOND_LOVELACE,
   detectOn,
   type Scene,
@@ -83,7 +90,10 @@ export type AdapterWrap = (
 ) => FraudProofFamilyWorkflowAdapter;
 
 /** The published reference scripts a dispute transaction may read. */
-const referenceUtxos = (scene: Scene): readonly UTxO[] => {
+const referenceUtxos = (
+  scene: Scene,
+  oneStep: ValidationTraceOneStepReferences | undefined,
+): readonly UTxO[] => {
   const { h } = scene;
   const byOutRef = new Map<string, UTxO>();
   for (const utxo of [
@@ -92,15 +102,40 @@ const referenceUtxos = (scene: Scene): readonly UTxO[] => {
       h.witnessReferenceScripts as Readonly<Record<string, UTxO | undefined>>,
     ).filter((utxo): utxo is UTxO => utxo !== undefined),
     ...Object.values(scene.references),
+    ...(oneStep === undefined
+      ? []
+      : [
+          oneStep.boundary,
+          oneStep.cekPrepare,
+          oneStep.cekCore,
+          ...Object.values(oneStep.arms),
+          oneStep.settle,
+        ]),
   ])
     byOutRef.set(`${utxo.txHash}#${utxo.outputIndex.toString()}`, utxo);
   return [...byOutRef.values()];
+};
+
+/** The scene's one-step holders' scripts by the names a manifest gives
+ * them. */
+const oneStepContracts = (scene: Scene) => {
+  const scripts = oneStepScripts(scene);
+  return Object.entries(VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES).map(
+    ([holder, name]) =>
+      [name, scripts[holder as keyof typeof scripts]] as const,
+  );
 };
 
 /** The dispute contracts by the names a manifest gives them. */
 const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
   const { chain, h } = scene;
   return {
+    ...Object.fromEntries(
+      oneStepContracts(scene).map(([name, script]) => [
+        name,
+        script.spendingScriptHash,
+      ]),
+    ),
     fraudProofValidationTraceDispute:
       h.contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
     validationTraceDisputeOpener: chain.opener.spendingScriptHash,
@@ -119,7 +154,8 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
 
 /**
  * The fixture's signed deployment, its dispute bond, case, game, timeout
- * and award contracts (and their reference-script entries) the scene's.
+ * and award contracts and its one-step holders (and their reference-script
+ * entries) the scene's.
  */
 const signedDeployment = (scene: Scene) => {
   const { chain } = scene;
@@ -165,6 +201,8 @@ const signedDeployment = (scene: Scene) => {
     chain.award.mintingScript,
     chain.award.policyId,
   );
+  for (const [name, script] of oneStepContracts(scene))
+    deployed(name, script.spendingScript, script.spendingScriptHash);
   return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
 };
 
@@ -229,11 +267,15 @@ export const classifyFailingHeader = async (scene: Scene) => {
 /**
  * Classifies the failing block's header, then returns one watcher turn for
  * its objective over the durable state in a fresh directory. By default the
- * runner observes no convicted block's removal.
+ * runner observes no convicted block's removal, and does not drive the
+ * one-step resolution; given the one-step holders' references, it does.
  */
 export const openFundedDispute = async (
   scene: Scene,
-  options: { readonly removal?: ValidationTraceRemovalConfig } = {},
+  options: {
+    readonly removal?: ValidationTraceRemovalConfig;
+    readonly oneStep?: ValidationTraceOneStepReferences;
+  } = {},
 ) => {
   const { h } = scene;
   const block = scene.failing;
@@ -276,7 +318,10 @@ export const openFundedDispute = async (
   const directory = await mkdtemp(join(homedir(), "validation-dispute-"));
   const journalDirectory = join(directory, "journal");
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-  const deployment = runnerDeployment(scene, fingerprint);
+  const deployment =
+    options.oneStep === undefined
+      ? runnerDeployment(scene, fingerprint)
+      : oneStepDeployment(scene, options.oneStep, fingerprint);
   const { validationDispute } = watcherValidationDisputeFundingTerms(
     identity,
     CATEGORY,
@@ -293,7 +338,7 @@ export const openFundedDispute = async (
       fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
       walletAddress: h.proverSigner.address,
       scriptHashes: scriptHashes(scene),
-      referenceUtxos: referenceUtxos(scene),
+      referenceUtxos: referenceUtxos(scene, options.oneStep),
       computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
       // The watcher does not install the dispute until its defender exists.

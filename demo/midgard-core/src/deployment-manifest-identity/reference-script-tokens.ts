@@ -748,4 +748,9 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "availability-challenge close withdrawal": "AvailabilityChallengeCloseYield",
   "availability-challenge timeout withdrawal":
     "AvailabilityChallengeExpiryYield",
+  "V1 validation-trace CEK prepare": "V1VtCekPrepare",
+  "V1 validation-trace CEK finish semantic": "V1VtCekFinishSem",
+  "V1 validation-trace CEK execution selection semantic": "V1VtCekSelectionSem",
+  "V1 validation-trace CEK context step semantic": "V1VtCekContextStepSem",
+  "V1 validation-trace CEK core step semantic": "V1VtCekCoreStepSem",
 } as const);

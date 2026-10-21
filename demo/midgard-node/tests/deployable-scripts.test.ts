@@ -14,6 +14,8 @@ import {} from "../src/transactions/reference-scripts.js";
 import {
   caseContracts,
   caseRoles,
+  cekResolverContracts,
+  cekResolverRoles,
   dataCanonicityContracts,
   dataCanonicityRoles,
   HISTORY_CATALOGUE_ADDITIONS,
@@ -40,6 +42,12 @@ import {
   PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
   PRE_CASE_REAL_COMMAND_ORDER_DIGEST,
   PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+  PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
   PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
   PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
   PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
@@ -80,6 +88,65 @@ const commandOrder = (contracts: SDK.MidgardValidators) => {
   ]);
 };
 
+/**
+ * Every order of `sets` (the real contract set first) with exactly the given
+ * contracts and roles excluded: the manifest and publication lengths, and
+ * the manifest, publication and per-command order digests an older
+ * generation pinned.
+ */
+const expectOrdersWithout = (
+  [real, ...others]: readonly SDK.MidgardValidators[],
+  {
+    contracts: excludedContracts,
+    roles: excludedRoles,
+    lengths: [manifestLength, targetLength],
+    pins,
+    restoreRetiredBond,
+  }: {
+    readonly contracts: readonly ReadonlySet<string>[];
+    readonly roles: readonly ReadonlySet<string>[];
+    readonly lengths: readonly [number, number];
+    readonly pins: Readonly<Record<string, string>>;
+    /** Older generations still listed the retired per-header bond yield. */
+    readonly restoreRetiredBond?: boolean;
+  },
+) => {
+  const restore = <T extends string | null>(names: readonly T[]) =>
+    restoreRetiredBond === true ? withRetiredBondRole(names) : names;
+  const without = (names: readonly string[]) =>
+    restore(
+      names.filter((name) => !excludedRoles.some((set) => set.has(name))),
+    );
+  for (const contracts of [real!, ...others]) {
+    const manifest = manifestDeployableScripts(contracts).filter(
+      ({ contract }) => !excludedContracts.some((set) => set.has(contract)),
+    );
+    const roles = restore(manifest.map(({ role }) => role ?? null));
+    expect(roles).toHaveLength(manifestLength);
+    // The older generations' contract names are not pinned (see the pins).
+    if (pins.manifestContract !== undefined)
+      expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
+        pins.manifestContract,
+      );
+    expect(orderDigest(roles)).toEqual(pins.manifestRole);
+    const targets = without(
+      nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
+    );
+    expect(targets).toHaveLength(targetLength);
+    const kind = contracts === real ? "real" : "placeholder";
+    expect(orderDigest(targets)).toEqual(pins[`${kind}Publication`]);
+    const byCommand = referenceScriptTargetsByCommand(contracts);
+    expect(
+      orderDigest(
+        REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
+          commandName,
+          without(byCommand[commandName].map(({ name }) => name)),
+        ]),
+      ),
+    ).toEqual(pins[`${kind}Command`]);
+  }
+};
+
 describe("deployable-script catalogue", () => {
   let real: SDK.MidgardValidators;
   let placeholder: SDK.MidgardValidators;
@@ -102,7 +169,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(523);
+      expect(manifest).toHaveLength(528);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -114,7 +181,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(518);
+    expect(realTargets).toHaveLength(523);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -133,199 +200,105 @@ describe("deployable-script catalogue", () => {
     );
   });
 
-  it("preserves every pre-case order after excluding exactly its six additions", () => {
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts).filter(
-        ({ contract }) => !caseContracts.has(contract),
-      );
-      expect(manifest).toHaveLength(517);
-      expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
-        PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
-      );
-      expect(orderDigest(manifest.map(({ role }) => role ?? null))).toEqual(
-        PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
-      );
-      const without = (names: readonly string[]) =>
-        names.filter((name) => !caseRoles.has(name));
-      const targets = without(
-        nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
-      );
-      expect(targets).toHaveLength(512);
-      expect(orderDigest(targets)).toEqual(
-        contracts === real
-          ? PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST
-          : PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-      );
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      expect(
-        orderDigest(
-          REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
-            commandName,
-            without(byCommand[commandName].map(({ name }) => name)),
-          ]),
-        ),
-      ).toEqual(
-        contracts === real
-          ? PRE_CASE_REAL_COMMAND_ORDER_DIGEST
-          : PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-      );
-    }
+  it("preserves every pre-CEK-resolver order after excluding exactly its five additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [cekResolverContracts],
+      roles: [cekResolverRoles],
+      lengths: [523, 518],
+      pins: {
+        manifestContract: PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: PRE_CEK_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_CEK_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          PRE_CEK_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_CEK_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
   });
 
-  it("preserves every pre-data-canonicity order after excluding exactly its four and the six case additions", () => {
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts).filter(
-        ({ contract }) =>
-          !caseContracts.has(contract) &&
-          !dataCanonicityContracts.has(contract),
-      );
-      expect(manifest).toHaveLength(513);
-      expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
-        PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
-      );
-      expect(orderDigest(manifest.map(({ role }) => role ?? null))).toEqual(
-        PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
-      );
-      const without = (names: readonly string[]) =>
-        names.filter(
-          (name) => !caseRoles.has(name) && !dataCanonicityRoles.has(name),
-        );
-      const targets = without(
-        nodeRuntimeReferenceScriptTargets(contracts).map(({ name }) => name),
-      );
-      expect(targets).toHaveLength(508);
-      expect(orderDigest(targets)).toEqual(
-        contracts === real
-          ? PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST
-          : PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-      );
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      expect(
-        orderDigest(
-          REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
-            commandName,
-            without(byCommand[commandName].map(({ name }) => name)),
-          ]),
-        ),
-      ).toEqual(
-        contracts === real
-          ? PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST
-          : PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-      );
-    }
+  it("preserves every pre-case order after excluding exactly its six and the five CEK resolver additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [cekResolverContracts, caseContracts],
+      roles: [cekResolverRoles, caseRoles],
+      lengths: [517, 512],
+      pins: {
+        manifestContract: PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: PRE_CASE_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_CASE_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication: PRE_CASE_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_CASE_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: PRE_CASE_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
   });
 
-  it("preserves every original published order after excluding exactly the six history, two pool, four data-canonicity and six case additions and restoring the retired bond yield", () => {
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts).filter(
-        ({ contract }) =>
-          !historyContracts.has(contract) &&
-          !poolContracts.has(contract) &&
-          !caseContracts.has(contract) &&
-          !dataCanonicityContracts.has(contract),
-      );
-      const roles = withRetiredBondRole(
-        manifest.map(({ role }) => role ?? null),
-      );
-      expect(roles).toHaveLength(506);
-      expect(orderDigest(roles)).toEqual(
-        PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
-      );
-      const targets = withRetiredBondRole(
-        nodeRuntimeReferenceScriptTargets(contracts)
-          .map(({ name }) => name)
-          .filter(
-            (name) =>
-              !historyRoles.has(name) &&
-              !poolRoles.has(name) &&
-              !caseRoles.has(name) &&
-              !dataCanonicityRoles.has(name),
-          ),
-      );
-      expect(targets).toHaveLength(501);
-      expect(orderDigest(targets)).toEqual(
-        contracts === real
-          ? PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST
-          : PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-      );
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      expect(
-        orderDigest(
-          REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
-            commandName,
-            withRetiredBondRole(
-              byCommand[commandName]
-                .map(({ name }) => name)
-                .filter(
-                  (name) =>
-                    !historyRoles.has(name) &&
-                    !poolRoles.has(name) &&
-                    !caseRoles.has(name) &&
-                    !dataCanonicityRoles.has(name),
-                ),
-            ),
-          ]),
-        ),
-      ).toEqual(
-        contracts === real
-          ? PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST
-          : PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-      );
-    }
+  it("preserves every pre-data-canonicity order after excluding exactly its four, the six case and the five CEK resolver additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [cekResolverContracts, caseContracts, dataCanonicityContracts],
+      roles: [cekResolverRoles, caseRoles, dataCanonicityRoles],
+      lengths: [513, 508],
+      pins: {
+        manifestContract: PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand:
+          PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
   });
 
-  it("preserves every pre-pool published order after excluding exactly the two pool, four data-canonicity and six case additions and restoring the retired bond yield", () => {
-    for (const contracts of [real, placeholder]) {
-      const manifest = manifestDeployableScripts(contracts).filter(
-        ({ contract }) =>
-          !poolContracts.has(contract) &&
-          !caseContracts.has(contract) &&
-          !dataCanonicityContracts.has(contract),
-      );
-      const roles = withRetiredBondRole(
-        manifest.map(({ role }) => role ?? null),
-      );
-      expect(roles).toHaveLength(512);
-      expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
-      const targets = withRetiredBondRole(
-        nodeRuntimeReferenceScriptTargets(contracts)
-          .map(({ name }) => name)
-          .filter(
-            (name) =>
-              !poolRoles.has(name) &&
-              !caseRoles.has(name) &&
-              !dataCanonicityRoles.has(name),
-          ),
-      );
-      expect(targets).toHaveLength(507);
-      expect(orderDigest(targets)).toEqual(
-        contracts === real
-          ? PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST
-          : PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
-      );
-      const byCommand = referenceScriptTargetsByCommand(contracts);
-      expect(
-        orderDigest(
-          REFERENCE_SCRIPT_COMMAND_NAMES.map((commandName) => [
-            commandName,
-            withRetiredBondRole(
-              byCommand[commandName]
-                .map(({ name }) => name)
-                .filter(
-                  (name) =>
-                    !poolRoles.has(name) &&
-                    !caseRoles.has(name) &&
-                    !dataCanonicityRoles.has(name),
-                ),
-            ),
-          ]),
-        ),
-      ).toEqual(
-        contracts === real
-          ? PRE_POOL_REAL_COMMAND_ORDER_DIGEST
-          : PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
-      );
-    }
+  it("preserves every original published order after excluding exactly the six history, two pool, four data-canonicity, six case and five CEK resolver additions and restoring the retired bond yield", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [
+        historyContracts,
+        poolContracts,
+        cekResolverContracts,
+        caseContracts,
+        dataCanonicityContracts,
+      ],
+      roles: [
+        historyRoles,
+        poolRoles,
+        cekResolverRoles,
+        caseRoles,
+        dataCanonicityRoles,
+      ],
+      lengths: [506, 501],
+      restoreRetiredBond: true,
+      pins: {
+        manifestRole: PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
+  });
+
+  it("preserves every pre-pool published order after excluding exactly the two pool, four data-canonicity, six case and five CEK resolver additions and restoring the retired bond yield", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [
+        poolContracts,
+        cekResolverContracts,
+        caseContracts,
+        dataCanonicityContracts,
+      ],
+      roles: [poolRoles, cekResolverRoles, caseRoles, dataCanonicityRoles],
+      lengths: [512, 507],
+      restoreRetiredBond: true,
+      pins: {
+        manifestRole: PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication: PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_POOL_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
   });
 
   it("places the DA bond pool right after the DA params governor, in both orders", () => {

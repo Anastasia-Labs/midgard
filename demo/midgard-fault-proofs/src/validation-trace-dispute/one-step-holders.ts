@@ -35,6 +35,25 @@ export type ValidationTraceOneStepContract = Readonly<{
   reference: UTxO | undefined;
 }>;
 
+/**
+ * The deployment manifest's name for each holder a thread of ours visits
+ * between the game and the award: the boundary, then the one-step
+ * resolvers. A watcher's funding terms name these holders' addresses, so
+ * its funding permit admits the moves that pay a thread to them.
+ */
+export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
+  boundary: "validationTraceDisputeBoundary",
+  prepare: "validationTraceDisputeCekPrepare",
+  core: "validationTraceDisputeCekCoreStepSemantic",
+  compute: "validationTraceDisputeCekCoreCompute",
+  machine: "validationTraceDisputeCekCoreMachine",
+  mapConversion: "validationTraceDisputeCekCoreMapConversion",
+  caseConstant: "validationTraceDisputeCekCoreCaseConstant",
+  settle: "validationTraceDisputeCekCoreSettle",
+} as const satisfies Readonly<
+  Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
+>);
+
 type Validator = Readonly<{
   spendingScriptAddress: string;
   spendingScriptHash: string;

@@ -3,7 +3,10 @@
  * deployment the runner drives the resolution against. */
 import type { Script } from "@lucid-evolution/lucid";
 
-import { cekCoreSemanticResolver } from "../../src/validation-trace-dispute/one-step-holders.js";
+import {
+  cekCoreSemanticResolver,
+  VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
+} from "../../src/validation-trace-dispute/one-step-holders.js";
 import { CEK_RESOLVER_INDEX } from "../../src/validation-trace-dispute/one-step-plan.js";
 import type {
   ValidationTraceDisputeDeployment,
@@ -13,43 +16,62 @@ import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.j
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 import { runnerDeployment } from "./validation-trace-dispute-runner.js";
 
+type OneStepScript = Readonly<{
+  spendingScript: Script;
+  spendingScriptHash: string;
+}>;
+
+/** The scene's script for each holder a manifest names among the one-step
+ * holders, by that holder. */
+export const oneStepScripts = (
+  scene: Scene,
+): Readonly<
+  Record<keyof typeof VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES, OneStepScript>
+> => {
+  const { chain } = scene;
+  const arms = chain.cekCoreStages;
+  const core = cekCoreSemanticResolver(runnerDeployment(scene));
+  return Object.freeze({
+    boundary: chain.boundary,
+    prepare: chain.prepareResolvers[CEK_RESOLVER_INDEX],
+    core: chain.semanticResolvers.find(
+      (resolver) => resolver.spendingScriptHash === core.spendingScriptHash,
+    )!,
+    compute: arms.compute,
+    machine: arms.machine,
+    mapConversion: arms.mapConversion,
+    caseConstant: arms.caseConstant,
+    settle: arms.settle,
+  });
+};
+
 /** Publishes the reference scripts of the one-step holders. */
 export const publishOneStepReferences = async (
   scene: Scene,
 ): Promise<ValidationTraceOneStepReferences> => {
-  const { h, chain } = scene;
-  const publish = async (script: Script, label: string) =>
+  const publish = async ({ spendingScript }: OneStepScript, label: string) =>
     (
       await publishPlainReferenceScriptUtxo({
-        lucid: h.proverLucid,
-        script,
+        lucid: scene.h.proverLucid,
+        script: spendingScript,
         label,
       })
     ).utxo;
-  const prepare = chain.prepareResolvers[CEK_RESOLVER_INDEX];
-  const deployment = runnerDeployment(scene);
-  const arms = chain.cekCoreStages;
+  const scripts = oneStepScripts(scene);
   return Object.freeze({
-    boundary: await publish(chain.boundary.spendingScript, "boundary"),
-    cekPrepare: await publish(prepare.spendingScript, "CEK resolver"),
-    cekCore: await publish(
-      chain.semanticResolvers.find(
-        (resolver) =>
-          resolver.spendingScriptHash ===
-          cekCoreSemanticResolver(deployment).spendingScriptHash,
-      )!.spendingScript,
-      "CEK core step",
-    ),
-    settle: await publish(arms.settle.spendingScript, "CEK core settle"),
+    boundary: await publish(scripts.boundary, "boundary"),
+    cekPrepare: await publish(scripts.prepare, "CEK resolver"),
+    cekCore: await publish(scripts.core, "CEK core step"),
+    settle: await publish(scripts.settle, "CEK core settle"),
     arms: Object.freeze({
-      compute: await publish(arms.compute.spendingScript, "CEK compute arm"),
-      machine: await publish(arms.machine.spendingScript, "CEK machine arm"),
+      compute: await publish(scripts.compute, "CEK compute arm"),
+      machine: await publish(scripts.machine, "CEK machine arm"),
       mapConversion: await publish(
-        arms.mapConversion.spendingScript,
+        scripts.mapConversion,
         "CEK map-conversion arm",
       ),
       caseConstant: await publish(
-        arms.caseConstant.spendingScript,
+        scripts.caseConstant,
         "CEK case-constant arm",
       ),
     }),
@@ -60,8 +82,9 @@ export const publishOneStepReferences = async (
 export const oneStepDeployment = (
   scene: Scene,
   oneStep: ValidationTraceOneStepReferences,
+  deploymentFingerprint?: string,
 ): ValidationTraceDisputeDeployment => {
-  const deployment = runnerDeployment(scene);
+  const deployment = runnerDeployment(scene, deploymentFingerprint);
   return {
     ...deployment,
     references: { ...deployment.references, oneStep },

@@ -121,13 +121,13 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 574,
-    "reason": "One frozen declarative contract-name catalogue (574 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Adds the six script-decode class staker withdraw names and the case-on-constant CEK core executor name. Exact formatter-final line count; no transaction budget changes."
+    "max": 579,
+    "reason": "One frozen declarative contract-name catalogue (574 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Adds the six script-decode class staker withdraw names and the case-on-constant CEK core executor name. Exact formatter-final line count; no transaction budget changes. Adds the five CEK one-step resolver names (CEK prepare and its four semantic resolvers)."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
-    "max": 754,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes."
+    "max": 756,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. Adds the five CEK one-step resolver token names."
   },
   {
     "file": "midgard-core/src/generated-deployment-profiles.ts",

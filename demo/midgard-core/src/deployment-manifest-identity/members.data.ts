@@ -51,6 +51,7 @@ import { validationTraceCanonicalMembers } from "./members/validation-trace-cano
 import { validationTraceCekContextMembers } from "./members/validation-trace-cek-context.js";
 import { validationTraceCekContextItemsMembers } from "./members/validation-trace-cek-context-items.js";
 import { validationTraceCekCoreMembers } from "./members/validation-trace-cek-core.js";
+import { validationTraceCekResolversMembers } from "./members/validation-trace-cek-resolvers.js";
 import { validationTraceControlMembers } from "./members/validation-trace-control.js";
 import { validationTraceLedgerOutputYieldsMembers } from "./members/validation-trace-ledger-output-yields.js";
 import { validationTraceMachineYieldsMembers } from "./members/validation-trace-machine-yields.js";
@@ -79,6 +80,7 @@ export const DEPLOYMENT_MEMBERS = Object.freeze({
   ...validationTraceCekContextMembers,
   ...validationTraceCekContextItemsMembers,
   ...validationTraceCekCoreMembers,
+  ...validationTraceCekResolversMembers,
   ...validationTraceMachineYieldsMembers,
   ...protocolAuthorityMembers,
   ...protocolUserEventsMembers,

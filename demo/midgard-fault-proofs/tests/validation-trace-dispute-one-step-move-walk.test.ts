@@ -2,7 +2,9 @@
  * authority, as the runtime bound walks them. Over the moves the runner
  * built and landed to resolve a thread of ours and close it into our case
  * (the entry into the resolution, each hop to the award, and the awarded
- * thread's close), under terms naming the one-step holders, it admits each
+ * thread's close), under the one-step terms the watcher derives from the
+ * signed deployment, which name every holder the runner visits past the
+ * game, it admits each
  * move's thread as released custody and each move's own outputs; and it
  * refuses: an entry or hop under terms that name no one-step holder, a hop
  * whose thread stands at a holder the terms do not name, a hop that pays
@@ -13,6 +15,7 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
+import { watcherValidationDisputeFundingTerms } from "midgard-watcher";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { validationTraceOneStepContracts } from "../src/validation-trace-dispute/one-step-holders.js";
@@ -59,6 +62,8 @@ vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
 
 let journey: WalkJourney;
 let oneStep: NonNullable<Moves["oneStep"]>;
+/** The addresses of the holders the runner visits past the game. */
+let visited: readonly string[];
 let enter: CapturedMove;
 let hops: CapturedMove[];
 let close: CapturedMove;
@@ -109,25 +114,33 @@ describe("validation-trace dispute one-step moves walked under their authority",
       until: async () => await threadClosed(dispute, a.unit),
       limit: 60,
     });
+    const classified = await classifyFailingHeader(scene);
     journey = {
       scene,
-      dispute: await classifyFailingHeader(scene),
+      dispute: classified,
       opener: ourOpener(scene, result),
       moves,
     };
-    const holders = validationTraceOneStepContracts(deployment);
-    oneStep = {
-      boundaryAddress: holders.find(({ holder }) => holder === "boundary")!
-        .address,
-      resolverAddresses: holders
-        .filter(({ holder }) => holder !== "boundary" && holder !== "award")
-        .map(({ address }) => address),
-    };
+    visited = validationTraceOneStepContracts(deployment)
+      .filter(({ holder }) => holder !== "award")
+      .map(({ address }) => address);
+    oneStep = watcherValidationDisputeFundingTerms(
+      classified.identity,
+      "validationTraceDispute",
+    ).validationDispute!.moves!.oneStep!;
     [enter] = movesOf(journey, "enter_resolution");
     hops = movesOf(journey, "resolve");
     [close] = movesOf(journey, "close_awarded");
     stranger = b.defender.vkey === a.defender.vkey ? "" : b.defender.vkey;
   }, 1_800_000);
+
+  it("names, in the watcher's terms from the signed deployment, every holder the runner visits past the game", () => {
+    expect(new Set(visited).size).toBe(visited.length);
+    expect(
+      new Set([oneStep.boundaryAddress, ...oneStep.resolverAddresses]),
+    ).toStrictEqual(new Set(visited));
+    expect(oneStep.boundaryAddress).toBe(visited[0]);
+  });
 
   it("admits the entry and each hop: its thread as released custody, its successor less the fee", async () => {
     expect(enter).toBeDefined();

@@ -571,4 +571,9 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeThreadExpiryWithdraw",
   "validationTraceDisputeAwardMint",
   "validationTraceDisputeBond",
+  "validationTraceDisputeCekPrepare",
+  "validationTraceDisputeCekFinishSemantic",
+  "validationTraceDisputeCekExecutionSelectionSemantic",
+  "validationTraceDisputeCekContextStepSemantic",
+  "validationTraceDisputeCekCoreStepSemantic",
 ] as const);
