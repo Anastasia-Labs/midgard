@@ -111,6 +111,14 @@ const referenceUtxos = (
           ...Object.values(oneStep.arms),
           oneStep.settle,
           ...Object.values(oneStep.cekSelection ?? {}),
+          ...(oneStep.cekContext === undefined
+            ? []
+            : [
+                oneStep.cekContext.semantic,
+                oneStep.cekContext.control,
+                oneStep.cekContext.settle,
+                ...Object.values(oneStep.cekContext.stages),
+              ]),
         ]),
   ])
     byOutRef.set(`${utxo.txHash}#${utxo.outputIndex.toString()}`, utxo);

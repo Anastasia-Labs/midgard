@@ -24,8 +24,8 @@ import {
 } from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
-  validationTraceDrivesSelections,
   validationTraceOneStepContracts,
+  validationTraceOneStepDrives,
 } from "./one-step-holders.js";
 import {
   planValidationTraceThread,
@@ -166,7 +166,7 @@ const planReadyThreads = async (
         await planValidationTraceThread(
           material,
           thread,
-          validationTraceDrivesSelections(deployment),
+          validationTraceOneStepDrives(deployment),
         ),
       );
   return plannings;

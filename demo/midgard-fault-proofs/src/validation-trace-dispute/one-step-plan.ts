@@ -3,9 +3,11 @@
  * one-step argument (the transition and its auxiliary evidence), and the
  * resolver chain that step selects. The runner drives the CEK core steps
  * whose arm settles in one hop (compute, machine, map conversion and case
- * constant), and the CEK script selections when the deployment records
- * scripts' decodes; any other step is reported as one the runner does not
- * drive, and its thread waits under the one-step state. */
+ * constant), the CEK script selections when the deployment records
+ * scripts' decodes, and the CEK context steps whose stage verifies them in
+ * one hop when the deployment installs the context resolution; any other
+ * step is reported as one the runner does not drive, and its thread waits
+ * under the one-step state. */
 import {
   hashMidgardValidationMachineState,
   type MidgardValidationMachineState,
@@ -25,6 +27,10 @@ import { Effect } from "effect";
 
 import { plutusItemScriptDecode } from "../script-decode/item-record.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
+import {
+  planValidationTraceContextStep,
+  type ValidationTraceContextStep,
+} from "./one-step-context.js";
 import { recordedSelectionOf } from "./selected-scripts.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
@@ -32,6 +38,9 @@ export const CEK_RESOLVER_INDEX = 11;
 
 /** The CEK execution selection's semantic resolver in the CEK group. */
 export const CEK_SELECTION_SEMANTIC_RESOLVER_INDEX = 1;
+
+/** The CEK context step's semantic resolver in the CEK group. */
+export const CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX = 2;
 
 /** The CEK core step's semantic resolver in the CEK group. */
 export const CEK_CORE_SEMANTIC_RESOLVER_INDEX = 3;
@@ -168,10 +177,24 @@ export type ValidationTraceSelectionPlan = ValidationTraceOneStepArgument &
       | undefined;
   }>;
 
+/** A CEK context step's resolution, as the runner drives it. */
+export type ValidationTraceContextStepPlan = ValidationTraceOneStepArgument &
+  Readonly<{ kind: "context"; context: ValidationTraceContextStep }>;
+
 /** A step's one-step resolution, as the runner drives it. */
 export type ValidationTraceOneStepPlan =
   | ValidationTraceCoreStepPlan
-  | ValidationTraceSelectionPlan;
+  | ValidationTraceSelectionPlan
+  | ValidationTraceContextStepPlan;
+
+/** What the deployment lets the runner drive beyond the CEK core steps. */
+export type ValidationTraceOneStepDrives = Readonly<{
+  /** Whether the deployment records scripts' decodes, which a CEK script
+   * selection reads. */
+  decodeRecords?: boolean;
+  /** Whether the deployment installs the CEK context resolution. */
+  contexts?: boolean;
+}>;
 
 export type ValidationTraceOneStepPlanning =
   | Readonly<{ kind: "plan"; plan: ValidationTraceOneStepPlan }>
@@ -225,14 +248,12 @@ export const planValidationTraceOneStep = async ({
   agreedLowHash,
   challengerHighHash,
   decodeRecords = false,
-}: {
+  contexts = false,
+}: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
   readonly agreedLowHash?: string;
   readonly challengerHighHash: string;
-  /** Whether the deployment records scripts' decodes, which a CEK script
-   * selection reads. */
-  readonly decodeRecords?: boolean;
 }): Promise<ValidationTraceOneStepPlanning> => {
   const trace = await material.trace();
   const stateIndex =
@@ -310,6 +331,27 @@ export const planValidationTraceOneStep = async ({
       plan: Object.freeze({ ...common, kind: "selection" as const, script }),
     };
   if (
+    argument.resolverIndex === CEK_RESOLVER_INDEX &&
+    argument.semanticResolverIndex === CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX
+  ) {
+    if (!contexts)
+      return unsupported(
+        "a CEK context step, whose resolution the deployment does not install",
+      );
+    const context = planValidationTraceContextStep({
+      witnessCbor: trace.witnesses[stateIndex]!.cbor.toString("hex"),
+      auxiliaryCbor,
+      successorWitnessCbor:
+        trace.witnesses[stateIndex + 1]!.cbor.toString("hex"),
+    });
+    if ("driven" in context)
+      return unsupported(`a CEK context step at its ${context.stage} stage`);
+    return {
+      kind: "plan",
+      plan: Object.freeze({ ...common, kind: "context" as const, context }),
+    };
+  }
+  if (
     argument.resolverIndex !== CEK_RESOLVER_INDEX ||
     argument.semanticResolverIndex !== CEK_CORE_SEMANTIC_RESOLVER_INDEX
   )
@@ -357,7 +399,7 @@ export const planValidationTraceOneStep = async ({
 export const planValidationTraceThread = async (
   material: ValidationTraceClaimMaterial,
   thread: SDK.CaseThread,
-  decodeRecords = false,
+  drives: ValidationTraceOneStepDrives = {},
 ): Promise<ValidationTraceOneStepPlanning> => {
   try {
     return await planValidationTraceOneStep({
@@ -365,7 +407,7 @@ export const planValidationTraceThread = async (
       stateIndex: Number(thread.low_index),
       agreedLowHash: thread.agreed_low_hash,
       challengerHighHash: thread.challenger_high_hash,
-      decodeRecords,
+      ...drives,
     });
   } catch (cause) {
     return {

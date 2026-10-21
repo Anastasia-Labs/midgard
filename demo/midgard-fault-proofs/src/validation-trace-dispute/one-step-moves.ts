@@ -32,9 +32,10 @@ import {
   validationTraceHop,
   type ValidationTraceSelectionReads,
 } from "./one-step-builders.js";
+import { isValidationTraceContextHolder } from "./one-step-context-hops.js";
 import {
-  validationTraceDrivesSelections,
   type ValidationTraceOneStepContract,
+  validationTraceOneStepDrives,
   validationTraceOneStepHolder,
   validationTraceOneStepHolderAt,
 } from "./one-step-holders.js";
@@ -85,7 +86,7 @@ export const captureValidationTraceEnterResolution = async (
     await planValidationTraceThread(
       material,
       thread.thread,
-      validationTraceDrivesSelections(deployment),
+      validationTraceOneStepDrives(deployment),
     ),
   );
   const boundary = validationTraceOneStepHolder(deployment, "boundary");
@@ -130,13 +131,30 @@ export const captureValidationTraceEnterResolution = async (
 };
 
 /** Where each holder past the boundary keeps our successor's hash: the
- * selection resolver holds the state the core step binder would. */
+ * selection and context step resolvers hold the state the core step binder
+ * would, and each context holder past them nests the state its predecessor
+ * checked one level deeper. */
 const CHALLENGER_SUCCESSOR_HASH = {
   prepare: [1, 0, 3],
   core: [1, 0, 1, 3],
   selection: [1, 0, 1, 3],
+  context: [1, 0, 1, 3],
   bound: [1, 0, 0, 1, 3],
+  contextControl: [1, 0, 0, 1, 3],
+  contextStage: [1, 0, 0, 0, 1, 3],
+  contextSettle: [1, 0, 0, 0, 0, 1, 3],
 } as const;
+
+const challengerSuccessorPath = (
+  holder: ValidationTraceOneStepContract["holder"],
+): readonly number[] =>
+  holder in CHALLENGER_SUCCESSOR_HASH
+    ? CHALLENGER_SUCCESSOR_HASH[
+        holder as keyof typeof CHALLENGER_SUCCESSOR_HASH
+      ]
+    : isValidationTraceContextHolder(holder)
+      ? CHALLENGER_SUCCESSOR_HASH.contextStage
+      : CHALLENGER_SUCCESSOR_HASH.bound;
 
 /**
  * The thread of ours at `threadOutRef` past the game: at a one-step holder
@@ -199,29 +217,27 @@ const resolvingPlan = async ({
   readonly holder: ValidationTraceOneStepContract["holder"];
   readonly caseThread: SDK.CaseThread | undefined;
 }): Promise<ValidationTraceOneStepPlan> => {
-  const decodeRecords = validationTraceDrivesSelections(deployment);
+  const drives = validationTraceOneStepDrives(deployment);
   if (caseThread !== undefined) {
     if (!isThreadMaterial(caseThread, material))
       throw new Error(
         "validation-trace one step has no trace matching its thread's challenger root",
       );
     return planned(
-      await planValidationTraceThread(material, caseThread, decodeRecords),
+      await planValidationTraceThread(material, caseThread, drives),
     );
   }
   if (material === undefined)
     throw new Error("validation-trace one step has no trace of ours");
-  const path =
-    holder === "prepare" || holder === "core" || holder === "selection"
-      ? CHALLENGER_SUCCESSOR_HASH[holder]
-      : CHALLENGER_SUCCESSOR_HASH.bound;
   return planned(
     await planValidationTraceOneStep({
       material,
       challengerHighHash: Data.from<string>(
-        plutusConstrFieldCbor(utxo.datum!, [...path]),
+        plutusConstrFieldCbor(utxo.datum!, [
+          ...challengerSuccessorPath(holder),
+        ]),
       ),
-      decodeRecords,
+      ...drives,
     }),
   );
 };

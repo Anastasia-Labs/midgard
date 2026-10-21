@@ -36,6 +36,7 @@ import {
 } from "../workflow/transaction-boundary.js";
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
+import type { DrivenCekContextStage } from "./one-step-context.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
 export const VALIDATION_TRACE_OPEN_VALIDITY_MS = 15 * 60_000;
@@ -74,6 +75,17 @@ export type ValidationTraceOneStepReferences = Readonly<{
     authenticate: UTxO;
     successor: UTxO;
   }>;
+  /**
+   * The context step resolver, the context control and settle, and each
+   * context stage the runner drives; without them a thread at a CEK context
+   * step waits.
+   */
+  cekContext?: Readonly<{
+    semantic: UTxO;
+    control: UTxO;
+    settle: UTxO;
+    stages: Readonly<Record<DrivenCekContextStage, UTxO>>;
+  }>;
 }>;
 
 /** The deployment the open step builds against. */
@@ -108,6 +120,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "prepareResolvers"
     | "semanticResolvers"
     | "cekCoreStages"
+    | "cekContextStages"
     | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */

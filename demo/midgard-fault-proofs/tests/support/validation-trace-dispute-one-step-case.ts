@@ -35,6 +35,7 @@ import {
 import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import {
   oneStepDeployment,
+  publishContextReferences,
   publishOneStepReferences,
   publishSelectionReferences,
 } from "./validation-trace-dispute-one-step.js";
@@ -71,6 +72,9 @@ export const COMPUTE_STEP_FROM = 116;
 export const MACHINE_STEP_FROM = 118;
 /** A last agreed state before a CEK script selection. */
 export const SELECTION_STEP_FROM = 93;
+/** A last agreed state before the CEK context step that begins the selected
+ * execution's redeemer scan. */
+export const REDEEMER_BEGIN_STEP_FROM = 94;
 
 export type TwoThreadCase = Readonly<{
   scene: Scene;
@@ -103,12 +107,15 @@ export const defendTwoThreads = async ({
   withRemoval,
   successorFrom = MACHINE_STEP_FROM,
   selections = false,
+  contexts = false,
   wrap,
 }: {
   readonly withRemoval: boolean;
   readonly successorFrom?: number;
   /** Whether the deployment drives CEK script selections. */
   readonly selections?: boolean;
+  /** Whether the deployment drives CEK context steps. */
+  readonly contexts?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -122,12 +129,13 @@ export const defendTwoThreads = async ({
     scene.operator.vkey,
   );
   const oneStep = await publishOneStepReferences(scene);
-  const deployment = oneStepDeployment(
-    scene,
-    selections
-      ? { ...oneStep, cekSelection: await publishSelectionReferences(scene) }
-      : oneStep,
-  );
+  const deployment = oneStepDeployment(scene, {
+    ...oneStep,
+    ...(selections
+      ? { cekSelection: await publishSelectionReferences(scene) }
+      : {}),
+    ...(contexts ? { cekContext: await publishContextReferences(scene) } : {}),
+  });
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,

@@ -46,6 +46,10 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekCoreCaseConstant",
         "validationTraceDisputeCekCoreSettle",
         "validationTraceDisputeCekExecutionSelectionSemantic",
+        "validationTraceDisputeCekContextStepSemantic",
+        "validationTraceDisputeCekContextControl",
+        "validationTraceDisputeCekContextRedeemerBegin",
+        "validationTraceDisputeCekContextSettle",
       ].map(manifestAddress),
     );
     // Every holder the runner visits past the game is named exactly once.

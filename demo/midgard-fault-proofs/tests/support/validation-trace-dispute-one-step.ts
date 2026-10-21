@@ -4,9 +4,12 @@
  * selections, the selection's yields under their roles' authentication
  * tokens and the script-decode deployment whose records it reads. */
 import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
-import type { Script } from "@lucid-evolution/lucid";
+import type { Script, UTxO } from "@lucid-evolution/lucid";
 
+import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
+  CEK_CONTEXT_STAGE_HOLDERS,
+  cekContextSemanticResolver,
   cekCoreSemanticResolver,
   cekSelectionSemanticResolver,
   VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
@@ -39,6 +42,7 @@ export const oneStepScripts = (
 > => {
   const { chain } = scene;
   const arms = chain.cekCoreStages;
+  const context = chain.cekContextStages;
   const deployment = runnerDeployment(scene);
   const resolver = ({ spendingScriptHash }: { spendingScriptHash: string }) =>
     chain.semanticResolvers.find(
@@ -54,6 +58,10 @@ export const oneStepScripts = (
     mapConversion: arms.mapConversion,
     caseConstant: arms.caseConstant,
     settle: arms.settle,
+    context: resolver(cekContextSemanticResolver(deployment)),
+    contextControl: context.control,
+    contextRedeemerBegin: context.redeemerBegin,
+    contextSettle: context.settle,
   });
 };
 
@@ -132,6 +140,37 @@ export const publishSelectionReferences = async (
     successor: await yield_(
       "V1 validation-trace CEK selection successor yield",
       chain.yields.cekSelectionSuccessor.withdrawalScript,
+    ),
+  });
+};
+
+/** Publishes the reference scripts of the CEK context step's holders. */
+export const publishContextReferences = async (
+  scene: Scene,
+): Promise<NonNullable<ValidationTraceOneStepReferences["cekContext"]>> => {
+  const scripts = oneStepScripts(scene);
+  const publish = async ({ spendingScript }: OneStepScript, label: string) =>
+    (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: spendingScript,
+        label,
+      })
+    ).utxo;
+  const stages: Partial<
+    Record<(typeof DRIVEN_CEK_CONTEXT_STAGES)[number], UTxO>
+  > = {};
+  for (const stage of DRIVEN_CEK_CONTEXT_STAGES)
+    stages[stage] = await publish(
+      scripts[CEK_CONTEXT_STAGE_HOLDERS[stage]],
+      `CEK context ${stage}`,
+    );
+  return Object.freeze({
+    semantic: await publish(scripts.context, "CEK context step"),
+    control: await publish(scripts.contextControl, "CEK context control"),
+    settle: await publish(scripts.contextSettle, "CEK context settle"),
+    stages: Object.freeze(
+      stages as Record<(typeof DRIVEN_CEK_CONTEXT_STAGES)[number], UTxO>,
     ),
   });
 };

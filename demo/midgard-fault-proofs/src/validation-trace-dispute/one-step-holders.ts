@@ -1,24 +1,40 @@
 /** Where a thread of ours stands during the one-step resolution of a CEK step
  * the runner drives: the boundary game-v1 EnterResolution sends it to, the
  * CEK phase resolver, then for a core step the CEK core step binder, the arm
- * its step selects and the settle, or for a script selection the selection
- * resolver, and the award. Each holder is a deployment contract, found by
+ * its step selects and the settle, for a script selection the selection
+ * resolver, or for a context step the context step resolver, the context
+ * control, the stage it routes the step to and the context settle; and the
+ * award. Each holder is a deployment contract, found by
  * its spending address; the thread token, minted once for its defender, is
  * what makes an output there ours. */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  DRIVEN_CEK_CONTEXT_STAGES,
+  type DrivenCekContextStage,
+} from "./one-step-context.js";
+import {
+  CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX,
   CEK_CORE_SEMANTIC_RESOLVER_INDEX,
   CEK_RESOLVER_INDEX,
   CEK_SELECTION_SEMANTIC_RESOLVER_INDEX,
   SINGLE_HOP_CORE_ARMS,
   type SingleHopCoreGroup,
+  type ValidationTraceOneStepDrives,
 } from "./one-step-plan.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 export type ValidationTraceArmHolder =
   (typeof SINGLE_HOP_CORE_ARMS)[SingleHopCoreGroup];
+
+/** The holder of each context stage the runner drives. */
+export const CEK_CONTEXT_STAGE_HOLDERS = Object.freeze({
+  redeemerBegin: "contextRedeemerBegin",
+} as const satisfies Readonly<Record<DrivenCekContextStage, string>>);
+
+export type ValidationTraceContextStageHolder =
+  (typeof CEK_CONTEXT_STAGE_HOLDERS)[DrivenCekContextStage];
 
 /** A holder of the thread past the game, in the order the thread visits. */
 export type ValidationTraceOneStepHolder =
@@ -28,6 +44,10 @@ export type ValidationTraceOneStepHolder =
   | ValidationTraceArmHolder
   | "selection"
   | "settle"
+  | "context"
+  | "contextControl"
+  | ValidationTraceContextStageHolder
+  | "contextSettle"
   | "award";
 
 export type ValidationTraceOneStepContract = Readonly<{
@@ -54,6 +74,10 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   caseConstant: "validationTraceDisputeCekCoreCaseConstant",
   settle: "validationTraceDisputeCekCoreSettle",
   selection: "validationTraceDisputeCekExecutionSelectionSemantic",
+  context: "validationTraceDisputeCekContextStepSemantic",
+  contextControl: "validationTraceDisputeCekContextControl",
+  contextRedeemerBegin: "validationTraceDisputeCekContextRedeemerBegin",
+  contextSettle: "validationTraceDisputeCekContextSettle",
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
 >);
@@ -97,6 +121,16 @@ export const cekSelectionSemanticResolver = (
     "CEK execution selection resolver",
   );
 
+/** The CEK group's context step semantic resolver. */
+export const cekContextSemanticResolver = (
+  deployment: ValidationTraceDisputeDeployment,
+): Validator =>
+  cekSemanticResolver(
+    deployment,
+    CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX,
+    "CEK context step resolver",
+  );
+
 /**
  * Whether the runner drives CEK script selections on `deployment`: it
  * installs the selection resolver and its yields, and names the script-decode
@@ -107,6 +141,15 @@ export const validationTraceDrivesSelections = (
 ): boolean =>
   deployment.scriptDecode !== undefined &&
   deployment.references.oneStep?.cekSelection !== undefined;
+
+/** What the runner drives on `deployment` beyond the CEK core steps. */
+export const validationTraceOneStepDrives = (
+  deployment: ValidationTraceDisputeDeployment,
+): ValidationTraceOneStepDrives =>
+  Object.freeze({
+    decodeRecords: validationTraceDrivesSelections(deployment),
+    contexts: deployment.references.oneStep?.cekContext !== undefined,
+  });
 
 /**
  * The holders of the one-step resolution the runner drives, with their
@@ -131,6 +174,8 @@ export const validationTraceOneStepContracts = (
     });
   const prepare = chain.prepareResolvers[CEK_RESOLVER_INDEX];
   const selection = references.cekSelection;
+  const context = references.cekContext;
+  const stages = chain.cekContextStages;
   return Object.freeze([
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
@@ -147,6 +192,24 @@ export const validationTraceOneStepContracts = (
             cekSelectionSemanticResolver(deployment),
             selection.semantic,
           ),
+        ]),
+    ...(context === undefined
+      ? []
+      : [
+          contract(
+            "context",
+            cekContextSemanticResolver(deployment),
+            context.semantic,
+          ),
+          contract("contextControl", stages.control, context.control),
+          ...DRIVEN_CEK_CONTEXT_STAGES.map((stage) =>
+            contract(
+              CEK_CONTEXT_STAGE_HOLDERS[stage],
+              stages[stage],
+              context.stages[stage],
+            ),
+          ),
+          contract("contextSettle", stages.settle, context.settle),
         ]),
     contract("award", chain.award, undefined),
   ]);

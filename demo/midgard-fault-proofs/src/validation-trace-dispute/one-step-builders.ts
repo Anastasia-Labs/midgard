@@ -5,7 +5,10 @@
  * to the settle (VerifyArm), and from the settle to the award (Settle). A CEK
  * script selection goes from the CEK resolver to the selection resolver
  * (PrepareSelected), and from it to the award with the selection's two
- * yields (VerifyExecutionSelection). Each hop spends the thread, which pays
+ * yields (VerifyExecutionSelection). A CEK context step goes from the CEK
+ * resolver to the context step resolver (PrepareSelected), and on through
+ * the context's holders to the award (one-step-context-hops.ts). Each hop
+ * spends the thread, which pays
  * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
  * successor keeps the thread's single token and carries the state the next
  * holder checks as an inline datum. */
@@ -27,6 +30,17 @@ import {
 
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { buildValidationCekExecutionSelectionAction } from "../validation-cek-selection.js";
+import {
+  isValidationTraceContextHolder,
+  validationTraceContextHop,
+} from "./one-step-context-hops.js";
+import {
+  bytes,
+  constr,
+  continued,
+  integer,
+  stepDatum,
+} from "./one-step-data.js";
 import {
   type ValidationTraceArmHolder,
   type ValidationTraceOneStepHolder,
@@ -82,19 +96,6 @@ export type ValidationTraceSelectionReads = Readonly<{
   scriptDecodePolicyId: string;
 }>;
 
-const integer = (value: bigint | number) => Data.to(BigInt(value));
-const bytes = (hex: string) => Data.to(hex);
-/** A constructor's CBOR from its fields' CBOR. */
-const constr = (index: number, fields: readonly string[]) =>
-  `d8${(0x79 + index).toString(16)}${
-    fields.length === 0 ? "80" : `9f${fields.join("")}ff`
-  }`;
-/** `ct.StepDatum { fraud_prover, data: Some(state) }`. */
-const stepDatum = (prover: string, stateCbor: string) =>
-  constr(0, [bytes(prover), constr(0, [stateCbor])]);
-/** `ct.Continue(action)`. */
-const continued = (actionCbor: string) => constr(1, [actionCbor]);
-
 /** The arm holder of the plan's core group. */
 export const validationTraceArmOf = (
   plan: ValidationTraceCoreStepPlan,
@@ -136,6 +137,8 @@ export const validationTraceHop = ({
   readonly selection?: ValidationTraceSelectionReads;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
+  if (isValidationTraceContextHolder(holder))
+    return validationTraceContextHop({ plan, holder, datum, prover });
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;
@@ -177,7 +180,12 @@ export const validationTraceHop = ({
     }
     case "prepare":
       return {
-        next: plan.kind === "selection" ? "selection" : "core",
+        next:
+          plan.kind === "selection"
+            ? "selection"
+            : plan.kind === "context"
+              ? "context"
+              : "core",
         datum: stepDatum(
           prover,
           constr(0, [
