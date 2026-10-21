@@ -8,6 +8,8 @@ import {
   MEMBERSHIP_STEP_YIELDS,
   membershipFinalizeEvidence,
   membershipStepEvidence,
+  scriptSourcesOutputProofFinalizeEvidence,
+  scriptSourcesOutputProofStepEvidence,
 } from "./one-step-ledger-output-proof.js";
 import type { ValidationTracePhaseHolder } from "./one-step-phase.js";
 import {
@@ -151,6 +153,14 @@ export const LEDGER_OUTPUT_PROOF_SEMANTICS: Readonly<
   },
   resolveInputsMembershipFinalizeSemantic: {
     evidence: membershipFinalizeEvidence,
+    yields: MEMBERSHIP_FINALIZE_YIELDS,
+  },
+  scriptSourcesOutputProofStepSemantic: {
+    evidence: scriptSourcesOutputProofStepEvidence,
+    yields: MEMBERSHIP_STEP_YIELDS,
+  },
+  scriptSourcesOutputProofFinalizeSemantic: {
+    evidence: scriptSourcesOutputProofFinalizeEvidence,
     yields: MEMBERSHIP_FINALIZE_YIELDS,
   },
 });

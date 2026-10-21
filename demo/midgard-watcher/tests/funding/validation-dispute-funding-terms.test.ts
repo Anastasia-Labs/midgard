@@ -129,6 +129,8 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
         "validationTraceDisputeScriptSourcesPrepare",
         "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+        "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+        "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
         "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
         "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
         "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",

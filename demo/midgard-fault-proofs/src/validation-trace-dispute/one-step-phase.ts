@@ -78,6 +78,10 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
   scriptSourcesPrepare: "validationTraceDisputeScriptSourcesPrepare",
   scriptSourcesOutputProofBeginSemantic:
     "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+  scriptSourcesOutputProofStepSemantic:
+    "validationTraceDisputeScriptSourcesOutputProofStepSemantic",
+  scriptSourcesOutputProofFinalizeSemantic:
+    "validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic",
   scriptSourcesOutputProofFinishSemantic:
     "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
   scriptSourcesStageZeroBeginSemantic:
@@ -187,8 +191,8 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     semantics: [
       undefined,
       "scriptSourcesOutputProofBeginSemantic",
-      undefined,
-      undefined,
+      "scriptSourcesOutputProofStepSemantic",
+      "scriptSourcesOutputProofFinalizeSemantic",
       "scriptSourcesOutputProofFinishSemantic",
       "scriptSourcesStageZeroBeginSemantic",
       "scriptSourcesStageZeroFinishSemantic",
