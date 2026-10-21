@@ -59,6 +59,7 @@ import {
   runFraudProofWorkflow,
 } from "../../src/workflow/orchestrator.js";
 import { createAdmittedWorkflowRunner } from "../../src/workflow/runner-admission.js";
+import { validationDisputeWalletMoveReserve } from "../../src/workflow/runtime-funding-fee.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifier } from "../workflow.make-adapter.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
@@ -284,6 +285,8 @@ export const openFundedDispute = async (
   options: {
     readonly removal?: ValidationTraceRemovalConfig;
     readonly oneStep?: ValidationTraceOneStepReferences;
+    /** Whether the watcher's funding follows the emulator's live fees. */
+    readonly liveParameters?: boolean;
   } = {},
 ) => {
   const { h } = scene;
@@ -312,6 +315,7 @@ export const openFundedDispute = async (
   const protocolParameters = await emulatorProtocolParameterAuthority(
     identity,
     h.proverLucid,
+    options.liveParameters === true ? h.emulator : undefined,
   );
   const actuationPermit = createWorkflowActuationPermitController({
     decision,
@@ -438,6 +442,19 @@ export const openFundedDispute = async (
       funding = await boot();
     },
     readReservations: async () => await funding.readReservations(),
+    /** What the watcher's terms keep for a move our wallet pays, at the
+     * emulator's fees now. */
+    walletMoveReserve: async () =>
+      validationDisputeWalletMoveReserve({
+        parameters: (
+          await emulatorProtocolParameterAuthority(
+            identity,
+            h.proverLucid,
+            h.emulator,
+          )
+        ).snapshot,
+        fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
+      }),
     close: async () => {
       funding.close();
       await rm(directory, { recursive: true, force: true });

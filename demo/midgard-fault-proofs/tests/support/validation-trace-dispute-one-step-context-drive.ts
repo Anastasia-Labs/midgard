@@ -35,6 +35,7 @@ import {
   planValidationTraceOneStep,
   type ValidationTraceContextStepPlan,
 } from "../../src/validation-trace-dispute/one-step-plan.js";
+import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
   threadClosed,
@@ -261,8 +262,15 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
     },
 
     /** Each move's fee is paid by its thread when it fits under the cap, and
-     * by our wallet when it does not. */
-    pays: () => {
+     * by our wallet when it does not; every move the runner landed fits the
+     * move the wallet-move reserve is priced at. */
+    pays: async () => {
+      await expectWithinWalletMoveShape(
+        dispute.scene,
+        dispute.prepared
+          .map(({ hash }) => hash)
+          .filter((hash) => dispute.scene.l1.signedCbors.has(hash)),
+      );
       for (const move of moves) {
         const body = bodyOf(move.hash);
         const fee = body.fee();

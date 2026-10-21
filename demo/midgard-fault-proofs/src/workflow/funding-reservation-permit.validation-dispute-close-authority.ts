@@ -289,5 +289,7 @@ export const validationDisputeCloseFunding = async ({
         );
     },
     assertComplete: (): void => undefined,
+    /** The case's last move keeps no reserve. */
+    keepWalletMoveReserve: (_walletSpent: bigint): void => undefined,
   });
 };

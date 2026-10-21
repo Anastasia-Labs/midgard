@@ -21,6 +21,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { readValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   isWorkflowFundingPauseReason,
@@ -307,12 +308,14 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
       await drainProver(h as never, 5_000n * ADA);
       const dispute = await openFundedDispute(scene);
       try {
+        const reserve = await dispute.walletMoveReserve();
+        expect(reserve).toBeGreaterThan(0n);
         const unavailable = await dispute.turn().then(
           () => undefined,
           (cause: unknown) => cause,
         );
         expect(String(unavailable)).toContain(
-          `prover wallet cannot reserve the validation dispute bond and case floor: required=${(BOND_LOVELACE + FLOOR).toString()} available=${(5_000n * ADA).toString()}`,
+          `prover wallet cannot reserve the validation dispute bond, case floor and wallet-move reserve: required=${(BOND_LOVELACE + FLOOR + reserve).toString()} available=${(5_000n * ADA).toString()}`,
         );
         const holds = new Map<string, { reason: string; detail: string }>();
         expect(
@@ -350,11 +353,14 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
     "pauses VerifySource on the funding-shortfall hold when the wallet cannot pay it, releases the reservation, and lands after a top-up",
     async () => {
       const { h } = scene;
-      // Enough to reserve the bond and the case floor, not to pay for Init,
-      // Open and VerifySource besides.
-      await drainProver(h as never, BOND_LOVELACE + FLOOR + 2n * ADA);
       const dispute = await openFundedDispute(scene);
       try {
+        // Enough to reserve the bond, the case floor and the wallet-move
+        // reserve, not to pay for Init, Open and VerifySource besides.
+        await drainProver(
+          h as never,
+          BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
+        );
         const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
         expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
         if (paused.result.kind !== "pending") return;
@@ -380,6 +386,68 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
         const reservations = await dispute.readReservations();
         expect(reservations.length).toBeGreaterThan(0);
         for (const reservation of reservations)
+          expect(reservation).toMatchObject({ activeInputs: [] });
+        await topUpProver(h as never, 100n * ADA);
+        const { result, history } = await turnUntil(
+          dispute,
+          VALIDATION_TRACE_CASE_OPEN,
+        );
+        expect(result.kind, history.join("\n")).toBe("pending");
+        expect((await caseAndBond(scene, result)).bond.assets.lovelace).toBe(
+          BOND_LOVELACE,
+        );
+      } finally {
+        await dispute.close();
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "refuses, at the funding permit, a VerifySource that would leave the wallet less than the wallet-move reserve: it pauses on the funding-shortfall hold before any byte reaches the ledger, releases the reservation, and lands after a top-up",
+    async () => {
+      const { h } = scene;
+      await drainProver(h as never, FUNDED);
+      const dispute = await openFundedDispute(scene);
+      try {
+        // Init and Open land; VerifySource waits while the wallet drains.
+        const holdVerifySource: AdapterWrap = (adapter) => ({
+          ...adapter,
+          preflight: async (context) => {
+            if (isVerifySource(context.action))
+              throw new WorkflowActionChangedError("verify-source held");
+            return await adapter.preflight(context);
+          },
+        });
+        const held = await turnUntil(dispute, "verify-source held", {
+          wrap: holdVerifySource,
+        });
+        expect(confirmedStages(held.result)).toStrictEqual(["init", "open"]);
+        // The bond and less than the reserve over VerifySource's fee: enough
+        // to build VerifySource, not to keep the reserve after it.
+        const reserve = await dispute.walletMoveReserve();
+        await drainProver(h as never, BOND_LOVELACE + reserve);
+        const watch = watchLedger(h.emulator);
+        try {
+          const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
+          expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
+          if (paused.result.kind !== "pending") return;
+          expect(paused.result.reason).toContain(
+            "cannot fund validation-trace-verify-source:",
+          );
+          expect(paused.result.reason).toContain(
+            "VerifySource leaves less than the wallet-move reserve",
+          );
+          expect(confirmedStages(paused.result)).toStrictEqual([
+            "init",
+            "open",
+          ]);
+          expect(watch.ours()).toHaveLength(0);
+        } finally {
+          watch.restore();
+        }
+        // The refused attempt released every input it held.
+        for (const reservation of await dispute.readReservations())
           expect(reservation).toMatchObject({ activeInputs: [] });
         await topUpProver(h as never, 100n * ADA);
         const { result, history } = await turnUntil(

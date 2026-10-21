@@ -105,9 +105,9 @@ export const awaitingValidationTraceCounterparty = (
 /**
  * The run states named for readiness: a thread at ReadyForOneStep waits on
  * a one-step resolution the runner does not drive, a lost thread has no move
- * of ours left, a case a defender won has none either, and a move whose fee
- * would pass the cap cannot be paid by its thread, which the operator must
- * see.
+ * of ours left, a case a defender won has none either, and a wallet-paid
+ * move whose fee would pass the funding permit's per-transaction fee ceiling
+ * cannot be sent at all, which the operator must see.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),

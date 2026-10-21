@@ -7,6 +7,7 @@ import {
   VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
   validationTraceMoveMinimumFee,
 } from "../../src/validation-trace-dispute/move-fee.js";
+import { VALIDATION_DISPUTE_WALLET_MOVE } from "../../src/workflow/runtime-funding-fee.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 /** A landed move's fee: what it paid, the minimum the builder priced it at,
@@ -97,6 +98,38 @@ export const landedMoveFee = async (
       referenceScriptSize([...spent, ...referenced]),
     ),
   };
+};
+
+/** The measured shape of a landed move: its signed bytes and the
+ * reference-script bytes of every input and reference input it reads. */
+export const landedMoveShape = async (scene: Scene, txHash: string) => {
+  const cbor = scene.l1.signedCbors.get(txHash);
+  if (cbor === undefined) throw new Error(`${txHash} did not land`);
+  const body = CML.Transaction.from_cbor_hex(cbor).body();
+  const read = await scene.h.emulator.getUtxosByOutRef([
+    ...outRefsOf(body.reference_inputs()),
+    ...outRefsOf(body.inputs()),
+  ]);
+  return {
+    transactionBytes: BigInt(cbor.length / 2),
+    referenceScriptBytes: referenceScriptSize(read),
+  };
+};
+
+/** Each landed move of `hashes` fits, in signed and reference-script
+ * bytes, the move the wallet-move reserve is priced at; the reserve budgets
+ * execution at the protocol's limit. */
+export const expectWithinWalletMoveShape = async (
+  scene: Scene,
+  hashes: readonly string[],
+): Promise<void> => {
+  for (const hash of hashes) {
+    const shape = await landedMoveShape(scene, hash);
+    for (const key of Object.keys(shape) as (keyof typeof shape)[])
+      expect(shape[key], `${hash} ${key}`).toBeLessThanOrEqual(
+        VALIDATION_DISPUTE_WALLET_MOVE[key],
+      );
+  }
 };
 
 /**

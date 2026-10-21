@@ -16,6 +16,10 @@ import {
   type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "./release-economics-policy.js";
 import { isAdmittedWorkflowRunner } from "./runner-admission.js";
+import {
+  validationDisputeWalletMoveReserve,
+  workflowRuntimeFundingMaximumFee,
+} from "./runtime-funding-fee.js";
 
 export type WorkflowRuntimeFundingContract = Readonly<{
   address: string;
@@ -32,103 +36,6 @@ export type WorkflowRuntimeFundingContract = Readonly<{
 export interface WorkflowRuntimeFundingPolicy {
   readonly policyVersion: "midgard-workflow-runtime-funding-policy-v1";
 }
-
-type Rational = Readonly<{ numerator: bigint; denominator: bigint }>;
-const rational = (value: {
-  numerator: string;
-  denominator: string;
-}): Rational => ({
-  numerator: BigInt(value.numerator),
-  denominator: BigInt(value.denominator),
-});
-const add = (left: Rational, right: Rational): Rational => ({
-  numerator:
-    left.numerator * right.denominator + right.numerator * left.denominator,
-  denominator: left.denominator * right.denominator,
-});
-const multiply = (left: Rational, right: Rational): Rational => ({
-  numerator: left.numerator * right.numerator,
-  denominator: left.denominator * right.denominator,
-});
-const scale = (value: Rational, quantity: bigint): Rational => ({
-  numerator: value.numerator * quantity,
-  denominator: value.denominator,
-});
-const ceil = (value: Rational): bigint =>
-  (value.numerator + value.denominator - 1n) / value.denominator;
-
-/** Uses the signed protocol's exact rational prices, including reference tiers. */
-export const workflowRuntimeFundingMinimumFee = ({
-  parameters,
-  transactionBytes,
-  memory,
-  steps,
-  referenceScriptBytes,
-}: {
-  parameters: Pick<
-    DeploymentManifestCardanoProtocolParameters,
-    "minFeeA" | "minFeeB" | "priceMemory" | "priceSteps"
-  > & {
-    referenceScriptFee: Pick<
-      DeploymentManifestCardanoProtocolParameters["referenceScriptFee"],
-      "base" | "range" | "multiplier"
-    >;
-  };
-  transactionBytes: bigint;
-  memory: bigint;
-  steps: bigint;
-  referenceScriptBytes: bigint;
-}): bigint => {
-  let remaining = referenceScriptBytes;
-  let price = rational(parameters.referenceScriptFee.base);
-  let referenceFee: Rational = { numerator: 0n, denominator: 1n };
-  const range = BigInt(parameters.referenceScriptFee.range);
-  while (remaining > 0n) {
-    const bytes = remaining > range ? range : remaining;
-    referenceFee = add(referenceFee, scale(price, bytes));
-    remaining -= bytes;
-    price = multiply(price, rational(parameters.referenceScriptFee.multiplier));
-  }
-  return (
-    BigInt(parameters.minFeeA) * transactionBytes +
-    BigInt(parameters.minFeeB) +
-    ceil(
-      add(
-        scale(rational(parameters.priceMemory), memory),
-        scale(rational(parameters.priceSteps), steps),
-      ),
-    ) +
-    ceil(referenceFee)
-  );
-};
-
-/**
- * The funding permit's per-transaction fee ceiling: the minimum fee of a
- * transaction at the protocol's maximum signed size, execution units and
- * reference-script bytes. The permit refuses a funded transaction whose fee
- * passes it.
- */
-export const workflowRuntimeFundingMaximumFee = (
-  parameters: Pick<
-    DeploymentManifestCardanoProtocolParameters,
-    "minFeeA" | "minFeeB" | "priceMemory" | "priceSteps" | "maxTxSize"
-  > & {
-    maxTxExUnits: DeploymentManifestCardanoProtocolParameters["maxTxExUnits"];
-    referenceScriptFee: Pick<
-      DeploymentManifestCardanoProtocolParameters["referenceScriptFee"],
-      "base" | "range" | "multiplier" | "maximumSizeBytes"
-    >;
-  },
-): bigint =>
-  workflowRuntimeFundingMinimumFee({
-    parameters,
-    transactionBytes: BigInt(parameters.maxTxSize),
-    memory: BigInt(parameters.maxTxExUnits.memory),
-    steps: BigInt(parameters.maxTxExUnits.steps),
-    referenceScriptBytes: BigInt(
-      parameters.referenceScriptFee.maximumSizeBytes,
-    ),
-  });
 
 /**
  * The validation-trace dispute's VerifySource custody terms: the dispute
@@ -154,7 +61,8 @@ export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
    * when the runner drives the one-step resolution, the boundary's and the
    * one-step resolvers' spending addresses a thread visits between the game
    * and the award. The per-move fee cap and the receipt's lovelace are the
-   * compiled profile's.
+   * compiled profile's; what a reservation keeps for a move our wallet pays
+   * is priced under the policy's parameters.
    */
   moves?: Readonly<{
     gameAddress: string;
@@ -184,6 +92,9 @@ type ValidationDisputeTermsValue = Readonly<{
     awardPolicyId: string;
     moveFeeCapLovelace: string;
     fraudProofOutputLovelace: string;
+    /** What a reservation keeps for one move our wallet pays, under the
+     * policy's parameters: `validationDisputeWalletMoveReserve`. */
+    walletMoveReserveLovelace: string;
     oneStep?: ValidationDisputeOneStepTerms;
   }>;
 }>;
@@ -214,11 +125,15 @@ const admitted = new WeakMap<
 const validationDisputeTerms = ({
   category,
   deploymentFingerprint,
+  fundingPaymentKeyHash,
+  parameters,
   terms,
   roster,
 }: {
   category: FraudProofCatalogueCategoryName;
   deploymentFingerprint: string;
+  fundingPaymentKeyHash: string;
+  parameters: DeploymentManifestCardanoProtocolParameters;
   terms: WorkflowRuntimeValidationDisputeTerms;
   roster: readonly WorkflowRuntimeFundingContract[];
 }): ValidationDisputeTermsValue => {
@@ -288,6 +203,10 @@ const validationDisputeTerms = ({
             moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
             fraudProofOutputLovelace:
               limits.fraud_proof_output_lovelace.toString(),
+            walletMoveReserveLovelace: validationDisputeWalletMoveReserve({
+              parameters,
+              fundingPaymentKeyHash,
+            }).toString(),
             ...(moves.oneStep === undefined
               ? {}
               : {
@@ -395,6 +314,8 @@ export const createWorkflowRuntimeFundingPolicy = ({
       : validationDisputeTerms({
           category,
           deploymentFingerprint,
+          fundingPaymentKeyHash,
+          parameters,
           terms: validationDispute,
           roster,
         });

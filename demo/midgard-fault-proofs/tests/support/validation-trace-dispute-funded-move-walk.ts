@@ -46,6 +46,8 @@ export const moveTerms = ({ scene }: WalkJourney): Moves => ({
     SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace.toString(),
   fraudProofOutputLovelace:
     SELECTED_DEPLOYMENT_PROFILE.limits.fraud_proof_output_lovelace.toString(),
+  // Only VerifySource keeps the reserve; a move's walk never reads it.
+  walletMoveReserveLovelace: "0",
 });
 
 /** The dispute terms the watcher's policy carries for the scene. */

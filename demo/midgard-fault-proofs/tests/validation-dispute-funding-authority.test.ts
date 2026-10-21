@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { grantValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { createAdmittedWorkflowRunner } from "../src/workflow/runner-admission.js";
+import { validationDisputeWalletMoveReserve } from "../src/workflow/runtime-funding-fee.js";
 import {
   createWorkflowRuntimeFundingPolicy,
   readWorkflowRuntimeFundingPolicy,
@@ -123,7 +124,7 @@ describe("validation-trace dispute funding outside its category", () => {
     });
   });
 
-  it("binds the thread moves' contracts with the compiled per-move fee cap and receipt lovelace", () => {
+  it("binds the thread moves' contracts with the compiled per-move fee cap, receipt lovelace and the wallet-move reserve at the policy's protocol parameters", () => {
     const { constructorInput, terms } = disputePolicyInput();
     const policy = readWorkflowRuntimeFundingPolicy(
       createWorkflowRuntimeFundingPolicy({
@@ -138,6 +139,10 @@ describe("validation-trace dispute funding outside its category", () => {
       ...MOVES,
       moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
       fraudProofOutputLovelace: limits.fraud_proof_output_lovelace.toString(),
+      walletMoveReserveLovelace: validationDisputeWalletMoveReserve({
+        parameters: policy.protocolParameters,
+        fundingPaymentKeyHash: constructorInput.fundingPaymentKeyHash,
+      }).toString(),
     });
   });
 

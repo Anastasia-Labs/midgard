@@ -34,10 +34,8 @@ import {
 } from "./funding-reservation-permit.ledger-accounting.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
-import {
-  readWorkflowRuntimeFundingPolicy,
-  workflowRuntimeFundingMinimumFee,
-} from "./runtime-funding-policy.js";
+import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
+import { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
 import { workflowTransactionReferenceInputOutRefs } from "./transaction-boundary.js";
 export const assertRuntimeTransactionBound = async ({
   state,
@@ -487,6 +485,7 @@ export const assertRuntimeTransactionBound = async ({
     throw new Error(
       "signed transaction loses reserved wallet value outside fees and governed custody",
     );
+  dispute?.keepWalletMoveReserve(walletSpent);
   for (const [unit, quantity] of walletAssets) {
     if (unit !== "lovelace" && (walletOutputAssets.get(unit) ?? 0n) < quantity)
       throw new Error("signed transaction loses reserved wallet native assets");

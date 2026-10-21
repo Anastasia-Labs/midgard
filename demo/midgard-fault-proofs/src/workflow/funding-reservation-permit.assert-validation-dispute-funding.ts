@@ -43,6 +43,7 @@ import {
   readValidationDisputeCloseAuthority,
   validationDisputeCloseFunding,
 } from "./funding-reservation-permit.validation-dispute-close-authority.js";
+import { assertKeepsValidationDisputeWalletMoveReserve } from "./funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
@@ -484,5 +485,13 @@ export const validationDisputeFunding = async (input: {
           `validation dispute VerifySource must pay exactly one bond and one case output: bonds=${bonds.toString()} cases=${cases.toString()}`,
         );
     },
+    /** Keeps the reserve for a move our wallet pays. */
+    keepWalletMoveReserve: (walletSpent: bigint): void =>
+      assertKeepsValidationDisputeWalletMoveReserve({
+        state,
+        actionId: action.actionId,
+        reserveLovelace: terms.moves?.walletMoveReserveLovelace,
+        walletSpent,
+      }),
   });
 };

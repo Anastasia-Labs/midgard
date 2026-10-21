@@ -26,6 +26,7 @@ import {
   releaseWorkflowFundingReservation,
   type WorkflowFundingCompletionHandoff,
   WorkflowFundingReservationUnavailableError,
+  WorkflowFundingShortfallError,
   type WorkflowFundingSubmissionHandoff,
   workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.js";
@@ -868,6 +869,10 @@ export const runAdmittedFraudProofWorkflow = async ({
         },
       });
     } catch (cause) {
+      // A transaction the reservation cannot fund, as its preflight would:
+      // released, so a top-up resumes it.
+      if (cause instanceof WorkflowFundingShortfallError)
+        await releaseUnfundedWorkflowFundingInputs({ journal, cause });
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
       if (isFraudProofL1WaitError(cause)) throw cause;

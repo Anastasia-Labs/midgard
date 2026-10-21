@@ -1,9 +1,10 @@
 /** The fee of a challenger's thread move, and who pays it. A move whose
  * ledger minimum fee fits under the deployment's per-move cap is paid by its
  * thread at that minimum: the validators let a thread that is its move's only
- * input (with its case, for a close) pay up to the cap. A move over the cap
- * is paid entirely from our plain-ADA wallet: its other inputs leave the
- * thread no allowance, so its successor keeps all of the thread's lovelace.
+ * input (with its case, for a close) pay up to the cap. A move that does not
+ * build with its thread paying the cap is paid entirely from our plain-ADA
+ * wallet: its other inputs leave the thread no allowance, so its successor
+ * keeps all of the thread's lovelace.
  * The minimum is that of its signed transaction, by the formula the funding
  * permit checks a funded transaction's fee with, over the current protocol
  * parameters. Only a wallet-paid move whose fee passes the funding permit's
@@ -12,7 +13,6 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import {
   applySingleCborEncoding,
   CML,
-  coreToTxOutput,
   type LucidEvolution,
   type TxBuilder,
   type TxSignBuilder,
@@ -23,7 +23,7 @@ import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
   workflowRuntimeFundingMaximumFee,
   workflowRuntimeFundingMinimumFee,
-} from "../workflow/runtime-funding-policy.js";
+} from "../workflow/runtime-funding-fee.js";
 
 /** The deployment's per-move fee cap: the most a thread pays for a move. */
 export const VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE = BigInt(
@@ -168,36 +168,21 @@ const complete = async (tx: TxBuilder, fee: bigint): Promise<TxSignBuilder> =>
     .complete({ coinSelection: false, localUPLCEval: true });
 
 /**
- * What the wallet's funding adds to the minimum fee of `paid`, a move the
- * wallet paid in full: the bytes of its inputs from the wallet and of the
- * change returned to it (the last output, at the wallet's address), at the
- * per-byte fee. Without them `paid` is about the move its thread pays.
+ * What a build that fixes its own fee throws when its inputs do not cover
+ * its outputs and that fee: the move needs more than the thread pays.
  */
-const walletFundingFee = async (
-  lucid: LucidEvolution,
-  paid: TxSignBuilder,
-): Promise<bigint> => {
-  const wallet = lucid.wallet();
-  const own = new Set(
-    (await wallet.getUtxos()).map(
-      ({ txHash, outputIndex }) => `${txHash}#${outputIndex.toString()}`,
-    ),
-  );
-  const body = CML.Transaction.from_cbor_hex(paid.toCBOR()).body();
-  let bytes = 0;
-  const inputs = body.inputs();
-  for (let index = 0; index < inputs.len(); index += 1) {
-    const input = inputs.get(index);
-    if (
-      own.has(`${input.transaction_id().to_hex()}#${input.index().toString()}`)
-    )
-      bytes += input.to_cbor_bytes().length;
+const UNBALANCED = /UTxO Balance Insufficient/u;
+
+/** True when `cause`, at any depth, is a build short of its fee. */
+const shortOfFee = (cause: unknown): boolean => {
+  let at = cause;
+  for (let depth = 0; at !== undefined && at !== null && depth < 8; depth++) {
+    const text =
+      typeof at === "string" ? at : at instanceof Error ? at.message : "";
+    if (UNBALANCED.test(text)) return true;
+    at = typeof at === "object" && "cause" in at ? at.cause : undefined;
   }
-  const outputs = body.outputs();
-  const change = outputs.get(outputs.len() - 1);
-  if (coreToTxOutput(change).address === (await wallet.address()))
-    bytes += change.to_cbor_bytes().length;
-  return BigInt(lucid.config().protocolParameters!.minFeeA) * BigInt(bytes);
+  return false;
 };
 
 /** How many times a move is rebuilt on its way down to its minimum fee. */
@@ -205,19 +190,19 @@ const FEE_ROUNDS = 8;
 
 /**
  * Completes the `stage` move `build(fee)`, in which the thread pays `fee`,
- * deciding who pays. The thread pays when the move's minimum fee fits
- * under the cap: it is built at the cap first, with the wallet only lending
+ * deciding who pays. The thread pays when the move builds with the thread
+ * paying the cap: it is built at the cap first, with the wallet only lending
  * collateral, then rebuilt at the fee that build needs. The builder may price
  * a move a few lovelace above the ledger; a rebuild it refuses is retried a
- * little higher, and the cap's build stands when no cheaper one does. A move
- * that needs more than the cap cannot be built at the cap. When the cap build
- * fails, the move is built with the thread paying nothing and our wallet's
- * coin selection paying the whole fee (`build(0n)`), and its fee measured
- * less what the wallet's funding adds to it. When that passes the cap the
- * wallet-paid move is the move, unless its fee passes the funding permit's
- * per-transaction fee ceiling, which refuses it with
- * `ValidationTraceMoveFeeOverCapError`. Otherwise the cap build failed for
- * another reason and keeps its own error.
+ * little higher, and the cap's build stands when no cheaper one does. When
+ * the cap build is short of its fee, however near the ledger minimum is to
+ * the cap, the move is built with the thread paying nothing and our wallet's
+ * coin selection paying the whole fee (`build(0n)`): that is the move, unless
+ * its fee passes the funding permit's per-transaction fee ceiling, which
+ * refuses it with `ValidationTraceMoveFeeOverCapError`. A wallet that cannot
+ * pay throws its own build's error, which the runner pauses on until a top-up.
+ * A cap build that fails for any other reason keeps its own error, which the
+ * runner holds the stage on and retries at its next observation.
  */
 export const completeValidationTraceMove = async ({
   lucid,
@@ -241,15 +226,8 @@ export const completeValidationTraceMove = async ({
   try {
     best = await complete(build(cap), cap);
   } catch (cause) {
-    let paid: TxSignBuilder;
-    let needed: bigint;
-    try {
-      paid = await build(0n).complete({ localUPLCEval: true });
-      needed = needs(paid) - (await walletFundingFee(lucid, paid));
-    } catch {
-      throw cause;
-    }
-    if (needed <= cap) throw cause;
+    if (!shortOfFee(cause)) throw cause;
+    const paid = await build(0n).complete({ localUPLCEval: true });
     const fee = CML.Transaction.from_cbor_hex(paid.toCBOR()).body().fee();
     const ceiling = validationTraceMoveFeeCeiling(lucid);
     if (fee > ceiling)

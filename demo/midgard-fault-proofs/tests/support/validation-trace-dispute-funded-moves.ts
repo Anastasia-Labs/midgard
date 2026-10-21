@@ -159,7 +159,12 @@ export const ourOpener = (
  * steps. The removal's L1 view is held from before the case, so a case the
  * watcher convicts waits on it.
  */
-export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
+export const openDefendedFundedCase = async (
+  options: Pick<
+    NonNullable<Parameters<typeof openFundedDispute>[1]>,
+    "liveParameters"
+  > = {},
+): Promise<FundedMoves> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = recordCrossBlockRawEmulator();
   const scene = await setUpScene();
@@ -169,7 +174,10 @@ export const openDefendedFundedCase = async (): Promise<FundedMoves> => {
     .l1For(scene.failing.evidence.headerHash)
     .observe({ headerHash: scene.failing.evidence.headerHash });
   await drainProver(scene.h as never, FUNDED);
-  const dispute = await openFundedDispute(scene, { removal: removal.removal });
+  const dispute = await openFundedDispute(scene, {
+    ...options,
+    removal: removal.removal,
+  });
   const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
   if (opened.result.kind !== "pending")
     throw new Error(`the case did not open: ${opened.history.join("\n")}`);

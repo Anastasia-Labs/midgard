@@ -273,6 +273,8 @@ export const validationDisputeMoveFunding = async ({
           `validation dispute move tops up protocol state: topup=${protocolTopup.toString()}`,
         );
     },
+    /** A move draws on the wallet-move reserve; it keeps none. */
+    keepWalletMoveReserve: (_walletSpent: bigint): void => undefined,
     /** Exactly the outputs and mint the move's validators fix. */
     assertComplete: (): void => {
       const expected: readonly Kept[] = close

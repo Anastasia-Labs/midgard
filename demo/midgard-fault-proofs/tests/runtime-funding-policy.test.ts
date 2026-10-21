@@ -2,11 +2,11 @@ import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
+import { workflowRuntimeFundingMinimumFee } from "../src/workflow/runtime-funding-fee.js";
 import {
   assertWorkflowRuntimeFundingPolicyRunner,
   createWorkflowRuntimeFundingPolicy,
   readWorkflowRuntimeFundingPolicy,
-  workflowRuntimeFundingMinimumFee,
 } from "../src/workflow/runtime-funding-policy.js";
 import {
   RUNTIME_FUNDING_TEST_PARAMETERS,

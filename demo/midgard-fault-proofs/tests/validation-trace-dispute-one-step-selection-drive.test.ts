@@ -43,6 +43,7 @@ import {
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { expectWithinWalletMoveShape } from "./support/validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,
   SELECTION_STEP_FROM,
@@ -415,6 +416,13 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
       selection.successor,
     ])
       expect(read.has(outRefOf(utxo))).toBe(true);
+    // The reserve a VerifySource keeps covers this hop, as every other move.
+    await expectWithinWalletMoveShape(
+      scene,
+      prepared
+        .map(({ hash }) => hash)
+        .filter((hash) => scene.l1.signedCbors.has(hash)),
+    );
     for (const [index, label] of [
       "EnterResolution",
       "PrepareResolution",

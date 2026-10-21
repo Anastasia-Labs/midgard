@@ -59,18 +59,21 @@ const rational = (value: number): readonly [bigint, bigint] => {
 
 /**
  * The local node's protocol-parameter authority, answering the emulator's
- * own parameters, so funding bounds are those the ledger enforces.
+ * own parameters, so funding bounds are those the ledger enforces: `lucid`'s
+ * at the authority's creation, or, given `live`, that emulator's at each
+ * query, so the watcher's funding follows a change of its fees.
  */
 export const emulatorProtocolParameterAuthority = async (
   identity: VerifiedWatcherDeploymentIdentity,
   lucid: LucidEvolution,
+  live?: Emulator,
 ) => {
-  const parameters = lucid.config().protocolParameters;
-  if (parameters === undefined)
+  const booted = lucid.config().protocolParameters;
+  if (booted === undefined)
     throw new Error("emulator Lucid has no protocol parameters");
-  return await createWatcherProtocolParameterRuntimeAuthority({
-    deploymentIdentity: identity,
-    query: ledgerParameterQuery({
+  const query = async () => {
+    const parameters = live?.protocolParameters ?? booted;
+    return await ledgerParameterQuery({
       minFeeA: BigInt(parameters.minFeeA),
       minFeeB: BigInt(parameters.minFeeB),
       maxTxSize: BigInt(parameters.maxTxSize),
@@ -87,7 +90,11 @@ export const emulatorProtocolParameterAuthority = async (
       minFeeRefScriptCostPerByte: rational(
         parameters.minFeeRefScriptCostPerByte,
       ),
-    }),
+    })();
+  };
+  return await createWatcherProtocolParameterRuntimeAuthority({
+    deploymentIdentity: identity,
+    query,
   });
 };
 
