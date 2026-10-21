@@ -9,15 +9,9 @@
  * the step. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Constr,
-  Data,
-  type RedeemerContext,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { NO_AUXILIARY_WITNESS_CBOR } from "./one-step-canonical-decode.js";
-import { constr, continued, integer, stepDatum } from "./one-step-data.js";
 import {
   LEDGER_OUTPUT_PROOF_SEMANTICS,
   PHASE_SEMANTIC_EVIDENCE,
@@ -26,11 +20,11 @@ import {
   itemYieldOf,
   type ValidationTracePhaseItemYield,
   type ValidationTracePhaseYield,
-  type ValidationTracePhaseYieldListReads,
-  type ValidationTracePhaseYieldReads,
 } from "./one-step-phase-yields.js";
 import { SCRIPT_SOURCES_REDEEMER_SEMANTIC } from "./one-step-script-sources-redeemer.js";
+import { SCRIPT_SOURCES_YIELD_SEMANTICS } from "./one-step-script-sources-yields.js";
 
+export { phaseSemanticHop } from "./one-step-phase-hop.js";
 export {
   phaseYieldListReads,
   phaseYieldReads,
@@ -77,6 +71,8 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
   resolveInputsMembershipFinalizeSemantic:
     "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
   scriptSourcesPrepare: "validationTraceDisputeScriptSourcesPrepare",
+  scriptSourcesNonOutputSemantic:
+    "validationTraceDisputeScriptSourcesNonOutputSemantic",
   scriptSourcesOutputProofBeginSemantic:
     "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
   scriptSourcesOutputProofStepSemantic:
@@ -107,6 +103,12 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
     "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
   scriptSourcesStageTwelveFinishSemantic:
     "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+  scriptSourcesStageTwelveRedeemerSemantic:
+    "validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic",
+  scriptSourcesStageTenMismatchSemantic:
+    "validationTraceDisputeScriptSourcesStageTenMismatchSemantic",
+  scriptSourcesStageTenMatchSemantic:
+    "validationTraceDisputeScriptSourcesStageTenMatchSemantic",
   scriptSourcesStageEightFinishSemantic:
     "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
   scriptSourcesStageEightPurposeSemantic:
@@ -187,7 +189,9 @@ export const PHASE_RESOLUTIONS = Object.freeze({
   },
   // The semantic resolvers that verify the transition beside the auxiliary
   // evidence our trace carries, or none, invoking beside it the yields its
-  // ledger-output proof names, if any; and the redeemer normalization
+  // ledger-output proof names, if any; the non-output and redeemer
+  // descriptor semantic resolvers, invoking beside it the yield of its role
+  // (one-step-script-sources-yields.ts); and the redeemer normalization
   // semantic resolver, whose resolution runs on through the redeemer item
   // chain when the deployment publishes it
   // (one-step-script-sources-redeemer.ts). The rest are not yet driven.
@@ -195,7 +199,7 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     resolverIndex: 8,
     prepare: "scriptSourcesPrepare",
     semantics: [
-      undefined,
+      "scriptSourcesNonOutputSemantic",
       "scriptSourcesOutputProofBeginSemantic",
       "scriptSourcesOutputProofStepSemantic",
       "scriptSourcesOutputProofFinalizeSemantic",
@@ -214,10 +218,10 @@ export const PHASE_RESOLUTIONS = Object.freeze({
       "scriptSourcesStageElevenFinishSemantic",
       "scriptSourcesStageElevenSourceSemantic",
       "scriptSourcesStageTwelveFinishSemantic",
+      "scriptSourcesStageTwelveRedeemerSemantic",
       undefined,
-      undefined,
-      undefined,
-      undefined,
+      "scriptSourcesStageTenMismatchSemantic",
+      "scriptSourcesStageTenMatchSemantic",
       "scriptSourcesStageEightFinishSemantic",
       "scriptSourcesStageEightPurposeSemantic",
       undefined,
@@ -281,6 +285,15 @@ export const phaseValidators = (
   );
 };
 
+/** The script-sources semantic resolver `holder` whose evidence and yield
+ * one-step-script-sources-yields.ts derives, if it is one. */
+const yieldSemantic = (holder: ValidationTracePhaseHolder) =>
+  Object.hasOwn(SCRIPT_SOURCES_YIELD_SEMANTICS, holder)
+    ? SCRIPT_SOURCES_YIELD_SEMANTICS[
+        holder as keyof typeof SCRIPT_SOURCES_YIELD_SEMANTICS
+      ]
+    : undefined;
+
 /** The yields the semantic resolvers of `phase` invoke. */
 export const phaseYields = (
   phase: ValidationTracePhase,
@@ -290,6 +303,7 @@ export const phaseYields = (
       ? []
       : (PHASE_SEMANTIC_EVIDENCE[holder]?.itemYields ??
         LEDGER_OUTPUT_PROOF_SEMANTICS[holder]?.yields ??
+        yieldSemantic(holder)?.yields ??
         []),
   );
 
@@ -306,6 +320,8 @@ export type ValidationTracePhaseStep = Readonly<{
   phase: ValidationTracePhase;
   prepare: ValidationTracePhaseHolder;
   semantic: ValidationTracePhaseHolder;
+  /** The semantic resolver's action, when not its first. */
+  action?: number;
   evidenceCbors: readonly string[];
   itemYield?: ValidationTracePhaseItemYield;
   yieldList?: readonly ValidationTracePhaseYield[];
@@ -343,10 +359,10 @@ export const planValidationTracePhaseStep = ({
     throw new Error(`validation-trace ${phase} step selects another resolver`);
   const semantic: ValidationTracePhaseHolder | undefined =
     resolution.semantics[semanticResolverIndex];
-  if (semantic === undefined)
-    return {
-      reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
-    };
+  const notDriven = {
+    reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
+  };
+  if (semantic === undefined) return notDriven;
   const step = (
     evidenceCbors: readonly string[],
     itemYield?: ValidationTracePhaseItemYield,
@@ -360,11 +376,18 @@ export const planValidationTracePhaseStep = ({
     });
   // The redeemer item chain derives its states from the evidence whole.
   if (semantic === SCRIPT_SOURCES_REDEEMER_SEMANTIC)
-    return redeemerChain
-      ? step([])
-      : {
-          reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
-        };
+    return redeemerChain ? step([]) : notDriven;
+  const yielding = yieldSemantic(semantic);
+  if (yielding !== undefined) {
+    const yielded = yielding.evidence({ transitionCbor, auxiliaryCbor });
+    if (yielded === undefined) return notDriven;
+    if ("reason" in yielded) return yielded;
+    const { evidenceCbors, action, itemYield } = yielded;
+    return Object.freeze({
+      ...step(evidenceCbors, itemYield),
+      ...(action === 0 ? {} : { action }),
+    });
+  }
   const derived = LEDGER_OUTPUT_PROOF_SEMANTICS[semantic];
   if (derived !== undefined) {
     const { evidenceCbors, yieldList } = derived.evidence({
@@ -413,73 +436,6 @@ export const planValidationTracePhaseStep = ({
       ? undefined
       : itemYieldOf(evidence.itemYields, preimage, fields[1]),
   );
-};
-
-/** The semantic resolver's hop of the thread of prover `prover`: it
- * verifies the transition `transitionCbor` beside the auxiliary evidence
- * whose fields are `evidenceCbors`, and the yield `itemYield` invokes
- * beside them, or the yields `yieldList`, whose reference-input indices
- * follow them, if any, and awards the step. */
-export const phaseSemanticHop = ({
-  prover,
-  transitionCbor,
-  evidenceCbors,
-  itemYield,
-  yieldList,
-}: {
-  readonly prover: string;
-  readonly transitionCbor: string;
-  readonly evidenceCbors: readonly string[];
-  readonly itemYield?: ValidationTracePhaseYieldReads;
-  readonly yieldList?: ValidationTracePhaseYieldListReads;
-}) => {
-  const reads =
-    itemYield === undefined
-      ? yieldList
-      : { references: [itemYield.reference], scripts: [itemYield.script] };
-  const indexOf = (context: RedeemerContext, reference: UTxO) =>
-    SDK.requireReferenceInputIndex(context, reference, "phase yield");
-  return {
-    next: "award" as const,
-    datum: stepDatum(prover, constr(0, [integer(1)])),
-    redeemer: (
-      inputIndex: bigint,
-      outputIndex: bigint,
-      context: RedeemerContext,
-    ) =>
-      continued(
-        constr(0, [
-          integer(inputIndex),
-          integer(outputIndex),
-          transitionCbor,
-          ...evidenceCbors,
-          ...(itemYield === undefined
-            ? []
-            : [
-                integer(indexOf(context, itemYield.reference)),
-                integer(itemYield.kind),
-              ]),
-          ...(yieldList === undefined
-            ? []
-            : [
-                Data.to(
-                  yieldList.references.map((reference) =>
-                    indexOf(context, reference),
-                  ),
-                ),
-              ]),
-        ]),
-      ),
-    proverOnly: false,
-    ...(reads === undefined || reads.references.length === 0
-      ? {}
-      : {
-          reads: {
-            references: [...reads.references],
-            yields: [...reads.scripts],
-          },
-        }),
-  };
 };
 
 /** Where each phase holder's datum keeps our successor's hash: the

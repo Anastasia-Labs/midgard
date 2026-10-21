@@ -243,6 +243,9 @@ export const validationTraceHop = ({
       ? preparedHop(plan, datum, prover, plan.phase.semantic)
       : phaseSemanticHop({
           prover,
+          ...(plan.phase.action === undefined
+            ? {}
+            : { action: plan.phase.action }),
           transitionCbor: plan.transitionCbor,
           evidenceCbors: plan.phase.evidenceCbors,
           ...(phaseYield === undefined ? {} : { itemYield: phaseYield }),

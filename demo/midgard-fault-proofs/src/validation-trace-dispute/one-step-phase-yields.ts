@@ -19,14 +19,28 @@ export const PHASE_A_NATIVE_ITEM_YIELDS = Object.freeze([
   "phaseANativeItemForeign",
 ] as const);
 
+/** The yields a script-sources semantic resolver invokes beside its step
+ * (one-step-script-sources-yields.ts): the middle yield of each role the
+ * runner drives (`middle_role`), and the redeemer item-step yield. */
+export const SCRIPT_SOURCES_YIELDS = Object.freeze([
+  "scriptSourcesStageTwoAdvance",
+  "scriptSourcesStageThreeReplay",
+  "scriptSourcesStageThreeFinish",
+  "scriptSourcesStageFourFinish",
+  "scriptSourcesStageSixBeginPolicy",
+  "scriptSourcesStageSixFinish",
+  "scriptSourcesRedeemerDescriptor",
+] as const);
+
 export type ValidationTracePhaseYield =
   | (typeof PHASE_A_NATIVE_ITEM_YIELDS)[number]
+  | (typeof SCRIPT_SOURCES_YIELDS)[number]
   | LedgerOutputProofYield;
 
 /** The yield a semantic resolver invokes beside the item it reads: its
- * `yield_kind`, and which yield that is. */
+ * `yield_kind`, if the resolver takes one, and which yield that is. */
 export type ValidationTracePhaseItemYield = Readonly<{
-  kind: number;
+  kind?: number;
   name: ValidationTracePhaseYield;
 }>;
 
@@ -56,10 +70,10 @@ export const itemYieldOf = (
 };
 
 /** The item yield a semantic resolver's hop invokes, as the hop reads it:
- * its kind, its reference under its role's authentication token, and its
- * withdrawal script. */
+ * its kind, if any, its reference under its role's authentication token,
+ * and its withdrawal script. */
 export type ValidationTracePhaseYieldReads = Readonly<{
-  kind: number;
+  kind?: number;
   reference: UTxO;
   script: Script;
 }>;
@@ -91,7 +105,10 @@ export const phaseYieldReads = (
 ): ValidationTracePhaseYieldReads | undefined => {
   if (step.itemYield === undefined) return undefined;
   const { kind, name } = step.itemYield;
-  return Object.freeze({ kind, ...yieldRead(deployment, name) });
+  return Object.freeze({
+    ...(kind === undefined ? {} : { kind }),
+    ...yieldRead(deployment, name),
+  });
 };
 
 /** What the hop of the step `step` reads of `deployment` for the yield

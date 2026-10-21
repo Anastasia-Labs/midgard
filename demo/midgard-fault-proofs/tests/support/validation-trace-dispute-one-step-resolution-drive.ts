@@ -88,6 +88,7 @@ export const resolutionDrive = <
     | "failingSigners"
     | "failingScript"
     | "failingNativeSpend"
+    | "failingNativeMint"
   >;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
@@ -278,6 +279,7 @@ export const resolutionDrive = <
                 installs.failingSigners !== undefined ||
                 installs.failingScript !== undefined ||
                 installs.failingNativeSpend !== undefined ||
+                installs.failingNativeMint !== undefined ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,
