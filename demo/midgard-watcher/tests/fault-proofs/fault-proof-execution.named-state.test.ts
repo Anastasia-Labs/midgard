@@ -197,4 +197,32 @@ describe("supervisor execution adapter with a held script re-execution", () => {
       expect(test.execution.readiness()).toEqual([]);
     },
   );
+
+  it("waits at least a second before retrying a hold whose retry time has passed", async () => {
+    const test = await setupFaultProofExecution();
+    const { headerHash } = test.input.job;
+    test.runOrResume.mockRejectedValueOnce(
+      new ValidationTraceReplayHeldError(
+        headerHash,
+        [
+          {
+            headerHash,
+            position: 0,
+            txId: "0c".repeat(32),
+            attempts: 2,
+            retryAtMs: Date.now() - 60_000,
+            detail: "spend: Plutus evaluation stopped without a verdict",
+            stuck: false,
+          },
+        ],
+        0,
+        [],
+      ),
+    );
+    expect(await test.execution.execute(test.input)).toMatchObject({
+      kind: "retryable",
+      resume: "backoff",
+      retryAfterMs: 1_000,
+    });
+  });
 });
