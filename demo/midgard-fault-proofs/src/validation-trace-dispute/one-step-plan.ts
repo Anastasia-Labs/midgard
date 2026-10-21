@@ -4,11 +4,13 @@
  * resolver chain that step selects. The runner drives the CEK core steps
  * whose arm settles in one hop (compute, machine, map conversion and case
  * constant), the CEK script selections when the deployment records
- * scripts' decodes, and the CEK context steps whose stage verifies them in
- * one hop when the deployment installs the context resolution, and the
- * canonical-decode steps whose item it carries inline when the deployment
- * installs their resolution; any other step is reported as one the runner does not drive, and its thread waits
- * under the one-step state. */
+ * scripts' decodes, the CEK context steps whose stage verifies them in one
+ * hop when the deployment installs the context resolution, and, when the
+ * deployment installs their resolution, the canonical-decode steps whose
+ * item it carries inline and the steps of the phases one-step-phase.ts
+ * names; any other step is reported as one the runner does not drive, and
+ * its thread waits under the one-step-required state, which raises the
+ * operator's alarm while our deadline runs. */
 import {
   hashMidgardValidationMachineState,
   type MidgardValidationMachineState,
@@ -37,6 +39,13 @@ import {
   planValidationTraceContextStep,
   type ValidationTraceContextStep,
 } from "./one-step-context.js";
+import { cekCoreGroup } from "./one-step-core-group.js";
+import {
+  isValidationTracePhase,
+  planValidationTracePhaseStep,
+  type ValidationTracePhase,
+  type ValidationTracePhaseStep,
+} from "./one-step-phase.js";
 import { recordedSelectionOf } from "./selected-scripts.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
@@ -65,16 +74,6 @@ export type SingleHopCoreGroup = keyof typeof SINGLE_HOP_CORE_ARMS;
 const ONE_STEP_EVIDENCE_DOMAIN =
   "4d69646761726456616c69646174696f6e4f6e655374657045766964656e63655631";
 
-const MODE = {
-  compute: 0n,
-  return: 1n,
-  lookup: 2n,
-  builtin: 3n,
-  caseSelect: 6n,
-  caseApply: 7n,
-  semanticBuiltin: 8n,
-} as const;
-
 const blake2b256 = (hex: string): string =>
   Effect.runSync(SDK.hashHexWithBlake2b(hex, 32));
 
@@ -93,54 +92,6 @@ export const hashOneStepEvidence = (
         `9f${transitionCbor}${auxiliaryCbor}ff`,
       ),
   );
-
-/**
- * `core_group(mode, witness)` (cek-semantic-chain): the arm chain a core
- * step of `mode` with the witness of constructor `arm` runs, or undefined
- * for a pair the chain refuses.
- */
-export const cekCoreGroup = (
-  mode: bigint,
-  arm: number,
-  builtinTag?: bigint,
-): number | undefined => {
-  switch (mode) {
-    case MODE.compute:
-      return (arm >= 0 && arm <= 10) || arm === 40 ? 0 : undefined;
-    case MODE.lookup:
-      return arm === 11 || arm === 12 ? 1 : undefined;
-    case MODE.return:
-      return arm === 41 ? 11 : arm >= 13 && arm <= 27 ? 1 : undefined;
-    case MODE.caseSelect:
-      return arm === 28 ? 1 : undefined;
-    case MODE.caseApply:
-      return arm === 29 ? 1 : undefined;
-    case MODE.semanticBuiltin:
-      return arm >= 33 && arm <= 35 ? 2 : undefined;
-    case MODE.builtin: {
-      if (arm === 30)
-        return builtinTag === undefined
-          ? undefined
-          : builtinTag >= 29n &&
-              builtinTag <= 69n &&
-              builtinTag !== 52n &&
-              builtinTag !== 53n
-            ? 4
-            : 3;
-      const groups: Readonly<Record<number, number>> = {
-        31: 5,
-        32: 6,
-        36: 7,
-        37: 8,
-        38: 9,
-        39: 10,
-      };
-      return groups[arm];
-    }
-    default:
-      return undefined;
-  }
-};
 
 /** What every step's one-step resolution carries. */
 type ValidationTraceOneStepArgument = Readonly<{
@@ -198,12 +149,17 @@ export type ValidationTraceCanonicalDecodePlan =
       >;
     }>;
 
+/** A phase step's resolution, as the runner drives it. */
+export type ValidationTracePhasePlan = ValidationTraceOneStepArgument &
+  Readonly<{ kind: "phase"; phase: ValidationTracePhaseStep }>;
+
 /** A step's one-step resolution, as the runner drives it. */
 export type ValidationTraceOneStepPlan =
   | ValidationTraceCoreStepPlan
   | ValidationTraceSelectionPlan
   | ValidationTraceContextStepPlan
-  | ValidationTraceCanonicalDecodePlan;
+  | ValidationTraceCanonicalDecodePlan
+  | ValidationTracePhasePlan;
 
 /** What the deployment lets the runner drive beyond the CEK core steps. */
 export type ValidationTraceOneStepDrives = Readonly<{
@@ -214,6 +170,8 @@ export type ValidationTraceOneStepDrives = Readonly<{
   contexts?: boolean;
   /** Whether the deployment installs the canonical-decode resolution. */
   canonicalDecode?: boolean;
+  /** The phases whose resolution the deployment installs. */
+  phases?: readonly ValidationTracePhase[];
 }>;
 
 export type ValidationTraceOneStepPlanning =
@@ -289,6 +247,7 @@ export const planValidationTraceOneStep = async ({
   decodeRecords = false,
   contexts = false,
   canonicalDecode = false,
+  phases = [],
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
@@ -342,6 +301,22 @@ export const planValidationTraceOneStep = async ({
         kind: "canonicalDecode" as const,
         canonicalDecode: step,
       }),
+    };
+  }
+  if (
+    isValidationTracePhase(preState.phase) &&
+    phases.includes(preState.phase)
+  ) {
+    const argument = buildValidationOneStepArgument({ trace, stateIndex });
+    const common = commonOf(stateIndex, preState, argument);
+    const phase = planValidationTracePhaseStep({
+      ...common,
+      phase: preState.phase,
+    });
+    if ("reason" in phase) return unsupported(phase.reason);
+    return {
+      kind: "plan",
+      plan: Object.freeze({ ...common, kind: "phase" as const, phase }),
     };
   }
   if (preState.phase !== "cek") return unsupported(`a ${preState.phase} step`);

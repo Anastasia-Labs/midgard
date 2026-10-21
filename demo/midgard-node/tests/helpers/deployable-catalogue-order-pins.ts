@@ -128,15 +128,32 @@ export const PRE_CEK_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // The CEK phase's one-step resolver and its four semantic resolvers added
 // five manifest entries, each a published role. Projecting out exactly those
 // entries reproduces every pre-CEK-resolver pin and the 523/518 counts.
-export const MANIFEST_CONTRACT_ORDER_DIGEST =
+export const PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST =
   "f124a6a21713f95c60826590da6bad6c220c85e3e02500ff5b89434ee663cf9b";
-export const MANIFEST_ROLE_ORDER_DIGEST =
+export const PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST =
   "853d0bac5783af2b0730029e2e29c5f83c37eaebc96472ddaeddfc051173044e";
+export const PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST =
+  "2a4e1ffa201ebd2151e4ff35467a8ce3d2a14a6963913306f1ac85b0891b5fa3";
+export const PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST =
+  "0098ff3e6a71bddfb05ccf9781b5a1355ccc1e622bef625673ace4b217841f1f";
+export const PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
+  "2a4e1ffa201ebd2151e4ff35467a8ce3d2a14a6963913306f1ac85b0891b5fa3";
+export const PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST =
+  "0098ff3e6a71bddfb05ccf9781b5a1355ccc1e622bef625673ace4b217841f1f";
+
+// The validation phases' one-step resolvers and their semantic resolvers add
+// manifest entries phase by phase, each a published role. Projecting out
+// exactly those entries reproduces every pre-phase-resolver pin and the
+// 528/523 counts.
+export const MANIFEST_CONTRACT_ORDER_DIGEST =
+  "d1f69638dfe2532cd17e3f33b963b4f6f17fd868d0cee9012c60208b046eb003";
+export const MANIFEST_ROLE_ORDER_DIGEST =
+  "fea938942abb5b2822068f9d499f6f686a8978d9f41b0a203fabec5530e2f3eb";
 export const REAL_PUBLICATION_ORDER_DIGEST =
-  "2a4e1ffa201ebd2151e4ff35467a8ce3d2a14a6963913306f1ac85b0891b5fa3";
+  "38a55b1749aa7bad58a8ab071622d22bb0c8a709bf70c42ff3aa3887cd1c62cf";
 export const REAL_COMMAND_ORDER_DIGEST =
-  "0098ff3e6a71bddfb05ccf9781b5a1355ccc1e622bef625673ace4b217841f1f";
+  "fd07021cb200c1505831ac938d0c27cd9cc81bc4f2cc4d2c668ffd7d0ccb5e38";
 export const PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
-  "2a4e1ffa201ebd2151e4ff35467a8ce3d2a14a6963913306f1ac85b0891b5fa3";
+  "38a55b1749aa7bad58a8ab071622d22bb0c8a709bf70c42ff3aa3887cd1c62cf";
 export const PLACEHOLDER_COMMAND_ORDER_DIGEST =
-  "0098ff3e6a71bddfb05ccf9781b5a1355ccc1e622bef625673ace4b217841f1f";
+  "fd07021cb200c1505831ac938d0c27cd9cc81bc4f2cc4d2c668ffd7d0ccb5e38";

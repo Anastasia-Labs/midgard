@@ -13,12 +13,20 @@ export const isRecordedValidationTraceSemantic = (key: string): boolean =>
     "cek",
   ].some((prefix) => key.startsWith(prefix)) ||
   key === "canonicalDecodeEmpty" ||
-  key === "canonicalDecodeItem";
+  key === "canonicalDecodeItem" ||
+  key === "compactBinding" ||
+  key === "staticLedgerRules" ||
+  key === "inputSetsEmpty" ||
+  key === "inputSetsItem";
 export const VALIDATION_TRACE_PREPARE_KEYS = Object.keys(
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
 );
 export const isRecordedValidationTracePrepare = (key: string): boolean =>
-  key === "canonicalDecode" || key === "cek";
+  key === "canonicalDecode" ||
+  key === "cek" ||
+  key === "compactBinding" ||
+  key === "staticLedgerRules" ||
+  key === "inputSets";
 
 /** The validation-trace chain slots under `vtd` the manifest records no
  * bytes for: unrecorded semantic and prepare resolvers, and the steps. */

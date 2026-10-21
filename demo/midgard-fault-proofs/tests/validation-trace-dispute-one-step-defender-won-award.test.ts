@@ -6,13 +6,20 @@
  * closes its thread into the case as its win. The case can no longer
  * convict, yet the runner still closes the thread it won into the case with
  * that defender's lost-defense receipt, and only then stops under its own
- * named state with nothing more to sign. */
+ * named state with nothing more to sign. While that close does not build,
+ * the runner raises the one-step alarm naming the case's expiry, the
+ * deadline the close must land by, and builds it again at its next run. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_DEFENDER_WON } from "../src/validation-trace-dispute/adapter.js";
-import { validationTraceChallengerDeadlineMs } from "../src/validation-trace-dispute/threads.js";
+import {
+  VALIDATION_TRACE_ONE_STEP_REQUIRED,
+  validationTraceCaseExpiryMs,
+  validationTraceChallengerDeadlineMs,
+} from "../src/validation-trace-dispute/threads.js";
+import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import {
   awaitLastSlotAtOrBefore,
   defenderClosesItsWin,
@@ -90,6 +97,43 @@ describe("validation-trace dispute runner: a defender wins while a thread we won
     );
     expect(await threadClosed(dispute, b.unit)).toBe(true);
   }, 300_000);
+
+  it("raises the one-step alarm, naming the thread, the case and the case's expiry, while the close of the thread it won does not build", async () => {
+    const { scene, runner, deployment, prepared, caseUnit, a } = dispute;
+    const { emulator, proverLucid } = scene.h;
+    const before = (await threadPlace(scene, deployment, a.unit))!.utxo;
+    const caseDatum = Data.from(
+      (await liveCase({ scene, caseUnit })).datum!,
+      SDK.Case,
+    );
+    // Our wallet's lucid reads the size limit its provider names.
+    const parameters = emulator.protocolParameters;
+    emulator.protocolParameters = { ...parameters, maxTxSize: 1_024 };
+    await proverLucid.switchProvider(emulator);
+    try {
+      const { result, history } = await playThreads({
+        scene,
+        runner,
+        sides: [],
+        until: async (run) =>
+          isPendingFor(run, VALIDATION_TRACE_ONE_STEP_REQUIRED),
+        limit: 3,
+      });
+      expect("reason" in result && result.reason, history.join("\n")).toContain(
+        `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: the close_awarded move on thread ${before.txHash}#${before.outputIndex.toString()} of case ${caseUnit} does not build, and must land by ${validationTraceCaseExpiryMs(caseDatum).toString()}: `,
+      );
+      expect(validationTraceRunState(result)).toMatchObject({
+        namedState: { alarm: true },
+      });
+    } finally {
+      emulator.protocolParameters = parameters;
+      await proverLucid.switchProvider(emulator);
+    }
+    const after = (await threadPlace(scene, deployment, a.unit))!;
+    expect(after.holder).toBe("award");
+    expect(after.utxo.txHash).toBe(before.txHash);
+    expect(prepared.length).toBe(signedBefore);
+  }, 600_000);
 
   it("closes the thread it won into the case with its defender's lost-defense receipt, then stops under defender-won with nothing more to sign", async () => {
     const { scene, runner, prepared, caseUnit, a } = dispute;

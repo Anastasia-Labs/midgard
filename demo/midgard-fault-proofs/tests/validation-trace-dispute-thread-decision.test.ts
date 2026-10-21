@@ -10,11 +10,13 @@
  * A thread ReadyForOneStep enters its one-step resolution on our turn,
  * ordered with our reveals by our deadline, only on a step the runner plans;
  * on any other, it waits under the operator's alarm, which names the case,
- * the thread, the step and our deadline;
- * a thread in its resolution moves on before any close, and a thread at the
- * award closes into the case. On a case a defender won, every other thread
- * is still played to its own end, and the run stops once none has a move
- * left; a case with no open thread settles. */
+ * the thread, the step and our deadline. A thread on our turn past the
+ * case's expiry is lost. After timeouts, a thread at the award closes into
+ * the case first, then a thread in its resolution moves on, then a
+ * timed-out thread closes. On a case a defender won, every other thread is
+ * still played to its own end, and the run stops once none has a move left;
+ * a case with no open thread settles. */
+import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import type { ValidationTraceOneStepPlanning } from "../src/validation-trace-dispute/one-step-plan.js";
@@ -136,6 +138,7 @@ const decide = (
       open_threads: BigInt(threads.length + resolving.length),
       defender_won: false,
       neither_claim_valid: false,
+      started_at: BigInt(NOW),
       ...caseDatum,
     } as never,
     now: NOW,
@@ -255,7 +258,7 @@ describe("validation-trace dispute runner's choice among threads", () => {
   it("waits under one-step-required on a ReadyForOneStep thread whose resolution is not installed or whose step it does not drive, never entering it", () => {
     const step = ready("5");
     const deadline = (NOW + Number(CLOCK) / 2).toString();
-    const label = `case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${deadline}`;
+    const label = `case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${deadline}`;
     expect(decide([step])).toStrictEqual({
       kind: "pending",
       reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${label}; the one-step resolution is not installed, so it waits`,
@@ -280,8 +283,25 @@ describe("validation-trace dispute runner's choice among threads", () => {
       namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true },
     });
     expect("reason" in result && result.reason).toBe(
-      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, on our clock until ${(NOW + Number(CLOCK) / 2).toString()}; the one-step resolution is not installed, so it waits`,
+      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${(NOW + Number(CLOCK) / 2).toString()}; the one-step resolution is not installed, so it waits`,
     );
+  });
+
+  it("names the case's expiry as the one-step-required deadline when the case expires before our clock ends", () => {
+    const step = ready("5");
+    const expiry = NOW + Number(CLOCK) / 4;
+    expect(
+      decide([step], {
+        caseDatum: {
+          started_at: BigInt(
+            expiry - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+          ),
+        },
+      }),
+    ).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: case ${"c".repeat(64)} at ${"c".repeat(64)}#0: thread ${step.unit} at ${step.outRef} is ReadyForOneStep between states 0 and 12, and must enter its resolution by ${expiry.toString()}; the one-step resolution is not installed, so it waits`,
+    });
   });
 
   it("reports a ReadyForOneStep thread past our clock as lost, and holds one on a trace it does not hold, never entering either", () => {
@@ -306,33 +326,62 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
   });
 
-  it("moves a thread in its resolution on after timeouts and before closes, then closes the awarded thread into the case", () => {
+  it("reports a thread on our turn past the case's expiry as lost, never revealing on it or entering its resolution while our clock still runs", () => {
+    const expiry = NOW - 1;
+    const expired = {
+      caseDatum: {
+        started_at: BigInt(expiry - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS),
+      },
+    };
+    const step = ready("5");
+    const plannings = new Map([[step.outRef, PLANNED]]);
+    expect(decide([step], { ...expired, plannings })).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_THREAD_LOST}: thread ${step.unit} at ${step.outRef} outlived its case's expiry at ${expiry.toString()}`,
+    });
+    const turn = ours();
+    expect(decide([turn], expired)).toStrictEqual({
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_THREAD_LOST}: thread ${turn.unit} at ${turn.outRef} outlived its case's expiry at ${expiry.toString()}`,
+    });
+    // At its expiry, the case still takes our move.
+    expect(
+      decide([step], {
+        caseDatum: {
+          started_at: BigInt(NOW - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS),
+        },
+        plannings,
+      }),
+    ).toStrictEqual({ kind: "move", stage: "enter_resolution", thread: step });
+  });
+
+  it("after timeouts, closes an awarded thread into the case first, then moves a thread in its resolution on, then closes a timed-out thread", () => {
     const [s, c] = [silent(), timedOut()];
     const boundary = thread("7", "boundary", "ReadyForOneStep", 0n);
     const core = resolving("8", "core");
     const award = resolving("a", "award");
     expect(
-      decide([c, s, boundary], { resolving: [award, core] }),
+      decide([c, s, boundary], { resolving: [core, award] }),
     ).toStrictEqual({ kind: "move", stage: "timeout", thread: s });
-    expect(decide([c, boundary], { resolving: [award, core] })).toStrictEqual({
+    expect(decide([c, boundary], { resolving: [core, award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_awarded",
+      thread: award,
+    });
+    expect(decide([c, boundary], { resolving: [core] })).toStrictEqual({
       kind: "move",
       stage: "resolve",
       thread: boundary,
     });
-    expect(decide([c], { resolving: [award, core] })).toStrictEqual({
+    expect(decide([c], { resolving: [core] })).toStrictEqual({
       kind: "move",
       stage: "resolve",
       thread: core,
     });
-    expect(decide([c], { resolving: [award] })).toStrictEqual({
+    expect(decide([c])).toStrictEqual({
       kind: "move",
       stage: "close_thread",
       thread: c,
-    });
-    expect(decide([], { resolving: [award] })).toStrictEqual({
-      kind: "move",
-      stage: "close_awarded",
-      thread: award,
     });
   });
 
@@ -367,20 +416,20 @@ describe("validation-trace dispute runner's choice among threads", () => {
       stage: "timeout",
       thread: s,
     });
-    expect(decide([c], { ...won, resolving: [award, core] })).toStrictEqual({
+    expect(decide([c], { ...won, resolving: [core, award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_awarded",
+      thread: award,
+    });
+    expect(decide([c], { ...won, resolving: [core] })).toStrictEqual({
       kind: "move",
       stage: "resolve",
       thread: core,
     });
-    expect(decide([c], { ...won, resolving: [award] })).toStrictEqual({
+    expect(decide([c], won)).toStrictEqual({
       kind: "move",
       stage: "close_thread",
       thread: c,
-    });
-    expect(decide([], { ...won, resolving: [award] })).toStrictEqual({
-      kind: "move",
-      stage: "close_awarded",
-      thread: award,
     });
     // A thread awaiting its defender may still give us a move.
     const awaiting = thread(

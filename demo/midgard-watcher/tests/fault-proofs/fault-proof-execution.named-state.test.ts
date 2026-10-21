@@ -23,6 +23,12 @@ describe("supervisor execution adapter with a family's named run state", () => {
       reason:
         "validation-trace-move-fee-over-cap: the timeout move's fee 9000000 passes the funding permit's per-transaction fee ceiling 8700000",
     },
+    {
+      name: "validation-trace-move-unbuilt",
+      alarm: true,
+      reason:
+        "validation-trace-move-unbuilt: the reveal move on thread a#1 of case c does not build, and must land by 1000: Transaction size exceeds the limit",
+    },
   ])(
     "holds the objective under $name (alarm: $alarm) until a later run reports something else",
     async ({ name, alarm, reason }) => {

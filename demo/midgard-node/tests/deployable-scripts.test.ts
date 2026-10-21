@@ -21,6 +21,8 @@ import {
   HISTORY_CATALOGUE_ADDITIONS,
   historyContracts,
   historyRoles,
+  phaseResolverContracts,
+  phaseResolverRoles,
   POOL_CATALOGUE_ADDITIONS,
   poolContracts,
   poolRoles,
@@ -59,6 +61,12 @@ import {
   PRE_HISTORY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
   PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST,
   PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+  PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
   PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST,
   PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST,
   PRE_POOL_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
@@ -169,7 +177,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(528);
+      expect(manifest).toHaveLength(535);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -181,7 +189,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(523);
+    expect(realTargets).toHaveLength(530);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );
@@ -200,10 +208,27 @@ describe("deployable-script catalogue", () => {
     );
   });
 
-  it("preserves every pre-CEK-resolver order after excluding exactly its five additions", () => {
+  it("preserves every pre-phase-resolver order after excluding exactly the phase resolver additions", () => {
     expectOrdersWithout([real, placeholder], {
-      contracts: [cekResolverContracts],
-      roles: [cekResolverRoles],
+      contracts: [phaseResolverContracts],
+      roles: [phaseResolverRoles],
+      lengths: [528, 523],
+      pins: {
+        manifestContract: PRE_PHASE_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
+        manifestRole: PRE_PHASE_RESOLVER_MANIFEST_ROLE_ORDER_DIGEST,
+        realPublication: PRE_PHASE_RESOLVER_REAL_PUBLICATION_ORDER_DIGEST,
+        placeholderPublication:
+          PRE_PHASE_RESOLVER_PLACEHOLDER_PUBLICATION_ORDER_DIGEST,
+        realCommand: PRE_PHASE_RESOLVER_REAL_COMMAND_ORDER_DIGEST,
+        placeholderCommand: PRE_PHASE_RESOLVER_PLACEHOLDER_COMMAND_ORDER_DIGEST,
+      },
+    });
+  });
+
+  it("preserves every pre-CEK-resolver order after excluding exactly its five and the phase resolver additions", () => {
+    expectOrdersWithout([real, placeholder], {
+      contracts: [phaseResolverContracts, cekResolverContracts],
+      roles: [phaseResolverRoles, cekResolverRoles],
       lengths: [523, 518],
       pins: {
         manifestContract: PRE_CEK_RESOLVER_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -217,10 +242,10 @@ describe("deployable-script catalogue", () => {
     });
   });
 
-  it("preserves every pre-case order after excluding exactly its six and the five CEK resolver additions", () => {
+  it("preserves every pre-case order after excluding exactly its six, the five CEK resolver and the phase resolver additions", () => {
     expectOrdersWithout([real, placeholder], {
-      contracts: [cekResolverContracts, caseContracts],
-      roles: [cekResolverRoles, caseRoles],
+      contracts: [phaseResolverContracts, cekResolverContracts, caseContracts],
+      roles: [phaseResolverRoles, cekResolverRoles, caseRoles],
       lengths: [517, 512],
       pins: {
         manifestContract: PRE_CASE_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -233,10 +258,20 @@ describe("deployable-script catalogue", () => {
     });
   });
 
-  it("preserves every pre-data-canonicity order after excluding exactly its four, the six case and the five CEK resolver additions", () => {
+  it("preserves every pre-data-canonicity order after excluding exactly its four, the six case, the five CEK resolver and the phase resolver additions", () => {
     expectOrdersWithout([real, placeholder], {
-      contracts: [cekResolverContracts, caseContracts, dataCanonicityContracts],
-      roles: [cekResolverRoles, caseRoles, dataCanonicityRoles],
+      contracts: [
+        phaseResolverContracts,
+        cekResolverContracts,
+        caseContracts,
+        dataCanonicityContracts,
+      ],
+      roles: [
+        phaseResolverRoles,
+        cekResolverRoles,
+        caseRoles,
+        dataCanonicityRoles,
+      ],
       lengths: [513, 508],
       pins: {
         manifestContract: PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
@@ -251,11 +286,12 @@ describe("deployable-script catalogue", () => {
     });
   });
 
-  it("preserves every original published order after excluding exactly the six history, two pool, four data-canonicity, six case and five CEK resolver additions and restoring the retired bond yield", () => {
+  it("preserves every original published order after excluding exactly the six history, two pool, four data-canonicity, six case, five CEK resolver and the phase resolver additions and restoring the retired bond yield", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [
         historyContracts,
         poolContracts,
+        phaseResolverContracts,
         cekResolverContracts,
         caseContracts,
         dataCanonicityContracts,
@@ -263,6 +299,7 @@ describe("deployable-script catalogue", () => {
       roles: [
         historyRoles,
         poolRoles,
+        phaseResolverRoles,
         cekResolverRoles,
         caseRoles,
         dataCanonicityRoles,
@@ -280,15 +317,22 @@ describe("deployable-script catalogue", () => {
     });
   });
 
-  it("preserves every pre-pool published order after excluding exactly the two pool, four data-canonicity, six case and five CEK resolver additions and restoring the retired bond yield", () => {
+  it("preserves every pre-pool published order after excluding exactly the two pool, four data-canonicity, six case, five CEK resolver and the phase resolver additions and restoring the retired bond yield", () => {
     expectOrdersWithout([real, placeholder], {
       contracts: [
         poolContracts,
+        phaseResolverContracts,
         cekResolverContracts,
         caseContracts,
         dataCanonicityContracts,
       ],
-      roles: [poolRoles, cekResolverRoles, caseRoles, dataCanonicityRoles],
+      roles: [
+        poolRoles,
+        phaseResolverRoles,
+        cekResolverRoles,
+        caseRoles,
+        dataCanonicityRoles,
+      ],
       lengths: [512, 507],
       restoreRetiredBond: true,
       pins: {

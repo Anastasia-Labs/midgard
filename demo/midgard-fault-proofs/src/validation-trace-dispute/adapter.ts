@@ -78,12 +78,13 @@ import {
 
 const CATEGORY = "validationTraceDispute" as const;
 
-/** A stage transaction that does not build; it is retried on observation. */
+/** A non-thread stage that does not build; it is retried on observation. */
 export const VALIDATION_TRACE_STAGE_HELD = "validation-trace-stage-held";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_DEFENDER_WON,
+  VALIDATION_TRACE_MOVE_UNBUILT,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_COUNT_HOLD,
