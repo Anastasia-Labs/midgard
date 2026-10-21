@@ -598,7 +598,7 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
         challenge_record_lovelace: 27_000_000,
       },
       timing: {
-        da_challenge_window_ms: 259_200_000,
+        da_challenge_window_ms: 86_400_000,
         da_slash_grace_ms: 172_800_000,
         da_bond_withdraw_delay_ms: 778_080_000,
       },
@@ -716,9 +716,9 @@ test("every profile orders attestation timeout < challenge window <= block matur
 test("every profile's withdrawal delay meets the spec relation and the head-removal relation, and both bounds are exact", () => {
   const profiles = readProfiles();
   const floors = {
-    // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 (spec) and
-    // 480,000 + max(432,000,000, 604,800,000) + 172,800,000 (enforced).
-    public: { spec: 605_280_000, enforced: 778_080_000 },
+    // 480,000 + 86,400,000 + 172,800,000 + 172,800,000 (spec) and
+    // 480,000 + max(259,200,000, 604,800,000) + 172,800,000 (enforced).
+    public: { spec: 432_480_000, enforced: 778_080_000 },
     // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
     // the 900,000 maturity, so the two forms coincide.
     testing: { spec: 2_380_000, enforced: 2_380_000 },
@@ -759,7 +759,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
   // becomes removable at the queue head.
   for (const name of publicProfiles) {
     const profile = structuredClone(profiles[name]);
-    profile.timing.da_bond_withdraw_delay_ms = 605_280_000;
+    profile.timing.da_bond_withdraw_delay_ms = 432_480_000;
     assert.throws(
       () => validateProfile(profile, name),
       /the later of the challenge response deadline and block maturity/u,

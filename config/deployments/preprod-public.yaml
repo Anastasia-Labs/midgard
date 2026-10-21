@@ -28,9 +28,17 @@ timing:
   da_attestation_timeout_ms: 3600000
   da_small_response_window_ms: 3600000
   da_full_response_window_ms: 172800000
-  da_challenge_window_ms: 259200000
+  # 24 h (owner, 2026-10-15). With the 48 h full response window and the
+  # 8 min maximum validity range the latest DA answer lands by
+  # 86,400,000 + 480,000 + 172,800,000 = 259,680,000 ms after block end,
+  # before maturity (604,800,000) and before the case open deadline M/2
+  # (302,400,000).
+  da_challenge_window_ms: 86400000
   da_slash_grace_ms: 172800000
-  da_bond_withdraw_delay_ms: 778080000 # validity + max(window + full response, maturity) + grace
+  # validity + max(window + full response, maturity) + grace:
+  # 480,000 + max(259,200,000, 604,800,000) + 172,800,000. Maturity
+  # dominates, so the 24 h window leaves the delay unchanged.
+  da_bond_withdraw_delay_ms: 778080000
 da_bond:
   da_bond_lovelace: 100000000000
   da_slash_penalty_lovelace: 25000000000

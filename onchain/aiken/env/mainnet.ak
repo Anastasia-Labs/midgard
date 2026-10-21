@@ -66,7 +66,7 @@ pub const small_response_window_ms_v1: Int = 3_600_000
 
 pub const full_response_window_ms_v1: Int = 172_800_000
 
-pub const da_challenge_window_ms_v1: Int = 259_200_000
+pub const da_challenge_window_ms_v1: Int = 86_400_000
 
 pub const da_slash_grace_ms_v1: Int = 172_800_000
 

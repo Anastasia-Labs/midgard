@@ -25,7 +25,7 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
-      da_challenge_window_ms: 259200000,
+      da_challenge_window_ms: 86400000,
       da_slash_grace_ms: 172800000,
       da_bond_withdraw_delay_ms: 778080000,
     },
@@ -117,7 +117,7 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
-      da_challenge_window_ms: 259200000,
+      da_challenge_window_ms: 86400000,
       da_slash_grace_ms: 172800000,
       da_bond_withdraw_delay_ms: 778080000,
     },
@@ -512,9 +512,9 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "044406b9464921ec0c7deab82943d37385c64ad9fbaf5c80187a69a7a75d0da4",
+  mainnet: "f61d6aa00bd30087f5ca661a4feef5ef3ac9dc10e680d945b0fbe7f8c28fbf22",
   "preprod-public":
-    "5a7f63fb1225d639e113d67e4d2c67cc8e210dffe7c7683d8692e7e15077683b",
+    "7e27534449b94928be7f82a07d0b252676d8e8dab9066f76aa8de27866f525bc",
   "preprod-testing":
     "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
   "local-devnet-testing":

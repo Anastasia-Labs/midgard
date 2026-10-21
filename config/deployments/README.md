@@ -242,7 +242,7 @@ The committee backs every block it attests from one pooled bond. Each profile's
 | `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA                  |
 | `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA                  |
 | `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA                 |
-| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)        |
+| `timing.da_challenge_window_ms`       | 86,400,000 (24 h)       | 720,000 (12 min)        |
 | `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)         |
 | `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,380,000 (39 min 40 s) |
 
@@ -254,7 +254,8 @@ comment and the [economics record](../../docs/midgard/decisions/0002-canonical-v
 §2.6 carry its measurement. An availability challenge must open before the
 block's end time plus the challenge window. The withdrawal delay separates the
 two steps of a committee withdrawal, and the timeout slash has the slash grace
-to land. The public figures await owner confirmation.
+to land. The owner set the public challenge window to 24 hours (2026-10-15);
+the other public figures await owner confirmation.
 
 Validation requires:
 
