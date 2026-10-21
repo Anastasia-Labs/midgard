@@ -35,8 +35,10 @@
  * - the backlog pass (`runBacklogPass`), on the pool's reserved backlog
  *   share: every unrun entry (`pending` ones included), earliest deadline
  *   first, cached scripts included; only when none waits, the `timed_out`
- *   entries whose retry is due, so a killed entry never delays a first
- *   check. A run not started by its entry's deadline is cancelled;
+ *   entries whose retry is due, at most one per backlog worker before it
+ *   reads unrun entries again, so a first check waits at most for the
+ *   retries already running. A run not started by its entry's deadline is
+ *   cancelled;
  * - the sweep (`runUnverifiedSweep`), which never waits on a run: entries
  *   past their deadline leave the set (a `timed_out` one included), and
  *   entries being checked past their deadline raise
@@ -314,10 +316,11 @@ export const runImportCheckPass = (input: ImportCheckPassInput) =>
 
 /**
  * The backlog pass: up to `BACKLOG_BATCH` unrun entries due after now,
- * earliest deadline first, or, when there is none, `timed_out` entries
- * whose retry is due; as many at a time as the backlog's share (one on a
- * single-worker pool). Returns the number of entries it read; the fiber
- * runs it again at once while it reads any.
+ * earliest deadline first, or, when there is none, as many `timed_out`
+ * entries whose retry is due as the backlog's share (one on a
+ * single-worker pool); as many at a time as that share. Returns the
+ * number of entries it read; the fiber runs it again at once while it
+ * reads any.
  */
 export const runBacklogPass = (input: ImportCheckPassInput) =>
   Effect.gen(function* () {
@@ -330,18 +333,20 @@ export const runBacklogPass = (input: ImportCheckPassInput) =>
       limit: BACKLOG_BATCH,
     };
     const unrun = yield* retrieveChecks(UNRUN_STATES, options);
+    const share = Math.max(1, evaluator.backlogShare);
     const entries =
       unrun.length > 0
         ? unrun
         : yield* retrieveChecks(["timed_out"], {
             ...options,
+            limit: share,
             retryDueByMs: now,
           });
     yield* Effect.forEach(
       entries,
       (entry) =>
         checkEntry(input, evaluator, entry, "backlog", entry.deadlineMs),
-      { concurrency: Math.max(1, evaluator.backlogShare), discard: true },
+      { concurrency: share, discard: true },
     );
     return entries.length;
   });

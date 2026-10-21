@@ -159,6 +159,49 @@ describe("import checker retries", () => {
     expect(await idsIn(["pending", "cap_skipped"])).toEqual([]);
   }, 60_000);
 
+  it("runs a first check that arrives while retries are due after at most one retry per backlog worker", async () => {
+    const t0 = Date.now();
+    const killed = await blockOf(["accept", "accept", "accept"]);
+    const later = await blockOf(["accept"], { firstByte: 0x60 });
+    const laterContext = hex(firstRuns(later)[0]!.contextCbor);
+    let landed = false;
+    const scripted = scriptedEvaluator(
+      (call) => (call.context === laterContext ? ACCEPTED : KILLED),
+      {
+        // A block lands during the first retry, with a first check.
+        during: async (call) => {
+          if (call.lane !== "backlog" || landed) return;
+          landed = true;
+          await processBlock(later, {
+            parentHeaderHash: killed.headerHash,
+            deadlineMs: t0 + 2 * HOUR_MS,
+          });
+        },
+      },
+    );
+    const check = checker(scripted.evaluator);
+    await processBlock(killed, { deadlineMs: t0 + HOUR_MS });
+    expect(
+      named(await check.importPass(t0), "import_check_timeout"),
+    ).toHaveLength(3);
+    // The backlog's share is one worker: the first check runs right after
+    // the retry it arrived during, before the other due retries.
+    expect(await check.backlog(t0 + 5_000)).toEqual([]);
+    const [first, second, third] = firstRuns(killed).map((run) =>
+      hex(run.contextCbor),
+    );
+    expect(
+      scripted.calls.slice(3).map((call) => [call.lane, call.context]),
+    ).toEqual([
+      ["backlog", first],
+      ["backlog", laterContext],
+      ["backlog", second],
+      ["backlog", third],
+    ]);
+    expect(await idsIn(["timed_out"])).toHaveLength(3);
+    expect(await idsIn(["pending"])).toEqual([]);
+  }, 60_000);
+
   it("backs off a killed transaction's retries, doubling from 5 s up to 10 minutes, with one alarm", async () => {
     const t0 = Date.now();
     const scripted = scriptedEvaluator(() => KILLED);
