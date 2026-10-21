@@ -244,6 +244,10 @@ const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
     contract: "validationTraceDisputePhaseANativeScriptsPrepare",
     role: "V1 validation-trace phase-A native scripts prepare",
   },
+  {
+    contract: "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+    role: "V1 validation-trace phase-A script preconditions prepare",
+  },
 ] as const;
 
 export const phaseResolverContracts = new Set<string>(

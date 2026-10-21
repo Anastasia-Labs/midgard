@@ -101,8 +101,9 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     phaseANativeScripts: title(
       "validationTraceDisputePhaseANativeScriptsPrepare",
     ),
-    phaseAScriptPreconditions:
-      "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
+    phaseAScriptPreconditions: title(
+      "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+    ),
     resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
     scriptSources: "fraud_proofs/validation_trace/script_sources_v1.main.spend",
     nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",

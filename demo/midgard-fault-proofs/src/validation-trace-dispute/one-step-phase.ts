@@ -44,6 +44,10 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
     "validationTraceDisputePhaseANativeScriptsPrepare",
   phaseANativeScriptsItemSemantic:
     "validationTraceDisputePhaseANativeScriptsItemSemantic",
+  phaseAScriptPreconditionsPrepare:
+    "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+  phaseAScriptPreconditionsFinalizeSemantic:
+    "validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -93,6 +97,12 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     resolverIndex: 5,
     prepare: "phaseANativeScriptsPrepare",
     semantics: [undefined, "phaseANativeScriptsItemSemantic"],
+  },
+  // Only the finalize semantic resolver, which closes the phase.
+  phaseAScriptPreconditions: {
+    resolverIndex: 6,
+    prepare: "phaseAScriptPreconditionsPrepare",
+    semantics: ["phaseAScriptPreconditionsFinalizeSemantic", undefined],
   },
 } as const satisfies Readonly<
   Partial<

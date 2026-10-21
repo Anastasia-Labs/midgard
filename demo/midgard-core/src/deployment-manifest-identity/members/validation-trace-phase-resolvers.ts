@@ -190,5 +190,20 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "160"],
       ],
     },
+    validationTraceDisputePhaseAScriptPreconditionsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace phase-A script preconditions prepare",
+      manifestPosition: 556,
+      publicationPosition: 551,
+      referenceRolePosition: 551,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "6"],
+        ["resolvers", "6"],
+        ["steps", "161"],
+      ],
+    },
   },
 );

@@ -26,6 +26,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-signatures-required-13.test.ts",
   "./tests/validation-trace-dispute-one-step-phase-a-native-scripts-15.test.ts",
   "./tests/validation-trace-dispute-one-step-phase-a-native-scripts-native-18.test.ts",
+  "./tests/validation-trace-dispute-one-step-phase-a-script-preconditions-16.test.ts",
   "./tests/validation-trace-dispute-one-step-signatures-address-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-signatures-required-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts",
