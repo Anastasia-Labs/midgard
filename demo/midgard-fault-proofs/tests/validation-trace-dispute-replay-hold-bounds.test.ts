@@ -165,8 +165,11 @@ describe("validation-trace dispute replay: the work held events cost is bounded"
       expect.objectContaining({ txId: block.txs[0]!.txId, attempts: 2 }),
       expect.objectContaining({ txId: block.txs[1]!.txId, attempts: 1 }),
     ]);
-    // The carried event is due at once, on the next pass.
-    expect(second.retryAtMs).toBeLessThanOrEqual(clock.now);
+    // The carried event is due on the next pass, never at a time already
+    // past: a scheduler honouring it does not replay the block back to back.
+    expect(second.holds[1]!.retryAtMs).toBe(clock.now + 1_000);
+    expect(second.retryAtMs).toBeGreaterThan(clock.now);
+    clock.now = second.retryAtMs;
     await heldBy(replayer, block);
     expect([verdictRuns(block, 0), verdictRuns(block, 1)]).toStrictEqual([
       2, 2,

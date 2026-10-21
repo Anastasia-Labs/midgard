@@ -7,7 +7,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { ledgerBeforeTransactionEvent } from "../input-existence/event-ledger.js";
+import {
+  EventLedgerReplayRefusal,
+  ledgerBeforeTransactionEvent,
+} from "../input-existence/event-ledger.js";
 import type {
   CanonicalBlockClassification,
   CanonicalViolationDetection,
@@ -25,6 +28,7 @@ import {
 } from "./artifact.js";
 import {
   buildValidationTraceClaimMaterial,
+  validationTraceClaimBuildHeld,
   type ValidationTraceClaimMaterial,
 } from "./claim-material.js";
 import { detectedLedger } from "./detected-ledgers.js";
@@ -82,6 +86,12 @@ export const detectedValidationTraceClaim = async ({
       eventKey: event.eventKey,
       stepIndex: opening.value.step_index,
       ...(predecessor === undefined ? {} : { predecessor }),
+    }).catch((cause: unknown) => {
+      // A refused pre-state is the block's own, and decides; a read that
+      // failed otherwise is held, as the detector holds it.
+      throw cause instanceof EventLedgerReplayRefusal
+        ? cause
+        : validationTraceClaimBuildHeld(cause);
     }));
   return {
     event,

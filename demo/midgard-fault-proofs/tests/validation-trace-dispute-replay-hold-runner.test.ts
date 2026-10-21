@@ -3,8 +3,10 @@
  * names its readiness reason, nothing is submitted or journaled, the event is
  * not re-executed before its retry time, and once the evaluator recovers the
  * same runner Inits, Opens and VerifySources the claim into a live case on
- * the proven failure. Evaluator failures are injected at the validation
- * package, per transaction. */
+ * the proven failure. A claim build whose re-execution then fails without a
+ * result hands the run back pending under its own readiness state, again
+ * submitting and preparing nothing. Evaluator failures are injected at the
+ * validation package, per transaction. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -12,6 +14,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
+import { VALIDATION_TRACE_CLAIM_BUILD_HELD } from "../src/validation-trace-dispute/claim-material.js";
 import {
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
@@ -29,10 +32,12 @@ import {
 } from "./support/validation-trace-dispute-runner.js";
 
 /** Per transaction (canonical CBOR hex): the injected verdict failure, and
- * how often the verdict replay ran. */
+ * how often the verdict replay ran; and the claim builds' next re-execution
+ * failures. */
 const injected = vi.hoisted(() => ({
   faults: new Map<string, Error>(),
   verdictRuns: new Map<string, number>(),
+  openFaults: [] as Error[],
 }));
 
 vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
@@ -49,6 +54,14 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
       const fault = injected.faults.get(key);
       return fault === undefined
         ? actual.replayValidationVerdictEvent(input)
+        : Effect.fail(fault);
+    },
+    openValidationTraceV1: (
+      ...input: Parameters<typeof actual.openValidationTraceV1>
+    ) => {
+      const fault = injected.openFaults.shift();
+      return fault === undefined
+        ? actual.openValidationTraceV1(...input)
         : Effect.fail(fault);
     },
   };
@@ -125,6 +138,28 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
     await new Promise((resolve) =>
       setTimeout(resolve, Math.max(0, retryAtMs - Date.now())),
     );
+    // The event now decides, but the claim's own re-execution fails without
+    // a result: the run is pending under the claim build's state, with
+    // nothing prepared or submitted.
+    injected.openFaults.push(
+      new ScriptEvaluationIndeterminateError(
+        Buffer.from(txId, "hex"),
+        "spend: Plutus evaluation stopped without a verdict",
+        { cause: new RangeError("Array buffer allocation failed") },
+      ),
+    );
+    const pending = await runner.runOnce(scene.failing);
+    expect(pending).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false },
+    });
+    expect(injected.openFaults).toStrictEqual([]);
+    if (!("entries" in pending)) throw new Error("no workflow journal");
+    expect(pending.entries.map(({ event }) => event.kind)).toStrictEqual([
+      "started",
+    ]);
+    expect(await h.proverLucid.wallet().getUtxos()).toStrictEqual(walletBefore);
     const { result } = await runUntil(
       runner,
       scene.failing,
@@ -150,5 +185,24 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
       step_count: material.stepCount,
       bounty_claimant: h.proverSigner.paymentKeyHash,
     });
+
+    // A resumed run rebuilds the journaled claim to check it; a rebuild that
+    // fails without a result holds the run the same way, journaling nothing.
+    injected.openFaults.push(
+      new ScriptEvaluationIndeterminateError(
+        Buffer.from(txId, "hex"),
+        "spend: Plutus evaluation stopped without a verdict",
+        { cause: new RangeError("Array buffer allocation failed") },
+      ),
+    );
+    const resumed = await runner.runOnce(scene.failing);
+    expect(resumed).toMatchObject({
+      kind: "pending",
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false },
+    });
+    expect(injected.openFaults).toStrictEqual([]);
+    if (!("entries" in resumed)) throw new Error("no workflow journal");
+    expect(resumed.entries).toHaveLength(result.entries.length);
   });
 });

@@ -54,6 +54,7 @@ import {
 } from "./complete-replay.replay-context-identity.js";
 import {
   acceptedTransactionSubject,
+  detectionEventOrder,
   sourceEventSubject,
   subjectOf,
 } from "./detection-subject.js";
@@ -352,6 +353,16 @@ export const detectPlutusExecutionFailures = async ({
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const detections: CanonicalViolationDetection[] = [];
   const held: ValidationTraceReplayHold[] = [];
+  let heldFromOrder = Number.POSITIVE_INFINITY;
+  const heldAt = (event: CommittedL2Event): void => {
+    heldFromOrder = Math.min(
+      heldFromOrder,
+      detectionEventOrder(evidence.reconstruction, {
+        ...sourceEventSubject(event),
+        detectionId: event.fingerprint,
+      }),
+    );
+  };
   // One walk of the block's steps serves every event's pre-state, so the
   // events replay in step order.
   let walk: EventLedgerWalk | undefined;
@@ -365,9 +376,11 @@ export const detectPlutusExecutionFailures = async ({
     });
     if (waiting !== undefined) {
       held.push(waiting);
+      heldAt(event);
       continue;
     }
     const hold = (cause: unknown): void => {
+      heldAt(event);
       held.push(
         holds.failed(holdKey, {
           headerHash: evidence.headerHash,
@@ -460,6 +473,11 @@ export const detectPlutusExecutionFailures = async ({
       ({ violationId }) => violationId === VALIDATION_TRACE_VIOLATION_ID,
     )
   )
-    throw new ValidationTraceReplayHeldError(evidence.headerHash, held);
+    throw new ValidationTraceReplayHeldError(
+      evidence.headerHash,
+      held,
+      heldFromOrder,
+      detections,
+    );
   return detections;
 };

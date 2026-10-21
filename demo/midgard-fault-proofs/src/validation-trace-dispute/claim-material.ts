@@ -11,7 +11,9 @@ import {
   buildDeterministicValidationMachineTrace,
   buildTraceAtStepCountV1,
   type DeterministicValidationMachineTrace,
+  DirectValidationTraceUnavailable,
   openValidationTraceV1,
+  ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
@@ -25,6 +27,7 @@ import {
   membershipProof,
   sourceEventOrThrow,
 } from "../transition-trace/witnesses.build-source-membership-proof.js";
+import { WorkflowArtifactPendingError } from "../workflow/workflow-artifact-pending.js";
 import { type CommittedL2Event, plutusReplayInput } from "./replay.js";
 import {
   selectedScriptItemReader,
@@ -32,6 +35,24 @@ import {
 } from "./selected-scripts.js";
 
 export const VALIDATION_CLAIM_WITNESS_VERSION = 1n;
+
+/** The readiness state of a claim whose build failed without a result. */
+export const VALIDATION_TRACE_CLAIM_BUILD_HELD =
+  "validation-trace-claim-build-held";
+
+/**
+ * The claim's re-execution or pre-state read failed without a result (the
+ * evaluator's own failure, such as running out of memory): not a verdict on
+ * the claim, so the run builds it again on the next observation.
+ */
+export const validationTraceClaimBuildHeld = (
+  cause: unknown,
+): WorkflowArtifactPendingError =>
+  new WorkflowArtifactPendingError(
+    `${VALIDATION_TRACE_CLAIM_BUILD_HELD}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    Object.freeze({ name: VALIDATION_TRACE_CLAIM_BUILD_HELD, alarm: false }),
+    { cause },
+  );
 
 /**
  * The claim witness for `eventKey`: its transition step and event-to-step
@@ -140,9 +161,25 @@ export const buildValidationTraceClaimMaterial = async ({
     l1SlotConfig,
     verdict: { verdict: "rejected" },
   });
-  const leaves = await Effect.runPromise(
-    openValidationTraceV1(input, { revealStates: [0] }),
-  );
+  const opened = await Effect.runPromise(
+    Effect.either(openValidationTraceV1(input, { revealStates: [0] })),
+  ).catch((defect: unknown) => {
+    throw validationTraceClaimBuildHeld(defect);
+  });
+  if (opened._tag === "Left") {
+    const stop = opened.left;
+    // The same deterministic outcomes the detector names a disagreement.
+    if (
+      (stop instanceof ValidationTraceStopped &&
+        stop.reason === "disagreement") ||
+      stop instanceof DirectValidationTraceUnavailable
+    )
+      throw new Error(
+        `validation claim: the trace replay disagrees: ${stop.message}`,
+      );
+    throw validationTraceClaimBuildHeld(stop);
+  }
+  const leaves = opened.right;
   const terminal = leaves.states.get(leaves.stepCount);
   const initialState = leaves.states.get(0);
   if (

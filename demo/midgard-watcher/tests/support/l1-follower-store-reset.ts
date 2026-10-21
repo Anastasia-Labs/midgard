@@ -154,6 +154,10 @@ export const collaborators = () => {
     invalidateForRollback: () => {
       seen.bridgeInvalidations += 1;
     },
+    readiness: (): readonly Readonly<{
+      reason: string;
+      detail: string;
+    }>[] => [],
   };
   const availability = {
     reconcile: () => Promise.resolve(),

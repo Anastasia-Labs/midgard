@@ -43,6 +43,7 @@ import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-fin
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceComputationSteps } from "./removal.js";
+import { createValidationTraceReplayHolds } from "./replay-hold.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 const CATEGORY = "validationTraceDispute" as const;
@@ -232,6 +233,11 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
   });
 };
 
+/** The held events of every run in this process. A workflow is built per
+ * run, so the holds live here: a run re-executes a held event only once its
+ * backoff, carried from the runs before, has passed. */
+const RUN_REPLAY_HOLDS = createValidationTraceReplayHolds();
+
 export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   sources,
@@ -249,6 +255,7 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
     sources,
     replayer: createValidationTraceDisputeCompleteCanonicalReplay(
       workflow.l1SlotConfig,
+      { holds: RUN_REPLAY_HOLDS },
     ),
     ...(workflow.replayContext === undefined
       ? {}

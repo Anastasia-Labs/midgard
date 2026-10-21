@@ -751,6 +751,23 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   `<category>/<headerHash>: <reason>`. It is held by name and runs again on
   the next observation, which clears or renews the hold. The next action
   needs manual submission; report it with the detail.
+- `validation_trace_replay_held`, `validation_trace_replay_stuck`: a script
+  re-execution of a header's L2 transaction ended without a result (the
+  evaluator's own failure, such as running out of memory, or a failed read of
+  the transaction's pre-state), and no earlier finding decides the header.
+  It is not a verdict: the header's classification, or its objective's run,
+  waits and retries that transaction after a backoff of 1 s doubling to
+  60 s; the detail names the header and the held transactions. `_stuck`
+  means the same failure repeated five times in a row, and raises the
+  informational `validation_trace_replay_stuck` alert. A classification hold
+  clears when the header is classified, or 180 s after its last retry; an
+  objective's hold clears at its next run that meets something else. Check
+  the watcher's memory if it lasts; report it with the detail.
+- `validation-trace-claim-build-held`: a validation-trace objective could not
+  build its claim because the claim's re-execution or pre-state read ended
+  without a result; nothing was journaled. It is rebuilt on each
+  observation and clears at the first run that meets something else. Check
+  the watcher's memory if it lasts.
 
 Degradations (`l1Degradations`, status and metrics only):
 `l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed

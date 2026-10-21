@@ -11,7 +11,11 @@ re-executes each committed block's scripts on its admitted predecessor. A
 script re-execution that throws (rather than deciding) holds only its event;
 the block's objective names `validation_trace_replay_held`, or
 `validation_trace_replay_stuck` once the same failure repeats, and retries
-after a backoff. Neither is a verdict.
+after a backoff. Neither is a verdict. The other families' findings still
+decide the block when one of them is strictly earlier than every held event;
+otherwise the header's classification waits under the same reason. A claim
+whose build ends without a result is held as
+`validation-trace-claim-build-held` and rebuilt on the next observation.
 
 No off-chain workflow is installed for the trace-relative families listed in
 `UNINSTALLED_FRAUD_PROOF_CATEGORIES`

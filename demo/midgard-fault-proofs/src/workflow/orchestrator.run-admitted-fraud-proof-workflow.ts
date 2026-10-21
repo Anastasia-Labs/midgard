@@ -88,6 +88,7 @@ import {
   supersedeWorkflowFundingAttempt,
 } from "./orchestrator.supersede-funding-attempt.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
  * ambiguous result, reconciliation, submitted hash, and confirmation are
@@ -235,10 +236,15 @@ export const runAdmittedFraudProofWorkflow = async ({
       throw new Error(
         "reconciliation authority requires an existing prepared workflow",
       );
-    const familyArtifact = normalizeJournalJson(
-      await prepareFamilyArtifact(adapter),
-      `${category} prepared artifact`,
-    ) as JournalJsonObject;
+    let familyArtifact: JournalJsonObject;
+    try {
+      familyArtifact = normalizeJournalJson(
+        await prepareFamilyArtifact(adapter),
+        `${category} prepared artifact`,
+      ) as JournalJsonObject;
+    } catch (cause) {
+      return artifactPendingResult(cause, resumeOnObservation);
+    }
     envelope = persistedArtifact({
       evidenceBinding,
       releaseFinality,
@@ -253,7 +259,11 @@ export const runAdmittedFraudProofWorkflow = async ({
     validateFamilyArtifact !== undefined &&
     !workflowJournalIsReconciliationOnly(journal)
   ) {
-    await validateFamilyArtifact(adapter, envelope.familyArtifact);
+    try {
+      await validateFamilyArtifact(adapter, envelope.familyArtifact);
+    } catch (cause) {
+      return artifactPendingResult(cause, resumeOnObservation);
+    }
     assertWorkflowJournalActuation({
       journal,
       deploymentFingerprint,

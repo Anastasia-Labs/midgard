@@ -2,9 +2,12 @@ import {
   FraudProofL1UnavailableError,
   ReplayLocalFault,
   RetainedDaPayloadUnavailableError,
+  VALIDATION_TRACE_REPLAY_HELD,
+  ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
+import { WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS } from "../../src/fault-proofs/fault-decision-bridge.classification-miss.js";
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
@@ -200,6 +203,87 @@ describe("fault decision bridge deferral on a transient", () => {
       "active_alert",
     );
     expect(warn).toHaveBeenCalledOnce();
+  });
+});
+
+/** `headerHash`'s classification waits on one held script re-execution. */
+const replayHeld = (headerHash: string) =>
+  new ValidationTraceReplayHeldError(
+    headerHash,
+    [
+      {
+        headerHash,
+        position: 0,
+        txId: "0c".repeat(32),
+        attempts: 1,
+        retryAtMs: 1_000,
+        detail: "spend: Plutus evaluation stopped without a verdict",
+        stuck: false,
+      },
+    ],
+    0,
+    [],
+  );
+
+describe("fault decision bridge deferral on a held script re-execution", () => {
+  it("defers the header under the hold's reason, warns once and targets the fault once it decides", async () => {
+    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const [faulty] = current.finalizedHeaders;
+    const warn = vi.fn();
+    let held = 2;
+    const h = harness({
+      current,
+      categoryByHeader: { [faulty!.headerHash]: "validationTraceDispute" },
+      nowMs: IN_WINDOW,
+      warn,
+      classifyOverride: (fresh) => {
+        if (held > 0) {
+          held -= 1;
+          throw replayHeld(faulty!.headerHash);
+        }
+        return fresh;
+      },
+    });
+    expect(h.bridge.readiness()).toEqual([]);
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(h.enqueued).toEqual([]);
+    expect(h.bridge.readiness()).toEqual([
+      {
+        reason: VALIDATION_TRACE_REPLAY_HELD,
+        detail: replayHeld(faulty!.headerHash).message,
+      },
+    ]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith({
+      event: "classification_deferred",
+      headerHash: faulty!.headerHash,
+      cause: VALIDATION_TRACE_REPLAY_HELD,
+    });
+
+    await h.bridge.reconcileAndDispatch(current);
+    expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
+      faulty!.headerHash,
+    ]);
+    expect(h.bridge.readiness()).toEqual([]);
+  });
+
+  it("stops naming a hold that is no longer retried once it is too old", async () => {
+    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const [faulty] = current.finalizedHeaders;
+    let now = 3n;
+    const h = harness({
+      current,
+      categoryByHeader: { [faulty!.headerHash]: "validationTraceDispute" },
+      nowMs: () => now,
+      classifyOverride: () => {
+        throw replayHeld(faulty!.headerHash);
+      },
+    });
+    await h.bridge.reconcileAndDispatch(current);
+    now += BigInt(WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS);
+    expect(h.bridge.readiness()).toHaveLength(1);
+    now += 1n;
+    expect(h.bridge.readiness()).toEqual([]);
   });
 });
 
