@@ -164,61 +164,74 @@ describe("import checker", () => {
 
   it("kills hanging runs without a verdict, stops at the block's cap, and keeps the skipped transactions", async () => {
     const block = await landBlock(["accept", "accept", "accept", "accept"]);
-    // Every script job hangs, so every run that starts is killed.
-    const injected = await injectedEvaluator({ mode: "hang" }, { size: 3 });
-    const alarms = await checker(injected.evaluator, {
+    const ids = block.txIds.map((txId) => hex(txId));
+    // Every run hangs until its 500 ms kill, on a virtual clock: the second
+    // kill passes the block's 900 ms cap, so the last two do not start.
+    const scripted = scriptedEvaluator(() => KILLED, { elapsedMs: () => 500 });
+    const t0 = Date.now();
+    const alarms = await checker(scripted.evaluator, {
       ...CONFIG,
       killFloorMs: 500,
       blockCapMs: 900,
-    }).importPass();
-    const killed = alarms.filter(
-      (alarm) => alarm.alarm === "import_check_timeout",
-    );
-    const cap = alarms.filter((alarm) => alarm.alarm === "import_check_cap");
-    expect(killed.length).toBeGreaterThanOrEqual(1);
-    expect(
-      alarms.filter((alarm) => alarm.alarm === "uplc_import_fault"),
-    ).toEqual([]);
-    expect(cap).toEqual([
+    }).importPass(t0);
+    expect(alarms).toEqual([
+      expect.objectContaining({
+        alarm: "import_check_timeout",
+        transactionId: ids[0],
+      }),
+      expect.objectContaining({
+        alarm: "import_check_timeout",
+        transactionId: ids[1],
+      }),
       {
         alarm: "import_check_cap",
         headerHash: block.headerHash,
-        skipped: 4 - killed.length,
+        skipped: 2,
       },
     ]);
-    // Each hanging transaction costs one kill, with no retry on a fresh
-    // worker, and waits as timed out: a kill is no verdict.
-    expect(injected.jobs()).toBe(killed.length);
+    // One kill each, with no retry on a fresh worker: a kill is no verdict.
+    expect(
+      scripted.calls.map((call) => [call.lane, call.fresh, call.atMs - t0]),
+    ).toEqual([
+      ["import", false, 0],
+      ["import", false, 500],
+    ]);
     expect(await entries(["faulted"])).toEqual([]);
-    expect(await entries(["timed_out"])).toHaveLength(killed.length);
-    expect(await entries(["cap_skipped"])).toHaveLength(4 - killed.length);
+    expect(await idsIn(["timed_out"])).toEqual(ids.slice(0, 2));
+    expect(await idsIn(["cap_skipped"])).toEqual(ids.slice(2));
   }, 60_000);
 
   it("imports and processes the next block, spending a checked block's output, while a pass is still running", async () => {
     const first = await landBlock(["reject", "accept"]);
-    const injected = await injectedEvaluator({ mode: "hang" });
+    // The pass's first run does not answer until the next block is
+    // processed, so that processing cannot wait on the pass.
+    let started!: () => void;
+    const runStarted = new Promise<void>((resolve) => (started = resolve));
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const scripted = scriptedEvaluator(() => KILLED, {
+      during: () => {
+        started();
+        return released;
+      },
+    });
     let passDone = false;
-    const running = checker(injected.evaluator, {
-      ...CONFIG,
-      killFloorMs: 2_000,
-      blockCapMs: 1_000,
-    })
+    const running = checker(scripted.evaluator)
       .importPass()
       .then((alarms) => {
         passDone = true;
         return alarms;
       });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await runStarted;
     const next = await committedBlock(first.ledger, [
       { input: first.produced[0]!, body: "accept", next: "accept" },
     ]);
-    const startedAt = Date.now();
     await processBlock(next, { parentHeaderHash: first.headerHash });
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
     expect(passDone).toBe(false);
     expect(
       (await entries(["pending"])).map((entry) => entry.headerHash),
     ).toContain(next.headerHash);
+    release();
     expect((await running).length).toBeGreaterThan(0);
   }, 60_000);
 

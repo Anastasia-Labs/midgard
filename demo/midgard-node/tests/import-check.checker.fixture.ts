@@ -188,9 +188,15 @@ export const CANCELLED: ImportCheckOutcome = { kind: "cancelled" };
 
 /** An evaluator with no pool: each run's outcome is `decide(call)`, and
  * `calls` records every run asked for, so a test controls the outcome and
- * the clock with no wall-clock wait. */
+ * the clock with no wall-clock wait. A run takes `elapsedMs(call)` of the
+ * test clock (none by default), and `during(call)`, when given, completes
+ * before the run answers. */
 export const scriptedEvaluator = (
   decide: (call: ScriptedCall) => ImportCheckOutcome,
+  timing: {
+    readonly elapsedMs?: (call: ScriptedCall) => number;
+    readonly during?: (call: ScriptedCall) => Promise<void>;
+  } = {},
 ) => {
   const calls: ScriptedCall[] = [];
   const evaluator: ImportCheckEvaluator = {
@@ -204,6 +210,10 @@ export const scriptedEvaluator = (
           atMs: yield* Clock.currentTimeMillis,
         };
         calls.push(call);
+        const during = timing.during;
+        if (during !== undefined) yield* Effect.promise(() => during(call));
+        const elapsedMs = timing.elapsedMs?.(call) ?? 0;
+        if (elapsedMs > 0) yield* TestClock.adjust(elapsedMs);
         return decide(call);
       }),
   };
