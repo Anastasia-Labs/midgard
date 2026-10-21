@@ -247,7 +247,8 @@ export type PlutusExecutionBlockOptions = {
    * default the scenario's script seed and a key-owned seed.
    */
   readonly predecessorEntries?: readonly LedgerEntry[];
-  /** The script spend's redeemer, as Plutus Data CBOR; by default `Constr 0 []`. */
+  /** The script spend's redeemer, as Plutus Data CBOR; by default
+   * `Constr 0 []`. */
   readonly redeemerData?: Uint8Array;
   /** The out-refs the spend reads as reference inputs, each held by the
    * predecessor ledger; by default none. */

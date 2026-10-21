@@ -42,6 +42,7 @@ import {
   playThreads,
   type PreparedMove,
   threadPlace,
+  withLedgerParameters,
 } from "./validation-trace-dispute-one-step-play.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
@@ -110,26 +111,6 @@ export const resolutionDrive = <
   const paidTo = (move: PreparedMove) =>
     coreToTxOutput(bodyOf(move.hash).outputs().get(threadOutput(move.cbor)!))
       .address;
-
-  /** Runs `play` with the ledger's parameters `overrides`, which our
-   * wallet's lucid reads from its provider, and restores them after. */
-  const withParameters = async <T>(
-    overrides: Partial<
-      TwoThreadCase["scene"]["h"]["emulator"]["protocolParameters"]
-    >,
-    play: () => Promise<T>,
-  ): Promise<T> => {
-    const { emulator, proverLucid } = dispute.scene.h;
-    const parameters = emulator.protocolParameters;
-    emulator.protocolParameters = { ...parameters, ...overrides };
-    await proverLucid.switchProvider(emulator);
-    try {
-      return await play();
-    } finally {
-      emulator.protocolParameters = parameters;
-      await proverLucid.switchProvider(emulator);
-    }
-  };
 
   const placeOfB = async () => {
     const found = await threadPlace(
@@ -239,7 +220,8 @@ export const resolutionDrive = <
     unbuilt: async (maxTxSize: number) => {
       const { scene, runner, a, b } = dispute;
       const before = await placeOfB();
-      const { result } = await withParameters(
+      const { result } = await withLedgerParameters(
+        dispute.scene,
         { maxTxSize },
         async () =>
           await playThreads({
@@ -261,7 +243,8 @@ export const resolutionDrive = <
     /** Plays the thread through the resolution to the award and its close. */
     awards: async () => {
       const { scene, deployment, runner, prepared, a, b } = dispute;
-      await withParameters(
+      await withLedgerParameters(
+        dispute.scene,
         minFeeA === undefined ? {} : { minFeeA },
         async () =>
           await playThreads({

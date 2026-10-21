@@ -48,10 +48,9 @@ const INLINE_CARRIAGE = 0;
 
 /** The longest field preimage whose `Inline` carriage the observe move
  * carries within the transaction size limit less its 512-byte reserve,
- * measured on the move paid from our wallet
- * (tests/validation-trace-dispute-one-step-canonical-decode-8-inline-cap.test.ts).
- * An item of a longer field is not driven: its step waits under the
- * one-step-required alarm. */
+ * measured on the move paid from our wallet (the canonical-decode-8
+ * inline-cap test). An item of a longer field is not driven: its step waits
+ * under the one-step-required alarm. */
 export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_623;
 
 /** The holders of a canonical-decode step's resolution, in the order the

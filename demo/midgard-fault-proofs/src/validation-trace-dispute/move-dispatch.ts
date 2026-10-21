@@ -3,8 +3,9 @@
  * resolution's (one-step-moves.ts), which read the case's recorded threads
  * for the defender a thread past the game no longer names. A move our wallet
  * cannot fund raises the operator's alarm, naming the case, the thread and
- * the deadline the move must land by; so does a move of the one-step
- * resolution that does not build, under the one-step-required state. */
+ * the deadline the move must land by; so does a move that does not build,
+ * under the one-step-required state for a move of the one-step resolution
+ * and the move-unbuilt state for any other. */
 import type * as SDK from "@al-ft/midgard-sdk";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
@@ -29,6 +30,7 @@ import {
 } from "./one-step-moves.js";
 import { validationTraceRecordedThreads } from "./thread-observation.js";
 import {
+  VALIDATION_TRACE_MOVE_UNBUILT,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   validationTraceCaseExpiryMs,
 } from "./threads.js";
@@ -92,12 +94,13 @@ const ONE_STEP_STAGES: ReadonlySet<ValidationTraceStage> = new Set([
 ]);
 
 /**
- * A move of a thread's one-step resolution that does not build: the
- * operator's alarm under the one-step-required state, naming the case, the
- * thread and the deadline the move must land by. The run resumes on the
- * next observation and builds the move again.
+ * A thread move that does not build: the operator's alarm, under the
+ * one-step-required state for a move of the one-step resolution and the
+ * move-unbuilt state for any other, naming the case, the thread and the
+ * deadline the move must land by. The run resumes on the next observation
+ * and builds the move again.
  */
-export class ValidationTraceOneStepUnbuiltError extends WorkflowActionChangedError {
+export class ValidationTraceMoveUnbuiltError extends WorkflowActionChangedError {
   constructor(
     input: Readonly<{
       stage: ValidationTraceStage;
@@ -113,18 +116,20 @@ export class ValidationTraceOneStepUnbuiltError extends WorkflowActionChangedErr
         : input.deadlineMs.toString();
     const cause =
       input.cause instanceof Error ? input.cause.message : String(input.cause);
+    const state = ONE_STEP_STAGES.has(input.stage)
+      ? VALIDATION_TRACE_ONE_STEP_REQUIRED
+      : VALIDATION_TRACE_MOVE_UNBUILT;
     super(
-      `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: the ${input.stage} move on thread ${input.threadOutRef} of case ${input.caseUnit} does not build, and must land by ${deadline}: ${cause}`,
+      `${state}: the ${input.stage} move on thread ${input.threadOutRef} of case ${input.caseUnit} does not build, and must land by ${deadline}: ${cause}`,
     );
-    this.name = "ValidationTraceOneStepUnbuiltError";
+    this.name = "ValidationTraceMoveUnbuiltError";
   }
 }
 
 /**
  * The move on a thread of our case, whose datum is `caseDatum`. A build our
- * wallet is short of ada for is the operator's alarm, and so is a one-step
- * resolution move that does not build for any other reason than the thread
- * having moved.
+ * wallet is short of ada for is the operator's alarm, and so is a move that
+ * does not build for any other reason than the thread having moved.
  */
 export const captureValidationTraceThreadMove = async ({
   caseDatum,
@@ -136,12 +141,7 @@ export const captureValidationTraceThreadMove = async ({
     return await capture(input);
   } catch (cause) {
     const unfunded = isWorkflowFundingShortfall(cause);
-    if (
-      !unfunded &&
-      (cause instanceof WorkflowActionChangedError ||
-        !ONE_STEP_STAGES.has(input.stage))
-    )
-      throw cause;
+    if (!unfunded && cause instanceof WorkflowActionChangedError) throw cause;
     const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(
       () => undefined,
     );
@@ -156,7 +156,7 @@ export const captureValidationTraceThreadMove = async ({
       cause,
     };
     if (!unfunded)
-      throw new ValidationTraceOneStepUnbuiltError({
+      throw new ValidationTraceMoveUnbuiltError({
         stage: input.stage,
         ...named,
       });

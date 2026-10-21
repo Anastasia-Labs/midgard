@@ -14,13 +14,15 @@
  * Each thread is played on its own, the most pressing first: on our turn we
  * reveal our midpoint, or on ReadyForOneStep enter the one-step resolution,
  * the earliest of our deadlines first; a defender whose clock ran out is
- * timed out; a thread in its resolution moves on hop by hop; a thread won
- * either way is closed into the case. A one step the runner does not drive
- * stops at a resumable "one-step required" state. A thread on our turn is
- * never timed out. With every thread closed the case settles. A defender's
- * win on one thread decides only the case: every other thread is still
- * played to its own end (its resolution, timeout and close), and the run
- * stops under its own state once no thread of ours has a move left. */
+ * timed out; a thread at the award is closed into the case, a thread in its
+ * resolution moves on hop by hop, and a thread timed out on its defender's
+ * side is closed into the case. A one step the runner does not drive stops
+ * at a resumable "one-step required" state. A thread on our turn is never
+ * timed out, and past the case's expiry is lost. With every thread closed
+ * the case settles. A defender's win on one thread decides only the case:
+ * every other thread is still played to its own end (its resolution,
+ * timeout and close), and the run stops under its own state once no thread
+ * of ours has a move left. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -48,6 +50,12 @@ export const VALIDATION_TRACE_THREAD_AWAITING =
  * the case's expiry, the deadline the alarm names. */
 export const VALIDATION_TRACE_ONE_STEP_REQUIRED =
   "validation-trace-one-step-required";
+
+/** A move of ours on a thread does not build: a reveal, a timeout or a
+ * thread's close (a move of the one-step resolution alarms under
+ * one-step-required). The alarm names the move, the thread, the case and
+ * the deadline the move must land by. */
+export const VALIDATION_TRACE_MOVE_UNBUILT = "validation-trace-move-unbuilt";
 
 /** A thread went the defender's way; the challenger has no move on it. */
 export const VALIDATION_TRACE_THREAD_LOST = "validation-trace-thread-lost";
@@ -177,9 +185,11 @@ export const isThreadMaterial = (
  * The next action over the threads of our case at `caseOutRef`: `threads`
  * at the game, timeout and boundary, and `resolving` past the boundary.
  * Our reveals and entries into the one-step resolution come first, the
- * earliest deadline first, then timeouts, earliest first, then resolution
- * hops, then closes; otherwise the most
- * pressing wait. A thread ReadyForOneStep enters its resolution only on the
+ * earliest deadline first, then timeouts, earliest first; then the moves
+ * bounded only by the case's expiry, the shortest first: an awarded
+ * thread's close, a resolution hop, a timed-out thread's close. Otherwise
+ * the most pressing wait. A thread on our turn past the case's expiry is
+ * lost. A thread ReadyForOneStep enters its resolution only on the
  * step `plannings` (by the thread's out-ref) plans for it; with none, the
  * resolution is not installed. With every thread closed the case settles;
  * on a case a defender won, the run stops once no thread has a move left or
@@ -233,6 +243,10 @@ export const decideValidationTraceThreads = ({
       const planning = plannings.get(outRef);
       if (now > validationTraceChallengerDeadlineMs(thread))
         lost.push(`${label} ran out of the challenger's clock`);
+      else if (now > validationTraceCaseExpiryMs(caseDatum))
+        lost.push(
+          `${label} outlived its case's expiry at ${validationTraceCaseExpiryMs(caseDatum).toString()}`,
+        );
       else if (!isThreadMaterial(thread, material))
         held.push(`${label} commits a trace this workflow does not hold`);
       else if (turn !== "ReadyForOneStep") moves.reveal.push(found);
@@ -276,7 +290,9 @@ export const decideValidationTraceThreads = ({
   const [timeout] = [...moves.timeout].sort((a, b) => theirs(a) - theirs(b));
   if (timeout !== undefined)
     return { kind: "move", stage: "timeout", thread: timeout };
-  for (const stage of ["resolve", "close_thread", "close_awarded"] as const) {
+  // Then the moves bounded only by the case's expiry, the shortest first: an
+  // awarded thread closes in one move.
+  for (const stage of ["close_awarded", "resolve", "close_thread"] as const) {
     const [next] = moves[stage];
     if (next !== undefined) return { kind: "move", stage, thread: next };
   }
