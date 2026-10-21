@@ -4,7 +4,7 @@
  * later run meets something else, as one does after a top-up.
  */
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
 import {
@@ -37,12 +37,22 @@ describe("a fault-proof objective paused on prover funding", () => {
       });
       return test.execution.readiness();
     };
-    expect(await pend(SHORTFALL)).toEqual([
-      { reason: HOLD, detail: `${objective}: ${SHORTFALL}` },
-    ]);
-    expect(await pend(RESERVATION)).toEqual([
-      { reason: HOLD, detail: `${objective}: ${RESERVATION}` },
-    ]);
+    const logged: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((line) => logged.push(String(line)) > 0);
+    try {
+      expect(await pend(SHORTFALL)).toEqual([
+        { reason: HOLD, detail: `${objective}: ${SHORTFALL}` },
+      ]);
+      expect(await pend(RESERVATION)).toEqual([
+        { reason: HOLD, detail: `${objective}: ${RESERVATION}` },
+      ]);
+    } finally {
+      stderr.mockRestore();
+    }
+    // A pause a top-up resumes is no alarm on its own.
+    expect(logged).toEqual([]);
     expect(await pend(OTHER)).toEqual([]);
     expect(test.setAlert).not.toHaveBeenCalled();
   });
