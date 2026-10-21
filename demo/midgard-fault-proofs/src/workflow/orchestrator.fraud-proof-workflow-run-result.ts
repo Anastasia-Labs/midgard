@@ -81,6 +81,12 @@ export type FraudProofWorkflowNamedState = Readonly<{
   alarm: boolean;
 }>;
 
+/** An action of the run that did not build, and why: the operator's alarm. */
+export type FraudProofWorkflowAlarm = Readonly<{
+  actionId: string;
+  reason: string;
+}>;
+
 export type FraudProofWorkflowRunResult =
   | {
       readonly kind: "no_fault_detected" | "unprovable_gap";
@@ -124,6 +130,13 @@ export type FraudProofWorkflowRunResult =
        * the operator must act on.
        */
       readonly namedState?: FraudProofWorkflowNamedState;
+      /**
+       * The actions this run skipped because they did not build, each an
+       * alarm, in the order met; absent when none was. The run went on to
+       * the moves ranked after them, so the alarms stand even when one of
+       * those landed.
+       */
+      readonly alarms?: readonly FraudProofWorkflowAlarm[];
     };
 
 /**

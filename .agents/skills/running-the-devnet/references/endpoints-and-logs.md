@@ -783,7 +783,10 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   threads did not build, for a reason other than funding; the detail names
   the stage or thread and the deadline it must land by. Retried at each
   observation. An alarm, logged at error level; report it with the detail
-  before the deadline.
+  before the deadline. The run still makes our other moves; when one of
+  them lands, the objective is held under that move's state, its detail
+  lists every move that did not build after `; `, and it is logged at error
+  level all the same.
 - `validation-trace-move-fee-over-cap`: a wallet-paid move's fee would pass
   the funding permit's per-transaction fee ceiling, so it is never sent. An
   alarm, logged at error level; report it with the detail.

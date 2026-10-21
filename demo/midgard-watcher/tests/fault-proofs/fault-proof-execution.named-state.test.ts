@@ -90,6 +90,46 @@ describe("supervisor execution adapter with a family's named run state", () => {
     },
   );
 
+  it("raises every action a run skipped as unbuilt, even when the run went on to land another move under a state that is no alarm", async () => {
+    const test = await setupFaultProofExecution();
+    const logged: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((line) => logged.push(String(line)) > 0);
+    const entry =
+      "validation-trace-one-step-required: the enter_resolution move on thread a#1 of case c does not build, and must land by 1000: Transaction size exceeds the limit";
+    const close =
+      "validation-trace-move-unbuilt: the close_thread move on thread d#1 of case c does not build, and must land by 2000: Transaction size exceeds the limit";
+    const reason = "transaction for validation-trace-reveal:b#1 is pending";
+    const hold = {
+      reason: "validation-trace-thread-lost",
+      detail: `doubleSpend/${test.input.job.headerHash}: ${reason}; ${entry}; ${close}`,
+    };
+    try {
+      test.runOrResume.mockResolvedValueOnce({
+        kind: "pending",
+        resumeOnObservation: true,
+        reason,
+        namedState: { name: "validation-trace-thread-lost", alarm: false },
+        alarms: [
+          { actionId: "validation-trace-enter-resolution:a#1", reason: entry },
+          { actionId: "validation-trace-close-thread:d#1", reason: close },
+        ],
+      });
+      expect(await test.execution.execute(test.input)).toEqual({
+        kind: "pending",
+        resume: "await_observation",
+        reason,
+      });
+      expect(test.execution.readiness()).toEqual([hold]);
+      expect(logged).toEqual([
+        `${JSON.stringify({ packageName: "midgard-watcher", level: "error", ...hold })}\n`,
+      ]);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it("holds nothing for a pending run whose named state is malformed", async () => {
     const test = await setupFaultProofExecution();
     test.runOrResume.mockResolvedValueOnce({

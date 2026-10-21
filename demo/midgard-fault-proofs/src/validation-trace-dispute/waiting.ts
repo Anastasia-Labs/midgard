@@ -141,9 +141,16 @@ export const validationTraceRunState = (
 ): FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty => {
   const awaiting = awaitingValidationTraceCounterparty(result);
   if (awaiting !== result || result.kind !== "pending") return awaiting;
-  const namedState = NAMED_STATES.find(({ name }) =>
-    result.reason.startsWith(`${name}: `),
-  );
+  // The run's own reason first, then a move it skipped as unbuilt: a run
+  // that went on to land another move still stands on that alarm.
+  const namedState = [
+    result.reason,
+    ...(result.alarms ?? []).map(({ reason }) => reason),
+  ]
+    .map((reason) =>
+      NAMED_STATES.find(({ name }) => reason.startsWith(`${name}: `)),
+    )
+    .find((state) => state !== undefined);
   return namedState === undefined
     ? result
     : Object.freeze({ ...result, resumeOnObservation: true, namedState });

@@ -27,6 +27,7 @@ import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core"
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
+import { validationTraceActionId } from "./actions.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import type { ValidationTraceOneStepHolder } from "./one-step-holders.js";
 import type { ValidationTraceOneStepPlanning } from "./one-step-plan.js";
@@ -272,6 +273,7 @@ export const decideValidationTraceThreads = ({
   caseDatum,
   now,
   material,
+  skipped = new Set(),
 }: {
   readonly threads: readonly ValidationTraceThread[];
   readonly resolving?: readonly ValidationTraceResolvingThread[];
@@ -281,6 +283,8 @@ export const decideValidationTraceThreads = ({
   readonly caseDatum: SDK.Case;
   readonly now: number;
   readonly material: ValidationTraceClaimMaterial | undefined;
+  /** The action ids this run skipped because they did not build. */
+  readonly skipped?: ReadonlySet<string>;
 }): ValidationTraceThreadDecision => {
   const pending = (reason: string) => ({ kind: "pending" as const, reason });
   type Found = ValidationTraceThread | ValidationTraceResolvingThread;
@@ -355,6 +359,17 @@ export const decideValidationTraceThreads = ({
         `thread ${found.unit} at ${found.outRef} is in its one-step resolution without our trace`,
       );
     else moves.resolve.push(found);
+  // A move this run could not build gives way to the ones ranked after it,
+  // and while it stands the case is not settled.
+  let unbuilt = false;
+  for (const stage of Object.keys(moves) as ValidationTraceThreadMove[])
+    moves[stage] = moves[stage].filter((found) => {
+      const skip = skipped.has(
+        validationTraceActionId({ stage, consumes: found.outRef }),
+      );
+      unbuilt ||= skip;
+      return !skip;
+    });
   const by =
     (deadline: (thread: SDK.CaseThread) => number) => (found: Found) =>
       "thread" in found ? deadline(found.thread) : Number.POSITIVE_INFINITY;
@@ -405,5 +420,9 @@ export const decideValidationTraceThreads = ({
     return pending(
       `${VALIDATION_TRACE_CASE_CONTESTED}: case ${caseUnit} at ${caseOutRef} has no open thread and no valid claim; its close is not installed, so it waits`,
     );
-  return { kind: "settle" };
+  return unbuilt
+    ? pending(
+        `${VALIDATION_TRACE_MOVE_UNBUILT}: case ${caseUnit} at ${caseOutRef} has a move of ours that did not build, so it is not settled`,
+      )
+    : { kind: "settle" };
 };

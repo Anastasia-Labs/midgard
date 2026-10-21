@@ -74,14 +74,37 @@ const namedStateOf = (
     : undefined;
 };
 
+/** The reasons of the actions a run skipped as unbuilt, each an alarm. */
+const alarmsOf = (result: object): readonly string[] => {
+  const alarms: unknown = "alarms" in result ? result.alarms : undefined;
+  return Array.isArray(alarms)
+    ? alarms.flatMap((alarm: unknown) =>
+        typeof alarm === "object" &&
+        alarm !== null &&
+        "reason" in alarm &&
+        typeof alarm.reason === "string"
+          ? [alarm.reason]
+          : [],
+      )
+    : [];
+};
+
+const logError = (hold: Readonly<{ reason: string; detail: string }>) =>
+  process.stderr.write(
+    `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
+  );
+
 /**
  * Holds a pending objective under its name: one that needs a new submission
  * after its latest safe start, one paused because the prover wallet cannot
  * fund it, one in a state its family named, one whose session stalled, or
  * one still awaiting its counterparty past the response deadline (as of
  * `nowMs`) and its slack. The last two, and a named state its family marks
- * as an alarm, are also logged at error level. An objective awaiting its
- * counterparty before then is healthy and holds nothing.
+ * as an alarm, are also logged at error level. A named state's hold also
+ * names every action the run skipped as unbuilt, each an alarm, and is then
+ * logged at error level even when the run went on to land another move. An
+ * objective awaiting its counterparty before then is healthy and holds
+ * nothing.
  */
 export const holdWatcherFaultProofPending = (
   holds: Map<string, Readonly<{ reason: string; detail: string }>>,
@@ -98,15 +121,14 @@ export const holdWatcherFaultProofPending = (
   const objective = `${job.category}/${job.headerHash}`;
   const named = namedStateOf(result);
   if (named !== undefined) {
+    const alarms = alarmsOf(result);
+    const others = alarms.filter((alarm) => alarm !== String(result.reason));
     const hold = {
       reason: named.name,
-      detail: `${objective}: ${String(result.reason)}`,
+      detail: [`${objective}: ${String(result.reason)}`, ...others].join("; "),
     };
     holds.set(objective, hold);
-    if (named.alarm)
-      process.stderr.write(
-        `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
-      );
+    if (named.alarm || alarms.length > 0) logError(hold);
     return { kind: "pending", reason: String(result.reason) };
   }
   const overdue = counterpartyOverdue(result, nowMs);
@@ -123,9 +145,7 @@ export const holdWatcherFaultProofPending = (
           detail: `${objective}: ${overdue}`,
         };
   holds.set(objective, hold);
-  process.stderr.write(
-    `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
-  );
+  logError(hold);
   return { kind: "pending", reason: String(result.reason) };
 };
 

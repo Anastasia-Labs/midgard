@@ -18,8 +18,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { isValidationTraceMove, type ValidationTraceStage } from "./actions.js";
+import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
+import {
+  isValidationTraceMove,
+  type ParsedValidationTraceAction,
+  validationTraceActionId,
+} from "./actions.js";
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "./threads.js";
 import {
   challengedBlockUtxo,
@@ -58,10 +62,10 @@ const openWindowEndMs = async (
   }
 };
 
-class ValidationTraceStageUnbuiltError extends WorkflowActionChangedError {
+class ValidationTraceStageUnbuiltError extends WorkflowActionUnbuiltError {
   constructor(
     input: Readonly<{
-      stage: ValidationTraceStage;
+      action: ParsedValidationTraceAction;
       headerHash: string;
       deadline: string;
       deadlineMs: number | undefined;
@@ -75,7 +79,8 @@ class ValidationTraceStageUnbuiltError extends WorkflowActionChangedError {
     const cause =
       input.cause instanceof Error ? input.cause.message : String(input.cause);
     super(
-      `${VALIDATION_TRACE_MOVE_UNBUILT}: the ${input.stage} move of our case on block ${input.headerHash} does not build, and must land by ${by}: ${cause}`,
+      validationTraceActionId(input.action),
+      `${VALIDATION_TRACE_MOVE_UNBUILT}: the ${input.action.stage} move of our case on block ${input.headerHash} does not build, and must land by ${by}: ${cause}`,
     );
     this.name = "ValidationTraceStageUnbuiltError";
   }
@@ -86,21 +91,22 @@ class ValidationTraceStageUnbuiltError extends WorkflowActionChangedError {
  * that failed with `cause`: `found` is our case when the stage read it.
  */
 export const validationTraceStageUnbuilt = async ({
-  stage,
+  action,
   lucid,
   deployment,
   headerHash,
   found,
   cause,
 }: {
-  readonly stage: ValidationTraceStage;
+  readonly action: ParsedValidationTraceAction;
   readonly lucid: LucidEvolution;
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly headerHash: string;
   readonly found: Readonly<{ caseDatum: SDK.Case }> | undefined;
   readonly cause: unknown;
 }): Promise<ValidationTraceStageUnbuiltError> => {
-  const named = { stage, headerHash, cause };
+  const { stage } = action;
+  const named = { action, headerHash, cause };
   if (stage === "close")
     return new ValidationTraceStageUnbuiltError({
       ...named,

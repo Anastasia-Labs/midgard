@@ -209,6 +209,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             caseDatum: found.caseDatum,
             now: now(),
             material: materials.get(artifact.headerHash),
+            skipped: context.unbuiltActionIds,
           })
         : // Nobody has defended it: it closes once its deadline has passed.
           now() > validationTraceDefenseDeadlineMs(found.caseDatum)
@@ -331,7 +332,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       )
         throw cause;
       throw await validationTraceStageUnbuilt({
-        stage: action.stage,
+        action,
         lucid,
         deployment,
         headerHash: input.artifact.headerHash,
