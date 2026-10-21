@@ -216,6 +216,27 @@ describe("validation-trace replay union: a held re-execution keeps the findings 
     ]);
   });
 
+  it("waits on the hold, never a gap, when a later disagreement and a still later failure follow the held event", async () => {
+    const block = await blockOf(["failing", "failing", "failing"]);
+    const { union } = unionOf();
+    holdAt(block, 0);
+    disagreeAt(block, 1);
+    const held = await heldBy(union, block);
+    expect(held.holds).toStrictEqual([
+      expect.objectContaining({ txId: block.txs[0]!.txId }),
+    ]);
+    // The findings the pass did decide travel with the hold.
+    expect(
+      held.detections.map((detection) => [
+        detection.violationId,
+        txIdOf(detection),
+      ]),
+    ).toStrictEqual([
+      ["validation-trace-replay-disagreement", block.txs[1]!.txId],
+      ["validation-trace", block.txs[2]!.txId],
+    ]);
+  });
+
   it("waits on the hold when the replayer's own finding comes after the held event", async () => {
     const block = await blockOf(["failing", "failing"]);
     const { union } = unionOf();
