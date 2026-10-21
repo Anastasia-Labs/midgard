@@ -8,13 +8,15 @@
  * move's thread as released custody and each move's own outputs; and it
  * refuses: an entry or hop under terms that name no one-step holder, a hop
  * whose thread stands at a holder the terms do not name, a hop that pays
- * its successor to a holder the terms do not name, a hop whose thread names
- * another prover, and a move whose authority names another defender.
+ * its successor to a holder the terms do not name, an entry or hop that
+ * pays its successor to a holder the terms name for another move, a hop
+ * whose thread names another prover, and a move whose authority names
+ * another defender.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
+import { CML, Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { watcherValidationDisputeFundingTerms } from "midgard-watcher";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -27,8 +29,10 @@ import {
   disputeTerms,
   fundingPolicy,
   movesOf,
+  openWalk,
   refusalOf,
   regranted,
+  spentInputs,
   walk,
   type WalkJourney,
 } from "./support/validation-trace-dispute-funded-move-walk.js";
@@ -98,6 +102,31 @@ const changed = async (
     signed: await regranted(journey, edited, () => {}),
   };
 };
+
+/**
+ * Walks `move` under the one-step terms as the runtime bound does, with its
+ * successor (its first output) paid to `address` instead.
+ */
+const paidTo = (move: CapturedMove, address: string) =>
+  refusalOf(async () => {
+    const opened = await openWalk(journey, move, { policy: withOneStep() });
+    const inputs = spentInputs(move);
+    opened.admitOpener(inputs);
+    for (const [outRef, input] of inputs)
+      opened.admitContractInput(outRef, input);
+    for (const [index, raw] of bodyOutputs(move.signed).entries())
+      opened.output(
+        index === 0
+          ? CML.TransactionOutput.new(
+              CML.Address.from_bech32(address),
+              raw.amount(),
+              raw.datum() ?? null,
+              null,
+            )
+          : raw,
+      );
+    opened.assertComplete();
+  });
 
 describe("validation-trace dispute one-step moves walked under their authority", () => {
   beforeAll(async () => {
@@ -217,6 +246,27 @@ describe("validation-trace dispute one-step moves walked under their authority",
     expect(await refusalOf(() => walk(journey, hop, { policy }))).toBe(
       "validation dispute resolve must pay exactly successor: paid=",
     );
+  });
+
+  it("refuses an entry or a hop that pays its successor to a holder the terms name for another move", async () => {
+    const { gameAddress, timeoutAddress, awardAddress } =
+      disputeTerms(journey).moves!;
+    for (const address of [gameAddress, timeoutAddress, awardAddress])
+      expect(await paidTo(enter, address)).toBe(
+        "validation dispute enter_resolution must pay exactly successor: paid=",
+      );
+    for (const address of [
+      gameAddress,
+      timeoutAddress,
+      oneStep.boundaryAddress,
+    ])
+      expect(await paidTo(hops[1]!, address)).toBe(
+        "validation dispute resolve must pay exactly successor: paid=",
+      );
+    // Paid where it is due, each walks.
+    expect(
+      await paidTo(enter, bodyOutputs(enter.signed)[0]!.address().to_bech32()),
+    ).toBeNull();
   });
 
   it("refuses a hop whose thread names another prover", async () => {
