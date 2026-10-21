@@ -67,6 +67,8 @@ import {
  * before a CEK machine step. */
 export const COMPUTE_STEP_FROM = 116;
 export const MACHINE_STEP_FROM = 118;
+/** A last agreed state before a CEK script selection. */
+export const SELECTION_STEP_FROM = 93;
 
 export type TwoThreadCase = Readonly<{
   scene: Scene;
@@ -93,11 +95,14 @@ const outRef = (text: string) => ({
 });
 
 /** Opens our case and has both operators defend it, each on its own thread
- * on its defender's turn. */
+ * on its defender's turn; the successor's trace agrees with ours up to
+ * `successorFrom`. */
 export const defendTwoThreads = async ({
   withRemoval,
+  successorFrom = MACHINE_STEP_FROM,
 }: {
   readonly withRemoval: boolean;
+  readonly successorFrom?: number;
 }): Promise<TwoThreadCase> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = withRemoval ? recordCrossBlockRawEmulator() : undefined;
@@ -142,7 +147,7 @@ export const defendTwoThreads = async ({
     lucid: successor.lucid,
   };
   const traceA = scriptedTrace(material, COMPUTE_STEP_FROM);
-  const traceB = scriptedTrace(material, MACHINE_STEP_FROM);
+  const traceB = scriptedTrace(material, successorFrom);
   const lucid = scene.h.proverLucid;
   const [caseUtxo] = await lucid.utxosByOutRef([
     outRef(verified.outputs[0]!.outRef),
