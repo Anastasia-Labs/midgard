@@ -103,6 +103,8 @@ export const makeRunner = (
   scene: Scene,
   options: {
     readonly journal?: FraudProofWorkflowJournalStore;
+    /** By default the scene's deployment, without the one-step resolution. */
+    readonly deployment?: ValidationTraceDisputeDeployment;
     /** By default the emulator's own view of each signed transaction. */
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
     /** By default the scene's recorded case history. */
@@ -122,7 +124,7 @@ export const makeRunner = (
   const adapter = createValidationTraceDisputeWorkflowAdapter({
     lucid: h.proverLucid,
     signer: h.proverSigner,
-    deployment: runnerDeployment(scene),
+    deployment: options.deployment ?? runnerDeployment(scene),
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
     signedRecovery:
