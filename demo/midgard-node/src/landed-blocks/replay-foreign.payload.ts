@@ -11,11 +11,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
 import {
-  decodeStoredPayload,
   type ForeignDaBinding,
   type foreignDaFetchMemo,
   foreignRetainedDaInsert,
 } from "../da/foreign-retained-da.js";
+import { decodeStoredPayload } from "../da/stored-payload.js";
 import { DaPayloadsDB } from "../database/index.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";

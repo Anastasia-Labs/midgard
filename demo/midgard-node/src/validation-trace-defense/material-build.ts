@@ -17,7 +17,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { decodeStoredPayload } from "../da/foreign-retained-da.js";
+import { decodeStoredPayload } from "../da/stored-payload.js";
 
 /** One build: the landed block, its parent's ledger and the case. */
 export type DefenseMaterialJob = Readonly<{
