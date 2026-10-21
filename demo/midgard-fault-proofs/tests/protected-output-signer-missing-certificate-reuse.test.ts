@@ -14,6 +14,7 @@ import {
   submitProtectedOutputSignerMissingStep03,
   submitProtectedOutputSignerMissingStep04,
 } from "../src/protected-output-signer-missing/index.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
   compactHex,
@@ -64,6 +65,9 @@ describe("protectedOutputSignerMissing steps 02-04 under the workflow capture bo
       nativeTxCompactCbor: compactHex(nativeTx),
       witnessSetCompactCbor: witnessSetCompactHex(nativeTx),
       certificateReferenceScriptUtxo: s.certificateRef,
+      // The claims each turn's carriage is read back by, as a CLI run keeps
+      // them in memory.
+      ownOutputs: createOwnOutputJournal(),
     };
     const certificates = () =>
       fieldPreimageCertificateCount({

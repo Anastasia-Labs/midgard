@@ -15,6 +15,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import { resolveProverSigner } from "../../src/runtime.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   captureEmulatorSubmission,
   network,
@@ -101,8 +102,10 @@ const publishAsProverSigner = async ({
   readonly witnessSetCompactCbor: string;
   readonly walletAddressType: "Base" | "Enterprise";
 }): Promise<UTxO[]> => {
+  const ownOutputs = createOwnOutputJournal();
   const publication = await captureEmulatorSubmission(emulator, () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned: plan,
@@ -160,6 +163,7 @@ const publishAsProverSigner = async ({
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
     certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       network,
       signer,

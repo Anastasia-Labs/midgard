@@ -13,6 +13,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { readProverFundingSubmissionAuthority } from "./prover-funding-authority.reconciliation-only.js";
+import { resolveOwnThreadCustody } from "./prover-funding-authority.resolve-own-thread-custody.js";
 import {
   readRecord,
   snapshot,
@@ -51,6 +52,8 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly resolveInputs: (
     outRefs: readonly string[],
   ) => Promise<readonly UTxO[]>;
+  /** Proves this objective's thread custody when its lineage was lost. */
+  readonly computationThreadPolicyId?: string;
   readonly resolveProtocolInputAuthority: (input: {
     readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     readonly outRef: string;
@@ -114,8 +117,10 @@ export const createWatcherProverFundingAuthority = async (input: {
   // provisional completion before its terminal anchor.
   if (existing?.state !== "released" && !reconciliationOnly)
     await input.store.reserve(plan);
+
+  const reserved = { reservationId: plan.reservationId };
   const load = async () =>
-    await readRecord({ store: input.store, reservationId: plan.reservationId });
+    await readRecord({ store: input.store, ...reserved });
   input.onReserved?.(await load());
   const port: WorkflowFundingReservationPort = Object.freeze({
     assertSubmissionAuthority,
@@ -200,9 +205,24 @@ export const createWatcherProverFundingAuthority = async (input: {
       }
     },
     readSupersededAttemptFundingOutRefs: async () =>
-      (await input.store.readSupersededAttemptFundingOutRefs?.({
-        reservationId: plan.reservationId,
-      })) ?? [],
+      (await input.store.readSupersededAttemptFundingOutRefs?.(reserved)) ?? [],
+    readLandedSupersededAttempt: async (candidate: {
+      actionId: string;
+      signedTransactionCborHex: string;
+    }) =>
+      await input.store.readLandedSupersededAttempt({
+        ...candidate,
+        ...reserved,
+      }),
+    readRecordedSignedTransaction: async ({
+      transactionHash,
+    }: {
+      transactionHash: string;
+    }) =>
+      await input.store.readRecordedSignedTransaction({
+        ...reserved,
+        transactionHash,
+      }),
     retireLegacyAbandonment: async ({
       expectedRevision,
       transactionHash,
@@ -228,14 +248,12 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
+    readRecordedSubmissions: async () =>
+      (await input.store.readRecordedSubmissions?.(reserved)) ?? [],
     readLegacyAbandonedTransactions: async () =>
-      (await input.store.readLegacyAbandonedTransactions?.({
-        reservationId: plan.reservationId,
-      })) ?? [],
+      (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
     readAbandonmentHandoff: async () =>
-      await input.store.readAbandonmentHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readAbandonmentHandoff(reserved),
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
@@ -266,17 +284,11 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       }),
     readPendingHandoff: async () =>
-      await input.store.readPendingHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readPendingHandoff(reserved),
     readPendingTransition: async () =>
-      await input.store.readPendingTransition({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readPendingTransition(reserved),
     readCompletionHandoff: async () =>
-      await input.store.readCompletionHandoff({
-        reservationId: plan.reservationId,
-      }),
+      await input.store.readCompletionHandoff(reserved),
     load: async () =>
       snapshot({
         plan,
@@ -306,9 +318,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       if (
         current.state !== "active" ||
         current.pendingTransition !== null ||
-        (await input.store.readAbandonmentHandoff({
-          reservationId: plan.reservationId,
-        })) !== null
+        (await input.store.readAbandonmentHandoff(reserved)) !== null
       )
         throw new Error(
           "prover funding cannot refresh an unresolved reservation",
@@ -348,9 +358,9 @@ export const createWatcherProverFundingAuthority = async (input: {
           ),
           // A replacement spends a superseded attempt's input as funding.
           avoidCollateralOutRefs: (
-            (await input.store.readSupersededAttemptFundingOutRefs?.({
-              reservationId: plan.reservationId,
-            })) ?? []
+            (await input.store.readSupersededAttemptFundingOutRefs?.(
+              reserved,
+            )) ?? []
           ).flat(),
         });
         assertSubmission();
@@ -377,10 +387,18 @@ export const createWatcherProverFundingAuthority = async (input: {
     }: Parameters<
       WorkflowFundingReservationPort["resolveConfirmedInput"]
     >[0]) =>
-      await input.store.readConfirmedInput({
+      (await input.store.readConfirmedInput({
         reservationId: plan.reservationId,
         outRef,
-      }),
+      })) ??
+      (await resolveOwnThreadCustody({
+        outRef,
+        category: input.category,
+        headerHash: authority.headerHash,
+        fundingPaymentKeyHash: plan.fundingPaymentKeyHash,
+        computationThreadPolicyId: input.computationThreadPolicyId,
+        resolveInputs: input.resolveInputs,
+      })),
     resolveProtocolInputAuthority: async ({
       deploymentFingerprint,
       outRef,
@@ -457,9 +475,7 @@ export const createWatcherProverFundingAuthority = async (input: {
           );
         transitionDigest = current.pendingTransition.transitionDigest;
       } else {
-        const saved = await input.store.readAbandonmentHandoff({
-          reservationId: plan.reservationId,
-        });
+        const saved = await input.store.readAbandonmentHandoff(reserved);
         if (
           saved === null ||
           typeof saved !== "object" ||

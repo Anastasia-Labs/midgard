@@ -21,6 +21,7 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   actionInput,
   admitWorkflowArtifact,
@@ -33,6 +34,7 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -106,8 +108,10 @@ const captureRemoval = async (
 const resolveFieldCarriage = async (
   config: BoundConfig,
   admitted: Pick<AdmittedArtifact, "fieldPlan">,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: admitted.fieldPlan,
@@ -118,6 +122,7 @@ const resolveFieldCarriage = async (
     );
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned: admitted.fieldPlan,
@@ -162,7 +167,11 @@ export const createTransactionPort = (
     }
     return await prepareInvalidSignatureArtifact({ evidence, classification });
   },
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "invalidSignature",
+      entries,
+    });
     const admitted = await admitWorkflowArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -271,11 +280,12 @@ export const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const carriage = await resolveFieldCarriage(config, admitted);
+      const carriage = await resolveFieldCarriage(config, admitted, ownOutputs);
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInvalidSignatureStep02({
+              ownOutputs,
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,

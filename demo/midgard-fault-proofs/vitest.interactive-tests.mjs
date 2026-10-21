@@ -9,7 +9,9 @@
  */
 export const interactiveTests = [
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
+  "./tests/validation-trace-dispute-bisection.test.ts",
   "./tests/validation-trace-dispute-conviction.test.ts",
+  "./tests/validation-trace-dispute-timeout.test.ts",
 ];
 
 /**

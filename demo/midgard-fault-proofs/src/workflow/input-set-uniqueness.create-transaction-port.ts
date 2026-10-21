@@ -16,6 +16,7 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import { admitAnyInputSetUniquenessArtifact } from "./input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
 import {
   actionInput,
@@ -44,7 +45,11 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "inputSetUniqueness",
+      entries,
+    });
     const admitted = admitAnyInputSetUniquenessArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -137,12 +142,17 @@ export const createTransactionPort = (
           "input-set-uniqueness forced artifact cannot enter accepted step-02",
         );
       }
-      const spend = await resolveField(config, admitted.spendPlan);
-      const reference = await resolveField(config, admitted.referencePlan);
+      const spend = await resolveField(config, admitted.spendPlan, ownOutputs);
+      const reference = await resolveField(
+        config,
+        admitted.referencePlan,
+        ownOutputs,
+      );
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessStep02({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -177,12 +187,17 @@ export const createTransactionPort = (
           "input-set-uniqueness accepted artifact cannot enter forced step-03",
         );
       }
-      const spend = await resolveField(config, admitted.spendPlan);
-      const reference = await resolveField(config, admitted.referencePlan);
+      const spend = await resolveField(config, admitted.spendPlan, ownOutputs);
+      const reference = await resolveField(
+        config,
+        admitted.referencePlan,
+        ownOutputs,
+      );
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessStep03({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -256,11 +271,13 @@ export const createTransactionPort = (
       const opening = await resolveField(
         config,
         readingSpend ? admitted.spendPlan : admitted.referencePlan,
+        ownOutputs,
       );
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessStep04Advance({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

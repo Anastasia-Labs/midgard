@@ -10,6 +10,7 @@ import {
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type NetworkIdContracts,
@@ -38,7 +39,7 @@ export type SubmitNetworkIdForcedScanParams = {
   readonly scan: NetworkIdForcedScanPlan;
   /** Published `fraudProofNetworkIdForcedScan` reference script; mandatory. */
   readonly referenceScriptUtxo: UTxO;
-  /** Published tier-2/3 carriage; resolved from the publisher when omitted. */
+  /** Published tier-2/3 carriage; read through `ownOutputs` when omitted. */
   readonly carriageUtxos?: readonly UTxO[];
   /** Existing §8.6 certificate UTxO, required only for tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
@@ -46,6 +47,8 @@ export type SubmitNetworkIdForcedScanParams = {
   readonly network?: Network;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 };
 
 export type SubmitNetworkIdForcedScanResult = {

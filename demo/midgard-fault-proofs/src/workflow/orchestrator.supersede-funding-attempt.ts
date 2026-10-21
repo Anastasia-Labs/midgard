@@ -3,6 +3,7 @@ import {
   acknowledgeWorkflowFundingAbandonment,
   assertWorkflowFundingAbandonmentHandoffJournal,
   createWorkflowFundingAbandonmentHandoff,
+  readWorkflowFundingRecovery,
   type WorkflowFundingAbandonmentHandoff,
 } from "./funding-reservation-permit.js";
 import type {
@@ -60,4 +61,27 @@ export const supersedeWorkflowFundingAttempt = async ({
     await append(handoff.reconciliation);
   assertReconcile();
   await acknowledgeWorkflowFundingAbandonment({ journal, handoff });
+};
+
+/** Supersedes the pending attempt, if any, other than `kept`: reobserving
+ * `kept` displaces it, and it is superseded, never silently dropped. A
+ * dropped attempt would count as live coverage, so a replacement could skip
+ * its inputs and both could land, the second failing its script at
+ * inclusion. */
+export const supersedeDisplacedFundingAttempt = async ({
+  kept,
+  ...input
+}: Omit<
+  Parameters<typeof supersedeWorkflowFundingAttempt>[0],
+  "transactionHash" | "retirement" | "savedHandoff"
+> & { readonly kept: string }): Promise<void> => {
+  const displaced = await readWorkflowFundingRecovery(input.journal);
+  const pending = displaced.transition?.transactionHash;
+  if (pending !== undefined && pending !== kept)
+    await supersedeWorkflowFundingAttempt({
+      ...input,
+      transactionHash: pending,
+      retirement: undefined,
+      savedHandoff: displaced.abandonmentHandoff,
+    });
 };

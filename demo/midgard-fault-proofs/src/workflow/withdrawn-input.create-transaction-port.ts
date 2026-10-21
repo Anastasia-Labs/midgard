@@ -16,6 +16,7 @@ import {
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
@@ -52,7 +53,11 @@ const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "withdrawnInput",
+      entries,
+    });
     const admitted = await admitWithdrawnInputArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -120,11 +125,12 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const field = await resolveField(config, admitted.spendPlan);
+      const field = await resolveField(config, admitted.spendPlan, ownOutputs);
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnInputStep02({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

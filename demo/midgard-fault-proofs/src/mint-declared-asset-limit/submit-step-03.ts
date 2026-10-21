@@ -26,6 +26,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
@@ -72,6 +76,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   stepRole,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -93,6 +98,8 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   readonly stepRole: string;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -127,6 +134,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
     label: "mintDeclaredAssetLimit fold field 5",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -134,6 +142,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   if (carriageUtxos === undefined)
     throw new Error("mintDeclaredAssetLimit: field carriage disappeared");
   const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid,
     network: lucid.config().network!,
     planned,
@@ -253,6 +262,7 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -266,6 +276,8 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const nextSnapshot = staged.walk[walkOrdinal];
   if (nextSnapshot === undefined)
@@ -283,6 +295,7 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   const terminal =
     nextSnapshot.cursor.outcome !== MINT_DECLARED_OUTCOME_SCANNING;
   return await submitMintDeclaredAssetLimitStep03Raw({
+    ownOutputs,
     lucid,
     contracts,
     categoryId,

@@ -45,9 +45,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     test.useUnspentPendingInputs();
     const admitted = await test.createPermit(test.fresh, "2");
     const journal = test.bind(test.fresh, admitted);
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
     await test.run(journal);
     const idle = await test.records();
     test.readWalletUtxos.mockResolvedValueOnce([]);
@@ -124,9 +122,7 @@ describe("funding recovery across authenticated observation refresh", () => {
           assets: { lovelace: 2_000_000_000n },
         })),
       );
-      vi.mocked(test.adapter.reconcile).mockResolvedValue(
-        expiredNotFound(test.transactionHash),
-      );
+      test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
       await test.run(journal);
       const [idle] = await test.records();
       expect(idle).toMatchObject({
@@ -288,9 +284,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     async (acknowledgedBeforeReadOnly) => {
       const test = await setup();
       test.useUnspentPendingInputs();
-      vi.mocked(test.adapter.reconcile).mockResolvedValue(
-        expiredNotFound(test.transactionHash),
-      );
+      test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
       if (acknowledgedBeforeReadOnly) {
         await test.run(await test.recover());
         expect((await test.records())[0]!.activeInputs).toEqual([]);
@@ -336,9 +330,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("releases acknowledged idle inputs when the existing submission permit becomes reconciliation-only", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
     const admitted = await test.createPermit(test.fresh, "2");
     const journal = test.bind(test.fresh, admitted);
     await test.run(journal);
@@ -378,7 +370,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("keeps unresolved signed inputs leased when the existing submission permit becomes reconciliation-only", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({
+    test.chain.mockResolvedValue({
       kind: "unknown",
       reason: "canonical boundary unavailable",
     });
@@ -399,9 +391,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("yields an interrupted abandonment whose expiry is no longer authenticated during read-only recovery", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
     const journal = await test.recover();
     const append = journal.append.bind(journal);
     vi.spyOn(journal, "append").mockImplementation(async (entry, sequence) => {
@@ -415,7 +405,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     await expect(test.run(journal)).rejects.toThrow("crash before durable");
     const retained = await test.records();
     await test.restartStore();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({
+    test.chain.mockResolvedValue({
       kind: "pending",
       txHash: test.transactionHash,
     });
@@ -448,7 +438,7 @@ describe("funding recovery across authenticated observation refresh", () => {
   it("retains leases for an unknown signed attempt under reconciliation authority", async () => {
     const test = await setup();
     test.useUnspentPendingInputs();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({
+    test.chain.mockResolvedValue({
       kind: "unknown",
       reason: "canonical boundary unavailable",
     });
@@ -817,7 +807,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("retains unknown submissions and their original signed bytes without another action", async () => {
     const test = await setup();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({
+    test.chain.mockResolvedValue({
       kind: "pending",
       txHash: test.transactionHash,
     });
@@ -835,7 +825,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("quarantines rejected/conflicting lineage without releasing collateral or submitting", async () => {
     const test = await setup();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue({
+    test.chain.mockResolvedValue({
       kind: "conflict",
       reason: "canonical transaction consumes different inputs",
     });
@@ -904,9 +894,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("abandons a canonically absent expired intent without inventing confirmation or submission", async () => {
     const test = await setup();
-    vi.mocked(test.adapter.reconcile).mockResolvedValue(
-      expiredNotFound(test.transactionHash),
-    );
+    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
     expect(await test.run(await test.recover())).toMatchObject({
       kind: "pending",
       workflowId: test.initial.workflowId,

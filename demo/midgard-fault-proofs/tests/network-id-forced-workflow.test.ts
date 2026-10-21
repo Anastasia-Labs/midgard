@@ -649,7 +649,6 @@ describe("network-id forced (§5.2) production workflow", () => {
       harness: ReturnType<typeof forcedHarness>,
       overrides: {
         readonly signedTransactionCborHex?: string;
-        readonly retirementOnly?: boolean;
       } = {
         signedTransactionCborHex,
       },
@@ -687,7 +686,7 @@ describe("network-id forced (§5.2) production workflow", () => {
     await expect(reconcile(recovering)).resolves.toEqual({ kind: "not_found" });
     observe.mockResolvedValueOnce(observation("expired", true));
     await expect(
-      reconcile(recovering, { signedTransactionCborHex, retirementOnly: true }),
+      reconcile(recovering, { signedTransactionCborHex }),
     ).resolves.toMatchObject({
       kind: "not_found",
       retirement: { transactionHash, reason: "expired" },

@@ -7,7 +7,8 @@
  * derives it from the signed manifest's applied script hashes, which name
  * the fixture manifest's scripts, not the emulator's. The roster here is the
  * emulator deployment's, mapped to custody roles exactly as the factory maps
- * them.
+ * them. Each mint first passes the factory's recovery authorization over the
+ * watcher's journal root.
  */
 import { join } from "node:path";
 
@@ -27,6 +28,10 @@ import {
   openWatcherSqliteProverFundingReservationStore,
   type VerifiedWatcherDeploymentIdentity,
 } from "midgard-watcher";
+import {
+  authorizeWatcherProverFundingRecovery,
+  TEST_JOURNAL_KEY,
+} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 import { ledgerParameterQuery } from "midgard-watcher/tests/support/ledger-protocol-parameters";
 
 import type { WorkflowActuationPermit } from "../../src/workflow/actuation-permit.js";
@@ -125,9 +130,11 @@ export const openInstalledProverFunding = async ({
   protocolParameters,
   fundingPaymentKeyHash,
   walletAddress,
+  computationThreadPolicyId,
   scriptHashes,
   referenceUtxos,
   directory,
+  journalRoot,
   validationDispute,
 }: {
   readonly emulator: Emulator;
@@ -140,12 +147,20 @@ export const openInstalledProverFunding = async ({
   >;
   readonly fundingPaymentKeyHash: string;
   readonly walletAddress: string;
+  /** The deployed computation-thread policy (the watcher derives it from the blueprint). */
+  readonly computationThreadPolicyId: string;
   /** Deployed contract name to script hash, as the manifest lists them. */
   readonly scriptHashes: Readonly<Record<string, string>>;
   /** Every published reference UTxO a workflow transaction may read. */
   readonly referenceUtxos: readonly UTxO[];
   /** Durable home of the SQLite reservation store. */
   readonly directory: string;
+  /**
+   * The watcher's journal root: decisions and objective workflow journals.
+   * Null for a category the watcher does not install, which has no recovery
+   * authorization: its decisions are never journaled.
+   */
+  readonly journalRoot: string | null;
   /** A validation dispute's deployment-bound VerifySource custody terms. */
   readonly validationDispute?: Parameters<
     typeof createWorkflowRuntimeFundingPolicy
@@ -212,6 +227,16 @@ export const openInstalledProverFunding = async ({
     readonly actuationPermit: WorkflowActuationPermit;
     readonly decisionDigest: string;
   }) => {
+    if (journalRoot !== null)
+      await authorizeWatcherProverFundingRecovery({
+        journalRoot,
+        journalAuthenticationKey: TEST_JOURNAL_KEY,
+        deploymentIdentity: identity,
+        actuationPermit,
+        category,
+        rollbackGeneration: "0",
+        store: opened.store,
+      });
     const existing = (await opened.store.readAll()).some(
       (record) =>
         (record as { readonly decisionDigest?: unknown }).decisionDigest ===
@@ -233,6 +258,7 @@ export const openInstalledProverFunding = async ({
         store: opened.store,
         resolveInputs: async (outRefs) =>
           await emulator.getUtxosByOutRef(outRefs.map(outRefOf)),
+        computationThreadPolicyId,
         resolveProtocolInputAuthority: async ({
           deploymentIdentity,
           outRef,

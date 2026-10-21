@@ -31,6 +31,8 @@ import {
 import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher/tests/support/prover-funding-hold";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import { createValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import {
   bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
@@ -105,14 +107,19 @@ const scriptHashes = (scene: Scene): Readonly<Record<string, string>> => {
     validationTraceDisputeSource: chain.source.spendingScriptHash,
     validationTraceDisputeCase: chain.case.spendingScriptHash,
     validationTraceDisputeBond: chain.disputeBond.spendingScriptHash,
+    validationTraceDisputeGame: chain.game.spendingScriptHash,
+    validationTraceDisputeTimeout: chain.timeout.spendingScriptHash,
+    validationTraceDisputeAward: chain.award.spendingScriptHash,
+    // The hub's fraud-proof record, where a case close locks its record.
+    fraudProofSpend: h.contracts.fraudProof.spendingScriptHash,
     // A protocol-state contract, as every deployment's roster governs.
     stateQueueSpend: h.contracts.stateQueue.spendingScriptHash,
   };
 };
 
 /**
- * The fixture's signed deployment, its dispute bond and case contracts (and
- * their reference-script entries) the scene's.
+ * The fixture's signed deployment, its dispute bond, case, game, timeout
+ * and award contracts (and their reference-script entries) the scene's.
  */
 const signedDeployment = (scene: Scene) => {
   const { chain } = scene;
@@ -147,14 +154,29 @@ const signedDeployment = (scene: Scene) => {
     chain.case.mintingScript,
     chain.case.policyId,
   );
+  for (const [name, script] of [
+    ["validationTraceDisputeGame", chain.game],
+    ["validationTraceDisputeTimeout", chain.timeout],
+    ["validationTraceDisputeAward", chain.award],
+  ] as const)
+    deployed(name, script.spendingScript, script.spendingScriptHash);
+  deployed(
+    "validationTraceDisputeAwardMint",
+    chain.award.mintingScript,
+    chain.award.policyId,
+  );
   return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
 };
 
 /**
  * Classifies the failing block's header, then returns one watcher turn for
- * its objective over the durable state in a fresh directory.
+ * its objective over the durable state in a fresh directory. By default the
+ * runner observes no convicted block's removal.
  */
-export const openFundedDispute = async (scene: Scene) => {
+export const openFundedDispute = async (
+  scene: Scene,
+  options: { readonly removal?: ValidationTraceRemovalConfig } = {},
+) => {
   const { h } = scene;
   const block = scene.failing;
   const headerHash = block.evidence.headerHash;
@@ -170,6 +192,10 @@ export const openFundedDispute = async (scene: Scene) => {
     watcherDeploymentReleaseFinalityAuthority(identity);
   const releaseFinality = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint: fingerprint,
+  });
+  const caseHistory = createValidationTraceCaseHistory({
+    authority: scene.l1.authority,
+    releaseFinality,
   });
   const economics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
@@ -246,7 +272,10 @@ export const openFundedDispute = async (scene: Scene) => {
       walletAddress: h.proverSigner.address,
       scriptHashes: scriptHashes(scene),
       referenceUtxos: referenceUtxos(scene),
+      computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
+      // The watcher does not install the dispute until its defender exists.
+      journalRoot: null,
       validationDispute,
     });
   let funding = await boot();
@@ -293,8 +322,9 @@ export const openFundedDispute = async (scene: Scene) => {
       signer,
       deployment,
       l1SlotConfig,
-      removal: unobservedRemoval,
+      removal: options.removal ?? unobservedRemoval,
       signedRecovery,
+      caseHistory,
       now: () => h.emulator.now(),
     });
     const result = await runFraudProofWorkflow({
@@ -307,7 +337,11 @@ export const openFundedDispute = async (scene: Scene) => {
         launchScope: [CATEGORY],
       }),
       journal,
-      terminalVerifier,
+      // Superseded attempts are read where the emulator holds them.
+      terminalVerifier: {
+        ...terminalVerifier,
+        observeSignedTransaction: emulatorRecovery.observeSignedTransaction,
+      },
       releaseFinalityAuthority,
       now: () => new Date(h.emulator.now()),
     });
@@ -318,6 +352,8 @@ export const openFundedDispute = async (scene: Scene) => {
   return {
     decision,
     deployment,
+    /** The case token's authenticated L1 history the watcher reads. */
+    caseHistory,
     rebroadcasts,
     turn,
     /** Stops the watcher process and starts another over its durable state. */

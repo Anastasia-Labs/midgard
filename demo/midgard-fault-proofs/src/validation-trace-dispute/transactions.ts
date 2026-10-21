@@ -66,7 +66,14 @@ export type ValidationTraceDisputeDeployment = Readonly<{
   stateQueue: Readonly<{ policyId: string; spendingScriptAddress: string }>;
   chain: Pick<
     DisputeChain,
-    "opener" | "source" | "case" | "disputeBond" | "caseConfig"
+    | "opener"
+    | "source"
+    | "case"
+    | "disputeBond"
+    | "caseConfig"
+    | "game"
+    | "timeout"
+    | "award"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */
   fraudProof: Readonly<{
@@ -74,8 +81,19 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     mintingScript: Script;
     spendingScriptAddress: string;
   }>;
-  /** The published reference scripts of the opener, source, case and bond. */
-  references: Readonly<{ opener: UTxO; source: UTxO; case: UTxO; bond: UTxO }>;
+  /**
+   * The published reference scripts of the opener, source, case and bond,
+   * and of the game, timeout and award the thread moves run.
+   */
+  references: Readonly<{
+    opener: UTxO;
+    source: UTxO;
+    case: UTxO;
+    bond: UTxO;
+    game: UTxO;
+    timeout: UTxO;
+    award: UTxO;
+  }>;
   /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;
 }>;

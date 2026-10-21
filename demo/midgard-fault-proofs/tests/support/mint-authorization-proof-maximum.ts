@@ -28,6 +28,7 @@ import { publishProofChunks } from "../../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { submitResolvedInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../../src/workflow/raw-datum-preimage.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
@@ -55,6 +56,7 @@ export const runMintAuthorizationProofMaximum = async (
     "mintItemCbors" | "targetPolicyIndex"
   >,
 ): Promise<void> => {
+  const ownOutputs = createOwnOutputJournal();
   const h = await makeMintAuthorizationEmulatorHarness();
   const capture = async <T>(
     stage: string,
@@ -258,6 +260,7 @@ export const runMintAuthorizationProofMaximum = async (
   });
   const field = await capture("field-publications", () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: h.proverLucid,
       signer: h.proverSigner,
       planned,
@@ -267,6 +270,7 @@ export const runMintAuthorizationProofMaximum = async (
   );
   const certified = await capture("field-certificate", () =>
     certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid: h.proverLucid,
       network,
       signer: h.proverSigner,
@@ -323,6 +327,7 @@ export const runMintAuthorizationProofMaximum = async (
   });
   const two = await capture("step_02", () =>
     submitMintAuthorizationStep02({
+      ownOutputs,
       ...common,
       threadOutRef: one.nextThreadOutRef,
       reconstruction: block.reconstruction,

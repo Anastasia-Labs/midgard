@@ -31,6 +31,10 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   nextTransitionTracePhase,
   type TransitionTraceField,
   transitionTraceOutputStepIsWhole,
@@ -68,6 +72,7 @@ export const prepareTransitionFieldCarriage = async ({
   certificateMintingScript,
   certificateReferenceScript,
   publish,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -78,6 +83,8 @@ export const prepareTransitionFieldCarriage = async ({
   readonly certificateMintingScript: Script;
   readonly certificateReferenceScript: () => Promise<UTxO>;
   readonly publish: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<TransitionFieldCarriage> => {
   const proof = readTransitionProof(proofInput);
   const replay = transitionL2Replay(proofInput);
@@ -111,6 +118,7 @@ export const prepareTransitionFieldCarriage = async ({
   });
   const chunks = publish
     ? await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,
@@ -118,6 +126,7 @@ export const prepareTransitionFieldCarriage = async ({
         label,
       })
     : await resolveFaultProofFieldCarriagePublications({
+        ownOutputs,
         lucid,
         publisherAddress: signer.address,
         planned,
@@ -127,6 +136,7 @@ export const prepareTransitionFieldCarriage = async ({
   signer.selectWallet(lucid);
   if (planned.plan.tier !== "Certified") return { planned, references: chunks };
   let certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid,
     network,
     planned,
@@ -139,6 +149,7 @@ export const prepareTransitionFieldCarriage = async ({
         lucid,
         network,
         signer,
+        ownOutputs,
         planned,
         certificatePolicyId,
         certificateMintingScript,
@@ -196,6 +207,7 @@ export const prepareTransitionFieldStep = async ({
   publish,
   fieldCertificateReferenceScript,
   baseReferences,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -210,6 +222,8 @@ export const prepareTransitionFieldStep = async ({
   readonly fieldCertificateReferenceScript?: UTxO;
   /** The reference inputs the step reads besides its carriage and verifiers. */
   readonly baseReferences: readonly UTxO[];
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<TransitionFieldStep> => {
   const field = transitionTracePhaseField(state);
   const certificatePolicyId = contracts.fieldPreimageCertificate.policyId;
@@ -233,6 +247,7 @@ export const prepareTransitionFieldStep = async ({
               name: "fieldPreimageCertificateMint",
             })),
           publish,
+          ownOutputs,
         });
   const verifiers: readonly TransitionOutputVerifier[] =
     transitionTraceOutputStepIsWhole(state, outputCbors)

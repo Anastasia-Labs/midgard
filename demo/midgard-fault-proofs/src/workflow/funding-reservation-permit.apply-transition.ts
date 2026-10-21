@@ -258,6 +258,24 @@ export const acknowledgeWorkflowFundingAbandonment = async (input: {
   state.pendingTransactionHash = undefined;
 };
 
+/** Acknowledges an abandonment whose workflow journal was lost. The recreated
+ * journal re-records its exact intent and stored outcome right after. */
+export const acknowledgeLostWorkflowFundingAbandonment = async (input: {
+  readonly journal: object;
+  readonly handoff: WorkflowFundingAbandonmentHandoff;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined) return;
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.acknowledgeAbandonment({
+      expectedRevision: state.snapshot.revision,
+      handoff: parseWorkflowFundingAbandonmentHandoff(input.handoff),
+    }),
+  );
+  state.pendingTransactionHash = undefined;
+};
+
 export const conflictWorkflowFundingReservationTransaction = async (input: {
   readonly journal: object;
   readonly transactionHash: string;

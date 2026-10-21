@@ -24,12 +24,14 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -100,8 +102,10 @@ const stringField = (
 const resolveField = async (
   config: BoundConfig,
   plan: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: plan,
@@ -110,6 +114,7 @@ const resolveField = async (
     throw new Error("withdrawn-reference-input publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned: plan,
@@ -183,7 +188,11 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "withdrawnReferenceInput",
+      entries,
+    });
     const admitted = await admitWithdrawnReferenceInputArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -244,11 +253,16 @@ export const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const field = await resolveField(config, admitted.referencePlan);
+      const field = await resolveField(
+        config,
+        admitted.referencePlan,
+        ownOutputs,
+      );
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnReferenceInputStep02({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,

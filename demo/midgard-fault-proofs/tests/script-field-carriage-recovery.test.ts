@@ -79,7 +79,6 @@ const fixture = (certificate: boolean) => {
       observeExact: observeExact as never,
     },
     requirementForAction,
-    transactionConfirmed: async () => false,
   });
   const durableRecovery = {
     fieldCarriage: {

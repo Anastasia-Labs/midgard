@@ -30,6 +30,7 @@ import {
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   applyZeroInputScripts,
   type ZeroInputContracts,
@@ -224,6 +225,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
   }, 600_000);
 
   it("runs Init, both cancel boundaries, out-ref restart, forced contradiction, and permanent mint", async () => {
+    const ownOutputs = createOwnOutputJournal();
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realZeroInput: true,
@@ -356,6 +358,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       label: "zero input forced field",
     });
     await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -451,6 +454,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const resumedStep02OutRef = await bind(await initialize());
     const final = await captureEmulatorSubmission(harness.emulator, () =>
       submitZeroInputStep02V1({
+        ownOutputs,
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -66,9 +66,12 @@ const decoyWitness = (index: number): SDK.MidgardAddressWitness => {
 export const buildMissingSignatureSubject = ({
   honest = false,
   decoyWitnessCount = 0,
+  fee = 0n,
 }: {
   readonly honest?: boolean;
   readonly decoyWitnessCount?: number;
+  /** A distinct fee gives a distinct transaction with the same fields. */
+  readonly fee?: bigint;
 } = {}): {
   readonly nativeTx: MidgardNativeTxFull;
   readonly requiredSignerHashes: readonly string[];
@@ -102,7 +105,7 @@ export const buildMissingSignatureSubject = ({
       mintPreimageCbor: EMPTY_CBOR_LIST,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
-      fee: 0n,
+      fee,
       validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
       validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
       networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -198,12 +201,15 @@ export const setupMissingSignatureScenario = async ({
   harness,
   honest = false,
   decoyWitnessCount = 0,
+  additionalTransactions = [],
 }: {
   readonly harness: Awaited<
     ReturnType<typeof makeMissingSignatureEmulatorHarness>
   >;
   readonly honest?: boolean;
   readonly decoyWitnessCount?: number;
+  /** Other transactions the block commits beside the subject. */
+  readonly additionalTransactions?: readonly MidgardNativeTxFull[];
 }): Promise<MissingSignatureScenario> => {
   const subject = buildMissingSignatureSubject({
     honest,
@@ -221,6 +227,7 @@ export const setupMissingSignatureScenario = async ({
     startTime,
     priorLedgerRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     subject: { kind: "normal", nativeTx: subject.nativeTx },
+    additionalTransactions,
   });
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,

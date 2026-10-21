@@ -18,6 +18,7 @@ import type { PreparedInputExistence } from "../../src/input-existence/prepare.j
 import { prepareInputExistence } from "../../src/input-existence/prepare.js";
 import type { submitInputExistenceStep } from "../../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../../src/ledger-at.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { inputExistenceChronologyFixture } from "../helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "../helpers/input-existence-chronology-seed.js";
@@ -203,6 +204,7 @@ export const publishInputExistenceSelectionCarriage = async (
   prepared: PreparedInputExistence,
   usePublishedFieldCarriage = false,
 ) => {
+  const ownOutputs = createOwnOutputJournal();
   const selected = usePublishedFieldCarriage
     ? inputExistenceWithPublishedFields(
         prepared,
@@ -212,6 +214,7 @@ export const publishInputExistenceSelectionCarriage = async (
   const fieldCarriageUtxos: UTxO[] = [];
   for (const planned of inputExistenceFieldPlans(selected)) {
     const chunks = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -227,6 +230,7 @@ export const publishInputExistenceSelectionCarriage = async (
         label: "retained input-existence certificate",
       });
       const certificate = await certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

@@ -8,9 +8,9 @@
  * application's own transactions spend and reference only the application's
  * own outputs and cost what they cost with nothing planted.
  *
- * Rows so far: script-decode staging and script-decode run, and the
- * validation-trace dispute's pending claim, case and bond. The other
- * carriage roles join this table as their sites move onto `own-outputs`.
+ * Rows here: script-decode staging and run, and the validation-trace
+ * dispute's pending claim, case and bond; field publication and certificate
+ * rows are in `own-field-carriage-installed.ts`. Other roles join later.
  */
 import { startScriptDecodeWalk } from "@al-ft/midgard-validation";
 import {
@@ -101,6 +101,8 @@ export type LedgerTransaction = Readonly<{
   withdraws: boolean;
   /** True when another party placed it, not the application. */
   planted: boolean;
+  /** The signed transaction as submitted. */
+  cbor: string;
 }>;
 
 const outRefList = (
@@ -130,6 +132,7 @@ const decode = (cbor: string, planted: boolean): LedgerTransaction => {
     outputs,
     withdraws: withdrawals !== undefined && withdrawals.len() > 0,
     planted,
+    cbor,
   });
 };
 

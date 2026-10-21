@@ -3,6 +3,7 @@ import {
   type DeploymentManifestCardanoProtocolParameters,
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   type FraudProofCatalogueCategoryName,
   VALIDATION_CASE_FLOOR_LOVELACE,
@@ -64,7 +65,15 @@ export const workflowRuntimeFundingMinimumFee = ({
   steps,
   referenceScriptBytes,
 }: {
-  parameters: DeploymentManifestCardanoProtocolParameters;
+  parameters: Pick<
+    DeploymentManifestCardanoProtocolParameters,
+    "minFeeA" | "minFeeB" | "priceMemory" | "priceSteps"
+  > & {
+    referenceScriptFee: Pick<
+      DeploymentManifestCardanoProtocolParameters["referenceScriptFee"],
+      "base" | "range" | "multiplier"
+    >;
+  };
   transactionBytes: bigint;
   memory: bigint;
   steps: bigint;
@@ -111,6 +120,17 @@ export type WorkflowRuntimeValidationDisputeTerms = Readonly<{
   caseAddress: string;
   /** The case minting policy, which mints the case NFT and the bond marker. */
   casePolicyId: string;
+  /**
+   * The thread moves' contracts, present when the runner plays threads: the
+   * game, timeout and award spending addresses and the receipt policy. The
+   * per-move fee cap and the receipt's lovelace are the compiled profile's.
+   */
+  moves?: Readonly<{
+    gameAddress: string;
+    timeoutAddress: string;
+    awardAddress: string;
+    awardPolicyId: string;
+  }>;
 }>;
 
 type ValidationDisputeTermsValue = Readonly<{
@@ -119,6 +139,14 @@ type ValidationDisputeTermsValue = Readonly<{
   bondAddress: string;
   caseAddress: string;
   casePolicyId: string;
+  moves?: Readonly<{
+    gameAddress: string;
+    timeoutAddress: string;
+    awardAddress: string;
+    awardPolicyId: string;
+    moveFeeCapLovelace: string;
+    fraudProofOutputLovelace: string;
+  }>;
 }>;
 
 type PolicyValue = Readonly<{
@@ -178,16 +206,40 @@ const validationDisputeTerms = ({
   };
   custody(terms.bondAddress, "bond");
   custody(terms.caseAddress, "case");
-  if (terms.bondAddress === terms.caseAddress)
+  const moves = terms.moves;
+  const addresses = [terms.bondAddress, terms.caseAddress];
+  if (moves !== undefined) {
+    custody(moves.gameAddress, "game");
+    custody(moves.timeoutAddress, "timeout");
+    custody(moves.awardAddress, "award");
+    if (!/^[0-9a-f]{56}$/u.test(moves.awardPolicyId))
+      throw new Error("runtime funding validation award policy is malformed");
+    addresses.push(moves.gameAddress, moves.timeoutAddress, moves.awardAddress);
+  }
+  if (new Set(addresses).size !== addresses.length)
     throw new Error(
-      "runtime funding validation dispute bond and case addresses coincide",
+      "runtime funding validation dispute contract addresses coincide",
     );
+  const { limits } = SELECTED_DEPLOYMENT_PROFILE;
   return Object.freeze({
     bondLovelace: terms.bondLovelace.toString(),
     caseFloorLovelace: VALIDATION_CASE_FLOOR_LOVELACE.toString(),
     bondAddress: terms.bondAddress,
     caseAddress: terms.caseAddress,
     casePolicyId: terms.casePolicyId,
+    ...(moves === undefined
+      ? {}
+      : {
+          moves: Object.freeze({
+            gameAddress: moves.gameAddress,
+            timeoutAddress: moves.timeoutAddress,
+            awardAddress: moves.awardAddress,
+            awardPolicyId: moves.awardPolicyId,
+            moveFeeCapLovelace: limits.max_dispute_move_fee_lovelace.toString(),
+            fraudProofOutputLovelace:
+              limits.fraud_proof_output_lovelace.toString(),
+          }),
+        }),
   });
 };
 

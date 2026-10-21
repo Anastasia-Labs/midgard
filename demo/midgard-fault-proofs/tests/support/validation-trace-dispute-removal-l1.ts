@@ -25,6 +25,7 @@ import {
 } from "../../src/workflow/raw-l1-snapshot.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { fixtureLeaseCoordinator } from "./script-decode-installed-host.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
@@ -61,6 +62,7 @@ export const recordedRemoval = async (
     lucid: h.proverLucid,
     contracts: h.contracts,
   });
+  const signed = emulatorSignedTransactionRecovery(h.emulator);
   let held: { snapshot?: Snapshot } | undefined;
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
@@ -140,7 +142,10 @@ export const recordedRemoval = async (
     },
     l1For,
     terminalVerifier: (headerHash) =>
-      createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1For(headerHash)),
+      createFraudProofFamilyAuthenticatedL1TerminalVerifier({
+        ...l1For(headerHash),
+        observeSignedTransaction: signed.observeSignedTransaction,
+      }),
     holdView: () => {
       held = {};
     },

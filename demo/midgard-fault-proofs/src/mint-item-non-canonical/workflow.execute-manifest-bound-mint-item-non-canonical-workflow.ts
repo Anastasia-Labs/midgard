@@ -21,7 +21,10 @@ import {
   WorkflowFundingReservationUnavailableError,
 } from "../workflow/funding-reservation-permit.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import type {
+  FraudProofL1Source,
+  FraudProofSignedTransactionRecovery,
+} from "../workflow/l1-source.js";
 import {
   createMintItemNonCanonicalCentralJournalAdapter,
   MintItemWorkflowRecoveryPendingError,
@@ -112,7 +115,8 @@ export type ManifestBoundMintItemNonCanonicalWorkflow = Readonly<{
   workflowVersion: typeof MINT_ITEM_NON_CANONICAL_WORKFLOW;
   config: ManifestBoundMintItemNonCanonicalConfig;
   binding: FraudProofWorkflowDeploymentBinding<"mintItemNonCanonical">;
-  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
+  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName> &
+    FraudProofSignedTransactionRecovery;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;

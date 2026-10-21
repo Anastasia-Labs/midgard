@@ -227,19 +227,24 @@ export const publishedContentDigest = (
       : fieldPreimagePublicationBytes(datumCbor),
   ).toString("hex");
 
-export const publicationReplacementOutRef = (
+/**
+ * The out-ref a publication or certificate action replaces: its predecessor's
+ * output, gone while the transaction that created it stays on chain. Absent
+ * on a first publication or certification, so their identities never change.
+ */
+export const carriageReplacementOutRef = (
   action: FraudProofWorkflowAction,
 ): string | undefined => {
   const value = action.input.replacementOutRef;
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !OUT_REF.test(value))
     throw new Error(
-      "field publication replacement changed its exact previous output",
+      "field carriage replacement changed its exact previous output",
     );
   return value;
 };
 
-export const publicationReplacementSuffix = (
+export const carriageReplacementSuffix = (
   outRef: string | undefined,
 ): string => (outRef === undefined ? "" : `:replace:${outRef}`);
 
@@ -259,7 +264,7 @@ export const publicationAction = <
   readonly replacementOutRef?: string;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}${publicationReplacementSuffix(replacementOutRef)}`,
+    actionId: `publish-${"kind" in requirement ? (requirement.kind === "bound_data_publication" ? "bound-data" : "raw-datum-preimage") : "field-carriage"}:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}${carriageReplacementSuffix(replacementOutRef)}`,
     input: Object.freeze({
       schemaVersion:
         "kind" in requirement
@@ -291,19 +296,22 @@ export const certificateAction = <
   category,
   baseAction,
   requirement,
+  replacementOutRef,
 }: {
   readonly category: Category;
   readonly baseAction: FraudProofWorkflowAction;
   readonly requirement: Requirement;
+  readonly replacementOutRef?: string;
 }): FraudProofWorkflowAction =>
   Object.freeze({
-    actionId: `certify-field-carriage:${baseAction.actionId}:${requirement.identitySha256}`,
+    actionId: `certify-field-carriage:${baseAction.actionId}:${requirement.identitySha256}${carriageReplacementSuffix(replacementOutRef)}`,
     input: Object.freeze({
       schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "certify_field_carriage",
       forAction: frozenBaseAction(baseAction),
       requirementSha256: requirement.identitySha256,
+      ...(replacementOutRef === undefined ? {} : { replacementOutRef }),
       certificateDatumCborSha256: sha256(requirement.certificateDatumCbor!),
       certificateUnit: requirement.certificateUnit!,
     }),
@@ -363,6 +371,9 @@ export const carriageActionInputKeys = (
         "stage",
         "forAction",
         "requirementSha256",
+        ...(action.input.replacementOutRef === undefined
+          ? []
+          : ["replacementOutRef"]),
         "certificateDatumCborSha256",
         "certificateUnit",
       ];

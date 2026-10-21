@@ -49,9 +49,10 @@ import {
 } from "./prover-funding-reservation.js";
 
 /**
- * A validation-trace dispute policy's VerifySource custody terms, from the
- * signed deployment: the manifest's dispute bond (the case validator's
- * applied bond) and the dispute contracts it pays. Any other category's
+ * A validation-trace dispute policy's custody terms, from the signed
+ * deployment: the manifest's dispute bond (the case validator's applied
+ * bond), the dispute contracts VerifySource pays, and those the thread
+ * moves spend and pay. Any other category's
  * policy carries none.
  */
 export const watcherValidationDisputeFundingTerms = (
@@ -82,6 +83,12 @@ export const watcherValidationDisputeFundingTerms = (
       bondAddress: address("validationTraceDisputeBond"),
       caseAddress: address("validationTraceDisputeCase"),
       casePolicyId: hash("validationTraceDisputeCaseMint"),
+      moves: {
+        gameAddress: address("validationTraceDisputeGame"),
+        timeoutAddress: address("validationTraceDisputeTimeout"),
+        awardAddress: address("validationTraceDisputeAward"),
+        awardPolicyId: hash("validationTraceDisputeAwardMint"),
+      },
     },
   };
 };
@@ -101,6 +108,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
   /** The follower's facts that alone reclaim a reservation whose decision is missing. */
   readonly fundingInputFacts?: WatcherFundingInputFacts;
+  /** This deployment's computation-thread policy, which proves own thread custody. */
+  readonly computationThreadPolicyId?: string;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -427,6 +436,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         readWalletUtxos: request.readWalletUtxos,
         store: input.store,
         resolveInputs: request.resolveInputs,
+        computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
       });
       return authority.permit;

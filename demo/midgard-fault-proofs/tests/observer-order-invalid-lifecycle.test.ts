@@ -198,7 +198,11 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       nextAddress: string,
     ) =>
       captureEmulatorSubmission(h.harness.emulator, async () => {
-        const captured = await proofActuator.capture({ action, artifact });
+        const captured = await proofActuator.capture({
+          action,
+          artifact,
+          ownOutputs: h.ownOutputs,
+        });
         const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await h.harness.proverLucid.awaitTx(txHash);
@@ -476,6 +480,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       h.harness.emulator,
       async () => {
         const captured = await removalActuator.capture({
+          ownOutputs: h.ownOutputs,
           action: {
             stage: "remove",
             stateQueueBlockOutRef: setup.fraudulentBlockOutRef,

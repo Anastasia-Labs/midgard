@@ -1,6 +1,7 @@
 /** Drives the validation-trace dispute workflow on the Open scene through the
  * shared orchestrator, one emulator block per run. */
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
+import type { ValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
 import {
@@ -20,8 +21,10 @@ import {
   releaseFinalityAuthority,
   terminalVerifier,
 } from "../workflow.make-adapter.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { network } from "./submit-init-emulator-shared.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
+import { sceneCaseHistory } from "./validation-trace-dispute-case-history.js";
 import {
   type Block,
   BOND_LOVELACE,
@@ -100,7 +103,10 @@ export const makeRunner = (
   scene: Scene,
   options: {
     readonly journal?: FraudProofWorkflowJournalStore;
+    /** By default the emulator's own view of each signed transaction. */
     readonly signedRecovery?: FraudProofSignedTransactionRecovery;
+    /** By default the scene's recorded case history. */
+    readonly caseHistory?: ValidationTraceCaseHistory;
     /** The convicted block's removal; by default none is observed. */
     readonly removal?: ValidationTraceRemovalConfig;
     /** Verifies the completed removal; by default the candidate is kept. */
@@ -119,9 +125,9 @@ export const makeRunner = (
     deployment: runnerDeployment(scene),
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
-    ...(options.signedRecovery === undefined
-      ? {}
-      : { signedRecovery: options.signedRecovery }),
+    signedRecovery:
+      options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator),
+    caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
     now: () => h.emulator.now(),
   });
   const registry = createFraudProofWorkflowRegistry({

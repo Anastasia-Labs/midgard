@@ -31,6 +31,10 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
@@ -75,6 +79,7 @@ export const submitWithdrawnInputStep02 = async ({
   publishMissingCarriage = true,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnInputContracts;
@@ -92,6 +97,8 @@ export const submitWithdrawnInputStep02 = async ({
   readonly publishMissingCarriage?: boolean;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitWithdrawnInputStep02Result> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
@@ -134,6 +141,7 @@ export const submitWithdrawnInputStep02 = async ({
       ? []
       : publishMissingCarriage
         ? await publishFaultProofFieldCarriage({
+            ownOutputs,
             lucid,
             signer,
             planned,

@@ -15,6 +15,7 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import type { MinAdaContracts } from "./contracts.js";
 import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-artifact.js";
 
@@ -76,12 +77,16 @@ export const txFieldPlan = (admitted: AdmittedMinAdaArtifact, owner: string) =>
 export const resolveField = async ({
   config,
   admitted,
+  ownOutputs,
 }: {
   readonly config: BoundConfig;
   readonly admitted: AdmittedMinAdaArtifact;
+  /** Our carriage claims, which the carriage is read by. */
+  readonly ownOutputs: OwnOutputJournal;
 }) => {
   const planned = txFieldPlan(admitted, config.signer.paymentKeyHash);
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -90,6 +95,7 @@ export const resolveField = async ({
     throw new Error("min-ada field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.binding.network,
     planned,

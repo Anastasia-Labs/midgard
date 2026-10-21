@@ -208,7 +208,7 @@ export const createBoundTransactionPort = ({
   category: "committedFieldShape",
   prepare: async ({ evidence, classification }) =>
     await prepareArtifactFromEvidence({ evidence, classification }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
     const admitted = await admitCommittedFieldShapeArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
@@ -242,6 +242,7 @@ export const createBoundTransactionPort = ({
         headerHash: config.headerHash,
         action,
         artifact,
+        entries,
       });
       if (field.requirement === null) {
         throw new Error(

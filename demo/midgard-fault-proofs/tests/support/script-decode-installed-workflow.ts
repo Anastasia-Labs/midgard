@@ -11,7 +11,7 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -26,6 +26,10 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
+import {
+  recordWatcherFaultDecision,
+  watcherProofObjectiveDirectory,
+} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
@@ -43,6 +47,7 @@ import {
 import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import {
   emulatorProtocolParameterAuthority,
@@ -331,8 +336,15 @@ export const installScriptDecodeApplication = async ({
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
-  const directory = await mkdtemp(join(homedir(), "script-decode-installed-"));
-  const journalDirectory = join(directory, "journal");
+  // The watcher's journal root, under home as its SQLite stores refuse /tmp:
+  // the decision journal, objective workflow journals and reservation store.
+  const scratch = await scratchDirectory("script-decode-installed-", homedir());
+  const directory = scratch.path;
+  await recordWatcherFaultDecision(directory, decision);
+  const journalDirectory = watcherProofObjectiveDirectory(directory, {
+    category,
+    headerHash,
+  });
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   /**
    * The watcher process's in-memory part: the admitted runner and the open
@@ -395,6 +407,7 @@ export const installScriptDecodeApplication = async ({
       protocolParameters,
       fundingPaymentKeyHash: signer.paymentKeyHash,
       walletAddress: signer.address,
+      computationThreadPolicyId: contracts.computationThread.policyId,
       scriptHashes: Object.fromEntries([
         ...Object.entries(deploymentInfo.contracts)
           .filter(
@@ -419,6 +432,7 @@ export const installScriptDecodeApplication = async ({
         ...Object.values(committed.removal.published),
       ],
       directory,
+      journalRoot: directory,
     });
     return { runner, funding } as const;
   };
@@ -458,10 +472,28 @@ export const installScriptDecodeApplication = async ({
       instance.funding.close();
       instance = await boot();
     },
+    /** Restarts with the workflow journal gone and, with `reservations`, the
+     * reservation store too: only the chain keeps the objective's progress. */
+    loseJournal: async ({ reservations = false } = {}) => {
+      instance.funding.close();
+      await rm(journalDirectory, { recursive: true, force: true });
+      if (reservations)
+        for (const name of await readdir(directory))
+          if (name.startsWith("watcher.sqlite"))
+            await rm(join(directory, name), { force: true });
+      await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
+      turns = 0;
+      instance = await boot();
+    },
     readReservations: async () => await instance.funding.readReservations(),
+    /** The entries the workflow journal holds on disk. */
+    journalEntries: async () =>
+      (await readdir(journalDirectory, { recursive: true })).filter((path) =>
+        /\d+\.json$/u.test(path),
+      ).length,
     close: async () => {
       instance.funding.close();
-      await rm(directory, { recursive: true, force: true });
+      await scratch.remove();
     },
   } as const;
 };

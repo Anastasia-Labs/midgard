@@ -1,3 +1,4 @@
+import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import { retireLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.apply-transition.js";
 import {
   readLegacyWorkflowFundingAbandonedTransactions,
@@ -17,6 +18,36 @@ import {
 type SupersededAttempt = Awaited<
   ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
 >[number];
+
+/**
+ * Two attempts of one action landed, which mutually exclusive attempts never
+ * allow. The workflow keeps `result` as the action's result and goes on; the
+ * objective's journal records the pair once, never again on a later read.
+ */
+export const recordBothAttemptsLanded = async ({
+  entries,
+  append,
+  actionId,
+  result,
+  other,
+}: {
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>;
+  readonly actionId: string;
+  readonly result: string;
+  readonly other: string;
+}): Promise<void> => {
+  const reason = `attempts ${result} and ${other} of ${actionId} both landed; ${result} is its result`;
+  // A journal past its final completion is closed to diagnostics.
+  if (
+    !entries.some(
+      ({ event }) =>
+        (event.kind === "stalled" && event.reason === reason) ||
+        isFinalWorkflowCompletion(event),
+    )
+  )
+    await append({ kind: "stalled", reason });
+};
 
 /** Owner ruling (whichever lands wins): a superseded attempt never holds the
  * workflow. Its retirement past k is bookkeeping, and its late landing after a
@@ -85,6 +116,11 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
     nowMs: number;
   }>;
 }): Promise<SupersededAttempt | null> => {
+  const intentIndex = (hash: string) =>
+    entries.findIndex(
+      ({ event }) =>
+        event.kind === "submission_intent" && event.txHash === hash,
+    );
   const unread: SupersededAttempt[] = [];
   for (const saved of savedAttempts) {
     const hash = saved.transition.transactionHash;
@@ -135,8 +171,33 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
       // Unresolved, absent or impossible at the tip: no hold, read again
       // later. A landing backs off too until the caller adopts it.
       reads?.schedule.unresolved(hash, reads.nowMs);
-      if (result.kind === "confirmed") return saved;
-      continue;
+      if (result.kind !== "confirmed") continue;
+      // Should an earlier attempt of the same action have landed too, the
+      // earliest is the result, whether or not it was due for a read.
+      const { actionId } = saved.handoff.submissionIntent;
+      const earlier = unread
+        .filter(
+          (other) =>
+            other.handoff.submissionIntent.actionId === actionId &&
+            intentIndex(other.transition.transactionHash) < intentIndex(hash),
+        )
+        .sort(
+          (left, right) =>
+            intentIndex(left.transition.transactionHash) -
+            intentIndex(right.transition.transactionHash),
+        );
+      for (const other of earlier) {
+        if ((await reconcile(other)).kind !== "confirmed") continue;
+        await recordBothAttemptsLanded({
+          entries,
+          append,
+          actionId,
+          result: other.transition.transactionHash,
+          other: hash,
+        });
+        return other;
+      }
+      return saved;
     }
     reads?.schedule.forget(hash);
     const retirement = parseSignedWorkflowTransactionRetirement(

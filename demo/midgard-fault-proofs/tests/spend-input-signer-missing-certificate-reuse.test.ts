@@ -18,6 +18,7 @@ import {
   submitSpendInputSignerMissingStep03,
   submitSpendInputSignerMissingStep04,
 } from "../src/spend-input-signer-missing/index.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitAcceptedBlock,
   publishReferences,
@@ -101,6 +102,9 @@ describe("spendInputSignerMissing steps 02-04 under the workflow capture boundar
       nativeTxCompactCbor: block.compactCbor,
       witnessSetCompactCbor: block.witnessSetCompactCbor,
       certificateReferenceScriptUtxo: certificateReference,
+      // The claims each turn's carriage is read back by, as a CLI run keeps
+      // them in memory.
+      ownOutputs: createOwnOutputJournal(),
     };
     const certificates = () =>
       fieldPreimageCertificateCount({

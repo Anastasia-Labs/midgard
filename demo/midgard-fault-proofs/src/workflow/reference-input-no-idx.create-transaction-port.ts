@@ -22,12 +22,14 @@ import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
 import {
   admitReferenceInputNoIdxArtifact,
@@ -87,8 +89,10 @@ const stringField = (
 const resolveField = async (
   config: BoundConfig,
   planned: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -97,6 +101,7 @@ const resolveField = async (
     throw new Error("reference-input-no-idx publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned,
@@ -170,7 +175,11 @@ export const createTransactionPort = (
       evidence,
       classification,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "referenceInputNoIdx",
+      entries,
+    });
     const admitted = admitReferenceInputNoIdxArtifact(
       artifact,
       config.signer.paymentKeyHash,
@@ -257,7 +266,7 @@ export const createTransactionPort = (
         input.stage === "step_02"
           ? admitted.referenceInputFieldPlan
           : admitted.outputFieldPlan;
-      const carriage = await resolveField(config, plan);
+      const carriage = await resolveField(config, plan, ownOutputs);
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
@@ -278,6 +287,7 @@ export const createTransactionPort = (
             } as const;
             if (input.stage === "step_02") {
               await submitReferenceInputNoIdxStep02({
+                ownOutputs,
                 ...common,
                 referenceInputsPreimage: admitted.referenceInputs,
                 nativeTxCompactCbor:
@@ -285,6 +295,7 @@ export const createTransactionPort = (
               });
             } else {
               await submitReferenceInputNoIdxStep04({
+                ownOutputs,
                 ...common,
                 outputsPreimage: admitted.outputs,
                 nativeTxCompactCbor:

@@ -30,6 +30,10 @@ import {
 import { type ResolvedProverSigner } from "../runtime.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
@@ -80,6 +84,7 @@ export const submitMinAdaTxStep02 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
   unsafeSkipLocalViolationCheckForTest = false,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinAdaContracts;
@@ -98,6 +103,8 @@ export const submitMinAdaTxStep02 = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
   txHash: string;
   nextThreadOutRef: string;
@@ -154,6 +161,7 @@ export const submitMinAdaTxStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -363,6 +371,7 @@ export const submitMinAdaTxStep02 = async ({
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   if (nextStepIndex === 1 && awaitConfirmation)
     return submitMinAdaTxStep02({
+      ownOutputs,
       lucid,
       contracts,
       categoryId,

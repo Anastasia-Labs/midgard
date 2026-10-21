@@ -28,6 +28,7 @@ import {
 import { normalizeJournalJson } from "./journal.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -216,8 +217,10 @@ export const captureRemoval = async (
 export const resolveField = async (
   config: BoundConfig,
   plan: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: plan,
@@ -226,6 +229,7 @@ export const resolveField = async (
     throw new Error("withdrawn-input field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned: plan,

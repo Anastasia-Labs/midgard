@@ -24,6 +24,7 @@ import {
 } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {
@@ -159,7 +160,7 @@ export const createWitnessScriptDecodingRecoveryPorts = (
     category,
     prepare: material.prepare,
     validatePreparedArtifact: material.validatePreparedArtifact,
-    capture: async ({ action, artifact }) => {
+    capture: async ({ action, artifact, entries }) => {
       const input = cursorFamilyActionInput({ category, action });
       if (input.stage === "remove")
         return await captureCursorRemoval({
@@ -193,6 +194,10 @@ export const createWitnessScriptDecodingRecoveryPorts = (
         async (preSubmitBoundary) => {
           const submission = createManifestBoundWitnessScriptDecodingSubmission(
             {
+              ownOutputs: workflowFieldCarriageOwnOutputs({
+                category,
+                entries,
+              }),
               config,
               preSubmitBoundary,
               observe: async () =>

@@ -20,6 +20,7 @@ import {
 } from "../runtime.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { type OwnOutputJournal } from "../workflow/own-outputs.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import {
   readTransitionProof,
@@ -47,6 +48,8 @@ export type SubmitTransitionTraceProofConfig = {
    */
   readonly fieldCertificateReferenceScript?: UTxO;
   readonly awaitConfirmation?: boolean;
+  /** Our field-carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 };
 
 export type SubmitTransitionTraceProofFromFilesConfig = SubmitProviderConfig & {

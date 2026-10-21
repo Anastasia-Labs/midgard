@@ -26,6 +26,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
@@ -199,6 +203,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   certificatePreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -217,6 +222,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.outputFieldPreimageHex, "hex"),
@@ -235,6 +242,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -248,6 +256,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     suppliedCertificate ??
     (planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           signer,

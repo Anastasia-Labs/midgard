@@ -681,6 +681,19 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   `last pending:` reason in the detail, then the L1 submit endpoint and
   provider. On the testing profiles (15 min maturity) the bound is longer
   than maturity, so there it is an alarm only.
+- `fault_proof_objective_quarantined`: one objective's run stalled outside
+  preflight, or its funding or run met an integrity failure of its own (for
+  example a reconcile that refused its durable transaction, or a stored
+  funding handoff its workflow journal no longer anchors), or its family
+  re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or
+  returned an outcome of no known kind; the detail is
+  `<category>/<headerHash>: <cause>`. Only that objective is held: the
+  `proof_submission_failure` alert is raised, the process keeps running and
+  every other objective keeps proving. The objective is run again on a
+  bounded backoff (1 s doubling to 30 s); each run reconciles before it acts,
+  so it re-checks the cause rather than resending anything, and the hold and
+  alert clear at the first run that meets something else. Report it with the
+  detail if it persists.
 - `prover_funding_unavailable`: an objective paused because the prover
   wallet cannot fund its next transaction, a script-decode record
   transaction included (too little plain ada for the fee, collateral or

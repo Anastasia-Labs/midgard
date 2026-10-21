@@ -22,8 +22,18 @@ import {
 } from "./fault-proof-funding-fixture.js";
 import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
 
-export const setupFaultProofExecution = async (newReservation = false) => {
-  const fixture = await setupFundingRecoveryFixture();
+export const setupFaultProofExecution = async (
+  newReservation = false,
+  { installedRunner = true }: { readonly installedRunner?: boolean } = {},
+) => {
+  // A new reservation's journal root holds no decision. The store shares
+  // only an unsigned reservation with it: signed funding for the same target
+  // without its decision would hold the objective.
+  const fixture = await setupFundingRecoveryFixture(
+    false,
+    false,
+    newReservation,
+  );
   const controller = createWorkflowActuationPermitController({
     decision: fixture.fresh,
     rollbackGeneration: "2",
@@ -67,7 +77,7 @@ export const setupFaultProofExecution = async (newReservation = false) => {
   });
   const execution = createWatcherFaultProofExecution({
     application: {
-      runners: { doubleSpend: fixture.runner },
+      runners: installedRunner ? { doubleSpend: fixture.runner } : {},
       runOrResume,
       verifyCompleted,
     },

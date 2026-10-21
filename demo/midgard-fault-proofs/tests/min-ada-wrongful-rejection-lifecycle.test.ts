@@ -45,6 +45,7 @@ import { submitMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
 import { submitMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
@@ -71,6 +72,7 @@ describe("minimum-Ada forced rejection", () => {
   ])(
     "authenticates exact output through registered mint and removal assets=$assetCount prefix=$prefixCount output=$outputBytes depth=$depth",
     async (options) => {
+      const ownOutputs = createOwnOutputJournal();
       const f = await setup(options);
       const workflowArtifact = await f.prepareArtifact();
       await admitMinAdaWorkflowArtifact(
@@ -102,6 +104,7 @@ describe("minimum-Ada forced rejection", () => {
       });
       const carriage = await f.capture("field-publications", () =>
         publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid: f.h.proverLucid,
           signer: f.h.proverSigner,
           planned,
@@ -120,6 +123,7 @@ describe("minimum-Ada forced rejection", () => {
         );
         const certified = await f.capture("certificate", () =>
           certifyFaultProofFieldCarriage({
+            ownOutputs,
             lucid: f.h.proverLucid,
             network,
             signer: f.h.proverSigner,
@@ -140,6 +144,7 @@ describe("minimum-Ada forced rejection", () => {
       }
       const opened = await f.capture("open", () =>
         submitMinAdaTxStep02({
+          ownOutputs,
           ...f.common,
           threadOutRef: bound.nextThreadOutRef,
           prepared: f.prepared,
@@ -199,6 +204,7 @@ describe("minimum-Ada forced rejection", () => {
         );
         const reopened = await f.capture("restart-open", () =>
           submitMinAdaTxStep02({
+            ownOutputs,
             ...f.common,
             threadOutRef: rebound.nextThreadOutRef,
             prepared: retained.evidence,

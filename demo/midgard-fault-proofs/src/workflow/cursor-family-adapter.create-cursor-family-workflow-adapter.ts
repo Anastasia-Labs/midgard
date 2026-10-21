@@ -184,7 +184,7 @@ export const createCursorFamilyWorkflowAdapter = <
         await current(identity.target.headerHash, artifact, reconciliationOnly)
       ).workflow;
     },
-    preflight: async ({ identity, workflowId, artifact, action }) => {
+    preflight: async ({ identity, workflowId, artifact, action, entries }) => {
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"
@@ -206,7 +206,11 @@ export const createCursorFamilyWorkflowAdapter = <
           `${category} preflight already has an outstanding captured body`,
         );
       }
-      const captured = await transactions.capture({ action, artifact });
+      const captured = await transactions.capture({
+        action,
+        artifact,
+        entries,
+      });
       if (
         requiresMutationLease(action) !==
         (captured.mutationLease !== undefined)
@@ -274,16 +278,8 @@ export const createCursorFamilyWorkflowAdapter = <
       txHash,
       durableRecovery,
       signedTransactionCborHex,
-      retirementOnly,
       authorizeResubmission,
     }) => {
-      if (retirementOnly && txHash !== undefined)
-        return await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex,
-          observe: l1.observeSignedTransaction,
-          reportInclusion: true,
-        });
       if (
         identity.category !== category ||
         identity.target.kind !== "state_queue_header"

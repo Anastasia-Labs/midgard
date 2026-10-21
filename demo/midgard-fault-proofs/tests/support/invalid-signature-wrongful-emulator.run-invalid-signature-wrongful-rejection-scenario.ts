@@ -34,6 +34,7 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { submitZeroInputCancel } from "../../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
@@ -59,6 +60,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
   rejectedIndex: bigint | null;
   deepMembership?: boolean;
 }) => {
+  const ownOutputs = createOwnOutputJournal();
   const { decoyWitnessCount, accused, rejectedIndex } = scenario;
   const deepMembership = scenario.deepMembership === true;
   const harness = await makeFaultProofEmulatorHarness({
@@ -468,6 +470,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
       ? null
       : await captureEmulatorSubmission(harness.emulator, () =>
           publishFaultProofFieldCarriage({
+            ownOutputs,
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
             planned: opening,
@@ -486,6 +489,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
     });
     const certified = await captureEmulatorSubmission(harness.emulator, () =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -505,6 +509,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
   }
   const final = await captureEmulatorSubmission(harness.emulator, () =>
     submitInvalidSignatureStep02({
+      ownOutputs,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(harness.contracts, catalogue),

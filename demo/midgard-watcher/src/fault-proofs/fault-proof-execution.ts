@@ -36,6 +36,12 @@ import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
+import {
+  isWatcherFaultProofQuarantined,
+  quarantineCause,
+  quarantineWatcherFaultProof,
+  settleWatcherFaultProofQuarantine,
+} from "./fault-proof-quarantine.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -79,11 +85,12 @@ export type WatcherFaultProofExecution = Readonly<{
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
    * Objectives held on a refused L1 read, a resubmission due after the latest
-   * safe start, a stalled session or unfunded prover wallet
+   * safe start, a stalled session, unfunded prover wallet or quarantined run
    * (`fault_proof_l1_refused:<reason>`, `fault_proof_resubmission_required`,
-   * `fault_proof_continuation_stalled`, `prover_funding_unavailable`), until a
-   * run or completion check meets something else, a stalled one's later run
-   * journals progress, or it is settled.
+   * `fault_proof_continuation_stalled`, `prover_funding_unavailable`,
+   * `fault_proof_objective_quarantined`), until a run or completion check
+   * meets something else, a stalled one's later run journals progress, or it
+   * is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
@@ -339,8 +346,23 @@ export const createWatcherFaultProofExecution = (dependencies: {
           updatedAtMs: Date.now().toString(),
         });
       record("preflight", "prepare");
-      // Any outcome but a refusal or resubmission ends the objective's hold.
+      // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
+      const wasQuarantined = isWatcherFaultProofQuarantined(holds, job);
+      // Set while the objective's own funding and run are in hand: a failure
+      // there quarantines this objective alone (fault-proof-quarantine.ts).
+      let objectiveWork = false;
+      const quarantine = (cause: string) => {
+        held = { kind: "pending", reason: cause };
+        record("failed");
+        return quarantineWatcherFaultProof({
+          holds,
+          job,
+          decisionDigest,
+          sink,
+          cause,
+        });
+      };
       try {
         const authority = assertWorkflowActuationPermitIdentity({
           permit: actuationPermit,
@@ -384,6 +406,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             `fault-proof execution has no installed ${category} runner`,
           );
+        objectiveWork = true;
         const fundingReservationPermit =
           await mintWatcherProverFundingReservationPermit({
             category,
@@ -434,11 +457,17 @@ export const createWatcherFaultProofExecution = (dependencies: {
               reason: result.reason,
             };
           }
+          if (
+            result.kind === "stalled" &&
+            "reason" in result &&
+            typeof result.reason === "string"
+          )
+            return quarantine(`workflow stalled: ${result.reason}`);
         }
-        // Everything else stays fail-closed: a stall outside preflight is an
-        // integrity failure, and a family that re-classifies the watcher's
-        // admitted fault as `no_fault_detected` or `unprovable_gap` disagrees
-        // with the decision that dispatched it.
+        // Everything else contradicts this objective's own decision: a family
+        // that re-classifies the watcher's admitted fault as
+        // `no_fault_detected` or `unprovable_gap`, or an outcome of no known
+        // kind. That holds this objective alone; the process keeps running.
         const reason =
           typeof result === "object" &&
           result !== null &&
@@ -452,9 +481,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
                   result.kind === "unprovable_gap")
               ? `the family's own classification returned ${result.kind} for an admitted fault`
               : "invalid execution outcome";
-        throw new Error(
-          `Watcher ${category} workflow did not progress: ${reason}`,
-        );
+        return quarantine(`workflow did not progress: ${reason}`);
       } catch (error) {
         if (isWorkflowActuationRevokedError(error)) {
           record("cancelled");
@@ -502,6 +529,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
             retryAfterMs: 1_000,
           };
         }
+        const cause = objectiveWork ? quarantineCause(error) : undefined;
+        if (cause !== undefined) return quarantine(cause);
         record("failed");
         sink.setAlert({
           code: "proof_submission_failure",
@@ -512,6 +541,13 @@ export const createWatcherFaultProofExecution = (dependencies: {
         throw error;
       } finally {
         if (held === undefined) holds.delete(objectiveOf(job));
+        settleWatcherFaultProofQuarantine({
+          holds,
+          job,
+          decisionDigest,
+          sink,
+          wasQuarantined,
+        });
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },

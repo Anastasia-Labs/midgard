@@ -4,6 +4,7 @@ import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
+import { readValidationDisputeMoveAuthority } from "./funding-reservation-permit.assert-validation-dispute-move.js";
 import {
   assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
@@ -31,9 +32,11 @@ import {
   type WorkflowFundingPreparedTransition,
   type WorkflowFundingReservedInput,
   type WorkflowFundingSubmissionHandoff,
+  WorkflowFundingSupersededAttemptLandedError,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import { journalJsonDigest } from "./journal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 import {
   workflowPreflightTransaction,
   workflowTransactionCollateralInputOutRefs,
@@ -164,9 +167,22 @@ export const prepareWorkflowFundingReservationTransaction = async ({
       // A validated bond-backed slash spends no reserved wallet funding and
       // may pay a different authenticated prover. Its unspent reservation
       // inputs remain owned by the caller; the reward is not caller change.
-      allowEmpty: readFraudSlashFundingAuthority(signed) !== null,
+      // A dispute thread move spends only its thread, the wallet only lending
+      // collateral.
+      allowEmpty:
+        readFraudSlashFundingAuthority(signed) !== null ||
+        readValidationDisputeMoveAuthority(signed) !== null,
     }),
   });
+  const landed = await state.port.readLandedSupersededAttempt({
+    actionId: action.actionId,
+    signedTransactionCborHex: transition.signedTransactionCborHex,
+  });
+  if (landed !== null) {
+    // Read it at once: the next pass adopts it.
+    supersededAttemptReadSchedule.forget(landed);
+    throw new WorkflowFundingSupersededAttemptLandedError(landed);
+  }
   state.snapshot = parseStateSnapshot(
     state,
     await state.port.prepare({
@@ -214,6 +230,7 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
     }
     readFraudSlashFundingAuthority(signed);
     readValidationDisputeFundingAuthority(signed);
+    readValidationDisputeMoveAuthority(signed);
   }
   if (
     state.snapshot.state !== "active" ||
@@ -354,4 +371,20 @@ export const readLegacyWorkflowFundingAbandonedTransactions = async (
       throw new Error("Legacy funding abandonment changed its exact attempt");
     return { transition, handoff };
   });
+};
+
+/** The exact signed bytes of `transactionHash` as the bound reservation
+ * recorded them, or null without a reservation or such a record. */
+export const readWorkflowFundingRecordedSignedTransaction = async (
+  journal: object,
+  transactionHash: string,
+): Promise<string | null> => {
+  const state = stateForJournal(journal);
+  if (state === undefined) return null;
+  const signed = await state.port.readRecordedSignedTransaction({
+    transactionHash,
+  });
+  if (signed !== null && typeof signed !== "string")
+    throw new Error("funding store returned malformed signed bytes");
+  return signed;
 };

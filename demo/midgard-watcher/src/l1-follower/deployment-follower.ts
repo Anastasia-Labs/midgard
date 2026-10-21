@@ -36,21 +36,18 @@ const point = (origin: L1Origin) => ({
 });
 
 /**
- * Every script the watcher follows beyond the projection's named ones
- * (l1-architecture-plan §4.4): each manifest contract's script hash, and
- * the computation-thread policy, which no manifest contract names (it is
- * the blueprint's minting script applied to the catalogue and hub-oracle
- * policies, as the fault-proof families derive it). The fault-proof
- * families' snapshot scopes and unit histories are all among them.
+ * The computation-thread policy, which no manifest contract names: the
+ * blueprint's minting script applied to the catalogue and hub-oracle
+ * policies, as the fault-proof families derive it.
  */
-export const watcherFollowedScripts = (
+export const watcherComputationThreadPolicyId = (
   input: Readonly<{
     /** The verified manifest contracts' script hashes, by contract name. */
     contractScriptHashes: Readonly<Record<string, string>>;
     /** The deployment blueprint (parsed JSON). */
     blueprint: unknown;
   }>,
-): readonly string[] => {
+): string => {
   const hashes = input.contractScriptHashes;
   const catalogue = hashes.fraudProofCatalogueMint;
   const hubOracle = hashes.hubOracleMint;
@@ -58,14 +55,31 @@ export const watcherFollowedScripts = (
     throw new Error(
       "the deployment names no fraudProofCatalogueMint or hubOracleMint script",
     );
-  const computationThread = buildComputationThreadValidator(
+  return buildComputationThreadValidator(
     parseFaultProofBlueprint(input.blueprint),
     {
       fraudProofCatalogue: { policyId: catalogue },
       hubOracle: { policyId: hubOracle },
     },
   ).policyId;
-  const followed = [...new Set([...Object.values(hashes), computationThread])];
+};
+
+/**
+ * Every script the watcher follows beyond the projection's named ones
+ * (l1-architecture-plan §4.4): each manifest contract's script hash, and
+ * the computation-thread policy (`watcherComputationThreadPolicyId`). The
+ * fault-proof families' snapshot scopes and unit histories are all among
+ * them.
+ */
+export const watcherFollowedScripts = (
+  input: Parameters<typeof watcherComputationThreadPolicyId>[0],
+): readonly string[] => {
+  const followed = [
+    ...new Set([
+      ...Object.values(input.contractScriptHashes),
+      watcherComputationThreadPolicyId(input),
+    ]),
+  ];
   const malformed = followed.find((hash) => !HEX_28.test(hash));
   if (malformed !== undefined)
     throw new Error(`followed script ${malformed} is not a script hash`);
