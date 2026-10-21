@@ -11,7 +11,12 @@ import { liveUtxosIn, postgresDialect } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
+import {
+  getAddressDetails,
+  type LucidEvolution,
+  type Network,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
@@ -133,3 +138,53 @@ export const readDefenseAnchors = (
   DefenseSurveyFailed,
   SqlClient.SqlClient
 > => readLiveByUnits(defenseAnchorUnits(port));
+
+/**
+ * The live outputs at the operator wallet and the pocket in one follower
+ * snapshot, whatever our live intents hold and with none of their
+ * predicted change: the wallets as they are once those intents die.
+ */
+export const readWalletFacts = (
+  port: Pick<ValidationTraceDefensePort, "baseAddress" | "pocketAddress">,
+): Effect.Effect<
+  Readonly<{ base: readonly UTxO[]; pocket: readonly UTxO[] }>,
+  DefenseSurveyFailed,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.flatMap(followerSqlTx, (tx) =>
+        Effect.tryPromise(async () => {
+          const at = async (address: string) => {
+            const read = await liveUtxosIn(tx, postgresDialect, {
+              by: "address",
+              address: Buffer.from(
+                getAddressDetails(address).address.hex,
+                "hex",
+              ),
+            });
+            if (read.kind !== "ok")
+              throw new Error(
+                `the follower cannot read live outputs: ${read.kind}`,
+              );
+            return read.utxos.map(({ outRef, output }) =>
+              toLucidUtxo(outRef, output),
+            );
+          };
+          return {
+            base: await at(port.baseAddress),
+            pocket: await at(port.pocketAddress),
+          };
+        }),
+      ),
+    );
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DefenseSurveyFailed({
+          message: "the defense wallets' live outputs could not be read",
+          cause,
+        }),
+    ),
+  );

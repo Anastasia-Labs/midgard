@@ -3,7 +3,8 @@
  * defender's fresh decision names a Defend it can build, a commit tick takes
  * no lease and runs no worker; the pause is bounded, so once the decision is
  * stale or the Defend has been due past the bound, and with no follower or
- * nothing due, the tick commits as before.
+ * nothing due, the tick commits as before. Each Defend pauses commits once:
+ * one still due after the commits that ran past its bound pauses no more.
  */
 import "./utils.js";
 
@@ -23,6 +24,7 @@ import {
   initialValidationTraceDefenseHealth,
   type ValidationTraceDefenseHealth,
 } from "../src/validation-trace-defense/health.js";
+import { recordDefendFirstDue } from "../src/validation-trace-defense/tick.js";
 import {
   header,
   journalFixture,
@@ -128,8 +130,14 @@ const tickWith = (health: (nowMs: number) => ValidationTraceDefenseHealth) =>
     >,
   );
 
-const due = [{ subject: "ab".repeat(28), deadline: 0 }];
+const due = [{ subject: "ab".repeat(28), deadline: Number.MAX_SAFE_INTEGER }];
 const bound = VALIDATION_TRACE_DEFENSE_COMMIT_PAUSE_MS;
+/** The L1 time the defender decides at: before every deadline here. */
+const l1Now = 0;
+
+/** `due` first became due at wall-clock `sinceMs`, with no commit in flight. */
+const dueSince = (sinceMs: number) =>
+  recordDefendFirstDue(new Map(), due, false, sinceMs, l1Now);
 
 describe("block commitment beside a due validation-trace Defend", () => {
   beforeEach(() => {
@@ -149,10 +157,32 @@ describe("block commitment beside a due validation-trace Defend", () => {
       ...initialValidationTraceDefenseHealth(now),
       following: true,
       dueDefends: due,
-      defendDueSinceMs: now - 1_000,
+      defendFirstDue: dueSince(now - 1_000),
       decidedAtMs: now,
     }));
     expect(result).toStrictEqual({ leases: 0, workerCalls: 0, skipped: true });
+  });
+
+  it("pauses commits once for a Defend that stays due: the commit that ran past the bound starts no new pause", async () => {
+    // Past the bound, a commit went out; the Defend was due while it was in
+    // flight and is due still once it has reconciled.
+    const result = await tickWith((now) => {
+      const inFlight = recordDefendFirstDue(
+        dueSince(now - bound - 2_000),
+        due,
+        true,
+        now - 1_000,
+        l1Now,
+      );
+      return {
+        ...initialValidationTraceDefenseHealth(now),
+        following: true,
+        dueDefends: due,
+        defendFirstDue: recordDefendFirstDue(inFlight, due, false, now, l1Now),
+        decidedAtMs: now,
+      };
+    });
+    expect(result).toStrictEqual({ leases: 1, workerCalls: 1, skipped: false });
   });
 
   it.each([
@@ -168,7 +198,7 @@ describe("block commitment beside a due validation-trace Defend", () => {
       (now: number) => ({
         ...initialValidationTraceDefenseHealth(now),
         dueDefends: due,
-        defendDueSinceMs: now,
+        defendFirstDue: dueSince(now),
       }),
     ],
     [
@@ -177,7 +207,7 @@ describe("block commitment beside a due validation-trace Defend", () => {
         ...initialValidationTraceDefenseHealth(now),
         following: true,
         dueDefends: due,
-        defendDueSinceMs: now - 1_000,
+        defendFirstDue: dueSince(now - 1_000),
         decidedAtMs: now - bound - 1,
       }),
     ],
@@ -187,7 +217,7 @@ describe("block commitment beside a due validation-trace Defend", () => {
         ...initialValidationTraceDefenseHealth(now),
         following: true,
         dueDefends: due,
-        defendDueSinceMs: now - bound - 1,
+        defendFirstDue: dueSince(now - bound - 1),
         decidedAtMs: now,
       }),
     ],

@@ -9,11 +9,11 @@
  * - A step that fails keeps the last tick's states and due Defends, so a
  *   stalled fiber still reaches readiness: a due Defend whose deadline is
  *   less than the late margin away fails readiness as late at any time, and
- *   a material-unavailable or trace-disagrees state fails once its deadline
- *   is that close.
+ *   a material-unavailable, trace-disagrees or references-unresolved state
+ *   fails once its deadline is that close.
  * - Underfunded, not-active and late fail readiness; the alarms that need
- *   no repair (operator fault, thread lost) and the waiting states are
- *   named details.
+ *   no repair (operator fault, thread lost, history pruned) and the waiting
+ *   states (funding pending among them) are named details.
  */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
@@ -37,6 +37,12 @@ export type ValidationTraceDefenseDue = Readonly<{
   deadline: number;
 }>;
 
+/** When a Defend first became due (wall clock), and its deadline (L1 time). */
+export type ValidationTraceDefenseFirstDue = Readonly<{
+  firstDueMs: number;
+  deadline: number;
+}>;
+
 export type ValidationTraceDefenseHealth = Readonly<{
   /** Whether the last tick ran under an L1 follower; with none it does nothing. */
   following: boolean;
@@ -45,10 +51,12 @@ export type ValidationTraceDefenseHealth = Readonly<{
   /** The Defends the last tick could build. */
   dueDefends: readonly ValidationTraceDefenseDue[];
   /**
-   * Since when (wall clock) some Defend has been due with no signed commit
-   * unresolved, without a break; null while none is, or a commit is.
+   * By subject, when (wall clock) each Defend first became due with no
+   * signed commit unresolved, and its deadline. Kept for the process
+   * whatever commits do meanwhile, and forgotten once its deadline has
+   * passed: each Defend pauses commits once, for at most the bound.
    */
-  defendDueSinceMs: number | null;
+  defendFirstDue: ReadonlyMap<string, ValidationTraceDefenseFirstDue>;
   /** When (wall clock) the last tick decided these. */
   decidedAtMs: number;
   /** L1 time less wall-clock time at the last tick: deadlines are L1 times. */
@@ -65,7 +73,7 @@ export const initialValidationTraceDefenseHealth = (
   following: false,
   states: [],
   dueDefends: [],
-  defendDueSinceMs: null,
+  defendFirstDue: new Map(),
   decidedAtMs: nowMs,
   l1OffsetMs: 0,
   lastProgressAtMs: nowMs,
@@ -81,6 +89,7 @@ export const VALIDATION_TRACE_DEFENSE_STALL_MS =
 const FAILING_NEAR_DEADLINE: ReadonlySet<string> = new Set([
   "validation-trace-defense-material-unavailable",
   "validation-trace-defense-trace-disagrees",
+  "validation-trace-defense-references-unresolved",
 ]);
 
 /** `<state>:<subject>:<deadline|none>[:<shortfall>]`. */

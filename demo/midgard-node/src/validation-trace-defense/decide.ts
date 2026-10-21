@@ -33,7 +33,10 @@ export const VALIDATION_TRACE_DEFENSE_STATES = [
   "validation-trace-defense-operator-fault",
   "validation-trace-defense-trace-disagrees",
   "validation-trace-defense-material-unavailable",
+  "validation-trace-defense-history-pruned",
+  "validation-trace-defense-references-unresolved",
   "validation-trace-defense-underfunded",
+  "validation-trace-defense-funding-pending",
   "validation-trace-defense-not-active",
   "validation-trace-defense-late",
 ] as const;
@@ -282,17 +285,21 @@ const caseDecision = (defenseCase: DefenseCase, now: number) => {
     );
   if (defenseCase.defended === true) return { work: [], states: [] };
   const deadline = validationTraceDefendByMs(defenseCase.datum);
+  // The follower keeps the creator of a live output, so a case whose
+  // history it no longer holds was spent since it was opened: it has been
+  // defended. No retry brings the history back: a named degraded detail,
+  // never a readiness failure.
   if (defenseCase.priorDefenders === undefined)
     return {
       work: [],
       states: [
         {
-          state: "validation-trace-defense-material-unavailable" as const,
+          state: "validation-trace-defense-history-pruned" as const,
           subject,
           deadline,
           detail:
-            "the case's history is no longer complete in the follower's retention",
-          failsReadiness: nearDeadline(now, deadline),
+            "the case has been defended, and its history is past the follower's retention: we cannot join its defenders",
+          failsReadiness: false,
         },
       ],
     };

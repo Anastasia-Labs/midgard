@@ -9,10 +9,18 @@
  *   and keep our clock above zero down to the one-step resolution;
  * - past the case's duration our thread expires into the pocket;
  * - with the operator wallet alone short of a Defend, a pocket leftover
- *   funds it, and the pocket keeps an output to post as collateral.
+ *   funds it, and the pocket keeps an output to post as collateral;
+ * - while a live reveal of ours holds the pocket's collateral, a Defend on
+ *   another case that the wallets lack funds for even without that reveal
+ *   is underfunded and fails readiness; one they fund once the reveal lands
+ *   or dies is pending, fails nothing, and lands once the reveal has.
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
-import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
+import {
+  isPlainFundingOutput,
+  VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
+  VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
+} from "@al-ft/midgard-fault-proofs";
 import {
   challengerReveal,
   falseClaimMaterial,
@@ -21,7 +29,7 @@ import {
   openFalseClaim,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Data, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { shouldSkipForDueValidationTraceDefense } from "../src/fibers/block-commitment.validation-trace-defense-pause.js";
@@ -83,6 +91,14 @@ const threadOf = (s: DefenseScene, unit: string) => {
   return { utxo, thread: data! };
 };
 
+/** Our thread on the case `caseUnit` our Defend landed on. */
+const ourThreadUnit = async (s: DefenseScene, caseUnit: string) => {
+  const [defended] = await s.scene.h.funderLucid.utxosByOutRef([
+    { txHash: s.liveByUnit(caseUnit)!.txHash, outputIndex: 1 },
+  ]);
+  return Object.keys(defended!.assets).find((unit) => unit !== "lovelace")!;
+};
+
 const collateralOf = (txCbor: Buffer): string[] => {
   const collateral = CML.Transaction.from_cbor_hex(txCbor.toString("hex"))
     .body()
@@ -91,6 +107,45 @@ const collateralOf = (txCbor: Buffer): string[] => {
     const input = collateral!.get(index);
     return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
   });
+};
+
+/**
+ * Our Defend lands on one case, and our reveal on its thread reaches only a
+ * fork the chain never sees: it stays live, holding the pocket's collateral
+ * output, while the chain stands still. The operator wallet holds `keep`
+ * (less a fee) and a second case is open on our block; the tick that sends
+ * the reveal does not see the operator wallet, so it builds no Defend on
+ * the second case.
+ */
+const revealHeldBeside = async (keep: bigint) => {
+  const s = await open();
+  const first = await claimOn(s, 40);
+  expect(await s.tick()).toStrictEqual([
+    { kind: "defend", subject: first.caseUnit, outcome: "landed" },
+  ]);
+  const threadUnit = await ourThreadUnit(s, first.caseUnit);
+  // The challenger moves until it is our turn.
+  for (;;) {
+    const live = threadOf(s, threadUnit)!;
+    const { turn } = live.thread;
+    if (typeof turn !== "string" && "AwaitingOperator" in turn) break;
+    await landWith(
+      s.scene.h.proverLucid,
+      await challengerReveal(s.scene, live.utxo, first.trace),
+    );
+    await s.env.follow();
+  }
+  await drainBase(s, keep);
+  const second = await claimOn(s, 48);
+  const forked = s.forkOnlySubmit();
+  const blind = {
+    ...s.port,
+    baseAddress: generateEmulatorAccount({ lovelace: 0n }).address,
+  };
+  expect(await s.tick(blind)).toStrictEqual([
+    { kind: "reveal", subject: threadUnit, outcome: "submitted" },
+  ]);
+  return { s, second, threadUnit, revealBytes: await forked };
 };
 
 describe("the validation-trace defender's funding", () => {
@@ -245,5 +300,51 @@ describe("the validation-trace defender's funding", () => {
           (utxo.assets.lovelace ?? 0n) >= 5_000_000n,
       ),
     ).toBe(true);
+  });
+
+  it("names a Defend on another case underfunded beside our live reveal when the wallets lack it even without the reveal", async () => {
+    const { s, second, threadUnit } = await revealHeldBeside(3_000_000n);
+    expect(await s.tick()).toStrictEqual([
+      { kind: "reveal", subject: threadUnit, outcome: "pending" },
+    ]);
+    const short = (await s.health()).states.find(
+      ({ subject }) => subject === second.caseUnit,
+    );
+    expect(short).toMatchObject({
+      state: "validation-trace-defense-underfunded",
+      failsReadiness: true,
+    });
+    expect((await s.readiness()).reasons).toStrictEqual([
+      `validation-trace-defense-underfunded:${second.caseUnit}:${short!.deadline!.toString()}:${short!.shortfallLovelace!.toString()}`,
+    ]);
+  });
+
+  it("names a Defend on another case pending, failing nothing, while our live reveal holds what funds it, and lands it once the reveal has", async () => {
+    // Enough for the Defend beside the pocket's collateral output, too
+    // little without it.
+    const { s, second, threadUnit, revealBytes } = await revealHeldBeside(
+      VALIDATION_TRACE_THREAD_FLOOR_LOVELACE +
+        VALIDATION_TRACE_DEFEND_MARGIN_LOVELACE +
+        VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE / 2n,
+    );
+    expect(await s.tick()).toStrictEqual([
+      { kind: "reveal", subject: threadUnit, outcome: "pending" },
+    ]);
+    expect(
+      (await s.health()).states.find(
+        ({ subject }) => subject === second.caseUnit,
+      ),
+    ).toMatchObject({
+      state: "validation-trace-defense-funding-pending",
+      failsReadiness: false,
+    });
+    expect((await s.readiness()).reasons).toStrictEqual([]);
+
+    await s.scene.h.emulator.submitTx(revealBytes.toString("hex"));
+    await s.land();
+    expect(await s.tick()).toStrictEqual([
+      { kind: "defend", subject: second.caseUnit, outcome: "landed" },
+    ]);
+    expect((await s.readiness()).reasons).toStrictEqual([]);
   });
 });

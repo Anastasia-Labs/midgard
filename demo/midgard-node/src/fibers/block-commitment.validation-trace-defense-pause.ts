@@ -8,9 +8,11 @@
  * The pause is bounded, so commits never stop for good: it holds while the
  * defender's last decision is fresh, and for at most the Defend's own hold
  * (`validationTraceDefendHoldMs`) and a validity range past the moment the
- * Defend could first be played. Once that bound passes, commits resume
- * whatever the defender does; a Defend that then loses a race to a commit
- * is a dead intent, rebuilt at its next tick.
+ * Defend could first be played. Each Defend pauses commits once: the
+ * moment it could first be played is kept for the process, so the commits
+ * that run once the bound has passed do not start a new pause, however
+ * long the Defend stays due. A Defend that loses a race to a commit is a
+ * dead intent, rebuilt at its next tick.
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { Effect, Ref } from "effect";
@@ -33,9 +35,13 @@ export const validationTraceDefensePausesCommits = (
   health.following &&
   health.dueDefends.length > 0 &&
   nowMs - health.decidedAtMs <= VALIDATION_TRACE_DEFENSE_COMMIT_PAUSE_MS &&
-  (health.defendDueSinceMs === null ||
-    nowMs - health.defendDueSinceMs <=
-      VALIDATION_TRACE_DEFENSE_COMMIT_PAUSE_MS);
+  health.dueDefends.some(({ subject }) => {
+    const first = health.defendFirstDue.get(subject);
+    return (
+      first === undefined ||
+      nowMs - first.firstDueMs <= VALIDATION_TRACE_DEFENSE_COMMIT_PAUSE_MS
+    );
+  });
 
 let reportedPause = false;
 

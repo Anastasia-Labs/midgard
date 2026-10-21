@@ -169,7 +169,7 @@ describe("the validation-trace defender's tick", () => {
     expect(waiting.dueDefends.map(({ subject }) => subject)).toStrictEqual([
       claim.caseUnit,
     ]);
-    expect(waiting.defendDueSinceMs).toBeNull();
+    expect(waiting.defendFirstDue.has(claim.caseUnit)).toBe(false);
 
     // The commit lands, and the node reconciles its journal.
     const commit = await commitSceneSuccessor(s.scene);

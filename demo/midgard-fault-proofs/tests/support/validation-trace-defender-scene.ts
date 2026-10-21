@@ -2,9 +2,11 @@
  * outside this package that drive a defending operator on the real
  * deployment: the scene's blocks and references, cases opened on its
  * passing and failing blocks, the challenger's moves, other operators'
- * Defends, a second active operator, the expiry references, the operator's
- * later commits, and the emulator's transaction limits. */
+ * Defends, a second active operator, the expiry references, references
+ * published under their roles' tokens, the operator's later commits, and
+ * the emulator's transaction limits. */
 export { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.js";
+export { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 export { enrollSuccessor } from "./rotated-successor-operator.js";
 export { network } from "./submit-init-emulator-shared.js";
 export { l1SlotConfig } from "./validation-trace-claim-material.js";

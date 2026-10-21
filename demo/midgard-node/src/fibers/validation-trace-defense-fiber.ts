@@ -7,6 +7,7 @@
  * the node's health and retried at the next one.
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
+import type * as SDK from "@al-ft/midgard-sdk";
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
@@ -43,6 +44,65 @@ export const VALIDATION_TRACE_DEFENSE_TICK_MS = Math.floor(
 /** How often a held Defend looks for its landing. */
 const POLL_MS = 1_000;
 
+/**
+ * The published references the defender's moves read, resolved by their
+ * roles at `referenceScriptsAddress`, each under its role token.
+ */
+export const validationTraceDefenseReferences = (
+  lucid: LE.LucidEvolution,
+  referenceScriptsAddress: string,
+  contracts: Pick<
+    SDK.MidgardValidators,
+    "fraudProofContracts" | "activeOperators" | "referenceScriptAuth"
+  >,
+): Effect.Effect<ValidationTraceDefenseReferences, Error> => {
+  const dispute = contracts.fraudProofContracts.validationTraceDispute;
+  const roles = [
+    ["case", "V1 validation-trace case", dispute.case.spendingScript],
+    ["game", "V1 validation-trace game", dispute.game.spendingScript],
+    ["timeout", "V1 validation-trace timeout", dispute.timeout.spendingScript],
+    [
+      "boundary",
+      "V1 validation-trace boundary",
+      dispute.boundary.spendingScript,
+    ],
+    [
+      "threadExpiry",
+      "V1 validation-trace thread expiry",
+      dispute.threadExpiry.withdrawalScript,
+    ],
+    [
+      "activeOperators",
+      "active-operators spending",
+      contracts.activeOperators.spendingScript,
+    ],
+  ] as const;
+  return fetchReferenceScriptUtxosProgram(
+    lucid,
+    referenceScriptsAddress,
+    roles.map(([, name, script]) => ({ name, script })),
+    contracts.referenceScriptAuth,
+  ).pipe(
+    Effect.flatMap((resolved) =>
+      Effect.try(
+        () =>
+          Object.fromEntries(
+            roles.map(([key, name]) => [
+              key,
+              referenceScriptByName(resolved, name),
+            ]),
+          ) as ValidationTraceDefenseReferences,
+      ),
+    ),
+    Effect.mapError(
+      (cause) =>
+        new Error("validation-trace defense: references unresolved", {
+          cause,
+        }),
+    ),
+  );
+};
+
 /** The defender's port over the node's services. */
 const makePort = Effect.gen(function* () {
   const lucidService = yield* Lucid;
@@ -72,49 +132,10 @@ const makePort = Effect.gen(function* () {
       new Error("the operator address has no payment credential"),
     );
   const dispute = contracts.fraudProofContracts.validationTraceDispute;
-  const roles = [
-    ["case", "V1 validation-trace case", dispute.case.spendingScript],
-    ["game", "V1 validation-trace game", dispute.game.spendingScript],
-    ["timeout", "V1 validation-trace timeout", dispute.timeout.spendingScript],
-    [
-      "boundary",
-      "V1 validation-trace boundary",
-      dispute.boundary.spendingScript,
-    ],
-    [
-      "threadExpiry",
-      "V1 validation-trace thread expiry",
-      dispute.threadExpiry.withdrawalScript,
-    ],
-    [
-      "activeOperators",
-      "active-operators spending",
-      contracts.activeOperators.spendingScript,
-    ],
-  ] as const;
-  const references = fetchReferenceScriptUtxosProgram(
+  const references = validationTraceDefenseReferences(
     lucid,
     lucidService.referenceScriptsAddress,
-    roles.map(([, name, script]) => ({ name, script })),
-    contracts.referenceScriptAuth,
-  ).pipe(
-    Effect.flatMap((resolved) =>
-      Effect.try(
-        () =>
-          Object.fromEntries(
-            roles.map(([key, name]) => [
-              key,
-              referenceScriptByName(resolved, name),
-            ]),
-          ) as ValidationTraceDefenseReferences,
-      ),
-    ),
-    Effect.mapError(
-      (cause) =>
-        new Error("validation-trace defense: references unresolved", {
-          cause,
-        }),
-    ),
+    contracts,
   );
   const port: ValidationTraceDefensePort = {
     lucid,

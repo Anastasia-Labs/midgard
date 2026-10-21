@@ -9,7 +9,8 @@
  * - the node's landed rows hold the scene's three blocks, each retained, on
  *   a confirmed frontier at the failing block's parent;
  * - the defender's port plays with the node's own Lucid (the operator wallet
- *   with its pocket selected) against the scene's published references;
+ *   with its pocket selected) against the scene's published references; the
+ *   follower also seeds the deployment's reference-script address;
  * - a tick runs while the chain moves: whenever a transaction waits in the
  *   emulator's mempool, a block is made and the follower applies it, so a
  *   held Defend sees its own landing;
@@ -29,6 +30,7 @@ import {
   l1SlotConfig,
   landWith,
   publishExpiryReferences,
+  type Scene,
   setUpScene,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
 import {
@@ -121,13 +123,17 @@ export type DefenseScene = Awaited<ReturnType<typeof openDefenseScene>>;
 
 /**
  * The scene, its expiry references published, under the node's follower
- * with the landed rows seeded, and the defender's port.
+ * with the landed rows seeded, and the defender's port; `beforeFollow`
+ * runs on the scene before the follower attaches (what it publishes is
+ * seeded).
  */
 export const openDefenseScene = async (
   databases: ReturnType<typeof testDatabases>,
+  beforeFollow?: (scene: Scene) => Promise<void>,
 ) => {
   const scene = await setUpScene();
   const expiry: ExpiryReferences = await publishExpiryReferences(scene);
+  await beforeFollow?.(scene);
   const references: ValidationTraceDefenseReferences = {
     case: scene.references.case,
     game: scene.references.game,
@@ -137,6 +143,10 @@ export const openDefenseScene = async (
     activeOperators: scene.references.activeOperators,
   };
   const config = operatorConfig(scene.funder.seedPhrase);
+  // The deployment's reference-script address, seeded: the node resolves
+  // its references there by their roles.
+  const referenceScriptsAddress =
+    await scene.h.contracts.referenceScriptPublisher?.lucid.wallet().address();
   const env: IntentEmulator = await attachIntentFollower(databases, {
     emulator: scene.h.emulator,
     own: scene.funder,
@@ -146,7 +156,12 @@ export const openDefenseScene = async (
     protocol: {
       contracts: scene.h.contracts,
       referenceScriptAddresses: [
-        ...new Set(Object.values(references).map(({ address }) => address)),
+        ...new Set([
+          ...Object.values(references).map(({ address }) => address),
+          ...(referenceScriptsAddress === undefined
+            ? []
+            : [referenceScriptsAddress]),
+        ]),
       ],
     },
   });

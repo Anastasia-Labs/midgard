@@ -13,13 +13,23 @@
  * - An item whose workflow key has a live journaled attempt needs no
  *   funding (the attempt spends it already, so the wallet views no longer
  *   hold it): it is played, and comes to `pending`; S6 alone resends it.
+ * - An item the wallet views cannot fund only because another item's live
+ *   attempt holds what would fund it (the wallets as they are once that
+ *   attempt dies would) names `validation-trace-defense-funding-pending`,
+ *   a detail, and is not played; one the wallets cannot fund even then is
+ *   underfunded.
+ * - The published references are read once a tick, before any item takes
+ *   the L1 control plane; while they cannot be read, the items that would
+ *   be built name `validation-trace-defense-references-unresolved`, with
+ *   what is missing, and are not played.
  * - It plays the items earliest deadline first, each on its own: one that
  *   fails does not stop the rest, and the tick then fails with them all.
  * - The step never fails: a failed tick is recorded in the health and
  *   retried at the next one; nothing exits.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { Cause, Effect, Either, Ref } from "effect";
+import type { UTxO } from "@lucid-evolution/lucid";
+import { Cause, Effect, Either, Option, Ref } from "effect";
 
 import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import { Globals } from "../services/index.js";
@@ -31,12 +41,14 @@ import {
 } from "./decide.js";
 import {
   readDefenseAnchors,
+  readWalletFacts,
   type ValidationTraceDefensePort,
 } from "./deployment.js";
 import { validationTraceDefenseChain } from "./discovery.js";
 import { planDefendFunding, planMoveFunding } from "./funding.js";
 import type {
   ValidationTraceDefenseDue,
+  ValidationTraceDefenseFirstDue,
   ValidationTraceDefenseHealth,
 } from "./health.js";
 import {
@@ -71,6 +83,69 @@ const underfunded = (
   shortfallLovelace: shortfall,
 });
 
+const fundingPending = (
+  item: ValidationTraceDefenseWork,
+): ValidationTraceDefenseState => ({
+  state: "validation-trace-defense-funding-pending",
+  subject: subjectOf(item),
+  ...(item.kind === "expiry" ? {} : { deadline: item.deadline }),
+  detail: `another live defense transaction of ours holds what funds the ${item.kind}, until it lands or dies`,
+  failsReadiness: false,
+});
+
+const referencesUnresolved = (
+  item: ValidationTraceDefenseWork,
+  detail: string,
+): ValidationTraceDefenseState => ({
+  state: "validation-trace-defense-references-unresolved",
+  subject: subjectOf(item),
+  ...(item.kind === "expiry" ? {} : { deadline: item.deadline }),
+  detail: `the ${item.kind} cannot be built: ${detail}`,
+  failsReadiness: false,
+});
+
+/** What the wallets `views` lack for `item`, or undefined when they fund it. */
+const shortfallOf = (
+  item: ValidationTraceDefenseWork,
+  views: Readonly<{ base: readonly UTxO[]; pocket: readonly UTxO[] }>,
+): bigint | undefined => {
+  const funding =
+    item.kind === "defend"
+      ? planDefendFunding(views.base, views.pocket)
+      : planMoveFunding(views.pocket);
+  return funding.kind === "short" ? funding.shortfall : undefined;
+};
+
+/**
+ * `last` with the Defends `due` at wall-clock `wallNow` recorded: one due
+ * for the first time is recorded unless a signed commit is unresolved (it
+ * cannot be played yet); one recorded keeps its first time whatever
+ * commits do; one whose deadline has passed at L1 time `l1Now` is
+ * forgotten.
+ */
+export const recordDefendFirstDue = (
+  last: ValidationTraceDefenseHealth["defendFirstDue"],
+  due: readonly ValidationTraceDefenseDue[],
+  commitInFlight: boolean,
+  wallNow: number,
+  l1Now: number,
+): Map<string, ValidationTraceDefenseFirstDue> => {
+  const next = new Map(
+    [...last].filter(([, first]) => l1Now <= first.deadline),
+  );
+  for (const { subject, deadline } of due) {
+    const first = next.get(subject);
+    if (first !== undefined)
+      next.set(subject, {
+        firstDueMs: first.firstDueMs,
+        deadline: Math.max(first.deadline, deadline),
+      });
+    else if (!commitInFlight)
+      next.set(subject, { firstDueMs: wallNow, deadline });
+  }
+  return next;
+};
+
 /** The wallet views of the operator wallet and the pocket, now. */
 const readViews = (port: ValidationTraceDefensePort) =>
   Effect.gen(function* () {
@@ -95,7 +170,6 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
           following: false,
           states: [],
           dueDefends: [],
-          defendDueSinceMs: null,
           decidedAtMs: Date.now(),
         }),
       );
@@ -127,38 +201,66 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
 
     const anchors = yield* readDefenseAnchors(port);
     const views = yield* readViews(port);
+    const live = new Map<ValidationTraceDefenseWork, boolean>();
+    for (const item of decision.work)
+      live.set(item, yield* liveUnder(workKey(item)));
+    let facts:
+      | Effect.Effect.Success<ReturnType<typeof readWalletFacts>>
+      | undefined;
     const states: ValidationTraceDefenseState[] = [...decision.states];
-    const due: ValidationTraceDefenseDue[] = [];
-    const playable: ValidationTraceDefenseWork[] = [];
+    const candidates: ValidationTraceDefenseWork[] = [];
     for (const item of decision.work) {
-      const live = yield* liveUnder(workKey(item));
-      if (item.kind === "defend") {
-        if (anchors.activeNode === undefined) {
-          states.push({
-            state: "validation-trace-defense-not-active",
-            subject: subjectOf(item),
-            deadline: item.deadline,
-            detail: "a case on our block, and no active-operator node of ours",
-            failsReadiness: true,
-          });
-          continue;
-        }
-        const funding = planDefendFunding(views.base, views.pocket);
-        if (!live && funding.kind === "short") {
-          states.push(underfunded(item, funding.shortfall));
-          continue;
-        }
-        if (l1Now <= item.deadline)
-          due.push({ subject: subjectOf(item), deadline: item.deadline });
-      } else {
-        const funding = planMoveFunding(views.pocket);
-        if (!live && funding.kind === "short") {
-          states.push(underfunded(item, funding.shortfall));
-          continue;
-        }
+      if (item.kind === "defend" && anchors.activeNode === undefined) {
+        states.push({
+          state: "validation-trace-defense-not-active",
+          subject: subjectOf(item),
+          deadline: item.deadline,
+          detail: "a case on our block, and no active-operator node of ours",
+          failsReadiness: true,
+        });
+        continue;
       }
-      playable.push(item);
+      const shortfall = live.get(item) ? undefined : shortfallOf(item, views);
+      if (shortfall !== undefined) {
+        const othersLive = [...live].some(
+          ([other, isLive]) => isLive && other !== item,
+        );
+        // The wallets as they are once the other attempts die.
+        if (othersLive) facts ??= yield* readWalletFacts(port);
+        states.push(
+          othersLive &&
+            facts !== undefined &&
+            shortfallOf(item, facts) === undefined
+            ? fundingPending(item)
+            : underfunded(item, shortfall),
+        );
+        continue;
+      }
+      candidates.push(item);
     }
+    // Read once, before any item takes the control plane; every play of
+    // this tick reads the same result.
+    const references = yield* Effect.cached(port.references);
+    const unresolved = candidates.some((item) => !live.get(item))
+      ? Either.getLeft(yield* Effect.either(references))
+      : Option.none();
+    const playable = Option.isNone(unresolved)
+      ? candidates
+      : candidates.filter((item) => {
+          if (live.get(item)) return true;
+          states.push(
+            referencesUnresolved(
+              item,
+              formatUnknownError(unresolved.value, { includeCause: true }),
+            ),
+          );
+          return false;
+        });
+    const due: ValidationTraceDefenseDue[] = playable.flatMap((item) =>
+      item.kind === "defend" && l1Now <= item.deadline
+        ? [{ subject: subjectOf(item), deadline: item.deadline }]
+        : [],
+    );
     const commitInFlight =
       (yield* retrieveUnreconciledSignedSubmission) !== undefined;
     yield* Ref.update(
@@ -168,14 +270,18 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
         following: true,
         states,
         dueDefends: due,
-        defendDueSinceMs:
-          due.length === 0 || commitInFlight
-            ? null
-            : (last.defendDueSinceMs ?? wallNow),
+        defendFirstDue: recordDefendFirstDue(
+          last.defendFirstDue,
+          due,
+          commitInFlight,
+          wallNow,
+          l1Now,
+        ),
         decidedAtMs: wallNow,
         l1OffsetMs: l1Now - wallNow,
       }),
     );
+    const playPort: ValidationTraceDefensePort = { ...port, references };
 
     const played: TickPlay[] = [];
     const failures: string[] = [];
@@ -191,19 +297,19 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
               const funding = planDefendFunding(now.base, now.pocket);
               return funding.kind === "short"
                 ? ("moved" as const)
-                : yield* playDefend(port, item, funding, plan);
+                : yield* playDefend(playPort, item, funding, plan);
             }
             case "reveal": {
               const funding = planMoveFunding(now.pocket);
               return funding.kind === "short"
                 ? ("moved" as const)
-                : yield* playReveal(port, item, funding.inputs, plan);
+                : yield* playReveal(playPort, item, funding.inputs, plan);
             }
             case "expiry": {
               const funding = planMoveFunding(now.pocket);
               return funding.kind === "short"
                 ? ("moved" as const)
-                : yield* playExpiry(port, item, funding.inputs, plan);
+                : yield* playExpiry(playPort, item, funding.inputs, plan);
             }
           }
         }),

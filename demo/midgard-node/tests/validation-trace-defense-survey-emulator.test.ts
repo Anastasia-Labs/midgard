@@ -12,6 +12,8 @@
  *   named detail that never fails readiness;
  * - a retained payload that is missing makes the material unavailable, and
  *   the next survey after it is back answers;
+ * - a case whose history is past the follower's retention is named as such,
+ *   a detail that never fails readiness, even at its deadline;
  * - a case on a block past the confirmed frontier is not answered.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
@@ -39,6 +41,10 @@ import { DaPayloadsDB } from "../src/database/index.js";
 import { Frontier } from "../src/landed-blocks/store.js";
 import { decideValidationTraceDefense } from "../src/validation-trace-defense/decide.js";
 import { validationTraceDefenseChain } from "../src/validation-trace-defense/discovery.js";
+import {
+  initialValidationTraceDefenseHealth,
+  validationTraceDefenseReadiness,
+} from "../src/validation-trace-defense/health.js";
 import {
   type DefenseMaterialCache,
   type DefenseSurvey,
@@ -239,6 +245,52 @@ describe("the validation-trace defense survey", () => {
     await inNode(retain(scene.passing));
     const back = await survey(cache);
     expect(caseOn(back, falseClaim.caseUnit)!.outcome?.kind).toBe("defend");
+  });
+
+  it("names a case whose history is past the follower's retention a detail that never fails readiness, even at its deadline", async () => {
+    const found = await survey();
+    // The survey of a case whose history the follower no longer holds.
+    const pruned: DefenseSurvey = {
+      ...found,
+      cases: found.cases.map((candidate) =>
+        candidate.caseUnit === falseClaim.caseUnit
+          ? { ...candidate, priorDefenders: undefined, defended: undefined }
+          : candidate,
+      ),
+    };
+    const deadline =
+      Number(caseOn(found, falseClaim.caseUnit)!.datum.started_at) +
+      MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS;
+    const { states, work } = decideValidationTraceDefense(pruned, deadline - 1);
+    expect(
+      work.some(
+        (item) =>
+          item.kind === "defend" &&
+          item.defenseCase.caseUnit === falseClaim.caseUnit,
+      ),
+    ).toBe(false);
+    const named = states.filter(
+      ({ subject }) => subject === falseClaim.caseUnit,
+    );
+    expect(named).toMatchObject([
+      {
+        state: "validation-trace-defense-history-pruned",
+        deadline,
+        failsReadiness: false,
+      },
+    ]);
+    const { reasons, details } = validationTraceDefenseReadiness(
+      {
+        ...initialValidationTraceDefenseHealth(deadline - 1),
+        following: true,
+        states: named,
+      },
+      deadline - 1,
+    );
+    expect(reasons).toStrictEqual([]);
+    expect(details).toStrictEqual([
+      `validation-trace-defense-history-pruned:${falseClaim.caseUnit}:${deadline.toString()}`,
+    ]);
   });
 
   it("does not answer a case on a block past the confirmed frontier", async () => {
