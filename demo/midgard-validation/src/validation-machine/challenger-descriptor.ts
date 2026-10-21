@@ -1,9 +1,10 @@
 /**
- * A challenger's side of a validation-trace dispute: its descriptor at the
- * operator's step count, its trace proofs, and whether a game opens at all.
+ * An honest trace at another party's step count, and the challenger's
+ * decision whether a game opens at all.
  *
- * Given the honest states h_0 .. h_T and an operator step count n, the
- * challenger's trace has leaf c_i = H(h_min(i, m)) for every index i, where
+ * Given the honest states h_0 .. h_T and a step count n (the operator's for a
+ * challenger, the case's for a defender), the honest trace at n has leaf
+ * c_i = H(h_min(i, m)) for every index i, where
  * m = min(n, T): an honest trace longer than n is truncated at n, and one
  * shorter is extended with its terminal state. Past index m, every leaf of
  * the padded tree is the same, so the padded subtrees are the constant
@@ -29,15 +30,15 @@ import {
   validationTraceStateHashV1,
 } from "./validation-trace-v1.js";
 
-/** The challenger's trace at the operator's step count. */
-export type ValidationChallengerTraceV1 = {
+/** An honest trace at a step count it did not choose: either side's trace in a game. */
+export type ValidationTraceAtStepCountV1 = {
   readonly descriptor: MidgardValidationTraceDescriptor;
   /** m = min(n, T): leaf i is honest state min(i, m). */
   readonly lastHonestIndex: number;
   /** The honest state whose hash is leaf `index`. */
   readonly honestIndex: (index: number) => number;
   readonly stateHash: (index: number) => Buffer;
-  /** The proof of leaf `index` against the challenger's trace root. */
+  /** The proof of leaf `index` against this trace's root. */
   readonly proof: (index: number) => MidgardValidationTraceProof;
 };
 
@@ -47,25 +48,26 @@ const assertStepCount = (stepCount: number): void => {
     stepCount < 1 ||
     stepCount > MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount
   ) {
-    throw new Error("operator step count is outside the descriptor range");
+    throw new Error("step count is outside the descriptor range");
   }
 };
 
 /**
- * The challenger's descriptor and proofs for an operator descriptor of
- * `operatorStepCount` steps, over the honest trace `leaves`. The verdict and
- * rejection hash are the honest run's.
+ * The descriptor and proofs of the honest trace `leaves` at
+ * `stepCount` steps: the challenger's at the operator's step count,
+ * or the defender's at the case's. The verdict and rejection hash are the
+ * honest run's.
  */
-export const buildChallengerDescriptorV1 = (
+export const buildTraceAtStepCountV1 = (
   leaves: Pick<
     ValidationTraceLeavesV1,
     "stepCount" | "stateHashes" | "descriptor"
   >,
-  operatorStepCount: number,
-): ValidationChallengerTraceV1 => {
-  assertStepCount(operatorStepCount);
-  const lastHonestIndex = Math.min(operatorStepCount, leaves.stepCount);
-  const depth = validationTraceDepthForStepCount(operatorStepCount);
+  stepCount: number,
+): ValidationTraceAtStepCountV1 => {
+  assertStepCount(stepCount);
+  const lastHonestIndex = Math.min(stepCount, leaves.stepCount);
+  const depth = validationTraceDepthForStepCount(stepCount);
   const padding = new MidgardValidationTracePadding(
     validationTraceStateHashV1(leaves, lastHonestIndex),
   );
@@ -101,12 +103,8 @@ export const buildChallengerDescriptorV1 = (
       : padding.root(height);
   };
   const assertIndex = (index: number): void => {
-    if (
-      !Number.isSafeInteger(index) ||
-      index < 0 ||
-      index > operatorStepCount
-    ) {
-      throw new Error("challenger trace index is out of range");
+    if (!Number.isSafeInteger(index) || index < 0 || index > stepCount) {
+      throw new Error("trace index is out of range");
     }
   };
   const honestIndex = (index: number): number => {
@@ -120,9 +118,9 @@ export const buildChallengerDescriptorV1 = (
       schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
       machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
       traceRoot: node(depth, 0),
-      stepCount: operatorStepCount,
+      stepCount,
       initialStateHash: stateHash(0),
-      terminalStateHash: stateHash(operatorStepCount),
+      terminalStateHash: stateHash(stepCount),
       verdict: leaves.descriptor.verdict,
       rejectionCodeHash: leaves.descriptor.rejectionCodeHash,
     },
@@ -171,7 +169,7 @@ export type ValidationChallengeDecisionV1 =
   | { readonly kind: "placeholderTarget" }
   | {
       readonly kind: "bisection";
-      readonly challenger: ValidationChallengerTraceV1;
+      readonly challenger: ValidationTraceAtStepCountV1;
     };
 
 export const decideValidationChallengeV1 = (
@@ -231,6 +229,6 @@ export const decideValidationChallengeV1 = (
   if (!leaves.requiresRealDescriptor) return { kind: "placeholderTarget" };
   return {
     kind: "bisection",
-    challenger: buildChallengerDescriptorV1(leaves, operator.stepCount),
+    challenger: buildTraceAtStepCountV1(leaves, operator.stepCount),
   };
 };

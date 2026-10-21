@@ -169,7 +169,8 @@ export const validationTraceStateHashV1 = (
  * Replays `input` in commit mode and keeps its state hashes: one replay per
  * (block, transaction), shared by every game on it. `revealStates` names
  * the program counters whose full states are kept as well; the terminal
- * state is always kept.
+ * state is always kept. A counter past the end is kept as the terminal
+ * state, the state the honest trace holds there at any longer step count.
  */
 export const openValidationTraceV1 = (
   input: ValidationMachineReplayInput,
@@ -195,6 +196,8 @@ export const openValidationTraceV1 = (
     const stepCount = count - 1;
     kept.set(stepCount, last!);
     for (const index of reveal) {
+      if (Number.isSafeInteger(index) && index > stepCount)
+        kept.set(index, last!);
       if (!kept.has(index)) {
         return yield* Effect.fail(
           new Error("validation trace has no state at a revealed index"),

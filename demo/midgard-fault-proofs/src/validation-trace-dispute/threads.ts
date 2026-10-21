@@ -68,6 +68,9 @@ export const VALIDATION_TRACE_THREAD_DISCOVERY = "spend-chain" as const;
 /** The validators that hold a thread with its case thread datum. */
 export type ValidationTraceThreadHolder = "game" | "timeout" | "boundary";
 
+/** A side of a thread: the challenger, or the operator that defends it. */
+export type ValidationTraceSide = "challenger" | "operator";
+
 /** A thread of our case, as found and checked. */
 export type ValidationTraceThread = Readonly<{
   utxo: UTxO;
@@ -168,6 +171,71 @@ export const isThreadMaterial = (
   material.stepCount === thread.step_count;
 
 /**
+ * Where a thread stands for one side, by its holder and turn at `now`
+ * (case-thread-v1 `timeout_winner`):
+ * - `our_move`: the side's turn at the game, its clock still running until
+ *   `deadline` (a move's lower bound may not pass it): a reveal, or the
+ *   challenger's entry into the one-step resolution on ReadyForOneStep;
+ * - `their_move`: the other side's turn at the game, until `deadline`;
+ * - `their_clock_out`: the other side's clock at the game ran out at
+ *   `deadline`; anyone may time the thread out as the side's win;
+ * - `one_step`: the one-step resolution runs at the boundary, or, for the
+ *   operator, the thread is ReadyForOneStep and only the challenger may
+ *   enter it;
+ * - `won`: at the timeout validator, timed out on the other side's turn;
+ * - `lost`: the side's own clock at the game ran out, or the thread is at
+ *   the timeout validator timed out on the side's turn.
+ */
+export type ValidationTraceThreadStanding =
+  | Readonly<{
+      kind: "our_move";
+      move: "reveal" | "enter_resolution";
+      deadline: number;
+    }>
+  | Readonly<{ kind: "their_move"; deadline: number }>
+  | Readonly<{ kind: "their_clock_out"; deadline: number }>
+  | Readonly<{ kind: "one_step" }>
+  | Readonly<{ kind: "won" }>
+  | Readonly<{ kind: "lost" }>;
+
+/** How `thread` at `at` stands for `side` at `now`. */
+export const classifyValidationTraceThread = ({
+  thread,
+  at,
+  side,
+  now,
+}: {
+  readonly thread: SDK.CaseThread;
+  readonly at: ValidationTraceThreadHolder;
+  readonly side: ValidationTraceSide;
+  readonly now: number;
+}): ValidationTraceThreadStanding => {
+  if (at === "boundary") return { kind: "one_step" };
+  const { turn } = thread;
+  const toMove: ValidationTraceSide =
+    typeof turn !== "string" && "AwaitingOperator" in turn
+      ? "operator"
+      : "challenger";
+  if (at === "timeout") return { kind: toMove === side ? "lost" : "won" };
+  const deadline =
+    toMove === "operator"
+      ? validationTraceDefenderDeadlineMs(thread)
+      : validationTraceChallengerDeadlineMs(thread);
+  if (toMove === side)
+    return now > deadline
+      ? { kind: "lost" }
+      : {
+          kind: "our_move",
+          move: turn === "ReadyForOneStep" ? "enter_resolution" : "reveal",
+          deadline,
+        };
+  if (now > deadline) return { kind: "their_clock_out", deadline };
+  return turn === "ReadyForOneStep"
+    ? { kind: "one_step" }
+    : { kind: "their_move", deadline };
+};
+
+/**
  * The next action over the threads of our case at `caseOutRef`: `threads`
  * at the game, timeout and boundary, and `resolving` past the boundary.
  * Our reveals and entries into the one-step resolution come first, the
@@ -214,35 +282,49 @@ export const decideValidationTraceThreads = ({
   const awaiting: { reason: string; deadline: number }[] = [];
   for (const found of threads) {
     const { thread, unit, outRef } = found;
-    const turn = thread.turn;
     const label = `thread ${unit} at ${outRef}`;
-    if (found.at === "timeout") {
-      if (typeof turn !== "string" && "AwaitingOperator" in turn)
+    const standing = classifyValidationTraceThread({
+      thread,
+      at: found.at,
+      side: "challenger",
+      now,
+    });
+    const notOurs = `${label} commits a trace this workflow does not hold`;
+    switch (standing.kind) {
+      case "won":
         moves.close_thread.push(found);
-      else lost.push(`${label} timed out on the challenger's side`);
-    } else if (found.at === "boundary") {
-      if (isThreadMaterial(thread, material)) moves.resolve.push(found);
-      else held.push(`${label} commits a trace this workflow does not hold`);
-    } else if (turn === "ReadyForOneStep" || "AwaitingChallenger" in turn) {
-      const planning = plannings.get(outRef);
-      if (now > validationTraceChallengerDeadlineMs(thread))
-        lost.push(`${label} ran out of the challenger's clock`);
-      else if (!isThreadMaterial(thread, material))
-        held.push(`${label} commits a trace this workflow does not hold`);
-      else if (turn !== "ReadyForOneStep") moves.reveal.push(found);
-      else if (planning?.kind === "plan") moves.enter_resolution.push(found);
-      else
-        oneStep.push(
-          `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}, on our clock until ${validationTraceChallengerDeadlineMs(thread).toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
+        break;
+      case "lost":
+        lost.push(
+          found.at === "timeout"
+            ? `${label} timed out on the challenger's side`
+            : `${label} ran out of the challenger's clock`,
         );
-    } else if (now > validationTraceDefenderDeadlineMs(thread))
-      moves.timeout.push(found);
-    else {
-      const deadline = validationTraceDefenderDeadlineMs(thread);
-      awaiting.push({
-        deadline,
-        reason: `${VALIDATION_TRACE_THREAD_AWAITING}: ${label} awaits its defender until ${deadline.toString()}`,
-      });
+        break;
+      case "one_step":
+        if (isThreadMaterial(thread, material)) moves.resolve.push(found);
+        else held.push(notOurs);
+        break;
+      case "our_move": {
+        const planning = plannings.get(outRef);
+        if (!isThreadMaterial(thread, material)) held.push(notOurs);
+        else if (standing.move === "reveal") moves.reveal.push(found);
+        else if (planning?.kind === "plan") moves.enter_resolution.push(found);
+        else
+          oneStep.push(
+            `${label} is ReadyForOneStep between states ${thread.low_index.toString()} and ${thread.high_index.toString()}, on our clock until ${validationTraceChallengerDeadlineMs(thread).toString()}; ${planning?.reason ?? "the one-step resolution is not installed"}`,
+          );
+        break;
+      }
+      case "their_clock_out":
+        moves.timeout.push(found);
+        break;
+      case "their_move":
+        awaiting.push({
+          deadline: standing.deadline,
+          reason: `${VALIDATION_TRACE_THREAD_AWAITING}: ${label} awaits its defender until ${standing.deadline.toString()}`,
+        });
+        break;
     }
   }
   for (const found of resolving)

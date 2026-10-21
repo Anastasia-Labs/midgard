@@ -35,6 +35,7 @@ import {
 import type { NodeIntentFamily } from "./intent-journal.js";
 import { listInsert } from "./l1-follower.intent-predicates.list-insert.js";
 import {
+  allInputsLive,
   contentRefHex,
   keyRest,
   type NodeFamilyPredicateDeps,
@@ -277,6 +278,9 @@ const PREDICATES: Readonly<
   script_reward_registration: stakeRegistration,
   phas_membership: stakeRegistration,
   list_insert: listInsert,
+  // A dispute defense spends the case or the thread it moves: wanted while
+  // it can still land, so only the facts (a conflict, its expiry) end it.
+  dispute_defense: allInputsLive,
 };
 
 /** The §8.4 predicate over the projections (see the module doc). */

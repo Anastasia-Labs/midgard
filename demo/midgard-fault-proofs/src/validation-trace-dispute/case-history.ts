@@ -101,31 +101,30 @@ const threadDefender = (output: TxOutput): string | undefined => {
   }
 };
 
-/**
- * The live threads case `caseUnit`'s history holds, sorted by token: one for
- * each defender a thread datum of the history names whose thread token (the
- * token the case policy names for our case and that defender) the history
- * minted, in that defender's Defend, and has not burned since, in a close of
- * the case. An output whose datum merely looks like a thread, for a defender
- * no Defend minted a token for, opens none, and a closed thread is no longer
- * held. Nothing else is decided here: a re-read output is a live thread of
- * our case for that defender only as its own datum says.
- */
-export const recordedValidationTraceThreads = ({
+/** Every thread token the history names, with its defender, its net mint
+ * over the history and whether one transaction of the history minted it. */
+const caseThreadTokens = ({
   transactions,
   caseUnit,
 }: {
   readonly transactions: readonly ValidationTraceCaseTransaction[];
   readonly caseUnit: string;
-}): readonly ValidationTraceRecordedThread[] => {
+}) => {
   const policyId = caseUnit.slice(0, 56);
   const caseId = caseUnit.slice(56);
   const units = new Map<string, string>();
   // Each token's net mint over the history: 1 while its thread is open.
   const net = new Map<string, bigint>();
+  // The tokens a single transaction minted: each one's thread was opened.
+  const opened = new Set<string>();
   for (const transaction of transactions) {
     const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
-    addMintedAssets(net, body.mint());
+    const minted = new Map<string, bigint>();
+    addMintedAssets(minted, body.mint());
+    for (const [unit, quantity] of minted) {
+      net.set(unit, (net.get(unit) ?? 0n) + quantity);
+      if (quantity > 0n) opened.add(unit);
+    }
     const outputs = body.outputs();
     for (let index = 0; index < outputs.len(); index += 1) {
       const output = coreToTxOutput(outputs.get(index));
@@ -136,10 +135,49 @@ export const recordedValidationTraceThreads = ({
       units.set(unit, defenderVkh);
     }
   }
-  return Object.freeze(
-    [...units]
-      .filter(([unit]) => net.get(unit) === 1n)
-      .map(([unit, defenderVkh]) => Object.freeze({ unit, defenderVkh }))
+  return [...units].map(([unit, defenderVkh]) => ({
+    unit,
+    defenderVkh,
+    open: net.get(unit) === 1n,
+    opened: opened.has(unit),
+  }));
+};
+
+/**
+ * The live threads case `caseUnit`'s history holds, sorted by token: one for
+ * each defender a thread datum of the history names whose thread token (the
+ * token the case policy names for our case and that defender) the history
+ * minted, in that defender's Defend, and has not burned since, in a close of
+ * the case. An output whose datum merely looks like a thread, for a defender
+ * no Defend minted a token for, opens none, and a closed thread is no longer
+ * held. Nothing else is decided here: a re-read output is a live thread of
+ * our case for that defender only as its own datum says.
+ */
+export const recordedValidationTraceThreads = (input: {
+  readonly transactions: readonly ValidationTraceCaseTransaction[];
+  readonly caseUnit: string;
+}): readonly ValidationTraceRecordedThread[] =>
+  Object.freeze(
+    caseThreadTokens(input)
+      .filter(({ open }) => open)
+      .map(({ unit, defenderVkh }) => Object.freeze({ unit, defenderVkh }))
       .sort((a, b) => (a.unit < b.unit ? -1 : a.unit > b.unit ? 1 : 0)),
   );
-};
+
+/**
+ * Every defender case `caseUnit`'s history holds, sorted: each one a thread
+ * datum of the history names whose thread token a transaction of the history
+ * minted, whether its thread is still open or has closed since. These are
+ * the keys the case's defenders root holds; a datum that merely looks like a
+ * thread names none.
+ */
+export const recordedValidationTraceDefenders = (input: {
+  readonly transactions: readonly ValidationTraceCaseTransaction[];
+  readonly caseUnit: string;
+}): readonly string[] =>
+  Object.freeze(
+    caseThreadTokens(input)
+      .filter(({ opened }) => opened)
+      .map(({ defenderVkh }) => defenderVkh)
+      .sort(),
+  );

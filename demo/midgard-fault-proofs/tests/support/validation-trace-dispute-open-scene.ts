@@ -12,12 +12,6 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-  openValidationTraceV1,
-} from "@al-ft/midgard-validation";
-import {
   generateEmulatorAccount,
   type LucidEvolution,
   type Script,
@@ -28,12 +22,8 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
-import {
-  buildValidationClaimWitness,
-  type ValidationTraceClaimMaterial,
-} from "../../src/validation-trace-dispute/claim-material.js";
+import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
-import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
@@ -58,10 +48,7 @@ import {
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
-import {
-  eventAndLedger,
-  l1SlotConfig,
-} from "./validation-trace-claim-material.js";
+import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
 /** L_d: the longest validity range VerifySource admits. */
@@ -85,6 +72,8 @@ export type Scene = {
     readonly game: UTxO;
     readonly timeout: UTxO;
     readonly award: UTxO;
+    /** The active-operators spending script, which a Defend runs. */
+    readonly activeOperators: UTxO;
   };
   readonly failing: Block;
   readonly passing: Block;
@@ -146,6 +135,10 @@ export const setUpScene = async (
     "timeout",
   );
   const awardReference = await publish(chain.award.spendingScript, "award");
+  const activeOperatorsReference = await publish(
+    h.contracts.activeOperators.spendingScript,
+    "active operators",
+  );
   await beforeBlocks?.({ h, chain });
 
   const operatorVkey = await funderPaymentKeyHash(h.funderLucid);
@@ -254,6 +247,7 @@ export const setUpScene = async (
       game: gameReference,
       timeout: timeoutReference,
       award: awardReference,
+      activeOperators: activeOperatorsReference,
     },
     failing,
     passing,
@@ -291,60 +285,6 @@ export const failingMaterial = async (
       l1SlotConfig,
     })
   ).material;
-};
-
-/** The honest trace of the passing transaction: Terminal Accepted. */
-export const passingTrace = async (scene: Scene) => {
-  const block = scene.passing;
-  const { event, ledger } = await eventAndLedger(block);
-  const expectedLedgerOps = [
-    { type: "delete" as const, key: block.seed.outRef },
-    buildValidationMachineLedgerInsertOp({
-      key: block.created.outRef,
-      outputCbor: block.created.output,
-    }),
-  ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
-    initialEntries: ledger.entries.map(({ outRef, output }) => ({
-      outRef,
-      output,
-    })),
-    operations: expectedLedgerOps,
-  });
-  const leaves = await Effect.runPromise(
-    openValidationTraceV1(
-      {
-        ...plutusFailureReplayInput({
-          header: block.evidence.header,
-          event,
-          ledger,
-          l1SlotConfig,
-        }),
-        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
-        expectedLedgerOps,
-        ledgerMutationSteps,
-        expectedVerdict: "accepted",
-        expectedRejectionCode: null,
-      },
-      { revealStates: [0] },
-    ),
-  );
-  const terminal = leaves.states.get(leaves.stepCount)!;
-  expect(terminal).toMatchObject({ phase: "terminal", verdict: "accepted" });
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
-  return {
-    claim: {
-      claimWitness: await buildValidationClaimWitness({
-        reconstruction: block.evidence.reconstruction,
-        eventKey: event.eventKey,
-      }),
-      challengerRoot: trace.descriptor.traceRoot.toString("hex"),
-      stepCount: BigInt(leaves.stepCount),
-    },
-    terminal,
-    terminalProof: trace.proof(leaves.stepCount),
-    initialState: leaves.states.get(0)!,
-  };
 };
 
 const liveBlock = async (scene: Scene, block: Block): Promise<UTxO> => {

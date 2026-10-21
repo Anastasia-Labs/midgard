@@ -57,11 +57,17 @@ import {
 } from "./intent-journal.holds.js";
 import type {
   IntentPlan,
+  NodeIntentFamily,
   RecordOutcome,
   RecordPurpose,
   SubmissionIntent,
   UnjournaledReason,
 } from "./intent-journal.intent.js";
+import {
+  type IntentJournalReadFailed,
+  type LiveIntent,
+  readLiveIntents,
+} from "./intent-journal.live-intents.js";
 import {
   type InsertOutcome,
   openIntentPlan,
@@ -97,6 +103,10 @@ export {
   type UnjournaledReason,
   unjournaledSubmission,
 } from "./intent-journal.intent.js";
+export {
+  IntentJournalReadFailed,
+  type LiveIntent,
+} from "./intent-journal.live-intents.js";
 export { openIntentPlan, recordSignedIntent } from "./intent-journal.record.js";
 export {
   INTENT_BYTES_MISMATCH,
@@ -201,6 +211,16 @@ export type IntentJournalService = Readonly<{
     lucid: LucidEvolution,
     address: string,
   ) => Effect.Effect<NodeWalletView, WalletViewUnavailable>;
+  /**
+   * The journaled transactions of `family` under `workflowKey` that are
+   * live now (`intent-journal.live-intents.ts`): a workflow builds nothing
+   * for a key that has one. Read only; a failed read is an error the caller
+   * retries, never a hold. None where no follower runs.
+   */
+  liveIntents: (
+    family: NodeIntentFamily,
+    workflowKey: string,
+  ) => Effect.Effect<readonly LiveIntent[], IntentJournalReadFailed>;
 }>;
 
 export class IntentJournal extends Context.Tag("midgard/IntentJournal")<
@@ -383,6 +403,10 @@ export const intentJournalOver = (
       readFollowerWalletView(address).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),
       ),
+    liveIntents: (family, workflowKey) =>
+      readLiveIntents(family, workflowKey).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+      ),
   };
 };
 
@@ -426,4 +450,6 @@ export const IntentJournalWithoutFollower = Layer.succeed(IntentJournal, {
   adopt: () => undefined,
   refresh: () => Effect.void,
   walletView: readProviderWalletView,
+  // Nothing is journaled where no follower runs.
+  liveIntents: () => Effect.succeed([]),
 });

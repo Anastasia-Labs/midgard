@@ -112,7 +112,11 @@ export type IntentEmulator = Awaited<ReturnType<typeof attachIntentFollower>>;
  */
 export const openIntentEmulator = async (
   databases: ReturnType<typeof testDatabases>,
-  options: Readonly<{ nodeSchema?: boolean }> = {},
+  options: Readonly<{
+    nodeSchema?: boolean;
+    /** The node's own wallets, given `own`'s seed; `own`'s address alone by default. */
+    ownWallets?: (own: EmulatorAccount) => readonly Buffer[];
+  }> = {},
 ) => {
   const own: EmulatorAccount = generateEmulatorAccount({
     lovelace: 50_000_000n,
@@ -123,6 +127,7 @@ export const openIntentEmulator = async (
     own,
     payee,
     nodeSchema: options.nodeSchema,
+    ownWallets: options.ownWallets?.(own),
   });
 };
 
@@ -142,6 +147,8 @@ export const attachIntentFollower = async (
     own: Readonly<{ seedPhrase: string; address: string }>;
     payee: Readonly<{ seedPhrase: string; address: string }>;
     nodeSchema?: boolean;
+    /** The own wallets tracked, seeded and journaled as own; `own`'s address by default. */
+    ownWallets?: readonly Buffer[];
     /**
      * The deployed protocol, tracked as the node tracks it (§8.2): its
      * validators' payment credentials and the hub oracle policy, with the
@@ -161,20 +168,24 @@ export const attachIntentFollower = async (
       ? []
       : protocolPaymentCredentials(protocol.contracts),
   );
+  const ownWallets = options.ownWallets ?? [addressBytes(own.address)];
+  const ownHex = new Set(ownWallets.map((address) => address.toString("hex")));
   const seededAddresses = [
     ...new Map(
       [
-        own.address,
-        ...(protocol?.referenceScriptAddresses ?? []),
-        ...Object.values(emulator.ledger)
-          .filter(({ spent }) => !spent)
-          .map(({ utxo }) => utxo.address)
-          .filter((address) =>
-            protocolCredentials.has(
-              getAddressDetails(address).paymentCredential?.hash ?? "",
+        ...ownWallets,
+        ...[
+          ...(protocol?.referenceScriptAddresses ?? []),
+          ...Object.values(emulator.ledger)
+            .filter(({ spent }) => !spent)
+            .map(({ utxo }) => utxo.address)
+            .filter((address) =>
+              protocolCredentials.has(
+                getAddressDetails(address).paymentCredential?.hash ?? "",
+              ),
             ),
-          ),
-      ].map((address) => [address, addressBytes(address)]),
+        ].map(addressBytes),
+      ].map((address) => [address.toString("hex"), address]),
     ).values(),
   ];
   const accepted = new Map<string, Buffer>();
@@ -188,9 +199,12 @@ export const attachIntentFollower = async (
    * The node's wallet. Its slot mapping starts at the emulator's slot 0, as
    * the fixture's own instances do (an instance made later would start at the
    * then-current slot, and a validity bound before it is out of range for
-   * local script evaluation).
+   * local script evaluation). `defensePocket` selects it as the node selects
+   * its operator wallet.
    */
-  const wallet = async (): Promise<LucidEvolution> => {
+  const wallet = async (
+    options: Readonly<{ defensePocket?: boolean }> = {},
+  ): Promise<LucidEvolution> => {
     const lucid = await Lucid(emulator, "Custom", {
       slotConfig: {
         zeroTime: emulator.now() - emulator.slot * 1000,
@@ -198,10 +212,9 @@ export const attachIntentFollower = async (
         slotLength: 1000,
       },
     });
-    selectNodeWallet(lucid, own.seedPhrase);
+    selectNodeWallet(lucid, own.seedPhrase, options);
     return lucid;
   };
-  const ownAddress = addressBytes(own.address);
   const connectionString = await databases.create();
   const runtime = ManagedRuntime.make(
     PgClient.layer({ url: Redacted.make(connectionString) }),
@@ -217,7 +230,7 @@ export const attachIntentFollower = async (
       {
         securityParameter: EMULATOR_K,
         trackedSet: {
-          addresses: new Set([ownAddress.toString("hex")]),
+          addresses: ownHex,
           paymentCredentials: protocolCredentials,
           policies: new Set(
             protocol === undefined
@@ -355,7 +368,7 @@ export const attachIntentFollower = async (
       sql.unsafe(migrationByVersion.get(INTENT_REFUSAL_HOLDS_MIGRATION)!.sql),
     );
   const isOwnOutput = (output: OutputSummary) =>
-    output.address.equals(ownAddress);
+    ownHex.has(output.address.toString("hex"));
   /** The production journal over the node database (`IntentJournalLive`'s). */
   const journal: IntentJournalService = intentJournalOver(sql, isOwnOutput);
   const journalLayer = Layer.succeed(IntentJournal, journal);
