@@ -4,6 +4,7 @@
  * an enrolled successor operator with one that agrees up to the state before
  * a CEK machine step. The runner records each transaction it signs and, when
  * asked, observes the convicted block's removal over the recorded L1. */
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Constr,
@@ -41,6 +42,7 @@ import {
   publishContextReferences,
   publishOneStepReferences,
   publishPhaseReferences,
+  publishPhaseYieldReferences,
   publishSelectionReferences,
 } from "./validation-trace-dispute-one-step.js";
 import {
@@ -114,6 +116,8 @@ export const defendTwoThreads = async ({
   failingRedeemerData,
   failingReferenceInputs,
   failingSigners,
+  failingScript,
+  failingNativeSpend,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -133,6 +137,11 @@ export const defendTwoThreads = async ({
   readonly failingReferenceInputs?: number;
   /** Who signs the failing transaction beside its owner. */
   readonly failingSigners?: ScenarioSigners;
+  /** The script the failing transaction's spend runs. */
+  readonly failingScript?: MidgardVersionedScript;
+  /** Whether the failing transaction also spends an output a native script
+   * holds. */
+  readonly failingNativeSpend?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -157,7 +166,12 @@ export const defendTwoThreads = async ({
                 await publishCanonicalDecodeReferences(contracts),
             }
           : {}),
-        ...(phases ? { phases: await publishPhaseReferences(contracts) } : {}),
+        ...(phases
+          ? {
+              phases: await publishPhaseReferences(contracts),
+              phaseYields: await publishPhaseYieldReferences(contracts),
+            }
+          : {}),
       };
     },
     {
@@ -166,6 +180,8 @@ export const defendTwoThreads = async ({
         ? {}
         : { failingReferenceInputs }),
       ...(failingSigners === undefined ? {} : { failingSigners }),
+      ...(failingScript === undefined ? {} : { failingScript }),
+      ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
     },
   );
   const removal =

@@ -4,7 +4,9 @@
  * the step: the runner plays it through the phase resolver, which commits
  * the transition and its auxiliary evidence (none, or the item of a field
  * carried inline), to the semantic resolver the evidence selects, which
- * awards it (validation-trace-dispute-one-step-resolution-drive.ts). */
+ * awards it, invoking beside an item the yield its kind selects
+ * (validation-trace-dispute-one-step-resolution-drive.ts). */
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -13,8 +15,11 @@ import { NO_AUXILIARY_WITNESS_CBOR } from "../../src/validation-trace-dispute/on
 import {
   PHASE_CHALLENGER_SUCCESSOR_HASH,
   PHASE_RESOLUTIONS,
+  phaseSemanticHop,
+  phaseYieldReads,
   type ValidationTracePhase,
   type ValidationTracePhaseHolder,
+  type ValidationTracePhaseYield,
 } from "../../src/validation-trace-dispute/one-step-phase.js";
 import {
   planValidationTraceOneStep,
@@ -29,12 +34,17 @@ const SIGNER_MEMBERSHIP_PROOF = 1;
 
 /** The evidence a step's semantic resolver takes: none, the item
  * `itemIndex` of the field `fieldIndex` (by default whichever item our
- * trace reads at the step), whose preimage it carries inline,
- * or a required-signer item, whose field it carries inline beside the proof
- * that the signer signed. */
+ * trace reads at the step), whose preimage it carries inline, with the
+ * yield `itemYield` its semantic resolver invokes beside it, at its
+ * `yield_kind` `kind`, if any; or a required-signer item, whose field it
+ * carries inline beside the proof that the signer signed. */
 export type PhaseEvidence =
   | undefined
-  | Readonly<{ fieldIndex: number; itemIndex?: number }>
+  | Readonly<{
+      fieldIndex: number;
+      itemIndex?: number;
+      itemYield?: Readonly<{ kind: number; name: ValidationTracePhaseYield }>;
+    }>
   | Readonly<{ requiredSigner: true }>;
 
 /**
@@ -52,6 +62,8 @@ export const phaseDrive = ({
   minFeeA,
   failingReferenceInputs,
   failingSigners,
+  failingScript,
+  failingNativeSpend,
 }: {
   readonly from: number;
   readonly phase: ValidationTracePhase;
@@ -65,10 +77,19 @@ export const phaseDrive = ({
   readonly failingReferenceInputs?: number;
   /** Who signs the failing transaction beside its owner. */
   readonly failingSigners?: ScenarioSigners;
+  /** The script the failing transaction's spend runs. */
+  readonly failingScript?: MidgardVersionedScript;
+  /** Whether the failing transaction also spends an output a native script
+   * holds. */
+  readonly failingNativeSpend?: boolean;
 }) => {
   const resolution = PHASE_RESOLUTIONS[phase];
   const semanticHolder: ValidationTracePhaseHolder =
     resolution.semantics[semantic]!;
+  const itemYield =
+    evidence !== undefined && "itemYield" in evidence
+      ? evidence.itemYield
+      : undefined;
   const drive = resolutionDrive({
     from,
     at,
@@ -85,6 +106,8 @@ export const phaseDrive = ({
         ? {}
         : { failingReferenceInputs }),
       ...(failingSigners === undefined ? {} : { failingSigners }),
+      ...(failingScript === undefined ? {} : { failingScript }),
+      ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
     },
     ...(minFeeA === undefined ? {} : { minFeeA }),
     /** Our plan of the step, by the successor hash the holder keeps. */
@@ -117,6 +140,24 @@ export const phaseDrive = ({
     unbuilt: drive.unbuilt,
     otherTransition: drive.otherTransition,
 
+    /** The semantic resolver's hop invoking, beside the item, the yield of
+     * the other kind, `other`, in place of the one its kind selects. */
+    otherYield: async (
+      other: Readonly<{ kind: number; name: ValidationTracePhaseYield }>,
+    ) =>
+      await drive.rewrittenHop((_, plan) => {
+        const hop = phaseSemanticHop({
+          prover: "",
+          transitionCbor: plan.transitionCbor,
+          evidenceCbors: plan.phase.evidenceCbors,
+          itemYield: phaseYieldReads(drive.dispute().deployment, {
+            ...plan.phase,
+            itemYield: other,
+          })!,
+        });
+        return { redeemer: hop.redeemer, reads: hop.reads! };
+      }),
+
     /** Our plan sends the thread's step through the phase's resolver to the
      * semantic resolver its evidence selects, committing the transition
      * beside that evidence: none, or the item of the field our trace reads
@@ -140,6 +181,7 @@ export const phaseDrive = ({
         phase,
         prepare: resolution.prepare,
         semantic: semanticHolder,
+        ...(itemYield === undefined ? {} : { itemYield }),
       });
       expect(evidenceCbors.map((field) => Data.from(field))).toStrictEqual(
         expected.fields,

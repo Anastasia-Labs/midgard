@@ -4,14 +4,24 @@
  * and its auxiliary evidence and hands the step to the semantic resolver
  * the evidence selects, which verifies the transition beside that evidence
  * (none, or one item of a field whose preimage the evidence carries
- * inline, with a required signer's proof of signing beside it) and awards
+ * inline, with a required signer's proof of signing beside it, or with the
+ * yield that verifies the item by its kind invoked beside it) and awards
  * the step. */
+import { parseMidgardVersionedScriptHeader } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import {
+  Constr,
+  Data,
+  type RedeemerContext,
+  type Script,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import { NO_AUXILIARY_WITNESS_CBOR } from "./one-step-canonical-decode.js";
 import { constr, continued, integer, stepDatum } from "./one-step-data.js";
+import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** The holders of each phase's resolution, with the deployment manifest's
  * name for each. */
@@ -30,6 +40,10 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
   signaturesRequiredItemSemantic:
     "validationTraceDisputeSignaturesRequiredItemSemantic",
   signaturesHandoffSemantic: "validationTraceDisputeSignaturesHandoffSemantic",
+  phaseANativeScriptsPrepare:
+    "validationTraceDisputePhaseANativeScriptsPrepare",
+  phaseANativeScriptsItemSemantic:
+    "validationTraceDisputePhaseANativeScriptsItemSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -45,7 +59,9 @@ export const isValidationTracePhaseHolder = (
 
 /** Each phase the runner drives: its `resolver_index`
  * (validation-resolution-v1), its resolver's holder, and the holder of each
- * of its semantic resolvers, by the group-local index the evidence selects. */
+ * of its semantic resolvers, by the group-local index the evidence selects;
+ * a step for a semantic resolver with no holder here is not driven, and
+ * waits under the one-step-required alarm. */
 export const PHASE_RESOLUTIONS = Object.freeze({
   compactBinding: {
     resolverIndex: 1,
@@ -72,6 +88,12 @@ export const PHASE_RESOLUTIONS = Object.freeze({
       "signaturesHandoffSemantic",
     ],
   },
+  // Only the item semantic resolver, which reads a witness script's header.
+  phaseANativeScripts: {
+    resolverIndex: 5,
+    prepare: "phaseANativeScriptsPrepare",
+    semantics: [undefined, "phaseANativeScriptsItemSemantic"],
+  },
 } as const satisfies Readonly<
   Partial<
     Record<
@@ -79,7 +101,7 @@ export const PHASE_RESOLUTIONS = Object.freeze({
       Readonly<{
         resolverIndex: number;
         prepare: ValidationTracePhaseHolder;
-        semantics: readonly ValidationTracePhaseHolder[];
+        semantics: readonly (ValidationTracePhaseHolder | undefined)[];
       }>
     >
   >
@@ -111,6 +133,7 @@ export const phaseValidators = (
   ][]) {
     validators[prepare] = chain.prepareResolvers[resolverIndex];
     semantics.forEach((holder, local) => {
+      if (holder === undefined) return;
       const index = SDK.VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS[phase][local];
       const resolver =
         index === undefined ? undefined : chain.semanticResolvers[index];
@@ -146,6 +169,23 @@ export const VALIDATION_TRACE_SIGNATURES_ADDRESS_INLINE_MAX_PREIMAGE_BYTES = 13_
  * (tests/validation-trace-dispute-one-step-signatures-required-inline-cap.test.ts). */
 export const VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES = 13_623;
 
+/** The same for a phase-A native scripts step over a witness script, a
+ * field of versioned scripts of any length, so measured to the byte
+ * (tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts). */
+export const VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES = 13_659;
+
+/** The yields an item semantic resolver invokes beside the item it reads,
+ * by the item's kind, `yield_kind`: the native yield verifies a native
+ * script's item, or the rejection of an item whose versioned-script header
+ * is malformed; the foreign yield verifies any other script's. */
+const PHASE_A_NATIVE_ITEM_YIELDS = Object.freeze([
+  "phaseANativeItemNative",
+  "phaseANativeItemForeign",
+] as const);
+
+export type ValidationTracePhaseYield =
+  (typeof PHASE_A_NATIVE_ITEM_YIELDS)[number];
+
 /** The auxiliary evidence each semantic resolver that takes any verifies
  * the transition beside: its constructor among the auxiliary witnesses, the
  * position among its fields of the carriage that delivers the field
@@ -161,6 +201,9 @@ const PHASE_SEMANTIC_EVIDENCE: Readonly<
         auxiliary: number;
         carriage: number;
         inlineMaxPreimageBytes: number;
+        /** The yields it invokes by the item's kind; the item's index is
+         * the evidence's field 1. */
+        itemYields?: readonly ValidationTracePhaseYield[];
       }>
     >
   >
@@ -185,21 +228,72 @@ const PHASE_SEMANTIC_EVIDENCE: Readonly<
     inlineMaxPreimageBytes:
       VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES,
   },
+  phaseANativeScriptsItemSemantic: {
+    auxiliary: 1,
+    carriage: 2,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES,
+    itemYields: PHASE_A_NATIVE_ITEM_YIELDS,
+  },
 });
+
+/** The yields the semantic resolvers of `phase` invoke. */
+export const phaseYields = (
+  phase: ValidationTracePhase,
+): readonly ValidationTracePhaseYield[] =>
+  PHASE_RESOLUTIONS[phase].semantics.flatMap((holder) =>
+    holder === undefined
+      ? []
+      : (PHASE_SEMANTIC_EVIDENCE[holder]?.itemYields ?? []),
+  );
 
 /** `Inline`'s constructor among the field carriages. */
 const INLINE_CARRIAGE = 0;
 
+/** The yield a semantic resolver invokes beside the item it reads: its
+ * `yield_kind`, and which yield that is. */
+export type ValidationTracePhaseItemYield = Readonly<{
+  kind: number;
+  name: ValidationTracePhaseYield;
+}>;
+
 /** A phase step as its resolution needs it: the holders the thread visits
- * past the boundary, and the fields of the auxiliary evidence the semantic
+ * past the boundary, the fields of the auxiliary evidence the semantic
  * resolver takes beside the transition, as their Data's CBOR (none when it
- * takes `NoAuxiliaryWitness`). */
+ * takes `NoAuxiliaryWitness`), and the yield it invokes beside the item,
+ * if any. */
 export type ValidationTracePhaseStep = Readonly<{
   phase: ValidationTracePhase;
   prepare: ValidationTracePhaseHolder;
   semantic: ValidationTracePhaseHolder;
   evidenceCbors: readonly string[];
+  itemYield?: ValidationTracePhaseItemYield;
 }>;
+
+/** The yield among `yields` that verifies the item `itemIndex` of the field
+ * `preimage`, by its versioned-script header (`versioned_script_header_v1`):
+ * the first, native, for a native script or a malformed header, the second,
+ * foreign, for any other script. */
+const itemYieldOf = (
+  yields: readonly ValidationTracePhaseYield[],
+  preimage: string,
+  itemIndex: Data | undefined,
+): ValidationTracePhaseItemYield => {
+  const item =
+    typeof itemIndex === "bigint"
+      ? decodeMidgardFieldPreimage(Buffer.from(preimage, "hex"))[
+          Number(itemIndex)
+        ]
+      : undefined;
+  if (item === undefined)
+    throw new Error("validation-trace item is not in its field");
+  const header = parseMidgardVersionedScriptHeader(item, item.length);
+  const kind = header === null || header.languageTag === 0 ? 0 : 1;
+  const name = yields[kind];
+  if (name === undefined)
+    throw new Error(`validation-trace item has no yield of kind ${kind}`);
+  return Object.freeze({ kind, name });
+};
 
 /**
  * The resolution of the step of `phase` whose one-step argument selects
@@ -226,12 +320,16 @@ export const planValidationTracePhaseStep = ({
     return {
       reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
     };
-  const step = (evidenceCbors: readonly string[]) =>
+  const step = (
+    evidenceCbors: readonly string[],
+    itemYield?: ValidationTracePhaseItemYield,
+  ): ValidationTracePhaseStep =>
     Object.freeze({
       phase,
       prepare: resolution.prepare,
       semantic,
       evidenceCbors: Object.freeze(evidenceCbors),
+      ...(itemYield === undefined ? {} : { itemYield }),
     });
   const evidence = PHASE_SEMANTIC_EVIDENCE[semantic];
   const auxiliary = Data.from(auxiliaryCbor);
@@ -264,33 +362,93 @@ export const planValidationTracePhaseStep = ({
     };
   return step(
     fields.map((_, index) => plutusConstrFieldCbor(auxiliaryCbor, [index])),
+    evidence.itemYields === undefined
+      ? undefined
+      : itemYieldOf(evidence.itemYields, preimage, fields[1]),
   );
+};
+
+/** The yield a semantic resolver's hop invokes, as the hop reads it: its
+ * kind, its reference under its role's authentication token, and its
+ * withdrawal script. */
+export type ValidationTracePhaseYieldReads = Readonly<{
+  kind: number;
+  reference: UTxO;
+  script: Script;
+}>;
+
+/** What the hop of the step `step` reads of `deployment` for the yield its
+ * semantic resolver invokes beside the item; undefined when it invokes
+ * none. */
+export const phaseYieldReads = (
+  deployment: ValidationTraceDisputeDeployment,
+  step: ValidationTracePhaseStep,
+): ValidationTracePhaseYieldReads | undefined => {
+  if (step.itemYield === undefined) return undefined;
+  const { kind, name } = step.itemYield;
+  const reference = deployment.references.oneStep?.phaseYields?.[name];
+  if (reference === undefined)
+    throw new Error(
+      `validation-trace deployment does not publish the ${name} yield`,
+    );
+  return Object.freeze({
+    kind,
+    reference,
+    script: deployment.chain.yields[name].withdrawalScript,
+  });
 };
 
 /** The semantic resolver's hop of the thread of prover `prover`: it
  * verifies the transition `transitionCbor` beside the auxiliary evidence
- * whose fields are `evidenceCbors`, and awards the step. */
+ * whose fields are `evidenceCbors`, and the yield `itemYield` invokes
+ * beside them, if any, and awards the step. */
 export const phaseSemanticHop = ({
   prover,
   transitionCbor,
   evidenceCbors,
+  itemYield,
 }: {
   readonly prover: string;
   readonly transitionCbor: string;
   readonly evidenceCbors: readonly string[];
+  readonly itemYield?: ValidationTracePhaseYieldReads;
 }) => ({
   next: "award" as const,
   datum: stepDatum(prover, constr(0, [integer(1)])),
-  redeemer: (inputIndex: bigint, outputIndex: bigint) =>
+  redeemer: (
+    inputIndex: bigint,
+    outputIndex: bigint,
+    context: RedeemerContext,
+  ) =>
     continued(
       constr(0, [
         integer(inputIndex),
         integer(outputIndex),
         transitionCbor,
         ...evidenceCbors,
+        ...(itemYield === undefined
+          ? []
+          : [
+              integer(
+                SDK.requireReferenceInputIndex(
+                  context,
+                  itemYield.reference,
+                  "item yield",
+                ),
+              ),
+              integer(itemYield.kind),
+            ]),
       ]),
     ),
   proverOnly: false,
+  ...(itemYield === undefined
+    ? {}
+    : {
+        reads: {
+          references: [itemYield.reference],
+          yields: [itemYield.script],
+        },
+      }),
 });
 
 /** Where each phase holder's datum keeps our successor's hash: the
@@ -300,7 +458,9 @@ export const PHASE_CHALLENGER_SUCCESSOR_HASH = Object.freeze(
   Object.fromEntries(
     Object.values(PHASE_RESOLUTIONS).flatMap(({ prepare, semantics }) => [
       [prepare, [1, 0, 3]],
-      ...semantics.map((holder) => [holder, [1, 0, 1, 3]] as const),
+      ...semantics.flatMap((holder) =>
+        holder === undefined ? [] : [[holder, [1, 0, 1, 3]] as const],
+      ),
     ]),
   ) as Readonly<Record<ValidationTracePhaseHolder, readonly number[]>>,
 );

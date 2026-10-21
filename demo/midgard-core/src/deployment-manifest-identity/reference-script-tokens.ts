@@ -767,4 +767,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace signatures required item semantic":
     "V1VtSigRequiredItemSem",
   "V1 validation-trace signatures handoff semantic": "V1VtSigHandoffSem",
+  "V1 validation-trace phase-A native scripts prepare":
+    "V1VtPhaseANativePrepare",
 } as const);

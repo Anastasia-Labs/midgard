@@ -29,6 +29,7 @@ import {
   type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
+import { phaseYieldReads } from "../../src/validation-trace-dispute/one-step-phase.js";
 import type { ValidationTraceOneStepPlan } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../../src/validation-trace-dispute/threads.js";
 import { expectWithinWalletMoveShape } from "./validation-trace-dispute-move-fees.js";
@@ -79,6 +80,8 @@ export const resolutionDrive = <
     | "failingRedeemerData"
     | "failingReferenceInputs"
     | "failingSigners"
+    | "failingScript"
+    | "failingNativeSpend"
   >;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
@@ -124,15 +127,15 @@ export const resolutionDrive = <
   };
 
   /**
-   * The hop of the successor's thread at `at` with its successor datum or
-   * its redeemer rewritten by `rewrite`, and a check that the thread has not
-   * moved.
+   * The hop of the successor's thread at `at` with its successor datum,
+   * its redeemer or what it reads rewritten by `rewrite`, and a check that
+   * the thread has not moved.
    */
   const rewrittenHop = async (
     rewrite: (
       honest: ValidationTraceHop,
       plan: Plan,
-    ) => Partial<Pick<ValidationTraceHop, "datum" | "redeemer">>,
+    ) => Partial<Pick<ValidationTraceHop, "datum" | "redeemer" | "reads">>,
   ) => {
     const { scene, deployment, b } = dispute;
     const before = await placeOfB();
@@ -146,6 +149,9 @@ export const resolutionDrive = <
       holder: at,
       utxo: before.utxo,
       prover,
+      ...(plan.kind === "phase" && plan.phase.semantic === at
+        ? { phaseYield: phaseYieldReads(deployment, plan.phase) }
+        : {}),
     });
     const rewritten = { ...honest, ...rewrite(honest, plan) };
     const window = validationTraceMoveWindow(lucid);
@@ -154,7 +160,7 @@ export const resolutionDrive = <
         await completeValidationTraceMove({
           lucid,
           stage: "resolve",
-          referenced: [reference],
+          referenced: [reference, ...(rewritten.reads?.references ?? [])],
           build: (fee) =>
             buildValidationTraceHop({
               lucid,
@@ -258,6 +264,8 @@ export const resolutionDrive = <
               (installs.failingRedeemerData !== undefined ||
                 installs.failingReferenceInputs !== undefined ||
                 installs.failingSigners !== undefined ||
+                installs.failingScript !== undefined ||
+                installs.failingNativeSpend !== undefined ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,

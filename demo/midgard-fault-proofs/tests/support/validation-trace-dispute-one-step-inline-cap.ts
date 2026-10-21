@@ -1,12 +1,12 @@
 /** The validation-trace dispute runner at a phase step whose semantic
  * resolver reads one item of a field the prepare and semantic moves carry
- * whole, inline, with the field grown one item at a time. At the largest
- * field within the phase's inline limit the runner drives the step to the
- * award, its prepare move within the transaction size limit less its
- * reserve even when our wallet pays it, and one more item would pass it.
- * One item over the limit, and at the inline carriage's largest, it does
- * not drive the step, and the thread waits at ReadyForOneStep under the
- * one-step-required alarm
+ * whole, inline, with the field grown one unit at a time: by default an
+ * item, or as the caller grows it. At the largest field within the phase's
+ * inline limit the runner drives the step to the award, its prepare move
+ * within the transaction size limit less its reserve even when our wallet
+ * pays it, and one more unit would pass it. One unit over the limit, and at
+ * the inline carriage's largest, it does not drive the step, and the thread
+ * waits at ReadyForOneStep under the one-step-required alarm
  * (validation-trace-dispute-one-step-phase-drive.ts). */
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -42,16 +42,26 @@ const headerBytes = (items: number) => (items < 24 ? 1 : items < 256 ? 2 : 3);
 
 type Installs = Pick<
   Parameters<typeof defendTwoThreads>[0],
-  "failingReferenceInputs" | "failingSigners"
+  "failingReferenceInputs" | "failingSigners" | "failingScript"
 >;
+
+/** How the field grows: an item of `itemBytes` bytes at a time, or a
+ * `unit` at a time, its preimage `fieldBytes(units)` bytes at `units`
+ * units. */
+type Growth =
+  | { readonly itemBytes: number }
+  | {
+      readonly unit: string;
+      readonly fieldBytes: (units: number) => number;
+    };
 
 /**
  * The rows of a step of `phase` whose semantic resolver `semantic` (held at
- * `at`) reads an item of a field of `itemBytes`-byte items: the failing
- * transaction `installs(items)` carries `items` of them, our trace reads
- * one at the step after its state `stepOf(items)` (`evidence`), and the
- * phase's inline limit is `limit` bytes. `field` names the field in the
- * rows.
+ * `at`) reads an item of a field that grows as `growth` says: the failing
+ * transaction `installs(units)` carries the field at `units` units, our
+ * trace reads the item at the step after its state `stepOf(units)`
+ * (`evidence`), and the phase's inline limit is `limit` bytes. `field`
+ * names the field in the rows.
  */
 export const describeInlineCap = ({
   field,
@@ -60,21 +70,27 @@ export const describeInlineCap = ({
   at,
   evidence,
   limit,
-  itemBytes,
   stepOf,
   installs,
+  ...growth
 }: {
   readonly field: string;
   readonly phase: ValidationTracePhase;
   readonly semantic: number;
   readonly at: Parameters<typeof phaseDrive>[0]["at"];
-  readonly evidence: (items: number) => PhaseEvidence;
+  readonly evidence: (units: number) => PhaseEvidence;
   readonly limit: number;
-  readonly itemBytes: number;
-  readonly stepOf: (items: number) => number;
-  readonly installs: (items: number) => Installs;
-}) => {
-  const fieldBytes = (items: number) => items * itemBytes + headerBytes(items);
+  readonly stepOf: (units: number) => number;
+  readonly installs: (units: number) => Installs;
+} & Growth) => {
+  const { unit, fieldBytes } =
+    "itemBytes" in growth
+      ? {
+          unit: "item",
+          fieldBytes: (items: number) =>
+            items * growth.itemBytes + headerBytes(items),
+        }
+      : growth;
   const fits = (items: number) => fieldBytes(items) <= limit;
   let largest = 1;
   while (fits(largest + 1)) largest += 1;
@@ -111,10 +127,12 @@ export const describeInlineCap = ({
       1_200_000,
     );
 
-    it("lands the prepare move within the transaction size limit less its reserve, and one more item would pass it", () => {
+    it(`lands the prepare move within the transaction size limit less its reserve, and one more ${unit} would pass it`, () => {
       const bytes = drive.bytesOf(prepareLabel);
       expect(bytes).toBeLessThanOrEqual(MAX_TX_SIZE - SIZE_RESERVE);
-      expect(bytes + itemBytes).toBeGreaterThan(MAX_TX_SIZE - SIZE_RESERVE);
+      expect(
+        bytes + fieldBytes(largest + 1) - fieldBytes(largest),
+      ).toBeGreaterThan(MAX_TX_SIZE - SIZE_RESERVE);
       expect(drive.bytesOf(verifyLabel)).toBeLessThanOrEqual(bytes);
     });
 
@@ -132,7 +150,7 @@ export const describeInlineCap = ({
     result.reason.includes(`thread ${unit} at `);
 
   describe.each([
-    [`one item over the inline ${phase} limit`, largest + 1],
+    [`one ${unit} over the inline ${phase} limit`, largest + 1],
     ["at the inline carriage's largest", tier1],
   ])(
     `validation-trace dispute runner: a step of ${phase}, its ${field} %s`,

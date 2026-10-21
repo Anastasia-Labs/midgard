@@ -98,8 +98,9 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesPrepare"),
     inputSets: title("validationTraceDisputeInputSetsPrepare"),
     signatures: title("validationTraceDisputeSignaturesPrepare"),
-    phaseANativeScripts:
-      "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
+    phaseANativeScripts: title(
+      "validationTraceDisputePhaseANativeScriptsPrepare",
+    ),
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
     resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",

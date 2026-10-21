@@ -45,6 +45,7 @@ import {
   PHASE_HOLDERS,
   PHASE_RESOLUTIONS,
   phaseValidators,
+  phaseYields,
   type ValidationTracePhaseHolder,
 } from "./one-step-phase.js";
 import {
@@ -219,15 +220,22 @@ export const validationTraceOneStepDrives = (
     contexts: deployment.references.oneStep?.cekContext !== undefined,
     canonicalDecode:
       deployment.references.oneStep?.canonicalDecode !== undefined,
-    phases: Object.entries(PHASE_RESOLUTIONS)
-      .filter(([, { prepare, semantics }]) =>
-        [prepare, ...semantics].every(
-          (holder) =>
-            deployment.references.oneStep?.phases?.[holder] !== undefined,
-        ),
-      )
-      .map(([phase]) => phase)
-      .filter(isValidationTracePhase),
+    phases: Object.keys(PHASE_RESOLUTIONS)
+      .filter(isValidationTracePhase)
+      .filter((phase) => {
+        const { prepare, semantics } = PHASE_RESOLUTIONS[phase];
+        const references = deployment.references.oneStep;
+        return (
+          [prepare, ...semantics].every(
+            (holder) =>
+              holder === undefined ||
+              references?.phases?.[holder] !== undefined,
+          ) &&
+          phaseYields(phase).every(
+            (name) => references?.phaseYields?.[name] !== undefined,
+          )
+        );
+      }),
   });
 
 /**

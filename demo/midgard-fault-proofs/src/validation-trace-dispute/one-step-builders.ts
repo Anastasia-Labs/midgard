@@ -58,6 +58,7 @@ import {
 import {
   isValidationTracePhaseHolder,
   phaseSemanticHop,
+  type ValidationTracePhaseYieldReads,
 } from "./one-step-phase.js";
 import {
   hashSerialisedData,
@@ -165,8 +166,9 @@ const datumOf = (utxo: UTxO): string => {
 
 /**
  * The hop of the thread `utxo` of prover `prover`, held by `holder`, in the
- * one-step resolution `plan`; a selection's hop reads `selection`, and a hop
- * through a context step's redeemer item step reads `item`.
+ * one-step resolution `plan`; a selection's hop reads `selection`, a hop
+ * through a context step's redeemer item step reads `item`, and a phase
+ * semantic resolver's hop reads `phaseYield`, the yield it invokes.
  */
 export const validationTraceHop = ({
   plan,
@@ -175,6 +177,7 @@ export const validationTraceHop = ({
   prover,
   selection,
   item,
+  phaseYield,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
@@ -182,6 +185,7 @@ export const validationTraceHop = ({
   readonly prover: string;
   readonly selection?: ValidationTraceSelectionReads;
   readonly item?: ValidationTraceContextItemReads;
+  readonly phaseYield?: ValidationTracePhaseYieldReads | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
   if (isValidationTraceContextHolder(holder))
@@ -217,6 +221,7 @@ export const validationTraceHop = ({
           prover,
           transitionCbor: plan.transitionCbor,
           evidenceCbors: plan.phase.evidenceCbors,
+          ...(phaseYield === undefined ? {} : { itemYield: phaseYield }),
         });
   }
   switch (holder) {

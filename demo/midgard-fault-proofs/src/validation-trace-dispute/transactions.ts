@@ -40,7 +40,10 @@ import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-
 import type { DrivenCekContextStage } from "./one-step-context.js";
 import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
 import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
-import type { ValidationTracePhaseHolder } from "./one-step-phase.js";
+import type {
+  ValidationTracePhaseHolder,
+  ValidationTracePhaseYield,
+} from "./one-step-phase.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
 export const VALIDATION_TRACE_OPEN_VALIDITY_MS = 15 * 60_000;
@@ -105,6 +108,10 @@ export type ValidationTraceOneStepReferences = Readonly<{
   /** The phase resolvers and their semantic resolvers the deployment
    * publishes; a thread at a step of a phase without them waits. */
   phases?: Readonly<Partial<Record<ValidationTracePhaseHolder, UTxO>>>;
+  /** The references of the yields the phases' semantic resolvers invoke,
+   * each carrying its role's reference-script authentication token; a
+   * thread at a step of a phase whose yields are not here waits. */
+  phaseYields?: Readonly<Partial<Record<ValidationTracePhaseYield, UTxO>>>;
 }>;
 
 /** The deployment the open step builds against. */

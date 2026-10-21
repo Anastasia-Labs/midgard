@@ -9,6 +9,7 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -29,6 +30,7 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../../src/workflow/complete-replay.js";
 import {
+  nativeSpendSeedDeposit,
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
@@ -101,7 +103,9 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * dispute move has from the failing block's end. The failing transaction's
  * redeemer is `failingRedeemerData` when given, it reads
  * `failingReferenceInputs` outputs the deposits create as reference inputs,
- * and `failingSigners` sign it beside its owner.
+ * `failingSigners` sign it beside its owner, its spend runs
+ * `failingScript`, by default the failing script, and with
+ * `failingNativeSpend` it also spends an output a native script holds.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
@@ -109,10 +113,14 @@ export const setUpScene = async (
     failingRedeemerData,
     failingReferenceInputs = 0,
     failingSigners,
+    failingScript,
+    failingNativeSpend = false,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
     readonly failingSigners?: ScenarioSigners;
+    readonly failingScript?: MidgardVersionedScript;
+    readonly failingNativeSpend?: boolean;
   } = {},
 ): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
@@ -168,9 +176,14 @@ export const setUpScene = async (
     priorLedger: [],
     events: [
       ...Object.entries(seeds).map(([scenario, byte]) =>
-        plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
+        plutusExecutionSeedDeposit(
+          scenario as PlutusExecutionScenario,
+          byte,
+          scenario === "failing" ? failingScript : undefined,
+        ),
       ),
       ...references.deposits,
+      ...(failingNativeSpend ? [nativeSpendSeedDeposit()] : []),
     ],
   });
   const setup = await submitSetupTx({
@@ -210,6 +223,8 @@ export const setUpScene = async (
             ...(failingSigners === undefined
               ? {}
               : { signers: failingSigners }),
+            ...(failingScript === undefined ? {} : { failingScript }),
+            nativeSpend: failingNativeSpend,
           }
         : {}),
       predecessorEntries: previous.entries,
