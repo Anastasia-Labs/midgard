@@ -6,7 +6,6 @@
  * state. */
 import {
   hashMidgardValidationMachineState,
-  MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   midgardValidationTraceBranchHash,
   midgardValidationTraceLeafHash,
   MidgardValidationTracePadding,
@@ -17,8 +16,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
+import {
+  buildValidationTraceOperatorReveal,
+  validationTraceMoveWindow,
+} from "../../src/validation-trace-dispute/move-builders.js";
 import { completeValidationTraceMove } from "../../src/validation-trace-dispute/move-fee.js";
-import { gameRedeemer } from "./validation-game-moves.js";
 import { machineState } from "./validation-game-traces.js";
 import {
   type Defender,
@@ -109,32 +111,6 @@ export const defendScripted = async (
 ): Promise<string> =>
   `${await defendWith(scene, caseUtxo, defender, trace, priorDefenders)}#1`;
 
-/** The thread at `threadUtxo` after the defender reveals `proof` (case-thread-v1
- * `reveal_defender_midpoint`) by a move whose inclusive bounds are given. */
-const defenderRevealedThread = (
-  thread: SDK.CaseThread,
-  proof: MidgardValidationTraceProof,
-  lower: bigint,
-  upper: bigint,
-): SDK.CaseThread => {
-  const { turn } = thread;
-  if (typeof turn === "string" || !("AwaitingOperator" in turn))
-    throw new Error("the thread is not on the defender's turn");
-  const elapsed =
-    lower > thread.turn_started_at ? lower - thread.turn_started_at : 0n;
-  return {
-    ...thread,
-    turn_started_at: upper,
-    defender_clock_ms: thread.defender_clock_ms - elapsed,
-    turn: {
-      AwaitingChallenger: {
-        midpoint: turn.AwaitingOperator.midpoint,
-        operator_midpoint_hash: proof.stateHash.toString("hex"),
-      },
-    },
-  };
-};
-
 /**
  * The defender's RevealOperator on `thread`, now, from `trace`, paid from
  * the thread at its minimum fee like every move, signed by its wallet;
@@ -147,46 +123,26 @@ export const buildDefenderReveal = async (
   trace: ScriptedTrace,
 ): Promise<TxSignBuilder> => {
   const { lucid } = defender;
-  const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
-  const turn = datum.data!.turn;
+  const turn = threadOf(thread).turn;
   if (typeof turn === "string" || !("AwaitingOperator" in turn))
     throw new Error("the thread is not on the defender's turn");
-  const proof = trace.proofAt(Number(turn.AwaitingOperator.midpoint));
-  const validFrom = lucid.slotToUnixTime(lucid.currentSlot());
-  const validTo = validFrom + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS;
-  const next = defenderRevealedThread(
-    datum.data!,
-    proof,
-    BigInt(validFrom),
-    BigInt(validTo - 1),
+  const proof = SDK.validationTraceProofDataFromCore(
+    trace.proofAt(Number(turn.AwaitingOperator.midpoint)),
   );
+  const window = validationTraceMoveWindow(lucid);
   return await completeValidationTraceMove({
     lucid,
     stage: "RevealOperator",
     referenced: [scene.references.game],
     build: (fee) =>
-      lucid
-        .newTx()
-        .collectFrom([thread], (ctx) =>
-          gameRedeemer({ kind: "RevealOperator", proof })({
-            input_index: SDK.requireInputIndex(ctx, thread, "thread"),
-            output_index: 0n,
-          }),
-        )
-        .readFrom([scene.references.game])
-        .pay.ToContract(
-          thread.address,
-          {
-            kind: "inline",
-            value: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
-          },
-          {
-            ...thread.assets,
-            lovelace: (thread.assets.lovelace ?? 0n) - fee,
-          },
-        )
-        .validFrom(validFrom)
-        .validTo(validTo),
+      buildValidationTraceOperatorReveal({
+        lucid,
+        deployment: scene,
+        thread,
+        proof,
+        fee,
+        ...window,
+      }),
   });
 };
 

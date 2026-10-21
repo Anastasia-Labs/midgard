@@ -32,7 +32,7 @@ import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adap
 import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
   buildValidationTraceGameMove,
-  challengerRevealedThread,
+  revealedThread,
   type ValidationTraceGameAction,
   validationTraceMoveWindow,
 } from "../src/validation-trace-dispute/move-builders.js";
@@ -318,7 +318,8 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
         revealedB,
         { kind: "RevealChallenger", proof },
         (_lower, upper) =>
-          challengerRevealedThread({
+          revealedThread({
+            side: "challenger",
             thread,
             proof,
             lower: thread.turn_started_at,

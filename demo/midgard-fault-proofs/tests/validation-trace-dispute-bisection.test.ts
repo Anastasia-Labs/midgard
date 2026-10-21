@@ -27,7 +27,7 @@ import {
 import type { ValidationTraceClaimMaterial } from "../src/validation-trace-dispute/claim-material.js";
 import {
   buildValidationTraceGameMove,
-  challengerRevealedThread,
+  revealedThread,
   validationTraceMoveWindow,
 } from "../src/validation-trace-dispute/move-builders.js";
 import {
@@ -112,7 +112,8 @@ const revealBuild = ({
   const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
   const next =
     successor ??
-    challengerRevealedThread({
+    revealedThread({
+      side: "challenger",
       thread: datum.data!,
       proof,
       lower: BigInt(validFrom),

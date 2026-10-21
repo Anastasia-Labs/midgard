@@ -1,8 +1,8 @@
-/** The transactions of the challenger's thread moves, before completion: a
- * game-v1 move of a thread (RevealChallenger, EnterResolution,
- * EnterChallengerTimeout), the thread after our reveal or our entry into the
- * resolution, and the ThreadClose of a thread timed out on its defender's
- * side or awarded to us. The thread pays the fee the caller names
+/** The transactions of the thread moves, before completion: a game-v1 move
+ * of a thread (RevealOperator, RevealChallenger, EnterResolution,
+ * EnterChallengerTimeout), the thread after either side's reveal or the
+ * challenger's entry into the resolution, and the challenger's ThreadClose of
+ * a thread timed out on its defender's side or awarded to it. The thread pays the fee the caller names
  * (move-fee.ts settles it at the move's minimum, up to the cap); a move the
  * caller names no fee for keeps the thread's lovelace whole, for our
  * wallet's coin selection to pay. */
@@ -19,7 +19,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { validationTraceThreadTokenName } from "./threads.js";
+import {
+  type ValidationTraceSide,
+  validationTraceThreadTokenName,
+} from "./threads.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** `env.fraud_proof_output_lovelace`: what a lost-defense receipt holds. */
@@ -39,6 +42,7 @@ export const validationTraceMoveWindow = (lucid: LucidEvolution) => {
 };
 
 export type ValidationTraceGameAction =
+  | Readonly<{ kind: "RevealOperator"; proof: SDK.ValidationTraceProof }>
   | Readonly<{ kind: "RevealChallenger"; proof: SDK.ValidationTraceProof }>
   | Readonly<{ kind: "EnterResolution" }>
   | Readonly<{ kind: "EnterChallengerTimeout" }>;
@@ -46,7 +50,8 @@ export type ValidationTraceGameAction =
 /**
  * A game move of `thread` to `successor`, which keeps the thread's tokens
  * and its lovelace less `fee`, before completion; signed by `signer` when
- * given (EnterResolution is the prover's alone).
+ * given (EnterResolution is the prover's alone). Only the game reference
+ * script of `deployment` is read.
  */
 export const buildValidationTraceGameMove = ({
   lucid,
@@ -60,7 +65,9 @@ export const buildValidationTraceGameMove = ({
   signer,
 }: {
   readonly lucid: LucidEvolution;
-  readonly deployment: ValidationTraceDisputeDeployment;
+  readonly deployment: Readonly<{
+    references: Pick<ValidationTraceDisputeDeployment["references"], "game">;
+  }>;
   readonly thread: UTxO;
   readonly action: ValidationTraceGameAction;
   readonly successor: Readonly<{ address: string; datum: string }>;
@@ -78,11 +85,13 @@ export const buildValidationTraceGameMove = ({
     return Data.to(
       {
         Continue: [
-          action.kind === "RevealChallenger"
-            ? { RevealChallenger: { ...indices, proof: action.proof } }
-            : action.kind === "EnterResolution"
-              ? { EnterResolution: indices }
-              : { EnterChallengerTimeout: indices },
+          action.kind === "RevealOperator"
+            ? { RevealOperator: { ...indices, proof: action.proof } }
+            : action.kind === "RevealChallenger"
+              ? { RevealChallenger: { ...indices, proof: action.proof } }
+              : action.kind === "EnterResolution"
+                ? { EnterResolution: indices }
+                : { EnterChallengerTimeout: indices },
         ],
       },
       SDK.ValidationGameSpendRedeemer,
@@ -105,10 +114,66 @@ export const buildValidationTraceGameMove = ({
   return signer === undefined ? tx : tx.addSignerKey(signer);
 };
 
-const charge = (clock: bigint, startedAt: bigint, lower: bigint): bigint => {
+/**
+ * The operator's RevealOperator on `thread`, a thread at the game on the
+ * operator's turn, of `proof` (its state at the turn's midpoint under its
+ * own root), before completion: the thread continues at the game with the
+ * revealed successor, its lovelace less `fee`.
+ */
+export const buildValidationTraceOperatorReveal = ({
+  lucid,
+  deployment,
+  thread,
+  proof,
+  fee,
+  validFrom,
+  validTo,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deployment: Readonly<{
+    references: Pick<ValidationTraceDisputeDeployment["references"], "game">;
+  }>;
+  readonly thread: UTxO;
+  readonly proof: SDK.ValidationTraceProof;
+  /** What the thread pays for the move. */
+  readonly fee: bigint;
+  readonly validFrom: number;
+  readonly validTo: number;
+}): TxBuilder => {
+  const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+  if (datum.data === null)
+    throw new Error("validation-trace reveal: the thread holds no state");
+  const next = revealedThread({
+    side: "operator",
+    thread: datum.data,
+    proof,
+    lower: BigInt(validFrom),
+    upper: BigInt(validTo - 1),
+  });
+  return buildValidationTraceGameMove({
+    lucid,
+    deployment,
+    thread,
+    action: { kind: "RevealOperator", proof },
+    successor: {
+      address: thread.address,
+      datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
+    },
+    fee,
+    validFrom,
+    validTo,
+  });
+};
+
+const charge = (
+  side: ValidationTraceSide,
+  clock: bigint,
+  startedAt: bigint,
+  lower: bigint,
+): bigint => {
   const elapsed = lower > startedAt ? lower - startedAt : 0n;
   if (elapsed > clock)
-    throw new Error("validation-trace challenger's clock has run out");
+    throw new Error(`validation-trace ${side}'s clock has run out`);
   return clock - elapsed;
 };
 
@@ -131,6 +196,7 @@ export const challengerEnteredResolution = ({
     ...thread,
     turn_started_at: upper,
     challenger_clock_ms: charge(
+      "challenger",
       thread.challenger_clock_ms,
       thread.turn_started_at,
       lower,
@@ -139,22 +205,46 @@ export const challengerEnteredResolution = ({
 };
 
 /**
- * The thread after our reveal of `proof` (case-thread-v1
- * `reveal_challenger_midpoint`) by a move whose inclusive bounds are
- * `lower` and `upper`.
+ * The thread after `side` reveals `proof` by a move whose inclusive bounds
+ * are `lower` and `upper` (case-thread-v1 `reveal_defender_midpoint` for the
+ * operator, `reveal_challenger_midpoint` for the challenger). The move is
+ * charged to the revealing side's clock, and the other side's turn starts at
+ * its upper bound.
  */
-export const challengerRevealedThread = ({
+export const revealedThread = ({
+  side,
   thread,
   proof,
   lower,
   upper,
 }: {
+  readonly side: ValidationTraceSide;
   readonly thread: SDK.CaseThread;
   readonly proof: SDK.ValidationTraceProof;
   readonly lower: bigint;
   readonly upper: bigint;
 }): SDK.CaseThread => {
   const { turn } = thread;
+  if (side === "operator") {
+    if (typeof turn === "string" || !("AwaitingOperator" in turn))
+      throw new Error("validation-trace thread is not on the operator's turn");
+    return {
+      ...thread,
+      turn_started_at: upper,
+      defender_clock_ms: charge(
+        side,
+        thread.defender_clock_ms,
+        thread.turn_started_at,
+        lower,
+      ),
+      turn: {
+        AwaitingChallenger: {
+          midpoint: turn.AwaitingOperator.midpoint,
+          operator_midpoint_hash: proof.state_hash,
+        },
+      },
+    };
+  }
   if (typeof turn === "string" || !("AwaitingChallenger" in turn))
     throw new Error("validation-trace thread is not on the challenger's turn");
   const { midpoint, operator_midpoint_hash } = turn.AwaitingChallenger;
@@ -175,6 +265,7 @@ export const challengerRevealedThread = ({
     round: thread.round + 1n,
     turn_started_at: upper,
     challenger_clock_ms: charge(
+      side,
       thread.challenger_clock_ms,
       thread.turn_started_at,
       lower,
