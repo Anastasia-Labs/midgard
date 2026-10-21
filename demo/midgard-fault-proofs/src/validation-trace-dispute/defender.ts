@@ -8,6 +8,8 @@ export {
 } from "./case-history.js";
 export {
   buildValidationTraceDefend,
+  completeValidationTraceDefend,
+  VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
   VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
   type ValidationTraceDefendersProof,
   validationTraceDefendersProof,

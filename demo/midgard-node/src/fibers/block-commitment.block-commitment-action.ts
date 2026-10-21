@@ -29,6 +29,7 @@ import {
   shouldSkipForRegisteredCommitDueWork,
   tryAcquireCommitMutationWorkerPhase,
 } from "./block-commitment.should-skip-for-registered-commit-due-work.js";
+import { shouldSkipForDueValidationTraceDefense } from "./block-commitment.validation-trace-defense-pause.js";
 import {
   publishFinalizedDaPayloadBestEffort,
   runAfterL1ControlPlaneRelease,
@@ -122,6 +123,7 @@ export const blockCommitmentAction: Effect.Effect<
     if (yield* shouldSkipForActivePendingFinalization) {
       return;
     }
+    if (yield* shouldSkipForDueValidationTraceDefense) return;
     yield* runAfterL1ControlPlaneRelease(
       withL1ControlPlane(
         globals,

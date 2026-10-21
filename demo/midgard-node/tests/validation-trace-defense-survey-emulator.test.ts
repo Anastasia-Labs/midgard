@@ -17,7 +17,6 @@
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
 import { buildValidationTraceDefenseMaterial } from "@al-ft/midgard-fault-proofs";
 import {
-  type Block,
   completeCanonicalReplayPredecessorLedger,
   failingClaim,
   failingMaterial,
@@ -36,14 +35,8 @@ import { generateEmulatorAccount, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { foreignRetainedDaInsert } from "../src/da/foreign-retained-da.js";
-import { ConfirmedLedgerDB, DaPayloadsDB } from "../src/database/index.js";
-import {
-  ledgerMap,
-  ledgerRows,
-  netDelta,
-} from "../src/landed-blocks/ledger.js";
-import { Frontier, insertRow } from "../src/landed-blocks/store.js";
+import { DaPayloadsDB } from "../src/database/index.js";
+import { Frontier } from "../src/landed-blocks/store.js";
 import { decideValidationTraceDefense } from "../src/validation-trace-defense/decide.js";
 import { validationTraceDefenseChain } from "../src/validation-trace-defense/discovery.js";
 import {
@@ -56,6 +49,11 @@ import {
   type IntentEmulator,
 } from "./helpers/intent-journal-emulator.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
+import {
+  frontierAtStart,
+  retain,
+  seedLanded,
+} from "./helpers/validation-trace-defense-scene.js";
 
 const databases = testDatabases();
 let env: IntentEmulator;
@@ -63,75 +61,8 @@ let scene: Scene;
 let falseClaim: FalseClaim;
 let faultCase: UTxO;
 
-type Entry = Readonly<{ outRef: Buffer; output: Buffer }>;
-const minimal = (entries: readonly Entry[]) =>
-  entries.map(({ outRef, output }) => ({ outref: outRef, output }));
-
 const inNode = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
   env.runtime.runPromise(effect);
-
-/**
- * Retains `block`'s payload as the node does. The fixture's body carries
- * no validation traces, while a retained row of a block with transactions
- * must count one per transaction under a non-empty root; the row takes
- * those from the header's counts and a stand-in root (the defense reads
- * only the payload).
- */
-const retain = (block: Block) => {
-  const { header, headerHash } = block.evidence;
-  return DaPayloadsDB.upsertAvailable(
-    foreignRetainedDaInsert(
-      headerHash,
-      header,
-      header.endTime,
-      Buffer.from(block.payloadEnvelopeCbor),
-      { validationTracesRoot: "5a".repeat(32) },
-      {
-        validationTraceCount:
-          header.forcedTransactionCount + header.l2TransactionCount,
-      },
-    ),
-  );
-};
-
-/** The confirmed frontier at the failing block's parent. */
-const frontierAtStart = Effect.suspend(() =>
-  Frontier.upsert({
-    headerHash: scene.failing.evidence.header.prevHeaderHash,
-    utxosRoot: scene.failing.evidence.header.prevUtxosRoot,
-  }),
-);
-
-/** The node's landed rows: the frontier at the failing block's parent,
- * then the scene's three blocks as processed own rows, each retained. */
-const seedLanded = Effect.gen(function* () {
-  const { failing, passing, forced } = scene;
-  yield* frontierAtStart;
-  yield* ConfirmedLedgerDB.insertMultiple(
-    yield* ledgerRows(minimal(failing.predecessorEntries), new Map()),
-  );
-  for (const block of [failing, passing, forced]) {
-    const { header, headerHash } = block.evidence;
-    yield* insertRow({
-      headerHash,
-      parentHeaderHash: header.prevHeaderHash,
-      parentUtxosRoot: header.prevUtxosRoot,
-      utxosRoot: header.utxosRoot,
-      kind: "own",
-      state: "processed",
-      applied: true,
-      ...netDelta(
-        ledgerMap(minimal(block.predecessorEntries)),
-        minimal(block.postEntries),
-      ),
-      depositIds: [],
-      withdrawals: [],
-      forcedIds: [],
-      txIds: [],
-    });
-    yield* retain(block);
-  }
-});
 
 const survey = async (
   cache: DefenseMaterialCache = new Map(),
@@ -185,7 +116,7 @@ beforeAll(async () => {
     nodeSchema: true,
     protocol: { contracts: scene.h.contracts, referenceScriptAddresses: [] },
   });
-  await inNode(seedLanded);
+  await inNode(seedLanded(scene));
   falseClaim = await openFalseClaim(scene, await falseClaimMaterial(scene), 40);
   faultCase = await openFaultCase();
   // A look-alike: the false claim's case datum at the case address, with
@@ -211,7 +142,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await inNode(frontierAtStart);
+  await inNode(frontierAtStart(scene));
 });
 
 describe("the validation-trace defense survey", () => {

@@ -14,7 +14,9 @@
  *   its validity passes, and then dead; another family's intent under the
  *   same key, and another key, are not among them;
  * - the intent stage sends a recorded defense whose inputs are live, and
- *   follows it to landed.
+ *   follows it to landed;
+ * - a defense with no upper validity bound is refused and never sent,
+ *   while another family's unbounded transaction is sent and lands.
  */
 import {
   Emulator,
@@ -28,6 +30,8 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
+  INTENT_UNBOUNDED_VALIDITY,
+  IntentJournalRefused,
   IntentJournalWithoutFollower,
   type IntentPlan,
   journaledIntent,
@@ -177,6 +181,7 @@ describe("the defense pocket on the emulator", () => {
       .newTx()
       .collectFrom(inputs)
       .pay.ToAddress(env.payee.address, { lovelace: 2_000_000n })
+      .validTo(env.emulator.now() + 60_000)
       .complete({ presetWalletInputs: inputs, coinSelection: false });
     const hash = await Effect.runPromise(
       handleSignSubmit(lucid, unsigned, defense("pocket:spend", plan)).pipe(
@@ -302,5 +307,73 @@ describe("the intent stage and a journaled defense", () => {
       action: "follow",
       status: { kind: "landed" },
     });
+  });
+});
+
+describe("a defense with no upper validity bound", () => {
+  /** A payment from the Base wallet's view with no upper validity bound. */
+  const unboundedFromBase = async (
+    lucid: LucidEvolution,
+    env: IntentEmulator,
+  ) => {
+    const inputs = await Effect.runPromise(
+      readSelectedWalletView(lucid).pipe(
+        Effect.flatMap((view) => requireWalletViewInputs(view, "a payment")),
+        Effect.provide(env.journalLayer),
+      ),
+    );
+    return lucid
+      .newTx()
+      .pay.ToAddress(env.payee.address, { lovelace: 2_000_000n })
+      .complete({ presetWalletInputs: inputs });
+  };
+
+  it("is refused and never submitted", async () => {
+    const { env } = await open();
+    const lucid = await env.wallet();
+    const unsigned = await unboundedFromBase(lucid, env);
+    const hash = unsigned.toHash();
+    const refused = await Effect.runPromise(
+      handleSignSubmit(
+        lucid,
+        unsigned,
+        defense("defend:case-unit", await env.plan()),
+      ).pipe(Effect.provide(env.journalLayer), Effect.flip),
+    );
+    // The submit wraps the journal's refusal (TxSubmitError's cause).
+    let reason: string | undefined;
+    for (
+      let at: unknown = refused;
+      at !== undefined && at !== null;
+      at = (at as { cause?: unknown }).cause
+    )
+      if (at instanceof IntentJournalRefused) reason = at.reason;
+    expect(reason).toBe(INTENT_UNBOUNDED_VALIDITY);
+    expect(env.emulator.transactionHistory[hash]).toBeUndefined();
+    expect(
+      await Effect.runPromise(
+        env.journal.liveIntents("dispute_defense", "defend:case-unit"),
+      ),
+    ).toEqual([]);
+    expect(await env.stage.run()).toEqual([]);
+    expect(env.sent).toEqual([]);
+  });
+
+  it("is sent for another family, and lands", async () => {
+    const { env } = await open();
+    const lucid = await env.wallet();
+    const unsigned = await unboundedFromBase(lucid, env);
+    const hash = await Effect.runPromise(
+      handleSignSubmit(
+        lucid,
+        unsigned,
+        journaledIntent("reference_funding", "funding:key", await env.plan()),
+      ).pipe(Effect.provide(env.journalLayer)),
+    );
+    await env.follow();
+    expect(await env.stage.run()).toEqual([]);
+    expect(
+      env.stage.lastReport()!.entry(Buffer.from(hash, "hex"))?.status,
+    ).toMatchObject({ kind: "landed" });
   });
 });

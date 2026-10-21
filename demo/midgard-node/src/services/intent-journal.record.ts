@@ -17,6 +17,7 @@ import {
   type SubmitDecision,
 } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
+import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
@@ -32,12 +33,39 @@ import {
   INTENT_CONTENT_REF_MISSING,
   INTENT_JOURNAL_NO_VIEW,
   INTENT_JOURNAL_UNAVAILABLE,
+  INTENT_UNBOUNDED_VALIDITY,
   INTENT_UNDECODABLE,
   IntentJournalRefused,
   IntentSubmitHeld,
   refusal,
   refusalOf,
 } from "./intent-journal.refusals.js";
+
+/** The families whose transactions must carry an upper validity bound. */
+const BOUNDED_FAMILIES: ReadonlySet<string> = new Set(["dispute_defense"]);
+
+/**
+ * Whether `signedTxCbor` has no upper validity bound. Bytes that do not
+ * decode are not judged here: the record refuses them itself.
+ */
+const unbounded = (signedTxCbor: string): boolean => {
+  let tx: CML.Transaction | undefined;
+  try {
+    tx = CML.Transaction.from_cbor_hex(signedTxCbor);
+  } catch {
+    return false;
+  }
+  try {
+    const body = tx.body();
+    try {
+      return body.ttl() === undefined;
+    } finally {
+      body.free();
+    }
+  } finally {
+    tx.free();
+  }
+};
 
 /** A record's outcome, with S6's hold when the send decision held it. */
 export type InsertOutcome = RecordOutcome &
@@ -140,6 +168,12 @@ export const recordSignedIntent = (
         INTENT_CONTENT_REF_MISSING,
         txHash,
         `tx ${txHash} not submitted: a ${intent.family} intent must name its content (§8.2), and ${intent.workflowKey} names none`,
+      );
+    if (BOUNDED_FAMILIES.has(intent.family) && unbounded(signedTxCbor))
+      return yield* refusal(
+        INTENT_UNBOUNDED_VALIDITY,
+        txHash,
+        `tx ${txHash} not submitted: a ${intent.family} intent must carry an upper validity bound, and ${intent.workflowKey} carries none`,
       );
     const plan = intent.plan;
     if (plan.kind === "none")

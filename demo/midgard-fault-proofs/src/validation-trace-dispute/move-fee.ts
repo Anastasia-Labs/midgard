@@ -162,10 +162,27 @@ export const validationTraceMoveFeeCeiling = (
   });
 };
 
-const complete = async (tx: TxBuilder, fee: bigint): Promise<TxSignBuilder> =>
+/**
+ * The collateral an operator's own move sets: well over what its fee needs
+ * (the builder raises it when a fee does), and small enough that the
+ * pocket's collateral output also covers its return.
+ */
+export const VALIDATION_TRACE_MOVE_COLLATERAL_LOVELACE = 3_000_000n;
+
+type MoveWallet = Readonly<{
+  presetWalletInputs?: UTxO[];
+  changeAddress?: string;
+  setCollateral?: bigint;
+}>;
+
+const complete = async (
+  tx: TxBuilder,
+  fee: bigint,
+  wallet: MoveWallet,
+): Promise<TxSignBuilder> =>
   await tx
     .setMinFee(fee)
-    .complete({ coinSelection: false, localUPLCEval: true });
+    .complete({ coinSelection: false, localUPLCEval: true, ...wallet });
 
 /**
  * What a build that fixes its own fee throws when its inputs do not cover
@@ -214,19 +231,38 @@ const FEE_ROUNDS = 8;
  * pay throws its own build's error, which the runner pauses on until a top-up.
  * A cap build that fails for any other reason keeps its own error, which the
  * runner holds the stage on and retries at its next observation.
+ *
+ * With `ownWallet`, an operator moves on its own turn: the collateral
+ * (`VALIDATION_TRACE_MOVE_COLLATERAL_LOVELACE`, with its return), and a fee
+ * the thread does not pay, come from its `inputs` alone, any change returns
+ * to its `changeAddress`, and no funding permit stands behind the move, so
+ * no fee ceiling refuses it.
  */
 export const completeValidationTraceMove = async ({
   lucid,
   stage,
   build,
   referenced,
+  ownWallet,
 }: {
   readonly lucid: LucidEvolution;
   readonly stage: string;
   readonly build: (fee: bigint) => TxBuilder;
   readonly referenced: readonly UTxO[];
+  readonly ownWallet?: Readonly<{
+    inputs: readonly UTxO[];
+    changeAddress: string;
+  }>;
 }): Promise<TxSignBuilder> => {
   const cap = VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE;
+  const wallet: MoveWallet =
+    ownWallet === undefined
+      ? {}
+      : {
+          presetWalletInputs: [...ownWallet.inputs],
+          changeAddress: ownWallet.changeAddress,
+          setCollateral: VALIDATION_TRACE_MOVE_COLLATERAL_LOVELACE,
+        };
   const needs = (unsigned: TxSignBuilder) =>
     validationTraceMoveMinimumFee({
       lucid,
@@ -235,10 +271,11 @@ export const completeValidationTraceMove = async ({
     });
   let best: TxSignBuilder;
   try {
-    best = await complete(build(cap), cap);
+    best = await complete(build(cap), cap, wallet);
   } catch (cause) {
     if (!shortOfFee(cause)) throw cause;
-    const paid = await build(0n).complete({ localUPLCEval: true });
+    const paid = await build(0n).complete({ localUPLCEval: true, ...wallet });
+    if (ownWallet !== undefined) return paid;
     const fee = CML.Transaction.from_cbor_hex(paid.toCBOR()).body().fee();
     const ceiling = validationTraceMoveFeeCeiling(lucid);
     if (fee > ceiling)
@@ -253,7 +290,7 @@ export const completeValidationTraceMove = async ({
   for (let round = 0; round < FEE_ROUNDS && fee < cap; round += 1) {
     let candidate: TxSignBuilder;
     try {
-      candidate = await complete(build(fee), fee);
+      candidate = await complete(build(fee), fee, wallet);
     } catch {
       step = step === 0n ? 16n : step * 4n;
       fee = needed + step;

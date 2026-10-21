@@ -21,6 +21,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import type { OurThreadFacts } from "./discovery.js";
+import { VALIDATION_TRACE_DEFENSE_LATE_MARGIN_MS } from "./health.js";
 import type { ValidationTraceDefenseOutcome } from "./material.js";
 import type { DefenseCase, DefenseSurvey } from "./survey.js";
 
@@ -48,12 +49,11 @@ export type ValidationTraceDefenseState = Readonly<{
   deadline?: number;
   detail: string;
   failsReadiness: boolean;
+  /** What the node lacks to fund the move, when underfunded. */
+  shortfallLovelace?: bigint;
 }>;
 
-/** How long before a Defend's deadline a lack of it fails readiness: C/4. */
-export const VALIDATION_TRACE_DEFENSE_LATE_MARGIN_MS = Math.floor(
-  MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS / 4,
-);
+export { VALIDATION_TRACE_DEFENSE_LATE_MARGIN_MS };
 
 /** The last instant a Defend's lower bound may be: `started_at + C`. */
 export const validationTraceDefendByMs = (caseDatum: {
