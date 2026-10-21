@@ -105,6 +105,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/reserve-payout-economic-acceptance-emulator.test.ts
  *   tests/reserve-payout-reference-resolution-emulator.test.ts
  *   tests/script-reward-registration.test.ts
+ *   tests/validation-trace-defense-survey-emulator.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

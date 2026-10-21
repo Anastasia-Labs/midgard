@@ -104,6 +104,7 @@ export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
 export * from "./validation-cek-selection.js";
+export * from "./validation-trace-dispute/defender.js";
 export { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "./validation-trace-dispute/one-step-holders.js";
 export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-classification-fault.js";

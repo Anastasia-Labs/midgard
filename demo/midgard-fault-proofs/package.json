@@ -98,6 +98,10 @@
     "./test-support/funding-measurement": {
       "midgard-source": "./tests/support/funding-measurement.ts",
       "types": "./tests/support/funding-measurement.ts"
+    },
+    "./test-support/validation-trace-defender-scene": {
+      "midgard-source": "./tests/support/validation-trace-defender-scene.ts",
+      "types": "./tests/support/validation-trace-defender-scene.ts"
     }
   },
   "type": "module",
