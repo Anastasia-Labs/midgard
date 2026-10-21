@@ -105,7 +105,8 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * `failingReferenceInputs` outputs the deposits create as reference inputs,
  * `failingSigners` sign it beside its owner, its spend runs
  * `failingScript`, by default the failing script, and with
- * `failingNativeSpend` it also spends an output a native script holds.
+ * `failingNativeSpend` it also spends an output a native script holds;
+ * with `failingNativeMint` it also mints under a native script's policy.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
@@ -115,12 +116,14 @@ export const setUpScene = async (
     failingSigners,
     failingScript,
     failingNativeSpend = false,
+    failingNativeMint = false,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
     readonly failingSigners?: ScenarioSigners;
     readonly failingScript?: MidgardVersionedScript;
     readonly failingNativeSpend?: boolean;
+    readonly failingNativeMint?: boolean;
   } = {},
 ): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
@@ -225,6 +228,7 @@ export const setUpScene = async (
               : { signers: failingSigners }),
             ...(failingScript === undefined ? {} : { failingScript }),
             nativeSpend: failingNativeSpend,
+            nativeMint: failingNativeMint,
           }
         : {}),
       predecessorEntries: previous.entries,

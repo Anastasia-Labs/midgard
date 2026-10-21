@@ -9,6 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import {
   hashScriptWitness,
+  makeMintPreimageCbor,
   nativeScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { CML } from "@lucid-evolution/lucid";
@@ -84,6 +85,36 @@ export const NATIVE_SPEND_SCRIPT = nativeScriptWitness({
   scripts: [],
 });
 const NATIVE_SPEND_SEED_BYTE = 0x66;
+
+/** The asset a transaction mints under the native script's policy: the
+ * value it adds to an output (none when it does not mint), and its mint
+ * field. */
+const NATIVE_MINT_ASSET = "4d";
+export const nativeMintAssets = (nativeMint: boolean) =>
+  new Map(
+    nativeMint
+      ? [
+          [
+            hashScriptWitness(NATIVE_SPEND_SCRIPT),
+            new Map([[NATIVE_MINT_ASSET, 1n]]),
+          ],
+        ]
+      : [],
+  );
+export const nativeMintPreimageCbor = () =>
+  makeMintPreimageCbor(
+    new Map(
+      [...nativeMintAssets(true)].map(([policy, assets]) => [
+        Buffer.from(policy, "hex"),
+        new Map(
+          [...assets].map(([name, quantity]) => [
+            Buffer.from(name, "hex"),
+            quantity,
+          ]),
+        ),
+      ]),
+    ),
+  );
 const nativeSpendCredential = (): SeedCredential => ({
   ScriptCredential: [hashScriptWitness(NATIVE_SPEND_SCRIPT)],
 });

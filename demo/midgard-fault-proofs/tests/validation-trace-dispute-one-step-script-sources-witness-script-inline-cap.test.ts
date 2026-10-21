@@ -2,7 +2,9 @@
  * begin step, which reads the witness script of a failing transaction whose
  * one script is grown a byte of applied parameter at a time, a field the
  * prepare and semantic moves carry whole, inline: at, one byte over, and
- * far over the inline script-sources limit for a witness script
+ * far over the inline script-sources limit for a witness script, and at the
+ * higher inline phase-A native scripts limit, whose phase-A step resolves
+ * the same field while this step does not
  * (support/validation-trace-dispute-one-step-inline-cap.ts). */
 import { readCborBytes } from "@al-ft/midgard-core/codec";
 import {
@@ -12,7 +14,10 @@ import {
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { fromHex } from "@lucid-evolution/lucid";
 
-import { VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES } from "../src/validation-trace-dispute/one-step-phase-evidence.js";
+import {
+  VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES,
+  VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES,
+} from "../src/validation-trace-dispute/one-step-phase-evidence.js";
 import { FAILING_SCRIPT } from "./helpers/plutus-execution-block-fixture.js";
 import { applyExpectedScriptParams } from "./support/expected-parameter-application.js";
 import { describeInlineCap } from "./support/validation-trace-dispute-one-step-inline-cap.js";
@@ -50,4 +55,10 @@ describeInlineCap({
     encodeMidgardVersionedScriptListPreimage([grown(bytes)]).length,
   stepOf: () => 31,
   installs: (bytes) => ({ failingScript: grown(bytes) }),
+  overAt: [
+    [
+      "at the inline phase-A native scripts limit",
+      VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES,
+    ],
+  ],
 });

@@ -60,6 +60,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-script-sources-81.test.ts",
   "./tests/validation-trace-dispute-one-step-script-sources-82.test.ts",
   "./tests/validation-trace-dispute-one-step-script-sources-86.test.ts",
+  "./tests/validation-trace-dispute-one-step-script-sources-not-yet-driven.test.ts",
   "./tests/validation-trace-dispute-one-step-signatures-address-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-signatures-required-inline-cap.test.ts",
   "./tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts",

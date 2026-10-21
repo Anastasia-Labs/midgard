@@ -2,8 +2,8 @@
  * The operator commits the event and applies its ledger effect (none for a
  * transaction stamped `TxIsInvalid`); every root is computed from the actual
  * outputs. The spend runs a PlutusV3 script (failing or passing), beside an
- * output a native script holds when asked, or is a key spend with no
- * redeemers. */
+ * output a native script holds and a mint under its policy when asked, or
+ * is a key spend with no redeemers. */
 import {
   computeHash28,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -42,6 +42,8 @@ import {
   depositSeed,
   keyCredential,
   NATIVE_SPEND_SCRIPT,
+  nativeMintAssets,
+  nativeMintPreimageCbor,
   nativeSpendSeed,
   ownerKey,
   ownerKeyHash,
@@ -138,7 +140,8 @@ const extraSignerKey = (index: number) => {
  * beside its owner, and a failing spend runs `failingScript`. With
  * `nativeSpend`, the transaction also spends that output, which sorts after
  * the seed and which the native script, witnessed first, holds; its one
- * output carries both. */
+ * output carries both. With `nativeMint`, it also mints an asset under the
+ * native script's policy, witnessed first, into its one output. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
@@ -147,9 +150,14 @@ export const scenarioTransaction = (
   { extraSigners = 0, requiredOwner = 0 }: ScenarioSigners = {},
   failingScript?: MidgardVersionedScript,
   nativeSpend?: LedgerEntry,
+  nativeMint = false,
 ) => {
   const outputs = [
-    makeOutput(nativeSpend === undefined ? SEED_LOVELACE : 2n * SEED_LOVELACE),
+    makeOutput(
+      nativeSpend === undefined ? SEED_LOVELACE : 2n * SEED_LOVELACE,
+      undefined,
+      nativeMintAssets(nativeMint),
+    ),
   ];
   const key = ownerKey();
   const extraKeys = Array.from({ length: extraSigners }, (_, index) =>
@@ -171,9 +179,12 @@ export const scenarioTransaction = (
       outputs,
       privateKey: key,
       scriptWitnesses: [
-        ...(nativeSpend === undefined ? [] : [NATIVE_SPEND_SCRIPT]),
+        ...(nativeSpend === undefined && !nativeMint
+          ? []
+          : [NATIVE_SPEND_SCRIPT]),
         scenarioScript(scenario, failingScript),
       ],
+      ...(nativeMint ? { mintPreimageCbor: nativeMintPreimageCbor() } : {}),
       ...(scenario === "failing_stamped_invalid"
         ? { validity: "TxIsInvalid" as const }
         : {}),
@@ -251,6 +262,9 @@ export type PlutusExecutionBlockOptions = {
    * holds (`nativeSpendSeedDeposit`), which the predecessor ledger must
    * hold. */
   readonly nativeSpend?: boolean;
+  /** Whether the script spend also mints an asset under the native
+   * script's policy. */
+  readonly nativeMint?: boolean;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -264,6 +278,7 @@ export const plutusExecutionBlockFixture = async (
     signers,
     failingScript,
     nativeSpend = false,
+    nativeMint = false,
   }: PlutusExecutionBlockOptions = {},
 ) => {
   const scriptSeed = depositSeed(
@@ -288,6 +303,7 @@ export const plutusExecutionBlockFixture = async (
     signers,
     failingScript,
     nativeSpend ? spent[1] : undefined,
+    nativeMint,
   );
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
@@ -312,7 +328,11 @@ export const plutusExecutionBlockFixture = async (
   });
   const createdEntry: LedgerEntry = {
     outRef: created,
-    output: makeOutput(BigInt(spent.length) * SEED_LOVELACE),
+    output: makeOutput(
+      BigInt(spent.length) * SEED_LOVELACE,
+      undefined,
+      nativeMintAssets(nativeMint),
+    ),
   };
   const postEntries =
     scenario === "failing_stamped_invalid"

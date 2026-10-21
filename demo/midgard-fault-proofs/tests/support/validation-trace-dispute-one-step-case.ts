@@ -118,6 +118,7 @@ export const defendTwoThreads = async ({
   failingSigners,
   failingScript,
   failingNativeSpend,
+  failingNativeMint,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -142,6 +143,9 @@ export const defendTwoThreads = async ({
   /** Whether the failing transaction also spends an output a native script
    * holds. */
   readonly failingNativeSpend?: boolean;
+  /** Whether the failing transaction also mints under a native script's
+   * policy. */
+  readonly failingNativeMint?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -182,6 +186,7 @@ export const defendTwoThreads = async ({
       ...(failingSigners === undefined ? {} : { failingSigners }),
       ...(failingScript === undefined ? {} : { failingScript }),
       ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
+      ...(failingNativeMint === undefined ? {} : { failingNativeMint }),
     },
   );
   const removal =

@@ -64,7 +64,8 @@ type Growth =
  * transaction `installs(units)` carries the field at `units` units, our
  * trace reads the item at the step after its state `stepOf(units)`
  * (`evidence`), and the phase's inline limit is `limit` bytes. `field`
- * names the field in the rows.
+ * names the field in the rows. Each of `overAt`, a label and a byte count
+ * over the limit, adds a row of the largest field within that count.
  */
 export const describeInlineCap = ({
   field,
@@ -75,6 +76,7 @@ export const describeInlineCap = ({
   limit,
   stepOf,
   installs,
+  overAt = [],
   ...growth
 }: {
   readonly field: string;
@@ -85,6 +87,7 @@ export const describeInlineCap = ({
   readonly limit: number;
   readonly stepOf: (units: number) => number;
   readonly installs: (units: number) => Installs;
+  readonly overAt?: readonly (readonly [label: string, bytes: number])[];
 } & Growth) => {
   const { unit, fieldBytes } =
     "itemBytes" in growth
@@ -97,8 +100,13 @@ export const describeInlineCap = ({
   const fits = (items: number) => fieldBytes(items) <= limit;
   let largest = 1;
   while (fits(largest + 1)) largest += 1;
-  let tier1 = largest;
-  while (fieldBytes(tier1 + 1) <= TIER1_MAX_PREIMAGE_BYTES) tier1 += 1;
+  /** The most units whose field is within `bytes`. */
+  const within = (bytes: number) => {
+    let units = largest;
+    while (fieldBytes(units + 1) <= bytes) units += 1;
+    return units;
+  };
+  const tier1 = within(TIER1_MAX_PREIMAGE_BYTES);
   const prepareLabel = `PrepareSelected ${phase}`;
   const verifyLabel = `Verify ${phase} ${semantic.toString()}`;
 
@@ -152,9 +160,10 @@ export const describeInlineCap = ({
     "reason" in result &&
     result.reason.includes(`thread ${unit} at `);
 
-  describe.each([
+  describe.each<readonly [label: string, units: number]>([
     [`one ${unit} over the inline ${phase} limit`, largest + 1],
     ["at the inline carriage's largest", tier1],
+    ...overAt.map(([label, bytes]) => [label, within(bytes)] as const),
   ])(
     `validation-trace dispute runner: a step of ${phase}, its ${field} %s`,
     (_, items) => {
