@@ -18,7 +18,10 @@ import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { publicReadinessPresentation } from "../src/commands/listen-readiness-public-presentation.js";
-import type { ValidationTraceDefenseState } from "../src/validation-trace-defense/decide.js";
+import {
+  VALIDATION_TRACE_DEFENSE_STATES,
+  type ValidationTraceDefenseState,
+} from "../src/validation-trace-defense/decide.js";
 import {
   initialValidationTraceDefenseHealth,
   VALIDATION_TRACE_DEFENSE_LATE_MARGIN_MS,
@@ -161,6 +164,13 @@ describe("the validation-trace defender's readiness", () => {
     expect(publicReadinessPresentation(body, "preprod-public")).toStrictEqual(
       body,
     );
+    // Every state the defender can name is published as it is.
+    for (const name of VALIDATION_TRACE_DEFENSE_STATES) {
+      const line = `${name}:${subject}:${far.toString()}`;
+      expect(
+        publicReadinessPresentation({ details: [line] }, "preprod-public"),
+      ).toStrictEqual({ details: [line] });
+    }
     // A free-form line in the same place is not published.
     expect(
       publicReadinessPresentation(
@@ -168,6 +178,17 @@ describe("the validation-trace defender's readiness", () => {
         "preprod-public",
       ),
     ).toStrictEqual({ reasons: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
+    // So is a named state and unit followed by free-form text.
+    expect(
+      publicReadinessPresentation(
+        {
+          details: [
+            `validation-trace-defense-material-unavailable:${subject}:${far.toString()} the build read /var/lib/node`,
+          ],
+        },
+        "preprod-public",
+      ),
+    ).toStrictEqual({ details: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
   });
 
   it("makes /readyz unready on an underfunded move and on no active node, and keeps our own fault ready", async () => {

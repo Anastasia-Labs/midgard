@@ -125,13 +125,14 @@ export type DefenseScene = Awaited<ReturnType<typeof openDefenseScene>>;
  * The scene, its expiry references published, under the node's follower
  * with the landed rows seeded, and the defender's port; `beforeFollow`
  * runs on the scene before the follower attaches (what it publishes is
- * seeded).
+ * seeded); `sceneOptions` shape the scene's blocks.
  */
 export const openDefenseScene = async (
   databases: ReturnType<typeof testDatabases>,
   beforeFollow?: (scene: Scene) => Promise<void>,
+  sceneOptions?: Parameters<typeof setUpScene>[1],
 ) => {
-  const scene = await setUpScene();
+  const scene = await setUpScene(undefined, sceneOptions);
   const expiry: ExpiryReferences = await publishExpiryReferences(scene);
   await beforeFollow?.(scene);
   const references: ValidationTraceDefenseReferences = {

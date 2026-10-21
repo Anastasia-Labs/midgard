@@ -182,6 +182,7 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
       ourVkh: port.ourVkh,
       l1SlotConfig: port.l1SlotConfig,
       cache: port.cache,
+      materialWorker: port.materialWorker,
     });
     const casePolicyId = port.dispute.case.policyId;
     const decision = decideValidationTraceDefense(survey, l1Now, (unit) => {

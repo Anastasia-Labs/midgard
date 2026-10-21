@@ -2,10 +2,15 @@
  * outside this package that drive a defending operator on the real
  * deployment: the scene's blocks and references, cases opened on its
  * passing and failing blocks, the challenger's moves, other operators'
- * Defends, a second active operator, the expiry references, references
- * published under their roles' tokens, the operator's later commits, and
- * the emulator's transaction limits. */
+ * Defends, a second active operator, the expiry references, the close of
+ * a case its defender won, references published under their roles' tokens,
+ * the operator's later commits, and the emulator's transaction limits, and
+ * the longest-running passing script admission takes. */
 export { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.js";
+export {
+  ADMITTED_TX_EX_UNITS,
+  LONGEST_PASSING_SCRIPT,
+} from "../helpers/plutus-execution-block-fixture.js";
 export { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 export { enrollSuccessor } from "./rotated-successor-operator.js";
 export { network } from "./submit-init-emulator-shared.js";
@@ -34,6 +39,10 @@ export {
   publishExpiryReferences,
   threadExpiry,
 } from "./validation-trace-dispute-defender-moves.js";
+export {
+  defenderWonCaseClose,
+  protocolTreasury,
+} from "./validation-trace-dispute-defender-won-close.js";
 export {
   type Block,
   BOND_LOVELACE,

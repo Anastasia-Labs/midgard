@@ -34,6 +34,7 @@ import {
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
   referenceSeedDeposits,
+  type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
@@ -105,15 +106,18 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * dispute move has from the failing block's end. The failing transaction's
  * redeemer is `failingRedeemerData` when given, and it reads
  * `failingReferenceInputs` outputs the deposits create as reference inputs.
+ * The passing transaction spends under `passingSpend` when given.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
   {
     failingRedeemerData,
     failingReferenceInputs = 0,
+    passingSpend,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
+    readonly passingSpend?: ScriptSpend;
   } = {},
 ): Promise<Scene> => {
   const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
@@ -174,7 +178,11 @@ export const setUpScene = async (
     priorLedger: [],
     events: [
       ...Object.entries(seeds).map(([scenario, byte]) =>
-        plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
+        plutusExecutionSeedDeposit(
+          scenario as PlutusExecutionScenario,
+          byte,
+          scenario === "passing" ? passingSpend : undefined,
+        ),
       ),
       ...references.deposits,
     ],
@@ -212,6 +220,9 @@ export const setUpScene = async (
         : {}),
       ...(scenario === "failing"
         ? { referenceInputs: references.outRefs }
+        : {}),
+      ...(scenario === "passing" && passingSpend !== undefined
+        ? { spend: passingSpend }
         : {}),
       predecessorEntries: previous.entries,
       header: {

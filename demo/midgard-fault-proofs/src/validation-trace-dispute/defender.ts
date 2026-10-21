@@ -16,7 +16,11 @@ export {
   type ValidationTraceDefense,
 } from "./defend.js";
 export {
+  buildPortableValidationTraceDefenseMaterial,
   buildValidationTraceDefenseMaterial,
+  type PortableValidationTraceDefense,
+  type PortableValidationTraceDefenseMaterial,
+  validationTraceDefenseFromPortable,
   type ValidationTraceDefenseMaterial,
 } from "./defense-material.js";
 export {

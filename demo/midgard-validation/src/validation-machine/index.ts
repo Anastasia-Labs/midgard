@@ -7,6 +7,7 @@ export {
   decideValidationChallengeV1,
   type ValidationChallengeDecisionV1,
   type ValidationTraceAtStepCountV1,
+  validationTraceLevelsAtStepCountV1,
 } from "./challenger-descriptor.js";
 export {
   decodeScriptDiscoveryBitmap,

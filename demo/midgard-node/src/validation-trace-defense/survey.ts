@@ -33,6 +33,7 @@ import {
   type ValidationTraceDefenseChain,
 } from "./discovery.js";
 import {
+  type DefenseMaterialWorker,
   type ValidationTraceDefenseOutcome,
   validationTraceDefenseOutcome,
 } from "./material.js";
@@ -84,6 +85,8 @@ export const surveyValidationTraceDefense = (
     ourVkh: string;
     l1SlotConfig: L1SlotConfig;
     cache: DefenseMaterialCache;
+    /** The worker material is built in; the node's own by default. */
+    materialWorker?: DefenseMaterialWorker | undefined;
   }>,
 ) =>
   Effect.gen(function* () {
@@ -139,6 +142,7 @@ export const surveyValidationTraceDefense = (
                 caseDatum: found.datum,
                 point: facts.point,
                 l1SlotConfig: input.l1SlotConfig,
+                worker: input.materialWorker,
               });
         if (outcome.kind !== "unavailable")
           input.cache.set(found.caseUnit, outcome);

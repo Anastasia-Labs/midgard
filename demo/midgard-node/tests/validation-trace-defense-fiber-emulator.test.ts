@@ -38,6 +38,7 @@ import { shouldSkipForDueValidationTraceDefense } from "../src/fibers/block-comm
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { VALIDATION_TRACE_DEFENSE_LEASE_HOLDER } from "../src/validation-trace-defense/health.js";
+import type { DefenseMaterialWorker } from "../src/validation-trace-defense/material.js";
 import { validationTraceDefenseTick } from "../src/validation-trace-defense/tick.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
@@ -99,6 +100,15 @@ const prepareSignedCommit = async (s: DefenseScene, commitHeader: Buffer) => {
   );
   return intended;
 };
+
+/** A material worker running the ES module `source`, bound by `timeoutMs`. */
+const workerOf = (
+  source: string,
+  timeoutMs = 60_000,
+): DefenseMaterialWorker => ({
+  entry: new URL(`data:text/javascript,${encodeURIComponent(source)}`),
+  timeoutMs,
+});
 
 describe("the validation-trace defender's tick", () => {
   it("lands the Defend of a case on our block before our clock runs out, and our next commit keeps its bond hold", async () => {
@@ -232,6 +242,53 @@ describe("the validation-trace defender's tick", () => {
       { kind: "defend", subject: claim.caseUnit, outcome: "landed" },
     ]);
     expect((await s.readiness()).reasons).toStrictEqual([]);
+  });
+
+  it("retries a case whose material worker fails or never answers, keeps nothing for it, and defends once the worker builds", async () => {
+    const { s, claim } = await openWithClaim();
+    const hung = "validation-trace-defense-hung-worker";
+    const heard = new BroadcastChannel(hung);
+    let beats = 0;
+    heard.onmessage = () => {
+      beats += 1;
+    };
+    try {
+      for (const failing of [
+        workerOf('throw new Error("the build cannot start");'),
+        workerOf('import "node:no-such-module";'),
+        workerOf("process.exit(3);"),
+        workerOf(""),
+        workerOf(
+          `const beat = new BroadcastChannel(${JSON.stringify(hung)}); setInterval(() => beat.postMessage("alive"), 10);`,
+          500,
+        ),
+      ]) {
+        const sentBefore = s.env.sent.length;
+        expect(
+          await s.tick({ ...s.port, materialWorker: failing }),
+        ).toStrictEqual([]);
+        expect(s.env.sent.length).toBe(sentBefore);
+        expect((await s.health()).states).toMatchObject([
+          {
+            state: "validation-trace-defense-material-unavailable",
+            subject: claim.caseUnit,
+            detail: expect.stringMatching(/the defense material worker/u),
+          },
+        ]);
+        expect(s.port.cache.has(claim.caseUnit)).toBe(false);
+      }
+      // The worker that never answered was ended at its bound.
+      expect(beats).toBeGreaterThan(0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const ended = beats;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(beats).toBe(ended);
+    } finally {
+      heard.close();
+    }
+    expect(await s.tick()).toStrictEqual([
+      { kind: "defend", subject: claim.caseUnit, outcome: "landed" },
+    ]);
   });
 
   it("builds no Defend once our side clock has run out, and names it late", async () => {

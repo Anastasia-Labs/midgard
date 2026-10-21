@@ -8,12 +8,14 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deriveCanonicalOriginalDepositTransitionEffect,
@@ -48,6 +50,37 @@ export const FAILING_SCRIPT = plutusV3ScriptWitness(
 export const PASSING_SCRIPT = plutusV3ScriptWitness(
   encodeCbor(Buffer.from("0101002499", "hex")),
 );
+
+/** The per-transaction execution-unit cap admission enforces (the consensus
+ * profile's Cardano `maxTxExUnits`), as `[memory, steps]`. */
+export const ADMITTED_TX_EX_UNITS = [
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits),
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits),
+] as const;
+
+/**
+ * A passing PlutusV3 script that runs as long as admission allows:
+ * `(program 1.1.0 (lam ctx [(lam _ (con unit ())) (countdown 5148 0)]))`,
+ * where `countdown n acc = n == 0 ? acc : countdown (n - 1) acc` through the
+ * strict fixpoint. 5148 rounds is the most whose run fits
+ * `ADMITTED_TX_EX_UNITS` (16,497,794 memory, 391,317 CEK steps); in Flat,
+ * wrapped in one CBOR byte string.
+ */
+export const LONGEST_PASSING_SCRIPT = plutusV3ScriptWitness(
+  encodeCbor(
+    Buffer.from(
+      "010100232498ccc8c8c0088cc0080080048c0088cc0080080048894ccd5cd19b870024800040044cc00ccdc080124004002905c2824001",
+      "hex",
+    ),
+  ),
+);
+
+/** A script spend's own script and declared execution units, in place of
+ * the scenario's script and the default units. */
+export type ScriptSpend = Readonly<{
+  script: MidgardVersionedScript;
+  exUnits: readonly [bigint, bigint];
+}>;
 
 export type PlutusExecutionScenario =
   | "failing"
@@ -116,15 +149,20 @@ export const depositSeed = (
 const DEFAULT_SCRIPT_SEED_BYTE = 0x61;
 const KEY_SEED_BYTE = 0x62;
 
-const scenarioScript = (scenario: PlutusExecutionScenario) =>
-  scenario === "passing" || scenario === "unsigned_required_signer"
+const scenarioScript = (
+  scenario: PlutusExecutionScenario,
+  spend?: ScriptSpend,
+): MidgardVersionedScript =>
+  spend?.script ??
+  (scenario === "passing" || scenario === "unsigned_required_signer"
     ? PASSING_SCRIPT
-    : FAILING_SCRIPT;
+    : FAILING_SCRIPT);
 
 export const scriptCredential = (
   scenario: PlutusExecutionScenario,
+  spend?: ScriptSpend,
 ): SeedCredential => ({
-  ScriptCredential: [hashScriptWitness(scenarioScript(scenario))],
+  ScriptCredential: [hashScriptWitness(scenarioScript(scenario, spend))],
 });
 const keyCredential = (): SeedCredential => ({
   PublicKeyCredential: [ownerKeyHash()],
@@ -138,11 +176,12 @@ const keyCredential = (): SeedCredential => ({
 export const plutusExecutionSeedDeposit = (
   scenario: PlutusExecutionScenario,
   seedByte: number = DEFAULT_SCRIPT_SEED_BYTE,
+  spend?: ScriptSpend,
 ) => ({
   event:
     scenario === "no_redeemers"
       ? seedDepositEvent(KEY_SEED_BYTE, keyCredential())
-      : seedDepositEvent(seedByte, scriptCredential(scenario)),
+      : seedDepositEvent(seedByte, scriptCredential(scenario, spend)),
   originalAssets: { lovelace: SEED_LOVELACE },
   honest: true,
 });
@@ -169,13 +208,15 @@ export const referenceSeedDeposits = (count: number) => {
 };
 
 /** The transaction the scenario commits, over its seed output; a script
- * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, and it
- * reads `referenceInputs` (out-refs) as reference inputs. */
+ * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, it
+ * reads `referenceInputs` (out-refs) as reference inputs, and it runs
+ * `spend`'s script under its units when given. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
   redeemerData?: Uint8Array,
   referenceInputs: readonly Buffer[] = [],
+  spend?: ScriptSpend,
 ) => {
   const outputs = [makeOutput(SEED_LOVELACE)];
   const key = ownerKey();
@@ -191,7 +232,7 @@ export const scenarioTransaction = (
       referenceInputs,
       outputs,
       privateKey: key,
-      scriptWitnesses: [scenarioScript(scenario)],
+      scriptWitnesses: [scenarioScript(scenario, spend)],
       ...(scenario === "failing_stamped_invalid"
         ? { validity: "TxIsInvalid" as const }
         : {}),
@@ -203,6 +244,7 @@ export const scenarioTransaction = (
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
           ...(redeemerData === undefined ? {} : { data: redeemerData }),
+          ...(spend === undefined ? {} : { exUnits: spend.exUnits }),
         },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -253,6 +295,8 @@ export type PlutusExecutionBlockOptions = {
   /** The out-refs the spend reads as reference inputs, each held by the
    * predecessor ledger; by default none. */
   readonly referenceInputs?: readonly Buffer[];
+  /** The script spend's script and units; by default the scenario's. */
+  readonly spend?: ScriptSpend;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -263,9 +307,10 @@ export const plutusExecutionBlockFixture = async (
     predecessorEntries: requestedPredecessor,
     redeemerData,
     referenceInputs,
+    spend,
   }: PlutusExecutionBlockOptions = {},
 ) => {
-  const scriptSeed = depositSeed(seedByte, scriptCredential(scenario));
+  const scriptSeed = depositSeed(seedByte, scriptCredential(scenario, spend));
   const keySeed = depositSeed(KEY_SEED_BYTE, keyCredential());
   const predecessorEntries = requestedPredecessor ?? [scriptSeed, keySeed];
   const seed = scenario === "no_redeemers" ? keySeed : scriptSeed;
@@ -276,6 +321,7 @@ export const plutusExecutionBlockFixture = async (
     seed,
     redeemerData,
     referenceInputs,
+    spend,
   );
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
