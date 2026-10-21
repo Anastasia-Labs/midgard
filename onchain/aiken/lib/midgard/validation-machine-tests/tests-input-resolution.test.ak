@@ -2077,3 +2077,142 @@ test signatures_preserves_duplicate_index_cbor_boundary_24() {
 test signatures_preserves_duplicate_index_cbor_boundary_256() {
   signatures_accepts_duplicate_index_boundary(318, 256)
 }
+
+fn signer_scan_step(
+  tx: MidgardTransaction,
+  stage: Int,
+  address_count: Int,
+  required_count: Int,
+  address_seen: Int,
+  required_seen: Int,
+  signer_frontier: validation_merkle_v1.BuiltFrontier,
+  first_invalid_witness_index: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let Pair(pre, _) = signatures_step_fixture(tx)
+  let witness_cbor = signatures_scan_witness(
+    tx,
+    stage,
+    address_count,
+    required_count,
+    address_seen,
+    required_seen,
+    #"",
+    #"",
+    signer_frontier,
+    first_invalid_witness_index,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      program_counter: 5,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Signatures,
+        5,
+        witness_cbor,
+      ),
+    },
+    witness_cbor,
+  )
+}
+
+test signatures_required_first_of_two_present_continues_at_stage_one() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash, signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, -1)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 2, 1, 2, 1, 1, #"", #"", frontier, -1),
+      ),
+    ),
+  }
+}
+
+test signatures_required_invalid_address_signature_waits_for_the_last_required_signer() {
+  let signer_hash = blake2b_224(zero)
+  let tx = zero_key_signed_tx([signer_hash, signer_hash])
+  let frontier = signer_frontier_for_tx(tx)
+  let step = required_signer_step(tx, 1, -1, 0, frontier, 0)
+  let Pair(pre, _) = step
+  let proof = vm_machine_types.SignerMembershipProof {
+    peaks: frontier.peaks,
+    signer_index: 0,
+    siblings: [],
+  }
+  and {
+    required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      signatures_successor(
+        pre,
+        signatures_scan_witness(tx, 1, 1, 2, 1, 1, #"", #"", frontier, 0),
+      ),
+    ),
+    !required_signer_item_holds(
+      step,
+      [signer_hash, signer_hash],
+      proof,
+      exact_rejection_post(
+        pre,
+        rejection_reason_v1.AddressWitnessSignatureInvalid { witness_index: 0 },
+      ),
+    ),
+  }
+}
+
+test signatures_required_unsigned_second_required_signer_names_its_index() {
+  proves_required_signer_unsigned([h_28_a, h_28_a], 2, 1)
+}
+
+test signatures_required_item_refused_before_the_address_scan() {
+  let tx = zero_key_signed_tx([h_28_a])
+  let empty = validation_merkle_v1.build_frontier([])
+  let step = signer_scan_step(tx, 0, -1, -1, 0, 0, empty, -1)
+  let Pair(pre, _) = step
+  !required_signer_item_holds(
+    step,
+    [h_28_a],
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
+    exact_rejection_post(
+      pre,
+      rejection_reason_v1.RequiredSignerUnsigned { signer_index: 0 },
+    ),
+  )
+}
+
+test signatures_required_item_refused_on_an_unbound_control() {
+  let tx = zero_key_signed_tx([h_28_a])
+  let empty = validation_merkle_v1.build_frontier([])
+  let step = signer_scan_step(tx, 1, 1, -1, 0, 0, empty, -1)
+  let Pair(pre, _) = step
+  !required_signer_item_holds(
+    step,
+    [h_28_a],
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
+    exact_rejection_post(
+      pre,
+      rejection_reason_v1.RequiredSignerUnsigned { signer_index: 0 },
+    ),
+  )
+}
