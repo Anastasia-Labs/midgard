@@ -8,12 +8,14 @@ import { type ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
+  applyValidationLedgerMutations,
   buildCanonicalTransitionEffect,
   canonicalTransitionEffectFromStatePatch,
   midgardOutRefToCborHex,
   type RejectCode,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
+  transitionEffectToLedgerOps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
@@ -24,14 +26,12 @@ import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import {
   acceptedTransactionLedgerWitnesses,
-  applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   forcedRejectionVerdict,
   rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
 import {
   ledgerOutputToInsertBatchOp,
-  transitionEffectToLedgerOps,
   transitionEffectToRawLedgerOps,
 } from "./ledger-delta.js";
 import { type ProcessMpfsConfig } from "./process-config.js";

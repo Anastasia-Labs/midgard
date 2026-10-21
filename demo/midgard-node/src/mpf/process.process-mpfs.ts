@@ -9,6 +9,7 @@ import {
   canonicalCommittedWithdrawalTransitionEffect,
   type PhaseAValidatedTx,
   runPhaseAValidation,
+  transitionEffectToLedgerOps,
 } from "@al-ft/midgard-validation";
 import { type Cause, Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
@@ -66,7 +67,6 @@ import {
   type LedgerDelta,
   ledgerEntryToInsertBatchOp,
   ledgerOutputToInsertBatchOp,
-  transitionEffectToLedgerOps,
 } from "./ledger-delta.js";
 import { encodeTransactionRootValue } from "./ledger-hydration.js";
 import {

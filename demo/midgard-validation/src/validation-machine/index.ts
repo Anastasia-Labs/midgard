@@ -29,9 +29,11 @@ export {
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 export {
+  applyValidationLedgerMutations,
   applyValidationMachineLedgerMutationStep,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  transitionEffectToLedgerOps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,
