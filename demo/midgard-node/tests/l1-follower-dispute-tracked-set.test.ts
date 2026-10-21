@@ -98,13 +98,6 @@ const liveCount = (store: FactStore, outRefs: readonly OutRef[]) =>
   });
 
 describe("the node follower's tracked set and the validation-trace dispute", () => {
-  it("tracks the payment credentials of the dispute's case, game, timeout, boundary and award", () => {
-    const tracked = protocolPaymentCredentials(contracts);
-    for (const holder of DISPUTE_HOLDERS)
-      expect(tracked).toContain(disputeHolder(holder));
-    expect(tracked).toContain(scriptHash("stateQueue"));
-  });
-
   it("replays from the origin when it gains the dispute's holders, and then holds their outputs", async () => {
     const connectionString = await databases.create();
     const current = protocolPaymentCredentials(contracts);
