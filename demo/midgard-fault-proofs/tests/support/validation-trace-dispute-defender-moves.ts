@@ -73,15 +73,22 @@ export const falseClaimMaterial = async (scene: Scene) => {
 };
 
 /** Opens a case on the passing block whose trace holds the initial state
- * until `stepCount` and the claimed Terminal Rejected state from there. */
+ * until `stepCount` and the claimed Terminal Rejected state from there; with
+ * `agreeingFrom`, it holds the honest terminal state from that index on
+ * until `stepCount`, so it agrees with the honest trace past the honest
+ * end. */
 export const openFalseClaim = async (
   scene: Scene,
   { honest, claimedTerminal }: Awaited<ReturnType<typeof falseClaimMaterial>>,
   stepCount: number,
+  agreeingFrom?: number,
 ): Promise<FalseClaim> => {
   const trace = sparseTrace(
     [
       { from: 0, state: honest.initialState },
+      ...(agreeingFrom === undefined
+        ? []
+        : [{ from: agreeingFrom, state: honest.terminal }]),
       { from: stepCount, state: claimedTerminal },
     ],
     stepCount,
