@@ -56,6 +56,7 @@ import { validationTraceControlMembers } from "./members/validation-trace-contro
 import { validationTraceLedgerOutputYieldsMembers } from "./members/validation-trace-ledger-output-yields.js";
 import { validationTraceMachineYieldsMembers } from "./members/validation-trace-machine-yields.js";
 import { validationTracePhaseASemanticsMembers } from "./members/validation-trace-phase-a-semantics.js";
+import { validationTracePhaseResolversMembers } from "./members/validation-trace-phase-resolvers.js";
 import { validationTraceRedeemerItemMembers } from "./members/validation-trace-redeemer-item.js";
 import { validationTraceResolveInputsSemanticsMembers } from "./members/validation-trace-resolve-inputs-semantics.js";
 import { validationTraceScriptSourcesSemanticsMembers } from "./members/validation-trace-script-sources-semantics.js";
@@ -81,6 +82,7 @@ export const DEPLOYMENT_MEMBERS = Object.freeze({
   ...validationTraceCekContextItemsMembers,
   ...validationTraceCekCoreMembers,
   ...validationTraceCekResolversMembers,
+  ...validationTracePhaseResolversMembers,
   ...validationTraceMachineYieldsMembers,
   ...protocolAuthorityMembers,
   ...protocolUserEventsMembers,

@@ -9,7 +9,10 @@
  * resolver to the context step resolver (PrepareSelected), and on through
  * the context's holders to the award (one-step-context-hops.ts). A
  * canonical-decode step goes from the boundary to the canonical-decode
- * resolver and on to the award (one-step-canonical-decode.ts). Each hop
+ * resolver and on to the award (one-step-canonical-decode.ts), and a step
+ * of another phase from the boundary to the phase's resolver
+ * (PrepareSelected) and from its semantic resolver to the award
+ * (one-step-phase.ts). Each hop
  * spends the thread, which pays
  * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
  * successor keeps the thread's single token and carries the state the next
@@ -52,6 +55,10 @@ import {
   type ValidationTraceArmHolder,
   type ValidationTraceOneStepHolder,
 } from "./one-step-holders.js";
+import {
+  isValidationTracePhaseHolder,
+  phaseSemanticHop,
+} from "./one-step-phase.js";
 import {
   hashSerialisedData,
   SINGLE_HOP_CORE_ARMS,
@@ -120,6 +127,36 @@ const corePlan = (
   return plan;
 };
 
+/** A phase resolver's hop (PrepareSelected): it commits the step's evidence
+ * and hands the thread to the semantic resolver at `next`. */
+const preparedHop = (
+  plan: ValidationTraceOneStepPlan,
+  datum: string,
+  prover: string,
+  next: ValidationTraceOneStepHolder,
+): ValidationTraceHop => ({
+  next,
+  datum: stepDatum(
+    prover,
+    constr(0, [
+      integer(1),
+      plutusConstrFieldCbor(datum, [1, 0]),
+      bytes(plan.evidenceHash),
+    ]),
+  ),
+  redeemer: (inputIndex, outputIndex) =>
+    continued(
+      constr(0, [
+        integer(inputIndex),
+        integer(outputIndex),
+        integer(plan.semanticResolverIndex),
+        plan.transitionCbor,
+        plan.auxiliaryCbor,
+      ]),
+    ),
+  proverOnly: true,
+});
+
 const datumOf = (utxo: UTxO): string => {
   if (typeof utxo.datum !== "string")
     throw new Error("validation-trace thread has no inline datum");
@@ -169,6 +206,19 @@ export const validationTraceHop = ({
       step: plan.canonicalDecode,
     });
   }
+  if (isValidationTracePhaseHolder(holder)) {
+    if (plan.kind !== "phase")
+      throw new Error(
+        `validation-trace ${holder} holds a thread whose step is not a phase step`,
+      );
+    return holder === plan.phase.prepare
+      ? preparedHop(plan, datum, prover, plan.phase.semantic)
+      : phaseSemanticHop({
+          prover,
+          transitionCbor: plan.transitionCbor,
+          evidenceCbors: plan.phase.evidenceCbors,
+        });
+  }
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;
@@ -179,7 +229,9 @@ export const validationTraceHop = ({
         next:
           plan.kind === "canonicalDecode"
             ? "canonicalDecodePrepare"
-            : "prepare",
+            : plan.kind === "phase"
+              ? plan.phase.prepare
+              : "prepare",
         datum: Data.to(
           {
             fraud_prover: prover,
@@ -212,33 +264,16 @@ export const validationTraceHop = ({
       };
     }
     case "prepare":
-      return {
-        next:
-          plan.kind === "selection"
-            ? "selection"
-            : plan.kind === "context"
-              ? "context"
-              : "core",
-        datum: stepDatum(
-          prover,
-          constr(0, [
-            integer(1),
-            plutusConstrFieldCbor(datum, [1, 0]),
-            bytes(plan.evidenceHash),
-          ]),
-        ),
-        redeemer: (inputIndex, outputIndex) =>
-          continued(
-            constr(0, [
-              integer(inputIndex),
-              integer(outputIndex),
-              integer(plan.semanticResolverIndex),
-              plan.transitionCbor,
-              plan.auxiliaryCbor,
-            ]),
-          ),
-        proverOnly: true,
-      };
+      return preparedHop(
+        plan,
+        datum,
+        prover,
+        plan.kind === "selection"
+          ? "selection"
+          : plan.kind === "context"
+            ? "context"
+            : "core",
+      );
     case "selection": {
       if (plan.kind !== "selection" || selection === undefined)
         throw new Error(

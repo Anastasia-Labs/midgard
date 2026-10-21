@@ -1,6 +1,7 @@
 /** The validation-trace dispute runner at the canonical-decode step after
- * state 2 of our trace, the one item of the transaction's third field, which the item semantic resolver and the
- * item's stages verify, driven through its resolution to the award
+ * state 2 of our trace, the one item of the transaction's third field,
+ * which the item semantic resolver and the item's stages verify, driven
+ * through its resolution to the award
  * (support/validation-trace-dispute-one-step-canonical-decode-drive.ts). */
 import { beforeAll, describe, it } from "vitest";
 

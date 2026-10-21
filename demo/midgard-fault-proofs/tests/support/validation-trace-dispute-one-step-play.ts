@@ -116,6 +116,24 @@ export const playThreads = async ({
   throw new Error(`the play did not end:\n${history.join("\n")}`);
 };
 
+/** Runs `play` with the ledger's parameters `overrides`, which our wallet's
+ * lucid reads from its provider, and restores them after. */
+export const withLedgerParameters = async <T>(
+  { h: { emulator, proverLucid } }: Scene,
+  overrides: Partial<Scene["h"]["emulator"]["protocolParameters"]>,
+  play: () => Promise<T>,
+): Promise<T> => {
+  const parameters = emulator.protocolParameters;
+  emulator.protocolParameters = { ...parameters, ...overrides };
+  await proverLucid.switchProvider(emulator);
+  try {
+    return await play();
+  } finally {
+    emulator.protocolParameters = parameters;
+    await proverLucid.switchProvider(emulator);
+  }
+};
+
 /** Whether `result` waits for `reasonPrefix` with no transaction in flight. */
 export const isPendingFor = (
   result: FraudProofWorkflowRunResult,

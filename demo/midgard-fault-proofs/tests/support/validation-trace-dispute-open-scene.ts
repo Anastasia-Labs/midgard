@@ -33,6 +33,7 @@ import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
+  referenceSeedDeposits,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
@@ -101,10 +102,19 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
 /**
  * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
  * its blocks are committed, so what it does takes none of the time a
- * dispute move has from the failing block's end.
+ * dispute move has from the failing block's end. The failing transaction's
+ * redeemer is `failingRedeemerData` when given, and it reads
+ * `failingReferenceInputs` outputs the deposits create as reference inputs.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
+  {
+    failingRedeemerData,
+    failingReferenceInputs = 0,
+  }: {
+    readonly failingRedeemerData?: Uint8Array;
+    readonly failingReferenceInputs?: number;
+  } = {},
 ): Promise<Scene> => {
   const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const h = await makeFaultProofEmulatorHarness({
@@ -153,6 +163,7 @@ export const setUpScene = async (
     ) - 1,
   );
   const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
     startTime: now,
@@ -161,9 +172,12 @@ export const setUpScene = async (
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     priorLedger: [],
-    events: Object.entries(seeds).map(([scenario, byte]) =>
-      plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
-    ),
+    events: [
+      ...Object.entries(seeds).map(([scenario, byte]) =>
+        plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
+      ),
+      ...references.deposits,
+    ],
   });
   const setup = await submitSetupTx({
     lucid: h.funderLucid,
@@ -193,6 +207,12 @@ export const setUpScene = async (
     const endTime = previous.endTime + 60_000n;
     const block = await plutusExecutionBlockFixture(scenario, {
       seedByte: seeds[scenario as keyof typeof seeds],
+      ...(scenario === "failing" && failingRedeemerData !== undefined
+        ? { redeemerData: failingRedeemerData }
+        : {}),
+      ...(scenario === "failing"
+        ? { referenceInputs: references.outRefs }
+        : {}),
       predecessorEntries: previous.entries,
       header: {
         operatorVkey,

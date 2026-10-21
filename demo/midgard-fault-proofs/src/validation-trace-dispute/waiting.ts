@@ -6,13 +6,14 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Six other states are named for readiness, so a session hands its turn
+ * Seven other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
- * needs a one-step resolution the runner does not drive, a thread lost, a
- * case a defender won, a move whose fee would pass the funding permit's
- * per-transaction fee ceiling, a thread whose history does not decide its
- * pending item step, and a move our wallet cannot fund before its deadline,
- * the first and the last three alarms. */
+ * needs a one-step resolution the runner does not drive, a move of ours that
+ * does not build, a thread lost, a case a defender won, a move whose fee
+ * would pass the funding permit's per-transaction fee ceiling, a thread
+ * whose history does not decide its pending item step, and a move our
+ * wallet cannot fund before its deadline, the first two and the last three
+ * alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -28,6 +29,7 @@ import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
 import {
   VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_ITEM_PENDING_HOLD,
+  VALIDATION_TRACE_MOVE_UNBUILT,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_LOST,
@@ -109,16 +111,19 @@ export const awaitingValidationTraceCounterparty = (
 /**
  * The run states named for readiness: a thread at ReadyForOneStep waits on
  * a one-step resolution the runner does not drive, while our clock runs on
- * it, and is lost at its end unless the operator acts; a lost thread has no
- * move of ours left, a case a defender won has none either; a wallet-paid
- * move whose fee would pass the funding permit's per-transaction fee ceiling
- * cannot be sent at all, a thread whose history does not decide its
- * pending item step cannot move on, and a move our wallet cannot fund waits
- * on a top-up, retried at each observation, before its deadline passes. The
- * operator must see the first and the last three.
+ * it, and is lost at its end unless the operator acts; a move of ours that
+ * does not build is retried at each observation, and is lost at its
+ * deadline unless the operator acts; a lost thread has no move of ours
+ * left, a case a defender won has none either; a wallet-paid move whose fee
+ * would pass the funding permit's per-transaction fee ceiling cannot be
+ * sent at all, a thread whose history does not decide its pending item step
+ * cannot move on, and a move our wallet cannot fund waits on a top-up,
+ * retried at each observation, before its deadline passes. The operator
+ * must see the first two and the last three.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true }),
+  Object.freeze({ name: VALIDATION_TRACE_MOVE_UNBUILT, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_THREAD_LOST, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_DEFENDER_WON, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
