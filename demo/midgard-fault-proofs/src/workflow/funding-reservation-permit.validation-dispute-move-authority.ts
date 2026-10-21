@@ -15,10 +15,12 @@
  * timeout validator or the award, pays the case back unchanged but for its
  * datum, the defender's lost-defense receipt at the award validator, and the
  * rest of the thread less the receipt and the fee to the funding key, as
- * case-v1 requires. Nothing is topped up; the fee is at most the deployment's
- * per-move cap; the wallet lends only collateral. It binds the exact signed
- * bytes evaluated locally and is minted only by the move builders, for
- * category 00000006. The funding walk under it is in
+ * case-v1 requires. Nothing is topped up. The thread pays the fee, at most
+ * the deployment's per-move cap, only as the move's sole input (beside its
+ * case, for a close), and the wallet then lends only collateral; otherwise
+ * the wallet pays the whole fee and the thread pays none. It binds the exact
+ * signed bytes evaluated locally and is minted only by the move builders,
+ * for category 00000006. The funding walk under it is in
  * funding-reservation-permit.assert-validation-dispute-move.ts.
  */
 import { createHash } from "node:crypto";

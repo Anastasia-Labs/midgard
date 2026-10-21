@@ -10,12 +10,13 @@
  * turn, and once our own clock on it is spent it reports that thread lost.
  * game-v1 refuses a timeout one slot before the defender's clock ends, a
  * timeout of a thread on our turn while our clock runs, and a reveal of ours
- * whose validity range is past our clock's end. Each move pays its real
- * fee; a move whose fee would pass the per-move cap raises its own
- * alarm and moves nothing. */
+ * whose validity range is past our clock's end. A move under the per-move
+ * cap is paid by its thread, one over it by our wallet alone, its successor
+ * keeping all the thread's lovelace; game-v1 refuses one keeping less. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   Constr,
   credentialToAddress,
   Data,
@@ -38,7 +39,6 @@ import {
 import {
   completeValidationTraceMove,
   VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
-  VALIDATION_TRACE_MOVE_FEE_OVER_CAP,
 } from "../src/validation-trace-dispute/move-fee.js";
 import {
   VALIDATION_TRACE_THREAD_COUNT_HOLD,
@@ -221,8 +221,7 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
   }, 1_800_000);
 
   it("holds while its provider has not indexed a defended thread, then reports the thread as awaiting its defender until the defender's clock ends", async () => {
-    // A provider that has not yet indexed the thread: the runner holds on
-    // the count it cannot match, moving nothing, and plays once it can.
+    // A provider that has not yet indexed the thread.
     const lucid = scene.h.proverLucid;
     const indexed = lucid.utxosAtWithUnit.bind(lucid);
     const lagging = vi
@@ -334,32 +333,51 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     );
   }, 300_000);
 
-  it("refuses a timeout whose minimum fee would pass the per-move cap with its own alarm, moving nothing", async () => {
-    const { h } = scene;
+  it("refuses a timeout our wallet pays whose successor keeps less than its thread's lovelace, at the thread's value rule, and never has our wallet pay a move under the cap", async () => {
     const silent = await live(unitA);
-    const count = prepared.length;
-    const parameters = h.emulator.protocolParameters;
-    h.emulator.protocolParameters = { ...parameters, minFeeA: 5_000 };
-    await h.proverLucid.switchProvider(h.emulator);
-    let result: Awaited<ReturnType<Runner["runOnce"]>>;
-    try {
-      result = await runner.runOnce(scene.failing);
-    } finally {
-      h.emulator.protocolParameters = parameters;
-      await h.proverLucid.switchProvider(h.emulator);
-    }
-    expect(validationTraceRunState(result)).toMatchObject({
-      kind: "pending",
-      resumeOnObservation: true,
-      namedState: { name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true },
-    });
-    expect("reason" in result && result.reason).toMatch(
-      new RegExp(
-        `^${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the timeout move's minimum fee [0-9]+ passes the per-move cap ${VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE.toString()}$`,
-        "u",
-      ),
+    const lucid = scene.h.proverLucid;
+    const deployment = runnerDeployment(scene);
+    const address = scene.chain.timeout.spendingScriptAddress;
+    // The thread pays `fee`; our wallet's coin selection balances the rest.
+    const build = (fee: bigint) =>
+      buildValidationTraceGameMove({
+        lucid,
+        deployment,
+        thread: silent,
+        action: { kind: "EnterChallengerTimeout" },
+        successor: { address, datum: silent.datum! },
+        fee,
+        ...validationTraceMoveWindow(lucid),
+      });
+    const timeout = (fee: bigint) => async () =>
+      await build(fee).complete({ localUPLCEval: true });
+    // A move under the cap that its thread cannot pay is not our wallet's.
+    await expect(
+      completeValidationTraceMove({
+        lucid,
+        stage: "timeout",
+        referenced: [deployment.references.game],
+        build: (fee) => {
+          if (fee > 0n) throw new Error("the thread does not pay");
+          return build(fee);
+        },
+      }),
+    ).rejects.toThrow("the thread does not pay");
+    // The honest twin: our wallet pays the whole fee and the successor keeps
+    // all of the thread's lovelace; every script it runs passes.
+    const honest = CML.Transaction.from_cbor_hex(
+      (await timeout(0n)()).toCBOR(),
+    ).body();
+    expect(honest.inputs().len()).toBeGreaterThan(1);
+    expect(honest.outputs().get(0).amount().coin()).toBe(
+      silent.assets.lovelace,
     );
-    expect(prepared).toHaveLength(count);
+    // The thread paying one lovelace of it beside our wallet.
+    await expectOnchainRefusal(timeout(1n), {
+      refusedBy: "fraud_proofs/validation_trace/game_v1",
+      check:
+        /^expect value_rule\( lovelace_of\(input_value\), lovelace_of\(output\.value\), fraud_prover, \)$/u,
+    });
     expect(await live(unitA)).toStrictEqual(silent);
   }, 300_000);
 
@@ -372,6 +390,18 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
     );
     expect(await operatorListsHolding(scene, operator.vkey)).toStrictEqual([]);
     const silent = await live(unitA);
+    // At a dearer byte price the timeout's fee passes the cap.
+    const parameters = scene.h.emulator.protocolParameters;
+    scene.h.emulator.protocolParameters = { ...parameters, minFeeA: 5_000 };
+    await scene.h.proverLucid.switchProvider(scene.h.emulator);
+    try {
+      const moved = () => prepared.some(({ stage }) => stage === "timeout");
+      for (let turn = 0; turn < 4 && !moved(); turn += 1)
+        await runner.runOnce(scene.failing);
+    } finally {
+      scene.h.emulator.protocolParameters = parameters;
+      await scene.h.proverLucid.switchProvider(scene.h.emulator);
+    }
     const { result, history } = await runUntil(
       runner,
       scene.failing,
@@ -390,10 +420,9 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
       ["timeout", `${silent.txHash}#${silent.outputIndex.toString()}`],
       ["close_thread", `${moves[0]!.txHash}#0`],
     ]);
-    expect(prepared.map(({ stage }) => stage)).toStrictEqual([
-      "timeout",
-      "close_thread",
-    ]);
+    expect(prepared.map(({ stage }) => stage)).toStrictEqual(
+      moves.map(({ action }) => action.stage),
+    );
     const { chain } = scene;
     // The silent defender's thread token burned; the receipt minted.
     expect(await liveThread(scene, unitA)).toBeUndefined();
@@ -418,27 +447,30 @@ describe("validation-trace dispute runner: timing out a silent defender", () => 
       outcome: "ChallengerWins",
       bounty_claimant: caseDatum.bounty_claimant,
     });
-    // Each move paid its real fee, below the cap; the rest of the
-    // thread, less the receipt and both fees, is ours.
+    // Our wallet paid all of the timeout's fee, over the cap; the close's
+    // thread (beside the case) its real fee. The rest, less receipt, is ours.
     const timedOut = moves[0]!;
     const fees = await Promise.all(
       moves.map(async ({ txHash }) => await landedMoveFee(scene, txHash)),
     );
-    for (const fee of fees) expectRealMoveFee(fee);
-    const leftover = (
-      await scene.h.proverLucid.utxosAt(
-        credentialToAddress(network, {
-          type: "Key",
-          hash: caseDatum.bounty_claimant,
-        }),
-      )
-    ).find(({ txHash }) => txHash === closeHash);
+    const [timeoutBody, closeBody] = [timedOut.txHash, closeHash].map((hash) =>
+      CML.Transaction.from_cbor_hex(scene.l1.signedCbors.get(hash)!).body(),
+    );
+    expect(fees[0]!.paid).toBeGreaterThan(
+      VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+    );
+    expect(timeoutBody!.inputs().len()).toBeGreaterThan(1);
+    expect(timeoutBody!.outputs().get(0).amount().coin()).toBe(
+      silent.assets.lovelace,
+    );
+    expectRealMoveFee(fees[1]!);
+    expect(closeBody!.inputs().len()).toBe(2);
+    const leftover = await at(`${closeHash}#2`);
+    const claimant = { type: "Key", hash: caseDatum.bounty_claimant } as const;
+    expect(leftover?.address).toBe(credentialToAddress(network, claimant));
     expect(leftover?.assets).toStrictEqual({
       lovelace:
-        (silent.assets.lovelace ?? 0n) -
-        fees[0]!.paid -
-        fees[1]!.paid -
-        RECEIPT_LOVELACE,
+        (silent.assets.lovelace ?? 0n) - fees[1]!.paid - RECEIPT_LOVELACE,
     });
     expect(leftover!.datum).toBe(Data.to(new Constr(0, [timedOut.txHash, 0n])));
     // The thread on our turn was never moved.

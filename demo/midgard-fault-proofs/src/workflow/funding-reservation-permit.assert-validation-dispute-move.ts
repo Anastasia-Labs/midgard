@@ -2,7 +2,11 @@
  * A validation-trace dispute thread move's funding, walked by the runtime
  * bound under its authority (funding-reservation-permit.validation-dispute-
  * move-authority.ts): the exact outputs game-v1, the one-step holders and
- * case-v1 fix, the mint a thread close makes, and nothing topped up.
+ * case-v1 fix, the mint a thread close makes, and nothing topped up. The
+ * thread pays the fee, up to the per-move cap, only when it is the move's
+ * only input (with its case, for a close), as the validators allow; a move
+ * with any other input is paid by the wallet, and its thread keeps all of
+ * its lovelace.
  */
 import {
   CML,
@@ -45,6 +49,10 @@ type Kept = "successor" | "case" | "receipt" | "leftover";
 /**
  * Classifies a body output under the authority; an output at a dispute
  * address the move pays must be exactly the one case-v1 and game-v1 fix.
+ * `fee` is what the thread pays: the body fee when the thread pays it, and
+ * nothing when the wallet does. A close's leftover carries the thread's
+ * inline tag; an output at the funding key without a datum is the wallet's
+ * change, outside this walk.
  */
 export const validationDisputeMoveOutput = ({
   authority,
@@ -112,6 +120,7 @@ export const validationDisputeMoveOutput = ({
     details.paymentCredential?.type === "Key" &&
     details.paymentCredential.hash === fundingPaymentKeyHash
   ) {
+    if (output.datum == null) return null;
     if (
       output.scriptRef != null ||
       !exactAssets(output.assets, {
@@ -180,9 +189,12 @@ export const validationDisputeMoveFunding = async ({
     fundingPaymentKeyHash,
   });
   const body = signed.toTransaction().body();
-  const fee = body.fee();
-  if (fee > BigInt(moves.moveFeeCapLovelace)) refuse(["fee"]);
   const close = isValidationDisputeThreadClose(authority.kind);
+  // The validators' own test: the thread may pay only as the sole input
+  // (beside its case, for a close).
+  const threadPays = body.inputs().len() === (close ? 2 : 1);
+  const fee = threadPays ? body.fee() : 0n;
+  if (fee > BigInt(moves.moveFeeCapLovelace)) refuse(["fee"]);
   let thread: UTxO | undefined;
   let caseInput: UTxO | undefined;
   let name = "";

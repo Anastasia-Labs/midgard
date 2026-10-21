@@ -2,9 +2,10 @@
  * game-v1 move of a thread (RevealChallenger, EnterResolution,
  * EnterChallengerTimeout), the thread after our reveal or our entry into the
  * resolution, and the ThreadClose of a thread timed out on its defender's
- * side or awarded to us. The thread alone pays each move's fee, which the caller
- * names (move-fee.ts settles it at the move's minimum, up to the cap), so
- * the wallet only lends collateral. */
+ * side or awarded to us. The thread pays the fee the caller names
+ * (move-fee.ts settles it at the move's minimum, up to the cap); a move the
+ * caller names no fee for keeps the thread's lovelace whole, for our
+ * wallet's coin selection to pay. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";

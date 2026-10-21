@@ -1,8 +1,12 @@
 /** The prover funding permit walking a thread move under its authority, as
  * the runtime bound walks it. Over the reveal, timeout and thread close a
  * funded watcher built and landed, it admits each move's thread (and a
- * close's case) as released custody and each move's own outputs, and it
- * refuses: a fee above the deployment's per-move cap, a move that also
+ * close's case) as released custody and each move's own outputs. It admits
+ * a timeout and a thread close our wallet pays, above the cap, whose thread
+ * keeps all of its lovelace (less the receipt, for the close), beside the
+ * wallet's change. It refuses: a fee above the deployment's per-move cap on
+ * a move its thread pays, a wallet-paid move whose thread pays the fee too,
+ * a move that also
  * carries a fraud slash or a VerifySource authority, custody paid beyond a
  * move's own outputs, a move that omits its thread or a close that omits
  * its case, any other contract input, a protocol top-up, a successor other
@@ -14,15 +18,18 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { CML } from "@lucid-evolution/lucid";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import {
   grantValidationDisputeFundingAuthority,
   validationDisputeFunding,
 } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { VALIDATION_DISPUTE_MOVE_BINDING } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
 import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { network } from "./support/submit-init-emulator-shared.js";
 import {
   bodyOutputs,
   disputeTerms,
@@ -30,6 +37,7 @@ import {
   movesOf,
   openWalk,
   permitState,
+  rebodied,
   refusalOf,
   regranted,
   spentInputs,
@@ -96,6 +104,53 @@ const withReferenceScript = (output: CML.TransactionOutput) =>
     ),
   );
 
+const RECEIPT_LOVELACE = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.limits.fraud_proof_output_lovelace,
+);
+
+/** `move` paid by our wallet: one of its plain-Ada outputs spent beside the
+ * move's inputs, a fee above the cap, the move's outputs as `edit` makes
+ * them and the wallet's change at the funding key after them. */
+const walletPaid = async (
+  move: CapturedMove,
+  edit: (outputs: CML.TransactionOutput[]) => CML.TransactionOutput[],
+) => {
+  const { proverLucid, proverSigner } = journey.scene.h;
+  const funding = (await proverLucid.wallet().getUtxos()).find(
+    ({ assets }) => Object.keys(assets).length === 1,
+  )!;
+  return await regranted(journey, move, (body) => {
+    const inputs = body.inputs();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(funding.txHash),
+        BigInt(funding.outputIndex),
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    for (const output of [
+      ...edit(bodyOutputs(move.signed)),
+      CML.TransactionOutput.new(
+        CML.Address.from_bech32(
+          credentialToAddress(network, {
+            type: "Key",
+            hash: proverSigner.paymentKeyHash,
+          }),
+        ),
+        CML.Value.from_coin(2_000_000n),
+        null,
+        null,
+      ),
+    ])
+      outputs.add(output);
+    return rebodied(body, {
+      inputs,
+      outputs,
+      fee: VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE + 1n,
+    });
+  });
+};
+
 describe("validation-trace dispute thread move walked under its authority", () => {
   beforeAll(async () => {
     journey = await openDefendedFundedCase();
@@ -135,7 +190,7 @@ describe("validation-trace dispute thread move walked under its authority", () =
     ]);
   });
 
-  it("admits a fee at the deployment's per-move cap and refuses one above it", async () => {
+  it("admits a fee its thread pays at the deployment's per-move cap and refuses one above it", async () => {
     const at = (cap: bigint) =>
       fundingPolicy(
         journey,
@@ -153,7 +208,55 @@ describe("validation-trace dispute thread move walked under its authority", () =
     ).toBe(`${VALIDATION_DISPUTE_MOVE_BINDING} (fee)`);
   });
 
+  it("admits a timeout and a thread close our wallet pays above the cap, the timeout's successor keeping all of its thread's lovelace and the close's leftover all of it less the receipt", async () => {
+    const kept = timeout.thread.assets.lovelace ?? 0n;
+    const timedOut = await walk(journey, timeout, {
+      signed: await walletPaid(timeout, ([successor]) => [
+        withCoin(successor!, kept),
+      ]),
+    });
+    expect(timedOut.custody).toStrictEqual([
+      { custody: kept, allocation: 0n },
+      null,
+    ]);
+    const closed = await walk(journey, close, {
+      signed: await walletPaid(close, ([caseOutput, receipt, leftover]) => [
+        caseOutput!,
+        receipt!,
+        withCoin(
+          leftover!,
+          (close.thread.assets.lovelace ?? 0n) - RECEIPT_LOVELACE,
+        ),
+      ]),
+    });
+    const outputs = bodyOutputs(close.signed);
+    expect(closed.custody).toStrictEqual([
+      { custody: outputs[0]!.amount().coin(), allocation: 0n },
+      { custody: outputs[1]!.amount().coin(), allocation: 0n },
+      { custody: 0n, allocation: 0n },
+      null,
+    ]);
+  });
+
   it.each([
+    {
+      name: "a timeout our wallet pays whose successor keeps its thread less the fee",
+      check: async () =>
+        await walk(journey, timeout, {
+          signed: await walletPaid(timeout, (outputs) => outputs),
+        }),
+      refusal:
+        "validation dispute move successor differs from its thread less the fee",
+    },
+    {
+      name: "a thread close our wallet pays whose leftover keeps its thread less receipt and fee",
+      check: async () =>
+        await walk(journey, close, {
+          signed: await walletPaid(close, (outputs) => outputs),
+        }),
+      refusal:
+        "validation dispute thread close leftover differs from its thread less receipt and fee",
+    },
     {
       name: "a move that also carries a fraud slash",
       check: () => walk(journey, reveal, { slash: true }),

@@ -5,9 +5,10 @@
  * to the settle (VerifyArm), and from the settle to the award (Settle). A CEK
  * script selection goes from the CEK resolver to the selection resolver
  * (PrepareSelected), and from it to the award with the selection's two
- * yields (VerifyExecutionSelection). Each hop spends the thread alone, which
- * pays its fee; its successor keeps the thread's single token and carries the
- * state the next holder checks as an inline datum. */
+ * yields (VerifyExecutionSelection). Each hop spends the thread, which pays
+ * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
+ * successor keeps the thread's single token and carries the state the next
+ * holder checks as an inline datum. */
 import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,

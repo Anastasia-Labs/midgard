@@ -21,7 +21,7 @@ describe("supervisor execution adapter with a family's named run state", () => {
       name: "validation-trace-move-fee-over-cap",
       alarm: true,
       reason:
-        "validation-trace-move-fee-over-cap: the timeout move's minimum fee 1500000 passes the per-move cap 1200000",
+        "validation-trace-move-fee-over-cap: the timeout move's fee 9000000 passes the funding permit's per-transaction fee ceiling 8700000",
     },
   ])(
     "holds the objective under $name (alarm: $alarm) until a later run reports something else",

@@ -4,17 +4,31 @@
  * records the decode of the script our trace selects, as journaled actions
  * of the workflow, and plays the successor's thread through the CEK resolver
  * to the selection resolver, whose hop to the award reads the record and
- * invokes both yields. The selection's successor yield refuses a
- * selection whose record reference names an output that only looks like the
- * record. */
+ * invokes both yields. The selection's hop needs more than the per-move
+ * cap, so our wallet pays all of its fee and the thread reaches the award
+ * with all its lovelace; every other move of the thread fits under the cap
+ * and its thread pays it, and the awarded thread closes into our case. The
+ * selection's successor yield refuses a selection whose record reference
+ * names an output that only looks like the record. */
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Constr,
+  coreToTxOutput,
+  credentialToAddress,
+  Data,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { findScriptDecodeRecord } from "../src/script-decode/record.js";
 import { validationTraceMoveWindow } from "../src/validation-trace-dispute/move-builders.js";
-import { completeValidationTraceMove } from "../src/validation-trace-dispute/move-fee.js";
+import {
+  completeValidationTraceMove,
+  VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+} from "../src/validation-trace-dispute/move-fee.js";
 import {
   buildValidationTraceHop,
   type ValidationTraceHop,
@@ -28,22 +42,52 @@ import {
 } from "../src/validation-trace-dispute/one-step-plan.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { network } from "./support/submit-init-emulator-shared.js";
 import {
   defendTwoThreads,
   SELECTION_STEP_FROM,
+  threadClosed,
   type TwoThreadCase,
 } from "./support/validation-trace-dispute-one-step-case.js";
 import {
   playThreads,
+  type PreparedMove,
   threadPlace,
 } from "./support/validation-trace-dispute-one-step-play.js";
+import { reportFit } from "./support/validation-trace-dispute-scripted-defender.js";
+
+const RECEIPT_LOVELACE = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.limits.fraud_proof_output_lovelace,
+);
 
 let dispute: TwoThreadCase;
 /** The stage of each action the runner preflighted, in order. */
 const order: string[] = [];
+/** The successor thread's moves past the game, and its awarded close. */
+let moves: PreparedMove[];
+let close: PreparedMove | undefined;
 
 const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+
+/** The body of a transaction the emulator accepted. */
+const bodyOf = (hash: string) =>
+  CML.Transaction.from_cbor_hex(dispute.scene.l1.signedCbors.get(hash)!).body();
+
+/** The lovelace of output `outRef` of a transaction the emulator accepted. */
+const lovelaceAt = (outRef: string) => {
+  const [hash, index] = outRef.split("#");
+  return bodyOf(hash!).outputs().get(Number(index)).amount().coin();
+};
+
+/** The index of the output of `cbor` that carries the successor's thread. */
+const threadOutput = (cbor: string) => {
+  const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1)
+    if (coreToTxOutput(outputs.get(index)).assets[dispute.b.unit] === 1n)
+      return index;
+  return undefined;
+};
 
 /** The successor's thread where it stands. */
 const placeOfB = async () => {
@@ -309,4 +353,111 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
     );
     expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo));
   }, 600_000);
+  it("moves the selection's thread to the award with our wallet paying all of the hop's fee, over the per-move cap, and closes it", async () => {
+    const { scene, deployment, runner, prepared, a, b } = dispute;
+    const atSelection = await placeOfB();
+    const plan = await selectionPlan(atSelection.utxo);
+    await playThreads({
+      scene,
+      runner,
+      sides: [a, b],
+      until: async () =>
+        (await threadClosed(dispute, a.unit)) &&
+        (await threadClosed(dispute, b.unit)),
+      limit: 40,
+    });
+    moves = prepared.filter(
+      ({ stage, cbor }) =>
+        (stage === "enter_resolution" || stage === "resolve") &&
+        threadOutput(cbor) !== undefined,
+    );
+    expect(moves.map(({ stage }) => stage)).toStrictEqual([
+      "enter_resolution",
+      "resolve",
+      "resolve",
+      "resolve",
+    ]);
+    const hop = moves[3]!;
+    expect(hop.consumes).toBe(outRefOf(atSelection.utxo));
+    close = prepared.find(
+      ({ stage, consumes }) =>
+        stage === "close_awarded" &&
+        consumes === `${hop.hash}#${threadOutput(hop.cbor)!.toString()}`,
+    );
+    expect(close).toBeDefined();
+    const body = bodyOf(hop.hash);
+    // Our wallet's inputs pay the whole fee; the thread keeps its lovelace.
+    expect(body.fee()).toBeGreaterThan(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);
+    expect(body.inputs().len()).toBeGreaterThan(1);
+    const award = body.outputs().get(threadOutput(hop.cbor)!);
+    expect(coreToTxOutput(award).address).toBe(
+      scene.chain.award.spendingScriptAddress,
+    );
+    expect(award.amount().coin()).toBe(atSelection.utxo.assets.lovelace);
+    const read = new Set<string>();
+    const references = body.reference_inputs()!;
+    for (let index = 0; index < references.len(); index += 1) {
+      const input = references.get(index);
+      read.add(
+        `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+      );
+    }
+    const record = await findScriptDecodeRecord({
+      lucid: scene.h.proverLucid,
+      deployment: deployment.scriptDecode!,
+      scriptHashHex: plan.script!.scriptHashHex,
+    });
+    const selection = deployment.references.oneStep!.cekSelection!;
+    for (const utxo of [
+      record!,
+      selection.semantic,
+      selection.authenticate,
+      selection.successor,
+    ])
+      expect(read.has(outRefOf(utxo))).toBe(true);
+    for (const [index, label] of [
+      "EnterResolution",
+      "PrepareResolution",
+      "PrepareSelected selection",
+      "VerifyExecutionSelection",
+    ].entries())
+      reportFit(label, [moves[index]!.cbor]);
+    reportFit("CloseAwardedThread", [close!.cbor]);
+  }, 1_200_000);
+
+  it("pays each other move of the thread, whose fee fits under the cap, from the thread itself", () => {
+    for (const move of [...moves.slice(0, 3), close!]) {
+      const body = bodyOf(move.hash);
+      const fee = body.fee();
+      expect(fee).toBeLessThanOrEqual(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);
+      const thread = lovelaceAt(move.consumes!);
+      if (move === close) {
+        // The thread and the case are its only inputs; the rest of the
+        // thread, less the receipt and the fee, is ours.
+        expect(body.inputs().len()).toBe(2);
+        const [hash, index] = move.consumes!.split("#");
+        const tag = Data.to(new Constr(0, [hash!, BigInt(index!)]));
+        const outputs = body.outputs();
+        const rest = Array.from({ length: outputs.len() }, (_, at) =>
+          coreToTxOutput(outputs.get(at)),
+        ).filter(({ datum }) => datum === tag);
+        expect(
+          rest.map(({ address, assets }) => [address, assets]),
+        ).toStrictEqual([
+          [
+            credentialToAddress(network, {
+              type: "Key",
+              hash: dispute.scene.h.proverSigner.paymentKeyHash,
+            }),
+            { lovelace: thread - RECEIPT_LOVELACE - fee },
+          ],
+        ]);
+        continue;
+      }
+      expect(body.inputs().len()).toBe(1);
+      expect(body.outputs().get(threadOutput(move.cbor)!).amount().coin()).toBe(
+        thread - fee,
+      );
+    }
+  });
 });

@@ -103,6 +103,34 @@ export const workflowRuntimeFundingMinimumFee = ({
 };
 
 /**
+ * The funding permit's per-transaction fee ceiling: the minimum fee of a
+ * transaction at the protocol's maximum signed size, execution units and
+ * reference-script bytes. The permit refuses a funded transaction whose fee
+ * passes it.
+ */
+export const workflowRuntimeFundingMaximumFee = (
+  parameters: Pick<
+    DeploymentManifestCardanoProtocolParameters,
+    "minFeeA" | "minFeeB" | "priceMemory" | "priceSteps" | "maxTxSize"
+  > & {
+    maxTxExUnits: DeploymentManifestCardanoProtocolParameters["maxTxExUnits"];
+    referenceScriptFee: Pick<
+      DeploymentManifestCardanoProtocolParameters["referenceScriptFee"],
+      "base" | "range" | "multiplier" | "maximumSizeBytes"
+    >;
+  },
+): bigint =>
+  workflowRuntimeFundingMinimumFee({
+    parameters,
+    transactionBytes: BigInt(parameters.maxTxSize),
+    memory: BigInt(parameters.maxTxExUnits.memory),
+    steps: BigInt(parameters.maxTxExUnits.steps),
+    referenceScriptBytes: BigInt(
+      parameters.referenceScriptFee.maximumSizeBytes,
+    ),
+  });
+
+/**
  * The validation-trace dispute's VerifySource custody terms: the dispute
  * bond the case validator is applied with, bound by the signed deployment
  * (the manifest's `availabilityChallenge.challengerBondLovelace`), and its
@@ -360,15 +388,7 @@ export const createWorkflowRuntimeFundingPolicy = ({
       return Object.freeze({ ...reference });
     })
     .sort((left, right) => left.outRef.localeCompare(right.outRef));
-  const maximumFee = workflowRuntimeFundingMinimumFee({
-    parameters,
-    transactionBytes: BigInt(parameters.maxTxSize),
-    memory: BigInt(parameters.maxTxExUnits.memory),
-    steps: BigInt(parameters.maxTxExUnits.steps),
-    referenceScriptBytes: BigInt(
-      parameters.referenceScriptFee.maximumSizeBytes,
-    ),
-  });
+  const maximumFee = workflowRuntimeFundingMaximumFee(parameters);
   const disputeTerms =
     validationDispute === undefined
       ? undefined

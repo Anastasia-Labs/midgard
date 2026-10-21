@@ -1,10 +1,13 @@
-/** The fee of a challenger's thread move. The thread pays it, up to the
- * deployment's per-move cap (the game and case validators let a thread pay
- * at most that), so a move pays its ledger minimum fee: the minimum of its
- * signed transaction, by the formula the funding permit checks a funded
- * transaction's fee with, over the current protocol parameters. A move whose
- * minimum fee would pass the cap cannot be paid by its thread; it is refused
- * with a typed alarm instead of a generic hold. */
+/** The fee of a challenger's thread move, and who pays it. A move whose
+ * ledger minimum fee fits under the deployment's per-move cap is paid by its
+ * thread at that minimum: the validators let a thread that is its move's only
+ * input (with its case, for a close) pay up to the cap. A move over the cap
+ * is paid entirely from our plain-ADA wallet: its other inputs leave the
+ * thread no allowance, so its successor keeps all of the thread's lovelace.
+ * The minimum is that of its signed transaction, by the formula the funding
+ * permit checks a funded transaction's fee with, over the current protocol
+ * parameters. Only a wallet-paid move whose fee passes the funding permit's
+ * per-transaction fee ceiling is refused, with a typed alarm. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   applySingleCborEncoding,
@@ -17,39 +20,46 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { workflowRuntimeFundingMinimumFee } from "../workflow/runtime-funding-policy.js";
+import {
+  workflowRuntimeFundingMaximumFee,
+  workflowRuntimeFundingMinimumFee,
+} from "../workflow/runtime-funding-policy.js";
 
 /** The deployment's per-move fee cap: the most a thread pays for a move. */
 export const VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace,
 );
 
-/** A move whose fee would pass the per-move cap: its thread cannot pay it. */
+/** A wallet-paid move whose fee would pass the funding permit's
+ * per-transaction fee ceiling: no funding can pay it. */
 export const VALIDATION_TRACE_MOVE_FEE_OVER_CAP =
   "validation-trace-move-fee-over-cap";
 
 /**
- * A move refused because its minimum fee passes the per-move cap. The run
- * resumes on the next observation and moves once the fee is back under the
- * cap; until then it raises the alarm named by its reason.
+ * A move refused because the fee our wallet would pay for it passes the
+ * funding permit's per-transaction fee ceiling. The run resumes on the next
+ * observation and moves once the fee is back under the ceiling; until then
+ * it raises the alarm named by its reason.
  */
 export class ValidationTraceMoveFeeOverCapError extends WorkflowActionChangedError {
   constructor(
     readonly stage: string,
     readonly feeLovelace: bigint,
-    readonly capLovelace: bigint,
+    readonly ceilingLovelace: bigint,
   ) {
     super(
-      `${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the ${stage} move's minimum fee ${feeLovelace.toString()} passes the per-move cap ${capLovelace.toString()}`,
+      `${VALIDATION_TRACE_MOVE_FEE_OVER_CAP}: the ${stage} move's fee ${feeLovelace.toString()} passes the funding permit's per-transaction fee ceiling ${ceilingLovelace.toString()}`,
     );
     this.name = "ValidationTraceMoveFeeOverCapError";
   }
 }
 
-/** The ledger's reference-script fee tiers (Conway): 25,600 bytes, ×1.2. */
+/** The ledger's reference-script fee tiers (Conway): 25,600 bytes, ×1.2,
+ * up to 204,800 bytes a transaction. */
 const REFERENCE_SCRIPT_TIER = Object.freeze({
   range: "25600",
   multiplier: Object.freeze({ numerator: "6", denominator: "5" }),
+  maximumSizeBytes: "204800",
 });
 
 /** A protocol price as lucid holds it, as the exact rational lucid uses. */
@@ -127,6 +137,31 @@ export const validationTraceMoveMinimumFee = ({
   });
 };
 
+/** The funding permit's per-transaction fee ceiling at `lucid`'s protocol
+ * parameters, by the rule the permit derives it with. */
+export const validationTraceMoveFeeCeiling = (
+  lucid: LucidEvolution,
+): bigint => {
+  const parameters = lucid.config().protocolParameters;
+  if (parameters === undefined)
+    throw new Error("validation-trace move has no protocol parameters");
+  return workflowRuntimeFundingMaximumFee({
+    minFeeA: parameters.minFeeA.toString(),
+    minFeeB: parameters.minFeeB.toString(),
+    priceMemory: price(parameters.priceMem),
+    priceSteps: price(parameters.priceStep),
+    maxTxSize: parameters.maxTxSize.toString(),
+    maxTxExUnits: {
+      memory: parameters.maxTxExMem.toString(),
+      steps: parameters.maxTxExSteps.toString(),
+    },
+    referenceScriptFee: {
+      ...REFERENCE_SCRIPT_TIER,
+      base: price(parameters.minFeeRefScriptCostPerByte),
+    },
+  });
+};
+
 const complete = async (tx: TxBuilder, fee: bigint): Promise<TxSignBuilder> =>
   await tx
     .setMinFee(fee)
@@ -169,18 +204,20 @@ const walletFundingFee = async (
 const FEE_ROUNDS = 8;
 
 /**
- * Completes the `stage` move `build(fee)`, in which the thread pays `fee`
- * and the wallet only lends collateral, at the move's minimum fee. It is
- * built at the cap first, then rebuilt at the fee that build needs. The
- * builder may price a move a few lovelace above the ledger; a rebuild it
- * refuses is retried a little higher, and the cap's build stands when no
- * cheaper one does. A move that needs more than the cap cannot be built at
- * the cap. When the cap build fails, the move's fee is measured on the same
- * move paid from the wallet (`build(0n)` with coin selection), less what the
- * wallet's funding adds to it; only when that passes the cap did the cap
- * build fail for its fee, and the move is refused with
- * `ValidationTraceMoveFeeOverCapError`. Any other failure of the cap build
- * keeps its own error.
+ * Completes the `stage` move `build(fee)`, in which the thread pays `fee`,
+ * deciding who pays. The thread pays when the move's minimum fee fits
+ * under the cap: it is built at the cap first, with the wallet only lending
+ * collateral, then rebuilt at the fee that build needs. The builder may price
+ * a move a few lovelace above the ledger; a rebuild it refuses is retried a
+ * little higher, and the cap's build stands when no cheaper one does. A move
+ * that needs more than the cap cannot be built at the cap. When the cap build
+ * fails, the move is built with the thread paying nothing and our wallet's
+ * coin selection paying the whole fee (`build(0n)`), and its fee measured
+ * less what the wallet's funding adds to it. When that passes the cap the
+ * wallet-paid move is the move, unless its fee passes the funding permit's
+ * per-transaction fee ceiling, which refuses it with
+ * `ValidationTraceMoveFeeOverCapError`. Otherwise the cap build failed for
+ * another reason and keeps its own error.
  */
 export const completeValidationTraceMove = async ({
   lucid,
@@ -204,16 +241,20 @@ export const completeValidationTraceMove = async ({
   try {
     best = await complete(build(cap), cap);
   } catch (cause) {
+    let paid: TxSignBuilder;
     let needed: bigint;
     try {
-      const paid = await build(0n).complete({ localUPLCEval: true });
+      paid = await build(0n).complete({ localUPLCEval: true });
       needed = needs(paid) - (await walletFundingFee(lucid, paid));
     } catch {
       throw cause;
     }
-    if (needed > cap)
-      throw new ValidationTraceMoveFeeOverCapError(stage, needed, cap);
-    throw cause;
+    if (needed <= cap) throw cause;
+    const fee = CML.Transaction.from_cbor_hex(paid.toCBOR()).body().fee();
+    const ceiling = validationTraceMoveFeeCeiling(lucid);
+    if (fee > ceiling)
+      throw new ValidationTraceMoveFeeOverCapError(stage, fee, ceiling);
+    return paid;
   }
   // A build that completes at the cap needs no more than the cap: the
   // builder prices a move at or above its ledger minimum.

@@ -9,8 +9,8 @@
  * Four other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
  * needs a one-step resolution the runner does not drive, a thread lost, a
- * case a defender won, and a move whose fee would pass the per-move cap, the
- * last an alarm. */
+ * case a defender won, and a move whose fee would pass the funding permit's
+ * per-transaction fee ceiling, the last an alarm. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,

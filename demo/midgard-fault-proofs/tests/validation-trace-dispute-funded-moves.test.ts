@@ -6,9 +6,11 @@
  * its next one. The defender then goes silent: once its clock ends the
  * watcher times the thread out and closes it into our case, minting the
  * defender's lost-defense receipt and paying the rest of the thread to our
- * funding key, then closes the case Convicted. Every move is paid from the
- * thread it spends; the wallet lends plain-Ada collateral only and no move
- * spends a wallet output.
+ * funding key, then closes the case Convicted. A move whose fee fits under
+ * the per-move cap is paid from the thread it spends; the timeout, priced
+ * over the cap, is paid entirely from our plain-Ada wallet through the
+ * funding permit, and its successor keeps all of the thread's lovelace. The
+ * wallet otherwise lends plain-Ada collateral only.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -23,6 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/removal.js";
 import { VALIDATION_TRACE_THREAD_AWAITING } from "../src/validation-trace-dispute/threads.js";
 import { network } from "./support/submit-init-emulator-shared.js";
@@ -40,6 +43,7 @@ import { turnUntil } from "./support/validation-trace-dispute-funded-runner.js";
 import { TIMEOUT } from "./support/validation-trace-dispute-funded-verify-source.js";
 import {
   expectRealMoveFee,
+  type LandedMoveFee,
   landedMoveFee,
 } from "./support/validation-trace-dispute-move-fees.js";
 import {
@@ -82,20 +86,26 @@ const hashesOf = (kind: string) =>
     .filter(({ authority }) => authority.kind === kind)
     .map(({ signed }) => signed.toHash());
 
-/** No move spends a wallet output from before the first move, and each
- * move's collateral is one of them holding plain Ada. */
+/** A move under the cap spends no wallet output from before the first
+ * move, one over it spends only such outputs holding plain Ada beside its
+ * thread, and each move's collateral is one of them holding plain Ada. */
 const expectWalletOnlyLendsCollateral = () => {
   for (const { signed } of journey.moves) {
     const body = signed.toTransaction().body();
+    const walletPaid = body.fee() > VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE;
     const inputs = body.inputs();
+    let spent = 0;
     for (let index = 0; index < inputs.len(); index += 1) {
       const input = inputs.get(index);
-      expect(
-        wallet.has(
-          `${input.transaction_id().to_hex()}#${input.index().toString()}`,
-        ),
-      ).toBe(false);
+      const held = wallet.get(
+        `${input.transaction_id().to_hex()}#${input.index().toString()}`,
+      );
+      if (held === undefined) continue;
+      spent += 1;
+      expect(walletPaid).toBe(true);
+      expect(Object.keys(held.assets)).toStrictEqual(["lovelace"]);
     }
+    expect(spent > 0).toBe(walletPaid);
     const collateral = body.collateral_inputs();
     expect(collateral?.len()).toBe(1);
     const input = collateral!.get(0);
@@ -178,11 +188,26 @@ describe("validation-trace dispute thread moves under the prover funding permit"
   );
 
   it(
-    "times out the silent defender and closes its thread into our case, minting its lost-defense receipt and paying the rest of the thread to our funding key, then closes the case Convicted",
+    "times out the silent defender with our wallet paying the timeout priced over the cap, and closes its thread into our case, minting its lost-defense receipt and paying the rest of the thread to our funding key, then closes the case Convicted",
     async () => {
       const { scene, dispute, capture, unit, defender } = journey;
       const silent = await liveFundedThread(journey);
       await passDefenderDeadline(journey);
+      // Fees rise until the timeout's minimum passes the per-move cap, so
+      // our wallet pays it; they fall again before the thread's close.
+      const parameters = scene.h.emulator.protocolParameters;
+      scene.h.emulator.protocolParameters = { ...parameters, minFeeA: 1_500 };
+      let timeoutFee: LandedMoveFee;
+      try {
+        for (let turns = 0; turns < 4; turns += 1) {
+          if (hashesOf("timeout").length > 0) break;
+          await dispute.turn(capture);
+        }
+        expect(hashesOf("timeout")).toHaveLength(1);
+        timeoutFee = await landedMoveFee(scene, hashesOf("timeout")[0]!);
+      } finally {
+        scene.h.emulator.protocolParameters = parameters;
+      }
       const { result, history } = await turnUntil(
         dispute,
         VALIDATION_TRACE_CASE_CONVICTED,
@@ -251,12 +276,18 @@ describe("validation-trace dispute thread moves under the prover funding permit"
         outcome: "ChallengerWins",
         bounty_claimant: caseDatum.bounty_claimant,
       });
-      // Each move paid its real fee, below the cap.
-      const fees = [
-        await landedMoveFee(scene, timeout!),
-        await landedMoveFee(scene, close!),
-      ];
-      for (const fee of fees) expectRealMoveFee(fee);
+      // The timeout paid at least its ledger minimum, over the cap, and its
+      // successor kept all of the thread's lovelace; the close paid its real
+      // fee from the thread, below the cap.
+      expect(timeoutFee.paid).toBeGreaterThanOrEqual(timeoutFee.ledger);
+      expect(timeoutFee.paid).toBeGreaterThan(
+        VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE,
+      );
+      expect(recordedOutput(scene, `${timeout!}#0`).assets.lovelace).toBe(
+        silent.assets.lovelace,
+      );
+      const closeFee = await landedMoveFee(scene, close!);
+      expectRealMoveFee(closeFee);
       const leftover = closeOutputs.find(
         ({ address }) =>
           address ===
@@ -267,10 +298,7 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       );
       expect(leftover?.assets).toStrictEqual({
         lovelace:
-          (silent.assets.lovelace ?? 0n) -
-          fees[0]!.paid -
-          fees[1]!.paid -
-          RECEIPT_LOVELACE,
+          (silent.assets.lovelace ?? 0n) - closeFee.paid - RECEIPT_LOVELACE,
       });
       expect(leftover!.datum).toBe(Data.to(new Constr(0, [timeout!, 0n])));
       expect(
