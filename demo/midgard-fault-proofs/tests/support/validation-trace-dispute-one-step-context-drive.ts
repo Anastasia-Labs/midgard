@@ -54,6 +54,7 @@ export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
   reference: 97,
   spend: 98,
   output: 100,
+  signer: 102,
 } as const satisfies Readonly<Record<DrivenCekContextStage, number>>);
 
 const outRefOf = (utxo: UTxO) =>

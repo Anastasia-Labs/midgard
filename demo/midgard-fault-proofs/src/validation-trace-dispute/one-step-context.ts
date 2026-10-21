@@ -42,6 +42,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "reference",
   "spend",
   "output",
+  "signer",
 ] as const;
 
 export type DrivenCekContextStage = (typeof DRIVEN_CEK_CONTEXT_STAGES)[number];
