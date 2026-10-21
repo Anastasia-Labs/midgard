@@ -52,6 +52,7 @@ import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
   redeemerBegin: 94,
   reference: 97,
+  spend: 98,
 } as const satisfies Readonly<Record<DrivenCekContextStage, number>>);
 
 const outRefOf = (utxo: UTxO) =>

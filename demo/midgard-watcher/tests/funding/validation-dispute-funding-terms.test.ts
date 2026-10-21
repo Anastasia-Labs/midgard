@@ -50,6 +50,7 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekContextControl",
         "validationTraceDisputeCekContextRedeemerBegin",
         "validationTraceDisputeCekContextReference",
+        "validationTraceDisputeCekContextSpend",
         "validationTraceDisputeCekContextSettle",
       ].map(manifestAddress),
     );

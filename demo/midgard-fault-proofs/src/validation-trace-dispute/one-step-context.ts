@@ -40,6 +40,7 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
 export const DRIVEN_CEK_CONTEXT_STAGES = [
   "redeemerBegin",
   "reference",
+  "spend",
 ] as const;
 
 export type DrivenCekContextStage = (typeof DRIVEN_CEK_CONTEXT_STAGES)[number];
