@@ -178,6 +178,17 @@ describe("the validation-trace defender's readiness", () => {
         "preprod-public",
       ),
     ).toStrictEqual({ reasons: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
+    // So is a named state and unit followed by free-form text.
+    expect(
+      publicReadinessPresentation(
+        {
+          details: [
+            `validation-trace-defense-material-unavailable:${subject}:${far.toString()} the build read /var/lib/node`,
+          ],
+        },
+        "preprod-public",
+      ),
+    ).toStrictEqual({ details: ["E_READINESS_DIAGNOSTIC_REDACTED"] });
   });
 
   it("makes /readyz unready on an underfunded move and on no active node, and keeps our own fault ready", async () => {
