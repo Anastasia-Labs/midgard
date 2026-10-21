@@ -27,14 +27,23 @@ The thread's lovelace comes back to the defense pocket, less the moves' fees,
 when the thread expires after the case's maximum duration. A move whose fee
 is over the per-move cap is paid wholly from the wallet and the pocket.
 
-Keep the operator wallet at least **2 × (82.4 + 5) ≈ 175 ADA** above its
-normal commit float, so two cases can be defended at the same time without
-touching the ADA that commits need. An item the wallet and the pocket cannot
-fund is named `validation-trace-defense-underfunded` with the shortfall, and
-fails `/readyz` until it is funded.
+The node builds a Defend only when the wallet and the pocket hold its thread
+floor plus a 10 ADA margin for its fee, collateral and change, and the 5 ADA
+pocket output when the pocket has none. Keep the operator wallet at least
+**2 × 82.4 + 5 + 10 ≈ 180 ADA, about 185 ADA with the first Defend's fee,**
+above its normal commit float. The first Defend locks 82.4 + 5 ADA and pays its
+fee; the second then still finds its floor and margin without counting the ADA
+that commits need. An item the wallet and the pocket cannot fund is named
+`validation-trace-defense-underfunded` with the shortfall, and fails `/readyz`
+until it is funded.
 
-A Defend also holds the defender's operator bond until the case is over
-(`started_at + D_case + P`); recovering that bond waits until then.
+A Defend also holds the defender's operator bond until the case is over, at
+`started_at + D_case + P`. Here `started_at` is when the case opened,
+`D_case` is the longest a case can run (both sides' clocks, every move's
+validity range and the resolution allowance), and `P` is what is left of the
+block maturity after that, for the closes that follow the case. Together they
+come to half the block maturity past `started_at`. Recovering that bond waits
+until then.
 
 ## The defense pocket
 
