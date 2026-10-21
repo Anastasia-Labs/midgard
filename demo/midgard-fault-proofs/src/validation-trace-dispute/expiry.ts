@@ -3,7 +3,8 @@
  * releases it to the thread-expiry withdrawal, the case policy burns its
  * token, and its value goes to its defender's key address tagged with the
  * thread's out-ref. No case input takes part. Every script runs from its
- * published reference. */
+ * published reference. Expiry is built from the game, timeout and boundary
+ * holders. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -19,11 +20,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 /** The validators a thread can expire from. */
-export type ValidationTraceExpiryHolder =
-  | "game"
-  | "timeout"
-  | "boundary"
-  | "award";
+export type ValidationTraceExpiryHolder = "game" | "timeout" | "boundary";
 
 /**
  * The spend redeemer with which `holder` releases `thread`, the input at
@@ -31,7 +28,7 @@ export type ValidationTraceExpiryHolder =
  * `holder_releases_to_expiry(..) or ..`, and that clause reads only the
  * transaction's withdrawals and the holder's own input
  * (validation-thread-expiry-v1 `holder_releases_to_expiry`; game-v1,
- * timeout-v1, boundary-v1 and award-v1 `spend`), so the redeemer only has to
+ * timeout-v1 and boundary-v1 `spend`), so the redeemer only has to
  * decode as the holder's own redeemer type. Its mint redeemer index names
  * the expiry's one mint, the thread token's burn.
  */
@@ -63,15 +60,13 @@ const releaseRedeemer = (
         { input_index: inputIndex, case_input_index: inputIndex },
         SDK.ValidationTimeoutSpendRedeemer,
       );
-    case "award":
-      return Data.to("SpendReceipt", SDK.ValidationAwardSpendRedeemer);
   }
 };
 
 /**
  * The header of a thread holder datum `StepDatum { fraud_prover, data:
- * Some(state) }`: the first field of `state`, whichever holder's state it is
- * (validation-thread-expiry-v1 `thread_header_of`).
+ * Some(state) }`: the first field of `state`, the game, timeout or boundary
+ * holder's (validation-thread-expiry-v1 `thread_header_of`).
  */
 export const validationTraceThreadHeader = (
   datum: string,
