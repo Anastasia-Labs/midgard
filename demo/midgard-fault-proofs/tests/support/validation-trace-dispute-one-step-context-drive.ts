@@ -10,8 +10,9 @@
  * our case. A move whose fee fits under the per-move cap is paid by its
  * thread, and one over the cap by our wallet. Each single-hop stage's test
  * file pins the stage's refusal of a successor other than the one it
- * derives; the item bind stage pins its own
- * (validation-trace-dispute-one-step-context-item-drive.ts). */
+ * derives; the item bind stage and the observer stage pin their own
+ * (validation-trace-dispute-one-step-context-item-drive.ts,
+ * validation-trace-dispute-one-step-context-observer-drive.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -56,7 +57,7 @@ import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 /** A driven stage that verifies its step in one hop. */
 export type SingleHopCekContextStage = Exclude<
   DrivenCekContextStage,
-  "itemBind"
+  "itemBind" | "observerAuthenticate"
 >;
 
 /** The last agreed state before the first step of the fixture's trace that

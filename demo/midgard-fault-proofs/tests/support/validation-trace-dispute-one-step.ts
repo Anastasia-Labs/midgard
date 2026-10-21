@@ -8,6 +8,11 @@ import type { Script, UTxO } from "@lucid-evolution/lucid";
 
 import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
+  CONTEXT_FOLLOWER_HOLDERS,
+  contextFollowerValidators,
+  type ValidationTraceContextFollowerHolder,
+} from "../../src/validation-trace-dispute/one-step-context-followers.js";
+import {
   CONTEXT_ITEM_HOLDERS,
   contextItemValidators,
   type ValidationTraceContextItemHolder,
@@ -70,6 +75,7 @@ export const oneStepScripts = (
     contextControl: context.control,
     ...stages,
     ...contextItemValidators(chain),
+    ...contextFollowerValidators(context),
     contextSettle: context.settle,
   });
 };
@@ -151,8 +157,9 @@ export const publishSelectionReferences = async (
   });
 };
 
-/** Publishes the reference scripts of the CEK context step's holders, and of
- * the holders of the redeemer item step its item bind stage binds. */
+/** Publishes the reference scripts of the CEK context step's holders, of
+ * the holders of the redeemer item step its item bind stage binds, and of
+ * the holders past a multi-hop stage's first. */
 export const publishContextReferences = async (
   scene: SceneContracts,
 ): Promise<NonNullable<ValidationTraceOneStepReferences["cekContext"]>> => {
@@ -176,6 +183,10 @@ export const publishContextReferences = async (
   const items: Partial<Record<ValidationTraceContextItemHolder, UTxO>> = {};
   for (const holder of CONTEXT_ITEM_HOLDERS)
     items[holder] = await publish(scripts[holder], `CEK ${holder}`);
+  const followers: Partial<Record<ValidationTraceContextFollowerHolder, UTxO>> =
+    {};
+  for (const holder of CONTEXT_FOLLOWER_HOLDERS)
+    followers[holder] = await publish(scripts[holder], `CEK ${holder}`);
   return Object.freeze({
     semantic: await publish(scripts.context, "CEK context step"),
     control: await publish(scripts.contextControl, "CEK context control"),
@@ -185,6 +196,9 @@ export const publishContextReferences = async (
     ),
     items: Object.freeze(
       items as Record<ValidationTraceContextItemHolder, UTxO>,
+    ),
+    followers: Object.freeze(
+      followers as Record<ValidationTraceContextFollowerHolder, UTxO>,
     ),
   });
 };

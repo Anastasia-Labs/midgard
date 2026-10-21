@@ -4,8 +4,9 @@
  * its step selects and the settle, for a script selection the selection
  * resolver, or for a context step the context step resolver, the context
  * control, the stage it routes the step to (at the item bind stage, then the
- * redeemer item step's holders, one-step-context-item-holders.ts) and the
- * context settle; and the award. Each holder is a deployment contract, found
+ * redeemer item step's holders, one-step-context-item-holders.ts, and past
+ * the observer authenticate, the observer fold,
+ * one-step-context-followers.ts) and the context settle; and the award. Each holder is a deployment contract, found
  * by its spending address; the thread token, minted once for its defender,
  * is what makes an output there ours. */
 import * as SDK from "@al-ft/midgard-sdk";
@@ -15,6 +16,12 @@ import {
   DRIVEN_CEK_CONTEXT_STAGES,
   type DrivenCekContextStage,
 } from "./one-step-context.js";
+import {
+  CONTEXT_FOLLOWER_CONTRACT_NAMES,
+  CONTEXT_FOLLOWER_HOLDERS,
+  contextFollowerValidators,
+  type ValidationTraceContextFollowerHolder,
+} from "./one-step-context-followers.js";
 import {
   CONTEXT_ITEM_CONTRACT_NAMES,
   CONTEXT_ITEM_HOLDERS,
@@ -43,6 +50,7 @@ export const CEK_CONTEXT_STAGE_HOLDERS = Object.freeze({
   spend: "contextSpend",
   output: "contextOutput",
   signer: "contextSigner",
+  observerAuthenticate: "contextObserverAuthenticate",
   mintInit: "contextMintInit",
   assemble: "contextAssemble",
   txInfo: "contextTxInfo",
@@ -64,6 +72,7 @@ export type ValidationTraceOneStepHolder =
   | "contextControl"
   | ValidationTraceContextStageHolder
   | ValidationTraceContextItemHolder
+  | ValidationTraceContextFollowerHolder
   | "contextSettle"
   | "award";
 
@@ -99,11 +108,14 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   contextSpend: "validationTraceDisputeCekContextSpend",
   contextOutput: "validationTraceDisputeCekContextOutput",
   contextSigner: "validationTraceDisputeCekContextSigner",
+  contextObserverAuthenticate:
+    "validationTraceDisputeCekContextObserverAuthenticate",
   contextMintInit: "validationTraceDisputeCekContextMintInit",
   contextAssemble: "validationTraceDisputeCekContextAssemble",
   contextTxInfo: "validationTraceDisputeCekContextTxInfo",
   contextSeed: "validationTraceDisputeCekContextSeed",
   ...CONTEXT_ITEM_CONTRACT_NAMES,
+  ...CONTEXT_FOLLOWER_CONTRACT_NAMES,
   contextSettle: "validationTraceDisputeCekContextSettle",
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
@@ -204,6 +216,7 @@ export const validationTraceOneStepContracts = (
   const context = references.cekContext;
   const stages = chain.cekContextStages;
   const items = contextItemValidators(chain);
+  const followers = contextFollowerValidators(stages);
   return Object.freeze([
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
@@ -239,6 +252,9 @@ export const validationTraceOneStepContracts = (
           ),
           ...CONTEXT_ITEM_HOLDERS.map((holder) =>
             contract(holder, items[holder], context.items[holder]),
+          ),
+          ...CONTEXT_FOLLOWER_HOLDERS.map((holder) =>
+            contract(holder, followers[holder], context.followers[holder]),
           ),
           contract("contextSettle", stages.settle, context.settle),
         ]),

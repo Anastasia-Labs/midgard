@@ -48,6 +48,7 @@ export const referenceUtxos = (
                 oneStep.cekContext.settle,
                 ...Object.values(oneStep.cekContext.stages),
                 ...Object.values(oneStep.cekContext.items),
+                ...Object.values(oneStep.cekContext.followers),
               ]),
         ]),
     ...(scriptDecode === undefined

@@ -43,7 +43,8 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
 /**
  * The stages the runner drives: each verifies its step in one hop and sends
  * the thread to the context settle, but the item bind stage, whose step the
- * redeemer item chain verifies.
+ * redeemer item chain verifies, and the observer authenticate, whose step's
+ * opening the observer fold folds (one-step-context-followers.ts).
  */
 export const DRIVEN_CEK_CONTEXT_STAGES = [
   "redeemerBegin",
@@ -52,6 +53,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "spend",
   "output",
   "signer",
+  "observerAuthenticate",
   "mintInit",
   "assemble",
   "txInfo",
@@ -77,6 +79,8 @@ export type ValidationTraceContextStep = Readonly<{
   successorCbor: string;
   /** At the item bind stage, the step's redeemer item step. */
   item: ValidationTraceContextItem | undefined;
+  /** At the observer authenticate, the step's `ObserverOpening`. */
+  observerOpeningCbor: string | undefined;
 }>;
 
 type Item = bigint | string | readonly Item[];
@@ -193,6 +197,35 @@ const contextRoute = (
   return route;
 };
 
+/** `cek_context_control_from_cbor`'s observer count and observer items. */
+const OBSERVER_COUNT = 15;
+const OBSERVER_ITEMS = 16;
+
+/**
+ * The `ObserverOpening` of an observer step on `context` whose evidence is
+ * `auxiliaryCbor`, as Data CBOR: with no evidence, the observers' finish
+ * once every one the transaction requires is folded, or their absence
+ * before any is; undefined for the evidence of an observer item, which the
+ * runner does not drive.
+ */
+export const cekContextObserverOpening = (
+  context: Constr<Data>,
+  auxiliaryCbor: string,
+): string | undefined => {
+  const auxiliary = Data.from(auxiliaryCbor);
+  if (
+    !(auxiliary instanceof Constr) ||
+    auxiliary.index !== 0 ||
+    auxiliary.fields.length !== 0
+  )
+    return undefined;
+  const count = context.fields[OBSERVER_COUNT] as bigint;
+  const folded = (context.fields[OBSERVER_ITEMS] as Constr<Data>)
+    .fields[1] as bigint;
+  // FinishedObservers, or EmptyObservers.
+  return Data.to(new Constr(count > 0n && folded === count ? 1 : 0, []));
+};
+
 /**
  * The context step from the witness `witnessCbor` with auxiliary evidence
  * `auxiliaryCbor`, whose next state carries the witness
@@ -214,7 +247,15 @@ export const planValidationTraceContextStep = ({
   const native = nativeControlFields(bytes(witness[0]));
   const context = cekContextControlData(bytes(witness[1]));
   const stage = contextRoute(context, auxiliaryCbor);
-  if (!isDriven(stage)) return { stage, driven: false };
+  const observerOpeningCbor =
+    stage === "observerAuthenticate"
+      ? cekContextObserverOpening(context, auxiliaryCbor)
+      : undefined;
+  if (
+    !isDriven(stage) ||
+    (stage === "observerAuthenticate" && observerOpeningCbor === undefined)
+  )
+    return { stage, driven: false };
   const successor = envelope(successorWitnessCbor, 11, "successor witness");
   return Object.freeze({
     stage,
@@ -247,6 +288,7 @@ export const planValidationTraceContextStep = ({
             contextStage: context.fields[0] as bigint,
           })
         : undefined,
+    observerOpeningCbor,
   });
 };
 

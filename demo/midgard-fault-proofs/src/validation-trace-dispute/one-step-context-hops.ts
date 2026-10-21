@@ -5,7 +5,9 @@
  * facts (ContextStaged), to the stage its context routes the step to; from
  * that stage, which verifies the step (ContextVerified), to the context
  * settle, or from the item bind stage through the redeemer item step
- * (one-step-context-item-hops.ts); and from the settle to the award. Every
+ * (one-step-context-item-hops.ts), or from the observer authenticate, which
+ * binds the step's observer opening (ObserverPending), through the observer
+ * fold; and from the settle to the award. Every
  * hop is redeemed with the step's witness and evidence (`VerifyContext`),
  * and each successor carries the state its next holder checks, derived from
  * our trace (one-step-context.ts). */
@@ -13,6 +15,10 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 import type { ValidationTraceHop } from "./one-step-builders.js";
 import { contextBoundSource } from "./one-step-context.js";
+import {
+  isValidationTraceContextFollowerHolder,
+  type ValidationTraceContextFollowerHolder,
+} from "./one-step-context-followers.js";
 import {
   isValidationTraceContextItemHolder,
   type ValidationTraceContextItemHolder,
@@ -45,6 +51,7 @@ export type ValidationTraceContextHolder =
   | "contextControl"
   | ValidationTraceContextStageHolder
   | ValidationTraceContextItemHolder
+  | ValidationTraceContextFollowerHolder
   | "contextSettle";
 
 const STAGE_HOLDERS: ReadonlySet<string> = new Set(
@@ -58,7 +65,8 @@ export const isValidationTraceContextHolder = (
   holder === "contextControl" ||
   holder === "contextSettle" ||
   STAGE_HOLDERS.has(holder) ||
-  isValidationTraceContextItemHolder(holder);
+  isValidationTraceContextItemHolder(holder) ||
+  isValidationTraceContextFollowerHolder(holder);
 
 /**
  * The hop of the thread whose datum is `datum`, of prover `prover`, held by
@@ -138,6 +146,21 @@ export const validationTraceContextHop = ({
   if (holder === "contextSettle")
     // The winning resolution, which any party may move the thread to.
     return { ...hop("award", [integer(1)]), proverOnly: false };
+  if (holder === CEK_CONTEXT_STAGE_HOLDERS.observerAuthenticate) {
+    // ObserverPending { staged, opening }.
+    if (context.observerOpeningCbor === undefined)
+      throw new Error(
+        `validation-trace ${holder} holds a thread whose step opens no observer`,
+      );
+    return hop("contextObserverFold", [state, context.observerOpeningCbor]);
+  }
+  if (holder === "contextObserverFold")
+    // ContextVerified { staged, successor }, from the pending opening's
+    // staged context.
+    return hop("contextSettle", [
+      plutusConstrFieldCbor(datum, [1, 0, 0]),
+      context.successorCbor,
+    ]);
   // A stage: ContextVerified { staged, successor }.
   return hop("contextSettle", [state, context.successorCbor]);
 };

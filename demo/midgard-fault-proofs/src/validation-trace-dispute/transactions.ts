@@ -37,6 +37,7 @@ import {
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import type { DrivenCekContextStage } from "./one-step-context.js";
+import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
 import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
@@ -88,6 +89,8 @@ export type ValidationTraceOneStepReferences = Readonly<{
     stages: Readonly<Record<DrivenCekContextStage, UTxO>>;
     /** The holders of the redeemer item step the item bind stage binds. */
     items: Readonly<Record<ValidationTraceContextItemHolder, UTxO>>;
+    /** The holders past a multi-hop stage's first. */
+    followers: Readonly<Record<ValidationTraceContextFollowerHolder, UTxO>>;
   }>;
 }>;
 

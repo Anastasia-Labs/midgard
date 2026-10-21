@@ -17,6 +17,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-context-item-95.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-96.test.ts",
   "./tests/validation-trace-dispute-one-step-context-mint-init.test.ts",
+  "./tests/validation-trace-dispute-one-step-context-observer.test.ts",
   "./tests/validation-trace-dispute-one-step-context-output.test.ts",
   "./tests/validation-trace-dispute-one-step-context-redeemer-begin.test.ts",
   "./tests/validation-trace-dispute-one-step-context-reference.test.ts",
