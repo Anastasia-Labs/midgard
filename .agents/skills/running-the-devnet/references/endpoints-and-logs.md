@@ -767,7 +767,10 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   build its claim because the claim's re-execution or pre-state read ended
   without a result; nothing was journaled. It is rebuilt on each
   observation and clears at the first run that meets something else. Check
-  the watcher's memory if it lasts.
+  the watcher's memory if it lasts. Once half the case open window
+  (`block_time + M/2`) or less is left, or the block cannot be read, it is
+  an alarm logged at error level, naming the window's end: the case must
+  open by then. Report it with the detail.
 - `fault_proof_counterparty_deadline_passed`: an objective still awaits its
   counterparty (a validation-trace case nobody has defended, or a thread
   whose defender has not moved) more than 10 min past the response deadline

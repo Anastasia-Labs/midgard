@@ -43,7 +43,8 @@ export const VALIDATION_TRACE_CLAIM_BUILD_HELD =
 /**
  * The claim's re-execution or pre-state read failed without a result (the
  * evaluator's own failure, such as running out of memory): not a verdict on
- * the claim, so the run builds it again on the next observation.
+ * the claim, so the run builds it again on the next observation. It is an
+ * alarm once the case open window is at risk (stage-unbuilt.ts).
  */
 export const validationTraceClaimBuildHeld = (
   cause: unknown,
