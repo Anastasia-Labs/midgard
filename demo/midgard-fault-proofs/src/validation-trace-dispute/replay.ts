@@ -5,13 +5,20 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  buildValidationMachineLedgerMutationSteps,
+  canonicalTransitionEffectFromStatePatch,
   commitValidationTraceV1,
   DirectValidationTraceUnavailable,
   RejectCodes,
   replayValidationVerdictEvent,
   requiresRealValidationDescriptorV1,
+  transitionEffectToLedgerOps,
+  type UTxOStatePatch,
+  type ValidationMachineLedgerMutationStep,
+  type ValidationMachineLedgerOp,
   type ValidationMachineReplayInput,
   ValidationTraceStopped,
+  type ValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -36,22 +43,65 @@ export const eventRunsPlutus = (
   event.entry.validity === "TxIsValid" &&
   requiresRealValidationDescriptorV1(event.entry.fullTransactionCbor, "normal");
 
+/** The ledger mutation an accepted event makes to its pre-state ledger. */
+export type AcceptedLedgerMutation = Readonly<{
+  ledgerOps: readonly ValidationMachineLedgerOp[];
+  ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
+  /** The ledger root after the event, in the committed encoding. */
+  postUtxosRoot: string;
+}>;
+
 /**
- * The challenger's replay input for `event` over its event pre-state ledger.
- * The claim derives the trace context from the header, so the context's time
- * element is `header.end_time`; validity is decided by `header.block_slot`.
- * The honest trace rejects, so the ledger is unchanged.
+ * The mutation `statePatch` (an accepted verdict replay's patch) makes to
+ * `ledger`: its consensus ledger operations in canonical order, and each
+ * operation's step from the root before it to the root after it.
  */
-export const plutusFailureReplayInput = ({
+export const acceptedLedgerMutation = async (
+  ledger: CheckedLedger,
+  statePatch: UTxOStatePatch,
+): Promise<AcceptedLedgerMutation> => {
+  const ledgerOps = transitionEffectToLedgerOps(
+    canonicalTransitionEffectFromStatePatch(statePatch),
+  );
+  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
+    initialEntries: ledger.entries.map(({ outRef, output }) => ({
+      outRef,
+      output,
+    })),
+    operations: ledgerOps,
+  });
+  return {
+    ledgerOps,
+    ledgerMutationSteps,
+    postUtxosRoot:
+      ledgerMutationSteps.at(-1)?.postRoot.toString("hex") ?? ledger.utxosRoot,
+  };
+};
+
+/** The honest verdict a replay input expects, with an accepted event's mutation. */
+export type PlutusReplayVerdict =
+  | Readonly<{ verdict: "rejected" }>
+  | Readonly<{ verdict: "accepted"; mutation: AcceptedLedgerMutation }>;
+
+/**
+ * The replay input for `event` over its event pre-state ledger, expecting
+ * `verdict`. The claim derives the trace context from the header, so the
+ * context's time element is `header.end_time`; validity is decided by
+ * `header.block_slot`. A rejected event leaves the ledger unchanged; an
+ * accepted one makes its mutation.
+ */
+export const plutusReplayInput = ({
   header,
   event,
   ledger,
   l1SlotConfig,
+  verdict,
 }: {
   readonly header: SDK.Header;
   readonly event: CommittedL2Event;
   readonly ledger: CheckedLedger;
   readonly l1SlotConfig: L1SlotConfig;
+  readonly verdict: PlutusReplayVerdict;
 }): ValidationMachineReplayInput => ({
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from(Data.to(event.eventKey, SDK.EventKey), "hex"),
@@ -59,15 +109,25 @@ export const plutusFailureReplayInput = ({
   canonicalTransactionCbor: Buffer.from(event.entry.fullTransactionCbor),
   sourceKind: "normal",
   priorUtxosRoot: ledger.utxosRoot,
-  postUtxosRoot: ledger.utxosRoot,
   ledgerWitnessEntries: ledger.entries.map(({ outRef, output }) => ({
     outRef,
     output,
   })),
-  expectedLedgerOps: [],
-  ledgerMutationSteps: [],
-  expectedVerdict: "rejected",
-  expectedRejectionCode: RejectCodes.PlutusScriptInvalid,
+  ...(verdict.verdict === "rejected"
+    ? {
+        postUtxosRoot: ledger.utxosRoot,
+        expectedLedgerOps: [],
+        ledgerMutationSteps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.PlutusScriptInvalid,
+      }
+    : {
+        postUtxosRoot: verdict.mutation.postUtxosRoot,
+        expectedLedgerOps: verdict.mutation.ledgerOps,
+        ledgerMutationSteps: verdict.mutation.ledgerMutationSteps,
+        expectedVerdict: "accepted",
+        expectedRejectionCode: null,
+      }),
   blockTimeMs: Number(header.endTime),
   expectedNetworkId: header.expectedNetworkId,
   minFeeA: header.minFeeA,
@@ -75,6 +135,25 @@ export const plutusFailureReplayInput = ({
   blockSlot: header.blockSlot,
   l1SlotConfig,
 });
+
+/** The verdict replay of a replay input's event: no trace is built. */
+export const replayPlutusVerdict = async (
+  input: ValidationMachineReplayInput,
+): Promise<ValidationVerdictEvent> =>
+  await Effect.runPromise(
+    replayValidationVerdictEvent({
+      consensusProfile: input.consensusProfile,
+      canonicalTransactionCbor: input.canonicalTransactionCbor,
+      ledgerWitnessEntries: input.ledgerWitnessEntries,
+      blockTimeMs: input.blockTimeMs,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+      blockSlot: input.blockSlot,
+      l1SlotConfig: input.l1SlotConfig,
+      sourceKind: "normal",
+    }),
+  );
 
 export type PlutusExecutionReplay =
   | { readonly kind: "no_failure" }
@@ -103,26 +182,14 @@ export const replayPlutusExecution = async ({
   readonly ledger: CheckedLedger;
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<PlutusExecutionReplay> => {
-  const input = plutusFailureReplayInput({
+  const input = plutusReplayInput({
     header: evidence.header,
     event,
     ledger,
     l1SlotConfig,
+    verdict: { verdict: "rejected" },
   });
-  const verdict = await Effect.runPromise(
-    replayValidationVerdictEvent({
-      consensusProfile: input.consensusProfile,
-      canonicalTransactionCbor: input.canonicalTransactionCbor,
-      ledgerWitnessEntries: input.ledgerWitnessEntries,
-      blockTimeMs: input.blockTimeMs,
-      expectedNetworkId: input.expectedNetworkId,
-      minFeeA: input.minFeeA,
-      minFeeB: input.minFeeB,
-      blockSlot: input.blockSlot,
-      l1SlotConfig,
-      sourceKind: "normal",
-    }),
-  );
+  const verdict = await replayPlutusVerdict(input);
   if (
     verdict.verdict !== "rejected" ||
     verdict.rejection?.subject?.arm !== "PlutusExecutionFailed"

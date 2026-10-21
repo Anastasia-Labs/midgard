@@ -80,6 +80,7 @@ const scenario = async (refusePublication: boolean) => {
     refresh: () => Effect.void,
     // No follower here: the view is the provider's UTxOs, read afresh.
     walletView: readProviderWalletView,
+    liveIntents: () => Effect.succeed([]),
   };
   const address = await lucid.wallet().address();
   const run = () =>

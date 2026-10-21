@@ -9,10 +9,11 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
-import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type EmulatorAccount,
   generateEmulatorAccount,
   type LucidEvolution,
   type Script,
@@ -36,6 +37,7 @@ import {
   plutusExecutionSeedDeposit,
   referenceSeedDeposits,
   type ScenarioSigners,
+  type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
@@ -76,12 +78,16 @@ export type Scene = {
     readonly game: UTxO;
     readonly timeout: UTxO;
     readonly award: UTxO;
+    /** The active-operators spending script, which a Defend runs. */
+    readonly activeOperators: UTxO;
   };
   readonly failing: Block;
   readonly passing: Block;
   readonly forced: Block;
   /** The operator that committed the blocks, and its active-operator node. */
   readonly operator: { readonly vkey: string; readonly nodeUnit: string };
+  /** The operator's account: the funder wallet, which signed the blocks. */
+  readonly funder: EmulatorAccount;
   /** The raw L1 view of every transaction after the scene's setup. */
   readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
@@ -107,6 +113,7 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * `failingScript`, by default the failing script, and with
  * `failingNativeSpend` it also spends an output a native script holds;
  * with `failingNativeMint` it also mints under a native script's policy.
+ * The passing transaction spends under `passingSpend` when given.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
@@ -117,6 +124,7 @@ export const setUpScene = async (
     failingScript,
     failingNativeSpend = false,
     failingNativeMint = false,
+    passingSpend,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
@@ -124,15 +132,17 @@ export const setUpScene = async (
     readonly failingScript?: MidgardVersionedScript;
     readonly failingNativeSpend?: boolean;
     readonly failingNativeMint?: boolean;
+    readonly passingSpend?: ScriptSpend;
   } = {},
 ): Promise<Scene> => {
+  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValidationTraceDispute: true,
       alwaysFraudProofCatalogue: true,
     },
     accounts: {
-      funder: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
+      funder,
       prover: fundedProverEmulatorAccount(60_000_000_000n),
       publisher: generateEmulatorAccount({ lovelace: 40_000_000_000n }),
     },
@@ -158,6 +168,10 @@ export const setUpScene = async (
     "timeout",
   );
   const awardReference = await publish(chain.award.spendingScript, "award");
+  const activeOperatorsReference = await publish(
+    h.contracts.activeOperators.spendingScript,
+    "active operators",
+  );
   await beforeBlocks?.({ h, chain });
 
   const operatorVkey = await funderPaymentKeyHash(h.funderLucid);
@@ -168,6 +182,15 @@ export const setUpScene = async (
     ) - 1,
   );
   const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  /** The script spend `scenario` runs in place of its own, if any. */
+  const scenarioSpend = (
+    scenario: PlutusExecutionScenario,
+  ): ScriptSpend | undefined =>
+    scenario === "failing" && failingScript !== undefined
+      ? { script: failingScript }
+      : scenario === "passing"
+        ? passingSpend
+        : undefined;
   const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
@@ -182,7 +205,7 @@ export const setUpScene = async (
         plutusExecutionSeedDeposit(
           scenario as PlutusExecutionScenario,
           byte,
-          scenario === "failing" ? failingScript : undefined,
+          scenarioSpend(scenario as PlutusExecutionScenario),
         ),
       ),
       ...references.deposits,
@@ -215,6 +238,7 @@ export const setUpScene = async (
   };
   const commit = async (scenario: PlutusExecutionScenario) => {
     const endTime = previous.endTime + 60_000n;
+    const spend = scenarioSpend(scenario);
     const block = await plutusExecutionBlockFixture(scenario, {
       seedByte: seeds[scenario as keyof typeof seeds],
       ...(scenario === "failing" && failingRedeemerData !== undefined
@@ -226,11 +250,11 @@ export const setUpScene = async (
             ...(failingSigners === undefined
               ? {}
               : { signers: failingSigners }),
-            ...(failingScript === undefined ? {} : { failingScript }),
             nativeSpend: failingNativeSpend,
             nativeMint: failingNativeMint,
           }
         : {}),
+      ...(spend === undefined ? {} : { spend }),
       predecessorEntries: previous.entries,
       header: {
         operatorVkey,
@@ -289,11 +313,13 @@ export const setUpScene = async (
       game: gameReference,
       timeout: timeoutReference,
       award: awardReference,
+      activeOperators: activeOperatorsReference,
     },
     failing,
     passing,
     forced,
     operator: { vkey: operatorVkey, nodeUnit: setup.activeOperatorNodeUnit },
+    funder,
   };
 };
 

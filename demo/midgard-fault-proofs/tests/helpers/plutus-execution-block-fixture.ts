@@ -9,13 +9,14 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation";
 import {
@@ -68,6 +69,37 @@ export const PASSING_SCRIPT = plutusV3ScriptWitness(
   encodeCbor(Buffer.from("0101002499", "hex")),
 );
 
+/** The per-transaction execution-unit cap admission enforces (the consensus
+ * profile's Cardano `maxTxExUnits`), as `[memory, steps]`. */
+export const ADMITTED_TX_EX_UNITS = [
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits),
+  BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits),
+] as const;
+
+/**
+ * A passing PlutusV3 script that runs as long as admission allows:
+ * `(program 1.1.0 (lam ctx [(lam _ (con unit ())) (countdown 5148 0)]))`,
+ * where `countdown n acc = n == 0 ? acc : countdown (n - 1) acc` through the
+ * strict fixpoint. 5148 rounds is the most whose run fits
+ * `ADMITTED_TX_EX_UNITS` (16,497,794 memory, 391,317 CEK steps); in Flat,
+ * wrapped in one CBOR byte string.
+ */
+export const LONGEST_PASSING_SCRIPT = plutusV3ScriptWitness(
+  encodeCbor(
+    Buffer.from(
+      "010100232498ccc8c8c0088cc0080080048c0088cc0080080048894ccd5cd19b870024800040044cc00ccdc080124004002905c2824001",
+      "hex",
+    ),
+  ),
+);
+
+/** A script spend's own script, in place of the scenario's, and, when
+ * given, its declared execution units in place of the default units. */
+export type ScriptSpend = Readonly<{
+  script: MidgardVersionedScript;
+  exUnits?: readonly [bigint, bigint];
+}>;
+
 export type PlutusExecutionScenario =
   | "failing"
   | "passing"
@@ -81,40 +113,39 @@ export type PlutusExecutionScenario =
 const DEFAULT_SCRIPT_SEED_BYTE = 0x61;
 const KEY_SEED_BYTE = 0x62;
 
-/** The script `scenario`'s spend runs; a failing spend runs
- * `failingScript`, by default the failing script. */
+/** The script `scenario`'s spend runs: `spend`'s when given, else the
+ * passing script for a passing spend and the failing script otherwise. */
 const scenarioScript = (
   scenario: PlutusExecutionScenario,
-  failingScript: MidgardVersionedScript = FAILING_SCRIPT,
-) =>
-  scenario === "passing" || scenario === "unsigned_required_signer"
+  spend?: ScriptSpend,
+): MidgardVersionedScript =>
+  spend?.script ??
+  (scenario === "passing" || scenario === "unsigned_required_signer"
     ? PASSING_SCRIPT
-    : failingScript;
+    : FAILING_SCRIPT);
 
 export const scriptCredential = (
   scenario: PlutusExecutionScenario,
-  failingScript?: MidgardVersionedScript,
+  spend?: ScriptSpend,
 ): SeedCredential => ({
-  ScriptCredential: [
-    hashScriptWitness(scenarioScript(scenario, failingScript)),
-  ],
+  ScriptCredential: [hashScriptWitness(scenarioScript(scenario, spend))],
 });
 
 /**
  * The deposit that creates the output `scenario`'s transaction spends, as a
  * committed deposit block carries it. A script spend's seed is named by
- * `seedByte`, so one deposit block can seed several scenarios; a failing
- * spend's is held by `failingScript`, by default the failing script.
+ * `seedByte`, so one deposit block can seed several scenarios; it is held
+ * by `spend`'s script when given, by default the scenario's.
  */
 export const plutusExecutionSeedDeposit = (
   scenario: PlutusExecutionScenario,
   seedByte: number = DEFAULT_SCRIPT_SEED_BYTE,
-  failingScript?: MidgardVersionedScript,
+  spend?: ScriptSpend,
 ) => ({
   event:
     scenario === "no_redeemers"
       ? seedDepositEvent(KEY_SEED_BYTE, keyCredential())
-      : seedDepositEvent(seedByte, scriptCredential(scenario, failingScript)),
+      : seedDepositEvent(seedByte, scriptCredential(scenario, spend)),
   originalAssets: { lovelace: SEED_LOVELACE },
   honest: true,
 });
@@ -127,6 +158,17 @@ export type ScenarioSigners = Readonly<{
   requiredOwner?: number;
 }>;
 
+/** How `scenarioTransaction` builds the script spend; every field defaults
+ * to the plain scenario. */
+export type ScenarioTransactionOptions = Readonly<{
+  redeemerData?: Uint8Array;
+  referenceInputs?: readonly Buffer[];
+  signers?: ScenarioSigners;
+  spend?: ScriptSpend;
+  nativeSpend?: LedgerEntry;
+  nativeMint?: boolean;
+}>;
+
 /** The `index`th key beyond the owner's. */
 const extraSignerKey = (index: number) => {
   const bytes = Buffer.alloc(32, 0x73);
@@ -137,20 +179,23 @@ const extraSignerKey = (index: number) => {
 /** The transaction the scenario commits, over its seed output; a script
  * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, it
  * reads `referenceInputs` (out-refs) as reference inputs, `signers` sign it
- * beside its owner, and a failing spend runs `failingScript`. With
- * `nativeSpend`, the transaction also spends that output, which sorts after
- * the seed and which the native script, witnessed first, holds; its one
- * output carries both. With `nativeMint`, it also mints an asset under the
- * native script's policy, witnessed first, into its one output. */
+ * beside its owner, and it runs `spend`'s script (under `spend`'s units when
+ * they are given) in place of the scenario's. With `nativeSpend`, the
+ * transaction also spends that output, which sorts after the seed and which
+ * the native script, witnessed first, holds; its one output carries both.
+ * With `nativeMint`, it also mints an asset under the native script's
+ * policy, witnessed first, into its one output. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
-  redeemerData?: Uint8Array,
-  referenceInputs: readonly Buffer[] = [],
-  { extraSigners = 0, requiredOwner = 0 }: ScenarioSigners = {},
-  failingScript?: MidgardVersionedScript,
-  nativeSpend?: LedgerEntry,
-  nativeMint = false,
+  {
+    redeemerData,
+    referenceInputs = [],
+    signers: { extraSigners = 0, requiredOwner = 0 } = {},
+    spend,
+    nativeSpend,
+    nativeMint = false,
+  }: ScenarioTransactionOptions = {},
 ) => {
   const outputs = [
     makeOutput(
@@ -182,7 +227,7 @@ export const scenarioTransaction = (
         ...(nativeSpend === undefined && !nativeMint
           ? []
           : [NATIVE_SPEND_SCRIPT]),
-        scenarioScript(scenario, failingScript),
+        scenarioScript(scenario, spend),
       ],
       ...(nativeMint ? { mintPreimageCbor: nativeMintPreimageCbor() } : {}),
       ...(scenario === "failing_stamped_invalid"
@@ -203,6 +248,7 @@ export const scenarioTransaction = (
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
           ...(redeemerData === undefined ? {} : { data: redeemerData }),
+          ...(spend?.exUnits === undefined ? {} : { exUnits: spend.exUnits }),
         },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -239,32 +285,22 @@ export type PlutusExecutionHeaderFields = Partial<
   >
 >;
 
-export type PlutusExecutionBlockOptions = {
+/** How `plutusExecutionBlockFixture` builds the block; the script spend's
+ * own options are `scenarioTransaction`'s. */
+export type PlutusExecutionBlockOptions = Omit<
+  ScenarioTransactionOptions,
+  "nativeSpend"
+> & {
   readonly header?: PlutusExecutionHeaderFields;
   /** The deposit byte of the spent seed (`plutusExecutionSeedDeposit`). */
   readonly seedByte?: number;
-  /**
-   * The predecessor block's ledger, which must hold the spent seed. By
-   * default the scenario's script seed and a key-owned seed.
-   */
+  /** The predecessor block's ledger, which must hold the spent seed; by
+   * default the scenario's script seed and a key-owned seed. */
   readonly predecessorEntries?: readonly LedgerEntry[];
-  /** The script spend's redeemer, as Plutus Data CBOR; by default
-   * `Constr 0 []`. */
-  readonly redeemerData?: Uint8Array;
-  /** The out-refs the spend reads as reference inputs, each held by the
-   * predecessor ledger; by default none. */
-  readonly referenceInputs?: readonly Buffer[];
-  /** Who signs the script spend beside its owner; by default no one. */
-  readonly signers?: ScenarioSigners;
-  /** The script a failing spend runs; by default the failing script. */
-  readonly failingScript?: MidgardVersionedScript;
   /** Whether the script spend also spends the output the native script
    * holds (`nativeSpendSeedDeposit`), which the predecessor ledger must
    * hold. */
   readonly nativeSpend?: boolean;
-  /** Whether the script spend also mints an asset under the native
-   * script's policy. */
-  readonly nativeMint?: boolean;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -273,17 +309,14 @@ export const plutusExecutionBlockFixture = async (
     header: headerFields = {},
     seedByte = DEFAULT_SCRIPT_SEED_BYTE,
     predecessorEntries: requestedPredecessor,
-    redeemerData,
-    referenceInputs,
-    signers,
-    failingScript,
     nativeSpend = false,
-    nativeMint = false,
+    ...spendOptions
   }: PlutusExecutionBlockOptions = {},
 ) => {
+  const nativeMint = spendOptions.nativeMint ?? false;
   const scriptSeed = depositSeed(
     seedByte,
-    scriptCredential(scenario, failingScript),
+    scriptCredential(scenario, spendOptions.spend),
   );
   const keySeed = depositSeed(KEY_SEED_BYTE, keyCredential());
   const predecessorEntries = requestedPredecessor ?? [scriptSeed, keySeed];
@@ -295,16 +328,10 @@ export const plutusExecutionBlockFixture = async (
     )
   )
     throw new Error("the predecessor ledger does not hold the spent seed");
-  const native = scenarioTransaction(
-    scenario,
-    seed,
-    redeemerData,
-    referenceInputs,
-    signers,
-    failingScript,
-    nativeSpend ? spent[1] : undefined,
-    nativeMint,
-  );
+  const native = scenarioTransaction(scenario, seed, {
+    ...spendOptions,
+    nativeSpend: nativeSpend ? spent[1] : undefined,
+  });
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
     canonicalCbor: native.txCbor,

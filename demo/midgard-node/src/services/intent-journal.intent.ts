@@ -32,6 +32,7 @@ export const NODE_INTENT_FAMILIES = [
   "script_reward_registration",
   "phas_membership",
   "list_insert",
+  "dispute_defense",
 ] as const;
 
 export type NodeIntentFamily = (typeof NODE_INTENT_FAMILIES)[number];

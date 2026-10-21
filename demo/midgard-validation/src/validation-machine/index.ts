@@ -3,10 +3,11 @@ export {
   canonicalFieldItemEncodedLength,
 } from "./canonical-field-item.js";
 export {
-  buildChallengerDescriptorV1,
+  buildTraceAtStepCountV1,
   decideValidationChallengeV1,
   type ValidationChallengeDecisionV1,
-  type ValidationChallengerTraceV1,
+  type ValidationTraceAtStepCountV1,
+  validationTraceLevelsAtStepCountV1,
 } from "./challenger-descriptor.js";
 export {
   decodeScriptDiscoveryBitmap,
@@ -33,9 +34,11 @@ export {
   prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 export {
+  applyValidationLedgerMutations,
   applyValidationMachineLedgerMutationStep,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  transitionEffectToLedgerOps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,

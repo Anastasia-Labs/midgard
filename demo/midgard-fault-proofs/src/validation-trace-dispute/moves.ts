@@ -14,7 +14,7 @@ import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
   buildValidationTraceGameMove,
   buildValidationTraceThreadClose,
-  challengerRevealedThread,
+  revealedThread,
   validationTraceMoveWindow,
 } from "./move-builders.js";
 import { completeValidationTraceMove } from "./move-fee.js";
@@ -161,7 +161,8 @@ export const captureValidationTraceReveal = async (
   );
   signer.selectWallet(lucid);
   const { validFrom, validTo } = validationTraceMoveWindow(lucid);
-  const next = challengerRevealedThread({
+  const next = revealedThread({
+    side: "challenger",
     thread: thread.thread,
     proof,
     lower: BigInt(validFrom),

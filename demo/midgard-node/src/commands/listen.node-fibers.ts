@@ -15,6 +15,8 @@ import {
   operatorWatchdogFiber,
   retentionSweeperFiber,
   txQueueProcessorFiber,
+  VALIDATION_TRACE_DEFENSE_TICK_MS,
+  validationTraceDefenseFiber,
 } from "../fibers/index.js";
 import { settlementFiber } from "../fibers/settlement.js";
 import { importCheckFiber } from "../import-check/fiber.js";
@@ -147,6 +149,9 @@ export const nodeFibers = ({
   attestationTimeoutCorrection: onHeadChange(
     nodeConfig.WAIT_BETWEEN_MERGE_TXS,
     attestationTimeoutCorrectionFiber,
+  ),
+  validationTraceDefense: validationTraceDefenseFiber(
+    mkSchedule(VALIDATION_TRACE_DEFENSE_TICK_MS),
   ),
   mpfPayloadAudit: mpfPayloadAuditFiber,
   nativeMpfOwnerSupervisor: nativeMpfOwnerSupervisorFiber(

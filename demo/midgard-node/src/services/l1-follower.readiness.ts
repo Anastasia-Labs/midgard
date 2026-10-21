@@ -27,7 +27,7 @@
  * while the store replays a tracked-set reset) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
- * `intent_content_ref_missing`), and
+ * `intent_content_ref_missing`, `intent_unbounded_validity`), and
  * `l1_follower_unconfigured` while the node has no follower,
  * `l1_node_config_unreadable` while its network magic is retried, and
  * `l1_node_config_failed` once that read failed for good. Each fails

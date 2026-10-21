@@ -517,6 +517,9 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   the same transaction, bytes that do not decode, a missing content
   reference, a gate that did not journal). Nothing was sent. Each is a
   defect; report it with the detail.
+- `intent_unbounded_validity`: the journal refused a dispute defense with
+  no upper validity bound, which could never be known dead or replaced.
+  Nothing was sent. It is a defect; report it with the detail.
 
 Landed blocks and the confirmed ledger (`src/landed-blocks/holds.ts`; the
 first hold by priority is the reason, the rest are in its detail):

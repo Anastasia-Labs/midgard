@@ -28,6 +28,7 @@ import dropUtxoPayloadAggregateSql from "./sql/0026_drop_utxo_payload_aggregate.
 import publicHttpReadIndexesSql from "./sql/0027_public_http_read_indexes.sql";
 import importChecksSql from "./sql/0028_import_checks.sql";
 import dropCekProgramMaterialSql from "./sql/0029_drop_cek_program_material.sql";
+import importCheckRetriesSql from "./sql/0030_import_check_retries.sql";
 
 export type Migration = {
   readonly version: number;
@@ -239,6 +240,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_cek_program_material",
     checksumSha256: sha256Hex(dropCekProgramMaterialSql),
     sql: dropCekProgramMaterialSql,
+    transactional: true,
+  },
+  {
+    version: 30,
+    name: "import_check_retries",
+    checksumSha256: sha256Hex(importCheckRetriesSql),
+    sql: importCheckRetriesSql,
     transactional: true,
   },
 ] as const;
