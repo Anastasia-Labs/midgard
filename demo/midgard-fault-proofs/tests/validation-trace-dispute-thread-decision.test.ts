@@ -10,8 +10,9 @@
  * A thread ReadyForOneStep enters its one-step resolution on our turn,
  * ordered with our reveals by our deadline, only on a step the runner plans;
  * a thread in its resolution moves on before any close, and a thread at the
- * award closes into the case. A case a defender won stops; a case with no
- * open thread settles. */
+ * award closes into the case. On a case a defender won, every other thread
+ * is still played to its own end, and the run stops once none has a move
+ * left; a case with no open thread settles. */
 import { describe, expect, it } from "vitest";
 
 import type { ValidationTraceOneStepPlanning } from "../src/validation-trace-dispute/one-step-plan.js";
@@ -21,6 +22,7 @@ import {
   VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_MATERIAL_HOLD,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
+  VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_LOST,
   type ValidationTraceResolvingThread,
   type ValidationTraceThread,
@@ -328,16 +330,58 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
   });
 
-  it("stops under defender-won on a case a defender won, whatever its threads offer", () => {
-    expect(
-      decide([ours(), timedOut()], {
-        resolving: [resolving("a", "award")],
-        caseDatum: { defender_won: true },
-      }),
-    ).toStrictEqual({
-      kind: "pending",
-      reason: `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${"c".repeat(64)} at ${"c".repeat(64)}#0, which cannot convict, so the run stops`,
+  it("plays every other thread to its own end on a case a defender won, and stops under defender-won only once no thread has a move left", () => {
+    const won = { caseDatum: { defender_won: true } };
+    const [s, c] = [silent(), timedOut()];
+    const award = resolving("a", "award");
+    const core = resolving("8", "core");
+    const step = ready("5");
+    const plannings = new Map([[step.outRef, PLANNED]]);
+    expect(decide([c, s, step], { ...won, plannings })).toStrictEqual({
+      kind: "move",
+      stage: "enter_resolution",
+      thread: step,
     });
+    expect(decide([c, s], { ...won, resolving: [award] })).toStrictEqual({
+      kind: "move",
+      stage: "timeout",
+      thread: s,
+    });
+    expect(decide([c], { ...won, resolving: [award, core] })).toStrictEqual({
+      kind: "move",
+      stage: "resolve",
+      thread: core,
+    });
+    expect(decide([c], { ...won, resolving: [award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_thread",
+      thread: c,
+    });
+    expect(decide([], { ...won, resolving: [award] })).toStrictEqual({
+      kind: "move",
+      stage: "close_awarded",
+      thread: award,
+    });
+    // A thread awaiting its defender may still give us a move.
+    const awaiting = thread(
+      "2",
+      "game",
+      { AwaitingOperator: { midpoint: 6n } },
+      BigInt(NOW),
+    );
+    expect(decide([awaiting], won)).toMatchObject({
+      kind: "pending",
+      reason: expect.stringMatching(
+        new RegExp(`^${VALIDATION_TRACE_THREAD_AWAITING}: `, "u"),
+      ),
+    });
+    const stops = {
+      kind: "pending",
+      reason: `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${"c".repeat(64)} at ${"c".repeat(64)}#0, which cannot convict, and no thread of ours has a move left, so the run stops`,
+    };
+    expect(decide([], won)).toStrictEqual(stops);
+    // A thread with no move of ours left stops the run the same way.
+    expect(decide([lostOnOurSide(), ready("6")], won)).toStrictEqual(stops);
   });
 
   it("settles a case with no open thread, and waits contested on one with no valid claim", () => {

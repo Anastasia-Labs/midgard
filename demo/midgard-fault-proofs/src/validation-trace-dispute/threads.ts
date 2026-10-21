@@ -17,8 +17,10 @@
  * timed out; a thread in its resolution moves on hop by hop; a thread won
  * either way is closed into the case. A one step the runner does not drive
  * stops at a resumable "one-step required" state. A thread on our turn is
- * never timed out. With every thread closed the case settles, unless a
- * defender won one: then the run stops under its own state. */
+ * never timed out. With every thread closed the case settles. A defender's
+ * win on one thread decides only the case: every other thread is still
+ * played to its own end (its resolution, timeout and close), and the run
+ * stops under its own state once no thread of ours has a move left. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
@@ -160,13 +162,15 @@ export const isThreadMaterial = (
 
 /**
  * The next action over the threads of our case at `caseOutRef`: `threads`
- * at the game, timeout and boundary, and `resolving` past the boundary. A
- * case a defender won stops. Our reveals and entries into the one-step
- * resolution come first, the earliest deadline first, then timeouts,
- * earliest first, then resolution hops, then closes; otherwise the most
+ * at the game, timeout and boundary, and `resolving` past the boundary.
+ * Our reveals and entries into the one-step resolution come first, the
+ * earliest deadline first, then timeouts, earliest first, then resolution
+ * hops, then closes; otherwise the most
  * pressing wait. A thread ReadyForOneStep enters its resolution only on the
  * step `plannings` (by the thread's out-ref) plans for it; with none, the
- * resolution is not installed. With every thread closed the case settles.
+ * resolution is not installed. With every thread closed the case settles;
+ * on a case a defender won, the run stops once no thread has a move left or
+ * awaits its defender.
  */
 export const decideValidationTraceThreads = ({
   threads,
@@ -188,10 +192,6 @@ export const decideValidationTraceThreads = ({
   readonly material: ValidationTraceClaimMaterial | undefined;
 }): ValidationTraceThreadDecision => {
   const pending = (reason: string) => ({ kind: "pending" as const, reason });
-  if (caseDatum.defender_won)
-    return pending(
-      `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${caseUnit} at ${caseOutRef}, which cannot convict, so the run stops`,
-    );
   type Found = ValidationTraceThread | ValidationTraceResolvingThread;
   const moves: Record<ValidationTraceThreadMove, Found[]> = {
     reveal: [],
@@ -267,6 +267,14 @@ export const decideValidationTraceThreads = ({
     const [next] = moves[stage];
     if (next !== undefined) return { kind: "move", stage, thread: next };
   }
+  const [soonest] = awaiting.sort((a, b) => a.deadline - b.deadline);
+  // A defender's win decides the case, not our other threads: each is played
+  // to its own end, and the run stops only once none has a move left.
+  if (caseDatum.defender_won)
+    return pending(
+      soonest?.reason ??
+        `${VALIDATION_TRACE_DEFENDER_WON}: a defender won a thread of case ${caseUnit} at ${caseOutRef}, which cannot convict, and no thread of ours has a move left, so the run stops`,
+    );
   if (oneStep.length > 0)
     return pending(
       `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: ${oneStep.join("; ")}, so it waits`,
@@ -280,7 +288,6 @@ export const decideValidationTraceThreads = ({
     return pending(
       `${VALIDATION_TRACE_THREAD_COUNT_HOLD}: case ${caseUnit} at ${caseOutRef} counts ${caseDatum.open_threads.toString()} open threads; ${VALIDATION_TRACE_THREAD_DISCOVERY} discovery found ${found.toString()}, so it holds until they agree`,
     );
-  const [soonest] = awaiting.sort((a, b) => a.deadline - b.deadline);
   if (soonest !== undefined) return pending(soonest.reason);
   if (caseDatum.neither_claim_valid)
     return pending(
