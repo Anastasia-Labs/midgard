@@ -755,4 +755,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace CEK core step semantic": "V1VtCekCoreStepSem",
   "V1 validation-trace compact-binding prepare": "V1VtCompactBindingPrepare",
   "V1 validation-trace compact-binding semantic": "V1VtCompactBindingSem",
+  "V1 validation-trace static-ledger-rules prepare": "V1VtStaticLedgerPrepare",
+  "V1 validation-trace static-ledger-rules semantic": "V1VtStaticLedgerSem",
 } as const);

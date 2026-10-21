@@ -95,8 +95,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   prepares: {
     canonicalDecode: title("validationTraceDisputeCanonicalDecodePrepare"),
     compactBinding: title("validationTraceDisputeCompactBindingPrepare"),
-    staticLedgerRules:
-      "fraud_proofs/validation_trace/static_ledger_rules_v1.main.spend",
+    staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesPrepare"),
     inputSets: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
     signatures: "fraud_proofs/validation_trace/signatures_v1.main.spend",
     phaseANativeScripts:
@@ -119,8 +118,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "validationTraceDisputeCanonicalDecodeItemSemantic",
     ),
     compactBinding: title("validationTraceDisputeCompactBindingSemantic"),
-    staticLedgerRules:
-      "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
+    staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesSemantic"),
     inputSetsEmpty:
       "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
     inputSetsItem:

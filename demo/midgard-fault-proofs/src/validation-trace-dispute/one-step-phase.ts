@@ -14,6 +14,8 @@ import { constr, continued, integer, stepDatum } from "./one-step-data.js";
 export const PHASE_CONTRACT_NAMES = Object.freeze({
   compactBindingPrepare: "validationTraceDisputeCompactBindingPrepare",
   compactBindingSemantic: "validationTraceDisputeCompactBindingSemantic",
+  staticLedgerRulesPrepare: "validationTraceDisputeStaticLedgerRulesPrepare",
+  staticLedgerRulesSemantic: "validationTraceDisputeStaticLedgerRulesSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -35,6 +37,11 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     resolverIndex: 1,
     prepare: "compactBindingPrepare",
     semantics: ["compactBindingSemantic"],
+  },
+  staticLedgerRules: {
+    resolverIndex: 2,
+    prepare: "staticLedgerRulesPrepare",
+    semantics: ["staticLedgerRulesSemantic"],
   },
 } as const satisfies Readonly<
   Partial<
