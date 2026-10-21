@@ -110,6 +110,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/validation-trace-defense-fiber-emulator.test.ts
  *   tests/validation-trace-defense-funding-emulator.test.ts
  *   tests/validation-trace-defense-race-emulator.test.ts
+ *   tests/validation-trace-defense-restart-emulator.test.ts
+ *   tests/validation-trace-defense-replacement-emulator.test.ts
  *   tests/validation-trace-defense-readiness.test.ts
  *   tests/block-commitment-validation-trace-defense-skip.test.ts
  */

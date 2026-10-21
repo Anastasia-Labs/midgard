@@ -14,18 +14,29 @@
  *   emulator's mempool, a block is made and the follower applies it, so a
  *   held Defend sees its own landing;
  * - another scope can hold the L1 control plane, so a tick's Defend waits
- *   on it.
+ *   on it;
+ * - the node can be killed at its next submission, before the chain holds
+ *   the bytes or once it does, and restarted: a fresh process's Globals,
+ *   defender cache and Lucid over the same database and chain;
+ * - a submission can reach only a fork the emulator never sees, which the
+ *   test applies to the follower;
+ * - the intents journaled under a workflow key, with their bytes and
+ *   status, can be read.
  */
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
 import {
-  type Block,
   type ExpiryReferences,
   l1SlotConfig,
+  landWith,
   publishExpiryReferences,
-  type Scene,
   setUpScene,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
+import {
+  postgresDialect,
+  readIntentsByWorkflowIn,
+} from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { SqlClient } from "@effect/sql";
+import { SqlClient } from "@effect/sql";
 import {
   CML,
   Data,
@@ -35,17 +46,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 
-import { foreignRetainedDaInsert } from "../../src/da/foreign-retained-da.js";
-import { ConfirmedLedgerDB, DaPayloadsDB } from "../../src/database/index.js";
-import {
-  ledgerMap,
-  ledgerRows,
-  netDelta,
-} from "../../src/landed-blocks/ledger.js";
-import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
+import { NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS } from "../../src/commands/listen-startup.release-state-queue-leases-of-previous-node-process.js";
+import { followerSqlTx } from "../../src/database/follower-schema.js";
+import { StateQueueMutationLeasesDB } from "../../src/database/index.js";
 import { Globals } from "../../src/services/globals.js";
 import { withL1ControlPlane } from "../../src/services/index.js";
-import { IntentJournal } from "../../src/services/intent-journal.js";
+import {
+  IntentJournal,
+  readIntentStatus,
+} from "../../src/services/intent-journal.js";
 import {
   defensePocketAddress,
   nodeOwnWallets,
@@ -65,82 +74,17 @@ import {
   type IntentEmulator,
 } from "./intent-journal-emulator.js";
 import type { testDatabases } from "./l1-events-store.js";
+import {
+  operatorConfig,
+  seedLanded,
+} from "./validation-trace-defense-scene.landed.js";
 
-type Entry = Readonly<{ outRef: Buffer; output: Buffer }>;
-const minimal = (entries: readonly Entry[]) =>
-  entries.map(({ outRef, output }) => ({ outref: outRef, output }));
-
-/** The node's wallet configuration with `seed` as its operator seed. */
-export const operatorConfig = (seed: string) => ({
-  NETWORK: "Custom" as const,
-  L1_OPERATOR_SEED_PHRASE: seed,
-  L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "",
-  L1_SETTLEMENT_SEED_PHRASE: "",
-  L1_REFERENCE_SCRIPT_SEED_PHRASE: "",
-});
-
-/**
- * Retains `block`'s payload as the node does. The fixture's body carries
- * no validation traces, while a retained row of a block with transactions
- * must count one per transaction under a non-empty root; the row takes
- * those from the header's counts and a stand-in root (the defense reads
- * only the payload).
- */
-export const retain = (block: Block) => {
-  const { header, headerHash } = block.evidence;
-  return DaPayloadsDB.upsertAvailable(
-    foreignRetainedDaInsert(
-      headerHash,
-      header,
-      header.endTime,
-      Buffer.from(block.payloadEnvelopeCbor),
-      { validationTracesRoot: "5a".repeat(32) },
-      {
-        validationTraceCount:
-          header.forcedTransactionCount + header.l2TransactionCount,
-      },
-    ),
-  );
-};
-
-/** The confirmed frontier at the failing block's parent. */
-export const frontierAtStart = (scene: Scene) =>
-  Frontier.upsert({
-    headerHash: scene.failing.evidence.header.prevHeaderHash,
-    utxosRoot: scene.failing.evidence.header.prevUtxosRoot,
-  });
-
-/** The node's landed rows: the frontier at the failing block's parent,
- * then the scene's three blocks as processed own rows, each retained. */
-export const seedLanded = (scene: Scene) =>
-  Effect.gen(function* () {
-    const { failing, passing, forced } = scene;
-    yield* frontierAtStart(scene);
-    yield* ConfirmedLedgerDB.insertMultiple(
-      yield* ledgerRows(minimal(failing.predecessorEntries), new Map()),
-    );
-    for (const block of [failing, passing, forced]) {
-      const { header, headerHash } = block.evidence;
-      yield* insertRow({
-        headerHash,
-        parentHeaderHash: header.prevHeaderHash,
-        parentUtxosRoot: header.prevUtxosRoot,
-        utxosRoot: header.utxosRoot,
-        kind: "own",
-        state: "processed",
-        applied: true,
-        ...netDelta(
-          ledgerMap(minimal(block.predecessorEntries)),
-          minimal(block.postEntries),
-        ),
-        depositIds: [],
-        withdrawals: [],
-        forcedIds: [],
-        txIds: [],
-      });
-      yield* retain(block);
-    }
-  });
+export {
+  frontierAtStart,
+  operatorConfig,
+  retain,
+  seedLanded,
+} from "./validation-trace-defense-scene.landed.js";
 
 /** The out-refs `txCbor` spends, as `<tx hash>#<index>`. */
 export const inputsOf = (txCbor: Buffer | string): string[] => {
@@ -208,21 +152,28 @@ export const openDefenseScene = async (
   });
   // The first pass seeds the own wallets at the origin.
   await env.stage.run();
-  const globals = await Effect.runPromise(
-    Effect.provide(Globals, Globals.Default),
-  );
-  const inNode = <A, E>(effect: Effect.Effect<A, E, NodeServices>) =>
+  const freshGlobals = () =>
+    Effect.runPromise(Effect.provide(Globals, Globals.Default));
+  /** This node process's Globals: a restart replaces them. */
+  let globals = await freshGlobals();
+  /** Runs `effect` in the node process; `signal` kills it. */
+  const inNode = <A, E>(
+    effect: Effect.Effect<A, E, NodeServices>,
+    signal?: AbortSignal,
+  ) =>
     env.runtime.runPromise(
       effect.pipe(
         Effect.provide(env.journalLayer),
         Effect.provideService(Globals, globals),
       ),
+      { signal },
     );
   await inNode(seedLanded(scene));
 
   const lucid: LucidEvolution = await env.wallet({ defensePocket: true });
   const pocketAddress = defensePocketAddress(config);
-  const port: ValidationTraceDefensePort = {
+  /** This node process's defender port: a restart replaces it. */
+  let port: ValidationTraceDefensePort = {
     lucid,
     network: "Custom",
     dispute: scene.chain,
@@ -271,8 +222,8 @@ export const openDefenseScene = async (
     return await running;
   };
   /**
-   * One tick of `withPort`'s defender (the scene's by default), while the
-   * chain moves.
+   * One tick of `withPort`'s defender (this process's by default), while
+   * the chain moves.
    */
   const tick = async (
     withPort: ValidationTraceDefensePort = port,
@@ -335,6 +286,104 @@ export const openDefenseScene = async (
       throw new Error(`${hash} has not landed`);
     return { cbor, at: lucid.slotToUnixTime(status.slot) };
   };
+  /**
+   * Arms a kill at the node's next submission to the chain: `before` the
+   * chain holds the bytes (they never reach it), or `after` it does. The
+   * promise resolves with the bytes once the point is reached; the
+   * submission never returns.
+   */
+  const killAtSubmit = (when: "before" | "after"): Promise<Buffer> => {
+    const { emulator } = scene.h;
+    const submit = emulator.submitTx;
+    return new Promise((reached) => {
+      emulator.submitTx = async (tx) => {
+        emulator.submitTx = submit;
+        if (when === "after") await submit.call(emulator, tx);
+        reached(Buffer.from(tx, "hex"));
+        return await new Promise<string>(() => undefined);
+      };
+    });
+  };
+  /**
+   * The node's next submission reaches only a fork the emulator never sees:
+   * the promise resolves with its bytes, for the test to apply to the
+   * follower.
+   */
+  const forkOnlySubmit = (): Promise<Buffer> => {
+    const { emulator } = scene.h;
+    const submit = emulator.submitTx;
+    return new Promise((reached) => {
+      emulator.submitTx = (tx) => {
+        emulator.submitTx = submit;
+        reached(Buffer.from(tx, "hex"));
+        return Promise.resolve(
+          CML.hash_transaction(
+            CML.Transaction.from_cbor_hex(tx).body(),
+          ).to_hex(),
+        );
+      };
+    });
+  };
+  /**
+   * One tick of this process's defender, killed once `point` is reached;
+   * resolves with the bytes `point` gave.
+   */
+  const tickKilledAt = async (point: Promise<Buffer>): Promise<Buffer> => {
+    await env.follow();
+    const kill = new AbortController();
+    const running = inNode(validationTraceDefenseTick(port), kill.signal);
+    const reached = await Promise.race([
+      point,
+      running.then(() => {
+        throw new Error("the tick ended before its kill");
+      }),
+    ]);
+    kill.abort();
+    await running.catch(() => undefined);
+    return reached;
+  };
+  /**
+   * The node process restarts over the same database and chain: its
+   * startup retires the leases the ended process held (as startup does,
+   * outside the follower write gate this scene does not run), and it runs
+   * with fresh Globals, a fresh defender cache and a fresh Lucid.
+   */
+  const restart = async () => {
+    globals = await freshGlobals();
+    port = {
+      ...port,
+      lucid: await env.wallet({ defensePocket: true }),
+      cache: new Map(),
+    };
+    await inNode(
+      StateQueueMutationLeasesDB.retireActiveLeasesOfHolders(
+        NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS,
+        "retired at the scene's restart",
+      ),
+    );
+  };
+  /** The intents journaled under `key`: their hash, bytes and status now. */
+  const journaled = (key: string) =>
+    env.runtime.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const intents = yield* sql.withTransaction(
+          Effect.flatMap(followerSqlTx, (tx) =>
+            Effect.promise(() =>
+              readIntentsByWorkflowIn(tx, postgresDialect, key),
+            ),
+          ),
+        );
+        const read = [];
+        for (const { txHash, txCbor } of intents)
+          read.push({
+            txHash: txHash.toString("hex"),
+            txCbor,
+            status: (yield* readIntentStatus(txHash.toString("hex")))?.kind,
+          });
+        return read;
+      }),
+    );
   /** The live output holding `unit` on the emulator's ledger. */
   const liveByUnit = (unit: string): UTxO | undefined =>
     Object.values(scene.h.emulator.ledger)
@@ -346,11 +395,11 @@ export const openDefenseScene = async (
     expiry,
     references,
     env,
-    globals,
     inNode,
-    lucid,
     pocketAddress,
-    port,
+    get port() {
+      return port;
+    },
     pending,
     land,
     whileChainMoves,
@@ -361,5 +410,36 @@ export const openDefenseScene = async (
     readiness,
     landed,
     liveByUnit,
+    killAtSubmit,
+    forkOnlySubmit,
+    tickKilledAt,
+    restart,
+    journaled,
   };
+};
+
+/** The live outputs at `address` on the emulator's ledger. */
+export const at = (s: DefenseScene, address: string): UTxO[] =>
+  Object.values(s.scene.h.emulator.ledger)
+    .filter(({ spent, utxo }) => !spent && utxo.address === address)
+    .map(({ utxo }) => utxo);
+
+export const lovelace = (utxos: readonly UTxO[]) =>
+  utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
+
+/** Moves the operator wallet's plain ADA away, leaving it `keep`. */
+export const drainBase = async (s: DefenseScene, keep: bigint) => {
+  const { funderLucid } = s.scene.h;
+  const plain = at(s, s.scene.funder.address).filter(isPlainFundingOutput);
+  await landWith(
+    funderLucid,
+    await funderLucid
+      .newTx()
+      .collectFrom(plain)
+      .pay.ToAddress(generateEmulatorAccount({ lovelace: 0n }).address, {
+        lovelace: lovelace(plain) - keep,
+      })
+      .complete({ presetWalletInputs: plain }),
+  );
+  await s.env.follow();
 };

@@ -36,6 +36,7 @@ import {
   IntentJournal,
   type IntentPlan,
   journaledIntent,
+  readIntentStatus,
 } from "../services/intent-journal.js";
 import { handleSignSubmitNoConfirmation } from "../transactions/utils.await-submitted-transaction-confirmation.js";
 import type { ValidationTraceDefenseWork } from "./decide.js";
@@ -72,8 +73,8 @@ const promise = <A>(label: string, run: () => Promise<A>) =>
       ),
   });
 
-/** Whether `family`'s workflow `key` has a live intent now. */
-const liveUnder = (key: string) =>
+/** Whether the workflow `key` has a live `dispute_defense` intent now. */
+export const liveUnder = (key: string) =>
   Effect.flatMap(IntentJournal, (journal) =>
     journal.liveIntents("dispute_defense", key),
   ).pipe(Effect.map((live) => live.length > 0));
@@ -95,9 +96,21 @@ const send = (
 /** The workflow key of a Defend of `caseUnit`. */
 export const defendKey = (caseUnit: string) => `defend:${caseUnit}`;
 
+/** The workflow key of `item`: one live attempt per key. */
+export const workKey = (item: ValidationTraceDefenseWork): string => {
+  switch (item.kind) {
+    case "defend":
+      return defendKey(item.defenseCase.caseUnit);
+    case "reveal":
+      return `reveal:${item.thread.unit}:${item.thread.thread.round.toString()}`;
+    case "expiry":
+      return `expiry:${item.thread.unit}`;
+  }
+};
+
 /**
- * Waits until `txHash`, journaled under `key`, is no longer live (landed,
- * or dead), or `wallMs` has passed.
+ * Waits until `txHash`, journaled under `key`, is no longer live, or
+ * `wallMs` has passed; whether it landed.
  */
 const holdUntilSettled = (
   port: ValidationTraceDefensePort,
@@ -110,7 +123,18 @@ const holdUntilSettled = (
     const until = Date.now() + wallMs;
     while (Date.now() < until) {
       const live = yield* journal.liveIntents("dispute_defense", key);
-      if (!live.some((intent) => intent.txHash === txHash)) return true;
+      if (!live.some((intent) => intent.txHash === txHash))
+        return (
+          (yield* readIntentStatus(txHash).pipe(
+            Effect.mapError(
+              (cause) =>
+                new Error(
+                  `validation-trace defense: the status of ${txHash} could not be read: ${formatUnknownError(cause)}`,
+                  { cause },
+                ),
+            ),
+          ))?.kind === "landed"
+        );
       yield* Effect.sleep(Duration.millis(port.pollMs));
     }
     return false;
@@ -125,7 +149,7 @@ const defendNow = (
 ) =>
   Effect.gen(function* () {
     const { defenseCase, material } = item;
-    const key = defendKey(defenseCase.caseUnit);
+    const key = workKey(item);
     if (yield* liveUnder(key)) return "pending" as const;
     if ((yield* retrieveUnreconciledSignedSubmission) !== undefined)
       return "commit_in_flight" as const;
@@ -194,13 +218,13 @@ const defendNow = (
     // Our node stays spent by the Defend until it lands or dies: hold the
     // lease that long, so no commit builds on the node it spends.
     const l1Now = port.lucid.slotToUnixTime(port.lucid.currentSlot());
-    const settled = yield* holdUntilSettled(
+    const landed = yield* holdUntilSettled(
       port,
       key,
       txHash,
       Math.max(0, window.validTo - l1Now) + port.tickMs,
     );
-    return settled ? ("landed" as const) : ("submitted" as const);
+    return landed ? ("landed" as const) : ("submitted" as const);
   });
 
 /** The longest a Defend holds the L1 control plane: build, validity, a tick. */
@@ -218,8 +242,7 @@ export const playDefend = (
   plan: IntentPlan,
 ) =>
   Effect.gen(function* () {
-    if (yield* liveUnder(defendKey(item.defenseCase.caseUnit)))
-      return "pending" as const;
+    if (yield* liveUnder(workKey(item))) return "pending" as const;
     if ((yield* retrieveUnreconciledSignedSubmission) !== undefined)
       return "commit_in_flight" as const;
     const globals = yield* Globals;
@@ -247,7 +270,7 @@ export const playReveal = (
 ) =>
   Effect.gen(function* () {
     const { thread, material } = item;
-    const key = `reveal:${thread.unit}:${thread.thread.round.toString()}`;
+    const key = workKey(item);
     if (yield* liveUnder(key)) return "pending" as const;
     const { turn } = thread.thread;
     if (typeof turn === "string" || !("AwaitingOperator" in turn))
@@ -287,7 +310,7 @@ export const playExpiry = (
 ) =>
   Effect.gen(function* () {
     const { thread } = item;
-    const key = `expiry:${thread.unit}`;
+    const key = workKey(item);
     if (yield* liveUnder(key)) return "pending" as const;
     const { caseConfig } = yield* readDefenseAnchors(port);
     if (caseConfig === undefined) return "moved" as const;

@@ -21,20 +21,18 @@ import {
   openFalseClaim,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  CML,
-  Data,
-  generateEmulatorAccount,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { shouldSkipForDueValidationTraceDefense } from "../src/fibers/block-commitment.validation-trace-defense-pause.js";
 import { VALIDATION_TRACE_DEFEND_MARGIN_LOVELACE } from "../src/validation-trace-defense/funding.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
+  at,
   type DefenseScene,
+  drainBase,
   inputsOf,
+  lovelace,
   openDefenseScene,
   outRefOf,
   startedAtOf,
@@ -63,32 +61,6 @@ const claimOn = async (s: DefenseScene, stepCount: number) => {
   );
   await s.env.follow();
   return claim;
-};
-
-/** The live outputs at `address` on the emulator's ledger. */
-const at = (s: DefenseScene, address: string): UTxO[] =>
-  Object.values(s.scene.h.emulator.ledger)
-    .filter(({ spent, utxo }) => !spent && utxo.address === address)
-    .map(({ utxo }) => utxo);
-
-const lovelace = (utxos: readonly UTxO[]) =>
-  utxos.reduce((sum, utxo) => sum + (utxo.assets.lovelace ?? 0n), 0n);
-
-/** Moves the operator wallet's plain ADA away, leaving it `keep`. */
-const drainBase = async (s: DefenseScene, keep: bigint) => {
-  const { funderLucid } = s.scene.h;
-  const plain = at(s, s.scene.funder.address).filter(isPlainFundingOutput);
-  await landWith(
-    funderLucid,
-    await funderLucid
-      .newTx()
-      .collectFrom(plain)
-      .pay.ToAddress(generateEmulatorAccount({ lovelace: 0n }).address, {
-        lovelace: lovelace(plain) - keep,
-      })
-      .complete({ presetWalletInputs: plain }),
-  );
-  await s.env.follow();
 };
 
 /** The challenger pays the operator wallet `amount`. */

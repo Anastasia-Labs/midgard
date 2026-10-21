@@ -10,6 +10,9 @@
  *   fund names `validation-trace-defense-underfunded` with what it lacks, a
  *   Defend with no active node of ours names
  *   `validation-trace-defense-not-active`, and neither is played.
+ * - An item whose workflow key has a live journaled attempt needs no
+ *   funding (the attempt spends it already, so the wallet views no longer
+ *   hold it): it is played, and comes to `pending`; S6 alone resends it.
  * - It plays the items earliest deadline first, each on its own: one that
  *   fails does not stop the rest, and the tick then fails with them all.
  * - The step never fails: a failed tick is recorded in the health and
@@ -37,10 +40,12 @@ import type {
   ValidationTraceDefenseHealth,
 } from "./health.js";
 import {
+  liveUnder,
   playDefend,
   playExpiry,
   type PlayOutcome,
   playReveal,
+  workKey,
 } from "./play.js";
 import { surveyValidationTraceDefense } from "./survey.js";
 
@@ -126,6 +131,7 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
     const due: ValidationTraceDefenseDue[] = [];
     const playable: ValidationTraceDefenseWork[] = [];
     for (const item of decision.work) {
+      const live = yield* liveUnder(workKey(item));
       if (item.kind === "defend") {
         if (anchors.activeNode === undefined) {
           states.push({
@@ -138,7 +144,7 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
           continue;
         }
         const funding = planDefendFunding(views.base, views.pocket);
-        if (funding.kind === "short") {
+        if (!live && funding.kind === "short") {
           states.push(underfunded(item, funding.shortfall));
           continue;
         }
@@ -146,7 +152,7 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
           due.push({ subject: subjectOf(item), deadline: item.deadline });
       } else {
         const funding = planMoveFunding(views.pocket);
-        if (funding.kind === "short") {
+        if (!live && funding.kind === "short") {
           states.push(underfunded(item, funding.shortfall));
           continue;
         }
@@ -176,6 +182,7 @@ export const validationTraceDefenseTick = (port: ValidationTraceDefensePort) =>
     for (const item of playable) {
       const result = yield* Effect.either(
         Effect.gen(function* () {
+          if (yield* liveUnder(workKey(item))) return "pending" as const;
           // Each item reads the views it spends from now: an earlier
           // item's predicted change is in them.
           const now = yield* readViews(port);
