@@ -797,6 +797,20 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   thread move that must land before the deadline in the detail. Retried at
   each observation. An alarm, logged at error level; top up the prover
   wallet's plain-ada coins before the deadline.
+- `validation-trace-material-hold`: a thread of ours is on our move, or in
+  its one-step resolution, but commits a trace this watcher does not hold,
+  so it cannot move. Our clock or the case's expiry runs down on it, and the
+  thread is lost at its end. An alarm, logged at error level; report it with
+  the detail at once.
+- `validation-trace-thread-count-hold`: the case's count of open threads
+  differs from what discovery along its spend chain found, so the case is
+  not settled. A thread nobody found may be on our turn with its clock
+  running. An alarm, logged at error level; check the L1 provider and report
+  it with the detail.
+- `validation-trace-case-contested`: our case has no open thread and no valid
+  claim; its close is not installed, so it waits. No clock of ours runs and
+  the outcome is fixed whoever closes it. Held, not an alarm; it clears at
+  the first run that meets something else.
 - `validation-trace-thread-lost`, `validation-trace-defender-won`: a thread
   of ours went the defender's way, or a defender won a thread of our case,
   which can no longer convict; no move of ours is left on it. Held, not an

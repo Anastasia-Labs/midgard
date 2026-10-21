@@ -6,14 +6,16 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Seven other states are named for readiness, so a session hands its turn
+ * Ten other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
  * needs a one-step resolution the runner does not drive, a move of ours that
  * does not build, a thread lost, a case a defender won, a move whose fee
  * would pass the funding permit's per-transaction fee ceiling, a thread
- * whose history does not decide its pending item step, and a move our
- * wallet cannot fund before its deadline, the first two and the last three
- * alarms. */
+ * whose history does not decide its pending item step, a move our wallet
+ * cannot fund before its deadline, a thread of ours we hold no trace for, a
+ * case whose open threads discovery cannot all find, and a case closed with
+ * no valid claim. All but the thread lost, the defender's win and the case
+ * with no valid claim are alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -27,11 +29,14 @@ import type {
 } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
 import {
+  VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_ITEM_PENDING_HOLD,
+  VALIDATION_TRACE_MATERIAL_HOLD,
   VALIDATION_TRACE_MOVE_UNBUILT,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
+  VALIDATION_TRACE_THREAD_COUNT_HOLD,
   VALIDATION_TRACE_THREAD_LOST,
 } from "./threads.js";
 
@@ -118,8 +123,14 @@ export const awaitingValidationTraceCounterparty = (
  * would pass the funding permit's per-transaction fee ceiling cannot be
  * sent at all, a thread whose history does not decide its pending item step
  * cannot move on, and a move our wallet cannot fund waits on a top-up,
- * retried at each observation, before its deadline passes. The operator
- * must see the first two and the last three.
+ * retried at each observation, before its deadline passes. A thread on our
+ * move that commits a trace we do not hold (material-hold) cannot be moved,
+ * so our clock or the case's expiry runs down on it; when the case's count
+ * of open threads differs from the threads found (thread-count-hold), one
+ * not found may be on our turn with a deadline nobody can name. A case with no open thread and no valid
+ * claim (case-contested) runs no clock of ours, and its outcome is fixed
+ * whoever closes it. The operator must see all but the thread lost, the
+ * defender's win and the contested case.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true }),
@@ -129,6 +140,9 @@ const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
   Object.freeze({ name: VALIDATION_TRACE_ITEM_PENDING_HOLD, alarm: true }),
   Object.freeze({ name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED, alarm: true }),
+  Object.freeze({ name: VALIDATION_TRACE_MATERIAL_HOLD, alarm: true }),
+  Object.freeze({ name: VALIDATION_TRACE_THREAD_COUNT_HOLD, alarm: true }),
+  Object.freeze({ name: VALIDATION_TRACE_CASE_CONTESTED, alarm: false }),
 ]);
 
 /**
