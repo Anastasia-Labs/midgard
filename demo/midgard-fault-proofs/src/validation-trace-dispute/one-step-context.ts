@@ -13,6 +13,10 @@ import { midgardEnvelopeDataFromCborIterative } from "@al-ft/midgard-validation"
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
+  planValidationTraceContextFinalization,
+  type ValidationTraceContextFinalization,
+} from "./one-step-context-finalize.js";
+import {
   planValidationTraceContextItem,
   type ValidationTraceContextItem,
 } from "./one-step-context-item.js";
@@ -48,8 +52,9 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
  * The stages the runner drives: each verifies its step in one hop and sends
  * the thread to the context settle, but the item bind stage, whose step the
  * redeemer item chain verifies, the observer authenticate, whose step's
- * opening the observer fold folds, and the redeemer select authenticate,
- * whose select the initialize, hash and finish carry on
+ * opening the observer fold folds, the redeemer select authenticate,
+ * whose select the initialize, hash and finish carry on, and the finalize
+ * authenticate, whose Cardano spend the finalize spend finalizes
  * (one-step-context-followers.ts).
  */
 export const DRIVEN_CEK_CONTEXT_STAGES = [
@@ -62,6 +67,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "observerAuthenticate",
   "mintInit",
   "redeemerSelectAuthenticate",
+  "finalizeAuthenticate",
   "assemble",
   "txInfo",
   "seed",
@@ -91,6 +97,8 @@ export type ValidationTraceContextStep = Readonly<{
   /** At the redeemer select authenticate, the step's select; undefined for
    * the skip of a native execution. */
   redeemerSelect: ValidationTraceContextRedeemerSelect | undefined;
+  /** At the finalize authenticate, the step's pending finalization. */
+  finalization: ValidationTraceContextFinalization | undefined;
 }>;
 
 type Item = bigint | string | readonly Item[];
@@ -261,9 +269,14 @@ export const planValidationTraceContextStep = ({
     stage === "observerAuthenticate"
       ? cekContextObserverOpening(context, auxiliaryCbor)
       : undefined;
+  const finalization =
+    stage === "finalizeAuthenticate"
+      ? planValidationTraceContextFinalization({ auxiliaryCbor, context })
+      : undefined;
   if (
     !isDriven(stage) ||
-    (stage === "observerAuthenticate" && observerOpeningCbor === undefined)
+    (stage === "observerAuthenticate" && observerOpeningCbor === undefined) ||
+    (stage === "finalizeAuthenticate" && finalization === undefined)
   )
     return { stage, driven: false };
   const successor = envelope(successorWitnessCbor, 11, "successor witness");
@@ -308,6 +321,7 @@ export const planValidationTraceContextStep = ({
             nativeFactsCbor,
           })
         : undefined,
+    finalization,
   });
 };
 

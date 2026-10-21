@@ -9,10 +9,12 @@
  * binds the step's observer opening (ObserverPending), through the observer
  * fold, or from the redeemer select authenticate, which binds the select
  * (RedeemerSelectionPending), through its initialize (RedeemerPurposePending),
- * hash (RedeemerInitialPending) and finish; and from the settle to the award. Every
- * hop is redeemed with the step's witness and evidence (`VerifyContext`),
- * and each successor carries the state its next holder checks, derived from
- * our trace (one-step-context.ts). */
+ * hash (RedeemerInitialPending) and finish, or from the finalize
+ * authenticate, which binds a Cardano spend's redeemers
+ * (FinalizationPending), through the finalize spend; and from the settle to
+ * the award. Every hop is redeemed with the step's witness and evidence
+ * (`VerifyContext`), and each successor carries the state its next holder
+ * checks, derived from our trace (one-step-context.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 import type { ValidationTraceHop } from "./one-step-builders.js";
@@ -171,6 +173,26 @@ export const validationTraceContextHop = ({
   if (holder === "contextObserverFold")
     // ContextVerified { staged, successor }, from the pending opening's
     // staged context.
+    return hop("contextSettle", [
+      plutusConstrFieldCbor(datum, [1, 0, 0]),
+      context.successorCbor,
+    ]);
+  if (holder === CEK_CONTEXT_STAGE_HOLDERS.finalizeAuthenticate) {
+    // FinalizationPending { staged, redeemer_items, redeemer }.
+    const { finalization } = context;
+    if (finalization === undefined)
+      throw new Error(
+        `validation-trace ${holder} holds a thread whose step finalizes no Cardano spend`,
+      );
+    return hop("contextFinalizeSpend", [
+      state,
+      finalization.redeemerItemsCbor,
+      finalization.redeemerCbor,
+    ]);
+  }
+  if (holder === "contextFinalizeSpend")
+    // ContextVerified { staged, successor }, from the pending
+    // finalization's staged context.
     return hop("contextSettle", [
       plutusConstrFieldCbor(datum, [1, 0, 0]),
       context.successorCbor,

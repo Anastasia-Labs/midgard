@@ -13,7 +13,8 @@
  * derives; the multi-hop stages pin their own
  * (validation-trace-dispute-one-step-context-item-drive.ts,
  * validation-trace-dispute-one-step-context-observer-drive.ts,
- * validation-trace-dispute-one-step-context-redeemer-select-drive.ts). */
+ * validation-trace-dispute-one-step-context-redeemer-select-drive.ts,
+ * validation-trace-dispute-one-step-context-finalize-drive.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -58,7 +59,10 @@ import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 /** A driven stage that verifies its step in one hop. */
 export type SingleHopCekContextStage = Exclude<
   DrivenCekContextStage,
-  "itemBind" | "observerAuthenticate" | "redeemerSelectAuthenticate"
+  | "itemBind"
+  | "observerAuthenticate"
+  | "redeemerSelectAuthenticate"
+  | "finalizeAuthenticate"
 >;
 
 /** The last agreed state before the first step of the fixture's trace that
