@@ -170,6 +170,17 @@ const complete = async (tx: TxBuilder, fee: bigint): Promise<TxSignBuilder> =>
 /**
  * What a build that fixes its own fee throws when its inputs do not cover
  * its outputs and that fee: the move needs more than the thread pays.
+ *
+ * This matches the text of the error CML's balance check raises inside the
+ * pinned lucid-evolution builder; no typed error carries the case. If a
+ * dependency bump rewords it, no cap build is read as short of its fee: every
+ * move the thread cannot pay keeps its cap build's error and is never built
+ * for our wallet. The emulator rows that build such a move for real go red
+ * then, first "has our wallet pay a move whose cap build is short of its fee
+ * though its ledger minimum is under the cap" in
+ * validation-trace-dispute-move-fee.test.ts, and every funded row that lands
+ * a wallet-paid move (validation-trace-dispute-funded-wallet-move.test.ts,
+ * the funded one-step context and selection files' over-the-cap rows).
  */
 const UNBALANCED = /UTxO Balance Insufficient/u;
 
