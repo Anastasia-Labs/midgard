@@ -46,6 +46,7 @@ export const DRIVEN_CEK_CONTEXT_STAGES = [
   "mintInit",
   "assemble",
   "txInfo",
+  "seed",
 ] as const;
 
 export type DrivenCekContextStage = (typeof DRIVEN_CEK_CONTEXT_STAGES)[number];
