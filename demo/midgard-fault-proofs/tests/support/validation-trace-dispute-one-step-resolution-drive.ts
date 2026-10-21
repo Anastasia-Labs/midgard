@@ -73,7 +73,10 @@ export const resolutionDrive = <
   readonly labels: readonly string[];
   readonly installs: Pick<
     Parameters<typeof defendTwoThreads>[0],
-    "canonicalDecode" | "phases" | "failingRedeemerData"
+    | "canonicalDecode"
+    | "phases"
+    | "failingRedeemerData"
+    | "failingReferenceInputs"
   >;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */
@@ -269,6 +272,7 @@ export const resolutionDrive = <
             // parts from ours at a step of another phase, and it waits there.
             until: async () =>
               (installs.failingRedeemerData !== undefined ||
+                installs.failingReferenceInputs !== undefined ||
                 (await threadClosed(dispute, a.unit))) &&
               (await threadClosed(dispute, b.unit)),
             limit: 40 + 2 * path.length,

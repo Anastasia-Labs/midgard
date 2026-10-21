@@ -757,4 +757,7 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 validation-trace compact-binding semantic": "V1VtCompactBindingSem",
   "V1 validation-trace static-ledger-rules prepare": "V1VtStaticLedgerPrepare",
   "V1 validation-trace static-ledger-rules semantic": "V1VtStaticLedgerSem",
+  "V1 validation-trace input-sets prepare": "V1VtInputSetsPrepare",
+  "V1 validation-trace input-sets empty semantic": "V1VtInputSetsEmptySem",
+  "V1 validation-trace input-sets item semantic": "V1VtInputSetsItemSem",
 } as const);

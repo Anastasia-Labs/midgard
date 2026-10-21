@@ -213,7 +213,11 @@ export const validationTraceHop = ({
       );
     return holder === plan.phase.prepare
       ? preparedHop(plan, datum, prover, plan.phase.semantic)
-      : phaseSemanticHop({ prover, transitionCbor: plan.transitionCbor });
+      : phaseSemanticHop({
+          prover,
+          transitionCbor: plan.transitionCbor,
+          evidenceCbors: plan.phase.evidenceCbors,
+        });
   }
   switch (holder) {
     case "boundary": {

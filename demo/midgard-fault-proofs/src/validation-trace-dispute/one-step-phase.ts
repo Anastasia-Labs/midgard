@@ -1,10 +1,13 @@
 /** The one-step resolution of a step of a validation phase whose resolver
- * is the generic phase resolver and whose semantic resolver verifies the
- * transition alone: past the boundary, the phase resolver commits the
- * transition and its auxiliary evidence (none, for these steps) and hands
- * the step to the semantic resolver its evidence selects, which awards it
- * in one hop. */
+ * is the generic phase resolver and whose semantic resolver awards the step
+ * in one hop: past the boundary, the phase resolver commits the transition
+ * and its auxiliary evidence and hands the step to the semantic resolver
+ * the evidence selects, which verifies the transition beside that evidence
+ * (none, or one item of a field whose preimage the evidence carries
+ * inline) and awards the step. */
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { NO_AUXILIARY_WITNESS_CBOR } from "./one-step-canonical-decode.js";
 import { constr, continued, integer, stepDatum } from "./one-step-data.js";
@@ -16,6 +19,9 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
   compactBindingSemantic: "validationTraceDisputeCompactBindingSemantic",
   staticLedgerRulesPrepare: "validationTraceDisputeStaticLedgerRulesPrepare",
   staticLedgerRulesSemantic: "validationTraceDisputeStaticLedgerRulesSemantic",
+  inputSetsPrepare: "validationTraceDisputeInputSetsPrepare",
+  inputSetsEmptySemantic: "validationTraceDisputeInputSetsEmptySemantic",
+  inputSetsItemSemantic: "validationTraceDisputeInputSetsItemSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -42,6 +48,11 @@ export const PHASE_RESOLUTIONS = Object.freeze({
     resolverIndex: 2,
     prepare: "staticLedgerRulesPrepare",
     semantics: ["staticLedgerRulesSemantic"],
+  },
+  inputSets: {
+    resolverIndex: 3,
+    prepare: "inputSetsPrepare",
+    semantics: ["inputSetsEmptySemantic", "inputSetsItemSemantic"],
   },
 } as const satisfies Readonly<
   Partial<
@@ -97,12 +108,56 @@ export const phaseValidators = (
   );
 };
 
+/** The longest field preimage whose `Inline` carriage an input-sets item
+ * step's resolution carries: the phase resolver's move and the semantic
+ * resolver's each carry it whole, and the longer of the two lands within
+ * the transaction size limit less its 512-byte reserve even when our wallet
+ * pays it
+ * (tests/validation-trace-dispute-one-step-input-sets-inline-cap.test.ts).
+ * An input-sets field is a whole number of 40-byte out-refs, and this is
+ * the longest such field that fits. */
+export const VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES = 13_683;
+
+/** The auxiliary evidence each semantic resolver that takes any verifies
+ * the transition beside: its constructor among the auxiliary witnesses, the
+ * position among its fields of the carriage that delivers the field
+ * preimage the item is read from, and the longest preimage the step's
+ * resolution carries inline. A step over a longer field is not driven: it
+ * waits under the one-step-required alarm. Every other semantic resolver
+ * takes `NoAuxiliaryWitness`. */
+const PHASE_SEMANTIC_EVIDENCE: Readonly<
+  Partial<
+    Record<
+      ValidationTracePhaseHolder,
+      Readonly<{
+        auxiliary: number;
+        carriage: number;
+        inlineMaxPreimageBytes: number;
+      }>
+    >
+  >
+> = Object.freeze({
+  // `TransactionFieldChunkWitness { field_index, item_index, carriage }`.
+  inputSetsItemSemantic: {
+    auxiliary: 1,
+    carriage: 2,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_INPUT_SETS_INLINE_MAX_PREIMAGE_BYTES,
+  },
+});
+
+/** `Inline`'s constructor among the field carriages. */
+const INLINE_CARRIAGE = 0;
+
 /** A phase step as its resolution needs it: the holders the thread visits
- * past the boundary. */
+ * past the boundary, and the fields of the auxiliary evidence the semantic
+ * resolver takes beside the transition, as their Data's CBOR (none when it
+ * takes `NoAuxiliaryWitness`). */
 export type ValidationTracePhaseStep = Readonly<{
   phase: ValidationTracePhase;
   prepare: ValidationTracePhaseHolder;
   semantic: ValidationTracePhaseHolder;
+  evidenceCbors: readonly string[];
 }>;
 
 /**
@@ -130,29 +185,69 @@ export const planValidationTracePhaseStep = ({
     return {
       reason: `a ${phase} step for semantic resolver ${semanticResolverIndex.toString()}`,
     };
-  // These semantic resolvers verify the transition beside no auxiliary
-  // evidence, which is all the resolver may then have committed.
-  if (auxiliaryCbor !== NO_AUXILIARY_WITNESS_CBOR)
+  const step = (evidenceCbors: readonly string[]) =>
+    Object.freeze({
+      phase,
+      prepare: resolution.prepare,
+      semantic,
+      evidenceCbors: Object.freeze(evidenceCbors),
+    });
+  const evidence = PHASE_SEMANTIC_EVIDENCE[semantic];
+  const auxiliary = Data.from(auxiliaryCbor);
+  // The semantic resolver verifies the transition beside the auxiliary
+  // evidence it takes, which is all the resolver may then have committed.
+  if (
+    evidence === undefined
+      ? auxiliaryCbor !== NO_AUXILIARY_WITNESS_CBOR
+      : !(auxiliary instanceof Constr) ||
+        Number(auxiliary.index) !== evidence.auxiliary
+  )
     throw new Error(
       `validation-trace ${phase} step carries auxiliary evidence its semantic resolver does not take`,
     );
-  return Object.freeze({ phase, prepare: resolution.prepare, semantic });
+  if (evidence === undefined) return step([]);
+  const { fields } = auxiliary as Constr<Data>;
+  const carriage = fields[evidence.carriage];
+  if (
+    !(carriage instanceof Constr) ||
+    Number(carriage.index) !== INLINE_CARRIAGE
+  )
+    return { reason: `a ${phase} item of a field delivered by reference` };
+  const preimage = carriage.fields[0];
+  if (typeof preimage !== "string")
+    throw new Error(`validation-trace ${phase} inline carriage is not bytes`);
+  const length = preimage.length / 2;
+  if (length > evidence.inlineMaxPreimageBytes)
+    return {
+      reason: `a ${phase} item of a ${length.toString()}-byte field, over the ${evidence.inlineMaxPreimageBytes.toString()}-byte inline ${phase} limit`,
+    };
+  return step(
+    fields.map((_, index) => plutusConstrFieldCbor(auxiliaryCbor, [index])),
+  );
 };
 
 /** The semantic resolver's hop of the thread of prover `prover`: it
- * verifies the transition `transitionCbor` and awards the step. */
+ * verifies the transition `transitionCbor` beside the auxiliary evidence
+ * whose fields are `evidenceCbors`, and awards the step. */
 export const phaseSemanticHop = ({
   prover,
   transitionCbor,
+  evidenceCbors,
 }: {
   readonly prover: string;
   readonly transitionCbor: string;
+  readonly evidenceCbors: readonly string[];
 }) => ({
   next: "award" as const,
   datum: stepDatum(prover, constr(0, [integer(1)])),
   redeemer: (inputIndex: bigint, outputIndex: bigint) =>
     continued(
-      constr(0, [integer(inputIndex), integer(outputIndex), transitionCbor]),
+      constr(0, [
+        integer(inputIndex),
+        integer(outputIndex),
+        transitionCbor,
+        ...evidenceCbors,
+      ]),
     ),
   proverOnly: false,
 });

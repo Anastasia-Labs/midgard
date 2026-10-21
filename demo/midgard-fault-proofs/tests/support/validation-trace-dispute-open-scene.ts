@@ -12,12 +12,6 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-  openValidationTraceV1,
-} from "@al-ft/midgard-validation";
-import {
   generateEmulatorAccount,
   type LucidEvolution,
   type Script,
@@ -28,12 +22,8 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
-import {
-  buildValidationClaimWitness,
-  type ValidationTraceClaimMaterial,
-} from "../../src/validation-trace-dispute/claim-material.js";
+import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
-import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
@@ -42,6 +32,7 @@ import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
+  referenceSeedDeposits,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
@@ -58,10 +49,7 @@ import {
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
-import {
-  eventAndLedger,
-  l1SlotConfig,
-} from "./validation-trace-claim-material.js";
+import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
 /** L_d: the longest validity range VerifySource admits. */
@@ -110,11 +98,18 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
  * its blocks are committed, so what it does takes none of the time a
  * dispute move has from the failing block's end. The failing transaction's
- * redeemer is `failingRedeemerData` when given.
+ * redeemer is `failingRedeemerData` when given, and it reads
+ * `failingReferenceInputs` outputs the deposits create as reference inputs.
  */
 export const setUpScene = async (
   beforeBlocks?: (scene: SceneContracts) => Promise<void>,
-  { failingRedeemerData }: { readonly failingRedeemerData?: Uint8Array } = {},
+  {
+    failingRedeemerData,
+    failingReferenceInputs = 0,
+  }: {
+    readonly failingRedeemerData?: Uint8Array;
+    readonly failingReferenceInputs?: number;
+  } = {},
 ): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
@@ -158,6 +153,7 @@ export const setUpScene = async (
     ) - 1,
   );
   const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
     startTime: now,
@@ -166,9 +162,12 @@ export const setUpScene = async (
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     priorLedger: [],
-    events: Object.entries(seeds).map(([scenario, byte]) =>
-      plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
-    ),
+    events: [
+      ...Object.entries(seeds).map(([scenario, byte]) =>
+        plutusExecutionSeedDeposit(scenario as PlutusExecutionScenario, byte),
+      ),
+      ...references.deposits,
+    ],
   });
   const setup = await submitSetupTx({
     lucid: h.funderLucid,
@@ -200,6 +199,9 @@ export const setUpScene = async (
       seedByte: seeds[scenario as keyof typeof seeds],
       ...(scenario === "failing" && failingRedeemerData !== undefined
         ? { redeemerData: failingRedeemerData }
+        : {}),
+      ...(scenario === "failing"
+        ? { referenceInputs: references.outRefs }
         : {}),
       predecessorEntries: previous.entries,
       header: {
@@ -296,60 +298,6 @@ export const failingMaterial = async (
       l1SlotConfig,
     })
   ).material;
-};
-
-/** The honest trace of the passing transaction: Terminal Accepted. */
-export const passingTrace = async (scene: Scene) => {
-  const block = scene.passing;
-  const { event, ledger } = await eventAndLedger(block);
-  const expectedLedgerOps = [
-    { type: "delete" as const, key: block.seed.outRef },
-    buildValidationMachineLedgerInsertOp({
-      key: block.created.outRef,
-      outputCbor: block.created.output,
-    }),
-  ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
-    initialEntries: ledger.entries.map(({ outRef, output }) => ({
-      outRef,
-      output,
-    })),
-    operations: expectedLedgerOps,
-  });
-  const leaves = await Effect.runPromise(
-    openValidationTraceV1(
-      {
-        ...plutusFailureReplayInput({
-          header: block.evidence.header,
-          event,
-          ledger,
-          l1SlotConfig,
-        }),
-        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
-        expectedLedgerOps,
-        ledgerMutationSteps,
-        expectedVerdict: "accepted",
-        expectedRejectionCode: null,
-      },
-      { revealStates: [0] },
-    ),
-  );
-  const terminal = leaves.states.get(leaves.stepCount)!;
-  expect(terminal).toMatchObject({ phase: "terminal", verdict: "accepted" });
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
-  return {
-    claim: {
-      claimWitness: await buildValidationClaimWitness({
-        reconstruction: block.evidence.reconstruction,
-        eventKey: event.eventKey,
-      }),
-      challengerRoot: trace.descriptor.traceRoot.toString("hex"),
-      stepCount: BigInt(leaves.stepCount),
-    },
-    terminal,
-    terminalProof: trace.proof(leaves.stepCount),
-    initialState: leaves.states.get(0)!,
-  };
 };
 
 const liveBlock = async (scene: Scene, block: Block): Promise<UTxO> => {

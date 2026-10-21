@@ -63,5 +63,47 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "10"],
       ],
     },
+    validationTraceDisputeInputSetsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace input-sets prepare",
+      manifestPosition: 547,
+      publicationPosition: 542,
+      referenceRolePosition: 542,
+      commands: [],
+      validatorTitle: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "3"],
+        ["resolvers", "3"],
+        ["steps", "158"],
+      ],
+    },
+    validationTraceDisputeInputSetsEmptySemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace input-sets empty semantic",
+      manifestPosition: 548,
+      publicationPosition: 543,
+      referenceRolePosition: 543,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "4"],
+        ["steps", "11"],
+      ],
+    },
+    validationTraceDisputeInputSetsItemSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace input-sets item semantic",
+      manifestPosition: 549,
+      publicationPosition: 544,
+      referenceRolePosition: 544,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "5"],
+        ["steps", "12"],
+      ],
+    },
   },
 );

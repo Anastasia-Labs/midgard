@@ -96,7 +96,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     canonicalDecode: title("validationTraceDisputeCanonicalDecodePrepare"),
     compactBinding: title("validationTraceDisputeCompactBindingPrepare"),
     staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesPrepare"),
-    inputSets: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
+    inputSets: title("validationTraceDisputeInputSetsPrepare"),
     signatures: "fraud_proofs/validation_trace/signatures_v1.main.spend",
     phaseANativeScripts:
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
@@ -119,10 +119,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     ),
     compactBinding: title("validationTraceDisputeCompactBindingSemantic"),
     staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesSemantic"),
-    inputSetsEmpty:
-      "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
-    inputSetsItem:
-      "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
+    inputSetsEmpty: title("validationTraceDisputeInputSetsEmptySemantic"),
+    inputSetsItem: title("validationTraceDisputeInputSetsItemSemantic"),
     signaturesAdvance:
       "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
     signaturesAddressItem:

@@ -111,6 +111,7 @@ export const defendTwoThreads = async ({
   canonicalDecode = false,
   phases = false,
   failingRedeemerData,
+  failingReferenceInputs,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -126,6 +127,8 @@ export const defendTwoThreads = async ({
   readonly phases?: boolean;
   /** The failing transaction's redeemer, as Plutus Data CBOR. */
   readonly failingRedeemerData?: Uint8Array;
+  /** How many reference inputs the failing transaction reads. */
+  readonly failingReferenceInputs?: number;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -153,7 +156,12 @@ export const defendTwoThreads = async ({
         ...(phases ? { phases: await publishPhaseReferences(contracts) } : {}),
       };
     },
-    failingRedeemerData === undefined ? {} : { failingRedeemerData },
+    {
+      ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
+      ...(failingReferenceInputs === undefined
+        ? {}
+        : { failingReferenceInputs }),
+    },
   );
   const removal =
     recorder === undefined ? undefined : await recordedRemoval(scene, recorder);

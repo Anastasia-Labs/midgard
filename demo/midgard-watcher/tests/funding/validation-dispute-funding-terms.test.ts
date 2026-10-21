@@ -109,6 +109,9 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCompactBindingSemantic",
         "validationTraceDisputeStaticLedgerRulesPrepare",
         "validationTraceDisputeStaticLedgerRulesSemantic",
+        "validationTraceDisputeInputSetsPrepare",
+        "validationTraceDisputeInputSetsEmptySemantic",
+        "validationTraceDisputeInputSetsItemSemantic",
       ].map(manifestAddress),
     );
     // Every holder the runner visits past the game is named exactly once.

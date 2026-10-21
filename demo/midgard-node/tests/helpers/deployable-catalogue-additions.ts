@@ -208,6 +208,18 @@ const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
     contract: "validationTraceDisputeStaticLedgerRulesSemantic",
     role: "V1 validation-trace static-ledger-rules semantic",
   },
+  {
+    contract: "validationTraceDisputeInputSetsPrepare",
+    role: "V1 validation-trace input-sets prepare",
+  },
+  {
+    contract: "validationTraceDisputeInputSetsEmptySemantic",
+    role: "V1 validation-trace input-sets empty semantic",
+  },
+  {
+    contract: "validationTraceDisputeInputSetsItemSemantic",
+    role: "V1 validation-trace input-sets item semantic",
+  },
 ] as const;
 
 export const phaseResolverContracts = new Set<string>(
