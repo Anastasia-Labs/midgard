@@ -132,10 +132,21 @@ const VALIDATION_TRACE_DISPUTE_HOLDERS = [
  * is after the follower's origin.
  */
 export const protocolPaymentCredentials = (
-  contracts: Pick<
-    SDK.MidgardValidators,
-    (typeof PROTOCOL_SPENDING_VALIDATORS)[number] | "fraudProofContracts"
-  >,
+  contracts: Readonly<
+    Record<
+      (typeof PROTOCOL_SPENDING_VALIDATORS)[number],
+      Readonly<{ spendingScriptHash: string }>
+    >
+  > & {
+    readonly fraudProofContracts: {
+      readonly validationTraceDispute: Readonly<
+        Record<
+          (typeof VALIDATION_TRACE_DISPUTE_HOLDERS)[number],
+          Readonly<{ spendingScriptHash: string }>
+        >
+      > & { readonly caseConfig: Readonly<{ policyId: string }> };
+    };
+  },
 ): string[] => {
   const dispute = contracts.fraudProofContracts.validationTraceDispute;
   return [
