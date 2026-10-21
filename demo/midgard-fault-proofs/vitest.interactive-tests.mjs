@@ -11,6 +11,7 @@ export const interactiveTests = [
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
   "./tests/validation-trace-dispute-bisection.test.ts",
   "./tests/validation-trace-dispute-conviction.test.ts",
+  "./tests/validation-trace-dispute-one-step-context-mint-init.test.ts",
   "./tests/validation-trace-dispute-one-step-context-output.test.ts",
   "./tests/validation-trace-dispute-one-step-context-redeemer-begin.test.ts",
   "./tests/validation-trace-dispute-one-step-context-reference.test.ts",
