@@ -15,6 +15,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-defender-won-award.test.ts",
   "./tests/validation-trace-dispute-one-step-defender-won.test.ts",
   "./tests/validation-trace-dispute-one-step-move-walk.test.ts",
+  "./tests/validation-trace-dispute-one-step-selection-drive.test.ts",
   "./tests/validation-trace-dispute-one-step-selection.test.ts",
   "./tests/validation-trace-dispute-one-step.test.ts",
   "./tests/validation-trace-dispute-timeout.test.ts",

@@ -26,6 +26,10 @@ import {
   sourceEventOrThrow,
 } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { type CommittedL2Event, plutusFailureReplayInput } from "./replay.js";
+import {
+  selectedScriptItemReader,
+  type ValidationTraceSelectionSource,
+} from "./selected-scripts.js";
 
 export const VALIDATION_CLAIM_WITNESS_VERSION = 1n;
 
@@ -105,6 +109,12 @@ export type ValidationTraceClaimMaterial = {
    * it.
    */
   readonly trace: () => Promise<DeterministicValidationMachineTrace>;
+  /**
+   * The versioned item of the script a CEK script selection of the trace
+   * runs, from the disputed transaction or its resolved inputs; throws
+   * unless it is the item the selection commits to.
+   */
+  readonly scriptItem: (selection: ValidationTraceSelectionSource) => Buffer;
 };
 
 /**
@@ -164,5 +174,9 @@ export const buildValidationTraceClaimMaterial = async ({
       (full ??= Effect.runPromise(
         buildDeterministicValidationMachineTrace(input),
       )),
+    scriptItem: selectedScriptItemReader({
+      transactionCbor: event.entry.fullTransactionCbor,
+      ledger,
+    }),
   };
 };

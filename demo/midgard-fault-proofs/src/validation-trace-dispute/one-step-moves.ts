@@ -11,6 +11,7 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
+import { findScriptDecodeRecord } from "../script-decode/record.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type { ValidationTraceRecordedThread } from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
@@ -29,8 +30,10 @@ import {
 import {
   buildValidationTraceHop,
   validationTraceHop,
+  type ValidationTraceSelectionReads,
 } from "./one-step-builders.js";
 import {
+  validationTraceDrivesSelections,
   type ValidationTraceOneStepContract,
   validationTraceOneStepHolder,
   validationTraceOneStepHolderAt,
@@ -47,6 +50,7 @@ import {
   type CapturedValidationTraceStage,
   caseConfigUtxo,
   ours,
+  type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
 
 type MaterialInput = ValidationTraceMoveInput & {
@@ -77,7 +81,13 @@ export const captureValidationTraceEnterResolution = async (
       "validation-trace one step has no trace matching its thread's challenger root",
     );
   // Only a step the runner drives to its award enters the resolution.
-  planned(await planValidationTraceThread(material, thread.thread));
+  planned(
+    await planValidationTraceThread(
+      material,
+      thread.thread,
+      validationTraceDrivesSelections(deployment),
+    ),
+  );
   const boundary = validationTraceOneStepHolder(deployment, "boundary");
   signer.selectWallet(lucid);
   const { validFrom, validTo } = validationTraceMoveWindow(lucid);
@@ -119,10 +129,12 @@ export const captureValidationTraceEnterResolution = async (
   });
 };
 
-/** Where each holder past the boundary keeps our successor's hash. */
+/** Where each holder past the boundary keeps our successor's hash: the
+ * selection resolver holds the state the core step binder would. */
 const CHALLENGER_SUCCESSOR_HASH = {
   prepare: [1, 0, 3],
   core: [1, 0, 1, 3],
+  selection: [1, 0, 1, 3],
   bound: [1, 0, 0, 1, 3],
 } as const;
 
@@ -175,27 +187,32 @@ const resolvingThread = async (
  * our successor's hash its holder keeps.
  */
 const resolvingPlan = async ({
+  deployment,
   material,
   utxo,
   holder,
   caseThread,
 }: {
+  readonly deployment: ValidationTraceDisputeDeployment;
   readonly material: ValidationTraceClaimMaterial | undefined;
   readonly utxo: UTxO;
   readonly holder: ValidationTraceOneStepContract["holder"];
   readonly caseThread: SDK.CaseThread | undefined;
 }): Promise<ValidationTraceOneStepPlan> => {
+  const decodeRecords = validationTraceDrivesSelections(deployment);
   if (caseThread !== undefined) {
     if (!isThreadMaterial(caseThread, material))
       throw new Error(
         "validation-trace one step has no trace matching its thread's challenger root",
       );
-    return planned(await planValidationTraceThread(material, caseThread));
+    return planned(
+      await planValidationTraceThread(material, caseThread, decodeRecords),
+    );
   }
   if (material === undefined)
     throw new Error("validation-trace one step has no trace of ours");
   const path =
-    holder === "prepare" || holder === "core"
+    holder === "prepare" || holder === "core" || holder === "selection"
       ? CHALLENGER_SUCCESSOR_HASH[holder]
       : CHALLENGER_SUCCESSOR_HASH.bound;
   return planned(
@@ -204,8 +221,62 @@ const resolvingPlan = async ({
       challengerHighHash: Data.from<string>(
         plutusConstrFieldCbor(utxo.datum!, [...path]),
       ),
+      decodeRecords,
     }),
   );
+};
+
+/**
+ * What the selection resolver's hop of `plan` reads on `deployment`: the
+ * selection's yields and the selected script's decode record, which the
+ * script-decode prerequisite has made before the thread entered its
+ * resolution.
+ */
+const selectionReads = async ({
+  input,
+  plan,
+}: {
+  readonly input: MaterialInput;
+  readonly plan: ValidationTraceOneStepPlan;
+}): Promise<ValidationTraceSelectionReads> => {
+  const { lucid, deployment, material } = input;
+  const references = deployment.references.oneStep?.cekSelection;
+  const { scriptDecode } = deployment;
+  if (
+    plan.kind !== "selection" ||
+    references === undefined ||
+    scriptDecode === undefined ||
+    material === undefined
+  )
+    throw new Error(
+      "validation-trace selection hop has no CEK script selection to drive",
+    );
+  let record: UTxO | undefined;
+  if (plan.script !== undefined) {
+    record = await findScriptDecodeRecord({
+      lucid,
+      deployment: scriptDecode,
+      scriptHashHex: plan.script.scriptHashHex,
+    });
+    if (record === undefined)
+      throw new Error(
+        `validation-trace selection's script ${plan.script.scriptHashHex} has no decode record`,
+      );
+  }
+  const { cekSelectionAuthenticate, cekSelectionSuccessor } =
+    deployment.chain.yields;
+  return Object.freeze({
+    trace: await material.trace(),
+    yields: {
+      references: [references.authenticate, references.successor] as const,
+      scripts: [
+        cekSelectionAuthenticate.withdrawalScript,
+        cekSelectionSuccessor.withdrawalScript,
+      ] as const,
+    },
+    record,
+    scriptDecodePolicyId: scriptDecode.validator.policyId,
+  });
 };
 
 /** A hop of our thread through its one-step resolution, now. */
@@ -221,16 +292,21 @@ export const captureValidationTraceResolve = async (
     throw new WorkflowActionChangedError(
       `validation-trace thread ${input.threadOutRef} has reached its award`,
     );
+  const plan = await resolvingPlan({
+    deployment,
+    material: input.material,
+    utxo: thread.utxo,
+    holder: from.holder,
+    caseThread: thread.caseThread,
+  });
   const hop = validationTraceHop({
-    plan: await resolvingPlan({
-      material: input.material,
-      utxo: thread.utxo,
-      holder: from.holder,
-      caseThread: thread.caseThread,
-    }),
+    plan,
     holder: from.holder,
     utxo: thread.utxo,
     prover: signer.paymentKeyHash,
+    ...(from.holder === "selection"
+      ? { selection: await selectionReads({ input, plan }) }
+      : {}),
   });
   const to = validationTraceOneStepHolder(deployment, hop.next);
   const reference = from.reference;
@@ -239,7 +315,7 @@ export const captureValidationTraceResolve = async (
   const unsigned = await completeValidationTraceMove({
     lucid,
     stage: "resolve",
-    referenced: [reference],
+    referenced: [reference, ...(hop.reads?.references ?? [])],
     build: (fee) =>
       buildValidationTraceHop({
         lucid,

@@ -23,7 +23,10 @@ import {
   type ValidationTraceRecordedThread,
 } from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
-import { validationTraceOneStepContracts } from "./one-step-holders.js";
+import {
+  validationTraceDrivesSelections,
+  validationTraceOneStepContracts,
+} from "./one-step-holders.js";
 import {
   planValidationTraceThread,
   type ValidationTraceOneStepPlanning,
@@ -158,7 +161,14 @@ const planReadyThreads = async (
       thread.turn === "ReadyForOneStep" &&
       isThreadMaterial(thread, material)
     )
-      plannings.set(outRef, await planValidationTraceThread(material, thread));
+      plannings.set(
+        outRef,
+        await planValidationTraceThread(
+          material,
+          thread,
+          validationTraceDrivesSelections(deployment),
+        ),
+      );
   return plannings;
 };
 

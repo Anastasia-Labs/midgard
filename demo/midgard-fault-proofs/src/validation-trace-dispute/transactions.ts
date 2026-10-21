@@ -18,6 +18,7 @@ import { Effect } from "effect";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireSingletonUtxo } from "../runtime.js";
+import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import type {
   ResolvedInitCatalogueCategory,
   ResolvedInitContracts,
@@ -49,7 +50,8 @@ type DisputeChain =
 /**
  * The published reference scripts of the one-step resolution of a CEK core
  * step: the boundary, the CEK phase resolver, the CEK core step binder, the
- * arms that settle in one hop, and the settle.
+ * arms that settle in one hop, and the settle; and of a CEK script
+ * selection, when the deployment drives it.
  */
 export type ValidationTraceOneStepReferences = Readonly<{
   boundary: UTxO;
@@ -61,6 +63,16 @@ export type ValidationTraceOneStepReferences = Readonly<{
     machine: UTxO;
     mapConversion: UTxO;
     caseConstant: UTxO;
+  }>;
+  /**
+   * The selection resolver, and its two yields' references, each carrying
+   * its role's reference-script authentication token; without them a thread
+   * at a CEK script selection waits.
+   */
+  cekSelection?: Readonly<{
+    semantic: UTxO;
+    authenticate: UTxO;
+    successor: UTxO;
   }>;
 }>;
 
@@ -96,6 +108,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "prepareResolvers"
     | "semanticResolvers"
     | "cekCoreStages"
+    | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */
   fraudProof: Readonly<{
@@ -123,6 +136,12 @@ export type ValidationTraceDisputeDeployment = Readonly<{
   }>;
   /** The dispute bond the case validator is applied with. */
   bondLovelace: bigint;
+  /**
+   * The script-decode deployment whose records a CEK script selection reads,
+   * the one the selection's successor yield is applied with; without it a
+   * thread at a Plutus script selection waits.
+   */
+  scriptDecode?: ScriptDecodeDeployment;
 }>;
 
 export type CapturedValidationTraceStage = Readonly<{

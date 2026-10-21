@@ -36,6 +36,7 @@ import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import {
   oneStepDeployment,
   publishOneStepReferences,
+  publishSelectionReferences,
 } from "./validation-trace-dispute-one-step.js";
 import {
   capturePrepared,
@@ -101,10 +102,13 @@ const outRef = (text: string) => ({
 export const defendTwoThreads = async ({
   withRemoval,
   successorFrom = MACHINE_STEP_FROM,
+  selections = false,
   wrap,
 }: {
   readonly withRemoval: boolean;
   readonly successorFrom?: number;
+  /** Whether the deployment drives CEK script selections. */
+  readonly selections?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -117,9 +121,12 @@ export const defendTwoThreads = async ({
     scene.h as never,
     scene.operator.vkey,
   );
+  const oneStep = await publishOneStepReferences(scene);
   const deployment = oneStepDeployment(
     scene,
-    await publishOneStepReferences(scene),
+    selections
+      ? { ...oneStep, cekSelection: await publishSelectionReferences(scene) }
+      : oneStep,
   );
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {

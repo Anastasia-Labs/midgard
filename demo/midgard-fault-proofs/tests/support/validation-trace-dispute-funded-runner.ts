@@ -110,6 +110,7 @@ const referenceUtxos = (
           oneStep.cekCore,
           ...Object.values(oneStep.arms),
           oneStep.settle,
+          ...Object.values(oneStep.cekSelection ?? {}),
         ]),
   ])
     byOutRef.set(`${utxo.txHash}#${utxo.outputIndex.toString()}`, utxo);

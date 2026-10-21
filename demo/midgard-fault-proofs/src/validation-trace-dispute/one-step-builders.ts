@@ -2,32 +2,38 @@
  * step, past the game: from the boundary to the CEK resolver
  * (PrepareResolution), from it to the CEK core step binder (PrepareSelected),
  * from the binder to the arm its step selects (VerifyCoreStep), from the arm
- * to the settle (VerifyArm), and from the settle to the award (Settle). Each
- * hop spends the thread alone, which pays its fee; its successor keeps the
- * thread's single token and carries the state the next holder checks as an
- * inline datum. */
+ * to the settle (VerifyArm), and from the settle to the award (Settle). A CEK
+ * script selection goes from the CEK resolver to the selection resolver
+ * (PrepareSelected), and from it to the award with the selection's two
+ * yields (VerifyExecutionSelection). Each hop spends the thread alone, which
+ * pays its fee; its successor keeps the thread's single token and carries the
+ * state the next holder checks as an inline datum. */
 import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
+import type { DeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
 import {
   Data,
   type LucidEvolution,
   type RedeemerContext,
+  type Script,
   type TxBuilder,
   type UTxO,
+  validatorToRewardAddress,
 } from "@lucid-evolution/lucid";
 
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import { buildValidationCekExecutionSelectionAction } from "../validation-cek-selection.js";
 import {
   type ValidationTraceArmHolder,
   type ValidationTraceOneStepHolder,
 } from "./one-step-holders.js";
 import {
-  CEK_CORE_SEMANTIC_RESOLVER_INDEX,
   hashSerialisedData,
   SINGLE_HOP_CORE_ARMS,
+  type ValidationTraceCoreStepPlan,
   type ValidationTraceOneStepPlan,
 } from "./one-step-plan.js";
 
@@ -43,10 +49,36 @@ export type ValidationTraceHop = Readonly<{
   /** The successor's inline datum. */
   datum: string;
   /** The redeemer, for the thread at `inputIndex` and its successor at
-   * `outputIndex`. */
-  redeemer: (inputIndex: bigint, outputIndex: bigint) => string;
+   * `outputIndex`, in the final transaction `context`. */
+  redeemer: (
+    inputIndex: bigint,
+    outputIndex: bigint,
+    context: RedeemerContext,
+  ) => string;
   /** Whether the holder lets the prover alone move the thread. */
   proverOnly: boolean;
+  /** What else the holder reads: further reference inputs, and the yields it
+   * requires invoked by a zero withdrawal each. */
+  reads?: Readonly<{
+    references: readonly UTxO[];
+    yields: readonly Script[];
+  }>;
+}>;
+
+/**
+ * What a CEK script selection's hop reads: our trace, the selection's two
+ * yields (authenticate, successor) with their authenticated references, and
+ * the selected script's decode record under the script-decode policy, which
+ * a selection that reads no program goes without.
+ */
+export type ValidationTraceSelectionReads = Readonly<{
+  trace: DeterministicValidationMachineTrace;
+  yields: Readonly<{
+    references: readonly [UTxO, UTxO];
+    scripts: readonly [Script, Script];
+  }>;
+  record: UTxO | undefined;
+  scriptDecodePolicyId: string;
 }>;
 
 const integer = (value: bigint | number) => Data.to(BigInt(value));
@@ -64,8 +96,20 @@ const continued = (actionCbor: string) => constr(1, [actionCbor]);
 
 /** The arm holder of the plan's core group. */
 export const validationTraceArmOf = (
-  plan: ValidationTraceOneStepPlan,
+  plan: ValidationTraceCoreStepPlan,
 ): ValidationTraceArmHolder => SINGLE_HOP_CORE_ARMS[plan.core.group];
+
+/** The core step plan a core holder's hop needs. */
+const corePlan = (
+  plan: ValidationTraceOneStepPlan,
+  holder: ValidationTraceHopHolder,
+): ValidationTraceCoreStepPlan => {
+  if (plan.kind !== "core")
+    throw new Error(
+      `validation-trace ${holder} holds a thread whose step is not a CEK core step`,
+    );
+  return plan;
+};
 
 const datumOf = (utxo: UTxO): string => {
   if (typeof utxo.datum !== "string")
@@ -75,21 +119,22 @@ const datumOf = (utxo: UTxO): string => {
 
 /**
  * The hop of the thread `utxo` of prover `prover`, held by `holder`, in the
- * one-step resolution `plan`.
+ * one-step resolution `plan`; a selection's hop reads `selection`.
  */
 export const validationTraceHop = ({
   plan,
   holder,
   utxo,
   prover,
+  selection,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
   readonly utxo: UTxO;
   readonly prover: string;
+  readonly selection?: ValidationTraceSelectionReads;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
-  const { core } = plan;
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;
@@ -131,7 +176,7 @@ export const validationTraceHop = ({
     }
     case "prepare":
       return {
-        next: "core",
+        next: plan.kind === "selection" ? "selection" : "core",
         datum: stepDatum(
           prover,
           constr(0, [
@@ -145,16 +190,57 @@ export const validationTraceHop = ({
             constr(0, [
               integer(inputIndex),
               integer(outputIndex),
-              integer(CEK_CORE_SEMANTIC_RESOLVER_INDEX),
+              integer(plan.semanticResolverIndex),
               plan.transitionCbor,
               plan.auxiliaryCbor,
             ]),
           ),
         proverOnly: true,
       };
-    case "core":
+    case "selection": {
+      if (plan.kind !== "selection" || selection === undefined)
+        throw new Error(
+          "validation-trace selection holds a thread whose step is not a CEK script selection",
+        );
+      const { trace, yields, record, scriptDecodePolicyId } = selection;
       return {
-        next: validationTraceArmOf(plan),
+        next: "award",
+        datum: stepDatum(prover, constr(0, [integer(1)])),
+        redeemer: (inputIndex, outputIndex, context) =>
+          Data.to(
+            {
+              Continue: [
+                buildValidationCekExecutionSelectionAction({
+                  context,
+                  trace,
+                  stateIndex: plan.stateIndex,
+                  inputIndex,
+                  outputIndex,
+                  yieldReferences: yields.references,
+                  ...(record === undefined
+                    ? {}
+                    : { decodeRecordReference: record }),
+                  scriptDecodePolicyId,
+                }),
+              ],
+            },
+            SDK.ValidationCekExecutionSelectionSpendRedeemer,
+          ),
+        proverOnly: false,
+        reads: {
+          references: [
+            ...yields.references,
+            ...(record === undefined ? [] : [record]),
+          ],
+          yields: yields.scripts,
+        },
+      };
+    }
+    case "core": {
+      const step = corePlan(plan, holder);
+      const { core } = step;
+      return {
+        next: validationTraceArmOf(step),
         datum: stepDatum(
           prover,
           constr(0, [
@@ -179,7 +265,9 @@ export const validationTraceHop = ({
           ),
         proverOnly: true,
       };
-    case "settle":
+    }
+    case "settle": {
+      const { core } = corePlan(plan, holder);
       return {
         next: "award",
         datum: stepDatum(prover, constr(0, [integer(1)])),
@@ -194,10 +282,12 @@ export const validationTraceHop = ({
           ),
         proverOnly: false,
       };
+    }
     case "compute":
     case "machine":
     case "mapConversion":
-    case "caseConstant":
+    case "caseConstant": {
+      const { core } = corePlan(plan, holder);
       // An arm whose step settles after one hop carries the bound on with
       // its progress one higher.
       return {
@@ -213,13 +303,16 @@ export const validationTraceHop = ({
           ),
         proverOnly: true,
       };
+    }
   }
 };
 
 /**
  * The hop `hop` of `thread`, carrying its token `unit` (reading the holder's
- * script from `reference`) to `address`, which keeps the thread's tokens and its lovelace less `fee`,
- * before completion; signed by `prover` when the holder needs it.
+ * script from `reference`) to `address`, which keeps the thread's tokens and
+ * its lovelace less `fee`, before completion; with the references the hop
+ * reads and a zero withdrawal from each yield it invokes; signed by `prover`
+ * when the holder needs it.
  */
 export const buildValidationTraceHop = ({
   lucid,
@@ -244,7 +337,7 @@ export const buildValidationTraceHop = ({
   readonly validFrom: number;
   readonly validTo: number;
 }): TxBuilder => {
-  const tx = lucid
+  let tx = lucid
     .newTx()
     .collectFrom([thread], (ctx: RedeemerContext) =>
       hop.redeemer(
@@ -254,10 +347,21 @@ export const buildValidationTraceHop = ({
           outputWithDatumAndUnitPredicate({ address, datum: hop.datum, unit }),
           "thread successor",
         ),
+        ctx,
       ),
     )
-    .readFrom([reference])
-    .pay.ToContract(
+    .readFrom([reference, ...(hop.reads?.references ?? [])]);
+  const network = lucid.config().network;
+  if (network === undefined)
+    throw new Error("validation-trace hop has no network");
+  for (const script of hop.reads?.yields ?? [])
+    tx = tx.withdraw(
+      validatorToRewardAddress(network, script),
+      0n,
+      Data.void(),
+    );
+  tx = tx.pay
+    .ToContract(
       address,
       { kind: "inline", value: hop.datum },
       { ...thread.assets, lovelace: (thread.assets.lovelace ?? 0n) - fee },

@@ -6,11 +6,13 @@
  * workflow orchestrator. On a defended case it plays each thread (threads.ts,
  * moves.ts) through the one-step resolution the deployment installs
  * (one-step-moves.ts), closes each thread won into the case and, once none is
- * open, closes the case as an undefended one. Every
- * output of ours is claimed by out-ref from our own signed body before
- * submission and read back by that out-ref; chain state, not the journal's
- * idea of the step, decides the next action. A thread move needs the claim
- * material, which each run reads back as it validates its saved artifact. */
+ * open, closes the case as an undefended one. On a deployment that drives
+ * CEK script selections, the decode record of every script our trace selects
+ * is made before Init (script-decode-records.ts). Every output of ours is
+ * claimed by out-ref from our own signed body before submission and read
+ * back by that out-ref; chain state, not the journal's idea of the step,
+ * decides the next action. A thread move needs the claim material, which
+ * each run reads back as it prepares or validates its artifact. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -26,6 +28,7 @@ import {
   type FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
 import { readOwnOutputs } from "../workflow/own-outputs.js";
+import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
@@ -59,6 +62,7 @@ import {
   VALIDATION_TRACE_CASE_CONVICTED,
   type ValidationTraceRemovalConfig,
 } from "./removal.js";
+import { withValidationTraceScriptDecodeRecords } from "./script-decode-records.js";
 import { observeValidationTraceThreads } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
@@ -115,6 +119,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   removal,
   signedRecovery,
   caseHistory,
+  publications,
   now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
@@ -127,6 +132,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   readonly signedRecovery: FraudProofSignedTransactionRecovery;
   /** Our case token's complete L1 history, where its threads are found. */
   readonly caseHistory: ValidationTraceCaseHistory;
+  /** Where a script-decode record stands; selection deployments need it. */
+  readonly publications?: FraudProofAuthenticatedPublicationObserver;
   readonly now?: () => number;
 }): FraudProofFamilyWorkflowAdapter => {
   if (
@@ -348,6 +355,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         context: replayContext,
         classification,
         l1SlotConfig,
+        onMaterial: (material) => materials.set(evidence.headerHash, material),
       }),
     validatePreparedArtifact: async ({
       evidence,
@@ -478,5 +486,13 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         : { kind: "pending", txHash };
     },
   };
-  return Object.freeze(removalStage.route(adapter));
+  return withValidationTraceScriptDecodeRecords({
+    base: Object.freeze(removalStage.route(adapter)),
+    lucid,
+    signer,
+    deployment,
+    publications,
+    now,
+    materialOf: (headerHash) => materials.get(headerHash),
+  });
 };

@@ -133,6 +133,7 @@ describe("validation-trace dispute one-step moves walked under their authority",
     const moves: CapturedMove[] = [];
     const dispute = await defendTwoThreads({
       withRemoval: false,
+      selections: true,
       wrap: (scene) => captureMoves(scene, moves),
     });
     const { scene, runner, a, b, deployment } = dispute;

@@ -3,8 +3,9 @@
  * one-step argument (the transition and its auxiliary evidence), and the
  * resolver chain that step selects. The runner drives the CEK core steps
  * whose arm settles in one hop (compute, machine, map conversion and case
- * constant); any other step is reported as one the runner does not drive,
- * and its thread waits under the one-step state. */
+ * constant), and the CEK script selections when the deployment records
+ * scripts' decodes; any other step is reported as one the runner does not
+ * drive, and its thread waits under the one-step state. */
 import {
   hashMidgardValidationMachineState,
   type MidgardValidationMachineState,
@@ -14,14 +15,23 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
+import {
+  buildValidationOneStepArgument,
+  CekDecodeRecordRequiredError,
+  type CekSelectionDecodeRecordResolver,
+} from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { plutusItemScriptDecode } from "../script-decode/item-record.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
+import { recordedSelectionOf } from "./selected-scripts.js";
 
 /** `resolver_index(Cek)` (validation-resolution-v1). */
 export const CEK_RESOLVER_INDEX = 11;
+
+/** The CEK execution selection's semantic resolver in the CEK group. */
+export const CEK_SELECTION_SEMANTIC_RESOLVER_INDEX = 1;
 
 /** The CEK core step's semantic resolver in the CEK group. */
 export const CEK_CORE_SEMANTIC_RESOLVER_INDEX = 3;
@@ -117,27 +127,51 @@ export const cekCoreGroup = (
   }
 };
 
-/** A step's one-step resolution, as the runner drives it. */
-export type ValidationTraceOneStepPlan = Readonly<{
+/** What every step's one-step resolution carries. */
+type ValidationTraceOneStepArgument = Readonly<{
   /** The agreed state's index: the step is `stateIndex` to `stateIndex + 1`. */
   stateIndex: number;
   preState: MidgardValidationMachineState;
   resolverIndex: number;
+  /** The semantic resolver of the CEK group the step selects. */
+  semanticResolverIndex: number;
   /** The transition and its auxiliary evidence, as their Data's CBOR. */
   transitionCbor: string;
   auxiliaryCbor: string;
   /** `hash_one_step_evidence(transition, auxiliary)`. */
   evidenceHash: string;
-  /** The CEK core step (the auxiliary's one field) and its arm's witness. */
-  core: Readonly<{
-    stepCbor: string;
-    preCbor: string;
-    postCbor: string;
-    armWitnessCbor: string;
-    arm: number;
-    group: SingleHopCoreGroup;
-  }>;
 }>;
+
+/** A CEK core step's resolution, as the runner drives it. */
+export type ValidationTraceCoreStepPlan = ValidationTraceOneStepArgument &
+  Readonly<{
+    kind: "core";
+    /** The CEK core step (the auxiliary's one field) and its arm's witness. */
+    core: Readonly<{
+      stepCbor: string;
+      preCbor: string;
+      postCbor: string;
+      armWitnessCbor: string;
+      arm: number;
+      group: SingleHopCoreGroup;
+    }>;
+  }>;
+
+/** A CEK script selection's resolution, as the runner drives it. */
+export type ValidationTraceSelectionPlan = ValidationTraceOneStepArgument &
+  Readonly<{
+    kind: "selection";
+    /** The selected script, whose decode record the selection reads;
+     * undefined for a selection that reads none. */
+    script:
+      | Readonly<{ scriptHashHex: string; languageTag: 3 | 128; item: Buffer }>
+      | undefined;
+  }>;
+
+/** A step's one-step resolution, as the runner drives it. */
+export type ValidationTraceOneStepPlan =
+  | ValidationTraceCoreStepPlan
+  | ValidationTraceSelectionPlan;
 
 export type ValidationTraceOneStepPlanning =
   | Readonly<{ kind: "plan"; plan: ValidationTraceOneStepPlan }>
@@ -190,11 +224,15 @@ export const planValidationTraceOneStep = async ({
   stateIndex: given,
   agreedLowHash,
   challengerHighHash,
+  decodeRecords = false,
 }: {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
   readonly agreedLowHash?: string;
   readonly challengerHighHash: string;
+  /** Whether the deployment records scripts' decodes, which a CEK script
+   * selection reads. */
+  readonly decodeRecords?: boolean;
 }): Promise<ValidationTraceOneStepPlanning> => {
   const trace = await material.trace();
   const stateIndex =
@@ -218,7 +256,59 @@ export const planValidationTraceOneStep = async ({
     reason: `the step from state ${stateIndex.toString()} is ${what}, whose resolution the runner does not drive`,
   });
   if (preState.phase !== "cek") return unsupported(`a ${preState.phase} step`);
-  const argument = buildValidationOneStepArgument({ trace, stateIndex });
+  // A selection whose successor rests on the selected script's decode record
+  // is planned over the record our own decode of the script ends in: the
+  // record never enters the evidence, and the move that reads it reads the
+  // authenticated one the deployment holds.
+  const selection = recordedSelectionOf(trace.witnesses[stateIndex]);
+  let script: ValidationTraceSelectionPlan["script"];
+  let resolveCekDecodeRecord: CekSelectionDecodeRecordResolver | undefined;
+  if (selection !== undefined) {
+    if (!decodeRecords) throw new CekDecodeRecordRequiredError();
+    const item = material.scriptItem(selection);
+    const decoded = plutusItemScriptDecode(item);
+    if (decoded?.record.k !== "decoded")
+      return unsupported(
+        "a CEK script selection of a script whose decode refuses it",
+      );
+    const { record } = decoded;
+    script = Object.freeze({
+      scriptHashHex: decoded.scriptHashHex,
+      languageTag: selection.languageTag as 3 | 128,
+      item,
+    });
+    resolveCekDecodeRecord = ({ languageTag }) => ({
+      scriptHash: record.scriptHash,
+      languageTag,
+      programVersion: record.programVersion as -1 | 0 | 1,
+      termRoot: record.termRoot,
+      phase2Class: record.phase2Class,
+    });
+  }
+  const argument = buildValidationOneStepArgument({
+    trace,
+    stateIndex,
+    ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
+  });
+  const transitionCbor = argument.transitionCbor.toString("hex");
+  const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
+  const common = {
+    stateIndex,
+    preState,
+    resolverIndex: argument.resolverIndex,
+    semanticResolverIndex: argument.semanticResolverIndex,
+    transitionCbor,
+    auxiliaryCbor,
+    evidenceHash: hashOneStepEvidence(transitionCbor, auxiliaryCbor),
+  };
+  if (
+    argument.resolverIndex === CEK_RESOLVER_INDEX &&
+    argument.semanticResolverIndex === CEK_SELECTION_SEMANTIC_RESOLVER_INDEX
+  )
+    return {
+      kind: "plan",
+      plan: Object.freeze({ ...common, kind: "selection" as const, script }),
+    };
   if (
     argument.resolverIndex !== CEK_RESOLVER_INDEX ||
     argument.semanticResolverIndex !== CEK_CORE_SEMANTIC_RESOLVER_INDEX
@@ -226,8 +316,6 @@ export const planValidationTraceOneStep = async ({
     return unsupported(
       `a CEK step for semantic resolver ${argument.semanticResolverIndex.toString()}`,
     );
-  const transitionCbor = argument.transitionCbor.toString("hex");
-  const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
   const stepCbor = plutusConstrFieldCbor(auxiliaryCbor, [0]);
   const preCbor = plutusConstrFieldCbor(stepCbor, [0]);
   const armWitnessCbor = plutusConstrFieldCbor(stepCbor, [2]);
@@ -247,12 +335,8 @@ export const planValidationTraceOneStep = async ({
   return {
     kind: "plan",
     plan: Object.freeze({
-      stateIndex,
-      preState,
-      resolverIndex: argument.resolverIndex,
-      transitionCbor,
-      auxiliaryCbor,
-      evidenceHash: hashOneStepEvidence(transitionCbor, auxiliaryCbor),
+      ...common,
+      kind: "core" as const,
       core: Object.freeze({
         stepCbor,
         preCbor,
@@ -273,6 +357,7 @@ export const planValidationTraceOneStep = async ({
 export const planValidationTraceThread = async (
   material: ValidationTraceClaimMaterial,
   thread: SDK.CaseThread,
+  decodeRecords = false,
 ): Promise<ValidationTraceOneStepPlanning> => {
   try {
     return await planValidationTraceOneStep({
@@ -280,6 +365,7 @@ export const planValidationTraceThread = async (
       stateIndex: Number(thread.low_index),
       agreedLowHash: thread.agreed_low_hash,
       challengerHighHash: thread.challenger_high_hash,
+      decodeRecords,
     });
   } catch (cause) {
     return {

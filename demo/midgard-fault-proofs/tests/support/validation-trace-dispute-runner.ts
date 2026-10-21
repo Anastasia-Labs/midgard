@@ -22,6 +22,7 @@ import {
   terminalVerifier,
 } from "../workflow.make-adapter.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
+import { emulatorPublicationObserver } from "./install-field-carriage.js";
 import { network } from "./submit-init-emulator-shared.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { sceneCaseHistory } from "./validation-trace-dispute-case-history.js";
@@ -121,15 +122,22 @@ export const makeRunner = (
 ): Runner => {
   const { h } = scene;
   const journal = options.journal ?? new MemoryFraudProofWorkflowJournalStore();
+  const signedRecovery =
+    options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator);
   const adapter = createValidationTraceDisputeWorkflowAdapter({
     lucid: h.proverLucid,
     signer: h.proverSigner,
     deployment: options.deployment ?? runnerDeployment(scene),
     l1SlotConfig,
     removal: options.removal ?? unobservedRemoval,
-    signedRecovery:
-      options.signedRecovery ?? emulatorSignedTransactionRecovery(h.emulator),
+    signedRecovery,
     caseHistory: options.caseHistory ?? sceneCaseHistory(scene),
+    // A script-decode record transaction stands as the emulator shows it.
+    publications: {
+      ...emulatorPublicationObserver(h.proverLucid),
+      observeSignedTransaction: signedRecovery.observeSignedTransaction,
+      rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
+    },
     now: () => h.emulator.now(),
   });
   const registry = createFraudProofWorkflowRegistry({
