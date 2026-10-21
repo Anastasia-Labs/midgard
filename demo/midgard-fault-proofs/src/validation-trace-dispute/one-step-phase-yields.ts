@@ -20,14 +20,16 @@ export const PHASE_A_NATIVE_ITEM_YIELDS = Object.freeze([
 ] as const);
 
 /** The yields a script-sources semantic resolver invokes beside its step
- * (one-step-script-sources-yields.ts): the middle yield of each role the
- * runner drives (`middle_role`), and the redeemer item-step yield. */
+ * (one-step-script-sources-yields.ts): the middle yield of each role
+ * (`middle_role`), and the redeemer item-step yield. */
 export const SCRIPT_SOURCES_YIELDS = Object.freeze([
   "scriptSourcesStageTwoAdvance",
   "scriptSourcesStageThreeReplay",
   "scriptSourcesStageThreeFinish",
+  "scriptSourcesStageFourBegin",
   "scriptSourcesStageFourFinish",
   "scriptSourcesStageSixBeginPolicy",
+  "scriptSourcesStageSixFoldAsset",
   "scriptSourcesStageSixFinish",
   "scriptSourcesRedeemerDescriptor",
 ] as const);
