@@ -75,6 +75,39 @@ export const PHASE_CONTRACT_NAMES = Object.freeze({
     "validationTraceDisputeResolveInputsMembershipStepSemantic",
   resolveInputsMembershipFinalizeSemantic:
     "validationTraceDisputeResolveInputsMembershipFinalizeSemantic",
+  scriptSourcesPrepare: "validationTraceDisputeScriptSourcesPrepare",
+  scriptSourcesOutputProofBeginSemantic:
+    "validationTraceDisputeScriptSourcesOutputProofBeginSemantic",
+  scriptSourcesOutputProofFinishSemantic:
+    "validationTraceDisputeScriptSourcesOutputProofFinishSemantic",
+  scriptSourcesStageZeroBeginSemantic:
+    "validationTraceDisputeScriptSourcesStageZeroBeginSemantic",
+  scriptSourcesStageZeroFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageZeroFinishSemantic",
+  scriptSourcesStageZeroHashBlockSemantic:
+    "validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic",
+  scriptSourcesStageZeroHashAdvanceSemantic:
+    "validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic",
+  scriptSourcesStageZeroHashTerminalSemantic:
+    "validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic",
+  scriptSourcesStageNineEffectfulMatchSemantic:
+    "validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic",
+  scriptSourcesStageOneFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageOneFinishSemantic",
+  scriptSourcesStageOneRedeemerSemantic:
+    "validationTraceDisputeScriptSourcesStageOneRedeemerSemantic",
+  scriptSourcesStageElevenFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageElevenFinishSemantic",
+  scriptSourcesStageElevenSourceSemantic:
+    "validationTraceDisputeScriptSourcesStageElevenSourceSemantic",
+  scriptSourcesStageTwelveFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageTwelveFinishSemantic",
+  scriptSourcesStageEightFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageEightFinishSemantic",
+  scriptSourcesStageEightPurposeSemantic:
+    "validationTraceDisputeScriptSourcesStageEightPurposeSemantic",
+  scriptSourcesStageSevenFinishSemantic:
+    "validationTraceDisputeScriptSourcesStageSevenFinishSemantic",
 } as const);
 
 export type ValidationTracePhaseHolder = keyof typeof PHASE_CONTRACT_NAMES;
@@ -142,6 +175,44 @@ export const PHASE_RESOLUTIONS = Object.freeze({
       "resolveInputsMembershipBeginSemantic",
       "resolveInputsMembershipStepSemantic",
       "resolveInputsMembershipFinalizeSemantic",
+      undefined,
+    ],
+  },
+  // The semantic resolvers that verify the transition beside the auxiliary
+  // evidence our trace carries, or none; the rest, whose resolution invokes
+  // a yield or runs over several hops, are not yet driven.
+  scriptSources: {
+    resolverIndex: 8,
+    prepare: "scriptSourcesPrepare",
+    semantics: [
+      undefined,
+      "scriptSourcesOutputProofBeginSemantic",
+      undefined,
+      undefined,
+      "scriptSourcesOutputProofFinishSemantic",
+      "scriptSourcesStageZeroBeginSemantic",
+      "scriptSourcesStageZeroFinishSemantic",
+      "scriptSourcesStageZeroHashBlockSemantic",
+      "scriptSourcesStageZeroHashAdvanceSemantic",
+      "scriptSourcesStageZeroHashTerminalSemantic",
+      undefined,
+      undefined,
+      "scriptSourcesStageNineEffectfulMatchSemantic",
+      undefined,
+      "scriptSourcesStageOneFinishSemantic",
+      "scriptSourcesStageOneRedeemerSemantic",
+      "scriptSourcesStageElevenFinishSemantic",
+      "scriptSourcesStageElevenSourceSemantic",
+      "scriptSourcesStageTwelveFinishSemantic",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "scriptSourcesStageEightFinishSemantic",
+      "scriptSourcesStageEightPurposeSemantic",
+      undefined,
+      undefined,
+      "scriptSourcesStageSevenFinishSemantic",
       undefined,
     ],
   },

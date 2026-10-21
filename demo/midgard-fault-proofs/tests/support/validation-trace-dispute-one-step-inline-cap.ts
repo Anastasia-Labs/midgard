@@ -42,7 +42,10 @@ const headerBytes = (items: number) => (items < 24 ? 1 : items < 256 ? 2 : 3);
 
 type Installs = Pick<
   Parameters<typeof defendTwoThreads>[0],
-  "failingReferenceInputs" | "failingSigners" | "failingScript"
+  | "failingReferenceInputs"
+  | "failingSigners"
+  | "failingScript"
+  | "failingRedeemerData"
 >;
 
 /** How the field grows: an item of `itemBytes` bytes at a time, or a
@@ -201,8 +204,15 @@ export const describeInlineCap = ({
         const after = await threadPlace(scene, deployment, b.unit);
         expect(after!.utxo.txHash).toBe(before!.utxo.txHash);
         expect(after!.utxo.outputIndex).toBe(before!.utxo.outputIndex);
+        // Our other thread parts from ours at a step of another phase, which
+        // the runner may resolve; this thread's place is never spent into one.
         expect(
-          prepared.filter(({ stage }) => stage === "enter_resolution"),
+          prepared.filter(
+            ({ stage, consumes }) =>
+              stage === "enter_resolution" &&
+              consumes ===
+                `${before!.utxo.txHash}#${before!.utxo.outputIndex.toString()}`,
+          ),
         ).toStrictEqual([]);
       }, 300_000);
     },

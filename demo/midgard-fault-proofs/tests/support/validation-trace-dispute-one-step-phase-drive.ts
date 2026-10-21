@@ -69,6 +69,7 @@ export const phaseDrive = ({
   evidence,
   at,
   minFeeA,
+  failingRedeemerData,
   failingReferenceInputs,
   failingSigners,
   failingScript,
@@ -81,6 +82,8 @@ export const phaseDrive = ({
   readonly at: ValidationTracePhaseHolder;
   /** The ledger's per-byte fee while the resolution plays. */
   readonly minFeeA?: number;
+  /** The failing transaction's redeemer, as Plutus Data CBOR. */
+  readonly failingRedeemerData?: Uint8Array;
   /** How many reference inputs the failing transaction reads; by default
    * none. */
   readonly failingReferenceInputs?: number;
@@ -115,6 +118,7 @@ export const phaseDrive = ({
     ],
     installs: {
       phases: true,
+      ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
       ...(failingReferenceInputs === undefined
         ? {}
         : { failingReferenceInputs }),

@@ -31,7 +31,8 @@ export const isRecordedValidationTracePrepare = (key: string): boolean =>
   key === "signatures" ||
   key === "phaseANativeScripts" ||
   key === "phaseAScriptPreconditions" ||
-  key === "resolveInputs";
+  key === "resolveInputs" ||
+  key === "scriptSources";
 
 /** The validation-trace chain slots under `vtd` the manifest records no
  * bytes for: unrecorded semantic and prepare resolvers, and the steps. */

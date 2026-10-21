@@ -40,6 +40,17 @@ export const VALIDATION_TRACE_SIGNATURES_REQUIRED_INLINE_MAX_PREIMAGE_BYTES = 13
  * (tests/validation-trace-dispute-one-step-phase-a-native-item-inline-cap.test.ts). */
 export const VALIDATION_TRACE_PHASE_A_NATIVE_ITEM_INLINE_MAX_PREIMAGE_BYTES = 13_659;
 
+/** The same for a script-sources step over a witness script, also
+ * measured to the byte; its moves carry more beside the field than a
+ * phase-A native scripts step's do
+ * (tests/validation-trace-dispute-one-step-script-sources-witness-script-inline-cap.test.ts). */
+export const VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES = 13_544;
+
+/** The same for a script-sources step over the redeemer field, a field of
+ * redeemers of any length, so measured to the byte
+ * (tests/validation-trace-dispute-one-step-script-sources-redeemer-inline-cap.test.ts). */
+export const VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES = 13_508;
+
 /** The auxiliary evidence each semantic resolver that takes any verifies
  * the transition beside: its constructor among the auxiliary witnesses, the
  * position among its fields of the carriage that delivers the field
@@ -97,6 +108,28 @@ export const PHASE_SEMANTIC_EVIDENCE: Readonly<
   // `ScheduledLedgerMembershipWitness`, whose fields carry no field
   // preimage.
   resolveInputsMembershipBeginSemantic: { auxiliary: 5 },
+  // `LedgerOutputProofBeginWitness`.
+  scriptSourcesOutputProofBeginSemantic: { auxiliary: 29 },
+  scriptSourcesStageZeroBeginSemantic: {
+    auxiliary: 1,
+    carriage: 2,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_SCRIPT_SOURCES_WITNESS_SCRIPT_INLINE_MAX_PREIMAGE_BYTES,
+  },
+  // `ScriptSourceHashBlockWitness { chunk_proof, next_chunk_proof }`.
+  scriptSourcesStageZeroHashBlockSemantic: { auxiliary: 32 },
+  // `ScriptSourceScanWitness`.
+  scriptSourcesStageNineEffectfulMatchSemantic: { auxiliary: 9 },
+  scriptSourcesStageElevenSourceSemantic: { auxiliary: 9 },
+  // `TransactionRedeemerItemBeginWitness { carriage }`.
+  scriptSourcesStageOneRedeemerSemantic: {
+    auxiliary: 27,
+    carriage: 0,
+    inlineMaxPreimageBytes:
+      VALIDATION_TRACE_SCRIPT_SOURCES_REDEEMER_INLINE_MAX_PREIMAGE_BYTES,
+  },
+  // `ScriptPurposeScanWitness`.
+  scriptSourcesStageEightPurposeSemantic: { auxiliary: 8 },
 });
 
 /** The semantic resolvers whose evidence is derived from the step's

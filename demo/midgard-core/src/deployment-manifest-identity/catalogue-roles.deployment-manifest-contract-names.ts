@@ -591,4 +591,5 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputePhaseANativeScriptsPrepare",
   "validationTraceDisputePhaseAScriptPreconditionsPrepare",
   "validationTraceDisputeResolveInputsPrepare",
+  "validationTraceDisputeScriptSourcesPrepare",
 ] as const);
