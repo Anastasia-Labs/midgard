@@ -94,8 +94,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   },
   prepares: {
     canonicalDecode: title("validationTraceDisputeCanonicalDecodePrepare"),
-    compactBinding:
-      "fraud_proofs/validation_trace/compact_binding_v1.main.spend",
+    compactBinding: title("validationTraceDisputeCompactBindingPrepare"),
     staticLedgerRules:
       "fraud_proofs/validation_trace/static_ledger_rules_v1.main.spend",
     inputSets: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
@@ -119,8 +118,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     canonicalDecodeItem: title(
       "validationTraceDisputeCanonicalDecodeItemSemantic",
     ),
-    compactBinding:
-      "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
+    compactBinding: title("validationTraceDisputeCompactBindingSemantic"),
     staticLedgerRules:
       "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
     inputSetsEmpty:

@@ -8,8 +8,9 @@
  * a multi-hop stage's first holder, its followers,
  * one-step-context-followers.ts) and the context settle; for a
  * canonical-decode step, its resolver and semantic resolvers and the item's
- * stages
- * (one-step-canonical-decode.ts); and the award.
+ * stages (one-step-canonical-decode.ts); for a step of another phase, the
+ * phase's resolver and semantic resolvers (one-step-phase.ts); and the
+ * award.
  * Each holder is a deployment contract, found by its spending address; the
  * thread token, minted once for its defender, is what makes an output there
  * ours. */
@@ -38,6 +39,14 @@ import {
   contextItemValidators,
   type ValidationTraceContextItemHolder,
 } from "./one-step-context-item-holders.js";
+import {
+  isValidationTracePhase,
+  PHASE_CONTRACT_NAMES,
+  PHASE_HOLDERS,
+  PHASE_RESOLUTIONS,
+  phaseValidators,
+  type ValidationTracePhaseHolder,
+} from "./one-step-phase.js";
 import {
   CEK_CONTEXT_SEMANTIC_RESOLVER_INDEX,
   CEK_CORE_SEMANTIC_RESOLVER_INDEX,
@@ -87,6 +96,7 @@ export type ValidationTraceOneStepHolder =
   | ValidationTraceContextFollowerHolder
   | "contextSettle"
   | ValidationTraceCanonicalDecodeHolder
+  | ValidationTracePhaseHolder
   | "award";
 
 export type ValidationTraceOneStepContract = Readonly<{
@@ -135,6 +145,7 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   ...CONTEXT_FOLLOWER_CONTRACT_NAMES,
   contextSettle: "validationTraceDisputeCekContextSettle",
   ...CANONICAL_DECODE_CONTRACT_NAMES,
+  ...PHASE_CONTRACT_NAMES,
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
 >);
@@ -208,6 +219,15 @@ export const validationTraceOneStepDrives = (
     contexts: deployment.references.oneStep?.cekContext !== undefined,
     canonicalDecode:
       deployment.references.oneStep?.canonicalDecode !== undefined,
+    phases: Object.entries(PHASE_RESOLUTIONS)
+      .filter(([, { prepare, semantics }]) =>
+        [prepare, ...semantics].every(
+          (holder) =>
+            deployment.references.oneStep?.phases?.[holder] !== undefined,
+        ),
+      )
+      .map(([phase]) => phase)
+      .filter(isValidationTracePhase),
   });
 
 /**
@@ -239,6 +259,8 @@ export const validationTraceOneStepContracts = (
   const followers = contextFollowerValidators(stages);
   const canonicalDecode = references.canonicalDecode;
   const decoders = canonicalDecodeValidators(chain);
+  const phases = references.phases ?? {};
+  const resolvers = phaseValidators(chain);
   return Object.freeze([
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
@@ -285,6 +307,12 @@ export const validationTraceOneStepContracts = (
       : CANONICAL_DECODE_HOLDERS.map((holder) =>
           contract(holder, decoders[holder], canonicalDecode[holder]),
         )),
+    ...PHASE_HOLDERS.flatMap((holder) => {
+      const reference = phases[holder];
+      return reference === undefined
+        ? []
+        : [contract(holder, resolvers[holder], reference)];
+    }),
     contract("award", chain.award, undefined),
   ]);
 };

@@ -39,6 +39,7 @@ import {
   publishCanonicalDecodeReferences,
   publishContextReferences,
   publishOneStepReferences,
+  publishPhaseReferences,
   publishSelectionReferences,
 } from "./validation-trace-dispute-one-step.js";
 import {
@@ -108,6 +109,7 @@ export const defendTwoThreads = async ({
   selections = false,
   contexts = false,
   canonicalDecode = false,
+  phases = false,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -118,6 +120,9 @@ export const defendTwoThreads = async ({
   readonly contexts?: boolean;
   /** Whether the deployment drives canonical-decode steps. */
   readonly canonicalDecode?: boolean;
+  /** Whether the deployment drives the steps of the phases one-step-phase.ts
+   * names. */
+  readonly phases?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -140,6 +145,7 @@ export const defendTwoThreads = async ({
             canonicalDecode: await publishCanonicalDecodeReferences(contracts),
           }
         : {}),
+      ...(phases ? { phases: await publishPhaseReferences(contracts) } : {}),
     };
   });
   const removal =

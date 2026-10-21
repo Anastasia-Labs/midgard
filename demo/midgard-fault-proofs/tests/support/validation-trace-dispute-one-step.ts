@@ -2,8 +2,8 @@
  * holders a thread of ours visits past the game, published once, and the
  * deployment the runner drives the resolution against; with CEK script
  * selections, the selection's yields under their roles' authentication
- * tokens and the script-decode deployment whose records it reads; and the
- * canonical-decode holders. */
+ * tokens and the script-decode deployment whose records it reads; the
+ * canonical-decode holders; and the phase holders. */
 import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
@@ -31,6 +31,11 @@ import {
   VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
   type ValidationTraceContextStageHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
+import {
+  PHASE_HOLDERS,
+  phaseValidators,
+  type ValidationTracePhaseHolder,
+} from "../../src/validation-trace-dispute/one-step-phase.js";
 import { CEK_RESOLVER_INDEX } from "../../src/validation-trace-dispute/one-step-plan.js";
 import type {
   ValidationTraceDisputeDeployment,
@@ -84,6 +89,7 @@ export const oneStepScripts = (
     ...contextFollowerValidators(context),
     contextSettle: context.settle,
     ...canonicalDecodeValidators(chain),
+    ...phaseValidators(chain),
   });
 };
 
@@ -231,6 +237,23 @@ export const publishCanonicalDecodeReferences = async (
   return Object.freeze(
     references as Record<ValidationTraceCanonicalDecodeHolder, UTxO>,
   );
+};
+
+/** Publishes the reference scripts of the phase holders. */
+export const publishPhaseReferences = async (
+  scene: SceneContracts,
+): Promise<Readonly<Record<ValidationTracePhaseHolder, UTxO>>> => {
+  const scripts = oneStepScripts(scene);
+  const references: Partial<Record<ValidationTracePhaseHolder, UTxO>> = {};
+  for (const holder of PHASE_HOLDERS)
+    references[holder] = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: scripts[holder].spendingScript,
+        label: holder,
+      })
+    ).utxo;
+  return Object.freeze(references as Record<ValidationTracePhaseHolder, UTxO>);
 };
 
 /**

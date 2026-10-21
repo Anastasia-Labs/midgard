@@ -15,6 +15,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-one-step-canonical-decode-1.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-2.test.ts",
   "./tests/validation-trace-dispute-one-step-canonical-decode-7.test.ts",
+  "./tests/validation-trace-dispute-one-step-compact-binding-9.test.ts",
   "./tests/validation-trace-dispute-one-step-context-assemble.test.ts",
   "./tests/validation-trace-dispute-one-step-context-finalize.test.ts",
   "./tests/validation-trace-dispute-one-step-context-item-107.test.ts",

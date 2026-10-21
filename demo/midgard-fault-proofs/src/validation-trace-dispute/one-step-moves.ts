@@ -48,6 +48,7 @@ import {
   validationTraceOneStepHolder,
   validationTraceOneStepHolderAt,
 } from "./one-step-holders.js";
+import { PHASE_CHALLENGER_SUCCESSOR_HASH } from "./one-step-phase.js";
 import {
   planValidationTraceOneStep,
   planValidationTraceThread,
@@ -174,6 +175,7 @@ const CHALLENGER_SUCCESSOR_HASH = {
   contextRedeemerSelectFinish: [1, 0, 0, 0, 0, 0, 1, 3],
   contextFinalizeSpend: [1, 0, 0, 0, 0, 1, 3],
   ...CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH,
+  ...PHASE_CHALLENGER_SUCCESSOR_HASH,
 } as const;
 
 /** Where the pending item step keeps our successor's hash. */

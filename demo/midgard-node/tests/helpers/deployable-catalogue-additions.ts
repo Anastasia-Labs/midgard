@@ -187,3 +187,24 @@ export const cekResolverContracts = new Set<string>(
 export const cekResolverRoles = new Set<string>(
   CEK_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
+
+// The validation phases' one-step resolvers and their semantic resolvers,
+// added phase by phase: a validation-trace thread visits them between the
+// boundary and the award.
+const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
+  {
+    contract: "validationTraceDisputeCompactBindingPrepare",
+    role: "V1 validation-trace compact-binding prepare",
+  },
+  {
+    contract: "validationTraceDisputeCompactBindingSemantic",
+    role: "V1 validation-trace compact-binding semantic",
+  },
+] as const;
+
+export const phaseResolverContracts = new Set<string>(
+  PHASE_RESOLVER_CATALOGUE_ADDITIONS.map(({ contract }) => contract),
+);
+export const phaseResolverRoles = new Set<string>(
+  PHASE_RESOLVER_CATALOGUE_ADDITIONS.map(({ role }) => role),
+);
