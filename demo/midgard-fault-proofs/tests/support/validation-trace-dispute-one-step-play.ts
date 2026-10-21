@@ -87,7 +87,7 @@ export const playThreads = async ({
   limit = 400,
 }: {
   readonly scene: Scene;
-  readonly runner: Runner;
+  readonly runner: Pick<Runner, "runOnce">;
   readonly sides: readonly Side[];
   readonly until: (result: FraudProofWorkflowRunResult) => Promise<boolean>;
   readonly limit?: number;
