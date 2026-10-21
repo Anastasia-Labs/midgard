@@ -34,7 +34,10 @@
  * refusal passes over that citation at once, any other failure after
  * `MAX_STRIKE_ATTEMPTS_PER_CITATION` attempts, and the next plan cites the
  * next citable event (`recordCitationFailure`). The record is per scheduler
- * UTxO and bounded, and each pass-over is logged and recorded by name.
+ * UTxO and bounded, and each pass-over is logged and recorded by name. A
+ * takeover that fails other than on a refusal is retried on a bounded
+ * backoff, and readiness names the failures once they persist
+ * (`operator-watchdog.takeover-retry.ts`).
  */
 import { COMMIT_TTL_FUTURE_BUFFER_MS } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -45,7 +48,6 @@ import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-
 import { l1SlotNow } from "../l1-heads.js";
 import {
   publishedDirectoryOf,
-  publishedNeglectedUserEventProgram,
   publishedRetiredAnchorProgram,
 } from "../l1-operator-set/index.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
@@ -82,6 +84,11 @@ import {
   makeManifestStrikeGate,
   type ManifestGateDecision,
 } from "./operator-watchdog.manifest-gate.js";
+import {
+  citableNeglectedEventProgram,
+  clearTakeoverFailures,
+  recordTakeoverFailure,
+} from "./operator-watchdog.takeover-retry.js";
 import {
   type CitationFailures,
   citationFailuresAt,
@@ -206,10 +213,10 @@ export const makeOperatorWatchdogTick = <R = never>(
     const prepared = yield* Effect.either(
       Effect.all([
         resolveOwnOperatorKeyHashProgram(lucid.operatorMainAddress),
-        publishedNeglectedUserEventProgram(
+        citableNeglectedEventProgram(
           published,
           directory.snapshot.stateQueueTail.endTime,
-          citationFailures.excluded,
+          citationFailures,
         ).pipe(
           Effect.flatMap((neglectedEvent) =>
             planTakeoverFrom(lucid.api, directory.snapshot, intentPlan, {
@@ -258,6 +265,9 @@ export const makeOperatorWatchdogTick = <R = never>(
       commitTtlMs: COMMIT_TTL_FUTURE_BUFFER_MS,
     });
 
+    // No takeover is due: the failures in a row are over.
+    if (decision.action === "idle" || decision.action === "wait")
+      yield* clearTakeoverFailures(globals);
     switch (decision.action) {
       case "idle": {
         const reason =
@@ -381,6 +391,7 @@ export const makeOperatorWatchdogTick = <R = never>(
           const error = result.left;
           let reason: string = "submission_failed";
           let citation = "";
+          const refused = isScriptRefusal(error);
           const unfunded = unfundedSkipReason(error);
           if (unfunded !== undefined) {
             reason = unfunded;
@@ -393,7 +404,7 @@ export const makeOperatorWatchdogTick = <R = never>(
             const recorded = recordCitationFailure(citationFailures, {
               schedulerRef,
               citationId,
-              refused: isScriptRefusal(error),
+              refused,
             });
             citationFailures = recorded.failures;
             reason = recorded.reason;
@@ -403,8 +414,16 @@ export const makeOperatorWatchdogTick = <R = never>(
           yield* Effect.logWarning(
             `🐕 Operator watchdog could not ${decision.action.replace("_", "-")} ${decision.skippedOperator} (${reason}${citation}): ${errorMessage(error)}`,
           );
-          return;
+          // A refusal cites the next event at once; anything else, an
+          // unfunded wallet too, is retried on the backoff.
+          if (refused) return;
+          const retry = yield* recordTakeoverFailure(globals, {
+            nowMs,
+            detail: `${reason}${citation}: ${errorMessage(error)}`,
+          });
+          return yield* defer("takeover_retry_backoff", retry.retryAtMs);
         }
+        yield* clearTakeoverFailures(globals);
         lastSpentSchedulerRef = schedulerRef;
         recordOperatorWatchdogTakeover({
           txHash: result.right.txHash,

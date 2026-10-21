@@ -269,12 +269,16 @@ export type CitationFailures = Readonly<{
   attempts: ReadonlyMap<string, number>;
   /** Passed over, oldest first. */
   excluded: ReadonlySet<string>;
+  /** The passed-over citations a script refused; the rest ran out of
+   * attempts and may be cited again when nothing else is citable. */
+  refused: ReadonlySet<string>;
 }>;
 
 export const emptyCitationFailures: CitationFailures = {
   schedulerRef: null,
   attempts: new Map(),
   excluded: new Set(),
+  refused: new Set(),
 };
 
 /** The record for `schedulerRef`, emptied when the scheduler moved on. */
@@ -296,7 +300,9 @@ export type CitationFailureReason =
  * the citation at once; any other failure does after
  * `MAX_STRIKE_ATTEMPTS_PER_CITATION` attempts. The next plan then cites the
  * next citable event, so one bad candidate never wedges the watchdog. At most
- * `MAX_EXCLUDED_CITATIONS` are remembered; the oldest gives way.
+ * `MAX_EXCLUDED_CITATIONS` are remembered; the oldest gives way. A citation
+ * passed over for its attempts alone is remembered apart from a refused one,
+ * so it can be cited again when no other event is citable.
  */
 export const recordCitationFailure = (
   failures: CitationFailures,
@@ -314,14 +320,19 @@ export const recordCitationFailure = (
   if (passOver) nextAttempts.delete(input.citationId);
   else nextAttempts.set(input.citationId, attempts);
   const excluded = new Set(current.excluded);
+  const refused = new Set(current.refused);
   if (passOver) {
     excluded.delete(input.citationId);
     excluded.add(input.citationId);
-    while (excluded.size > MAX_EXCLUDED_CITATIONS)
-      excluded.delete(excluded.values().next().value!);
+    if (input.refused) refused.add(input.citationId);
+    while (excluded.size > MAX_EXCLUDED_CITATIONS) {
+      const oldest = excluded.values().next().value!;
+      excluded.delete(oldest);
+      refused.delete(oldest);
+    }
   }
   return {
-    failures: { ...current, attempts: nextAttempts, excluded },
+    failures: { ...current, attempts: nextAttempts, excluded, refused },
     reason: !passOver
       ? "submission_failed"
       : input.refused

@@ -98,6 +98,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/operator-watchdog-force-retire-emulator.test.ts
  *   tests/operator-watchdog-manifest-gate-idle.test.ts
  *   tests/operator-watchdog-slow-tick-emulator.test.ts
+ *   tests/operator-watchdog-strike-retry-emulator.test.ts
  *   tests/published-initialization-recovery.test.ts
  *   tests/reference-publication-chain.test.ts
  *   tests/reference-publication-submit-seam.test.ts
