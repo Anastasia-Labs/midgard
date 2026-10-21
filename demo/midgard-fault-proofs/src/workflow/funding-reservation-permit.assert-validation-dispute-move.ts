@@ -35,7 +35,6 @@ import {
   type ValidationDisputeMoveAuthority,
   validationDisputeMoveSuccessorAddresses,
 } from "./funding-reservation-permit.validation-dispute-move-authority.js";
-import { assertFundsValidationDisputeWalletMove } from "./funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
@@ -274,20 +273,8 @@ export const validationDisputeMoveFunding = async ({
           `validation dispute move tops up protocol state: topup=${protocolTopup.toString()}`,
         );
     },
-    /** A move our wallet pays finds the wallet-move reserve held for it;
-     * it need keep none for the next, which is checked in its turn. */
-    keepWalletMoveReserve: (walletSpent: bigint): void =>
-      assertFundsValidationDisputeWalletMove({
-        state,
-        reserveLovelace: moves.walletMoveReserveLovelace,
-        walletSpent,
-        alarm: {
-          actionId: action.actionId,
-          caseUnit: terms.casePolicyId + caseId,
-          threadOutRef: authority.threadOutRef,
-          deadlineMs: authority.deadlineMs,
-        },
-      }),
+    /** A move draws on the wallet-move reserve; it keeps none. */
+    keepWalletMoveReserve: (_walletSpent: bigint): void => undefined,
     /** Exactly the outputs and mint the move's validators fix. */
     assertComplete: (): void => {
       const expected: readonly Kept[] = close

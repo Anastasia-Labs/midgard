@@ -49,10 +49,10 @@ export const assertKeepsValidationDisputeWalletMoveReserve = ({
 
 /**
  * A thread move of a validation dispute case that our wallet must pay, and
- * cannot now: the operator's alarm, naming the case, the thread and the
- * deadline by which the move must land. Like any funding shortfall, it
- * releases the idle reservation and the run tries again at its next
- * observation, so a top-up lands the move.
+ * that does not build for want of our wallet's ada: the operator's alarm,
+ * naming the case, the thread and the deadline by which the move must land.
+ * Like any funding shortfall, it releases the idle reservation and the run
+ * tries again at its next observation, so a top-up lands the move.
  */
 export class ValidationDisputeWalletMoveUnfundedError extends WorkflowFundingShortfallError {
   constructor(
@@ -74,35 +74,3 @@ export class ValidationDisputeWalletMoveUnfundedError extends WorkflowFundingSho
     this.message = `${VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED}: the prover wallet cannot fund ${input.actionId} on thread ${input.threadOutRef} of case ${input.caseUnit}, which must land before ${deadline}; top up the wallet's plain-ADA coins: ${this.message}`;
   }
 }
-
-/**
- * At each thread move our wallet pays (`walletSpent` above zero), the
- * reservation holds `reserveLovelace` of plain-ADA funding for it, the fee of
- * the largest move the protocol admits; a move short of it is refused with
- * the operator's alarm before any byte reaches the ledger.
- */
-export const assertFundsValidationDisputeWalletMove = ({
-  state,
-  reserveLovelace,
-  walletSpent,
-  alarm,
-}: {
-  readonly state: PermitState;
-  readonly reserveLovelace: string | undefined;
-  readonly walletSpent: bigint;
-  readonly alarm: Omit<
-    ConstructorParameters<typeof ValidationDisputeWalletMoveUnfundedError>[0],
-    "cause"
-  >;
-}): void => {
-  if (walletSpent <= 0n) return;
-  const reserve = BigInt(reserveLovelace ?? 0n);
-  const plain = reservedPlainLovelace(state);
-  if (plain < reserve)
-    throw new ValidationDisputeWalletMoveUnfundedError({
-      ...alarm,
-      cause: new Error(
-        `the reservation holds less than the wallet-move reserve: held=${plain.toString()} reserve=${reserve.toString()}`,
-      ),
-    });
-};

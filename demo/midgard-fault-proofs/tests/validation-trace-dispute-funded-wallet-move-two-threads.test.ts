@@ -5,13 +5,13 @@
  * wallet pays each of them whole. Two operators defend our case, each on its
  * own thread, and reveal, the second's clock on us starting first.
  *
- * The funding permit checks the wallet-move reserve at each such move, not
- * once for the case: a wallet funding both of our reveals lands both, the
- * one whose clock ends first first. Both defenders then go silent. When other
- * work drains the wallet between the two timeouts, the second is held under
- * the operator's alarm, naming the case, the thread and the deadline, before
- * any byte reaches the ledger; it is retried at each observation and lands
- * once the wallet is topped up, and both threads go on to close.
+ * A wallet too short to pay our first reveal holds it under the operator's
+ * alarm, naming the case, the thread and the end of our clock on it, before
+ * any byte reaches the ledger; topped up to fund both reveals, it lands both,
+ * the one whose clock ends first first. Both defenders then go silent. When
+ * other work leaves the wallet less than the wallet-move reserve between the
+ * two timeouts, but enough for the second, the second lands with no alarm,
+ * and both threads go on to close.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -65,6 +65,9 @@ vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
   };
 });
 
+/** Less than any thread move's fee at the raised fees. */
+const SHORT = 1n * ADA;
+
 let journey: FundedMoves & Readonly<{ second: SecondDefense }>;
 let restoreFees: (() => void) | undefined;
 
@@ -93,10 +96,14 @@ const landedOf = async (kind: string) => {
   return hashes.filter((_, index) => confirmed[index]);
 };
 
-/** Turns until `done`, or `limit` turns. */
+/** Turns until `done`, or `limit` turns; each turn's reason. */
 const turnWhile = async (done: () => Promise<boolean>, limit: number) => {
-  for (let turn = 0; turn < limit && !(await done()); turn += 1)
-    await journey.dispute.turn(journey.capture);
+  const reasons: string[] = [];
+  for (let turn = 0; turn < limit && !(await done()); turn += 1) {
+    const result = await journey.dispute.turn(journey.capture);
+    if ("reason" in result) reasons.push(result.reason);
+  }
+  return reasons;
 };
 
 /** Expects our wallet paid the whole fee of each of `hashes`, within
@@ -132,7 +139,6 @@ const liveThreads = async () =>
  * Turns twice into the operator's alarm over the `stage` move of `thread`,
  * which must land by `deadline`: a pending run its next observation retries,
  * nothing reaching the ledger, every input released and the thread unmoved.
- * Returns each alarm's reason.
  */
 const expectUnfundedAlarms = async ({
   stage,
@@ -142,12 +148,11 @@ const expectUnfundedAlarms = async ({
   readonly stage: string;
   readonly thread: UTxO;
   readonly deadline: number;
-}): Promise<readonly string[]> => {
+}): Promise<void> => {
   const { scene, dispute, capture, caseOrigin } = journey;
   const caseUnit = Object.keys(caseOrigin.assets).find((unit) =>
     unit.startsWith(scene.chain.case.policyId),
   )!;
-  const reasons: string[] = [];
   const watch = watchLedger(scene.h.emulator);
   try {
     for (let alarm = 0; alarm < 2; alarm += 1) {
@@ -176,7 +181,6 @@ const expectUnfundedAlarms = async ({
       // The refused attempt released every input it held.
       for (const reservation of await dispute.readReservations())
         expect(reservation).toMatchObject({ activeInputs: [] });
-      reasons.push(result.reason);
     }
     expect(watch.ours()).toHaveLength(0);
   } finally {
@@ -184,7 +188,6 @@ const expectUnfundedAlarms = async ({
   }
   const unit = units().find((held) => thread.assets[held] === 1n)!;
   expect(outRefOf((await liveThread(scene, unit))!)).toBe(outRefOf(thread));
-  return reasons;
 };
 
 /** Our case's expiry. */
@@ -227,12 +230,11 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
   });
 
   it(
-    "holds our first reveal under the operator's alarm, naming the end of our clock on its thread, while the wallet holds less than the reserve a move it pays must find",
+    "holds our first reveal under the operator's alarm, naming the end of our clock on its thread, while the wallet cannot fund it",
     async () => {
-      const reserve = await journey.dispute.walletMoveReserve();
-      await drainProver(journey.scene.h as never, reserve / 2n);
+      await drainProver(journey.scene.h as never, SHORT);
       const thread = (await liveThreads()).get(journey.second.unit)!;
-      const reasons = await expectUnfundedAlarms({
+      await expectUnfundedAlarms({
         stage: "reveal",
         thread,
         // A reveal is on our clock, which ends before the case expires.
@@ -241,16 +243,12 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
           validationTraceChallengerDeadlineMs(threadOf(thread)),
         ),
       });
-      for (const reason of reasons)
-        expect(reason).toContain(
-          `held=${(reserve / 2n).toString()} reserve=${reserve.toString()}`,
-        );
     },
     TIMEOUT,
   );
 
   it(
-    "lands both of our reveals from a wallet funding both, each paid whole by our wallet, the one whose clock ends first first",
+    "lands both of our reveals once the wallet is topped up to fund both, each paid whole by our wallet, the one whose clock ends first first",
     async () => {
       const { scene, dispute, capture } = journey;
       const reserve = await dispute.walletMoveReserve();
@@ -282,7 +280,7 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
   );
 
   it(
-    "holds the second timeout under the operator's alarm when other work drains the wallet after the first, before any byte reaches the ledger, and lands it once the wallet is topped up; both threads then close",
+    "lands the second timeout with no alarm when other work leaves the wallet less than the wallet-move reserve after the first, but enough for the move; both threads then close",
     async () => {
       const { scene, dispute } = journey;
       const silent = await liveThreads();
@@ -305,26 +303,18 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
       expect(await landed(firstHash)).toBe(true);
       await expectWalletPaid([firstHash], silent, reserve);
       // Other work leaves the wallet more than a timeout's fee and its
-      // change, and less than the reserve a move our wallet pays must find.
+      // change, and less than the reserve.
       const fee = (await landedMoveFee(scene, firstHash)).paid;
       const left = fee + (reserve - fee) / 2n;
       await drainProver(scene.h as never, left);
-      const remaining = units().find((unit) => unit !== unitOf(first!))!;
-      // A timeout is not on our clock: it must land before the case expires.
-      const reasons = await expectUnfundedAlarms({
-        stage: "timeout",
-        thread: silent.get(remaining)!,
-        deadline: caseExpiry(),
-      });
-      // The permit's own check at this move, not the builder's.
+      const reasons = await turnWhile(
+        async () => (await landedOf("timeout")).length >= 2,
+        4,
+      );
       for (const reason of reasons)
-        expect(reason).toContain(
-          `held=${left.toString()} reserve=${reserve.toString()}`,
-        );
-      await topUpProver(scene.h as never, 100n * ADA);
-      await turnWhile(async () => (await landedOf("timeout")).length >= 2, 4);
+        expect(reason).not.toContain(VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED);
       const timeouts = await landedOf("timeout");
-      expect(timeouts).toHaveLength(2);
+      expect(timeouts, reasons.join("\n")).toHaveLength(2);
       await expectWalletPaid(timeouts, silent, reserve);
       // Nothing wedged: both threads close into our case.
       await turnWhile(

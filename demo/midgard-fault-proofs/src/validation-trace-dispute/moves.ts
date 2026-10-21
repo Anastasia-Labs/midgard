@@ -35,7 +35,6 @@ import {
   ours,
   type StageInput,
 } from "./transactions.js";
-import { validationTraceMoveDeadlineMs } from "./wallet-move-unfunded.js";
 
 export type ValidationTraceMoveInput = StageInput &
   Readonly<{
@@ -45,8 +44,6 @@ export type ValidationTraceMoveInput = StageInput &
     caseUnit: string;
     /** The pending claim our Open left, which the authority binds. */
     caseOpenerOutRef: string;
-    /** When our case expires, which bounds when the move must land. */
-    caseExpiresAtMs?: number;
   }>;
 
 /** The thread at `threadOutRef`, a thread of our case at `at`, or changed. */
@@ -122,11 +119,6 @@ export const captureMove = async ({
     thread: thread.utxo,
     defenderVkh,
     ...(caseInput === undefined ? {} : { caseInput }),
-    deadlineMs: validationTraceMoveDeadlineMs({
-      stage,
-      caseExpiresAtMs: input.caseExpiresAtMs,
-      thread: thread.utxo,
-    }),
   });
   const { references } = input.deployment;
   const transaction = captured(signed, [

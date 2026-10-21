@@ -121,7 +121,8 @@ export const VALIDATION_DISPUTE_WALLET_MOVE = Object.freeze({
  * key. The builder selects our wallet's coins with the move's scripts
  * budgeted at that limit before it evaluates them, so a reserve priced at
  * the move's own execution units would not let it select. The funding
- * permit checks it at every move our wallet pays.
+ * permit keeps it when the case opens; a later move our wallet cannot fund
+ * does not build, and raises the operator's alarm.
  */
 export const validationDisputeWalletMoveReserve = ({
   parameters,

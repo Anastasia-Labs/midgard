@@ -79,9 +79,6 @@ export type ValidationDisputeMoveAuthority = Readonly<{
   transactionHash: string;
   transactionBodySha256: string;
   signedTransactionCborHex: string;
-  /** When the move must land by, for the operator's alarm if our wallet
-   * cannot fund it; it authorizes nothing. */
-  deadlineMs?: number;
 }>;
 
 export type Policy = ReturnType<typeof readWorkflowRuntimeFundingPolicy>;
@@ -109,7 +106,6 @@ export const grantValidationDisputeMoveAuthority = ({
   defenderVkh,
   thread,
   caseInput,
-  deadlineMs,
 }: {
   readonly signed: TxSigned;
   readonly kind: ValidationDisputeMoveKind;
@@ -119,7 +115,6 @@ export const grantValidationDisputeMoveAuthority = ({
   readonly defenderVkh: string;
   readonly thread: UTxO;
   readonly caseInput?: UTxO;
-  readonly deadlineMs?: number | undefined;
 }): void => {
   const transaction = signed.toTransaction();
   authorities.set(
@@ -139,7 +134,6 @@ export const grantValidationDisputeMoveAuthority = ({
       transactionHash: CML.hash_transaction(transaction.body()).to_hex(),
       transactionBodySha256: bodySha256(signed),
       signedTransactionCborHex: transaction.to_cbor_hex(),
-      ...(deadlineMs === undefined ? {} : { deadlineMs }),
     }),
   );
 };

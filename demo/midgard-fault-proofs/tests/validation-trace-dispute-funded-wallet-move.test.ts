@@ -1,18 +1,17 @@
 /** The validation-trace dispute's wallet-paid thread moves under the
  * watcher's prover funding, its terms following the emulator's live fees.
  * A defender opens a thread on our case and reveals, the watcher reveals
- * from a wallet holding less than the wallet-move reserve, its thread paying
- * the fee, and the defender goes silent. Fees then rise until the timeout and the
- * thread's close are priced over the per-move cap, so our plain-Ada wallet
- * pays each of them whole. A wallet holding less than the timeout needs
- * holds it under the operator's alarm, naming the case, the thread and the
- * deadline, before any byte reaches the ledger, releasing what it reserved,
- * and keeps retrying at each observation without wedging. A
- * wallet holding exactly the terms' wallet-move reserve lands the timeout,
- * its successor keeping all of the thread's lovelace; refilled to that
- * reserve, it lands the thread's close, which pays the thread's rest less
- * the receipt to our funding key, and the case closes Convicted.
- *
+ * from a short wallet, its thread paying the fee, and the defender goes
+ * silent. Fees then rise until the timeout and the thread's close are priced
+ * over the per-move cap, so our plain-Ada wallet pays each of them whole. A
+ * wallet holding less than the timeout needs holds it under the operator's
+ * alarm, naming the case, the thread and the deadline, before any byte
+ * reaches the ledger, releasing what it reserved, and keeps retrying at each
+ * observation without wedging. Topped up to less than the wallet-move
+ * reserve but enough for the move, it lands the timeout with no alarm, its
+ * successor keeping all of the thread's lovelace; refilled to that reserve,
+ * it lands the thread's close, which pays the thread's rest less the receipt
+ * to our funding key, and the case closes Convicted. *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
@@ -79,10 +78,8 @@ let journey: FundedMoves;
 let restoreFees: () => void;
 /** The silent defender's thread, before our timeout. */
 let silent: UTxO;
-/** The wallet-move reserve at the fees the reservation was admitted at. */
-let admittedReserve: bigint;
 
-/** The `kind` moves that landed; a move the permit refused was signed only. */
+/** The `kind` moves that landed. */
 const hashesOf = (kind: string) =>
   journey.moves
     .filter(({ authority }) => authority.kind === kind)
@@ -112,7 +109,6 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       await liveFundedThread(journey),
       trace,
     );
-    admittedReserve = BigInt(await journey.dispute.walletMoveReserve());
   }, TIMEOUT);
 
   afterAll(async () => {
@@ -121,12 +117,11 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
   });
 
   it(
-    "lands a reveal its thread pays from a wallet holding less than the wallet-move reserve: only a move our wallet pays needs it",
+    "lands a reveal its thread pays from a wallet too short to pay any move",
     async () => {
       const { scene, dispute, capture } = journey;
       const thread = await liveFundedThread(journey);
       await drainProver(scene.h as never, SHORT);
-      expect(SHORT).toBeLessThan(BigInt(await dispute.walletMoveReserve()));
       const { result, history } = await turnUntil(
         dispute,
         VALIDATION_TRACE_THREAD_AWAITING,
@@ -210,57 +205,31 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
   );
 
   it(
-    "prices the reserve at the fees at move time: a wallet holding more than the reserve its reservation was admitted at, short of today's, holds the timeout under the alarm naming today's reserve",
+    "lands the timeout, priced over the cap, once the wallet is topped up to less than the wallet-move reserve but enough for the move, with no alarm, our wallet paying its whole fee and its successor keeping all of the thread's lovelace",
     async () => {
       const { scene, dispute, capture } = journey;
       const reserve = BigInt(await dispute.walletMoveReserve());
-      // More than the reservation's admitted reserve, and enough for the
-      // builder to select the move's coins; less than today's reserve.
+      // Enough for the builder to select the move's coins; less than the
+      // reserve.
       const held = reserve / 2n;
-      expect(held).toBeGreaterThan(admittedReserve);
       await topUpProver(scene.h as never, 100n * ADA);
       await drainProver(scene.h as never, held);
-      const watch = watchLedger(scene.h.emulator);
-      try {
-        const { result, history } = await turnUntil(
-          dispute,
-          VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
-          { wrap: capture },
-        );
-        expect(result.kind, history.join("\n")).toBe("pending");
-        if (result.kind !== "pending") return;
-        expect(result.reason).toContain(
-          `held=${held.toString()} reserve=${reserve.toString()}`,
-        );
-        expect(watch.ours()).toHaveLength(0);
-      } finally {
-        watch.restore();
-      }
-      expect(hashesOf("timeout")).toStrictEqual([]);
-      expect(outRefOf(await liveFundedThread(journey))).toBe(outRefOf(silent));
-    },
-    TIMEOUT,
-  );
-
-  it(
-    "lands the timeout from a wallet holding exactly the terms' wallet-move reserve, our wallet paying its whole fee and its successor keeping all of the thread's lovelace",
-    async () => {
-      const { scene, dispute, capture } = journey;
-      const reserve = await dispute.walletMoveReserve();
-      await topUpProver(scene.h as never, 100n * ADA);
-      await drainProver(scene.h as never, reserve);
+      const reasons: string[] = [];
       for (let turns = 0; turns < 6; turns += 1) {
         if (hashesOf("timeout").length > 0) break;
-        await dispute.turn(capture);
+        const result = await dispute.turn(capture);
+        if ("reason" in result) reasons.push(result.reason);
       }
+      for (const reason of reasons)
+        expect(reason).not.toContain(VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED);
       const [timeout, ...again] = hashesOf("timeout");
-      expect(timeout).toBeDefined();
+      expect(timeout, reasons.join("\n")).toBeDefined();
       expect(again).toStrictEqual([]);
       const fee = await landedMoveFee(scene, timeout!);
       expect(fee.paid).toBeGreaterThan(VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE);
       expect(fee.paid).toBeGreaterThanOrEqual(fee.ledger);
       expect(fee.paid).toBeGreaterThan(SHORT);
-      expect(fee.paid).toBeLessThanOrEqual(reserve);
+      expect(fee.paid).toBeLessThanOrEqual(held);
       expect(recordedOutput(scene, `${timeout!}#0`).assets.lovelace).toBe(
         silent.assets.lovelace,
       );

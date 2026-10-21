@@ -90,16 +90,11 @@ export const captureValidationTraceThreadMove = async ({
   ...input
 }: ThreadMove &
   Readonly<{ caseDatum: SDK.Case }>): Promise<CapturedValidationTraceStage> => {
-  const caseExpiresAtMs = validationTraceCaseExpiryMs(caseDatum);
-  const move = { ...input.move, caseExpiresAtMs };
+  const { move } = input;
   try {
-    return await capture({ ...input, move });
+    return await capture(input);
   } catch (cause) {
-    if (
-      !isWorkflowFundingShortfall(cause) ||
-      cause instanceof ValidationDisputeWalletMoveUnfundedError
-    )
-      throw cause;
+    if (!isWorkflowFundingShortfall(cause)) throw cause;
     const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(
       () => undefined,
     );
@@ -112,7 +107,7 @@ export const captureValidationTraceThreadMove = async ({
       threadOutRef: move.threadOutRef,
       deadlineMs: validationTraceMoveDeadlineMs({
         stage: input.stage,
-        caseExpiresAtMs,
+        caseExpiresAtMs: validationTraceCaseExpiryMs(caseDatum),
         thread,
       }),
       cause,
