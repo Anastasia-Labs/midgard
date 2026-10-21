@@ -8,8 +8,8 @@ import {
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
   buildDeterministicValidationMachineTrace,
+  buildTraceAtStepCountV1,
   type DeterministicValidationMachineTrace,
   openValidationTraceV1,
 } from "@al-ft/midgard-validation";
@@ -25,7 +25,7 @@ import {
   membershipProof,
   sourceEventOrThrow,
 } from "../transition-trace/witnesses.build-source-membership-proof.js";
-import { type CommittedL2Event, plutusFailureReplayInput } from "./replay.js";
+import { type CommittedL2Event, plutusReplayInput } from "./replay.js";
 import {
   selectedScriptItemReader,
   type ValidationTraceSelectionSource,
@@ -133,11 +133,12 @@ export const buildValidationTraceClaimMaterial = async ({
   readonly ledger: CheckedLedger;
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceClaimMaterial> => {
-  const input = plutusFailureReplayInput({
+  const input = plutusReplayInput({
     header: evidence.header,
     event,
     ledger,
     l1SlotConfig,
+    verdict: { verdict: "rejected" },
   });
   const leaves = await Effect.runPromise(
     openValidationTraceV1(input, { revealStates: [0] }),
@@ -153,7 +154,7 @@ export const buildValidationTraceClaimMaterial = async ({
     throw new Error(
       "validation claim: the honest trace is not Terminal Rejected",
     );
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
+  const trace = buildTraceAtStepCountV1(leaves, leaves.stepCount);
   let full: Promise<DeterministicValidationMachineTrace> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(

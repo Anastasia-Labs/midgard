@@ -1,8 +1,8 @@
 export {
-  buildChallengerDescriptorV1,
+  buildTraceAtStepCountV1,
   decideValidationChallengeV1,
   type ValidationChallengeDecisionV1,
-  type ValidationChallengerTraceV1,
+  type ValidationTraceAtStepCountV1,
 } from "./challenger-descriptor.js";
 export {
   decodeScriptDiscoveryBitmap,

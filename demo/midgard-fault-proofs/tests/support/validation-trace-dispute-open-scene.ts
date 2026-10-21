@@ -12,9 +12,8 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildChallengerDescriptorV1,
+  buildTraceAtStepCountV1,
   buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   openValidationTraceV1,
 } from "@al-ft/midgard-validation";
 import {
@@ -33,7 +32,11 @@ import {
   type ValidationTraceClaimMaterial,
 } from "../../src/validation-trace-dispute/claim-material.js";
 import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
-import { plutusFailureReplayInput } from "../../src/validation-trace-dispute/replay.js";
+import {
+  acceptedLedgerMutation,
+  plutusReplayInput,
+  replayPlutusVerdict,
+} from "../../src/validation-trace-dispute/replay.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
@@ -305,41 +308,37 @@ export const failingMaterial = async (
 export const passingTrace = async (scene: Scene) => {
   const block = scene.passing;
   const { event, ledger } = await eventAndLedger(block);
-  const expectedLedgerOps = [
-    { type: "delete" as const, key: block.seed.outRef },
+  const replay = {
+    header: block.evidence.header,
+    event,
+    ledger,
+    l1SlotConfig,
+  } as const;
+  const verdict = await replayPlutusVerdict(
+    plutusReplayInput({ ...replay, verdict: { verdict: "rejected" } }),
+  );
+  expect(verdict.verdict).toBe("accepted");
+  const mutation = await acceptedLedgerMutation(ledger, verdict.statePatch);
+  // The block's own effect: the seed spent, the created output inserted.
+  expect(mutation.ledgerOps).toStrictEqual([
+    { type: "delete", key: block.seed.outRef },
     buildValidationMachineLedgerInsertOp({
       key: block.created.outRef,
       outputCbor: block.created.output,
     }),
-  ];
-  const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
-    initialEntries: ledger.entries.map(({ outRef, output }) => ({
-      outRef,
-      output,
-    })),
-    operations: expectedLedgerOps,
-  });
+  ]);
   const leaves = await Effect.runPromise(
     openValidationTraceV1(
-      {
-        ...plutusFailureReplayInput({
-          header: block.evidence.header,
-          event,
-          ledger,
-          l1SlotConfig,
-        }),
-        postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
-        expectedLedgerOps,
-        ledgerMutationSteps,
-        expectedVerdict: "accepted",
-        expectedRejectionCode: null,
-      },
+      plutusReplayInput({
+        ...replay,
+        verdict: { verdict: "accepted", mutation },
+      }),
       { revealStates: [0] },
     ),
   );
   const terminal = leaves.states.get(leaves.stepCount)!;
   expect(terminal).toMatchObject({ phase: "terminal", verdict: "accepted" });
-  const trace = buildChallengerDescriptorV1(leaves, leaves.stepCount);
+  const trace = buildTraceAtStepCountV1(leaves, leaves.stepCount);
   return {
     claim: {
       claimWitness: await buildValidationClaimWitness({
