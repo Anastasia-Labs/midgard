@@ -45,6 +45,10 @@ import { createValidationTraceCaseHistory } from "./case-history.js";
 import { validationTraceComputationSteps } from "./removal.js";
 import { createValidationTraceReplayHolds } from "./replay-hold.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
+import {
+  type ValidationTraceAwaitingCounterparty,
+  validationTraceRunState,
+} from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 
@@ -238,6 +242,12 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
  * backoff, carried from the runs before, has passed. */
 const RUN_REPLAY_HOLDS = createValidationTraceReplayHolds();
 
+/**
+ * One run of the dispute, as its host sees it: a wait on the counterparty as
+ * `awaiting_counterparty` with its deadline, and a state named for readiness
+ * (an alarm among them) as a pending run that resumes on the next
+ * observation under that state.
+ */
 export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   sources,
@@ -246,25 +256,29 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   readonly workflow: ManifestBoundValidationTraceDisputeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> =>
-  await runFraudProofWorkflowFromRetainedDa({
-    deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
-      headerHash: workflow.binding.definition.headerHash,
+}): Promise<
+  FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty
+> =>
+  validationTraceRunState(
+    await runFraudProofWorkflowFromRetainedDa({
+      deploymentFingerprint: workflow.binding.deploymentFingerprint,
+      observation: await observeFraudProofWorkflowHeader(workflow.l1, {
+        headerHash: workflow.binding.definition.headerHash,
+      }),
+      sources,
+      replayer: createValidationTraceDisputeCompleteCanonicalReplay(
+        workflow.l1SlotConfig,
+        { holds: RUN_REPLAY_HOLDS },
+      ),
+      ...(workflow.replayContext === undefined
+        ? {}
+        : { replayContext: workflow.replayContext }),
+      registry: createFraudProofWorkflowRegistry({
+        adapters: [workflow.adapter],
+        launchScope: [CATEGORY],
+      }),
+      journal,
+      terminalVerifier: workflow.terminalVerifier,
+      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
     }),
-    sources,
-    replayer: createValidationTraceDisputeCompleteCanonicalReplay(
-      workflow.l1SlotConfig,
-      { holds: RUN_REPLAY_HOLDS },
-    ),
-    ...(workflow.replayContext === undefined
-      ? {}
-      : { replayContext: workflow.replayContext }),
-    registry: createFraudProofWorkflowRegistry({
-      adapters: [workflow.adapter],
-      launchScope: [CATEGORY],
-    }),
-    journal,
-    terminalVerifier: workflow.terminalVerifier,
-    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-  });
+  );
