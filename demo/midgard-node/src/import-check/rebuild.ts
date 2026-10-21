@@ -28,12 +28,14 @@ import { type ImportCheckOutcome } from "./evaluator.js";
  * - `rejected`: a run rejected or over its declared budget;
  * - `fault`: a run faulted (with its script's sha256), or the rebuild
  *   failed or disagreed with the import;
+ * - `timeout`: a run was killed at its kill, so no verdict was reached;
  * - `cancelled`: a run was not started in time.
  */
 export type ImportCheckVerdict =
   | Readonly<{ kind: "accepted" }>
   | Readonly<{ kind: "rejected"; detail: string }>
   | Readonly<{ kind: "fault"; detail: string; scriptHash?: Buffer }>
+  | Readonly<{ kind: "timeout"; detail: string }>
   | Readonly<{ kind: "cancelled" }>;
 
 /** The out-refs (CBOR) a transaction spends or references; none when it
@@ -72,7 +74,7 @@ export const rebuildAndEvaluate = (
             if (outcome.kind === "evaluated")
               return Effect.succeed(outcome.result);
             stopped =
-              outcome.kind === "cancelled"
+              outcome.kind !== "fault"
                 ? outcome
                 : {
                     kind: "fault",

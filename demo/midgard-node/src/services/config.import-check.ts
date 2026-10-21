@@ -12,6 +12,9 @@ import { boundedValidationInteger } from "./config.node-config-dep.js";
  *   a worker GC pause;
  * - `killMsPerGigaCpu`: a, in milliseconds per 10^9 declared cpu units;
  * - `killUsPerKib`: b, in microseconds per KiB.
+ * The kill is wall-clock time, so a killed run is no verdict: its entry is
+ * neither faulted nor cached, and it is run again later
+ * (`../import-check/checker.ts`).
  *
  * The defaults are the ruled values 24 ms, 840 ms per 10^9 cpu and 440 us
  * per KiB. Against the pool's import-check lane with the TypeScript verdict

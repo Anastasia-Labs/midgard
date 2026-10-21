@@ -105,6 +105,7 @@ describe("splitSqlStatements", () => {
       [27, "public_http_read_indexes", true],
       [28, "import_checks", true],
       [29, "drop_cek_program_material", true],
+      [30, "import_check_retries", true],
     ]);
   });
 
