@@ -13,6 +13,9 @@
  *   live own intent gets its witness. A wallet's own `signTx` would look its
  *   inputs up at the provider, which has not seen that change; it signs
  *   only where no follower runs, where the view is the provider's.
+ * - The seed's payment key also owns its Enterprise address (the
+ *   operator's defense pocket), so the seam reads that address's view too:
+ *   a transaction spending only pocket outputs gets its witness.
  */
 import {
   CML,
@@ -34,7 +37,8 @@ import {
 import { TxSignError } from "./utils.await-required-output-visibility.js";
 
 type WalletSigner = Readonly<{
-  address: string;
+  /** The seed's Base address and the Enterprise address of its payment key. */
+  addresses: readonly string[];
   /** Payment and stake private keys, by key hash. */
   keys: ReadonlyMap<string, PrivateKey>;
 }>;
@@ -71,7 +75,12 @@ export const selectNodeWallet = (lucid: LucidEvolution, seed: string): void => {
     [keyHashOf(paymentKey), paymentKey],
   ]);
   if (stakeKey !== null) keys.set(keyHashOf(stakeKey), stakeKey);
-  signers.set(wallet, { address, keys });
+  const enterprise = walletFromSeed(seed, {
+    network: lucid.config().network,
+    addressType: "Enterprise",
+    accountIndex: 0,
+  }).address;
+  signers.set(wallet, { addresses: [address, enterprise], keys });
 };
 
 /** The wallet view (§8.5) of `address` under the journal in scope. */
@@ -147,9 +156,10 @@ export const readSelectedWalletFunding = (
 
 /**
  * Adds the selected node wallet's witnesses to `signBuilder` for the own
- * keys the transaction needs, found from the wallet view read now (inputs
- * and collaterals among its outputs; certificates, withdrawals and required
- * signers naming the keys). A wallet not selected with `selectNodeWallet`
+ * keys the transaction needs, found from the wallet views of the seed's
+ * Base and Enterprise addresses read now (inputs and collaterals among
+ * their outputs; certificates, withdrawals and required signers naming the
+ * keys). A wallet not selected with `selectNodeWallet`
  * signs itself where no follower runs (its view is the provider's) and is
  * refused under a follower.
  */
@@ -185,14 +195,14 @@ export const signOverWalletView = (
         }),
       );
     }
-    const view = yield* readWalletView(lucid, signer.address).pipe(
-      Effect.mapError(unavailable),
+    const views = yield* Effect.forEach(signer.addresses, (address) =>
+      readWalletView(lucid, address).pipe(Effect.mapError(unavailable)),
     );
     const needed = new Set(
       discoverOwnUsedTxKeyHashes(
         signBuilder.toTransaction(),
         [...signer.keys.keys()],
-        [...view.utxos],
+        views.flatMap((view) => view.utxos),
       ),
     );
     for (const keyHash of needed)

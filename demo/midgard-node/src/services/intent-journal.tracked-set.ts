@@ -5,7 +5,7 @@
  * credentials.
  */
 import type * as SDK from "@al-ft/midgard-sdk";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 
 import {
   type NodeConfigDep,
@@ -19,7 +19,27 @@ const distinct = (addresses: readonly Buffer[]): Buffer[] => [
   ...new Map(addresses.map((a) => [a.toString("hex"), a])).values(),
 ];
 
-/** The node's own wallets: every seed it signs with (operator, merge, settlement, reference scripts). */
+/**
+ * The defense pocket: the Enterprise address of the operator's payment key.
+ * The node's wallet is the key's Base address, while a validation-trace
+ * thread's leftover and expiry pay the key's Enterprise address; the pocket
+ * is tracked as an own wallet so that value stays in the node's view.
+ */
+export const defensePocketAddress = (
+  config: Pick<NodeConfigDep, "NETWORK" | "L1_OPERATOR_SEED_PHRASE">,
+): string => {
+  const { paymentCredential } = getAddressDetails(
+    seedPhraseAddress(config.L1_OPERATOR_SEED_PHRASE, config.NETWORK),
+  );
+  if (paymentCredential === undefined)
+    throw new Error("the operator seed's address has no payment credential");
+  return credentialToAddress(config.NETWORK, paymentCredential);
+};
+
+/**
+ * The node's own wallets: every seed it signs with (operator, merge,
+ * settlement, reference scripts), and the operator's defense pocket.
+ */
 export const nodeOwnWallets = (
   config: Pick<
     NodeConfigDep,
@@ -40,7 +60,13 @@ export const nodeOwnWallets = (
       .filter(
         (seed): seed is string => seed !== undefined && seed.trim() !== "",
       )
-      .map((seed) => addressBytes(seedPhraseAddress(seed, config.NETWORK))),
+      .map((seed) => seedPhraseAddress(seed, config.NETWORK))
+      .concat(
+        config.L1_OPERATOR_SEED_PHRASE.trim() === ""
+          ? []
+          : [defensePocketAddress(config)],
+      )
+      .map(addressBytes),
   );
 
 /**
@@ -88,20 +114,35 @@ const PROTOCOL_SPENDING_VALIDATORS = [
   "payout",
 ] as const satisfies readonly (keyof SDK.MidgardValidators)[];
 
+/** The validation-trace dispute's holders a defending operator follows:
+ * its cases and the threads it defends, wherever they sit. */
+const VALIDATION_TRACE_DISPUTE_HOLDERS = [
+  "case",
+  "game",
+  "timeout",
+  "boundary",
+  "award",
+] as const;
+
 /**
  * The payment credentials of the protocol addresses (§8.2: protocol
- * addresses are always tracked). Every output there is created after the
- * protocol-init transaction, which is after the follower's origin.
+ * addresses are always tracked), the validation-trace dispute's holders
+ * among them. Every output there is created after the protocol-init
+ * transaction, which is after the follower's origin.
  */
 export const protocolPaymentCredentials = (
   contracts: Pick<
     SDK.MidgardValidators,
-    (typeof PROTOCOL_SPENDING_VALIDATORS)[number]
+    (typeof PROTOCOL_SPENDING_VALIDATORS)[number] | "fraudProofContracts"
   >,
-): string[] => [
-  ...new Set(
-    PROTOCOL_SPENDING_VALIDATORS.map((name) =>
-      contracts[name].spendingScriptHash.toLowerCase(),
+): string[] => {
+  const dispute = contracts.fraudProofContracts.validationTraceDispute;
+  return [
+    ...new Set(
+      [
+        ...PROTOCOL_SPENDING_VALIDATORS.map((name) => contracts[name]),
+        ...VALIDATION_TRACE_DISPUTE_HOLDERS.map((name) => dispute[name]),
+      ].map(({ spendingScriptHash }) => spendingScriptHash.toLowerCase()),
     ),
-  ),
-];
+  ];
+};
