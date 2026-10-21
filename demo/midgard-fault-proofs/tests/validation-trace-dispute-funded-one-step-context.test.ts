@@ -20,27 +20,23 @@
  * objective's actuation permit. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
-import {
-  CEK_CONTEXT_STAGE_HOLDERS,
-  validationTraceOneStepContracts,
-  type ValidationTraceOneStepHolder,
-} from "../src/validation-trace-dispute/one-step-holders.js";
+import { CEK_CONTEXT_STAGE_HOLDERS } from "../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
 import { sceneOperator } from "./support/validation-trace-dispute-defend.js";
 import {
   type CapturedMove,
-  captureMoves,
   recordedOutput,
 } from "./support/validation-trace-dispute-funded-moves.js";
 import {
-  type AdapterWrap,
+  confirmsSpendOf,
+  fundedOneStepTurns,
+  outRefOf,
+} from "./support/validation-trace-dispute-funded-one-step-turns.js";
+import {
   type FundedDispute,
   openFundedDispute,
   turnUntil,
@@ -66,7 +62,6 @@ import {
   intentsFor,
   playThreads,
   type Side,
-  threadPlace,
 } from "./support/validation-trace-dispute-one-step-play.js";
 import {
   failingMaterial,
@@ -104,105 +99,13 @@ let side: Side;
 /** Every move the watcher built, with what it spent as it was then. */
 const moves: CapturedMove[] = [];
 
-const outRefOf = (utxo: { txHash: string; outputIndex: number }) =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-/** The watcher process's turns, each move it builds captured. */
-const turns = (wrap?: AdapterWrap) => ({
-  runOnce: async () =>
-    await dispute.turn((adapter) => {
-      const captured = captureMoves(scene, moves)(adapter);
-      return wrap === undefined ? captured : wrap(captured);
-    }),
-});
-
-/** Where the thread stands now. */
-const place = async () =>
-  await threadPlace(scene, dispute.deployment, side.unit);
-
-/** Plays the thread until it stands at `holder`, if it does not yet. */
-const playTo = async (holder: ValidationTraceOneStepHolder) => {
-  if ((await place())?.holder === holder) return;
-  await playThreads({
-    scene,
-    runner: turns(),
-    sides: [side],
-    until: async () => (await place())?.holder === holder,
-    limit: 60,
+const { turns, place, playTo, holderAddress, stopBeforeBroadcastAt } =
+  fundedOneStepTurns({
+    scene: () => scene,
+    dispute: () => dispute,
+    side: () => side,
+    moves,
   });
-};
-
-/** The address of the one-step holder `holder`. */
-const holderAddress = (holder: ValidationTraceOneStepHolder) =>
-  validationTraceOneStepContracts(dispute.deployment).find(
-    (contract) => contract.holder === holder,
-  )!.address;
-
-/** Whether the journal `result` holds confirms a move spending `consumes`. */
-const confirmsSpendOf = (
-  result: FraudProofWorkflowRunResult,
-  consumes: string,
-) =>
-  "entries" in result &&
-  confirmedOneStepMoves(result.entries).some(
-    (move) => move.consumes === consumes,
-  );
-
-/**
- * Stops the watcher process at the submit of the move it signs for the
- * thread at `holder`, once its intent is durable and before its bytes reach
- * the ledger. The stopped turn never returns.
- */
-const stopBeforeBroadcastAt = async (holder: ValidationTraceOneStepHolder) => {
-  const at = await place();
-  if (at?.holder !== holder) throw new Error(`the thread is not at ${holder}`);
-  const consumes = outRefOf(at.utxo);
-  let signed: { readonly hash: string; readonly hex: string } | undefined;
-  let stopped!: () => void;
-  const stop = new Promise<void>((resolve) => {
-    stopped = resolve;
-  });
-  const wrap: AdapterWrap = (adapter) => ({
-    ...adapter,
-    preflight: async (context) => {
-      const preflight = await adapter.preflight(context);
-      const transaction = workflowPreflightTransaction(preflight);
-      if (
-        parseValidationTraceAction(context.action).consumes === consumes &&
-        transaction !== undefined
-      )
-        signed ??= {
-          hash: transaction.toHash(),
-          hex: transaction.toTransaction().to_cbor_hex(),
-        };
-      return preflight;
-    },
-    submit: async (input) => {
-      if (
-        signed === undefined ||
-        parseValidationTraceAction(input.action).consumes !== consumes
-      )
-        return await adapter.submit(input);
-      stopped();
-      return await new Promise<never>(() => undefined);
-    },
-  });
-  const play = playThreads({
-    scene,
-    runner: turns(wrap),
-    sides: [side],
-    until: async () => false,
-    limit: 10,
-  });
-  await Promise.race([
-    stop,
-    play.then(() => {
-      throw new Error(`the process made no move at ${holder}`);
-    }),
-  ]);
-  if (signed === undefined) throw new Error(`no move at ${holder} was signed`);
-  return { ...signed, consumes };
-};
 
 describe("validation-trace dispute one-step resolution through a CEK context step under the prover funding permit", () => {
   beforeAll(async () => {

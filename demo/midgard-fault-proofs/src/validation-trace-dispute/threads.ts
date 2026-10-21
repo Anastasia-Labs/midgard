@@ -55,6 +55,11 @@ export const VALIDATION_TRACE_THREAD_COUNT_HOLD =
 /** Our turn on a thread, but no trace of ours matches its roots. */
 export const VALIDATION_TRACE_MATERIAL_HOLD = "validation-trace-material-hold";
 
+/** A thread's history does not decide the pending item step its one-step
+ * resolution verifies (one-step-context-item-hops.ts). */
+export const VALIDATION_TRACE_ITEM_PENDING_HOLD =
+  "validation-trace-item-pending-hold";
+
 /** How the threads were found: along our case output's spend chain. */
 export const VALIDATION_TRACE_THREAD_DISCOVERY = "spend-chain" as const;
 

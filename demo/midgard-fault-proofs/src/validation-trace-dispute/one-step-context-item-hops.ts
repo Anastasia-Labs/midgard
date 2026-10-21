@@ -16,6 +16,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import { deriveCekRedeemerItemPlan } from "../redeemer-item-plan.js";
+import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type { ValidationTraceCaseHistory } from "./case-history.js";
 import type { ValidationTraceHop } from "./one-step-builders.js";
 import type { ValidationTraceContextItem } from "./one-step-context-item.js";
@@ -32,6 +33,7 @@ import {
   stepDatum,
 } from "./one-step-data.js";
 import type { ValidationTraceContextStepPlan } from "./one-step-plan.js";
+import { VALIDATION_TRACE_ITEM_PENDING_HOLD } from "./threads.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 type ItemChain = Pick<
@@ -62,9 +64,30 @@ export const contextItemReads = (
   });
 
 /**
+ * The run holds: the thread's history does not hold exactly one pending item
+ * step at the shared item chain's entry, so which step the chain verifies is
+ * not decided. Only a spend of our thread its validators check pays the
+ * thread there, and no hop of the chain pays it back, so one is the only
+ * count a resolution leaves; any other is named for the operator, and the
+ * run tries again at its next observation.
+ */
+export class ValidationTraceItemPendingHoldError extends WorkflowActionChangedError {
+  constructor(
+    readonly unit: string,
+    readonly matches: number,
+  ) {
+    super(
+      `${VALIDATION_TRACE_ITEM_PENDING_HOLD}: the history of thread ${unit} pays it to the CEK context item entry ${matches.toString()} times, not once, so its resolution holds`,
+    );
+    this.name = "ValidationTraceItemPendingHoldError";
+  }
+}
+
+/**
  * The pending item step the thread holding `unit` carried into the shared
  * item chain's entry, as its history over `headerHash` holds it: the state
- * of the last output that paid the thread to the entry.
+ * of the one output that paid the thread to the entry. Any other count of
+ * such outputs holds the run (`ValidationTraceItemPendingHoldError`).
  */
 export const contextItemPending = async ({
   history,
@@ -77,7 +100,7 @@ export const contextItemPending = async ({
   readonly unit: string;
   readonly entryAddress: string;
 }): Promise<string> => {
-  let pending: string | undefined;
+  const pending: string[] = [];
   for (const { bodyCbor } of await history.transactions({
     headerHash,
     caseUnit: unit,
@@ -90,14 +113,12 @@ export const contextItemPending = async ({
         output.assets[unit] === 1n &&
         typeof output.datum === "string"
       )
-        pending = plutusConstrFieldCbor(output.datum, [1, 0]);
+        pending.push(plutusConstrFieldCbor(output.datum, [1, 0]));
     }
   }
-  if (pending === undefined)
-    throw new Error(
-      "validation-trace thread's history holds no pending CEK context item step",
-    );
-  return pending;
+  if (pending.length !== 1)
+    throw new ValidationTraceItemPendingHoldError(unit, pending.length);
+  return pending[0]!;
 };
 
 /** Where each route's hash or finalize sends the thread. */

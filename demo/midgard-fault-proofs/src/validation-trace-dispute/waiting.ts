@@ -6,11 +6,12 @@
  * healthy until the deadline passes. A defended thread of ours waits the same
  * way on its defender's move, until the defender's clock runs out.
  *
- * Four other states are named for readiness, so a session hands its turn
+ * Five other states are named for readiness, so a session hands its turn
  * back at once instead of polling into a continuation stall: a thread that
  * needs a one-step resolution the runner does not drive, a thread lost, a
- * case a defender won, and a move whose fee would pass the funding permit's
- * per-transaction fee ceiling, the last an alarm. */
+ * case a defender won, a move whose fee would pass the funding permit's
+ * per-transaction fee ceiling, and a thread whose history does not decide
+ * its pending item step, the last two alarms. */
 import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
@@ -24,6 +25,7 @@ import type {
 import { VALIDATION_TRACE_MOVE_FEE_OVER_CAP } from "./move-fee.js";
 import {
   VALIDATION_TRACE_DEFENDER_WON,
+  VALIDATION_TRACE_ITEM_PENDING_HOLD,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_LOST,
@@ -107,13 +109,15 @@ export const awaitingValidationTraceCounterparty = (
  * a one-step resolution the runner does not drive, a lost thread has no move
  * of ours left, a case a defender won has none either, and a wallet-paid
  * move whose fee would pass the funding permit's per-transaction fee ceiling
- * cannot be sent at all, which the operator must see.
+ * cannot be sent at all, and a thread whose history does not decide its
+ * pending item step cannot move on, both of which the operator must see.
  */
 const NAMED_STATES: readonly FraudProofWorkflowNamedState[] = Object.freeze([
   Object.freeze({ name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_THREAD_LOST, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_DEFENDER_WON, alarm: false }),
   Object.freeze({ name: VALIDATION_TRACE_MOVE_FEE_OVER_CAP, alarm: true }),
+  Object.freeze({ name: VALIDATION_TRACE_ITEM_PENDING_HOLD, alarm: true }),
 ]);
 
 /**

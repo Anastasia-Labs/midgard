@@ -30,7 +30,10 @@ import {
 import { watcherDeploymentAvailabilityChallengeAuthority } from "midgard-watcher/tests/support/prover-funding-hold";
 
 import { createValidationTraceDisputeWorkflowAdapter } from "../../src/validation-trace-dispute/adapter.js";
-import { createValidationTraceCaseHistory } from "../../src/validation-trace-dispute/case-history.js";
+import {
+  createValidationTraceCaseHistory,
+  type ValidationTraceCaseHistory,
+} from "../../src/validation-trace-dispute/case-history.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import {
@@ -161,6 +164,11 @@ export const openFundedDispute = async (
     readonly oneStep?: ValidationTraceOneStepReferences;
     /** Whether the watcher's funding follows the emulator's live fees. */
     readonly liveParameters?: boolean;
+    /** Rewrites the case history the watcher reads; by default it reads the
+     * authenticated one. */
+    readonly caseHistory?: (
+      authentic: ValidationTraceCaseHistory,
+    ) => ValidationTraceCaseHistory;
   } = {},
 ) => {
   const { h } = scene;
@@ -179,10 +187,11 @@ export const openFundedDispute = async (
   );
   if (bondLovelace !== BOND_LOVELACE)
     throw new Error("the fixture manifest binds another dispute bond");
-  const caseHistory = createValidationTraceCaseHistory({
+  const authentic = createValidationTraceCaseHistory({
     authority: scene.l1.authority,
     releaseFinality,
   });
+  const caseHistory = options.caseHistory?.(authentic) ?? authentic;
   const economics = await watcherDeploymentReleaseEconomicsAuthority(
     identity,
   ).verifyForWorkflow({ deploymentFingerprint: fingerprint });
@@ -313,8 +322,8 @@ export const openFundedDispute = async (
   return {
     decision,
     deployment,
-    /** The case token's authenticated L1 history the watcher reads. */
-    caseHistory,
+    /** The case token's authenticated L1 history. */
+    caseHistory: authentic,
     rebroadcasts,
     turn,
     /** Stops the watcher process and starts another over its durable state. */
