@@ -37,7 +37,10 @@ export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
  * The stages the runner drives, each of which verifies its step in one hop
  * and sends the thread to the context settle.
  */
-export const DRIVEN_CEK_CONTEXT_STAGES = ["redeemerBegin"] as const;
+export const DRIVEN_CEK_CONTEXT_STAGES = [
+  "redeemerBegin",
+  "reference",
+] as const;
 
 export type DrivenCekContextStage = (typeof DRIVEN_CEK_CONTEXT_STAGES)[number];
 

@@ -72,9 +72,6 @@ export const COMPUTE_STEP_FROM = 116;
 export const MACHINE_STEP_FROM = 118;
 /** A last agreed state before a CEK script selection. */
 export const SELECTION_STEP_FROM = 93;
-/** A last agreed state before the CEK context step that begins the selected
- * execution's redeemer scan. */
-export const REDEEMER_BEGIN_STEP_FROM = 94;
 
 export type TwoThreadCase = Readonly<{
   scene: Scene;

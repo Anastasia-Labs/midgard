@@ -13,6 +13,7 @@ import {
   cekCoreSemanticResolver,
   cekSelectionSemanticResolver,
   VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
+  type ValidationTraceContextStageHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import { CEK_RESOLVER_INDEX } from "../../src/validation-trace-dispute/one-step-plan.js";
 import type {
@@ -43,6 +44,9 @@ export const oneStepScripts = (
   const { chain } = scene;
   const arms = chain.cekCoreStages;
   const context = chain.cekContextStages;
+  const stages = {} as Record<ValidationTraceContextStageHolder, OneStepScript>;
+  for (const stage of DRIVEN_CEK_CONTEXT_STAGES)
+    stages[CEK_CONTEXT_STAGE_HOLDERS[stage]] = context[stage];
   const deployment = runnerDeployment(scene);
   const resolver = ({ spendingScriptHash }: { spendingScriptHash: string }) =>
     chain.semanticResolvers.find(
@@ -60,7 +64,7 @@ export const oneStepScripts = (
     settle: arms.settle,
     context: resolver(cekContextSemanticResolver(deployment)),
     contextControl: context.control,
-    contextRedeemerBegin: context.redeemerBegin,
+    ...stages,
     contextSettle: context.settle,
   });
 };
