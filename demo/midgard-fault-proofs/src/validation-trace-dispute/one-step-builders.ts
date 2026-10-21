@@ -7,7 +7,9 @@
  * (PrepareSelected), and from it to the award with the selection's two
  * yields (VerifyExecutionSelection). A CEK context step goes from the CEK
  * resolver to the context step resolver (PrepareSelected), and on through
- * the context's holders to the award (one-step-context-hops.ts). Each hop
+ * the context's holders to the award (one-step-context-hops.ts). A
+ * canonical-decode step goes from the boundary to the canonical-decode
+ * resolver and on to the award (one-step-canonical-decode.ts). Each hop
  * spends the thread, which pays
  * its fee up to the cap, or our wallet pays it all (move-fee.ts decides); its
  * successor keeps the thread's single token and carries the state the next
@@ -30,6 +32,10 @@ import {
 
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { buildValidationCekExecutionSelectionAction } from "../validation-cek-selection.js";
+import {
+  canonicalDecodeHop,
+  isValidationTraceCanonicalDecodeHolder,
+} from "./one-step-canonical-decode.js";
 import {
   isValidationTraceContextHolder,
   validationTraceContextHop,
@@ -149,6 +155,20 @@ export const validationTraceHop = ({
       prover,
       ...(item === undefined ? {} : { item }),
     });
+  if (isValidationTraceCanonicalDecodeHolder(holder)) {
+    if (plan.kind !== "canonicalDecode")
+      throw new Error(
+        `validation-trace ${holder} holds a thread whose step is not a canonical-decode step`,
+      );
+    return canonicalDecodeHop({
+      holder,
+      datum,
+      prover,
+      semanticResolverIndex: plan.semanticResolverIndex,
+      transitionCbor: plan.transitionCbor,
+      step: plan.canonicalDecode,
+    });
+  }
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;
@@ -156,7 +176,10 @@ export const validationTraceHop = ({
         throw new Error("validation-trace boundary thread has no state");
       const preState = SDK.validationMachineStateDataFromCore(plan.preState);
       return {
-        next: "prepare",
+        next:
+          plan.kind === "canonicalDecode"
+            ? "canonicalDecodePrepare"
+            : "prepare",
         datum: Data.to(
           {
             fraud_prover: prover,

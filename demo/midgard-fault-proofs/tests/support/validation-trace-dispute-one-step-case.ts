@@ -36,6 +36,7 @@ import {
 import type { AdapterWrap } from "./validation-trace-dispute-funded-runner.js";
 import {
   oneStepDeployment,
+  publishCanonicalDecodeReferences,
   publishContextReferences,
   publishOneStepReferences,
   publishSelectionReferences,
@@ -106,6 +107,7 @@ export const defendTwoThreads = async ({
   successorFrom = MACHINE_STEP_FROM,
   selections = false,
   contexts = false,
+  canonicalDecode = false,
   wrap,
 }: {
   readonly withRemoval: boolean;
@@ -114,6 +116,8 @@ export const defendTwoThreads = async ({
   readonly selections?: boolean;
   /** Whether the deployment drives CEK context steps. */
   readonly contexts?: boolean;
+  /** Whether the deployment drives canonical-decode steps. */
+  readonly canonicalDecode?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
 }): Promise<TwoThreadCase> => {
@@ -130,6 +134,11 @@ export const defendTwoThreads = async ({
         : {}),
       ...(contexts
         ? { cekContext: await publishContextReferences(contracts) }
+        : {}),
+      ...(canonicalDecode
+        ? {
+            canonicalDecode: await publishCanonicalDecodeReferences(contracts),
+          }
         : {}),
     };
   });

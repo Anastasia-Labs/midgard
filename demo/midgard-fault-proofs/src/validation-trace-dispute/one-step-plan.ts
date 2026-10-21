@@ -5,8 +5,9 @@
  * whose arm settles in one hop (compute, machine, map conversion and case
  * constant), the CEK script selections when the deployment records
  * scripts' decodes, and the CEK context steps whose stage verifies them in
- * one hop when the deployment installs the context resolution; any other
- * step is reported as one the runner does not drive, and its thread waits
+ * one hop when the deployment installs the context resolution, and the
+ * canonical-decode steps whose item it carries inline when the deployment
+ * installs their resolution; any other step is reported as one the runner does not drive, and its thread waits
  * under the one-step state. */
 import {
   hashMidgardValidationMachineState,
@@ -27,6 +28,11 @@ import { Effect } from "effect";
 
 import { plutusItemScriptDecode } from "../script-decode/item-record.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
+import {
+  CANONICAL_DECODE_RESOLVER_INDEX,
+  planValidationTraceCanonicalDecodeStep,
+  type ValidationTraceCanonicalDecodeStep,
+} from "./one-step-canonical-decode.js";
 import {
   planValidationTraceContextStep,
   type ValidationTraceContextStep,
@@ -181,11 +187,23 @@ export type ValidationTraceSelectionPlan = ValidationTraceOneStepArgument &
 export type ValidationTraceContextStepPlan = ValidationTraceOneStepArgument &
   Readonly<{ kind: "context"; context: ValidationTraceContextStep }>;
 
+/** A canonical-decode step's resolution, as the runner drives it. */
+export type ValidationTraceCanonicalDecodePlan =
+  ValidationTraceOneStepArgument &
+    Readonly<{
+      kind: "canonicalDecode";
+      canonicalDecode: Extract<
+        ValidationTraceCanonicalDecodeStep,
+        { preparedEvidenceHash: string }
+      >;
+    }>;
+
 /** A step's one-step resolution, as the runner drives it. */
 export type ValidationTraceOneStepPlan =
   | ValidationTraceCoreStepPlan
   | ValidationTraceSelectionPlan
-  | ValidationTraceContextStepPlan;
+  | ValidationTraceContextStepPlan
+  | ValidationTraceCanonicalDecodePlan;
 
 /** What the deployment lets the runner drive beyond the CEK core steps. */
 export type ValidationTraceOneStepDrives = Readonly<{
@@ -194,6 +212,8 @@ export type ValidationTraceOneStepDrives = Readonly<{
   decodeRecords?: boolean;
   /** Whether the deployment installs the CEK context resolution. */
   contexts?: boolean;
+  /** Whether the deployment installs the canonical-decode resolution. */
+  canonicalDecode?: boolean;
 }>;
 
 export type ValidationTraceOneStepPlanning =
@@ -205,6 +225,25 @@ const constrOf = (cbor: string): Constr<Data> => {
   if (!(data instanceof Constr))
     throw new Error("validation-trace one-step evidence is not a constructor");
   return data;
+};
+
+/** What every step's resolution carries, from its one-step argument. */
+const commonOf = (
+  stateIndex: number,
+  preState: MidgardValidationMachineState,
+  argument: ReturnType<typeof buildValidationOneStepArgument>,
+): ValidationTraceOneStepArgument => {
+  const transitionCbor = argument.transitionCbor.toString("hex");
+  const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
+  return {
+    stateIndex,
+    preState,
+    resolverIndex: argument.resolverIndex,
+    semanticResolverIndex: argument.semanticResolverIndex,
+    transitionCbor,
+    auxiliaryCbor,
+    evidenceHash: hashOneStepEvidence(transitionCbor, auxiliaryCbor),
+  };
 };
 
 /** Each state's index in our trace, by the state's hash. */
@@ -249,6 +288,7 @@ export const planValidationTraceOneStep = async ({
   challengerHighHash,
   decodeRecords = false,
   contexts = false,
+  canonicalDecode = false,
 }: ValidationTraceOneStepDrives & {
   readonly material: ValidationTraceClaimMaterial;
   readonly stateIndex?: number;
@@ -276,6 +316,34 @@ export const planValidationTraceOneStep = async ({
     kind: "unsupported",
     reason: `the step from state ${stateIndex.toString()} is ${what}, whose resolution the runner does not drive`,
   });
+  if (preState.phase === "canonicalDecode") {
+    if (!canonicalDecode)
+      return unsupported(
+        "a canonicalDecode step, whose resolution the deployment does not install",
+      );
+    const argument = buildValidationOneStepArgument({ trace, stateIndex });
+    const common = commonOf(stateIndex, preState, argument);
+    if (argument.resolverIndex !== CANONICAL_DECODE_RESOLVER_INDEX)
+      throw new Error(
+        "validation-trace canonicalDecode step selects another resolver",
+      );
+    const step = planValidationTraceCanonicalDecodeStep({
+      witness: trace.witnesses[stateIndex]!,
+      semanticResolverIndex: argument.semanticResolverIndex,
+      transitionCbor: common.transitionCbor,
+      auxiliaryCbor: common.auxiliaryCbor,
+      evidenceHash: hashOneStepEvidence,
+    });
+    if ("driven" in step) return unsupported(step.reason);
+    return {
+      kind: "plan",
+      plan: Object.freeze({
+        ...common,
+        kind: "canonicalDecode" as const,
+        canonicalDecode: step,
+      }),
+    };
+  }
   if (preState.phase !== "cek") return unsupported(`a ${preState.phase} step`);
   // A selection whose successor rests on the selected script's decode record
   // is planned over the record our own decode of the script ends in: the
@@ -311,17 +379,8 @@ export const planValidationTraceOneStep = async ({
     stateIndex,
     ...(resolveCekDecodeRecord === undefined ? {} : { resolveCekDecodeRecord }),
   });
-  const transitionCbor = argument.transitionCbor.toString("hex");
-  const auxiliaryCbor = argument.auxiliaryCbor.toString("hex");
-  const common = {
-    stateIndex,
-    preState,
-    resolverIndex: argument.resolverIndex,
-    semanticResolverIndex: argument.semanticResolverIndex,
-    transitionCbor,
-    auxiliaryCbor,
-    evidenceHash: hashOneStepEvidence(transitionCbor, auxiliaryCbor),
-  };
+  const common = commonOf(stateIndex, preState, argument);
+  const { auxiliaryCbor } = common;
   if (
     argument.resolverIndex === CEK_RESOLVER_INDEX &&
     argument.semanticResolverIndex === CEK_SELECTION_SEMANTIC_RESOLVER_INDEX

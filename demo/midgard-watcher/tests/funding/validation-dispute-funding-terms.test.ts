@@ -98,6 +98,13 @@ describe("validation-trace dispute funding terms from the signed deployment", ()
         "validationTraceDisputeCekContextRedeemerSelectFinish",
         "validationTraceDisputeCekContextFinalizeSpend",
         "validationTraceDisputeCekContextSettle",
+        "validationTraceDisputeCanonicalDecodePrepare",
+        "validationTraceDisputeCanonicalDecodeEmptySemantic",
+        "validationTraceDisputeCanonicalDecodeItemSemantic",
+        "validationTraceDisputeCanonicalDecodeItemSource",
+        "validationTraceDisputeCanonicalDecodeItemObserve",
+        "validationTraceDisputeCanonicalDecodeItemProof",
+        "validationTraceDisputeCanonicalDecodeItemSettlement",
       ].map(manifestAddress),
     );
     // Every holder the runner visits past the game is named exactly once.

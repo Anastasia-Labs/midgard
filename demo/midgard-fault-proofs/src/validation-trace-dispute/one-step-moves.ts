@@ -35,6 +35,7 @@ import {
   validationTraceHop,
   type ValidationTraceSelectionReads,
 } from "./one-step-builders.js";
+import { CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH } from "./one-step-canonical-decode.js";
 import { isValidationTraceContextHolder } from "./one-step-context-hops.js";
 import { isValidationTraceContextItemChainHolder } from "./one-step-context-item-holders.js";
 import {
@@ -172,6 +173,7 @@ const CHALLENGER_SUCCESSOR_HASH = {
   contextRedeemerSelectHash: [1, 0, 0, 0, 0, 0, 1, 3],
   contextRedeemerSelectFinish: [1, 0, 0, 0, 0, 0, 1, 3],
   contextFinalizeSpend: [1, 0, 0, 0, 0, 1, 3],
+  ...CANONICAL_DECODE_CHALLENGER_SUCCESSOR_HASH,
 } as const;
 
 /** Where the pending item step keeps our successor's hash. */

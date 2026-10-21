@@ -2,10 +2,16 @@
  * holders a thread of ours visits past the game, published once, and the
  * deployment the runner drives the resolution against; with CEK script
  * selections, the selection's yields under their roles' authentication
- * tokens and the script-decode deployment whose records it reads. */
+ * tokens and the script-decode deployment whose records it reads; and the
+ * canonical-decode holders. */
 import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
+import {
+  CANONICAL_DECODE_HOLDERS,
+  canonicalDecodeValidators,
+  type ValidationTraceCanonicalDecodeHolder,
+} from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
 import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
   CONTEXT_FOLLOWER_HOLDERS,
@@ -77,6 +83,7 @@ export const oneStepScripts = (
     ...contextItemValidators(chain),
     ...contextFollowerValidators(context),
     contextSettle: context.settle,
+    ...canonicalDecodeValidators(chain),
   });
 };
 
@@ -201,6 +208,29 @@ export const publishContextReferences = async (
       followers as Record<ValidationTraceContextFollowerHolder, UTxO>,
     ),
   });
+};
+
+/** Publishes the reference scripts of the canonical-decode holders. */
+export const publishCanonicalDecodeReferences = async (
+  scene: SceneContracts,
+): Promise<
+  NonNullable<ValidationTraceOneStepReferences["canonicalDecode"]>
+> => {
+  const scripts = oneStepScripts(scene);
+  const references: Partial<
+    Record<ValidationTraceCanonicalDecodeHolder, UTxO>
+  > = {};
+  for (const holder of CANONICAL_DECODE_HOLDERS)
+    references[holder] = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: scripts[holder].spendingScript,
+        label: holder,
+      })
+    ).utxo;
+  return Object.freeze(
+    references as Record<ValidationTraceCanonicalDecodeHolder, UTxO>,
+  );
 };
 
 /**

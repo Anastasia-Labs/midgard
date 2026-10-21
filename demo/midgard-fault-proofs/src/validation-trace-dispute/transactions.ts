@@ -36,6 +36,7 @@ import {
 } from "../workflow/transaction-boundary.js";
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
+import type { ValidationTraceCanonicalDecodeHolder } from "./one-step-canonical-decode.js";
 import type { DrivenCekContextStage } from "./one-step-context.js";
 import type { ValidationTraceContextFollowerHolder } from "./one-step-context-followers.js";
 import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
@@ -92,6 +93,14 @@ export type ValidationTraceOneStepReferences = Readonly<{
     /** The holders past a multi-hop stage's first. */
     followers: Readonly<Record<ValidationTraceContextFollowerHolder, UTxO>>;
   }>;
+  /**
+   * The canonical-decode resolver, its empty and item semantic resolvers,
+   * and the item's stages; without them a thread at a canonical-decode step
+   * waits.
+   */
+  canonicalDecode?: Readonly<
+    Record<ValidationTraceCanonicalDecodeHolder, UTxO>
+  >;
 }>;
 
 /** The deployment the open step builds against. */
@@ -128,6 +137,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "cekCoreStages"
     | "cekContextStages"
     | "cekContextItemStages"
+    | "canonicalDecodeItemStages"
     | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */

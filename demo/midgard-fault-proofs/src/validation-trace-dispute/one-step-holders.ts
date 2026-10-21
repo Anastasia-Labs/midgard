@@ -1,18 +1,27 @@
-/** Where a thread of ours stands during the one-step resolution of a CEK step
- * the runner drives: the boundary game-v1 EnterResolution sends it to, the
- * CEK phase resolver, then for a core step the CEK core step binder, the arm
+/** Where a thread of ours stands during the one-step resolution of a step
+ * the runner drives: the boundary game-v1 EnterResolution sends it to; for
+ * a CEK step the CEK phase resolver, then for a core step the CEK core step binder, the arm
  * its step selects and the settle, for a script selection the selection
  * resolver, or for a context step the context step resolver, the context
  * control, the stage it routes the step to (at the item bind stage, then the
  * redeemer item step's holders, one-step-context-item-holders.ts, and past
  * a multi-hop stage's first holder, its followers,
- * one-step-context-followers.ts) and the context settle; and the award.
+ * one-step-context-followers.ts) and the context settle; for a
+ * canonical-decode step, its resolver and semantic resolvers and the item's
+ * stages
+ * (one-step-canonical-decode.ts); and the award.
  * Each holder is a deployment contract, found by its spending address; the
  * thread token, minted once for its defender, is what makes an output there
  * ours. */
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import {
+  CANONICAL_DECODE_CONTRACT_NAMES,
+  CANONICAL_DECODE_HOLDERS,
+  canonicalDecodeValidators,
+  type ValidationTraceCanonicalDecodeHolder,
+} from "./one-step-canonical-decode.js";
 import {
   DRIVEN_CEK_CONTEXT_STAGES,
   type DrivenCekContextStage,
@@ -77,6 +86,7 @@ export type ValidationTraceOneStepHolder =
   | ValidationTraceContextItemHolder
   | ValidationTraceContextFollowerHolder
   | "contextSettle"
+  | ValidationTraceCanonicalDecodeHolder
   | "award";
 
 export type ValidationTraceOneStepContract = Readonly<{
@@ -124,6 +134,7 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   ...CONTEXT_ITEM_CONTRACT_NAMES,
   ...CONTEXT_FOLLOWER_CONTRACT_NAMES,
   contextSettle: "validationTraceDisputeCekContextSettle",
+  ...CANONICAL_DECODE_CONTRACT_NAMES,
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
 >);
@@ -195,6 +206,8 @@ export const validationTraceOneStepDrives = (
   Object.freeze({
     decodeRecords: validationTraceDrivesSelections(deployment),
     contexts: deployment.references.oneStep?.cekContext !== undefined,
+    canonicalDecode:
+      deployment.references.oneStep?.canonicalDecode !== undefined,
   });
 
 /**
@@ -224,6 +237,8 @@ export const validationTraceOneStepContracts = (
   const stages = chain.cekContextStages;
   const items = contextItemValidators(chain);
   const followers = contextFollowerValidators(stages);
+  const canonicalDecode = references.canonicalDecode;
+  const decoders = canonicalDecodeValidators(chain);
   return Object.freeze([
     contract("boundary", chain.boundary, references.boundary),
     contract("prepare", prepare, references.cekPrepare),
@@ -265,6 +280,11 @@ export const validationTraceOneStepContracts = (
           ),
           contract("contextSettle", stages.settle, context.settle),
         ]),
+    ...(canonicalDecode === undefined
+      ? []
+      : CANONICAL_DECODE_HOLDERS.map((holder) =>
+          contract(holder, decoders[holder], canonicalDecode[holder]),
+        )),
     contract("award", chain.award, undefined),
   ]);
 };

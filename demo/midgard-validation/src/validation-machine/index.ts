@@ -1,4 +1,8 @@
 export {
+  canonicalCborArgumentHeaderSize,
+  canonicalFieldItemEncodedLength,
+} from "./canonical-field-item.js";
+export {
   buildChallengerDescriptorV1,
   decideValidationChallengeV1,
   type ValidationChallengeDecisionV1,
