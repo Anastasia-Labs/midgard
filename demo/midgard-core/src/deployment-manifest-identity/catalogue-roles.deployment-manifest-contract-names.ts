@@ -583,4 +583,13 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeInputSetsPrepare",
   "validationTraceDisputeInputSetsEmptySemantic",
   "validationTraceDisputeInputSetsItemSemantic",
+  "validationTraceDisputeSignaturesPrepare",
+  "validationTraceDisputeSignaturesAdvanceSemantic",
+  "validationTraceDisputeSignaturesAddressItemSemantic",
+  "validationTraceDisputeSignaturesRequiredItemSemantic",
+  "validationTraceDisputeSignaturesHandoffSemantic",
+  "validationTraceDisputePhaseANativeScriptsPrepare",
+  "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+  "validationTraceDisputeResolveInputsPrepare",
+  "validationTraceDisputeScriptSourcesPrepare",
 ] as const);

@@ -21,6 +21,11 @@ export const createWatcherFaultProofApplication = (
       replayTranscriptStore: options.replayTranscriptStore,
       infrastructure: options.infrastructure,
       fundingProfileOverlay: options.fundingProfileOverlay,
+      ...(options.onValidationTraceReplayStuck === undefined
+        ? {}
+        : {
+            onValidationTraceReplayStuck: options.onValidationTraceReplayStuck,
+          }),
     }),
     dependencies: productionDependencies,
     environment: process.env,

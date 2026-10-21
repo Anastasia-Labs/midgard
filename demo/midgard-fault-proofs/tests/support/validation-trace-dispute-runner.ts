@@ -118,6 +118,8 @@ export const makeRunner = (
     readonly wrap?: (
       adapter: FraudProofFamilyWorkflowAdapter,
     ) => FraudProofFamilyWorkflowAdapter;
+    /** The adapter's clock; by default the emulator's. */
+    readonly now?: () => number;
   } = {},
 ): Runner => {
   const { h } = scene;
@@ -138,7 +140,7 @@ export const makeRunner = (
       observeSignedTransaction: signedRecovery.observeSignedTransaction,
       rebroadcastSignedTransaction: signedRecovery.rebroadcastSignedTransaction,
     },
-    now: () => h.emulator.now(),
+    now: options.now ?? (() => h.emulator.now()),
   });
   const registry = createFraudProofWorkflowRegistry({
     adapters: [options.wrap?.(adapter) ?? adapter],

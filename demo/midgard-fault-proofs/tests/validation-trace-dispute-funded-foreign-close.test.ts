@@ -17,7 +17,7 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   VALIDATION_TRACE_CASE_CONVICTED,
@@ -55,22 +55,6 @@ import {
 import { turnUntil } from "./support/validation-trace-dispute-funded-runner.js";
 import { TIMEOUT } from "./support/validation-trace-dispute-funded-verify-source.js";
 import { BOND_LOVELACE } from "./support/validation-trace-dispute-open-scene.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 let journey: ForeignClose;
 

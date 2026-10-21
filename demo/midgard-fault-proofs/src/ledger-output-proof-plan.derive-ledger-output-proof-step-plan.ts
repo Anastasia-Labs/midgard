@@ -58,7 +58,7 @@ export const deriveLedgerOutputProofStepPlan = ({
   const auxiliary = Data.from(Buffer.from(auxiliaryCbor).toString("hex"));
   if (
     !(auxiliary instanceof Constr) ||
-    auxiliary.index !== 32 ||
+    auxiliary.index !== 30 ||
     auxiliary.fields.length !== 1
   )
     throw new Error("Ledger output proof requires the exact step auxiliary");

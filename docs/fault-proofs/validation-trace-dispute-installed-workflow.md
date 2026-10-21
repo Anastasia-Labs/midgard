@@ -1,11 +1,25 @@
 # Validation trace dispute workflow
 
 `validationTraceDispute` is the interactive fault-proof family. Its on-chain
-validators are deployed, but this release installs no off-chain workflow for
-it, and none for the trace-relative families listed in
+validators are deployed and this release installs its off-chain workflow: the
+[family application record](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.validation-trace-dispute-family-application-record.ts)
+binds the
+[manifest-bound runner](../../demo/midgard-fault-proofs/src/validation-trace-dispute/workflow.ts)
+to the deployment the host loaded, and the classifier's
+[catalogue replay](../../demo/midgard-fault-proofs/src/workflow/catalogue-replay.ts)
+re-executes each committed block's scripts on its admitted predecessor. A
+script re-execution that throws (rather than deciding) holds only its event;
+the block's objective names `validation_trace_replay_held`, or
+`validation_trace_replay_stuck` once the same failure repeats, and retries
+after a backoff. Neither is a verdict. The other families' findings still
+decide the block when one of them is strictly earlier than every held event;
+otherwise the header's classification waits under the same reason. A claim
+whose build ends without a result is held as
+`validation-trace-claim-build-held` and rebuilt on the next observation.
+
+No off-chain workflow is installed for the trace-relative families listed in
 `UNINSTALLED_FRAUD_PROOF_CATEGORIES`
 ([installed categories](../../demo/midgard-fault-proofs/src/workflow/installed-categories.ts)).
-
 Their evidence is read from per-transaction validation trace states. The DA
 payload does not carry them: its `validation_trace_witnesses` section is always
 empty, and each validation trace descriptor is a placeholder that binds the

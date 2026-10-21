@@ -189,6 +189,7 @@ export const observeValidationTraceThreads = async ({
   caseDatum,
   now,
   material,
+  skipped,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
@@ -200,6 +201,8 @@ export const observeValidationTraceThreads = async ({
   readonly caseDatum: SDK.Case;
   readonly now: number;
   readonly material: ValidationTraceClaimMaterial | undefined;
+  /** The action ids this run skipped because they did not build. */
+  readonly skipped?: ReadonlySet<string> | undefined;
 }): Promise<FraudProofWorkflowObservation> => {
   const { threads, resolving } = await discoverValidationTraceThreads({
     lucid,
@@ -221,6 +224,7 @@ export const observeValidationTraceThreads = async ({
     caseDatum,
     now,
     material,
+    ...(skipped === undefined ? {} : { skipped }),
   });
   if (decision.kind === "pending") return decision;
   if (decision.kind === "move")

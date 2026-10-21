@@ -18,7 +18,10 @@ import {
   type WorkflowAdapterRunnerInput,
   type WorkflowApplicationRegistry,
 } from "@al-ft/midgard-fault-proofs";
-import { type FraudProofL1Source } from "@al-ft/midgard-fault-proofs";
+import {
+  type FraudProofL1Source,
+  type ValidationTraceReplayHold,
+} from "@al-ft/midgard-fault-proofs";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -152,6 +155,9 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   replayTranscriptStore: WatcherReplayTranscriptStore;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
+  /** Told each time a classifier's script re-execution keeps failing the
+   * same way; the runtime raises the operator's alert from it. */
+  onValidationTraceReplayStuck?: (hold: ValidationTraceReplayHold) => void;
 }>;
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<

@@ -105,5 +105,135 @@ export const validationTracePhaseResolversMembers = defineDeploymentFamily(
         ["steps", "12"],
       ],
     },
+    validationTraceDisputeSignaturesPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures prepare",
+      manifestPosition: 550,
+      publicationPosition: 545,
+      referenceRolePosition: 545,
+      commands: [],
+      validatorTitle: "fraud_proofs/validation_trace/signatures_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "4"],
+        ["resolvers", "4"],
+        ["steps", "159"],
+      ],
+    },
+    validationTraceDisputeSignaturesAdvanceSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures advance semantic",
+      manifestPosition: 551,
+      publicationPosition: 546,
+      referenceRolePosition: 546,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "6"],
+        ["steps", "13"],
+      ],
+    },
+    validationTraceDisputeSignaturesAddressItemSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures address item semantic",
+      manifestPosition: 552,
+      publicationPosition: 547,
+      referenceRolePosition: 547,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_address_item_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "7"],
+        ["steps", "14"],
+      ],
+    },
+    validationTraceDisputeSignaturesRequiredItemSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures required item semantic",
+      manifestPosition: 553,
+      publicationPosition: 548,
+      referenceRolePosition: 548,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_required_item_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "8"],
+        ["steps", "15"],
+      ],
+    },
+    validationTraceDisputeSignaturesHandoffSemantic: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace signatures handoff semantic",
+      manifestPosition: 554,
+      publicationPosition: 549,
+      referenceRolePosition: 549,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/signatures_handoff_semantic_v1.main.spend",
+      familyPaths: [
+        ["semanticResolvers", "9"],
+        ["steps", "16"],
+      ],
+    },
+    validationTraceDisputePhaseANativeScriptsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace phase-A native scripts prepare",
+      manifestPosition: 555,
+      publicationPosition: 550,
+      referenceRolePosition: 550,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "5"],
+        ["resolvers", "5"],
+        ["steps", "160"],
+      ],
+    },
+    validationTraceDisputePhaseAScriptPreconditionsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace phase-A script preconditions prepare",
+      manifestPosition: 556,
+      publicationPosition: 551,
+      referenceRolePosition: 551,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "6"],
+        ["resolvers", "6"],
+        ["steps", "161"],
+      ],
+    },
+    validationTraceDisputeResolveInputsPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace resolve-inputs prepare",
+      manifestPosition: 557,
+      publicationPosition: 552,
+      referenceRolePosition: 552,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "7"],
+        ["resolvers", "7"],
+        ["steps", "162"],
+      ],
+    },
+    validationTraceDisputeScriptSourcesPrepare: {
+      purpose: "spend",
+      referenceRole: "V1 validation-trace script-sources prepare",
+      manifestPosition: 558,
+      publicationPosition: 553,
+      referenceRolePosition: 553,
+      commands: [],
+      validatorTitle:
+        "fraud_proofs/validation_trace/script_sources_v1.main.spend",
+      familyPaths: [
+        ["prepareResolvers", "8"],
+        ["resolvers", "8"],
+        ["steps", "163"],
+      ],
+    },
   },
 );

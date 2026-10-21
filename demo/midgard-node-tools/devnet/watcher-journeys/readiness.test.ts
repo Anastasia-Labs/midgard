@@ -18,8 +18,8 @@ it("reports fixture coverage without creating deployment or runtime state", asyn
   try {
     const report = await readJourneyReadiness(directory);
     expect(report.counts).toEqual({
-      families: 42,
-      fixtureReady: 42,
+      families: 43,
+      fixtureReady: 43,
       locallyVerified: JOURNEY_FIXTURES.length,
       liveComplete: 0,
     });

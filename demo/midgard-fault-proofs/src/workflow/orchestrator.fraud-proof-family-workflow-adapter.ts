@@ -153,6 +153,12 @@ export type FraudProofWorkflowAdapterContext = {
   readonly workflowId: string;
   readonly artifact: JournalJsonObject;
   readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  /**
+   * The actions this run already skipped because they did not build: an
+   * observation ranks the moves after them instead, and waits rather than
+   * reporting the family settled while one of them stands.
+   */
+  readonly unbuiltActionIds?: ReadonlySet<string>;
 };
 
 /**

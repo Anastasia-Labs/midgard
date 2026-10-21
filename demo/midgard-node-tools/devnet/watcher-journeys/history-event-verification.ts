@@ -7,6 +7,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   headerDecisionCanonicalEvidence,
   type LedgerAt,
+  parseContractDeploymentL1SlotConfig,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
@@ -108,6 +109,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
     input.replayer ??
     createCatalogueCompleteCanonicalReplay({
       lucid: deployment.operatorLucid,
+      l1SlotConfig: parseContractDeploymentL1SlotConfig(deployment.manifest),
       network: "Custom",
       hubOraclePolicyId,
       minimumConfirmationDepth: policy.confirmationDepth,

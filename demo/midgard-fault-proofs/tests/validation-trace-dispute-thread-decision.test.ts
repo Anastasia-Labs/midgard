@@ -15,16 +15,19 @@
  * the case first, then a thread in its resolution moves on, then a
  * timed-out thread closes. On a case a defender won, every other thread is
  * still played to its own end, and the run stops once none has a move left;
- * a case with no open thread settles. */
+ * a case with no open thread settles. A move the run could not build gives
+ * way to the next, and the case never settles while it stands. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { validationTraceActionId } from "../src/validation-trace-dispute/actions.js";
 import type { ValidationTraceOneStepPlanning } from "../src/validation-trace-dispute/one-step-plan.js";
 import {
   decideValidationTraceThreads,
   VALIDATION_TRACE_CASE_CONTESTED,
   VALIDATION_TRACE_DEFENDER_WON,
   VALIDATION_TRACE_MATERIAL_HOLD,
+  VALIDATION_TRACE_MOVE_UNBUILT,
   VALIDATION_TRACE_ONE_STEP_REQUIRED,
   VALIDATION_TRACE_THREAD_AWAITING,
   VALIDATION_TRACE_THREAD_LOST,
@@ -120,12 +123,15 @@ const decide = (
     plannings = new Map<string, ValidationTraceOneStepPlanning>(),
     caseDatum = {},
     held = material,
+    skipped,
   }: {
     resolving?: readonly ValidationTraceResolvingThread[];
     plannings?: ReadonlyMap<string, ValidationTraceOneStepPlanning>;
     caseDatum?: object;
     /** The workflow's trace; null for none. */
     held?: typeof material | null;
+    /** The moves this run could not build. */
+    skipped?: ReadonlySet<string>;
   } = {},
 ) =>
   decideValidationTraceThreads({
@@ -143,6 +149,7 @@ const decide = (
     } as never,
     now: NOW,
     material: held ?? undefined,
+    ...(skipped === undefined ? {} : { skipped }),
   });
 
 describe("validation-trace dispute runner's choice among threads", () => {
@@ -355,7 +362,7 @@ describe("validation-trace dispute runner's choice among threads", () => {
     ).toStrictEqual({ kind: "move", stage: "enter_resolution", thread: step });
   });
 
-  it("after timeouts, closes an awarded thread into the case first, then moves a thread in its resolution on, then closes a timed-out thread", () => {
+  it("after timeouts, closes an awarded thread into the case first, then closes a timed-out thread, then moves a thread in its resolution on", () => {
     const [s, c] = [silent(), timedOut()];
     const boundary = thread("7", "boundary", "ReadyForOneStep", 0n);
     const core = resolving("8", "core");
@@ -370,18 +377,18 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
     expect(decide([c, boundary], { resolving: [core] })).toStrictEqual({
       kind: "move",
+      stage: "close_thread",
+      thread: c,
+    });
+    expect(decide([boundary], { resolving: [core] })).toStrictEqual({
+      kind: "move",
       stage: "resolve",
       thread: boundary,
     });
-    expect(decide([c], { resolving: [core] })).toStrictEqual({
+    expect(decide([], { resolving: [core] })).toStrictEqual({
       kind: "move",
       stage: "resolve",
       thread: core,
-    });
-    expect(decide([c])).toStrictEqual({
-      kind: "move",
-      stage: "close_thread",
-      thread: c,
     });
   });
 
@@ -423,13 +430,13 @@ describe("validation-trace dispute runner's choice among threads", () => {
     });
     expect(decide([c], { ...won, resolving: [core] })).toStrictEqual({
       kind: "move",
-      stage: "resolve",
-      thread: core,
-    });
-    expect(decide([c], won)).toStrictEqual({
-      kind: "move",
       stage: "close_thread",
       thread: c,
+    });
+    expect(decide([], { ...won, resolving: [core] })).toStrictEqual({
+      kind: "move",
+      stage: "resolve",
+      thread: core,
     });
     // A thread awaiting its defender may still give us a move.
     const awaiting = thread(
@@ -451,6 +458,30 @@ describe("validation-trace dispute runner's choice among threads", () => {
     expect(decide([], won)).toStrictEqual(stops);
     // A thread with no move of ours left stops the run the same way.
     expect(decide([lostOnOurSide(), ready("6")], won)).toStrictEqual(stops);
+  });
+
+  it("gives way, past a move this run could not build, to the one ranked next, and never settles while it stands", () => {
+    const [r, s, c] = [ours(), silent(), timedOut()];
+    const id = (stage: string, { outRef }: ValidationTraceThread) =>
+      validationTraceActionId({ stage: stage as never, consumes: outRef });
+    const skipped = (...ids: string[]) => ({ skipped: new Set(ids) });
+    const move = (stage: string, thread: unknown) =>
+      ({ kind: "move", stage, thread }) as const;
+    const reveal = id("reveal", r);
+    expect(decide([c, s, r], skipped(reveal))).toStrictEqual(
+      move("timeout", s),
+    );
+    expect(decide([c, s, r], skipped(reveal, id("timeout", s)))).toStrictEqual(
+      move("close_thread", c),
+    );
+    expect(decide([c], skipped(reveal))).toStrictEqual(move("close_thread", c));
+    // Our only move did not build: the case waits under the alarm.
+    expect(decide([c], skipped(id("close_thread", c)))).toMatchObject({
+      kind: "pending",
+      reason: expect.stringMatching(
+        new RegExp(`^${VALIDATION_TRACE_MOVE_UNBUILT}: `, "u"),
+      ),
+    });
   });
 
   it("settles a case with no open thread, and waits contested on one with no valid claim", () => {

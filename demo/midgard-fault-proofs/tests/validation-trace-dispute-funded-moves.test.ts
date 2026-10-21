@@ -54,22 +54,6 @@ import {
   threadOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
 
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
-
 const RECEIPT_LOVELACE = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.limits.fraud_proof_output_lovelace,
 );
