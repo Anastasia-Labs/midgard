@@ -36,6 +36,7 @@ export const CEK_CONTEXT_STAGE_HOLDERS = Object.freeze({
   output: "contextOutput",
   signer: "contextSigner",
   mintInit: "contextMintInit",
+  assemble: "contextAssemble",
 } as const satisfies Readonly<Record<DrivenCekContextStage, string>>);
 
 export type ValidationTraceContextStageHolder =
@@ -87,6 +88,7 @@ export const VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES = Object.freeze({
   contextOutput: "validationTraceDisputeCekContextOutput",
   contextSigner: "validationTraceDisputeCekContextSigner",
   contextMintInit: "validationTraceDisputeCekContextMintInit",
+  contextAssemble: "validationTraceDisputeCekContextAssemble",
   contextSettle: "validationTraceDisputeCekContextSettle",
 } as const satisfies Readonly<
   Record<Exclude<ValidationTraceOneStepHolder, "award">, string>
