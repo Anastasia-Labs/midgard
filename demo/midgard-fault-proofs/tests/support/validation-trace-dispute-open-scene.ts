@@ -45,17 +45,14 @@ import {
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
-import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { submitSuccessorBlockTx } from "./submit-init-emulator-fixtures.submit-successor-block-tx.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  type CompleteSignedTransactionMeasurement,
   type FaultProofEmulatorHarness,
   fixtureBlockSlot,
   fundedProverEmulatorAccount,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarness,
-  measureCompleteSignedTransaction,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
@@ -65,6 +62,7 @@ import {
   eventAndLedger,
   l1SlotConfig,
 } from "./validation-trace-claim-material.js";
+import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
 /** L_d: the longest validity range VerifySource admits. */
 const MAX_RANGE_MS =
@@ -97,22 +95,8 @@ export type Scene = {
   readonly l1: ReturnType<typeof recordCrossBlockRawEmulator>;
 };
 
-/** The signed transaction's size and units, within the emulator's limits. */
-export const measureWithinTransactionLimits = (
-  transactionCbor: string,
-): CompleteSignedTransactionMeasurement => {
-  const measured = measureCompleteSignedTransaction(transactionCbor);
-  expect(measured.completeSignedBytes).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
-  );
-  expect(measured.executionMemory).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
-  );
-  expect(measured.executionSteps).toBeLessThanOrEqual(
-    EMULATOR_PROTOCOL_PARAMETERS.maxTxExSteps,
-  );
-  return measured;
-};
+/** The scene's harness and dispute contracts, before its blocks exist. */
+export type SceneContracts = Pick<Scene, "h" | "chain">;
 
 const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
   const entry = Object.values(h.faultProofReferenceScripts).find(
@@ -122,7 +106,14 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
   return entry.utxo;
 };
 
-export const setUpScene = async (): Promise<Scene> => {
+/**
+ * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
+ * its blocks are committed, so what it does takes none of the time a
+ * dispute move has from the failing block's end.
+ */
+export const setUpScene = async (
+  beforeBlocks?: (scene: SceneContracts) => Promise<void>,
+): Promise<Scene> => {
   const h = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValidationTraceDispute: true,
@@ -155,6 +146,7 @@ export const setUpScene = async (): Promise<Scene> => {
     "timeout",
   );
   const awardReference = await publish(chain.award.spendingScript, "award");
+  await beforeBlocks?.({ h, chain });
 
   const operatorVkey = await funderPaymentKeyHash(h.funderLucid);
   const now = BigInt(

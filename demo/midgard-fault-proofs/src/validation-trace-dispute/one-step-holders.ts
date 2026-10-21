@@ -105,7 +105,7 @@ type Validator = Readonly<{
 
 /** The CEK group's semantic resolver at `cekIndex`. */
 const cekSemanticResolver = (
-  deployment: ValidationTraceDisputeDeployment,
+  deployment: Pick<ValidationTraceDisputeDeployment, "chain">,
   cekIndex: number,
   label: string,
 ): Validator => {
@@ -119,7 +119,7 @@ const cekSemanticResolver = (
 
 /** The CEK core step binder: the CEK group's core step semantic resolver. */
 export const cekCoreSemanticResolver = (
-  deployment: ValidationTraceDisputeDeployment,
+  deployment: Pick<ValidationTraceDisputeDeployment, "chain">,
 ): Validator =>
   cekSemanticResolver(
     deployment,
@@ -129,7 +129,7 @@ export const cekCoreSemanticResolver = (
 
 /** The CEK group's execution selection semantic resolver. */
 export const cekSelectionSemanticResolver = (
-  deployment: ValidationTraceDisputeDeployment,
+  deployment: Pick<ValidationTraceDisputeDeployment, "chain">,
 ): Validator =>
   cekSemanticResolver(
     deployment,
@@ -139,7 +139,7 @@ export const cekSelectionSemanticResolver = (
 
 /** The CEK group's context step semantic resolver. */
 export const cekContextSemanticResolver = (
-  deployment: ValidationTraceDisputeDeployment,
+  deployment: Pick<ValidationTraceDisputeDeployment, "chain">,
 ): Validator =>
   cekSemanticResolver(
     deployment,

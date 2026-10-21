@@ -26,7 +26,10 @@ import {
   scriptDecodeDeploymentOf,
 } from "./script-decode-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
-import type { Scene } from "./validation-trace-dispute-open-scene.js";
+import type {
+  Scene,
+  SceneContracts,
+} from "./validation-trace-dispute-open-scene.js";
 import { runnerDeployment } from "./validation-trace-dispute-runner.js";
 
 type OneStepScript = Readonly<{
@@ -37,7 +40,7 @@ type OneStepScript = Readonly<{
 /** The scene's script for each holder a manifest names among the one-step
  * holders, by that holder. */
 export const oneStepScripts = (
-  scene: Scene,
+  scene: SceneContracts,
 ): Readonly<
   Record<keyof typeof VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES, OneStepScript>
 > => {
@@ -47,7 +50,6 @@ export const oneStepScripts = (
   const stages = {} as Record<ValidationTraceContextStageHolder, OneStepScript>;
   for (const stage of DRIVEN_CEK_CONTEXT_STAGES)
     stages[CEK_CONTEXT_STAGE_HOLDERS[stage]] = context[stage];
-  const deployment = runnerDeployment(scene);
   const resolver = ({ spendingScriptHash }: { spendingScriptHash: string }) =>
     chain.semanticResolvers.find(
       (found) => found.spendingScriptHash === spendingScriptHash,
@@ -55,14 +57,14 @@ export const oneStepScripts = (
   return Object.freeze({
     boundary: chain.boundary,
     prepare: chain.prepareResolvers[CEK_RESOLVER_INDEX],
-    core: resolver(cekCoreSemanticResolver(deployment)),
-    selection: resolver(cekSelectionSemanticResolver(deployment)),
+    core: resolver(cekCoreSemanticResolver(scene)),
+    selection: resolver(cekSelectionSemanticResolver(scene)),
     compute: arms.compute,
     machine: arms.machine,
     mapConversion: arms.mapConversion,
     caseConstant: arms.caseConstant,
     settle: arms.settle,
-    context: resolver(cekContextSemanticResolver(deployment)),
+    context: resolver(cekContextSemanticResolver(scene)),
     contextControl: context.control,
     ...stages,
     contextSettle: context.settle,
@@ -71,7 +73,7 @@ export const oneStepScripts = (
 
 /** Publishes the reference scripts of the one-step holders. */
 export const publishOneStepReferences = async (
-  scene: Scene,
+  scene: SceneContracts,
 ): Promise<ValidationTraceOneStepReferences> => {
   const publish = async ({ spendingScript }: OneStepScript, label: string) =>
     (
@@ -108,7 +110,7 @@ export const publishOneStepReferences = async (
  * registered.
  */
 export const publishSelectionReferences = async (
-  scene: Scene,
+  scene: SceneContracts,
 ): Promise<NonNullable<ValidationTraceOneStepReferences["cekSelection"]>> => {
   const { h, chain } = scene;
   const yield_ = async (
@@ -150,7 +152,7 @@ export const publishSelectionReferences = async (
 
 /** Publishes the reference scripts of the CEK context step's holders. */
 export const publishContextReferences = async (
-  scene: Scene,
+  scene: SceneContracts,
 ): Promise<NonNullable<ValidationTraceOneStepReferences["cekContext"]>> => {
   const scripts = oneStepScripts(scene);
   const publish = async ({ spendingScript }: OneStepScript, label: string) =>

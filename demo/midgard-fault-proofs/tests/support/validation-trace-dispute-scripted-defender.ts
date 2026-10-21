@@ -25,10 +25,8 @@ import {
   defendWith,
   type DefenseTrace,
 } from "./validation-trace-dispute-defend.js";
-import {
-  measureWithinTransactionLimits,
-  type Scene,
-} from "./validation-trace-dispute-open-scene.js";
+import type { Scene } from "./validation-trace-dispute-open-scene.js";
+import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
 
 type Hash = ReturnType<typeof midgardValidationTraceLeafHash>;
 

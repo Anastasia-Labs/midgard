@@ -26,12 +26,12 @@ import {
   failingMaterial,
   honestPresentation,
   initAndOpen,
-  measureWithinTransactionLimits,
   passingTrace,
   type Scene,
   setUpScene,
   verifySource,
 } from "./support/validation-trace-dispute-open-scene.js";
+import { measureWithinTransactionLimits } from "./support/validation-trace-dispute-transaction-limits.js";
 
 let scene: Scene;
 
