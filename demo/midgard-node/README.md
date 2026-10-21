@@ -521,6 +521,15 @@ automatically. See the operator lifecycle page in the docs site
 (`docs-site/content/docs/operators/node/operator-lifecycle.mdx`) for the
 vocabulary table, recovery paths, and the status report.
 
+## Validation-Trace Defense
+
+The node defends the blocks it accepted against validation-trace dispute
+cases, from the operator wallet and its defense pocket. Keep the operator
+wallet at least about 175 ADA above its normal commit float. See the
+[validation-trace defense runbook](docs/validation-trace-defense.md) for the
+funding, the pocket, the commit pause and every named state with its
+`/readyz` effect.
+
 ## DA Bond Pool and Availability Challenges
 
 One pooled DA bond backs every attestation of the DA committee. The `da-bond`
