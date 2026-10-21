@@ -5,8 +5,11 @@
  * - the operator key's Enterprise address is one of the node's own
  *   wallets: an output paid there is in its wallet view, and not in the
  *   Base wallet's;
- * - with only the Base wallet selected, a transaction spending the pocket
- *   alone is signed over the view and lands;
+ * - with the operator wallet selected (its Base address), a transaction
+ *   spending the pocket alone is signed over the view and lands;
+ * - where no follower runs, a seed selected without the pocket signs over
+ *   its Base address's provider read alone, and the operator's over the
+ *   pocket's too;
  * - the live intents of a workflow key: a journaled defense is live until
  *   its validity passes, and then dead; another family's intent under the
  *   same key, and another key, are not among them;
@@ -14,6 +17,8 @@
  *   follows it to landed.
  */
 import {
+  Emulator,
+  generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   type LucidEvolution,
@@ -23,6 +28,7 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
+  IntentJournalWithoutFollower,
   type IntentPlan,
   journaledIntent,
 } from "../src/services/intent-journal.js";
@@ -35,6 +41,7 @@ import {
   readSelectedWalletView,
   readWalletView,
   requireWalletViewInputs,
+  selectNodeWallet,
   signOverWalletView,
 } from "../src/transactions/utils.wallet-view.js";
 import { RECORD_ONLY } from "./helpers/intent-journal.js";
@@ -156,9 +163,9 @@ describe("the defense pocket on the emulator", () => {
     expect(wallet.utxos.map(refOf)).not.toContain(refOf(paid));
   });
 
-  it("signs a transaction spending the pocket alone with only the Base wallet selected, and it lands", async () => {
+  it("signs a transaction spending the pocket alone with the operator wallet selected, and it lands", async () => {
     const { env, pocket } = await open();
-    const lucid = await env.wallet();
+    const lucid = await env.wallet({ defensePocket: true });
     const plan = await env.plan();
     await payFrom(env, env.own.seedPhrase, pocket, 7_000_000n);
     expect(await env.stage.run()).toEqual([]);
@@ -182,6 +189,43 @@ describe("the defense pocket on the emulator", () => {
       env.stage.lastReport()!.entry(Buffer.from(hash, "hex"))?.status,
     ).toMatchObject({ kind: "landed" });
     expect((await viewAt(env, lucid, pocket)).utxos).toEqual([]);
+  });
+});
+
+describe("the views a node wallet signs over where no follower runs", () => {
+  it("reads only the Base address at the provider for a seed selected without the pocket, and the pocket too for the operator wallet", async () => {
+    const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+    const emulator = new Emulator([account]);
+    const reads: string[] = [];
+    const getUtxos = emulator.getUtxos.bind(emulator);
+    emulator.getUtxos = async (address) => {
+      reads.push(typeof address === "string" ? address : address.hash);
+      return getUtxos(address);
+    };
+    const readsOfSign = async (defensePocket: boolean) => {
+      const lucid = await Lucid(emulator, "Custom");
+      selectNodeWallet(lucid, account.seedPhrase, { defensePocket });
+      const unsigned = await lucid
+        .newTx()
+        .pay.ToAddress(account.address, { lovelace: 2_000_000n })
+        .complete();
+      reads.length = 0;
+      const signed = await Effect.runPromise(
+        signOverWalletView(lucid, unsigned).pipe(
+          Effect.provide(IntentJournalWithoutFollower),
+        ),
+      );
+      const signedReads = [...reads];
+      await emulator.submitTx((await signed.complete()).toCBOR());
+      emulator.awaitBlock(1);
+      return signedReads;
+    };
+
+    expect(await readsOfSign(false)).toEqual([account.address]);
+    expect(await readsOfSign(true)).toEqual([
+      account.address,
+      defensePocketAddress(operatorConfig(account.seedPhrase)),
+    ]);
   });
 });
 

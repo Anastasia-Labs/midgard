@@ -13,9 +13,11 @@
  *   live own intent gets its witness. A wallet's own `signTx` would look its
  *   inputs up at the provider, which has not seen that change; it signs
  *   only where no follower runs, where the view is the provider's.
- * - The seed's payment key also owns its Enterprise address (the
- *   operator's defense pocket), so the seam reads that address's view too:
- *   a transaction spending only pocket outputs gets its witness.
+ * - The operator seed's payment key also owns its Enterprise address (the
+ *   defense pocket). The operator wallet is selected with its pocket, so
+ *   the seam reads that address's view too: a transaction spending only
+ *   pocket outputs gets its witness. Other seeds sign over their Base view
+ *   alone.
  */
 import {
   CML,
@@ -37,7 +39,10 @@ import {
 import { TxSignError } from "./utils.await-required-output-visibility.js";
 
 type WalletSigner = Readonly<{
-  /** The seed's Base address and the Enterprise address of its payment key. */
+  /**
+   * The seed's Base address, and for the operator seed the Enterprise
+   * address of its payment key (the defense pocket).
+   */
   addresses: readonly string[];
   /** Payment and stake private keys, by key hash. */
   keys: ReadonlyMap<string, PrivateKey>;
@@ -61,9 +66,14 @@ const keyHashOf = (key: PrivateKey): string => {
 /**
  * Selects the seed's wallet (Base address, account 0, as
  * `selectWallet.fromSeed`) on `lucid` and keeps its keys for
- * `signOverWalletView`.
+ * `signOverWalletView`. With `defensePocket` (the operator seed only) the
+ * seam also signs over the view of the key's Enterprise address.
  */
-export const selectNodeWallet = (lucid: LucidEvolution, seed: string): void => {
+export const selectNodeWallet = (
+  lucid: LucidEvolution,
+  seed: string,
+  options: Readonly<{ defensePocket?: boolean }> = {},
+): void => {
   lucid.selectWallet.fromSeed(seed);
   const wallet = lucid.wallet();
   const { address, paymentKey, stakeKey } = walletFromSeed(seed, {
@@ -75,12 +85,16 @@ export const selectNodeWallet = (lucid: LucidEvolution, seed: string): void => {
     [keyHashOf(paymentKey), paymentKey],
   ]);
   if (stakeKey !== null) keys.set(keyHashOf(stakeKey), stakeKey);
-  const enterprise = walletFromSeed(seed, {
-    network: lucid.config().network,
-    addressType: "Enterprise",
-    accountIndex: 0,
-  }).address;
-  signers.set(wallet, { addresses: [address, enterprise], keys });
+  const addresses = [address];
+  if (options.defensePocket === true)
+    addresses.push(
+      walletFromSeed(seed, {
+        network: lucid.config().network,
+        addressType: "Enterprise",
+        accountIndex: 0,
+      }).address,
+    );
+  signers.set(wallet, { addresses, keys });
 };
 
 /** The wallet view (§8.5) of `address` under the journal in scope. */
@@ -157,9 +171,10 @@ export const readSelectedWalletFunding = (
 /**
  * Adds the selected node wallet's witnesses to `signBuilder` for the own
  * keys the transaction needs, found from the wallet views of the seed's
- * Base and Enterprise addresses read now (inputs and collaterals among
- * their outputs; certificates, withdrawals and required signers naming the
- * keys). A wallet not selected with `selectNodeWallet`
+ * Base address and, for the operator wallet, its defense pocket, read now
+ * (inputs and collaterals among their outputs; certificates, withdrawals
+ * and required signers naming the keys). A wallet not selected with
+ * `selectNodeWallet`
  * signs itself where no follower runs (its view is the provider's) and is
  * refused under a follower.
  */

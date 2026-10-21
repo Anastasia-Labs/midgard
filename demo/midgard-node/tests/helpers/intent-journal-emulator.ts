@@ -199,9 +199,12 @@ export const attachIntentFollower = async (
    * The node's wallet. Its slot mapping starts at the emulator's slot 0, as
    * the fixture's own instances do (an instance made later would start at the
    * then-current slot, and a validity bound before it is out of range for
-   * local script evaluation).
+   * local script evaluation). `defensePocket` selects it as the node selects
+   * its operator wallet.
    */
-  const wallet = async (): Promise<LucidEvolution> => {
+  const wallet = async (
+    options: Readonly<{ defensePocket?: boolean }> = {},
+  ): Promise<LucidEvolution> => {
     const lucid = await Lucid(emulator, "Custom", {
       slotConfig: {
         zeroTime: emulator.now() - emulator.slot * 1000,
@@ -209,7 +212,7 @@ export const attachIntentFollower = async (
         slotLength: 1000,
       },
     });
-    selectNodeWallet(lucid, own.seedPhrase);
+    selectNodeWallet(lucid, own.seedPhrase, options);
     return lucid;
   };
   const connectionString = await databases.create();
