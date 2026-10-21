@@ -89,10 +89,11 @@ allow_lists:
     - "d429435c9f332ef50d6fc8f5694bd256a36740da3d21e83aade0594f"
   da_challengers:
     - "3bd3eb08b8fb0166ddaa1cbe99248f88d6a749387740a7e6e1548d9b"
-# P1 carries no validation-trace states, so the families that read them are
-# left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
+# The preprod-public catalogue: the Plutus execution dispute
+# (validationTraceDispute, 00000006) is in it, and the families below, which
+# have no installed off-chain workflow yet, are left out
+# (Computation-Thread Init refuses them).
 excluded_fraud_proof_categories:
-  - validationTraceDispute
   - executionSourceScriptDecoding
   - receivePurposeLanguage
   - unusedScriptWitness

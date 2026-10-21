@@ -93,10 +93,12 @@ allow_lists:
     - "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"
   da_challengers:
     - "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"
-# P1 carries no validation-trace states, so the families that read them are
-# left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
+# The Plutus execution dispute (validationTraceDispute, 00000006) is in the
+# catalogue at launch (owner, 2026-10-21). The families below have no
+# installed off-chain workflow yet (UNINSTALLED_FRAUD_PROOF_CATEGORIES in
+# midgard-fault-proofs), so they are left out of the fraud-proof catalogue
+# and Computation-Thread Init refuses them.
 excluded_fraud_proof_categories:
-  - validationTraceDispute
   - executionSourceScriptDecoding
   - receivePurposeLanguage
   - unusedScriptWitness

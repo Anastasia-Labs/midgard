@@ -174,7 +174,6 @@ export const DEPLOYMENT_PROFILES = {
       ],
     },
     excluded_fraud_proof_categories: [
-      "validationTraceDispute",
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
@@ -497,7 +496,6 @@ export const DEPLOYMENT_PROFILES = {
       ],
     },
     excluded_fraud_proof_categories: [
-      "validationTraceDispute",
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
@@ -514,7 +512,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "f61d6aa00bd30087f5ca661a4feef5ef3ac9dc10e680d945b0fbe7f8c28fbf22",
   "preprod-public":
-    "7e27534449b94928be7f82a07d0b252676d8e8dab9066f76aa8de27866f525bc",
+    "34509247c46e8b0701a68e2c5d15836e914dc6acb9a02b83470e8062f5db28c4",
   "preprod-testing":
     "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
   "local-devnet-testing":
@@ -522,7 +520,7 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "preprod-emulator-testing":
     "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
   "preprod-emulator-curated":
-    "4d89aca5b3000750e02610f8828d5e068fc5fce6f766be51e9efd3efc7473b14",
+    "3ece1bd1551e31ca2353715cbcfd501ba4fbd69652eca349ef7cbaeec87dfbc1",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

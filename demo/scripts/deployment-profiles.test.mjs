@@ -976,7 +976,12 @@ test("the profile digest keeps list order and shape", () => {
 test("excluded fraud-proof categories are distinct catalogue names", () => {
   const profiles = readProfiles();
   assert.ok(
-    profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+    !profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.ok(
+    profiles["mainnet"].excluded_fraud_proof_categories.includes(
       "validationTraceDispute",
     ),
   );

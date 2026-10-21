@@ -89,9 +89,9 @@ describe("deployment profile binding", () => {
     );
     const excluded = DEPLOYMENT_PROFILES["preprod-public"]
       .excluded_fraud_proof_categories as readonly string[];
+    expect(excluded).not.toContain("validationTraceDispute");
     expect(excluded).toEqual(
       expect.arrayContaining([
-        "validationTraceDispute",
         "unusedRedeemer",
         "missingRedeemer",
         "missingScriptSource",
@@ -103,7 +103,10 @@ describe("deployment profile binding", () => {
         "distinctAssetAccumulationLimit",
       ]),
     );
-    expect(excluded).toHaveLength(10);
+    expect(excluded).toHaveLength(9);
+    expect(
+      DEPLOYMENT_PROFILES.mainnet.excluded_fraud_proof_categories,
+    ).toContain("validationTraceDispute");
     expect(curated).toEqual(
       DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
         (category) => !excluded.includes(category),
