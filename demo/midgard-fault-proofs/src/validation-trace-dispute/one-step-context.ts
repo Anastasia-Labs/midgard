@@ -2,13 +2,20 @@
  * context step resolver binds the step's CEK witness and auxiliary evidence
  * (ContextBound), the context control routes the thread by the step's
  * context stage (ContextStaged), the stage that route names verifies the
- * step (ContextVerified), and the context settle awards the thread. Each
- * holder's datum is what that holder's script derives on chain from the
- * step's witness, auxiliary evidence and the next state's witness; here it
- * is derived off chain from our own trace, field for field. */
+ * step (ContextVerified), directly or, at the item bind stage, through the
+ * redeemer item step (one-step-context-item.ts), and the context settle
+ * awards the thread. Each holder's datum is what that holder's script
+ * derives on chain from the step's witness, auxiliary evidence and the next
+ * state's witness; here it is derived off chain from our own trace, field
+ * for field. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { midgardEnvelopeDataFromCborIterative } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
+
+import {
+  planValidationTraceContextItem,
+  type ValidationTraceContextItem,
+} from "./one-step-context-item.js";
 
 /**
  * The stage each context route reaches, in the context control's order of
@@ -34,11 +41,13 @@ export const CEK_CONTEXT_ROUTES = [
 export type CekContextRoute = (typeof CEK_CONTEXT_ROUTES)[number];
 
 /**
- * The stages the runner drives, each of which verifies its step in one hop
- * and sends the thread to the context settle.
+ * The stages the runner drives: each verifies its step in one hop and sends
+ * the thread to the context settle, but the item bind stage, whose step the
+ * redeemer item chain verifies.
  */
 export const DRIVEN_CEK_CONTEXT_STAGES = [
   "redeemerBegin",
+  "itemBind",
   "reference",
   "spend",
   "output",
@@ -66,6 +75,8 @@ export type ValidationTraceContextStep = Readonly<{
   executionCursor: bigint;
   /** The `ContextSuccessor` the stage verifies. */
   successorCbor: string;
+  /** At the item bind stage, the step's redeemer item step. */
+  item: ValidationTraceContextItem | undefined;
 }>;
 
 type Item = bigint | string | readonly Item[];
@@ -229,6 +240,13 @@ export const planValidationTraceContextStep = ({
           ])
         : new Constr(0, [cekContextControlData(bytes(successor[1]))]),
     ),
+    item:
+      stage === "itemBind"
+        ? planValidationTraceContextItem({
+            auxiliaryCbor,
+            contextStage: context.fields[0] as bigint,
+          })
+        : undefined,
   });
 };
 

@@ -13,7 +13,10 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { findScriptDecodeRecord } from "../script-decode/record.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import type { ValidationTraceRecordedThread } from "./case-history.js";
+import type {
+  ValidationTraceCaseHistory,
+  ValidationTraceRecordedThread,
+} from "./case-history.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import {
   buildValidationTraceGameMove,
@@ -33,6 +36,11 @@ import {
   type ValidationTraceSelectionReads,
 } from "./one-step-builders.js";
 import { isValidationTraceContextHolder } from "./one-step-context-hops.js";
+import { isValidationTraceContextItemChainHolder } from "./one-step-context-item-holders.js";
+import {
+  contextItemPending,
+  contextItemReads,
+} from "./one-step-context-item-hops.js";
 import {
   type ValidationTraceOneStepContract,
   validationTraceOneStepDrives,
@@ -133,7 +141,10 @@ export const captureValidationTraceEnterResolution = async (
 /** Where each holder past the boundary keeps our successor's hash: the
  * selection and context step resolvers hold the state the core step binder
  * would, and each context holder past them nests the state its predecessor
- * checked one level deeper. */
+ * checked one level deeper; past the item bind stage, the verified item step
+ * nests the staged context once more, and its hash or value result once
+ * more again. A holder of the shared item chain keeps it in the pending item
+ * step alone (contextItemPending). */
 const CHALLENGER_SUCCESSOR_HASH = {
   prepare: [1, 0, 3],
   core: [1, 0, 1, 3],
@@ -143,7 +154,19 @@ const CHALLENGER_SUCCESSOR_HASH = {
   contextControl: [1, 0, 0, 1, 3],
   contextStage: [1, 0, 0, 0, 1, 3],
   contextSettle: [1, 0, 0, 0, 0, 1, 3],
+  contextItemReturn: [1, 0, 0, 0, 0, 1, 3],
+  contextItemSelectionHash: [1, 0, 0, 0, 0, 1, 3],
+  contextItemSelectionFinish: [1, 0, 0, 0, 0, 1, 3],
+  contextItemDataHash: [1, 0, 0, 0, 0, 1, 3],
+  contextItemDataFinishDescriptor: [1, 0, 0, 0, 0, 1, 3],
+  contextItemFinalize: [1, 0, 0, 0, 0, 1, 3],
+  contextItemSelectionContinue: [1, 0, 0, 0, 0, 0, 1, 3],
+  contextItemDataContinue: [1, 0, 0, 0, 0, 0, 1, 3],
+  contextItemDataFinishValue: [1, 0, 0, 0, 0, 0, 1, 3],
 } as const;
+
+/** Where the pending item step keeps our successor's hash. */
+const PENDING_CHALLENGER_SUCCESSOR_HASH = [0, 0, 0, 1, 3] as const;
 
 const challengerSuccessorPath = (
   holder: ValidationTraceOneStepContract["holder"],
@@ -202,7 +225,8 @@ const resolvingThread = async (
 /**
  * The plan the thread `utxo` at `holder` resolves, from our trace in
  * `material`: at the boundary, by its case thread `caseThread`; past it, by
- * our successor's hash its holder keeps.
+ * our successor's hash its holder keeps, or, along the shared item chain,
+ * its pending item step `pendingCbor` keeps.
  */
 const resolvingPlan = async ({
   deployment,
@@ -210,12 +234,14 @@ const resolvingPlan = async ({
   utxo,
   holder,
   caseThread,
+  pendingCbor,
 }: {
   readonly deployment: ValidationTraceDisputeDeployment;
   readonly material: ValidationTraceClaimMaterial | undefined;
   readonly utxo: UTxO;
   readonly holder: ValidationTraceOneStepContract["holder"];
   readonly caseThread: SDK.CaseThread | undefined;
+  readonly pendingCbor: string | undefined;
 }): Promise<ValidationTraceOneStepPlan> => {
   const drives = validationTraceOneStepDrives(deployment);
   if (caseThread !== undefined) {
@@ -233,9 +259,13 @@ const resolvingPlan = async ({
     await planValidationTraceOneStep({
       material,
       challengerHighHash: Data.from<string>(
-        plutusConstrFieldCbor(utxo.datum!, [
-          ...challengerSuccessorPath(holder),
-        ]),
+        pendingCbor === undefined
+          ? plutusConstrFieldCbor(utxo.datum!, [
+              ...challengerSuccessorPath(holder),
+            ])
+          : plutusConstrFieldCbor(pendingCbor, [
+              ...PENDING_CHALLENGER_SUCCESSOR_HASH,
+            ]),
       ),
       ...drives,
     }),
@@ -295,25 +325,41 @@ const selectionReads = async ({
   });
 };
 
-/** A hop of our thread through its one-step resolution, now. */
+/** A hop of our thread through its one-step resolution, now; along the
+ * shared item chain, reading its pending item step from the thread's
+ * history in `history`. */
 export const captureValidationTraceResolve = async (
   input: MaterialInput & {
     readonly defenders: readonly ValidationTraceRecordedThread[];
+    readonly history: Readonly<{
+      caseHistory: ValidationTraceCaseHistory;
+      headerHash: string;
+    }>;
   },
 ): Promise<CapturedValidationTraceStage> => {
-  const { lucid, signer, deployment } = input;
+  const { lucid, signer, deployment, history } = input;
   const thread = await resolvingThread(input);
   const from = thread.holder;
   if (from.holder === "award" || from.reference === undefined)
     throw new WorkflowActionChangedError(
       `validation-trace thread ${input.threadOutRef} has reached its award`,
     );
+  const pendingCbor = isValidationTraceContextItemChainHolder(from.holder)
+    ? await contextItemPending({
+        history: history.caseHistory,
+        headerHash: history.headerHash,
+        unit: thread.unit,
+        entryAddress:
+          deployment.chain.cekContextItemStages.entry.spendingScriptAddress,
+      })
+    : undefined;
   const plan = await resolvingPlan({
     deployment,
     material: input.material,
     utxo: thread.utxo,
     holder: from.holder,
     caseThread: thread.caseThread,
+    pendingCbor,
   });
   const hop = validationTraceHop({
     plan,
@@ -322,6 +368,9 @@ export const captureValidationTraceResolve = async (
     prover: signer.paymentKeyHash,
     ...(from.holder === "selection"
       ? { selection: await selectionReads({ input, plan }) }
+      : {}),
+    ...(plan.kind === "context" && plan.context.item !== undefined
+      ? { item: contextItemReads(deployment, pendingCbor) }
       : {}),
   });
   const to = validationTraceOneStepHolder(deployment, hop.next);

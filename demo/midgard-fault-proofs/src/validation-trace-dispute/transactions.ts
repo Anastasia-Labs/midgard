@@ -37,6 +37,7 @@ import {
 import { validationTraceRecovery } from "./actions.js";
 import type { ValidationTraceDisputeArtifact } from "./artifact.js";
 import type { DrivenCekContextStage } from "./one-step-context.js";
+import type { ValidationTraceContextItemHolder } from "./one-step-context-item-holders.js";
 
 /** How long a signed Open stays valid, so one that never lands retires. */
 export const VALIDATION_TRACE_OPEN_VALIDITY_MS = 15 * 60_000;
@@ -85,6 +86,8 @@ export type ValidationTraceOneStepReferences = Readonly<{
     control: UTxO;
     settle: UTxO;
     stages: Readonly<Record<DrivenCekContextStage, UTxO>>;
+    /** The holders of the redeemer item step the item bind stage binds. */
+    items: Readonly<Record<ValidationTraceContextItemHolder, UTxO>>;
   }>;
 }>;
 
@@ -121,6 +124,7 @@ export type ValidationTraceDisputeDeployment = Readonly<{
     | "semanticResolvers"
     | "cekCoreStages"
     | "cekContextStages"
+    | "cekContextItemStages"
     | "yields"
   >;
   /** The hub's fraud-proof policy and address, where a conviction records. */

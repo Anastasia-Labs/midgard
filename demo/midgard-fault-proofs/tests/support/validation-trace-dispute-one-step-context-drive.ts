@@ -1,14 +1,17 @@
 /** The validation-trace dispute runner at a CEK context step, on the
  * emulator, over a deployment that installs the context step resolver, its
- * control, settle and the stages the runner drives. The successor's thread
- * disputes a context step of our trace that a single stage verifies: the
- * runner plays it through the CEK resolver to the context step resolver,
- * which binds the step's witness and evidence, through the context control,
- * which routes it to the step's stage, through that stage, which verifies
- * the step, and through the context settle to the award; the awarded thread
- * closes into our case. A move whose fee fits under the per-move cap is paid
- * by its thread, and one over the cap by our wallet. Each stage's test file
- * pins the stage's refusal of a successor other than the one it derives. */
+ * control, settle, the stages the runner drives and the holders of the
+ * redeemer item step. The successor's thread disputes a context step of our
+ * trace: the runner plays it through the CEK resolver to the context step
+ * resolver, which binds the step's witness and evidence, through the context
+ * control, which routes it to the step's stage, through that stage, which
+ * verifies the step, alone or through the redeemer item step's holders, and
+ * through the context settle to the award; the awarded thread closes into
+ * our case. A move whose fee fits under the per-move cap is paid by its
+ * thread, and one over the cap by our wallet. Each single-hop stage's test
+ * file pins the stage's refusal of a successor other than the one it
+ * derives; the item bind stage pins its own
+ * (validation-trace-dispute-one-step-context-item-drive.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -20,6 +23,7 @@ import {
 } from "../../src/validation-trace-dispute/move-fee.js";
 import {
   buildValidationTraceHop,
+  type ValidationTraceHop,
   validationTraceHop,
 } from "../../src/validation-trace-dispute/one-step-builders.js";
 import type { DrivenCekContextStage } from "../../src/validation-trace-dispute/one-step-context.js";
@@ -29,6 +33,7 @@ import {
 } from "../../src/validation-trace-dispute/one-step-data.js";
 import {
   CEK_CONTEXT_STAGE_HOLDERS,
+  type ValidationTraceOneStepHolder,
   validationTraceOneStepHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import {
@@ -48,8 +53,14 @@ import {
 } from "./validation-trace-dispute-one-step-play.js";
 import { reportFit } from "./validation-trace-dispute-scripted-defender.js";
 
+/** A driven stage that verifies its step in one hop. */
+export type SingleHopCekContextStage = Exclude<
+  DrivenCekContextStage,
+  "itemBind"
+>;
+
 /** The last agreed state before the first step of the fixture's trace that
- * each driven stage verifies. */
+ * each single-hop stage verifies. */
 export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
   redeemerBegin: 94,
   reference: 97,
@@ -60,16 +71,30 @@ export const CONTEXT_STAGE_STEP_FROM = Object.freeze({
   assemble: 113,
   txInfo: 114,
   seed: 115,
-} as const satisfies Readonly<Record<DrivenCekContextStage, number>>);
+} as const satisfies Readonly<Record<SingleHopCekContextStage, number>>);
 
 const outRefOf = (utxo: UTxO) =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
-/** The drive of the successor's thread through the context step at
- * `stage`'s first step of our trace. */
-export const contextStageDrive = (stage: DrivenCekContextStage) => {
-  const from = CONTEXT_STAGE_STEP_FROM[stage];
-  const holder = CEK_CONTEXT_STAGE_HOLDERS[stage];
+/**
+ * The drive of the successor's thread through the context step after our
+ * trace's state `from`, to `holder`, past the context control: the thread
+ * goes on along `path` to the context settle, each resolution move labelled
+ * by `labels` in its fit.
+ */
+export const contextStepDrive = ({
+  from,
+  holder,
+  path,
+  labels,
+}: {
+  readonly from: number;
+  readonly holder: ValidationTraceOneStepHolder;
+  /** The holders the thread visits from `holder` up to the context settle. */
+  readonly path: readonly ValidationTraceOneStepHolder[];
+  /** The fit label of each move from `holder` up to the context settle. */
+  readonly labels: readonly string[];
+}) => {
   let dispute: TwoThreadCase;
   /** The successor thread's moves past the game, and its awarded close. */
   let moves: PreparedMove[];
@@ -121,8 +146,59 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
     return planning.plan;
   };
 
+  /**
+   * The move of the successor's thread, standing at `holder`, by `hop` to
+   * `next`, and a check that the thread has not moved.
+   */
+  const hopFromPlace = async (
+    hop: (
+      before: Awaited<ReturnType<typeof placeOfB>>,
+      plan: ValidationTraceContextStepPlan,
+    ) => ValidationTraceHop,
+    next: ValidationTraceOneStepHolder,
+  ) => {
+    const { scene, deployment, b } = dispute;
+    const before = await placeOfB();
+    const plan = await contextPlan(before.utxo);
+    const lucid = scene.h.proverLucid;
+    const prover = scene.h.proverSigner.paymentKeyHash;
+    const reference = validationTraceOneStepHolder(
+      deployment,
+      holder,
+    ).reference!;
+    expect(before.holder).toBe(holder);
+    const built = hop(before, plan);
+    const window = validationTraceMoveWindow(lucid);
+    return {
+      build: async () =>
+        await completeValidationTraceMove({
+          lucid,
+          stage: "resolve",
+          referenced: [reference],
+          build: (fee) =>
+            buildValidationTraceHop({
+              lucid,
+              thread: before.utxo,
+              unit: b.unit,
+              reference,
+              hop: built,
+              address: validationTraceOneStepHolder(deployment, next).address,
+              prover,
+              fee,
+              ...window,
+            }),
+        }),
+      unmoved: async () =>
+        expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo)),
+    };
+  };
+
   return {
-    /** Plays both threads until the successor's stands at the stage. */
+    dispute: () => dispute,
+    placeOfB,
+    contextPlan,
+    hopFromPlace,
+    /** Plays both threads until the successor's stands at `holder`. */
     setUp: async () => {
       dispute = await defendTwoThreads({
         withRemoval: false,
@@ -139,72 +215,6 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
       });
     },
 
-    /** Our plan routes the thread's step to the stage. */
-    routes: async () => {
-      const plan = await contextPlan((await placeOfB()).utxo);
-      expect(plan.stateIndex).toBe(from);
-      expect(plan.context.stage).toBe(stage);
-    },
-
-    /**
-     * The stage's hop with a successor that carries the step's own context,
-     * unchanged, in place of the one the stage derives; and a check that the
-     * thread has not moved.
-     */
-    unchangedSuccessor: async () => {
-      const { scene, deployment, b } = dispute;
-      const before = await placeOfB();
-      const plan = await contextPlan(before.utxo);
-      const lucid = scene.h.proverLucid;
-      const prover = scene.h.proverSigner.paymentKeyHash;
-      const honest = validationTraceHop({
-        plan,
-        holder,
-        utxo: before.utxo,
-        prover,
-      });
-      const staged = plutusConstrFieldCbor(before.utxo.datum!, [1, 0]);
-      const unchanged = constr(0, [plan.context.contextCbor]);
-      expect(unchanged).not.toBe(plan.context.successorCbor);
-      expect(honest.datum).toBe(
-        stepDatum(prover, constr(0, [staged, plan.context.successorCbor])),
-      );
-      const hop = {
-        ...honest,
-        datum: stepDatum(prover, constr(0, [staged, unchanged])),
-      };
-      const reference = validationTraceOneStepHolder(
-        deployment,
-        holder,
-      ).reference!;
-      const window = validationTraceMoveWindow(lucid);
-      return {
-        build: async () =>
-          await completeValidationTraceMove({
-            lucid,
-            stage: "resolve",
-            referenced: [reference],
-            build: (fee) =>
-              buildValidationTraceHop({
-                lucid,
-                thread: before.utxo,
-                unit: b.unit,
-                reference,
-                hop,
-                address: validationTraceOneStepHolder(
-                  deployment,
-                  "contextSettle",
-                ).address,
-                prover,
-                fee,
-                ...window,
-              }),
-          }),
-        unmoved: async () =>
-          expect(outRefOf((await placeOfB()).utxo)).toBe(outRefOf(before.utxo)),
-      };
-    },
-
     /** Plays the thread through the resolution to the award and its close. */
     awards: async () => {
       const { scene, deployment, runner, prepared, a, b } = dispute;
@@ -215,32 +225,32 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
         until: async () =>
           (await threadClosed(dispute, a.unit)) &&
           (await threadClosed(dispute, b.unit)),
-        limit: 40,
+        limit: 40 + 2 * path.length,
       });
       moves = prepared.filter(
         ({ stage: moved, cbor }) =>
           (moved === "enter_resolution" || moved === "resolve") &&
           threadOutput(cbor) !== undefined,
       );
+      const visits: readonly ValidationTraceOneStepHolder[] = [
+        "prepare",
+        "context",
+        "contextControl",
+        holder,
+        ...path,
+        "contextSettle",
+      ];
       expect(moves.map(({ stage: moved }) => moved)).toStrictEqual([
         "enter_resolution",
-        ...Array<string>(6).fill("resolve"),
+        ...Array<string>(visits.length + 1).fill("resolve"),
       ]);
       // Each resolution move sends the thread to the next holder, the last
       // to the award.
-      for (const [index, next] of (
-        [
-          "prepare",
-          "context",
-          "contextControl",
-          holder,
-          "contextSettle",
-        ] as const
-      ).entries())
+      for (const [index, next] of visits.entries())
         expect(paidTo(moves[index + 1]!)).toBe(
           validationTraceOneStepHolder(deployment, next).address,
         );
-      const last = moves[6]!;
+      const last = moves.at(-1)!;
       expect(paidTo(last)).toBe(scene.chain.award.spendingScriptAddress);
       const close = prepared.find(
         ({ stage: moved, consumes }) =>
@@ -254,7 +264,7 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
         "PrepareSelected context",
         "ContextBound",
         "ContextStaged",
-        `ContextVerified ${stage}`,
+        ...labels,
         "ContextSettle",
       ].entries())
         reportFit(label, [moves[index]!.cbor]);
@@ -294,5 +304,57 @@ export const contextStageDrive = (stage: DrivenCekContextStage) => {
         }
       }
     },
+  };
+};
+
+/** The drive of the successor's thread through the context step at
+ * `stage`'s first step of our trace. */
+export const contextStageDrive = (stage: SingleHopCekContextStage) => {
+  const from = CONTEXT_STAGE_STEP_FROM[stage];
+  const holder = CEK_CONTEXT_STAGE_HOLDERS[stage];
+  const drive = contextStepDrive({
+    from,
+    holder,
+    path: [],
+    labels: [`ContextVerified ${stage}`],
+  });
+  return {
+    setUp: drive.setUp,
+    /** Our plan routes the thread's step to the stage. */
+    routes: async () => {
+      const plan = await drive.contextPlan((await drive.placeOfB()).utxo);
+      expect(plan.stateIndex).toBe(from);
+      expect(plan.context.stage).toBe(stage);
+    },
+
+    /**
+     * The stage's hop with a successor that carries the step's own context,
+     * unchanged, in place of the one the stage derives; and a check that the
+     * thread has not moved.
+     */
+    unchangedSuccessor: async () => {
+      const prover = drive.dispute().scene.h.proverSigner.paymentKeyHash;
+      return await drive.hopFromPlace((before, plan) => {
+        const honest = validationTraceHop({
+          plan,
+          holder,
+          utxo: before.utxo,
+          prover,
+        });
+        const staged = plutusConstrFieldCbor(before.utxo.datum!, [1, 0]);
+        const unchanged = constr(0, [plan.context.contextCbor]);
+        expect(unchanged).not.toBe(plan.context.successorCbor);
+        expect(honest.datum).toBe(
+          stepDatum(prover, constr(0, [staged, plan.context.successorCbor])),
+        );
+        return {
+          ...honest,
+          datum: stepDatum(prover, constr(0, [staged, unchanged])),
+        };
+      }, "contextSettle");
+    },
+
+    awards: drive.awards,
+    pays: drive.pays,
   };
 };

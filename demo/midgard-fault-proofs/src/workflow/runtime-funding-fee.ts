@@ -103,14 +103,15 @@ export const workflowRuntimeFundingMaximumFee = (
 
 /**
  * The largest thread move of a validation-trace dispute measured so far,
- * component by component: the signed bytes of a CEK context step's tx-info
- * stage hop and the reference-script bytes of a CEK script selection's hop.
+ * component by component: the signed bytes of a CEK context item step's
+ * settlement hop (a data scan's value-finishing step) and the
+ * reference-script bytes of a CEK script selection's hop.
  * Whether a move's thread or our wallet pays for it turns on the live
  * prices, so the shape bounds every measured move, not only those over the
  * per-move cap at today's prices.
  */
 export const VALIDATION_DISPUTE_WALLET_MOVE = Object.freeze({
-  transactionBytes: 6_164n,
+  transactionBytes: 7_724n,
   referenceScriptBytes: 27_951n,
 });
 

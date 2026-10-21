@@ -25,6 +25,7 @@ import { completeValidationTraceMove } from "../../src/validation-trace-dispute/
 import {
   caseConfigUtxo,
   type ValidationTraceDisputeDeployment,
+  type ValidationTraceOneStepReferences,
 } from "../../src/validation-trace-dispute/transactions.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
@@ -118,21 +119,27 @@ export const defendTwoThreads = async ({
 }): Promise<TwoThreadCase> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = withRemoval ? recordCrossBlockRawEmulator() : undefined;
-  const scene = await setUpScene();
+  // Published before the scene's blocks, so the publications take none of
+  // the source verification's window from the failing block's end.
+  let oneStep: ValidationTraceOneStepReferences | undefined;
+  const scene = await setUpScene(async (contracts) => {
+    oneStep = {
+      ...(await publishOneStepReferences(contracts)),
+      ...(selections
+        ? { cekSelection: await publishSelectionReferences(contracts) }
+        : {}),
+      ...(contexts
+        ? { cekContext: await publishContextReferences(contracts) }
+        : {}),
+    };
+  });
   const removal =
     recorder === undefined ? undefined : await recordedRemoval(scene, recorder);
   const successor = await enrollSuccessor(
     scene.h as never,
     scene.operator.vkey,
   );
-  const oneStep = await publishOneStepReferences(scene);
-  const deployment = oneStepDeployment(scene, {
-    ...oneStep,
-    ...(selections
-      ? { cekSelection: await publishSelectionReferences(scene) }
-      : {}),
-    ...(contexts ? { cekContext: await publishContextReferences(scene) } : {}),
-  });
+  const deployment = oneStepDeployment(scene, oneStep!);
   const prepared: PreparedMove[] = [];
   const runner = makeRunner(scene, {
     deployment,

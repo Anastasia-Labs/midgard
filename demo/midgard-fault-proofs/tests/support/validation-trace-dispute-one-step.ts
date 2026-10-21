@@ -8,6 +8,11 @@ import type { Script, UTxO } from "@lucid-evolution/lucid";
 
 import { DRIVEN_CEK_CONTEXT_STAGES } from "../../src/validation-trace-dispute/one-step-context.js";
 import {
+  CONTEXT_ITEM_HOLDERS,
+  contextItemValidators,
+  type ValidationTraceContextItemHolder,
+} from "../../src/validation-trace-dispute/one-step-context-item-holders.js";
+import {
   CEK_CONTEXT_STAGE_HOLDERS,
   cekContextSemanticResolver,
   cekCoreSemanticResolver,
@@ -64,6 +69,7 @@ export const oneStepScripts = (
     context: resolver(cekContextSemanticResolver(scene)),
     contextControl: context.control,
     ...stages,
+    ...contextItemValidators(chain),
     contextSettle: context.settle,
   });
 };
@@ -145,7 +151,8 @@ export const publishSelectionReferences = async (
   });
 };
 
-/** Publishes the reference scripts of the CEK context step's holders. */
+/** Publishes the reference scripts of the CEK context step's holders, and of
+ * the holders of the redeemer item step its item bind stage binds. */
 export const publishContextReferences = async (
   scene: SceneContracts,
 ): Promise<NonNullable<ValidationTraceOneStepReferences["cekContext"]>> => {
@@ -166,12 +173,18 @@ export const publishContextReferences = async (
       scripts[CEK_CONTEXT_STAGE_HOLDERS[stage]],
       `CEK context ${stage}`,
     );
+  const items: Partial<Record<ValidationTraceContextItemHolder, UTxO>> = {};
+  for (const holder of CONTEXT_ITEM_HOLDERS)
+    items[holder] = await publish(scripts[holder], `CEK ${holder}`);
   return Object.freeze({
     semantic: await publish(scripts.context, "CEK context step"),
     control: await publish(scripts.contextControl, "CEK context control"),
     settle: await publish(scripts.contextSettle, "CEK context settle"),
     stages: Object.freeze(
       stages as Record<(typeof DRIVEN_CEK_CONTEXT_STAGES)[number], UTxO>,
+    ),
+    items: Object.freeze(
+      items as Record<ValidationTraceContextItemHolder, UTxO>,
     ),
   });
 };

@@ -50,6 +50,7 @@ export const captureValidationTraceThreadMove = async ({
       return await captureValidationTraceResolve({
         ...move,
         defenders: await validationTraceRecordedThreads(history),
+        history,
       });
     case "close_awarded":
       return await captureValidationTraceAwardedClose({

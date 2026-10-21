@@ -34,6 +34,7 @@ import {
   isValidationTraceContextHolder,
   validationTraceContextHop,
 } from "./one-step-context-hops.js";
+import type { ValidationTraceContextItemReads } from "./one-step-context-item-hops.js";
 import {
   bytes,
   constr,
@@ -121,7 +122,8 @@ const datumOf = (utxo: UTxO): string => {
 
 /**
  * The hop of the thread `utxo` of prover `prover`, held by `holder`, in the
- * one-step resolution `plan`; a selection's hop reads `selection`.
+ * one-step resolution `plan`; a selection's hop reads `selection`, and a hop
+ * through a context step's redeemer item step reads `item`.
  */
 export const validationTraceHop = ({
   plan,
@@ -129,16 +131,24 @@ export const validationTraceHop = ({
   utxo,
   prover,
   selection,
+  item,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
   readonly utxo: UTxO;
   readonly prover: string;
   readonly selection?: ValidationTraceSelectionReads;
+  readonly item?: ValidationTraceContextItemReads;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
   if (isValidationTraceContextHolder(holder))
-    return validationTraceContextHop({ plan, holder, datum, prover });
+    return validationTraceContextHop({
+      plan,
+      holder,
+      datum,
+      prover,
+      ...(item === undefined ? {} : { item }),
+    });
   switch (holder) {
     case "boundary": {
       const thread = Data.from(datum, SDK.CaseThreadDatum).data;

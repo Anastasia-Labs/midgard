@@ -4,14 +4,23 @@
  * control; from the control, which stages the step's context and native
  * facts (ContextStaged), to the stage its context routes the step to; from
  * that stage, which verifies the step (ContextVerified), to the context
- * settle; and from the settle to the award. Every hop is redeemed with the
- * step's witness and evidence (`VerifyContext`), and each successor carries
- * the state its next holder checks, derived from our trace
- * (one-step-context.ts). */
+ * settle, or from the item bind stage through the redeemer item step
+ * (one-step-context-item-hops.ts); and from the settle to the award. Every
+ * hop is redeemed with the step's witness and evidence (`VerifyContext`),
+ * and each successor carries the state its next holder checks, derived from
+ * our trace (one-step-context.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 
 import type { ValidationTraceHop } from "./one-step-builders.js";
 import { contextBoundSource } from "./one-step-context.js";
+import {
+  isValidationTraceContextItemHolder,
+  type ValidationTraceContextItemHolder,
+} from "./one-step-context-item-holders.js";
+import {
+  validationTraceContextItemHop,
+  type ValidationTraceContextItemReads,
+} from "./one-step-context-item-hops.js";
 import {
   bytes,
   constr,
@@ -35,6 +44,7 @@ export type ValidationTraceContextHolder =
   | "context"
   | "contextControl"
   | ValidationTraceContextStageHolder
+  | ValidationTraceContextItemHolder
   | "contextSettle";
 
 const STAGE_HOLDERS: ReadonlySet<string> = new Set(
@@ -47,27 +57,42 @@ export const isValidationTraceContextHolder = (
   holder === "context" ||
   holder === "contextControl" ||
   holder === "contextSettle" ||
-  STAGE_HOLDERS.has(holder);
+  STAGE_HOLDERS.has(holder) ||
+  isValidationTraceContextItemHolder(holder);
 
 /**
  * The hop of the thread whose datum is `datum`, of prover `prover`, held by
- * the context holder `holder`, in the one-step resolution `plan`.
+ * the context holder `holder`, in the one-step resolution `plan`; a hop
+ * through the redeemer item step reads `item`.
  */
 export const validationTraceContextHop = ({
   plan,
   holder,
   datum,
   prover,
+  item,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceContextHolder;
   readonly datum: string;
   readonly prover: string;
+  readonly item?: ValidationTraceContextItemReads;
 }): ValidationTraceHop => {
   if (plan.kind !== "context")
     throw new Error(
       `validation-trace ${holder} holds a thread whose step is not a CEK context step`,
     );
+  if (
+    holder === "contextItemBind" ||
+    isValidationTraceContextItemHolder(holder)
+  )
+    return validationTraceContextItemHop({
+      plan,
+      holder,
+      datum,
+      prover,
+      reads: item,
+    });
   const { context }: ValidationTraceContextStepPlan = plan;
   // The state the thread's holder checked, which the next holder's state
   // carries first.
