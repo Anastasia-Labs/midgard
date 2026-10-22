@@ -21,7 +21,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { Lucid } from "@lucid-evolution/lucid";
+import {
+  Lucid,
+  type UTxO,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
@@ -86,6 +90,11 @@ import {
 } from "./validation-trace-dispute-runner.js";
 
 const CATEGORY = "validationTraceDispute" as const;
+
+/** The watcher's dispute funding terms for a validation-trace policy. */
+export type ValidationDisputeFundingTerms = NonNullable<
+  ReturnType<typeof watcherValidationDisputeFundingTerms>["validationDispute"]
+>;
 
 /** Rewrites the adapter one process turn runs with. */
 export type AdapterWrap = (
@@ -160,6 +169,9 @@ export const openFundedDispute = async (
   scene: Scene,
   options: {
     readonly removal?: ValidationTraceRemovalConfig;
+    /** The removal's published reference scripts by contract name, whose
+     * contracts the watcher's roster then governs as well. */
+    readonly removalScripts?: Readonly<Record<string, UTxO>>;
     readonly oneStep?: ValidationTraceOneStepReferences;
     /** Whether the watcher's funding follows the emulator's live fees. */
     readonly liveParameters?: boolean;
@@ -175,6 +187,13 @@ export const openFundedDispute = async (
     ) => Readonly<Record<string, string>>;
     /** Whether the watcher observes publications; by default it does. */
     readonly publications?: boolean;
+    /** Rewrites the watcher's dispute funding terms at each process boot,
+     * counted from 0 (a restart boots again); by default every boot uses
+     * the watcher's own, from the signed deployment. */
+    readonly disputeTerms?: (
+      terms: ValidationDisputeFundingTerms,
+      boot: number,
+    ) => ValidationDisputeFundingTerms;
   } = {},
 ) => {
   const { h } = scene;
@@ -226,6 +245,10 @@ export const openFundedDispute = async (
     identity,
     CATEGORY,
   );
+  if (validationDispute === undefined)
+    throw new Error("the watcher derives no dispute funding terms");
+  const removalScripts = options.removalScripts ?? {};
+  let boots = 0;
   /** The watcher process's in-memory part; booting again is a restart. */
   const boot = async () =>
     await openInstalledProverFunding({
@@ -237,14 +260,25 @@ export const openFundedDispute = async (
       protocolParameters,
       fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
       walletAddress: h.proverSigner.address,
-      scriptHashes: (options.roster ?? ((hashes) => hashes))(
-        scriptHashes(scene, deployment),
-      ),
-      referenceUtxos: referenceUtxos(scene, deployment),
+      scriptHashes: (options.roster ?? ((hashes) => hashes))({
+        ...scriptHashes(scene, deployment),
+        ...Object.fromEntries(
+          Object.entries(removalScripts).map(([name, utxo]) => [
+            name,
+            validatorToScriptHash(utxo.scriptRef!),
+          ]),
+        ),
+      }),
+      referenceUtxos: [
+        ...referenceUtxos(scene, deployment),
+        ...Object.values(removalScripts),
+      ],
+      computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
       // The watcher does not install the dispute until its defender exists.
       journalRoot: null,
-      validationDispute,
+      validationDispute:
+        options.disputeTerms?.(validationDispute, boots++) ?? validationDispute,
       // The supervisor's factory queries its node's parameters afresh at
       // each turn.
       ...(options.liveParameters === true

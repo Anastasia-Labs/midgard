@@ -6,7 +6,9 @@
  * its next one. The defender then goes silent: once its clock ends the
  * watcher times the thread out and closes it into our case, minting the
  * defender's lost-defense receipt and paying the rest of the thread to our
- * funding key, then closes the case Convicted. A move whose fee fits under
+ * funding key, then closes the case Convicted; the defender, the convicted
+ * block's operator, is not slashed by that receipt before the case closes.
+ * A move whose fee fits under
  * the per-move cap is paid from the thread it spends; the timeout, priced
  * over the cap, is paid entirely from our plain-Ada wallet through the
  * funding permit, and its successor keeps all of the thread's lovelace. The
@@ -172,7 +174,7 @@ describe("validation-trace dispute thread moves under the prover funding permit"
   );
 
   it(
-    "times out the silent defender with our wallet paying the timeout priced over the cap, and closes its thread into our case, minting its lost-defense receipt and paying the rest of the thread to our funding key, then closes the case Convicted",
+    "times out the silent defender with our wallet paying the timeout priced over the cap, and closes its thread into our case, minting its lost-defense receipt and paying the rest of the thread to our funding key, then closes the case Convicted with no slash by that receipt before it",
     async () => {
       const { scene, dispute, capture, unit, defender } = journey;
       const silent = await liveFundedThread(journey);
@@ -201,7 +203,7 @@ describe("validation-trace dispute thread moves under the prover funding permit"
       const [timeout] = hashesOf("timeout");
       const [close] = hashesOf("close_thread");
       // With its only thread closed and its defense deadline passed, the
-      // case closes Convicted.
+      // case closes Convicted; no slash by the thread's receipt precedes it.
       expect(
         confirmedMoves(result)
           .map(({ stage }) => stage)
@@ -245,16 +247,14 @@ describe("validation-trace dispute thread moves under the prover funding permit"
         scene.h.proverSigner.paymentKeyHash,
       );
       const name = unit.slice(56);
-      const [receipt] = await scene.h.proverLucid.utxosAtWithUnit(
-        chain.award.spendingScriptAddress,
-        chain.award.policyId + name,
-      );
-      expect(receipt?.txHash).toBe(close);
-      expect(receipt!.assets).toStrictEqual({
+      // The receipt the close minted.
+      const receipt = recordedOutput(scene, `${close!}#1`);
+      expect(receipt.address).toBe(chain.award.spendingScriptAddress);
+      expect(receipt.assets).toStrictEqual({
         lovelace: RECEIPT_LOVELACE,
         [chain.award.policyId + name]: 1n,
       });
-      expect(Data.from(receipt!.datum!, SDK.LostDefenseReceipt)).toStrictEqual({
+      expect(Data.from(receipt.datum!, SDK.LostDefenseReceipt)).toStrictEqual({
         case_id: threadOf(silent).case_id,
         defender_vkh: defender.vkey,
         outcome: "ChallengerWins",

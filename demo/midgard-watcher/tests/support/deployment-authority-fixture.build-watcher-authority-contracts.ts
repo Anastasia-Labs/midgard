@@ -247,6 +247,9 @@ export type WatcherDeploymentAuthorityFixtureOptions = Readonly<{
   blueprintHash?: string;
   /** Bind an existing ordinary initialization frame to its actual nonce. */
   hubOracleOneShotOutRef?: string;
+  /** The reference-script auth policy the deployment published under, in
+   * place of the fixture's. */
+  referenceScriptAuthPolicy?: Readonly<Record<string, unknown>>;
   eventHistoryRecipe?: WatcherHistoryFixtureRecipe;
   ruleBundleCommitment?: string;
   programCommitments?: Readonly<Record<string, string>>;

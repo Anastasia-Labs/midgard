@@ -8,9 +8,12 @@
  * binds its config and constructs its workflow from the deployment the
  * loader hands it.
  *
- * Only the manifest is stood in for: the calling test mocks the dispute's
- * deployment binding with `bindingFor` and the L1 observation port with the
- * recorded raw authority. The roster is the installed scene's.
+ * The deployment is the scene's, described by a finalized manifest the
+ * watcher's signed identity binds (`installedSceneSignedDeployment`), so the
+ * convicted block's removal and its bond-backed slash are funded as the
+ * deployment's own. The calling test mocks the dispute's deployment binding
+ * with `bindingFor` and the L1 observation port with the recorded raw
+ * authority. The roster is the installed scene's.
  */
 import { homedir } from "node:os";
 
@@ -58,8 +61,8 @@ import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import {
   referenceUtxos,
   scriptHashes,
-  signedDeploymentFixture,
 } from "./validation-trace-dispute-funded-roster.js";
+import { installedSceneSignedDeployment } from "./validation-trace-dispute-installed-manifest.js";
 import {
   type InstalledScene,
   sceneRoster,
@@ -74,7 +77,7 @@ const RUNTIME_CONFIG_PATH = "/installed/validation-trace-runtime.json";
 type Recorder = ReturnType<typeof recordCrossBlockRawEmulator>;
 
 /**
- * Binds the scene's deployment as the signed manifest would, classifies the
+ * Binds the scene's deployment as its signed manifest does, classifies the
  * failing header as the watcher's classifier does, and returns the
  * objective's watcher turn, the binding the mocked manifest binding answers
  * for each header, and the installed application's host parts.
@@ -88,7 +91,12 @@ export const installValidationTraceApplication = async ({
 }) => {
   const { scene, oneStep, removal } = installed;
   const { h, chain } = scene;
-  const signed = signedDeploymentFixture(scene);
+  const signed = installedSceneSignedDeployment(
+    installed,
+    buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
+      removalReferenceScripts: removal.published,
+    }),
+  );
   const identity = signed.result;
   const fingerprint = identity.manifestId;
   const releaseFinalityAuthority =
@@ -104,21 +112,10 @@ export const installValidationTraceApplication = async ({
     h.proverLucid,
   );
   const category = h.catalogue.categories[CATEGORY]!;
-  const deploymentInfo = {
-    ...buildRemovalDeploymentInfo(h.contracts, h.catalogue, {
-      removalReferenceScripts: removal.published,
-    }),
-    availabilityChallenge: (
-      signed.signedIdentity.manifest as {
-        readonly availabilityChallenge: unknown;
-      }
-    ).availabilityChallenge,
-    hubOracleOneShot: {
-      txHash: h.nonceUtxo.txHash,
-      outputIndex: h.nonceUtxo.outputIndex,
-    },
-    l1SlotConfig: { ...l1SlotConfig },
-  };
+  // The finalized manifest the identity binds.
+  const deploymentInfo = signed.signedIdentity.manifest as Readonly<{
+    contracts: unknown;
+  }>;
   const roster = sceneRoster(installed);
   const definitionFor = (headerHash: string) => ({
     category: CATEGORY,

@@ -256,10 +256,29 @@ const bindFraudProofDeployment = async <
         manifest.network,
         scriptOf(schedulerSpend),
       ),
+      ...lostDefenseOf(category, resolvedContracts.contracts),
     },
     resolvedContracts,
   };
 };
+
+/** A defended case's lost-defense receipts, by the family's chain. */
+function lostDefenseOf(
+  category: FraudProofCatalogueCategoryName,
+  contracts: Awaited<
+    ReturnType<typeof resolveFaultProofDeploymentContracts>
+  >["contracts"],
+) {
+  const chain = contracts.validationTraceDispute;
+  return category === "validationTraceDispute" && chain !== undefined
+    ? {
+        lostDefense: {
+          casePolicyId: chain.case.policyId,
+          receiptPolicyId: chain.award.policyId,
+        },
+      }
+    : {};
+}
 
 /** Full executable binding retains the exact per-step datum schema contract. */
 export const bindFraudProofWorkflowDeployment = <

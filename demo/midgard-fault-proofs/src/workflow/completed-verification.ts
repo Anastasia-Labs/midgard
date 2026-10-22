@@ -9,6 +9,7 @@ import {
 import { normalizeWorkflowTerminal } from "./orchestrator.js";
 import {
   deriveFraudProofRawL1CompletedTerminal,
+  fraudProofRawL1HistoryReader,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
 import {
@@ -91,6 +92,11 @@ export const verifyCompletedFraudProofWorkflow = async ({
     snapshot,
     definition: binding.definition,
     releaseEconomics: binding.releaseEconomics,
+    history: fraudProofRawL1HistoryReader({
+      authority,
+      releaseFinality: binding.releaseFinality,
+      headerHash: binding.definition.headerHash,
+    }),
   });
   if (observed === null) return { kind: "pending", reason: "target_live" };
   const facts = (value: FraudProofWorkflowTerminal) =>

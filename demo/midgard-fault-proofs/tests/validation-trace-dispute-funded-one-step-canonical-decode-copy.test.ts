@@ -120,6 +120,7 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
     dispute = await openFundedDispute(scene, {
       oneStep: oneStep!,
       removal: removal.removal,
+      removalScripts: removal.published,
       liveParameters: true,
     });
     const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);

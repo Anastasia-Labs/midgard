@@ -4,11 +4,13 @@
  * silent. The successor then reveals, and no process of ours answers before
  * our clock on its thread runs out: the successor moves its thread to the
  * timeout validator and closes it into the case as its win, from its own
- * wallet. The runner then stops under its own named state, raising no alarm,
- * hands the session back at once, and moves nothing more. */
+ * wallet. With the case settled for us, the runner then slashes the
+ * operator, who lost the thread we closed, by its lost-defense receipt, and
+ * stops under its own named state, raising no alarm, hands the session back
+ * at once, and moves nothing more. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_DEFENDER_WON } from "../src/validation-trace-dispute/adapter.js";
 import { validationTraceChallengerDeadlineMs } from "../src/validation-trace-dispute/threads.js";
@@ -39,7 +41,7 @@ let won: string;
 
 describe("validation-trace dispute runner: a defender wins a thread of our case", () => {
   beforeAll(async () => {
-    dispute = await defendTwoThreads({ withRemoval: false });
+    dispute = await defendTwoThreads({ withRemoval: true });
     const { scene, runner, deployment, a, b, caseUnit } = dispute;
     await playThreads({
       scene,
@@ -51,6 +53,15 @@ describe("validation-trace dispute runner: a defender wins a thread of our case"
     expect(dispute.prepared.map(({ stage }) => stage)).toContain(
       "close_awarded",
     );
+    // The case is not settled while the successor's thread is open: no
+    // slash yet.
+    expect(dispute.prepared.map(({ stage }) => stage)).not.toContain(
+      "slash_lost_defense",
+    );
+    // Nor at a further run while the successor's thread is still open.
+    const closedAt = dispute.prepared.length;
+    await runner.runOnce(scene.failing);
+    expect(dispute.prepared.slice(closedAt)).toStrictEqual([]);
     // The successor reveals; no process of ours answers before our clock on
     // its thread runs out.
     await revealAsDefender(
@@ -82,6 +93,8 @@ describe("validation-trace dispute runner: a defender wins a thread of our case"
     });
   }, 1_800_000);
 
+  afterAll(() => dispute?.recorder?.restore());
+
   it("leaves the case a defender's win: no thread open, the thread's rest at the defender's key", async () => {
     const { scene, caseUnit, b } = dispute;
     const caseUtxo = await liveCase({ scene, caseUnit });
@@ -97,6 +110,35 @@ describe("validation-trace dispute runner: a defender wins a thread of our case"
       credentialToAddress(network, { type: "Key", hash: b.defender.vkey }),
     );
     expect(await threadClosed(dispute, b.unit)).toBe(true);
+  }, 300_000);
+
+  it("slashes the operator, who lost the thread we closed, by its receipt once the case is settled for us, and ends under defender-won", async () => {
+    const { scene, runner, a, prepared } = dispute;
+    const nodes = async () =>
+      await scene.h.proverLucid.utxosAtWithUnit(
+        scene.h.contracts.activeOperators.spendingScriptAddress,
+        a.defender.nodeUnit,
+      );
+    expect(await nodes()).toHaveLength(1);
+    const before = prepared.length;
+    const { result, history } = await playThreads({
+      scene,
+      runner,
+      sides: [],
+      until: async (run) =>
+        run.kind === "pending" &&
+        run.reason.startsWith(VALIDATION_TRACE_DEFENDER_WON),
+      limit: 6,
+    });
+    expect(
+      prepared.slice(before).map(({ stage }) => stage),
+      history.join("\n"),
+    ).toStrictEqual(["slash_lost_defense"]);
+    expect(prepared[before]!.consumes).toBe(
+      `${prepared.find(({ stage }) => stage === "close_awarded")!.hash}#1`,
+    );
+    expect("alarms" in result ? result.alarms : undefined).toBeUndefined();
+    expect(await nodes()).toStrictEqual([]);
   }, 300_000);
 
   it("stops under its own named state with no alarm, handing the session back at once, and moves nothing more", async () => {

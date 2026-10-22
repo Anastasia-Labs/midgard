@@ -5,11 +5,12 @@
  * deployment from it; a committed block whose script fails is detected by
  * the watcher's classifier, and the runner opens its case, verifies the
  * source, waits out the undefended case, convicts, and removes the block's
- * descendants, reaching the block's own removal; an honest block whose
- * script passes is never attacked.
+ * descendants and then the block itself, slashing its operator's bond under
+ * the deployment's finalized manifest; an honest block whose script passes
+ * is never attacked.
  */
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({
@@ -190,7 +191,7 @@ describe("validation-trace dispute through the installed watcher application", (
     ]);
   }, 600_000);
 
-  it("convicts a committed block whose script fails, from detection through the undefended case's close to its descendants' removal", async () => {
+  it("convicts a committed block whose script fails, from detection through the undefended case's close to its own removal, slashing its operator's bond", async () => {
     const { scene } = installed;
     const { h } = scene;
     const lucid = h.proverLucid;
@@ -219,14 +220,19 @@ describe("validation-trace dispute through the installed watcher application", (
         lucid.unixTimeToSlot(opened.responseDeadline) - lucid.currentSlot() + 1,
       );
 
-      // The run closes the case and peels the descendants. The convicted
-      // block's own removal is a bond-backed slash, which the funding
-      // reservation admits only under the finalized manifest's slash
-      // authority; this harness binds the scene's legacy deployment
-      // document, so the run stops at that removal's funding.
+      // The run closes the case, peels the descendants, and removes the
+      // convicted block, slashing its operator's bond: the deployment's
+      // finalized manifest admits that slash's funding.
+      const operators = await lucid.utxosAt(
+        h.contracts.activeOperators.spendingScriptAddress,
+      );
       const history: string[] = [];
       let result = opened as Awaited<ReturnType<InstalledApplication["turn"]>>;
-      for (let turn = 0; result.kind !== "stalled"; turn += 1) {
+      for (
+        let turn = 0;
+        result.kind !== "terminal_included" && result.kind !== "completed";
+        turn += 1
+      ) {
         expect(
           turn,
           `the target's removal within the turn budget: ${history.join("\n")}`,
@@ -240,7 +246,7 @@ describe("validation-trace dispute through the installed watcher application", (
             : result.kind,
         );
         expect(
-          ["pending", "terminal_included", "stalled"],
+          ["pending", "terminal_included", "completed"],
           history.at(-1),
         ).toContain(result.kind);
       }
@@ -263,27 +269,43 @@ describe("validation-trace dispute through the installed watcher application", (
       expect(
         Data.from(recorded!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
       ).toBe(h.proverSigner.paymentKeyHash);
-      // Each removal peels one block against our record, the two
-      // descendants first; the convicted block is the next to go.
+      // Each removal peels one block against our record: the two
+      // descendants, then the convicted block.
       const intents = submissionIntents(result.entries);
       const removals = intents.filter(
         ({ actionInput }) => actionInput.schemaVersion === CURSOR_FAMILY_ACTION,
       );
-      expect(removals).toHaveLength(2);
+      expect(removals).toHaveLength(3);
       for (const removal of removals)
         expect(removal.actionInput).toMatchObject({
           stage: "remove",
           fraudProofOutRef: record,
         });
-      await queue([
-        scene.failing.evidence.header.prevHeaderHash,
-        scene.failing.evidence.headerHash,
+      await queue([scene.failing.evidence.header.prevHeaderHash]);
+      // The block's removal slashed its operator: the bond it spent was an
+      // active operator's node, now gone, and our reward is at our key.
+      if (!("terminal" in result)) throw new Error("no terminal");
+      const { correction, economics } = result.terminal;
+      expect(correction.removalTxHash).toBe(removals.at(-1)!.txHash);
+      expect(correction.referencedProofTokenOutRef).toBe(record);
+      const bond = operators.find(
+        (utxo) => outRefOf(utxo) === economics.operatorBondInputOutRef,
+      );
+      expect(bond, String(economics.operatorBondInputOutRef)).toBeDefined();
+      expect(economics.operatorBondInputLovelace).toBe(
+        bond!.assets.lovelace!.toString(),
+      );
+      expect(
+        await lucid.utxosByOutRef([parseOwnOutRef(outRefOf(bond!))]),
+      ).toStrictEqual([]);
+      const [reward] = await lucid.utxosByOutRef([
+        parseOwnOutRef(economics.proverRewardOutputOutRef!),
       ]);
-      // The convicted block's removal carries the slash fee, which only a
-      // finalized manifest's slash funding authority admits; this scene
-      // binds none.
-      expect(result.reason).toMatch(
-        /^funding reservation failed for remove:\S+: Error: funding transaction fee is outside the live protocol funding bounds$/u,
+      expect(reward!.address).toBe(
+        credentialToAddress(installed.scene.h.proverLucid.config().network!, {
+          type: "Key",
+          hash: h.proverSigner.paymentKeyHash,
+        }),
       );
 
       // Every transaction the dispute sent, as it landed.

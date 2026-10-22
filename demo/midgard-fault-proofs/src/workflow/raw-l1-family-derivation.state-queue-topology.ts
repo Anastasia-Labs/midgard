@@ -48,6 +48,14 @@ export type FraudProofRawL1TerminalDefinition = {
     readonly retiredAddress: string;
   };
   readonly schedulerAddress: string;
+  /**
+   * A family whose cases can be defended: its case token's policy and the
+   * award policy of the lost-defense receipts its threads mint.
+   */
+  readonly lostDefense?: {
+    readonly casePolicyId: string;
+    readonly receiptPolicyId: string;
+  };
 };
 
 /** Executable observation additionally authenticates each live thread datum. */

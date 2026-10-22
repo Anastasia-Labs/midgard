@@ -31,6 +31,7 @@ import {
   deriveFraudProofRawL1FamilyStage,
   type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1FamilyStage,
+  fraudProofRawL1HistoryReader,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
 import {
@@ -213,6 +214,11 @@ export const createFraudProofFamilyRawL1ObservationPort = <
           snapshot,
           definition,
           releaseEconomics,
+          history: fraudProofRawL1HistoryReader({
+            authority,
+            releaseFinality,
+            headerHash,
+          }),
         }),
       };
     },

@@ -16,9 +16,13 @@ import {
 import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
-import { VALIDATION_TRACE_CASE_CONVICTED } from "../../src/validation-trace-dispute/removal.js";
+import {
+  VALIDATION_TRACE_CASE_CONVICTED,
+  type ValidationTraceRemovalConfig,
+} from "../../src/validation-trace-dispute/removal.js";
 import {
   VALIDATION_TRACE_THREAD_AWAITING,
+  validationTraceChallengerDeadlineMs,
   validationTraceDefenderDeadlineMs,
 } from "../../src/validation-trace-dispute/threads.js";
 import { readValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
@@ -44,6 +48,12 @@ import {
   entriesOf,
   FUNDED,
 } from "./validation-trace-dispute-funded-verify-source.js";
+import {
+  awaitLastSlotAtOrBefore,
+  defenderClosesItsWin,
+  defenderEntersOurTimeout,
+  liveCase,
+} from "./validation-trace-dispute-one-step-case.js";
 import {
   failingMaterial,
   type Scene,
@@ -157,7 +167,12 @@ export const ourOpener = (
 type FundedOptions = Pick<
   NonNullable<Parameters<typeof openFundedDispute>[1]>,
   "liveParameters"
->;
+> & {
+  /** Rewrites the convicted block's removal the watcher runs with. */
+  readonly rewriteRemoval?: (
+    recorded: ValidationTraceRemovalConfig,
+  ) => ValidationTraceRemovalConfig;
+};
 
 /** A second defender of our case: its operator, trace and thread token. */
 export type SecondDefense = Readonly<{
@@ -194,6 +209,7 @@ export const openTwoDefendedFundedCase = async (
 const openFundedCase = async (
   {
     beforeOpen,
+    rewriteRemoval,
     ...options
   }: FundedOptions & { readonly beforeOpen?: (scene: Scene) => void },
   twoDefenders: boolean,
@@ -213,7 +229,8 @@ const openFundedCase = async (
   beforeOpen?.(scene);
   const dispute = await openFundedDispute(scene, {
     ...options,
-    removal: removal.removal,
+    removal: rewriteRemoval?.(removal.removal) ?? removal.removal,
+    removalScripts: removal.published,
   });
   const opened = await turnUntil(dispute, VALIDATION_TRACE_CASE_OPEN);
   if (opened.result.kind !== "pending")
@@ -361,3 +378,51 @@ export const walletOutRefs = async ({ scene }: FundedMoves) =>
       (utxo) => [outRefOf(utxo), utxo] as const,
     ),
   );
+
+/** Our case's token. */
+export const caseUnitOf = ({ scene, caseOrigin }: FundedMoves): string =>
+  Object.keys(caseOrigin.assets).find(
+    (unit) =>
+      unit.startsWith(scene.chain.case.policyId) &&
+      unit !== scene.chain.case.policyId,
+  )!;
+
+/**
+ * The successor reveals and, no turn of ours answering before our clock on
+ * its thread runs out, moves its thread to the timeout validator and closes
+ * it into our case as its win, from its own wallet; the operator stays
+ * silent past its deadline on its own thread.
+ */
+export const successorWinsItsThread = async (
+  journey: FundedMoves & Readonly<{ second: SecondDefense }>,
+): Promise<void> => {
+  const { scene, dispute, second } = journey;
+  const { deployment } = dispute;
+  await revealAsDefender(
+    scene,
+    second.defender,
+    (await liveThread(scene, second.unit))!,
+    second.trace,
+  );
+  const revealed = (await liveThread(scene, second.unit))!;
+  awaitLastSlotAtOrBefore(
+    scene,
+    validationTraceChallengerDeadlineMs(threadOf(revealed)) + 1_000,
+  );
+  await defenderClosesItsWin({
+    deployment,
+    defender: second.defender,
+    thread: await defenderEntersOurTimeout({
+      deployment,
+      defender: second.defender,
+      thread: revealed,
+    }),
+    unit: second.unit,
+    caseUtxo: await liveCase({ scene, caseUnit: caseUnitOf(journey) }),
+  });
+  if (
+    scene.h.emulator.now() <=
+    validationTraceDefenderDeadlineMs(threadOf(await liveFundedThread(journey)))
+  )
+    await passDefenderDeadline(journey);
+};

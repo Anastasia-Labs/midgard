@@ -86,6 +86,7 @@ const capture = async ({
     case "open":
     case "verify_source":
     case "close":
+    case "slash_lost_defense":
       throw new Error(`validation-trace ${stage} is not a thread move`);
   }
 };

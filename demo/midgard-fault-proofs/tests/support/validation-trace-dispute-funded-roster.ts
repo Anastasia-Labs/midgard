@@ -7,6 +7,8 @@ import type { Script, UTxO } from "@lucid-evolution/lucid";
 import {
   makeWatcherAuthorityContracts,
   makeWatcherDeploymentAuthorityFixture,
+  type WatcherAuthorityContractSet,
+  type WatcherDeploymentAuthorityFixtureOptions,
 } from "midgard-watcher/tests/support/deployment-authority-fixture";
 
 import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "../../src/validation-trace-dispute/one-step-holders.js";
@@ -109,17 +111,47 @@ export const scriptHashes = (
   };
 };
 
+/** Deploys `script` as the manifest's contract `name`, published at
+ * `published` when given. */
+export type DeployContract = (
+  name: string,
+  script: Script,
+  scriptHash: string,
+  published?: Readonly<{ txHash: string; outputIndex: number }>,
+) => void;
+
+/** Further contracts of the scene the signed deployment carries, and its
+ * other fixture options. */
+export type SignedDeploymentOverlay = Readonly<{
+  overlay: (
+    contractSet: WatcherAuthorityContractSet,
+    deployed: DeployContract,
+  ) => WatcherAuthorityContractSet;
+  options: Omit<WatcherDeploymentAuthorityFixtureOptions, "contractSet">;
+}>;
+
 /**
  * The fixture's signed deployment authority, its dispute bond, case, game,
  * timeout and award contracts and its one-step holders (and their
- * reference-script entries) the scene's.
+ * reference-script entries) the scene's, and whatever `extended` adds.
  */
-export const signedDeploymentFixture = (scene: Scene) => {
+export const signedDeploymentFixture = (
+  scene: Scene,
+  extended?: SignedDeploymentOverlay,
+) => {
   const { chain } = scene;
   const contractSet = makeWatcherAuthorityContracts();
-  const deployed = (name: string, script: Script, scriptHash: string) => {
+  const deployed: DeployContract = (name, script, scriptHash, published) => {
     contractSet.contracts[name] = {
       ...contractSet.contracts[name]!,
+      ...(published === undefined
+        ? {}
+        : {
+            refScriptUTxO: {
+              txHash: published.txHash,
+              outputIndex: published.outputIndex,
+            },
+          }),
       contract: { type: script.type, cborHex: script.script },
       scriptHash,
     };
@@ -130,6 +162,11 @@ export const signedDeploymentFixture = (scene: Scene) => {
         contractSet.referenceScripts[role] = {
           ...contractSet.referenceScripts[role]!,
           scriptHash,
+          ...(published === undefined
+            ? {}
+            : {
+                outRef: `${published.txHash}#${published.outputIndex.toString()}`,
+              }),
         };
   };
   deployed(
@@ -160,7 +197,10 @@ export const signedDeploymentFixture = (scene: Scene) => {
   );
   for (const [name, script] of oneStepContracts(scene))
     deployed(name, script.spendingScript, script.spendingScriptHash);
-  return makeWatcherDeploymentAuthorityFixture({ contractSet });
+  return makeWatcherDeploymentAuthorityFixture({
+    ...extended?.options,
+    contractSet: extended?.overlay(contractSet, deployed) ?? contractSet,
+  });
 };
 
 /** The signed deployment of `signedDeploymentFixture`. */

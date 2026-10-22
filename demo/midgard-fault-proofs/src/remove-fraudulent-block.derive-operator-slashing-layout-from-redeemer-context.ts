@@ -121,11 +121,7 @@ export const makeActiveOperatorsMintRedeemerFromPlan =
             layout.operatorDirectoryAnchorInputOutRef,
           slashed_operator_anchor_element_output_index:
             layout.operatorDirectoryAnchorOutputIndex,
-          slashing_reason: {
-            SlashOperatorForBadState: {
-              state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
-            },
-          },
+          slashing_reason: layout.slashingReason,
         },
         operator_removal_scheduler_sync: operatorRemovalSchedulerSync,
       },
@@ -143,11 +139,7 @@ export const makeRetiredOperatorsMintRedeemerFromPlan =
           layout.operatorDirectoryAnchorInputOutRef,
         slashed_operator_anchor_element_output_index:
           layout.operatorDirectoryAnchorOutputIndex,
-        slashing_reason: {
-          SlashOperatorForBadState: {
-            state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
-          },
-        },
+        slashing_reason: layout.slashingReason,
       },
     },
   });
@@ -211,6 +203,7 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
     operatorDirectoryAnchorUnit,
     slashedOperatorDirectory,
     contracts,
+    lostDefenseReceipt,
   } = layoutContext;
   const slashingPolicyId =
     slashedOperatorDirectory === "active"
@@ -229,11 +222,26 @@ const deriveOperatorSlashingLayoutFromRedeemerContext = ({
     ...(slashedOperatorDirectory === "active"
       ? { activeOperatorsRedeemerTxInfoIndex: slashingRedeemerTxInfoIndex }
       : { retiredOperatorsRedeemerTxInfoIndex: slashingRedeemerTxInfoIndex }),
-    stateQueueRedeemerTxInfoIndex: requireMintRedeemerIndex(
-      ctx,
-      contracts.stateQueuePolicyId,
-      "state-queue remove fraudulent block",
-    ),
+    slashingReason:
+      lostDefenseReceipt === undefined
+        ? {
+            SlashOperatorForBadState: {
+              state_queue_redeemer_index: requireMintRedeemerIndex(
+                ctx,
+                contracts.stateQueuePolicyId,
+                "state-queue remove fraudulent block",
+              ),
+            },
+          }
+        : {
+            SlashOperatorForLostDefense: {
+              receipt_index: requireInputIndex(
+                ctx,
+                lostDefenseReceipt,
+                "lost-defense receipt input",
+              ),
+            },
+          },
     operatorDirectoryAnchorInputOutRef: outputReferenceFromUTxO(
       operatorDirectoryAnchor,
     ),
