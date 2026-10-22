@@ -14,7 +14,14 @@ timing:
   dispute_response_window_ms: 300000
   # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
-  # PROJECTED: provisional values until the deployment checks fix them.
+  # Measured on the emulator at the preprod Conway fee parameters (2026-10-21):
+  # - C: a move is charged only the time past the previous move's validity
+  #   range (1 ms per move on the emulator). The 34 charged moves of one side
+  #   fit in C at up to 2,541 s each; a 30-block wait at 3/f slots is 1,800 s.
+  # - R: the longest one-step resolution chain is 19 transactions
+  #   (EnterResolution, 17 resolve hops, the award close). At 3/f slots =
+  #   60,000 ms per block, 19 x 60 s x 3 = 3,420 s per thread, so R covers six
+  #   threads played one move at a time (two curated operators: 6,840 s).
   dispute_side_clock_ms: 86400000
   dispute_max_validity_range_ms: 120000
   dispute_resolution_allowance_ms: 21600000
@@ -56,11 +63,12 @@ limits:
   max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
   # Most a validation-trace move may take from its thread for the fee
-  # (pd-design 6.5). PROJECTED: twice the projected largest-move fee, to be
-  # re-measured on the fit rows.
+  # (pd-design 6.5): at least 2 x the measured largest reveal (377,315
+  # lovelace, depth 32); larger one-step hops are wallet-paid.
   max_dispute_move_fee_lovelace: 1200000
-  # Least lovelace of a validation-trace fraud-proof output. PROJECTED: above
-  # the min-UTxO of that fixed-shape output, to be re-measured.
+  # Least lovelace of a validation-trace fraud-proof output: above the
+  # measured min-UTxO of that fixed-shape output, (160 + 148 B) x 4,310 =
+  # 1,327,480 lovelace (1,448,160 with a stake credential on the address).
   fraud_proof_output_lovelace: 2000000
 economics:
   profile: public-preprod-launch-v1
