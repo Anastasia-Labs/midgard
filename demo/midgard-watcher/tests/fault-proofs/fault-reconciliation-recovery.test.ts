@@ -1,5 +1,4 @@
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -9,7 +8,6 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   computeFraudProofWorkflowId,
   createWorkflowReconciliationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -33,6 +31,7 @@ import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
+  emptyWorkflowJournal,
   recordObjectives,
   TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
@@ -144,9 +143,11 @@ describe("existing signed workflow recovery authority", () => {
       authenticationKey: TEST_JOURNAL_KEY,
     });
     await decisionJournal.unsafeAppendDecisionEnvelopeForTest(decision);
-    const journal = new DirectoryFraudProofWorkflowJournalStore(
-      join(root, "fault-proofs", "transitionTrace", HEADER),
-    );
+    const workflowJournal = emptyWorkflowJournal();
+    const journal = workflowJournal.forObjective({
+      category: "transitionTrace",
+      headerHash: HEADER,
+    });
     for (const entry of entries) await journal.append(entry, entry.sequence);
     const controller = createWorkflowReconciliationPermitController({
       decision,
@@ -179,6 +180,7 @@ describe("existing signed workflow recovery authority", () => {
       reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: root,
+      workflowJournal,
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,

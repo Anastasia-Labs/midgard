@@ -17,8 +17,8 @@ import {
  * identity, updated in place as the job moves through queued, active and
  * finished. A newer identity of the same objective replaces the older row,
  * so retries never grow the table. Registering a job also records its
- * objective as open, in the same commit, before any workflow directory
- * exists.
+ * objective as open, in the same commit, before its execution has any
+ * workflow row.
  */
 const JOURNAL = "fault_proof_queue" satisfies WatcherJournalName;
 

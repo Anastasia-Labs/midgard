@@ -63,13 +63,14 @@ describe("fault-proof supervisor queue order", () => {
       authenticationKey: TEST_JOURNAL_KEY,
     });
     await journal.appendLiveDecision(reconciled);
-    await writeExecution(root, reconciled, true);
+    const workflowJournal = await writeExecution(root, reconciled, true);
     const order: string[] = [];
     let releaseActive!: () => void;
     const active = new Promise<void>((resolve) => (releaseActive = resolve));
     let nowMs = 1_000;
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
+      workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: 1_000,
       unsafeNowMsForTest: () => nowMs,

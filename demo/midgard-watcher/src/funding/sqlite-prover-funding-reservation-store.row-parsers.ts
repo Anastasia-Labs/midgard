@@ -1,11 +1,9 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  parseWorkflowFundingCompletionHandoff,
-  parseWorkflowFundingPreparedTransition,
-  parseWorkflowFundingSubmissionHandoff,
-  type WorkflowFundingCompletionHandoff,
-  type WorkflowFundingPreparedTransition,
-  type WorkflowFundingSubmissionHandoff,
+  parseWorkflowFundingRecordedAttempt,
+  parseWorkflowFundingSupersededAttempt,
+  type WorkflowFundingRecordedAttempt,
+  type WorkflowFundingSupersededAttempt,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -18,26 +16,56 @@ import { HEX_32 } from "./sqlite-prover-funding-reservation-store.derive-signed-
 
 /** Row parsers of the prover funding store: each verifies one row against
  * the digests it carries and depends on nothing else. */
-export type HandoffRow = Readonly<{
+export type AttemptRow = Readonly<{
   reservation_id: unknown;
-  kind: unknown;
-  identity_digest: unknown;
+  transition_digest: unknown;
   record_digest: unknown;
   canonical_json: unknown;
 }>;
-export type SubmissionHandoff = Readonly<{
-  kind: "submission";
-  reservationId: string;
-  identityDigest: string;
-  transition: WorkflowFundingPreparedTransition;
-  handoff: WorkflowFundingSubmissionHandoff;
-}>;
-export type CompletionHandoff = Readonly<{
-  kind: "completion";
-  reservationId: string;
-  identityDigest: string;
-  handoff: WorkflowFundingCompletionHandoff;
-}>;
+export type RecordedAttempt = WorkflowFundingRecordedAttempt &
+  Readonly<{ reservationId: string; transitionDigest: string }>;
+export type SupersededAttempt = WorkflowFundingSupersededAttempt &
+  Readonly<{ reservationId: string; transitionDigest: string }>;
+
+const parseAttemptRow = <T extends WorkflowFundingRecordedAttempt>(
+  row: AttemptRow,
+  parse: (value: unknown) => T,
+): T & Readonly<{ reservationId: string; transitionDigest: string }> => {
+  if (
+    typeof row.reservation_id !== "string" ||
+    !HEX_32.test(row.reservation_id) ||
+    typeof row.transition_digest !== "string" ||
+    !HEX_32.test(row.transition_digest) ||
+    typeof row.record_digest !== "string" ||
+    !HEX_32.test(row.record_digest) ||
+    typeof row.canonical_json !== "string"
+  )
+    throw new Error("prover funding attempt row is malformed");
+  const data: unknown = JSON.parse(row.canonical_json);
+  if (
+    watcherCanonicalJson(data) !== row.canonical_json ||
+    computeDeploymentManifestJsonDigest(data) !== row.record_digest
+  )
+    throw new Error("prover funding attempt row digest mismatch");
+  const attempt = parse(data);
+  if (
+    computeDeploymentManifestJsonDigest(attempt.transition) !==
+    row.transition_digest
+  )
+    throw new Error("prover funding attempt changed its signed transaction");
+  return Object.freeze({
+    ...attempt,
+    reservationId: row.reservation_id,
+    transitionDigest: row.transition_digest,
+  });
+};
+
+export const parseRecordedAttemptRow = (row: AttemptRow): RecordedAttempt =>
+  parseAttemptRow(row, parseWorkflowFundingRecordedAttempt);
+
+export const parseSupersededAttemptRow = (row: AttemptRow): SupersededAttempt =>
+  parseAttemptRow(row, parseWorkflowFundingSupersededAttempt);
+
 export type RecordRow = Readonly<{
   reservation_id: unknown;
   record_digest: unknown;
@@ -60,64 +88,6 @@ export type LineageRow = Readonly<{
   lineage_digest: unknown;
 }>;
 
-export const parseHandoffRow = (
-  row: HandoffRow,
-): SubmissionHandoff | CompletionHandoff => {
-  if (
-    typeof row.reservation_id !== "string" ||
-    !HEX_32.test(row.reservation_id) ||
-    typeof row.identity_digest !== "string" ||
-    !HEX_32.test(row.identity_digest) ||
-    typeof row.record_digest !== "string" ||
-    !HEX_32.test(row.record_digest) ||
-    typeof row.canonical_json !== "string" ||
-    (row.kind !== "submission" && row.kind !== "completion")
-  )
-    throw new Error("prover funding handoff row is malformed");
-  const data: unknown = JSON.parse(row.canonical_json);
-  if (
-    watcherCanonicalJson(data) !== row.canonical_json ||
-    computeDeploymentManifestJsonDigest(data) !== row.record_digest
-  )
-    throw new Error("prover funding handoff row digest mismatch");
-  if (row.kind === "completion") {
-    const handoff = parseWorkflowFundingCompletionHandoff(data);
-    if (computeDeploymentManifestJsonDigest(handoff) !== row.identity_digest)
-      throw new Error("prover funding completion identity mismatch");
-    return {
-      kind: "completion",
-      reservationId: row.reservation_id,
-      identityDigest: row.identity_digest,
-      handoff,
-    };
-  }
-  if (
-    data === null ||
-    typeof data !== "object" ||
-    Array.isArray(data) ||
-    Object.keys(data).sort().join(",") !== "handoff,transition" ||
-    !("handoff" in data) ||
-    !("transition" in data)
-  )
-    throw new Error("prover funding submission handoff is malformed");
-  const transition = parseWorkflowFundingPreparedTransition(data.transition);
-  const handoff = parseWorkflowFundingSubmissionHandoff(data.handoff);
-  if (
-    computeDeploymentManifestJsonDigest(transition) !== row.identity_digest ||
-    handoff.preflight.txHash !== transition.transactionHash ||
-    handoff.submissionIntent.txHash !== transition.transactionHash
-  )
-    throw new Error(
-      "prover funding submission handoff differs from signed transaction",
-    );
-  return {
-    kind: "submission",
-    reservationId: row.reservation_id,
-    identityDigest: row.identity_digest,
-    transition,
-    handoff,
-  };
-};
 export const parseLineageRow = (row: LineageRow) => {
   if (
     typeof row.reservation_id !== "string" ||

@@ -1,5 +1,3 @@
-import { join } from "node:path";
-
 import {
   createWatcherFaultProofApplication,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -17,10 +15,7 @@ import {
   createWatcherStartupProgress,
   WatcherStartupStageHeld,
 } from "./startup-progress.js";
-import {
-  assertWatcherFaultProofLaunchScope,
-  prepareJournalDirectory,
-} from "./watcher-runtime.launch-checks.js";
+import { assertWatcherFaultProofLaunchScope } from "./watcher-runtime.launch-checks.js";
 import { prepareWatcherRuntimeAuthority } from "./watcher-runtime.prepare-authority.js";
 /**
  * Holds startup, process up, until the L1 follower has initialized its store
@@ -101,12 +96,6 @@ export const prepareWatcherRuntimeWorkflows = async (
     );
     const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
     for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
-      const journalDirectory = join(
-        input.config.workflowJournalDirectory,
-        "readiness",
-        category,
-      );
-      await prepareJournalDirectory(journalDirectory);
       // Readiness only reads L1 and builds nothing: an L1 transient
       // repeats this read, never the allocation above.
       faultProofReadiness.push(
@@ -116,7 +105,6 @@ export const prepareWatcherRuntimeWorkflows = async (
             category,
             deploymentFingerprint: deploymentIdentity.manifestId,
             headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
-            journalDirectory,
             runtimeConfigPath: input.config.watcherRuntimeConfigPath,
           }),
         ),

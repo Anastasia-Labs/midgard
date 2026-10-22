@@ -1,5 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +14,7 @@ import {
   openWatcherJournalDatabase,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
+import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
@@ -89,7 +89,7 @@ vi.mock(
   "../../src/fault-proofs/fault-proof-objective-journal.js",
   async (importOriginal) => ({
     ...(await importOriginal()),
-    readWatcherProofExecution: async ({
+    readWatcherProofExecution: ({
       objective,
     }: {
       objective: { headerHash: string };
@@ -159,8 +159,22 @@ const restartOver = async (count: number, state: Seeded) => {
   });
   // A process restart: the next open verifies every journal in full.
   closeWatcherJournalDatabase(journalRoot);
+  // The workflow rows themselves; their content is read through the mock.
+  const workflowDatabase = new DatabaseSync(":memory:");
+  const workflowJournal = createWatcherWorkflowJournal(workflowDatabase);
+  const workflowRows = (headerHash: string): number =>
+    Number(
+      (
+        workflowDatabase
+          .prepare(
+            "SELECT count(*) AS count FROM watcher_workflow_journal_v1 WHERE header_hash = ?",
+          )
+          .get(headerHash) as { count: number }
+      ).count,
+    );
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
+    workflowJournal,
     deploymentFingerprint,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,
@@ -169,6 +183,8 @@ const restartOver = async (count: number, state: Seeded) => {
   return {
     journalRoot,
     authority,
+    workflowDatabase,
+    workflowRows,
     database: () =>
       openWatcherJournalDatabase({
         journalRoot,
@@ -181,12 +197,6 @@ const restartOver = async (count: number, state: Seeded) => {
       }),
   };
 };
-
-const exists = async (path: string): Promise<boolean> =>
-  await stat(path).then(
-    () => true,
-    () => false,
-  );
 
 describe("proof progress restart over the objective table (L2)", () => {
   it("schedules every completed objective not yet beyond recovery, past the open cap", async () => {
@@ -201,19 +211,18 @@ describe("proof progress restart over the objective table (L2)", () => {
 
   it("skips and prunes marked completions: rows, decisions and workflow journals", async () => {
     const restart = await restartOver(MAX_OPEN_OBJECTIVES + 1, "marked");
-    const pruned = join(
-      restart.journalRoot,
-      "fault-proofs",
-      "doubleSpend",
-      journalState.headers[0]!,
-    );
-    await mkdir(pruned, { recursive: true });
-    // The execution of this one is already gone: a crash after the directory
-    // was removed and before its rows were deleted.
+    const pruned = journalState.headers[0]!;
+    restart.workflowDatabase
+      .prepare(
+        "INSERT INTO watcher_workflow_journal_v1 VALUES (?, 0, 'doubleSpend', ?, 'started', 0, '{}')",
+      )
+      .run("ee".repeat(32), pruned);
+    // The execution of this one is already gone: a crash after its workflow
+    // rows were deleted and before its objective rows were.
     journalState.missing.add(journalState.headers[1]!);
     await expect(restart.admit()).resolves.toEqual([]);
     expect(restart.authority.unfinishedCount()).toBe(0);
-    expect(await exists(pruned)).toBe(false);
+    expect(restart.workflowRows(pruned)).toBe(0);
     const database = restart.database();
     expect(database.count("fault_proof_objectives")).toBe(0);
     expect(database.count("fault_decisions")).toBe(0);

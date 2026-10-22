@@ -56,6 +56,7 @@ import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trac
 import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
 import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
 import {
+  directoryWorkflowJournal,
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "./workflow/cli.js";
@@ -79,9 +80,6 @@ export const main = async (): Promise<void> => {
     if (args.deploymentFingerprint === undefined) {
       throw new Error(`Missing required --deployment-fingerprint.\n${usage}`);
     }
-    if (args.workflowJournalDir === undefined) {
-      throw new Error(`Missing required --workflow-journal-dir.\n${usage}`);
-    }
     if (args.headerHash === undefined) {
       throw new Error(`Missing required --header-hash.\n${usage}`);
     }
@@ -93,7 +91,7 @@ export const main = async (): Promise<void> => {
       category: args.fraudCategory,
       deploymentFingerprint: args.deploymentFingerprint,
       headerHash: args.headerHash,
-      journalDirectory: args.workflowJournalDir,
+      journal: directoryWorkflowJournal(args.workflowJournalDir, usage),
       runtimeConfigPath: args.workflowRuntimeConfigPath,
     });
     return;

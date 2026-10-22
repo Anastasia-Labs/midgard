@@ -8,11 +8,10 @@ import {
   createWatcherProverFundingAuthorityFactory,
   type WatcherProverFundingAuthorityFactory,
 } from "../funding/prover-funding-authority.js";
-import type { WatcherFundingInputFacts } from "../funding/prover-funding-input-facts.js";
+import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
-import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
 import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.js";
-import { watcherDeploymentAppliedScriptHashes } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import type { WatcherOperationsSink } from "./operations-observability.js";
 
 /**
  * Opens the funding store, then admits the live protocol parameters through
@@ -26,10 +25,10 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly createProtocolParameters: () => Promise<WatcherProtocolParameterRuntimeAuthority>;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly journalRoot: string;
-  /** The follower's facts that reclaim reservations whose decision is missing. */
-  readonly fundingInputFacts?: WatcherFundingInputFacts;
-  /** The deployment blueprint the computation-thread policy derives from. */
-  readonly blueprintBytes?: Uint8Array;
+  /** Reads the signed attempts of reservations no workflow drives again. */
+  readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
+  /** Where an orphaned reservation's alert is raised, once bound. */
+  readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
 }) => {
   const store = await openWatcherSqliteProverFundingReservationStore({
     path: input.path,
@@ -48,27 +47,16 @@ export const openWatcherProverFundingRuntime = async (input: {
       protocolParameters,
       protocolParameterHistory: store.protocolParameterHistory,
       store: store.store,
-      ...(input.fundingInputFacts === undefined
+      workflowJournal: store.journal,
+      ...(input.observeSignedTransaction === undefined
         ? {}
-        : { fundingInputFacts: input.fundingInputFacts }),
-      ...(input.blueprintBytes === undefined
-        ? {}
-        : {
-            computationThreadPolicyId: watcherComputationThreadPolicyId({
-              contractScriptHashes: watcherDeploymentAppliedScriptHashes(
-                input.deploymentIdentity,
-              ),
-              blueprint: JSON.parse(
-                Buffer.from(input.blueprintBytes).toString("utf8"),
-              ),
-            }),
-          }),
+        : { observeSignedTransaction: input.observeSignedTransaction }),
+      ...(input.alertSink === undefined ? {} : { alertSink: input.alertSink }),
     });
     // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
     // A refused decision journal, or one that could not be opened, keeps them
     // reserved: the supervisor reports journal_integrity or
-    // journal_unavailable once the operations server binds. A reservation
-    // whose decision is missing is held (journal_decision_missing).
+    // journal_unavailable once the operations server binds.
     await factory.releaseUnused().catch((error: unknown) => {
       if (
         !isWatcherJournalIntegrityError(error) &&

@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
@@ -153,7 +152,7 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
     expect(modes).toEqual(["run", "run"]);
   }, 60_000);
 
-  it("reopens a finished registration whose workflow directory has no execution", async () => {
+  it("reopens a finished registration that has no execution", async () => {
     const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-failed-");
     directories.push(root);
     const decision = await classifyDoubleSpend();
@@ -177,13 +176,6 @@ describe("fault-proof supervisor over a run that failed before its journal", () 
     await journal.register(identity, "0");
     await journal.markStarted(digest, "0");
     await journal.markFinished(digest, "0");
-    await mkdir(
-      join(root, "fault-proofs", "doubleSpend", decision.headerHash),
-      {
-        recursive: true,
-        mode: 0o700,
-      },
-    );
 
     const modes: string[] = [];
     const supervisor = createProcess(root, async (mode) => {

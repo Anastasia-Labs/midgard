@@ -1604,13 +1604,12 @@ lost canonical authority still revokes reconciliation. Restart tests must pass
 through the supervisor queue as well as the workflow runner; a queue job marked
 finished does not establish that its transaction journal completed.
 
-Preparation and completion each cross a SQLite reservation and an immutable
-directory journal. Crash tests must close and reopen both stores between those
-writes. The durable preparation handoff retains the exact signed transaction,
-action and expected journal prefix. The completion handoff retains the verified
-terminal result with the funding release, so recovery cannot reopen released
-inputs. An expiry/absence result needs the same interruption analysis before
-discarding pending transaction context.
+Each funding change (preparation, confirmation, supersession, adoption,
+conflict and the final release) commits with the workflow journal entries it
+implies, in one watcher.sqlite transaction. Crash tests stop the process before
+that transaction and after its commit, and reopen the store before going on: a
+preparation is pending with its preflight and intent, or neither; a final
+release is released with its completion, or neither.
 
 The real-node `transaction-recovery-live.test.ts` gate (since deleted) read a
 never-submitted expired transaction, valid transactions absent from the node's

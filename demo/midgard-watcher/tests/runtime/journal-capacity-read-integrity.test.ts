@@ -6,6 +6,7 @@ import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
+  emptyWorkflowJournal,
   journalDirectory,
   removeJournalDirectories,
   TEST_JOURNAL_KEY,
@@ -46,6 +47,7 @@ describe("readiness over a capacity read that meets corruption (R7)", () => {
     const supervisor = createWatcherFaultProofSupervisor({
       reservationDecisionHolds: () => [],
       journalRoot,
+      workflowJournal: emptyWorkflowJournal(),
       deploymentFingerprint: DEPLOYMENT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,

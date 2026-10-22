@@ -11,4 +11,3 @@ import "./funding-handoff-fixture.js";
 import "./prover-funding-recovery.registration.js";
 import "./prover-funding-recovery.funding-recovery-across-authenticated-observation-refresh.js";
 import "./prover-funding-recovery.registration-2.js";
-import "./prover-funding-recovery.empty-pre-start-funding-recovery-directories.js";

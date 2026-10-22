@@ -2,18 +2,15 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { assertWorkflowJournalActuation } from "../workflow/actuation-permit.js";
 import {
-  assertWorkflowFundingCompletionHandoffJournal,
+  appendWorkflowJournalEvents,
   beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
-  createWorkflowFundingSubmissionHandoff,
+  createStoredWorkflowJournalWriter,
   prepareWorkflowFundingReservationTransaction,
-  readWorkflowFundingRecovery,
   releaseWorkflowFundingReservation,
-  type WorkflowFundingCompletionHandoff,
 } from "../workflow/funding-reservation-permit.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalStore,
@@ -92,36 +89,15 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
   // the frozen category is admitted to the SDK union.
   const workflowId = familyWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
+  const writer = createStoredWorkflowJournalWriter({
+    store,
+    workflowId,
+    identity,
+    now,
+  });
   const appendEvent = async (
     event: FraudProofWorkflowJournalEntry["event"],
-  ): Promise<void> => {
-    let current = await entries();
-    if (current.length === 0) {
-      await store.append(
-        {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-          workflowId,
-          identity,
-          sequence: 0,
-          recordedAt: now(),
-          event: { kind: "started" },
-        },
-        0,
-      );
-      current = await entries();
-    }
-    await store.append(
-      {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId,
-        identity,
-        sequence: current.length,
-        recordedAt: now(),
-        event,
-      },
-      current.length,
-    );
-  };
+  ): Promise<void> => await appendWorkflowJournalEvents(writer, [event]);
   const workflowAction = (
     kind: SubmitAction,
     recovery: DurableRecovery,
@@ -278,30 +254,26 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         action,
       });
       await prepareWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         action,
         preflight,
-        handoff: createWorkflowFundingSubmissionHandoff({
-          entries: await entries(),
-          action,
-          preflight,
-          attempt,
-        }),
-      });
-      await appendEvent({
-        kind: "preflight_passed",
-        actionId: action.actionId,
-        txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR,
-        referenceScripts: transaction.referenceScripts,
-      });
-      await appendEvent({
-        kind: "submission_intent",
-        actionId: action.actionId,
-        actionInput: action.input,
-        durableRecovery: recovery,
-        attempt,
-        txHash: transaction.txHash,
+        events: [
+          {
+            kind: "preflight_passed",
+            actionId: action.actionId,
+            txHash: transaction.txHash,
+            localEvaluator: LOCAL_UPLC_EVALUATOR,
+            referenceScripts: transaction.referenceScripts,
+          },
+          {
+            kind: "submission_intent",
+            actionId: action.actionId,
+            actionInput: action.input,
+            durableRecovery: recovery,
+            attempt,
+            txHash: transaction.txHash,
+          },
+        ],
       });
       assertActuation("before_submit");
       await assertMintItemReadyToSubmitAfterIntent({
@@ -311,7 +283,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     };
 
   const reconcile = createMintItemCanonicalReconciliation({
-    store,
+    writer,
     entries,
     appendEvent,
     assertActuation,
@@ -374,30 +346,26 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         action,
       });
       await prepareWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         action,
         preflight,
-        handoff: createWorkflowFundingSubmissionHandoff({
-          entries: await entries(),
-          action,
-          preflight,
-          attempt: 1,
-        }),
-      });
-      await appendEvent({
-        kind: "preflight_passed",
-        actionId: id,
-        txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR,
-        referenceScripts: transaction.referenceScripts,
-      });
-      await appendEvent({
-        kind: "submission_intent",
-        actionId: id,
-        actionInput: action.input,
-        durableRecovery: recovery,
-        attempt: 1,
-        txHash: transaction.txHash,
+        events: [
+          {
+            kind: "preflight_passed",
+            actionId: id,
+            txHash: transaction.txHash,
+            localEvaluator: LOCAL_UPLC_EVALUATOR,
+            referenceScripts: transaction.referenceScripts,
+          },
+          {
+            kind: "submission_intent",
+            actionId: id,
+            actionInput: action.input,
+            durableRecovery: recovery,
+            attempt: 1,
+            txHash: transaction.txHash,
+          },
+        ],
       });
       captured.push(transaction.txHash);
       assertActuation("before_submit");
@@ -432,25 +400,27 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       );
     }
     await confirmWorkflowFundingReservationTransaction({
-      journal: store,
+      writer,
       transactionHash: txHash,
-    });
-    await appendEvent({
-      kind: "submitted",
-      actionId: intent.event.actionId,
-      attempt: intent.event.attempt,
-      txHash,
-    });
-    await appendEvent({
-      kind: "reconciled",
-      actionId: intent.event.actionId,
-      outcome: "confirmed",
-      txHash,
-    });
-    await appendEvent({
-      kind: "confirmed",
-      actionId: intent.event.actionId,
-      txHash,
+      events: [
+        {
+          kind: "submitted",
+          actionId: intent.event.actionId,
+          attempt: intent.event.attempt,
+          txHash,
+        },
+        {
+          kind: "reconciled",
+          actionId: intent.event.actionId,
+          outcome: "confirmed",
+          txHash,
+        },
+        {
+          kind: "confirmed",
+          actionId: intent.event.actionId,
+          txHash,
+        },
+      ],
     });
   };
 
@@ -512,13 +482,6 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
         throw new Error(
           "mintItemNonCanonical terminal transaction is not authenticated on L1",
         );
-    const funding = await readWorkflowFundingRecovery(store);
-    const saved = funding.completionHandoff;
-    if (saved !== null)
-      assertWorkflowFundingCompletionHandoffJournal({
-        handoff: saved,
-        entries: current,
-      });
     const previous = current.find(
       ({ event }) => event.kind === "completed",
     )?.event;
@@ -527,11 +490,7 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
       previous.terminal.observedAt.confirmationDepth >
         releaseFinality.policy.automaticRecoveryMaxDepth + 1
         ? previous
-        : saved?.completion.kind === "completed" &&
-            saved.completion.terminal.observedAt.confirmationDepth >
-              releaseFinality.policy.automaticRecoveryMaxDepth + 1
-          ? saved.completion
-          : undefined;
+        : undefined;
     const sameFacts = (
       left: FraudProofWorkflowTerminal,
       right: FraudProofWorkflowTerminal,
@@ -567,46 +526,25 @@ export const createMintItemNonCanonicalCentralJournalAdapter = ({
     assertActuation("before_terminal_verify");
     const latest = [...current]
       .reverse()
-      .find(({ event }) => event.kind !== "stalled")?.event;
+      .find(
+        ({ event }) =>
+          event.kind !== "stalled" && event.kind !== "signed_attempt_retired",
+      )?.event;
+    // An inclusion already recorded is observed again next time rather than
+    // recorded at every depth tick, and a final completion only once.
     const existing =
-      (previous?.kind === "completed" &&
-        previous.terminal.observedAt.confirmationDepth >
-          releaseFinality.policy.automaticRecoveryMaxDepth + 1) ||
-      (inclusionOnly &&
-        saved?.completion.kind === "terminal_included" &&
-        current.length > saved.expectedJournalSequence) ||
+      completed !== undefined ||
+      (inclusionOnly && latest?.kind === "terminal_included") ||
       (latest?.kind === kind && sameFacts(latest.terminal, terminal));
-    if (!existing) {
-      const completion: WorkflowFundingCompletionHandoff["completion"] = {
-        kind,
-        terminal,
-        terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-      };
-      const handoff: WorkflowFundingCompletionHandoff =
-        saved?.completion.kind === kind
-          ? saved
-          : {
-              workflowId,
-              identity,
-              preparedArtifactDigest: prepared.artifactDigest,
-              expectedJournalSequence: current.length,
-              completion,
-            };
-      if (handoff === saved) {
-        if (
-          !inclusionOnly &&
-          (terminal.observedAt.confirmationDepth <
-            saved.completion.terminal.observedAt.confirmationDepth ||
-            !sameFacts(terminal, saved.completion.terminal))
-        )
-          throw new Error(
-            "mintItemNonCanonical completion handoff changed its authenticated terminal",
-          );
-      } else
-        await releaseWorkflowFundingReservation({ journal: store, handoff });
-      assertActuation("before_terminal_verify");
-      await appendEvent(handoff.completion);
-    }
+    if (!existing)
+      await releaseWorkflowFundingReservation({
+        writer,
+        event: {
+          kind,
+          terminal,
+          terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
+        },
+      });
     return {
       kind: inclusionOnly ? ("pending" as const) : ("completed" as const),
       workflowId,

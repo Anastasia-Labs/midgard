@@ -195,16 +195,6 @@
     "reason": "createNetworkIdWorkflowAdapter is the dominant indivisible declaration (1438 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-fault-proofs/src/output-reference-script-decoding/central-journal.create-output-reference-script-decoding-central-journal-adapter.ts",
-    "max": 516,
-    "reason": "createOutputReferenceScriptDecodingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-fault-proofs/src/protected-output-signer-missing/central-journal.create-protected-output-signer-missing-central-journal-adapter.ts",
-    "max": 516,
-    "reason": "createProtectedOutputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (476 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts",
     "max": 763,
     "reason": "submitRemoveFraudulentBlock is the dominant indivisible declaration (683 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
@@ -215,19 +205,9 @@
     "reason": "submitUnattestedTimeoutCorrection is the dominant indivisible declaration (496 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-fault-proofs/src/resolved-output-non-canonical/central-journal.create-resolved-output-non-canonical-central-journal-adapter.ts",
-    "max": 512,
-    "reason": "createResolvedOutputNonCanonicalCentralJournalAdapter is the dominant indivisible declaration (472 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-fault-proofs/src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.ts",
     "max": 538,
     "reason": "createScriptIntegrityHashMissingTransactionPort is the dominant indivisible declaration (487 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
-    "file": "midgard-fault-proofs/src/spend-input-signer-missing/central-journal.create-spend-input-signer-missing-central-journal-adapter.ts",
-    "max": 513,
-    "reason": "createSpendInputSignerMissingCentralJournalAdapter is the dominant indivisible declaration (473 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-fault-proofs/src/transition-trace/fetch.da-libp2p-retained-da-source.ts",
@@ -1205,24 +1185,14 @@
     "reason": "createSupervisor is the dominant indivisible declaration (828 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts",
-    "max": 546,
-    "reason": "createWatcherProverFundingAuthority is one state owner: the reservation port's methods close over one plan, store and actuation permit and share their revision and authority checks. The public-testnet B1 selection/capacity calculations, the lifecycle legacy-retirement and submission-authority methods and the superseded-attempt reads together pass 500 lines; splitting the port would redesign that ownership rather than separate independent declarations."
-  },
-  {
     "file": "midgard-watcher/src/funding/sqlite-prover-funding-reservation-store.open-internal.ts",
-    "max": 1514,
+    "max": 1496,
     "reason": "openInternal is the dominant indivisible declaration (1404 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
     "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
     "max": 506,
     "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules."
-  },
-  {
-    "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 506,
-    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state."
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",

@@ -175,14 +175,11 @@ export const verifyJourneyWorkflowBindings = async (input: {
       const categoryStarted = performance.now();
       input.onProgress?.({ category, outcome: "started", durationMs: 0 });
       try {
-        const journalDirectory = join(input.directory, "bindings", category);
-        await mkdir(journalDirectory, { recursive: true });
         const readiness = await application.assertStartupReady({
           mode: "resume",
           category,
           deploymentFingerprint: authority.deploymentIdentity.manifestId,
           headerHash: WATCHER_STARTUP_READINESS_HEADER_HASH,
-          journalDirectory,
           runtimeConfigPath: input.config.watcherRuntimeConfigPath,
         });
         assert.equal(readiness.category, category);

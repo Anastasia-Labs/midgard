@@ -47,8 +47,6 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
   it("prepares the fault, pages, and stays ready without reading the wallet", async () => {
     // A fresh objective (no signed attempt) inside its safe-start window.
     const fixture = await setupFundingRecoveryFixture(
-      false,
-      false,
       true,
       false,
       false,
@@ -77,7 +75,7 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
       fundingFactory: fixture.fundingFactory(),
       walletAddress,
       provider: { getUtxos, getUtxosByOutRef },
-      journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-observer-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink,
@@ -92,6 +90,7 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
       reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,

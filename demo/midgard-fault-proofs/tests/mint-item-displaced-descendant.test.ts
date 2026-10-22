@@ -69,34 +69,29 @@ it("supersedes a pending step02 before reobserving the step01 a rollback dropped
         consumedOutRefs: [],
         producedInputs: [],
       },
-      submissionHandoff: null,
-      abandonmentHandoff: null,
-      completionHandoff: null,
     }),
   );
   vi.spyOn(
     fundingAuthority,
     "abandonWorkflowFundingReservationTransaction",
-  ).mockImplementation(async ({ transactionHash, handoff }) => {
-    if (transactionHash !== pending)
-      throw new Error(
-        "funding abandonment changed its exact transaction identity",
-      );
-    expect(handoff.reconciliation).not.toHaveProperty("retirement");
-    calls.push(`abandon ${transactionHash}`);
-  });
-  vi.spyOn(
-    fundingAuthority,
-    "acknowledgeWorkflowFundingAbandonment",
-  ).mockImplementation(async ({ handoff }) => {
-    calls.push(`acknowledge ${handoff.submissionIntent.txHash}`);
-  });
+  ).mockImplementation(
+    async ({ transactionHash, retirement, writer, events }) => {
+      if (transactionHash !== pending)
+        throw new Error(
+          "funding abandonment changed its exact transaction identity",
+        );
+      expect(retirement).toBeUndefined();
+      calls.push(`abandon ${transactionHash}`);
+      await fundingAuthority.appendWorkflowJournalEvents(writer, events);
+    },
+  );
   vi.spyOn(
     fundingAuthority,
     "reobserveWorkflowFundingReservationTransaction",
-  ).mockImplementation(async ({ transactionHash }) => {
+  ).mockImplementation(async ({ transactionHash, writer, events }) => {
     calls.push(`reobserve ${transactionHash}`);
     pending = transactionHash;
+    await fundingAuthority.appendWorkflowJournalEvents(writer, events);
     return true;
   });
   // Both are absent at the tip; step01 may still be in the mempool.
@@ -114,11 +109,7 @@ it("supersedes a pending step02 before reobserving the step01 a rollback dropped
   );
   // step02 is superseded (its inputs become an exclusion set in the bound
   // store) before step01 is reobserved; no identity wedge follows.
-  expect(calls).toEqual([
-    `abandon ${step02}`,
-    `acknowledge ${step02}`,
-    `reobserve ${step01}`,
-  ]);
+  expect(calls).toEqual([`abandon ${step02}`, `reobserve ${step01}`]);
   const events = entries.map(({ event }) => event);
   const closed = events.findIndex(
     (event) =>
@@ -135,5 +126,5 @@ it("supersedes a pending step02 before reobserving the step01 a rollback dropped
   await expect(adapter().reconcile("none")).rejects.toThrow(
     "Exact mint transaction remains unresolved: pending",
   );
-  expect(calls).toHaveLength(3);
+  expect(calls).toHaveLength(2);
 });

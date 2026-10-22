@@ -90,9 +90,6 @@ describe("mintItemNonCanonical durable journal", () => {
           consumedOutRefs: inspected.inputOutRefs,
           producedInputs: [],
         },
-        submissionHandoff: null,
-        abandonmentHandoff: null,
-        completionHandoff: null,
       });
     let confirmed = false;
     const restart = () =>

@@ -20,7 +20,10 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "./fault-proof-funding-fixture.js";
-import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  TEST_JOURNAL_KEY,
+} from "./watcher-journal-fixture.js";
 
 export const setupFaultProofExecution = async (
   newReservation = false,
@@ -29,11 +32,7 @@ export const setupFaultProofExecution = async (
   // A new reservation's journal root holds no decision. The store shares
   // only an unsigned reservation with it: signed funding for the same target
   // without its decision would hold the objective.
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    newReservation,
-  );
+  const fixture = await setupFundingRecoveryFixture(newReservation);
   const controller = createWorkflowActuationPermitController({
     decision: fixture.fresh,
     rollbackGeneration: "2",
@@ -41,10 +40,15 @@ export const setupFaultProofExecution = async (
   const journalRoot = newReservation
     ? join(fixture.journalRoot, "fresh")
     : fixture.journalRoot;
+  // A fresh root's workflow journal is empty too.
+  const workflowJournal = newReservation
+    ? emptyWorkflowJournal()
+    : fixture.workflowJournal;
   const fundingFactory = newReservation
     ? createWatcherProverFundingAuthorityFactory({
         journalRoot,
         journalAuthenticationKey: TEST_JOURNAL_KEY,
+        workflowJournal,
         launchScope: installedLaunchScope(fixture.fresh.launchScope),
         deploymentIdentity,
         protocolParameters: fixture.protocolParameters,
@@ -84,7 +88,7 @@ export const setupFaultProofExecution = async (
     fundingFactory,
     walletAddress,
     provider: { getUtxos, getUtxosByOutRef },
-    journalRoot,
+    workflowJournal,
     runtimeConfigPath: "/unused-test-runtime.json",
     deploymentFingerprint: deploymentIdentity.manifestId,
     operationsSink: () => ({ recordProofStep, setAlert }),

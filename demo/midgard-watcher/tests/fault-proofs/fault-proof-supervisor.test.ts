@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
@@ -13,12 +12,13 @@ import {
   type WatcherFaultProofJob,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
+import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
+  emptyWorkflowJournal,
   recordObjectives,
   recordRawObjectiveRow,
-  TEST_JOURNAL_KEY,
 } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
@@ -75,6 +75,7 @@ describe("production fault-proof supervisor", () => {
       reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: root,
+      workflowJournal: emptyWorkflowJournal(),
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -108,20 +109,25 @@ describe("production fault-proof supervisor", () => {
     await supervisor.close();
   });
 
-  it("recovers recorded objectives in installed category and header order, never scanning directories", async () => {
+  it("recovers recorded objectives in installed category and header order, never listing workflow rows", async () => {
     const root = await directory();
     recordObjectives(root, [
       { category: "networkId", headerHash: h28(0xbb) },
       { category: "doubleSpend", headerHash: h28(0xcc) },
       { category: "doubleSpend", headerHash: h28(0xaa) },
     ]);
-    // A workflow directory without an objective row is not recovered.
-    await mkdir(join(root, "fault-proofs", "doubleSpend", h28(0xdd)), {
-      recursive: true,
-    });
+    // Workflow rows without an objective row are not recovered.
+    const workflowDatabase = new DatabaseSync(":memory:");
+    const workflowJournal = createWatcherWorkflowJournal(workflowDatabase);
+    workflowDatabase
+      .prepare(
+        "INSERT INTO watcher_workflow_journal_v1 VALUES (?, 0, 'doubleSpend', ?, 'started', 0, '{}')",
+      )
+      .run("ee".repeat(32), h28(0xdd));
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
+      workflowJournal,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async (job) => {
         observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
@@ -144,7 +150,7 @@ describe("production fault-proof supervisor", () => {
     });
   });
 
-  it("rejects unknown and malformed objectives, and holds a symlinked one without failing", async () => {
+  it("rejects unknown and malformed objectives", async () => {
     const unknownRoot = await directory();
     recordRawObjectiveRow(unknownRoot, {
       category: "forgedFamily",
@@ -172,58 +178,6 @@ describe("production fault-proof supervisor", () => {
     await expect(malformed.recoverExisting(null)).rejects.toThrow(
       "proof objective row is malformed",
     );
-
-    const symlinkRoot = await directory();
-    const outside = await directory();
-    recordObjectives(symlinkRoot, [
-      { category: "doubleSpend", headerHash: h28(0xbb) },
-    ]);
-    await mkdir(join(symlinkRoot, "fault-proofs", "doubleSpend"), {
-      recursive: true,
-    });
-    await symlink(
-      outside,
-      join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb)),
-    );
-    const linked = createWatcherFaultProofSupervisor({
-      reservationDecisionHolds: () => [],
-      journalRoot: symlinkRoot,
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      deadlineAlertHeadroomMs:
-        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
-      queueAuthenticationKey: TEST_JOURNAL_KEY,
-      proofRetention: storelessProofRetention,
-      execution: {
-        verifyCompleted: async () => {
-          throw new Error("unexpected completed execution");
-        },
-        execute: async () => {
-          throw new Error("unexpected execution");
-        },
-      },
-    });
-    // Startup holds the unreadable objective by name rather than failing;
-    // its header is not queued, so the same admission releases it: its row
-    // goes and the link and what it points at stay.
-    await expect(
-      linked.requestProgress({
-        observation: progressObservation({
-          deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        }),
-        rollbackGeneration: "0",
-      }),
-    ).resolves.toBeUndefined();
-    expect(linked.status()).toMatchObject({
-      phase: "accepting",
-      journalDecisionMissing: [],
-      objectiveCleanupFailures: [],
-      unfinishedObjectiveCount: 0,
-    });
-    expect(
-      existsSync(join(symlinkRoot, "fault-proofs", "doubleSpend", h28(0xbb))),
-    ).toBe(true);
-    expect(existsSync(outside)).toBe(true);
-    await linked.close().catch(() => undefined);
   });
 
   it("keeps one pending update per objective and serializes other targets", async () => {

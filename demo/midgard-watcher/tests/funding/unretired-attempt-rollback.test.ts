@@ -30,6 +30,7 @@ it("re-lands the exact bytes of a confirmed, unretired attempt rolled back after
   });
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,

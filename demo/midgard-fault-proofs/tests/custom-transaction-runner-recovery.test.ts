@@ -10,7 +10,6 @@ import { executeManifestBoundObserverOrderInvalidWorkflow } from "../src/observe
 import { executeManifestBoundObserversForbiddenWorkflow } from "../src/observers-forbidden-on-untagged-network/v1.js";
 import { executeManifestBoundRedeemerCanonicityWorkflow } from "../src/redeemer-canonicity/runtime.js";
 import {
-  assertWorkflowActuationPermitIdentity,
   bindWorkflowActuationJournal,
   createWorkflowReconciliationPermitController,
 } from "../src/workflow/actuation-permit.js";
@@ -20,16 +19,11 @@ import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-ad
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
-import * as fundingRecoveryRead from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
 import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderFaultDecision,
 } from "../src/workflow/header-classifier.js";
-import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-  type FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -300,9 +294,6 @@ const recovery = async (
       consumedOutRefs: [`${hash("34")}#0`],
       producedInputs: [],
     },
-    submissionHandoff: null,
-    completionHandoff: null,
-    abandonmentHandoff: null,
   });
   const workflow = {
     binding: {
@@ -478,9 +469,6 @@ it.each(categories)(
         consumedOutRefs: [`${hash("34")}#0`],
         producedInputs: [],
       },
-      submissionHandoff: null,
-      completionHandoff: null,
-      abandonmentHandoff: null,
     });
     let workflowId = "";
     const submit = vi.fn(async () => {
@@ -611,140 +599,5 @@ it.each(categories)(
         ({ event }) => event.kind === "submission_intent",
       ),
     ).toHaveLength(1);
-  },
-);
-
-it.each(categories)(
-  "%s resumes a durable funding release after the target disappeared",
-  async (category) => {
-    const fixture = await recovery(category, false, undefined, true);
-    await execute(category, { ...fixture, sources: [] });
-    const entries = await fixture.journal.load(fixture.workflowId);
-    const prepared = entries[1]!.event;
-    if (prepared.kind !== "prepared")
-      throw new Error("missing prepared fixture");
-    const terminal: FraudProofWorkflowTerminal = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-      category,
-      headerHash,
-      proofToken: {
-        unit: "11".repeat(28),
-        outRef: `${hash("22")}#0`,
-        createdByTxHash: hash("22"),
-        retainedAtFinalState: true,
-      },
-      correction: {
-        removalTxHash: transactionHash,
-        removedStateQueueOutRef: `${hash("34")}#0`,
-        fraudulentHeaderAbsent: true,
-        referencedProofTokenOutRef: `${hash("22")}#0`,
-      },
-      economics: {
-        operatorCredential: "55".repeat(28),
-        proverCredential: "66".repeat(28),
-        operatorBondInputOutRef: `${hash("77")}#0`,
-        operatorBondInputLovelace: "10000000",
-        slashedLovelace: "10000000",
-        proverRewardOutputOutRef: `${transactionHash}#0`,
-        proverRewardLovelace: "5000000",
-        removalFeeLovelace: "200000",
-        duplicateRewardAbsent: true,
-      },
-      observedAt: {
-        slot: "4242",
-        blockHash: hash("88"),
-        confirmationDepth: 2162,
-      },
-    };
-    const handoff: funding.WorkflowFundingCompletionHandoff = {
-      workflowId: fixture.workflowId,
-      identity: entries[0]!.identity,
-      preparedArtifactDigest: prepared.artifactDigest,
-      expectedJournalSequence: entries.length,
-      completion: {
-        kind: "completed",
-        terminal,
-        terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
-      },
-    };
-    vi.mocked(funding.readWorkflowFundingRecovery).mockResolvedValue({
-      transition: null,
-      submissionHandoff: null,
-      completionHandoff: handoff,
-      abandonmentHandoff: null,
-    });
-    const verify = vi.fn(async () => terminal);
-    const result = await execute(category, {
-      ...fixture,
-      workflow: {
-        ...fixture.workflow,
-        terminalVerifier: {
-          ...fixture.workflow.terminalVerifier,
-          verify,
-        },
-      },
-      sources: [],
-    });
-    if (result.kind === "stalled") throw new Error(result.reason);
-    expect(result.kind).toBe("completed");
-    expect(verify).toHaveBeenCalledOnce();
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
-    expect(fixture.forbidden).not.toHaveBeenCalled();
-    expect(
-      (await fixture.journal.load(fixture.workflowId)).filter(
-        ({ event }) => event.kind === "completed",
-      ),
-    ).toHaveLength(1);
-    // A completed journal stays indexed for canonical re-verification; its
-    // historical permit only observes the signed workflow, never submits.
-    const historical = createWorkflowReconciliationPermitController({
-      decision: fixture.decision,
-      deploymentFingerprint,
-      rollbackGeneration: "0",
-      entries: result.kind === "completed" ? result.entries : [],
-    });
-    expect(
-      assertWorkflowActuationPermitIdentity({
-        permit: historical.permit,
-        category,
-        rollbackGeneration: "0",
-      }).authority,
-    ).toBe("reconciliation");
-  },
-);
-
-it.each(categories)(
-  "%s rejects a different prepared artifact at the durable funding handoff",
-  async (category) => {
-    const fixture = await recovery(category);
-    const entries = await fixture.journal.load(fixture.workflowId);
-    const prepared = entries[1]!.event;
-    if (prepared.kind !== "prepared")
-      throw new Error("missing prepared fixture");
-    const foreign = {
-      transition: null,
-      completionHandoff: null,
-      abandonmentHandoff: null,
-      submissionHandoff: {
-        workflowId: fixture.workflowId,
-        identity: entries[0]!.identity,
-        preparedArtifactDigest: hash("ef"),
-        expectedJournalSequence: 2,
-        preflight: entries[2]!
-          .event as funding.WorkflowFundingSubmissionHandoff["preflight"],
-        submissionIntent: entries[3]!
-          .event as funding.WorkflowFundingSubmissionHandoff["submissionIntent"],
-      },
-    };
-    vi.mocked(funding.readWorkflowFundingRecovery).mockResolvedValue(foreign);
-    vi.spyOn(
-      fundingRecoveryRead,
-      "readWorkflowFundingRecovery",
-    ).mockResolvedValue(foreign);
-    await expect(
-      execute(category, { ...fixture, sources: [] }),
-    ).rejects.toThrow(/prepared|artifact|handoff/);
-    expect(fixture.reconcile).not.toHaveBeenCalled();
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
   },
 );

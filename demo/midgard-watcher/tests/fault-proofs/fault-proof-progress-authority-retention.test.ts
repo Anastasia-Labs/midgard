@@ -10,6 +10,7 @@ import type {
 } from "../../src/l1-follower/proof-retention.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import {
+  emptyWorkflowJournal,
   journalDirectory,
   recordObjectives,
   removeJournalDirectories,
@@ -66,7 +67,7 @@ vi.mock(
   "../../src/fault-proofs/fault-proof-objective-journal.js",
   async (importOriginal) => ({
     ...(await importOriginal()),
-    readWatcherProofExecution: async ({
+    readWatcherProofExecution: ({
       objective,
     }: {
       objective: { headerHash: string };
@@ -130,6 +131,7 @@ const restartOver = async (count: number, marked: boolean, k = K) => {
   const recorded = recordingRetention(k);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
+    workflowJournal: emptyWorkflowJournal(),
     deploymentFingerprint,
     categories: ["doubleSpend"],
     authenticationKey: TEST_JOURNAL_KEY,

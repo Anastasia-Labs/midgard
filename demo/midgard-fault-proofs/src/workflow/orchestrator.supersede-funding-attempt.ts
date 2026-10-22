@@ -1,66 +1,58 @@
 import {
   abandonWorkflowFundingReservationTransaction,
-  acknowledgeWorkflowFundingAbandonment,
-  assertWorkflowFundingAbandonmentHandoffJournal,
-  createWorkflowFundingAbandonmentHandoff,
   readWorkflowFundingRecovery,
-  type WorkflowFundingAbandonmentHandoff,
+  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalEvent,
-  FraudProofWorkflowJournalStore,
-} from "./journal.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.js";
 import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 /**
  * Records `transactionHash` as superseded (or, with a retirement, retired):
  * the funding store keeps its lineage as an exclusion set, so a replacement
  * must spend one of its inputs, and the journal closes the attempt as
- * not_found. A later landing is adopted through the abandonment rows.
+ * not_found in the same commit. A later landing is adopted through the
+ * superseded-attempt records.
  */
 export const supersedeWorkflowFundingAttempt = async ({
-  journal,
+  writer,
   assertReconcile,
   entries,
-  append,
   transactionHash,
   retirement,
-  savedHandoff,
 }: {
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly writer: WorkflowJournalWriter;
   /** The family's actuation check before a reconciliation write. */
   readonly assertReconcile: () => void;
   readonly entries: () =>
     | readonly FraudProofWorkflowJournalEntry[]
     | Promise<readonly FraudProofWorkflowJournalEntry[]>;
-  readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly transactionHash: string;
   readonly retirement: SignedWorkflowTransactionRetirement | undefined;
-  readonly savedHandoff: WorkflowFundingAbandonmentHandoff | null;
 }): Promise<void> => {
-  const handoff =
-    savedHandoff ??
-    createWorkflowFundingAbandonmentHandoff({
-      entries: await entries(),
-      transactionHash,
-      retirement,
-    });
+  const intent = [...(await entries())]
+    .reverse()
+    .map(({ event }) => event)
+    .find(
+      (event) =>
+        event.kind === "submission_intent" && event.txHash === transactionHash,
+    );
+  if (intent?.kind !== "submission_intent")
+    throw new Error("funding supersession requires its exact signed intent");
+  assertReconcile();
   await abandonWorkflowFundingReservationTransaction({
-    journal,
+    writer,
     transactionHash,
-    handoff,
+    ...(retirement === undefined ? {} : { retirement }),
+    events: [
+      {
+        kind: "reconciled",
+        actionId: intent.actionId,
+        outcome: "not_found",
+        txHash: transactionHash,
+        ...(retirement === undefined ? {} : { retirement }),
+      },
+    ],
   });
-  assertReconcile();
-  if (
-    !assertWorkflowFundingAbandonmentHandoffJournal({
-      handoff,
-      entries: await entries(),
-    })
-  )
-    await append(handoff.reconciliation);
-  assertReconcile();
-  await acknowledgeWorkflowFundingAbandonment({ journal, handoff });
 };
 
 /** Supersedes the pending attempt, if any, other than `kept`: reobserving
@@ -73,15 +65,14 @@ export const supersedeDisplacedFundingAttempt = async ({
   ...input
 }: Omit<
   Parameters<typeof supersedeWorkflowFundingAttempt>[0],
-  "transactionHash" | "retirement" | "savedHandoff"
+  "transactionHash" | "retirement"
 > & { readonly kept: string }): Promise<void> => {
-  const displaced = await readWorkflowFundingRecovery(input.journal);
+  const displaced = await readWorkflowFundingRecovery(input.writer.journal);
   const pending = displaced.transition?.transactionHash;
   if (pending !== undefined && pending !== kept)
     await supersedeWorkflowFundingAttempt({
       ...input,
       transactionHash: pending,
       retirement: undefined,
-      savedHandoff: displaced.abandonmentHandoff,
     });
 };

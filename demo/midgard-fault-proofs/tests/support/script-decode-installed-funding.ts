@@ -141,7 +141,6 @@ export const openInstalledProverFunding = async ({
   protocolParameters,
   fundingPaymentKeyHash,
   walletAddress,
-  computationThreadPolicyId,
   scriptHashes,
   referenceUtxos,
   directory,
@@ -159,8 +158,6 @@ export const openInstalledProverFunding = async ({
   >;
   readonly fundingPaymentKeyHash: string;
   readonly walletAddress: string;
-  /** The deployed computation-thread policy (the watcher derives it from the blueprint). */
-  readonly computationThreadPolicyId: string;
   /** Deployed contract name to script hash, as the manifest lists them. */
   readonly scriptHashes: Readonly<Record<string, string>>;
   /** Every published reference UTxO a workflow transaction may read. */
@@ -168,7 +165,7 @@ export const openInstalledProverFunding = async ({
   /** Durable home of the SQLite reservation store. */
   readonly directory: string;
   /**
-   * The watcher's journal root: decisions and objective workflow journals.
+   * The watcher's journal root, where the fault decisions are journaled.
    * Null for a category the watcher does not install, which has no recovery
    * authorization: its decisions are never journaled.
    */
@@ -267,6 +264,7 @@ export const openInstalledProverFunding = async ({
       await authorizeWatcherProverFundingRecovery({
         journalRoot,
         journalAuthenticationKey: TEST_JOURNAL_KEY,
+        workflowJournal: opened.journal,
         deploymentIdentity: identity,
         actuationPermit,
         category,
@@ -304,7 +302,6 @@ export const openInstalledProverFunding = async ({
         store: opened.store,
         resolveInputs: async (outRefs) =>
           await emulator.getUtxosByOutRef(outRefs.map(outRefOf)),
-        computationThreadPolicyId,
         resolveProtocolInputAuthority: async ({
           deploymentIdentity,
           outRef,
@@ -328,6 +325,8 @@ export const openInstalledProverFunding = async ({
   return {
     mintPermit,
     readReservations: async () => await opened.store.readAll(),
+    /** The per-proof workflow journal in the same store. */
+    workflowJournal: opened.journal,
     close: () => {
       opened.close();
     },

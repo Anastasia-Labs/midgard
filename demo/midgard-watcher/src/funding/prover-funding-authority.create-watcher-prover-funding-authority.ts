@@ -1,8 +1,6 @@
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowFundingReservationPermit,
-  parseWorkflowFundingPreparedTransition,
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
   type WorkflowFundingReservationPort,
@@ -12,8 +10,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { readProverFundingSubmissionAuthority } from "./prover-funding-authority.reconciliation-only.js";
-import { resolveOwnThreadCustody } from "./prover-funding-authority.resolve-own-thread-custody.js";
 import {
   readRecord,
   snapshot,
@@ -52,8 +48,6 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly resolveInputs: (
     outRefs: readonly string[],
   ) => Promise<readonly UTxO[]>;
-  /** Proves this objective's thread custody when its lineage was lost. */
-  readonly computationThreadPolicyId?: string;
   readonly resolveProtocolInputAuthority: (input: {
     readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     readonly outRef: string;
@@ -107,27 +101,21 @@ export const createWatcherProverFundingAuthority = async (input: {
           walletAddress: input.walletAddress,
           record: existing,
         });
-  const { reconciliationOnly, assertSubmissionAuthority } =
-    await readProverFundingSubmissionAuthority(
-      input.store,
-      plan.reservationId,
-      existing !== undefined,
-    );
-  // Released reservations cannot spend; authenticated reobservation can reopen
-  // provisional completion before its terminal anchor.
-  if (existing?.state !== "released" && !reconciliationOnly)
-    await input.store.reserve(plan);
+  // Released reservations cannot spend.
+  if (existing?.state !== "released") await input.store.reserve(plan);
 
   const reserved = { reservationId: plan.reservationId };
   const load = async () =>
     await readRecord({ store: input.store, ...reserved });
   input.onReserved?.(await load());
+  const commitsJournal = input.store.commitsJournal?.bind(input.store);
   const port: WorkflowFundingReservationPort = Object.freeze({
-    assertSubmissionAuthority,
+    ...(commitsJournal === undefined ? {} : { commitsJournal }),
     reobserve: async ({
       expectedRevision,
       transactionHash,
       adoption,
+      journal,
     }: Parameters<
       NonNullable<WorkflowFundingReservationPort["reobserve"]>
     >[0]) => {
@@ -196,6 +184,7 @@ export const createWatcherProverFundingAuthority = async (input: {
             transactionHash,
             inputs,
             ...(adoption === undefined ? {} : { adoption }),
+            journal,
           }),
           rollbackGeneration: input.rollbackGeneration,
         });
@@ -223,15 +212,16 @@ export const createWatcherProverFundingAuthority = async (input: {
         ...reserved,
         transactionHash,
       }),
-    retireLegacyAbandonment: async ({
+    retireSupersededAttempt: async ({
       expectedRevision,
       transactionHash,
       retirement,
+      journal,
     }: Parameters<
-      NonNullable<WorkflowFundingReservationPort["retireLegacyAbandonment"]>
+      NonNullable<WorkflowFundingReservationPort["retireSupersededAttempt"]>
     >[0]) => {
-      if (input.store.retireLegacyAbandonment === undefined)
-        throw new Error("Funding store cannot authenticate legacy retirement");
+      if (input.store.retireSupersededAttempt === undefined)
+        throw new Error("Funding store cannot retire a superseded attempt");
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
         category: input.category,
@@ -239,21 +229,18 @@ export const createWatcherProverFundingAuthority = async (input: {
       });
       return snapshot({
         plan,
-        record: await input.store.retireLegacyAbandonment({
+        record: await input.store.retireSupersededAttempt({
           plan,
           expectedRevision,
           transactionHash,
           retirement,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
     },
-    readRecordedSubmissions: async () =>
-      (await input.store.readRecordedSubmissions?.(reserved)) ?? [],
-    readLegacyAbandonedTransactions: async () =>
-      (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
-    readAbandonmentHandoff: async () =>
-      await input.store.readAbandonmentHandoff(reserved),
+    readSupersededAttempts: async () =>
+      (await input.store.readSupersededAttempts?.(reserved)) ?? [],
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
@@ -268,27 +255,8 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
-    acknowledgeAbandonment: async ({
-      expectedRevision,
-      handoff,
-    }: Parameters<
-      WorkflowFundingReservationPort["acknowledgeAbandonment"]
-    >[0]) =>
-      snapshot({
-        plan,
-        record: await input.store.acknowledgeAbandonment({
-          plan,
-          expectedRevision,
-          handoff,
-        }),
-        rollbackGeneration: input.rollbackGeneration,
-      }),
-    readPendingHandoff: async () =>
-      await input.store.readPendingHandoff(reserved),
     readPendingTransition: async () =>
       await input.store.readPendingTransition(reserved),
-    readCompletionHandoff: async () =>
-      await input.store.readCompletionHandoff(reserved),
     load: async () =>
       snapshot({
         plan,
@@ -315,11 +283,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       let current = await load();
       if (current.revision !== expectedRevision)
         throw new Error("prover funding refresh revision changed");
-      if (
-        current.state !== "active" ||
-        current.pendingTransition !== null ||
-        (await input.store.readAbandonmentHandoff(reserved)) !== null
-      )
+      if (current.state !== "active" || current.pendingTransition !== null)
         throw new Error(
           "prover funding cannot refresh an unresolved reservation",
         );
@@ -387,18 +351,10 @@ export const createWatcherProverFundingAuthority = async (input: {
     }: Parameters<
       WorkflowFundingReservationPort["resolveConfirmedInput"]
     >[0]) =>
-      (await input.store.readConfirmedInput({
+      await input.store.readConfirmedInput({
         reservationId: plan.reservationId,
         outRef,
-      })) ??
-      (await resolveOwnThreadCustody({
-        outRef,
-        category: input.category,
-        headerHash: authority.headerHash,
-        fundingPaymentKeyHash: plan.fundingPaymentKeyHash,
-        computationThreadPolicyId: input.computationThreadPolicyId,
-        resolveInputs: input.resolveInputs,
-      })),
+      }),
     resolveProtocolInputAuthority: async ({
       deploymentFingerprint,
       outRef,
@@ -418,11 +374,13 @@ export const createWatcherProverFundingAuthority = async (input: {
     prepare: async ({
       expectedRevision,
       transition,
-      handoff,
+      attempt,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["prepare"]>[0]) => {
       const record = await input.store.prepareTransition({
         plan,
-        handoff,
+        attempt,
+        journal,
         expectedRevision,
         actionKind: transition.actionKind,
         signedTransactionCborHex: transition.signedTransactionCborHex,
@@ -440,16 +398,14 @@ export const createWatcherProverFundingAuthority = async (input: {
     confirm: async ({
       expectedRevision,
       transactionHash,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["confirm"]>[0]) => {
-      const current = await load();
-      const transitionDigest =
-        current.pendingTransition?.transitionDigest ??
-        current.lastConfirmedTransitionDigest;
-      if (transitionDigest === null) {
+      const transitionDigest = (await load()).pendingTransition
+        ?.transitionDigest;
+      if (transitionDigest === undefined)
         throw new Error(
-          "prover funding confirmation has no recorded transition",
+          "prover funding confirmation has no pending transition",
         );
-      }
       return snapshot({
         plan,
         record: await input.store.confirmTransition({
@@ -457,6 +413,7 @@ export const createWatcherProverFundingAuthority = async (input: {
           expectedRevision,
           transactionHash,
           transitionDigest,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
@@ -464,43 +421,20 @@ export const createWatcherProverFundingAuthority = async (input: {
     abandon: async ({
       expectedRevision,
       transactionHash,
-      handoff,
+      retirement,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["abandon"]>[0]) => {
-      const current = await load();
-      let transitionDigest: string;
-      if (current.pendingTransition !== null) {
-        if (current.pendingTransition.transactionHash !== transactionHash)
-          throw new Error(
-            "prover funding abandonment changed transaction hash",
-          );
-        transitionDigest = current.pendingTransition.transitionDigest;
-      } else {
-        const saved = await input.store.readAbandonmentHandoff(reserved);
-        if (
-          saved === null ||
-          typeof saved !== "object" ||
-          Array.isArray(saved) ||
-          !("transition" in saved)
-        )
-          throw new Error(
-            "prover funding abandonment lacks its durable signed transaction",
-          );
-        const transition = parseWorkflowFundingPreparedTransition(
-          saved.transition,
-        );
-        if (transition.transactionHash !== transactionHash)
-          throw new Error(
-            "prover funding abandonment changed transaction hash",
-          );
-        transitionDigest = computeDeploymentManifestJsonDigest(transition);
-      }
+      const pending = (await load()).pendingTransition;
+      if (pending === null || pending.transactionHash !== transactionHash)
+        throw new Error("prover funding abandonment changed transaction hash");
       return snapshot({
         plan,
         record: await input.store.abandonPendingTransition({
           plan,
           expectedRevision,
-          transitionDigest,
-          handoff,
+          transitionDigest: pending.transitionDigest,
+          ...(retirement === undefined ? {} : { retirement }),
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       });
@@ -508,6 +442,7 @@ export const createWatcherProverFundingAuthority = async (input: {
     markConflict: async ({
       expectedRevision,
       code,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["markConflict"]>[0]) =>
       snapshot({
         plan,
@@ -515,16 +450,17 @@ export const createWatcherProverFundingAuthority = async (input: {
           plan,
           expectedRevision,
           code,
+          journal,
         }),
         rollbackGeneration: input.rollbackGeneration,
       }),
     release: async ({
       expectedRevision,
-      handoff,
+      journal,
     }: Parameters<WorkflowFundingReservationPort["release"]>[0]) =>
       snapshot({
         plan,
-        record: await input.store.release({ plan, expectedRevision, handoff }),
+        record: await input.store.release({ plan, expectedRevision, journal }),
         rollbackGeneration: input.rollbackGeneration,
       }),
   });

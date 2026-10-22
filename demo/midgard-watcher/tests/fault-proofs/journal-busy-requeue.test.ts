@@ -3,7 +3,6 @@ import {
   bindWorkflowActuationJournal,
   bindWorkflowFundingReservationJournal,
   createWorkflowActuationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   verifyCompletedFraudProofWorkflow,
   type WorkflowAdapterRunnerInput,
@@ -134,8 +133,6 @@ const setup = async () => {
     false,
     false,
     false,
-    false,
-    false,
     BigInt(Date.now()),
   );
   // Open with neither a queue row nor a workflow journal: the progress
@@ -150,9 +147,7 @@ const setup = async () => {
     await beforeRun();
     const bound = bindWorkflowFundingReservationJournal({
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(
-          fixture.journalDirectory,
-        ),
+        journal: fixture.objectiveJournal(),
         permit: invocation.actuationPermit,
         category: "doubleSpend",
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -178,6 +173,7 @@ const setup = async () => {
       reservationDecisionHolds: fundingFactory.decisionHolds,
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -211,7 +207,7 @@ const setup = async () => {
           getUtxos: async () => fixture.walletUtxos,
           getUtxosByOutRef: async () => [],
         },
-        journalRoot: fixture.journalRoot,
+        workflowJournal: fixture.workflowJournal,
         runtimeConfigPath: "/unused-journal-busy-test.json",
         deploymentFingerprint: deploymentIdentity.manifestId,
         operationsSink: () => ({ recordProofStep: vi.fn(), setAlert }),

@@ -3,6 +3,7 @@ import "./prover-funding-recovery.funding-recovery-across-authenticated-observat
 import {
   beginWorkflowFundingReservationAction,
   bindWorkflowPreflightTransaction,
+  createStoredWorkflowJournalWriter,
   prepareWorkflowFundingReservationTransaction,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -30,7 +31,7 @@ it.each([
 ] as const)(
   "admits manifest-bound %s spending custody while refusing policy and unknown addresses",
   async (name) => {
-    const context = await setup(false, false, true);
+    const context = await setup(true);
     context.useUnspentPendingInputs();
     const journal = context.bind(
       context.old,
@@ -92,17 +93,18 @@ it.each([
         signed,
       );
       return prepareWorkflowFundingReservationTransaction({
-        journal,
+        writer: createStoredWorkflowJournalWriter({
+          store: journal,
+          workflowId: context.initial.workflowId,
+          identity: context.initial.identity,
+          now: () => new Date().toISOString(),
+        }),
         action,
         preflight,
-        handoff: {
-          ...context.handoff,
-          preflight: { ...context.handoff.preflight, txHash: signed.toHash() },
-          submissionIntent: {
-            ...context.handoff.submissionIntent,
-            txHash: signed.toHash(),
-          },
-        },
+        events: [
+          { ...context.events.preflight, txHash: signed.toHash() },
+          { ...context.events.submissionIntent, txHash: signed.toHash() },
+        ],
       });
     };
     for (const rejected of [
@@ -123,7 +125,7 @@ it.each([
 
 describe("additive deployed funding roster recovery", () => {
   it("refuses a stored policy outside the exact previously deployed roster", async () => {
-    const test = await setup(true, false, false, false, "changed-role");
+    const test = await setup(false, false, "changed-role");
     const before = await test.records();
     await expect(test.createPermit(test.fresh, "2")).rejects.toThrow(
       "restored prover funding reservation identity mismatch",
@@ -131,20 +133,11 @@ describe("additive deployed funding roster recovery", () => {
     expect(await test.records()).toEqual(before);
   });
 
-  it("reuses an old-policy signed handoff through actual journal recovery without changing reservation identity", async () => {
-    const test = await setup(true, false, false, false, true);
+  it("reuses an old-policy signed attempt through journal recovery without changing reservation identity", async () => {
+    const test = await setup(false, false, true);
     const before = (await test.records())[0]!;
-    const handoff = await test.store.readPendingHandoff({
-      reservationId: before.reservationId,
-    });
-    expect(handoff).not.toBeNull();
     const admitted = await test.createPermit(test.fresh, "2");
     expect(await test.records()).toEqual([before]);
-    expect(
-      await test.store.readPendingHandoff({
-        reservationId: before.reservationId,
-      }),
-    ).toEqual(handoff);
     const journal = test.bind(test.fresh, admitted);
     await test.run(journal);
     const entries = await journal.load(test.initial.workflowId);
@@ -178,7 +171,7 @@ describe("additive deployed funding roster recovery", () => {
   });
 
   it("refreshes stale wallet inputs under the original reservation identity after roster correction", async () => {
-    const test = await setup(false, false, false, false, true);
+    const test = await setup(false, false, true);
     const journal = test.bind(
       test.fresh,
       await test.createPermit(test.fresh, "2"),

@@ -36,7 +36,7 @@ import type { startJourneyNativeRecorder } from "./native-recorder.js";
 export const verifyJourneyCorrection = async ({
   context,
   native,
-  workflowJournalDirectory,
+  watcherStorePath,
   directory,
   category,
   headerHash,
@@ -54,7 +54,8 @@ export const verifyJourneyCorrection = async ({
 }: {
   context: Awaited<ReturnType<typeof loadJourneyContext>>;
   native: Awaited<ReturnType<typeof startJourneyNativeRecorder>>;
-  workflowJournalDirectory: string;
+  /** The watcher store the workflow rows live in. */
+  watcherStorePath: string;
   directory: string;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
@@ -96,7 +97,7 @@ export const verifyJourneyCorrection = async ({
     async () => {
       requireLive();
       const records = await readJourneyWorkflowEntries({
-        workflowJournalDirectory,
+        watcherStorePath,
         category,
         headerHash,
       });

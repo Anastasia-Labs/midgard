@@ -29,6 +29,7 @@ export {
   journeyWorkflowProgressCount,
   journeyWorkflowUpdates,
   readJourneyWorkflowEntries,
+  readJourneyWorkflowRows,
   verifyJourneyCorrectedScheduler,
   verifyJourneyCorrectedTail,
 } from "./correction.verify-journey-corrected-scheduler.js";

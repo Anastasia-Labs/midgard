@@ -1,19 +1,14 @@
 import { rm } from "node:fs/promises";
-import { DatabaseSync } from "node:sqlite";
 
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { afterEach, expect, it } from "vitest";
 
 import type { WatcherProverFundingReservationPlan } from "../../src/funding/prover-funding-reservation.js";
-import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import {
   excludesEveryUncoveredAttempt,
   supersededAttemptFundingOutRefs,
   uncoveredSupersededAttempts,
 } from "../../src/funding/sqlite-prover-funding-reservation-store.superseded-exclusion.js";
-import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  abandonmentHandoff,
   openStore,
   plan,
   prepareTransition,
@@ -74,23 +69,13 @@ const supersede = async (
     ...signed,
     consumedOutRefs: [`${input.inputHash}#0`],
   });
-  const {
-    reconciliation: { retirement: _retirement, ...reconciliation },
-    ...rest
-  } = abandonmentHandoff(owner, signed.transactionHash, "proof.init");
-  const handoff = { ...rest, reconciliation };
-  const abandoned = await store.abandonPendingTransition({
+  const record = await store.abandonPendingTransition({
+    journal: [],
     plan: owner,
     expectedRevision: pending.revision,
     transitionDigest: pending.pendingTransition!.transitionDigest,
-    handoff,
   });
-  const acknowledged = await store.acknowledgeAbandonment({
-    plan: owner,
-    expectedRevision: abandoned.revision,
-    handoff,
-  });
-  return { signed, record: acknowledged };
+  return { signed, record };
 };
 
 it("refuses a replacement that avoids every input of an attempt superseded at the tip, and admits one that spends it at once", async () => {
@@ -103,8 +88,8 @@ it("refuses a replacement that avoids every input of an attempt superseded at th
       inputHash: "11".repeat(32),
       outputLovelace: 99_000_000n,
     });
-    // No hold: the superseded attempt leaves no pending transition and no
-    // unacknowledged abandonment, and it needs no retirement first.
+    // No hold: the superseded attempt leaves no pending transition, and it
+    // needs no retirement first.
     expect(record.pendingTransition).toBeNull();
     expect(
       await store.readSupersededAttemptFundingOutRefs!({
@@ -151,100 +136,6 @@ it("refuses a replacement that avoids every input of an attempt superseded at th
     ).toEqual([]);
   } finally {
     opened.runtime.close();
-  }
-});
-
-it("applies the same exclusion to a legacy abandonment written without retirement", async () => {
-  const opened = await openStore();
-  const owner = twoFundingPlan();
-  await opened.runtime.store.reserve(owner);
-  const signed = signedTransition({ validityUpperBound: 100n });
-  const pending = await prepareTransition(opened.runtime.store, {
-    plan: owner,
-    expectedRevision: "0",
-    actionKind: "proof.init",
-    ...signed,
-    consumedOutRefs: [first],
-  });
-  // The pre-fix flow: abandoned with retirement evidence, acknowledged...
-  const handoff = abandonmentHandoff(
-    owner,
-    signed.transactionHash,
-    "proof.init",
-  );
-  const abandoned = await opened.runtime.store.abandonPendingTransition({
-    plan: owner,
-    expectedRevision: pending.revision,
-    transitionDigest: pending.pendingTransition!.transitionDigest,
-    handoff,
-  });
-  await opened.runtime.store.acknowledgeAbandonment({
-    plan: owner,
-    expectedRevision: abandoned.revision,
-    handoff,
-  });
-  opened.runtime.close();
-  // ...then persisted in the exact legacy format, which carries none.
-  const database = new DatabaseSync(opened.path);
-  const row = database
-    .prepare("SELECT canonical_json FROM watcher_prover_funding_abandonment_v1")
-    .get() as { canonical_json: string };
-  const legacy = JSON.parse(row.canonical_json);
-  delete legacy.handoff.reconciliation.retirement;
-  database
-    .prepare(
-      "UPDATE watcher_prover_funding_abandonment_v1 SET canonical_json=?, record_digest=?",
-    )
-    .run(
-      watcherCanonicalJson(legacy),
-      computeDeploymentManifestJsonDigest(legacy),
-    );
-  database.close();
-  const reopened =
-    await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
-      { path: opened.path },
-      () => undefined,
-    );
-  try {
-    const [record] = (await reopened.store.readAll()) as {
-      revision: string;
-      pendingTransition: unknown;
-    }[];
-    expect(record!.pendingTransition).toBeNull();
-    expect(
-      await reopened.store.readSupersededAttemptFundingOutRefs!({
-        reservationId: owner.reservationId,
-      }),
-    ).toEqual([[first]]);
-    await expect(
-      prepareTransition(reopened.store, {
-        plan: owner,
-        expectedRevision: record!.revision,
-        actionKind: "proof.init",
-        ...signedTransition({
-          inputHash: "13".repeat(32),
-          validityUpperBound: 200n,
-        }),
-        consumedOutRefs: [second],
-      }),
-    ).rejects.toThrow("must share an input with each superseded attempt");
-    const replacement = signedTransition({
-      outputLovelace: 98_000_000n,
-      validityUpperBound: 200n,
-    });
-    await expect(
-      prepareTransition(reopened.store, {
-        plan: owner,
-        expectedRevision: record!.revision,
-        actionKind: "proof.init",
-        ...replacement,
-        consumedOutRefs: [first],
-      }),
-    ).resolves.toMatchObject({
-      pendingTransition: { transactionHash: replacement.transactionHash },
-    });
-  } finally {
-    reopened.close();
   }
 });
 
@@ -304,21 +195,11 @@ it("accepts a shared protocol input as the exclusion, and refuses a replacement 
       ...signed,
       consumedOutRefs: [first],
     });
-    const {
-      reconciliation: { retirement: _retirement, ...reconciliation },
-      ...rest
-    } = abandonmentHandoff(owner, signed.transactionHash, "proof.init");
-    const handoff = { ...rest, reconciliation };
-    const abandoned = await store.abandonPendingTransition({
+    const record = await store.abandonPendingTransition({
+      journal: [],
       plan: owner,
       expectedRevision: pending.revision,
       transitionDigest: pending.pendingTransition!.transitionDigest,
-      handoff,
-    });
-    const record = await store.acknowledgeAbandonment({
-      plan: owner,
-      expectedRevision: abandoned.revision,
-      handoff,
     });
     await expect(
       prepareTransition(store, {
@@ -433,14 +314,12 @@ it("admits a validation-trace thread move beside a superseded attempt only while
       uncovered,
       signedTransactionCborHex: attempt(inputs, []).signedTransactionCborHex,
       reservedFundingOutRefs: reserved,
-      handoff: {
-        identity: { category },
-        submissionIntent: {
-          actionInput: {
-            schemaVersion: "midgard-validation-trace-dispute-action-v1",
-            stage,
-            consumes,
-          },
+      attempt: {
+        category,
+        actionInput: {
+          schemaVersion: "midgard-validation-trace-dispute-action-v1",
+          stage,
+          consumes,
         },
       },
     });

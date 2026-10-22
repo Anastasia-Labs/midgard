@@ -59,7 +59,7 @@ const setup = async (prepare: boolean) => {
     fundingFactory,
     walletAddress,
     provider: { getUtxos, getUtxosByOutRef },
-    journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     runtimeConfigPath: "/unused-test-runtime.json",
     deploymentFingerprint: deploymentIdentity.manifestId,
     operationsSink,

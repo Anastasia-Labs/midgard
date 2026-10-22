@@ -1,11 +1,8 @@
-import { join } from "node:path";
-
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
   computeFraudProofWorkflowId,
   createHeaderClassifier,
-  DirectoryFraudProofWorkflowJournalStore,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
@@ -20,10 +17,14 @@ import {
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 
+import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
 import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
-import { recordObjectives } from "./watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  recordObjectives,
+} from "./watcher-journal-fixture.js";
 
 /** Signed double-spend journals, real enough for the supervisor's journal,
  * decision and reconciliation-permit admission. */
@@ -113,7 +114,7 @@ export const writeExecution = async (
   decision: DoubleSpendDecision,
   completed: boolean,
   preparedOnly = false,
-): Promise<void> => {
+): Promise<WatcherWorkflowJournal> => {
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -149,9 +150,11 @@ export const writeExecution = async (
   recordObjectives(root, [
     { category: "doubleSpend", headerHash: decision.headerHash },
   ]);
-  const journal = new DirectoryFraudProofWorkflowJournalStore(
-    join(root, "fault-proofs", "doubleSpend", decision.headerHash),
-  );
+  const workflowJournal = emptyWorkflowJournal();
+  const journal = workflowJournal.forObjective({
+    category: "doubleSpend",
+    headerHash: decision.headerHash,
+  });
   const workflowId = computeFraudProofWorkflowId(identity);
   for (const [sequence, event] of events.entries()) {
     await journal.append(
@@ -166,4 +169,5 @@ export const writeExecution = async (
       sequence,
     );
   }
+  return workflowJournal;
 };

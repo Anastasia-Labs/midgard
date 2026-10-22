@@ -46,6 +46,7 @@ import {
 } from "./watcher-decision-hold.js";
 import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
+import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
@@ -74,14 +75,13 @@ export type WatcherFaultProofProgressAuthority = Readonly<{
   unfinishedCount(): number;
   /** Objectives held because their recorded decision is missing. */
   decisionHolds(): readonly WatcherDecisionHold[];
-  /** Released or final objectives whose workflow directory a removal could
-   * not take (their rows stay), and tombstones a sweep could not delete:
-   * each admission retries them. */
+  /** Released or final objectives whose workflow rows a removal could not
+   * delete (their rows stay): each admission retries them. */
   cleanupFailures(): readonly WatcherProofCleanupFailure[];
   /** Holds an objective whose execution names a missing decision. */
   holdObjective(hold: WatcherDecisionHold): Promise<void>;
   /** Records the completion; one verified beyond rollback recovery is
-   * marked, and pruned with its workflow directory once its job is done. */
+   * marked, and pruned with its workflow rows once its job is done. */
   markCompleted(
     objective: WatcherProofObjective,
     verified?: Readonly<{
@@ -126,6 +126,7 @@ const MAX_CACHED_DECISIONS = 2_048;
  * revalidates the latest selected execution immediately before funding. */
 export const createWatcherFaultProofProgressAuthority = (input: {
   readonly journalRoot: string;
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
   readonly authenticationKey: Uint8Array;
@@ -133,10 +134,12 @@ export const createWatcherFaultProofProgressAuthority = (input: {
   /** Told when an objective stops being driven (`objectiveSettled`). */
   readonly onObjectiveSettled?: (objective: WatcherProofObjective) => void;
   /** Whether a job of the objective is queued, running or handed over in
-   * this process; its workflow directory stays while it is. */
+   * this process; its workflow rows stay while it is. */
   readonly jobInProcess?: (objective: WatcherProofObjective) => boolean;
-  /** Told when the objective's workflow directory is removed. */
+  /** Told when the objective's workflow rows are deleted. */
   readonly onObjectiveRemoved?: (objective: WatcherProofObjective) => void;
+  /** Told when the objective is forgotten holding a signed attempt. */
+  readonly onObjectiveUnattended?: (objective: WatcherProofObjective) => void;
 }): WatcherFaultProofProgressAuthority => {
   const database = () =>
     openWatcherJournalDatabase({
@@ -144,15 +147,14 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       authenticationKey: input.authenticationKey,
     });
   const cleanup = createWatcherProofObjectiveCleanup({
-    journalRoot: input.journalRoot,
+    workflowJournal: input.workflowJournal,
     deploymentFingerprint: input.deploymentFingerprint,
     database,
     ...(input.jobInProcess === undefined
       ? {}
       : { jobInProcess: input.jobInProcess }),
-    ...(input.onObjectiveRemoved === undefined
-      ? {}
-      : { onRemoved: input.onObjectiveRemoved }),
+    onRemoved: input.onObjectiveRemoved,
+    onUnattended: input.onObjectiveUnattended,
   });
   // A journal failure is retried by the next use.
   const openDecisions: () => Promise<WatcherFaultDecisionJournal> =
@@ -175,9 +177,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     string,
     WatcherDecisionHold & Readonly<{ kind: "objective" }>
   >();
-  // Held objectives whose workflow directory startup could not read
+  // Held objectives whose workflow rows startup could not read
   // (fault_proof_objective_unreadable), by whether their row was marked
-  // final: their release forgets them without reading the directory again.
+  // final: their release forgets them without reading the rows again.
   const unreadable = new Map<string, boolean>();
   const decisions = new Map<string, HeaderFaultDecision>();
   // A retry is safe: initialization reads the journals before it changes any
@@ -268,7 +270,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     );
   // An objective whose header left the finalized queue has resolved: its
   // proof or another landed and is final, or the header merged. Its pin goes,
-  // and its rows and workflow directory once no job of it is queued or
+  // and its journal and workflow rows once no job of it is queued or
   // active: such a job's run adopts the objective again, and a later
   // observation releases it.
   const release = async (target: WatcherProofObjective): Promise<void> => {
@@ -287,8 +289,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     }
   };
   const loadExecution = async (objective: Objective): Promise<void> => {
-    const execution = await readWatcherProofExecution({
-      journalRoot: input.journalRoot,
+    const execution = readWatcherProofExecution({
+      journal: input.workflowJournal,
       deploymentFingerprint: input.deploymentFingerprint,
       objective: objective.decision,
       selectedWorkflowId: objective.workflowId,
@@ -330,9 +332,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     for (const { decision } of await (await openDecisions()).readAll())
       if (decision.decision === "fault_detected")
         decisions.set(decision.decisionDigest, decision);
-    // A crash during an earlier removal's delete left its tombstone.
-    await cleanup.sweep();
-    // Startup lists the objective table, never the workflow directories.
+    // Startup lists the objective table, never the workflow journal.
     const rows = listWatcherProofObjectives(database(), input.categories);
     for (const row of rows) {
       const target = row.objective;
@@ -341,14 +341,14 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       if (watcherProofJobPending(database(), target)) cleanup.markStale(target);
       let execution;
       try {
-        execution = await readWatcherProofExecution({
-          journalRoot: input.journalRoot,
+        execution = readWatcherProofExecution({
+          journal: input.workflowJournal,
           deploymentFingerprint: input.deploymentFingerprint,
           objective: target,
         });
       } catch (error) {
-        // A directory that cannot be read (a symlink, a sequence gap a
-        // partial delete left, an I/O error) never fails startup: the
+        // Workflow rows that cannot be read (a corrupt row, a foreign
+        // execution, a storage error) never fail startup: the
         // objective is held and takes no work, and once its header leaves
         // the finalized queue its rows are forgotten without trusting it.
         unreadable.set(keyOf(target), row.marker !== null);
@@ -658,7 +658,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
         // Verified again on the next start.
       }
       // Released once the marker holds, and forgotten with its workflow
-      // directory once its job is done and an observation no longer queues
+      // rows once its job is done and an observation no longer queues
       // its header (a fault then names the marker, not a fresh objective);
       // unmarked, it is verified again.
       if (marked) {

@@ -225,12 +225,7 @@ const families: readonly (readonly [
 it.each(families)(
   "takes the expired attempt as the result when a rollback drops its confirmed replacement and lands it instead, in %s",
   async (_, install) => {
-    const fixture = await setupFundingRecoveryFixture(
-      false,
-      false,
-      false,
-      true,
-    );
+    const fixture = await setupFundingRecoveryFixture(false, true);
     const { journal, replacement } = await confirmReplacement(fixture);
     const before = (await journal.load(fixture.initial.workflowId)).length;
     walletAfter(fixture, fixture.transactionHash);

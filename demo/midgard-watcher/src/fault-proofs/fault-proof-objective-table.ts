@@ -19,8 +19,8 @@ import {
 
 /**
  * The proof objective table (ticket W2, L2): one row per objective, written
- * when its first job is queued, before any workflow directory exists. Startup
- * lists these rows instead of scanning the workflow directories.
+ * when its first job is queued, before its execution has any workflow row.
+ * Startup lists these rows instead of scanning the workflow journal.
  *
  * - `open`: the objective holds unfinished work. Only open rows count toward
  *   the cap, and reaching it is a readiness condition, never an exit.
@@ -28,7 +28,7 @@ import {
  *   recovery, so the next start verifies it again.
  * - `marked`: its completion was verified beyond rollback recovery; the row
  *   records which execution; once its job is done the row and its workflow
- *   directory are pruned, by the next release pass or the next start.
+ *   rows are pruned, by the next release pass or the next start.
  */
 const JOURNAL = "fault_proof_objectives" satisfies WatcherJournalName;
 
@@ -88,6 +88,16 @@ export const canOpenWatcherProofObjective = (
     JOURNAL,
     watcherObjectiveScope(objective.category, objective.headerHash),
   ) !== undefined || database.count(JOURNAL, "open") < MAX_OPEN_OBJECTIVES;
+
+/** Whether the objective has a row: no row means nothing drives it. */
+export const watcherProofObjectiveRecorded = (
+  database: WatcherJournalDatabase,
+  objective: Readonly<{ category: string; headerHash: string }>,
+): boolean =>
+  database.row(
+    JOURNAL,
+    watcherObjectiveScope(objective.category, objective.headerHash),
+  ) !== undefined;
 
 /** The completion marker for this exact completed execution, or null when
  * the completion is not yet beyond rollback recovery. */
@@ -262,10 +272,9 @@ export const matchingWatcherProofMarker = (
 
 /**
  * Deletes the objective's row and its queued jobs in one commit; a prune
- * also deletes its fault decisions. The caller first renames the workflow
- * directory to a tombstone, so a crash before this commit leaves a row
- * whose execution is gone, which the next start prunes again, and a crash
- * after it leaves only the tombstone, which the next start sweeps.
+ * also deletes its fault decisions. The caller first deletes the workflow
+ * rows, so a crash before this commit leaves a row whose execution is gone,
+ * which the next start forgets again.
  */
 export const forgetWatcherProofObjective = (
   database: WatcherJournalDatabase,

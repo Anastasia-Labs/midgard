@@ -1,5 +1,3 @@
-import { mkdir, realpath } from "node:fs/promises";
-
 import {
   assertWorkflowActuationPermitIdentity,
   FraudProofL1CheckpointChangedError,
@@ -35,10 +33,7 @@ import {
   l1RefusalOf,
 } from "./fault-proof-execution-holds.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
-import {
-  type WatcherProofObjective,
-  watcherProofObjectiveDirectory,
-} from "./fault-proof-objective-journal.js";
+import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import {
   isWatcherFaultProofQuarantined,
   quarantineCause,
@@ -49,6 +44,7 @@ import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 import { isWatcherSqliteBusyError } from "./watcher-journal-busy.js";
+import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 /** Chosen by the supervisor after reloading and validating the durable journal. */
 export type WatcherFaultProofExecutionAdmission = Readonly<{
@@ -228,7 +224,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
   readonly fundingFactory: WatcherProverFundingAuthorityFactory;
   readonly walletAddress: string;
   readonly provider: WatcherProverFundingUtxoProvider;
-  readonly journalRoot: string;
+  /** The per-proof workflow journal in watcher.sqlite. */
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly runtimeConfigPath: string;
   readonly deploymentFingerprint: string;
   readonly operationsSink: () => Pick<
@@ -385,15 +382,6 @@ export const createWatcherFaultProofExecution = (dependencies: {
             reason: `prepared_proof_awaiting_submission: ${bundle}`,
           };
         }
-        const journalDirectory = watcherProofObjectiveDirectory(
-          dependencies.journalRoot,
-          { category, headerHash },
-        );
-        await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-        if ((await realpath(journalDirectory)) !== journalDirectory)
-          throw new Error(
-            "watcher workflow journal directory traverses a symlink",
-          );
         const runner = dependencies.application.runners[category];
         if (runner === undefined)
           throw new Error(
@@ -420,7 +408,11 @@ export const createWatcherFaultProofExecution = (dependencies: {
           decisionDigest,
           actuationPermit,
           fundingReservationPermit,
-          journalDirectory,
+          // A fresh store per invocation: the permits bind to this object.
+          journal: dependencies.workflowJournal.forObjective({
+            category,
+            headerHash,
+          }),
           runtimeConfigPath: dependencies.runtimeConfigPath,
           onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });

@@ -38,10 +38,11 @@ const recover = async (completed: boolean, rounds = 1) => {
   const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-completed-");
   directories.push(root);
   const decision = await classifyDoubleSpend();
-  await writeExecution(root, decision, completed);
+  const workflowJournal = await writeExecution(root, decision, completed);
   let ran = 0;
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot: root,
+    workflowJournal,
     deploymentFingerprint: deploymentIdentity.manifestId,
     run: async (job) => {
       ran += 1;
@@ -111,13 +112,14 @@ describe("fault-proof supervisor over a completed execution", () => {
     const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-yielded-");
     directories.push(root);
     const decision = await classifyDoubleSpend();
-    await writeExecution(root, decision, false, true);
+    const workflowJournal = await writeExecution(root, decision, false, true);
     const run = vi.fn(async (_job: { mode: "run" | "resume" }) => ({
       kind: "pending",
       resumeOnObservation: true,
     }));
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
+      workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       run,
     });

@@ -1,12 +1,5 @@
 import { existsSync } from "node:fs";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -14,7 +7,6 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalEntry,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
@@ -540,38 +532,34 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         await pause(50);
       }
     });
-    const workflowDirectory = join(
-      config.workflowJournalDirectory,
-      "fault-proofs",
-      "transitionTrace",
-      staged.current.headerHash,
-    );
-    const workflowJournal = new DirectoryFraudProofWorkflowJournalStore(
-      workflowDirectory,
-    );
+    // The running watcher's workflow rows, read over a second connection.
     const readWorkflow = async (): Promise<
       readonly FraudProofWorkflowJournalEntry[]
     > => {
-      let entries;
+      if (!existsSync(watcherConfig.storage.path)) return [];
+      const store = new DatabaseSync(watcherConfig.storage.path);
       try {
-        entries = await readdir(workflowDirectory, { withFileTypes: true });
+        const rows = store
+          .prepare(
+            "SELECT workflow_id, body FROM watcher_workflow_journal_v1 WHERE category = 'transitionTrace' AND header_hash = ? ORDER BY workflow_id, sequence",
+          )
+          .all(staged.current.headerHash) as {
+          workflow_id: string;
+          body: string;
+        }[];
+        expect(
+          new Set(rows.map(({ workflow_id }) => workflow_id)).size,
+        ).toBeLessThanOrEqual(1);
+        return rows.map(
+          ({ body }) => JSON.parse(body) as FraudProofWorkflowJournalEntry,
+        );
       } catch (cause) {
-        if (
-          typeof cause === "object" &&
-          cause !== null &&
-          "code" in cause &&
-          cause.code === "ENOENT"
-        )
+        if (cause instanceof Error && cause.message.includes("no such table"))
           return [];
         throw cause;
+      } finally {
+        store.close();
       }
-      const ids = entries
-        .filter(
-          (entry) => entry.isDirectory() && /^[0-9a-f]{64}$/u.test(entry.name),
-        )
-        .map(({ name }) => name);
-      expect(ids.length).toBeLessThanOrEqual(1);
-      return ids.length === 0 ? [] : await workflowJournal.load(ids[0]!);
     };
     let reportedWorkflowSequence = -1;
     const terminalRelease = createTerminalRelease(chain);
@@ -836,21 +824,32 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     // The process's journal connection outlives the runtime; a restart is a
     // new process, so close it as an exit would.
     closeWatcherJournalDatabase(config.workflowJournalDirectory);
-    const shiftDecisionHead = (by: number) => {
+    // A decision row whose bytes no longer match its MAC, as a bit the disk
+    // flipped and SQLite does not check would leave. Completion pruning has
+    // emptied the journal tables by now, so the row is written in; deleting
+    // it is the operator's repair.
+    const corruptJournalRow = (corrupt: boolean) => {
       const raw = new DatabaseSync(
         join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
       );
       try {
-        raw
-          .prepare(
-            "UPDATE watcher_journal_heads SET revision = revision + ? WHERE journal = 'fault_decisions'",
-          )
-          .run(by);
+        const { changes } = corrupt
+          ? raw
+              .prepare(
+                "INSERT INTO watcher_fault_decisions (row_key, scope, state, revision, body, mac) VALUES ('corrupt', 'corrupt', 'fault_detected', 1, '{}', ?)",
+              )
+              .run("00".repeat(32))
+          : raw
+              .prepare(
+                "DELETE FROM watcher_fault_decisions WHERE row_key = 'corrupt'",
+              )
+              .run();
+        expect(Number(changes)).toBe(1);
       } finally {
         raw.close();
       }
     };
-    shiftDecisionHead(1);
+    corruptJournalRow(true);
     let restartFailure: unknown;
     const restarting = createWatcherRuntime({ config });
     void restarting.catch((cause: unknown) => {
@@ -877,9 +876,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         }
         const live = await probe("/v1/status");
         expect(live.status).toBe(200);
-        expect(live.body.supervisor?.journalIntegrity).toContain(
-          "head MAC differs",
-        );
+        expect(live.body.supervisor?.journalIntegrity).toContain("MAC differs");
         expect(await probe("/v1/metrics")).toEqual({
           status: 503,
           body: { error: "journal_integrity" },
@@ -887,9 +884,9 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       },
       300_000,
     );
-    // Repair the head and forget the refusal, as the restart that clears it
+    // Repair the row and forget the refusal, as the restart that clears it
     // would; the held startup then completes on the repaired journals.
-    shiftDecisionHead(-1);
+    corruptJournalRow(false);
     closeWatcherJournalDatabase(config.workflowJournalDirectory);
     watcher = await stage("startup after journal repair", () => restarting);
     expect(watcher.faultProofSupervisor.status().journalIntegrity).toBeNull();

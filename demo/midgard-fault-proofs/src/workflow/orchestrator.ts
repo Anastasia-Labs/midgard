@@ -41,6 +41,7 @@ export {
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 export { createFraudProofWorkflowRegistry } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 export { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
+export { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
 export {
   resumeRecordedFraudProofWorkflow,
   runDaHashPreimageWorkflowFromRetainedDa,

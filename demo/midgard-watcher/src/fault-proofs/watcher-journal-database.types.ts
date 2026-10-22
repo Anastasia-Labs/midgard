@@ -109,7 +109,8 @@ export type WatcherJournalDatabase = Readonly<{
   ): readonly WatcherJournalRow[];
   count(journal: WatcherJournalName, state?: string): number;
   head(journal: WatcherJournalName): WatcherJournalHead;
-  /** Full integrity check of every journal; startup runs it once. */
+  /** Checks every row's MAC and that no row is newer than its journal's
+   * head; startup runs it once. */
   verify(): void;
   /** Refuses the journals for this process: every later call throws. */
   refuse(journal: WatcherJournalName, detail: string): never;
@@ -122,20 +123,6 @@ export type StoredRow = {
   state: string;
   revision: number | bigint;
   body: string;
-  mac: string;
-};
-
-export type StoredHead = {
-  revision: number;
-  chain: string;
-  liveRows: number;
-  accumulator: bigint;
-};
-
-export type StoredRevision = {
-  revision: number | bigint;
-  chain: string;
-  delta: string;
   mac: string;
 };
 

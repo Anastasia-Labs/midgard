@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 it("supersedes a pending step that a reobserved earlier action displaces, so its replacement must spend its lineage", async () => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
   const change = `${fixture.transactionHash}#0`;
   let journal = await fixture.recover();
@@ -46,7 +46,7 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
     collateral,
     [thread],
   );
-  await recordReplacement(fixture, journal, step, 1, next);
+  await recordReplacement(fixture, step, 1, next);
   journal = await fixture.recover();
 
   // A rollback within k drops the proof: its funding input is unspent again.
@@ -136,7 +136,8 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
   expect(other).toBeDefined();
   await expect(
     fixture.store.prepareTransition({
-      handoff: fixture.handoff,
+      attempt: fixture.attempt,
+      journal: [],
       plan: fixture.plan,
       expectedRevision: record!.revision,
       actionKind: next.actionKind,
@@ -156,7 +157,7 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
     collateral,
     [thread],
   );
-  await recordReplacement(fixture, journal, resigned, 2, next);
+  await recordReplacement(fixture, resigned, 2, next);
   expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
     resigned.transactionHash,
   );

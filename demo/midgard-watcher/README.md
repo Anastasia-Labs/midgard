@@ -114,11 +114,12 @@ remains an explicit recovery operation.
 
 The fault decision, proof queue and proof objective journals are tables in
 `watcher-journals.sqlite` inside the workflow journal directory. Each record is
-one row, authenticated with the rollback key, and each commit is one chained
-revision, so a persist writes only the rows it changes. Startup verifies every
-row and the latest 64 revisions, and refuses a tampered, deleted, replayed or
-reordered record; so does any later read of a row that fails its MAC, does not
-parse, or differs from its key. A refusal holds for the rest of the process:
+one row, and a persist writes only the rows it changes. Each row carries a MAC
+under the rollback key, because SQLite checksums its WAL frames but not the
+records in its pages: a row the disk corrupted is refused, not acted on.
+Startup checks every row, and so does any later read of a row that fails its
+MAC, does not parse, or differs from its key. Rows deleted, replayed or
+restored by hand are not detected. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
 the journals (below) and restarts the watcher. A journal migration whose SQL
@@ -136,13 +137,14 @@ lets the next decision pass dispatch it again; the reason clears then. A journal
 that cannot be used, or a rollback key the journals were not written under, is
 a configuration error: the watcher exits before the operations server binds.
 An objective that is released (its header left the finalized state queue)
-or whose completion is final is cleaned up in process: the watcher removes its
-workflow directory (`fault-proofs/<category>/<header>` in the workflow journal
-directory, refusing one that resolves through a symlink) and then forgets its
-rows, once no job of the objective is queued, running or awaiting a retry in
-this process. A final completion is cleaned up once an observation no longer
-queues its header. A released objective that holds a signed attempt keeps its
-directory, which the funding sweep reads. Queue rows a previous process left
+or whose completion is final is cleaned up in process: the watcher deletes its
+workflow rows in `watcher.sqlite` and then forgets its journal rows, once no
+job of the objective is queued, running or awaiting a retry in this process. A
+final completion is cleaned up once an observation no longer queues its
+header. A released objective that holds a signed attempt keeps its workflow
+rows: the funding sweep holds that attempt's reservation until the attempt is
+retired on L1, then releases it and deletes those rows in the same
+transaction. Queue rows a previous process left
 queued or active do not defer the cleanup, and a row a crash left with no
 execution is forgotten once its header leaves the queue. A removal that fails
 keeps the rows, is retried by every admission, and is listed in
@@ -156,22 +158,19 @@ and its `-wal` and `-shm` files aside (never delete them), and start it again.
 The new journals start empty. The workflow journals, the funding store and
 the L1 follower's facts survive, so proofs and funding reservations may name
 fault decisions the new journals do not hold. The watcher never runs such work
-again and never exits over it: it holds each item, `/readyz` reports
-`journal_decision_missing`, and `supervisor.journalDecisionMissing` in
-`/v1/status` names each held objective or reservation with its decision.
+again and never exits over it: it holds each proof objective, `/readyz`
+reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
+`/v1/status` names each held objective with its decision.
 
 - A held proof objective clears once its header leaves the finalized state
   queue: its proof, or another one, landed and is final, or the header merged.
   A fresh detection of the same fault does not restart it.
-- A held funding reservation is read again on every follower change. If every
-  input is spent at or below the release-final point (`automaticRecoveryMaxDepth
-  - 2` blocks deep), it is dropped. If its inputs are unspent there and still
-    unspent at the tip, and it holds no signed transaction, its inputs return to
-    the wallet. Otherwise it stays held.
+- A funding reservation whose decision the new journals do not hold stays
+  reserved: it is never run or reclaimed, and its inputs stay leased.
 
-Retention handles the rest. Workflow directories, follower pins of objectives
-that are never admitted again, and the leases of reservations that hold a
-signed transaction stay in place. The moved-aside file is never read again.
+Retention handles the rest. Workflow rows, follower pins of objectives
+that are never admitted again, and the leases of those reservations stay in
+place. The moved-aside file is never read again.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file

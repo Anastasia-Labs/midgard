@@ -8,12 +8,10 @@ import {
   uncoveredSupersededAttempts,
 } from "../../src/funding/sqlite-prover-funding-reservation-store.superseded-exclusion.js";
 import {
-  abandonmentHandoff,
   openStore,
   plan,
   prepareTransition,
   signedTransition,
-  submissionHandoff,
   temporaryDirectories,
 } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import {
@@ -62,29 +60,13 @@ const supersedePending = async (
   store: Store,
   owner: WatcherProverFundingReservationPlan,
   pending: Awaited<ReturnType<typeof prepareTransition>>,
-  actionKind: string,
-) => {
-  const {
-    reconciliation: { retirement: _retirement, ...reconciliation },
-    ...rest
-  } = abandonmentHandoff(
-    owner,
-    pending.pendingTransition!.transactionHash,
-    actionKind,
-  );
-  const handoff = { ...rest, reconciliation };
-  const abandoned = await store.abandonPendingTransition({
+) =>
+  await store.abandonPendingTransition({
+    journal: [],
     plan: owner,
     expectedRevision: pending.revision,
     transitionDigest: pending.pendingTransition!.transitionDigest,
-    handoff,
   });
-  return await store.acknowledgeAbandonment({
-    plan: owner,
-    expectedRevision: abandoned.revision,
-    handoff,
-  });
-};
 
 /** A rollback drops a confirmed attempt: the store makes it pending again
  * from the inputs its lineage records. */
@@ -93,13 +75,14 @@ const reobserve = async (
   owner: WatcherProverFundingReservationPlan,
   revision: string,
   transactionHash: string,
-  adoption?: unknown,
+  adoption?: { readonly intentSequence: number },
 ) => {
   const candidates = await store.readReobservationInputs!({
     reservationId: owner.reservationId,
     transactionHash,
   });
   return await store.reobserveTransition!({
+    journal: [],
     plan: owner,
     expectedRevision: revision,
     transactionHash,
@@ -138,6 +121,7 @@ it("admits a replacement for a rolled-back proof and its rolled-back child throu
       consumedOutRefs: [first],
     });
     const ca = await store.confirmTransition({
+      journal: [],
       plan: owner,
       expectedRevision: pa.revision,
       transactionHash: a.transactionHash,
@@ -158,9 +142,9 @@ it("admits a replacement for a rolled-back proof and its rolled-back child throu
     });
     // A rollback drops both: C expires at the tip, then A is reobserved and
     // cannot land either.
-    const kc = await supersedePending(store, owner, pc, "step-one");
+    const kc = await supersedePending(store, owner, pc);
     const ra = await reobserve(store, owner, kc.revision, a.transactionHash);
-    const ka = await supersedePending(store, owner, ra, "proof.init");
+    const ka = await supersedePending(store, owner, ra);
     expect(
       ka.activeInputs
         .filter(({ role }) => role === "funding")
@@ -223,7 +207,7 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
       ...a,
       consumedOutRefs: [first],
     });
-    const ka = await supersedePending(store, owner, pa, "proof.init");
+    const ka = await supersedePending(store, owner, pa);
     const a2 = signedTransition({
       inputHash: "11".repeat(32),
       outputLovelace: 97_000_000n,
@@ -237,6 +221,7 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
       consumedOutRefs: [first],
     });
     const ca2 = await store.confirmTransition({
+      journal: [],
       plan: owner,
       expectedRevision: pa2.revision,
       transactionHash: a2.transactionHash,
@@ -256,23 +241,18 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
     });
     // A rollback lands A instead of A': C is impossible at the tip, A' is
     // reobserved and cannot land, and A is adopted as the action's result.
-    const kc = await supersedePending(store, owner, pc, "step-one");
+    const kc = await supersedePending(store, owner, pc);
     const ra2 = await reobserve(store, owner, kc.revision, a2.transactionHash);
-    const ka2 = await supersedePending(store, owner, ra2, "proof.init");
+    const ka2 = await supersedePending(store, owner, ra2);
     const adopted = await reobserve(
       store,
       owner,
       ka2.revision,
       a.transactionHash,
-      submissionHandoff({
-        plan: owner,
-        expectedRevision: ka2.revision,
-        actionKind: "proof.init",
-        ...a,
-        consumedOutRefs: [first],
-      }),
+      { intentSequence: 5 },
     );
     const confirmed = await store.confirmTransition({
+      journal: [],
       plan: owner,
       expectedRevision: adopted.revision,
       transactionHash: a.transactionHash,
@@ -301,7 +281,7 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
   }
 });
 
-it("serves an adopted attempt under the handoff its adoption recorded", async () => {
+it("records an adopted attempt at the intent sequence its adoption names", async () => {
   const opened = await openStore();
   const { store } = opened.runtime;
   try {
@@ -311,100 +291,27 @@ it("serves an adopted attempt under the handoff its adoption recorded", async ()
       inputHash: "11".repeat(32),
       validityUpperBound: 100n,
     });
-    const attemptOf = {
+    const pa = await prepareTransition(store, {
       plan: owner,
       expectedRevision: "0",
       actionKind: "proof.init",
       ...a,
       consumedOutRefs: [first],
-    };
-    const pa = await prepareTransition(store, attemptOf);
-    const recordedAttempt = async () =>
+    });
+    const recordedIntent = async () =>
       (
-        (await store.readPendingHandoff({
+        (await store.readRecordedSubmissions!({
           reservationId: owner.reservationId,
-        })) as { handoff: ReturnType<typeof submissionHandoff> } | null
-      )?.handoff.submissionIntent.attempt;
-    expect(await recordedAttempt()).toBe(1);
+        })) as readonly { readonly intentSequence: number }[]
+      ).map(({ intentSequence }) => intentSequence);
+    expect(await recordedIntent()).toEqual([3]);
     // A expires unconfirmed, then lands after all: it is adopted under the
-    // handoff that re-records its intent as a second attempt.
-    const ka = await supersedePending(store, owner, pa, "proof.init");
-    const original = submissionHandoff(attemptOf);
+    // intent its workflow records again.
+    const ka = await supersedePending(store, owner, pa);
     await reobserve(store, owner, ka.revision, a.transactionHash, {
-      ...original,
-      submissionIntent: { ...original.submissionIntent, attempt: 2 },
+      intentSequence: 7,
     });
-    expect(await recordedAttempt()).toBe(2);
-  } finally {
-    opened.runtime.close();
-  }
-});
-
-it("re-records a pending attempt in a lost and recreated workflow journal, and nothing else about it", async () => {
-  const opened = await openStore();
-  const { store } = opened.runtime;
-  try {
-    const owner = twoFundingPlan();
-    await store.reserve(owner);
-    const a = signedTransition({
-      inputHash: "11".repeat(32),
-      validityUpperBound: 100n,
-    });
-    const attemptOf = {
-      plan: owner,
-      expectedRevision: "0",
-      actionKind: "proof.step",
-      ...a,
-      consumedOutRefs: [first],
-    };
-    const recorded = {
-      ...submissionHandoff(attemptOf),
-      expectedJournalSequence: 9,
-    };
-    const pending = await store.prepareTransition({
-      ...attemptOf,
-      handoff: {
-        ...recorded,
-        submissionIntent: { ...recorded.submissionIntent, attempt: 3 },
-      },
-    });
-    const pendingHandoff = async () =>
-      (
-        (await store.readPendingHandoff({
-          reservationId: owner.reservationId,
-        })) as { handoff: ReturnType<typeof submissionHandoff> } | null
-      )?.handoff;
-    const before = await pendingHandoff();
-    // Another action, input or transaction is not this attempt.
-    for (const changed of [
-      { ...recorded.submissionIntent, actionInput: { actionKind: "other" } },
-      { ...recorded.submissionIntent, actionId: "proof.other" },
-    ])
-      await expect(
-        reobserve(store, owner, pending.revision, a.transactionHash, {
-          ...recorded,
-          expectedJournalSequence: 2,
-          preflight: { ...recorded.preflight, actionId: changed.actionId },
-          submissionIntent: { ...changed, attempt: 1 },
-        }),
-      ).rejects.toThrow("journal re-anchor mismatch");
-    expect(await pendingHandoff()).toEqual(before);
-    // The recreated journal holds its started and prepared records only: the
-    // same exact attempt is re-recorded there as its first.
-    const anchored = {
-      ...recorded,
-      preparedArtifactDigest: "67".repeat(32),
-      expectedJournalSequence: 2,
-    };
-    const reanchored = await reobserve(
-      store,
-      owner,
-      pending.revision,
-      a.transactionHash,
-      anchored,
-    );
-    expect(reanchored.pendingTransition).toEqual(pending.pendingTransition);
-    expect(await pendingHandoff()).toEqual(anchored);
+    expect(await recordedIntent()).toEqual([7]);
   } finally {
     opened.runtime.close();
   }

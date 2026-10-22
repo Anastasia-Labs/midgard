@@ -18,7 +18,10 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -26,13 +29,7 @@ afterEach(async () => {
 });
 
 const setup = async (priorRoster = false) => {
-  const fixture = await setupFundingRecoveryFixture(
-    false,
-    false,
-    false,
-    false,
-    priorRoster,
-  );
+  const fixture = await setupFundingRecoveryFixture(false, false, priorRoster);
   let changedBasis = false;
   const readAll = vi.fn(async () => {
     const records = await fixture.records();
@@ -48,6 +45,7 @@ const setup = async (priorRoster = false) => {
   });
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
@@ -144,6 +142,7 @@ it("resumes an exact deployed reservation after a live fee update and restart", 
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
@@ -194,6 +193,7 @@ it("uses updated live parameters for new decisions instead of its cached startup
   const readAll = vi.fn(async () => []);
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot + "/new",
+    workflowJournal: emptyWorkflowJournal(),
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
@@ -230,8 +230,6 @@ it("authenticates and resumes a nondeployment parameter basis after restart", as
     false,
     false,
     false,
-    false,
-    false,
     20n,
     45,
   );
@@ -244,6 +242,7 @@ it("authenticates and resumes a nondeployment parameter basis after restart", as
   // reservation still requires the 45-coefficient snapshot it was born under.
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
@@ -307,6 +306,7 @@ it("reprices the next installed step's idle collateral after reconciling its ori
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,

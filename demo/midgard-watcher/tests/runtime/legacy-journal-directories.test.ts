@@ -19,13 +19,24 @@ afterEach(removeJournalDirectories);
 const DEPLOYMENT = "dd".repeat(32);
 
 describe("legacy file journals (W2-E6)", () => {
-  it("warns once for a non-empty fault-decisions directory, ignores it and still reaches readiness", async () => {
+  it("warns once for each non-empty legacy directory, ignores them and still reaches readiness", async () => {
     const journalRoot = await journalDirectory("midgard-legacy-journals");
     const legacy = join(journalRoot, "fault-decisions");
     await mkdir(legacy);
     await writeFile(join(legacy, "000001.json"), '{"decision":"legacy"}');
     // An empty legacy directory holds nothing and warns nothing.
     await mkdir(join(journalRoot, "fault-proof-queue-v1"));
+    // The per-proof workflow journals of an earlier layout, now rows in
+    // watcher.sqlite: one warning for the whole tree.
+    const workflows = join(journalRoot, "fault-proofs");
+    const execution = join(
+      workflows,
+      "mintItemNonCanonical",
+      "ab".repeat(32),
+      "cd".repeat(32),
+    );
+    await mkdir(execution, { recursive: true });
+    await writeFile(join(execution, "00000000.json"), "{}");
 
     const warnings: WatcherLegacyJournalIgnored[] = [];
     await warnWatcherLegacyJournalDirectories(journalRoot, (warning) =>
@@ -35,6 +46,11 @@ describe("legacy file journals (W2-E6)", () => {
       {
         event: "legacy_journal_ignored",
         path: legacy,
+        detail: expect.stringContaining("ignored, never imported"),
+      },
+      {
+        event: "legacy_journal_ignored",
+        path: workflows,
         detail: expect.stringContaining("ignored, never imported"),
       },
     ]);
@@ -75,6 +91,7 @@ describe("legacy file journals (W2-E6)", () => {
     expect(await readFile(join(legacy, "000001.json"), "utf8")).toBe(
       '{"decision":"legacy"}',
     );
+    expect(await readFile(join(execution, "00000000.json"), "utf8")).toBe("{}");
     await supervisor.close();
   });
 });

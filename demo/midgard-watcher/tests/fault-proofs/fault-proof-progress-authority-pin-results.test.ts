@@ -19,7 +19,10 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 // Each place the progress authority pins an objective keeps the pin's
 // result: a pin pruning beat leaves the objective open and is retried on
@@ -57,9 +60,10 @@ const observationAt = (
 
 /** A watcher restarting over one recorded, unfinished objective. */
 const restartWith = async (retention: WatcherProofRetention) => {
-  const fixture = await setupFundingRecoveryFixture(false, false, false);
+  const fixture = await setupFundingRecoveryFixture(false);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
@@ -93,6 +97,7 @@ const newFaultWith = async (retention: WatcherProofRetention) => {
   await writer.appendLiveDecision(fixture.old);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot,
+    workflowJournal: emptyWorkflowJournal(),
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,

@@ -3,16 +3,15 @@ import { formatUnknownError } from "@al-ft/midgard-core";
 import { assertWorkflowJournalActuation } from "./actuation-permit.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
-  parseWorkflowFundingSubmissionHandoff,
   readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
+  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
-import { recordBothAttemptsLanded } from "./funding-reservation-permit.reopen-legacy-abandonment.js";
+import { recordBothAttemptsLanded } from "./funding-reservation-permit.reconcile-superseded-attempts.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
-  FraudProofWorkflowJournalStore,
 } from "./journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
@@ -26,7 +25,7 @@ import {
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import { lastActionEvent } from "./orchestrator.normalize-workflow-terminal.js";
 import { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
-import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { reconcileFraudProofSupersededAttempts } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import {
   supersedeDisplacedFundingAttempt,
@@ -70,7 +69,7 @@ export const adoptLandedSupersededAttempt = async ({
   verifier,
   context,
   headerHash,
-  journal,
+  writer,
   entries,
   append,
   assertReconcile,
@@ -85,7 +84,7 @@ export const adoptLandedSupersededAttempt = async ({
   >;
   readonly context: FraudProofWorkflowAdapterContext;
   readonly headerHash: string;
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly writer: WorkflowJournalWriter;
   readonly entries: () => readonly FraudProofWorkflowJournalEntry[];
   readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly assertReconcile: () => void;
@@ -93,9 +92,10 @@ export const adoptLandedSupersededAttempt = async ({
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
   readonly nowMs: number;
 }): Promise<"continue" | FraudProofWorkflowRunResult | null> => {
-  const landed = await reconcileLegacyFraudProofAbandonments(
+  const { journal } = writer;
+  const landed = await reconcileFraudProofSupersededAttempts(
     context,
-    journal,
+    writer,
     verifier,
     append,
     nowMs,
@@ -104,10 +104,7 @@ export const adoptLandedSupersededAttempt = async ({
   const current = entries();
   const recovery = await readWorkflowFundingRecovery(journal);
   // Past the recovery window nothing reopens, so nothing is adopted.
-  if (
-    isFinalWorkflowCompletion(recovery.completionHandoff?.completion) ||
-    current.some(({ event }) => isFinalWorkflowCompletion(event))
-  )
+  if (current.some(({ event }) => isFinalWorkflowCompletion(event)))
     return null;
   const latest = [...current]
     .reverse()
@@ -117,7 +114,16 @@ export const adoptLandedSupersededAttempt = async ({
     latest === undefined ||
     UNRESOLVED.has(latest.kind) ||
     (latest.kind === "reconciled" && latest.outcome === "pending");
-  const intent = landed.handoff.submissionIntent;
+  const intent = [...current]
+    .reverse()
+    .map(({ event }) => event)
+    .find(
+      (event): event is Submission =>
+        event.kind === "submission_intent" &&
+        event.txHash === landed.transition.transactionHash,
+    );
+  if (intent === undefined)
+    throw new Error("superseded attempt has no exact durable signed intent");
   const last = lastActionEvent(current, intent.actionId);
   if (
     (last?.kind === "confirmed" ||
@@ -132,8 +138,7 @@ export const adoptLandedSupersededAttempt = async ({
         (event): event is Submission =>
           event.kind === "submission_intent" && event.txHash === last.txHash,
       );
-    if (recovery.abandonmentHandoff !== null || result === undefined)
-      return null;
+    if (result === undefined) return null;
     const { deploymentFingerprint, category } = context.identity;
     const actuation = () =>
       assertWorkflowJournalActuation({
@@ -187,32 +192,28 @@ export const adoptLandedSupersededAttempt = async ({
       adapter,
       context,
       headerHash,
-      journal,
+      writer,
       intent: result,
       hasUnresolvedDescendant: unresolved || recovery.transition !== null,
       intentReadAbsent: true,
       supersedeDisplacedAttempt: async () =>
         await supersedeDisplacedFundingAttempt({
-          journal,
+          writer,
           assertReconcile,
           entries,
-          append,
           kept: result.txHash,
         }),
-      append,
       stalled,
       resumeOnObservation,
     });
     if (reobservation.kind === "included") return null;
     if (reobservation.kind !== "reobserved") return reobservation;
     await supersedeWorkflowFundingAttempt({
-      journal,
+      writer,
       assertReconcile,
       entries,
-      append,
       transactionHash: result.txHash,
       retirement: read.retirement,
-      savedHandoff: null,
     });
     // Read the landed attempt at once: the next pass adopts it.
     supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
@@ -231,34 +232,24 @@ export const adoptLandedSupersededAttempt = async ({
     );
   if (
     recovery.transition !== null ||
-    recovery.abandonmentHandoff !== null ||
     unresolved ||
     last?.kind !== "reconciled" ||
     last.outcome !== "not_found" ||
     preflight === undefined
   )
     return null;
-  const handoff = parseWorkflowFundingSubmissionHandoff({
-    workflowId: landed.handoff.workflowId,
-    identity: landed.handoff.identity,
-    preparedArtifactDigest: landed.handoff.preparedArtifactDigest,
-    expectedJournalSequence: current.length,
-    preflight,
-    submissionIntent: {
-      ...intent,
-      attempt: attemptCount(current, intent.actionId) + 1,
-    },
-  });
   if (
     !(await reobserveWorkflowFundingReservationTransaction({
-      journal,
+      writer,
       transactionHash: intent.txHash,
-      adoption: handoff,
+      adoption: true,
+      events: [
+        preflight,
+        { ...intent, attempt: attemptCount(current, intent.actionId) + 1 },
+      ],
     }))
   )
     return null;
-  await append(handoff.preflight);
-  await append(handoff.submissionIntent);
   supersededAttemptReadSchedule.forget(landed.transition.transactionHash);
   return "continue";
 };

@@ -10,7 +10,7 @@ import {
   stateForJournal,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
-import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   admittedPermits,
   journalPermits,
@@ -81,11 +81,6 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
-  if ((await state.port.readAbandonmentHandoff()) !== null)
-    throw new Error(
-      "funding abandonment outcome awaits journal acknowledgment",
-    );
   let staleInputs = false;
   try {
     await refresh(state);
@@ -118,7 +113,6 @@ export const beginWorkflowFundingReservationAction = async ({
     throw new WorkflowFundingReservationUnavailableError();
   }
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
   assertCurrentFundingCollateralLimit(state);

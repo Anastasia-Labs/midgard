@@ -12,6 +12,7 @@ import {
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
   type HeaderDecision,
+  MemoryFraudProofWorkflowJournalStore,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   type WorkflowAdapterRunnerInput,
@@ -63,8 +64,7 @@ import { testFaultProofL1 } from "./fault-proof-application.raw-config.js";
  * decision for one of them on a header with a non-empty previous ledger must
  * carry the authenticated predecessor. The records' `requires.replayContext`
  * guards the families whose artifact re-derives from the admitted context, a
- * strict superset, and the shared application loop enforces that at load
- * time.
+ * strict superset the shared application loop enforces at load time.
  */
 const classifier = vi.hoisted(() => ({
   deploymentFingerprint: "",
@@ -561,7 +561,7 @@ describe("watcher decision-time predecessor ledger", () => {
       category,
       deploymentFingerprint: DEPLOYMENT,
       headerHash: HEADER_HASH,
-      journalDirectory: "/var/lib/midgard-watcher/fraud-proof-journals",
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       runtimeConfigPath: configPath,
       decisionDigest: decisionDigestFor(category),
       actuationPermit: Object.freeze({

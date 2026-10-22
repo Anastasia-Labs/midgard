@@ -19,6 +19,7 @@ import {
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
+  watcherDeadlineAlertHeadroomMs,
   type WatcherFaultProofSupervisor,
 } from "../fault-proofs/fault-proof-supervisor.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
@@ -28,7 +29,6 @@ import {
   openWatcherDeploymentFollower,
   watcherFollowedScripts,
 } from "../l1-follower/deployment-follower.js";
-import { WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX } from "../l1-follower/fault-proof-l1-source.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import { type WatcherUserEvents } from "../l1-follower/user-events.js";
@@ -70,6 +70,7 @@ import {
 } from "./watcher-runtime.decision-driver.js";
 import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
 import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
+import { watcherObservationSourceId } from "./watcher-runtime.observation-source-id.js";
 import {
   prepareWatcherRuntimeAuthority,
   resolveWatcherRuntimeWalletAddresses,
@@ -77,20 +78,6 @@ import {
 import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
 import { createWatcherRuntimeReplayHost } from "./watcher-runtime.replayed-ledger.js";
 import { watcherRetirementReady } from "./watcher-runtime.retirement-ready.js";
-
-/**
- * The persisted sourceId of the watcher's state-queue observations, kept
- * byte-identical to the earlier source so persisted records still match.
- */
-const watcherObservationSourceId = (
-  manifestId: string,
-  authorityNodeId: string,
-): string =>
-  `${WATCHER_FAULT_PROOF_SOURCE_ID_PREFIX}${[
-    "watcher-native-crosscheck",
-    manifestId,
-    authorityNodeId,
-  ].join("/")}`;
 
 type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;
 
@@ -279,8 +266,8 @@ export const startWatcherRuntime = async (
         ),
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
-      fundingInputFacts: activeFollower.fundingInputFacts,
-      blueprintBytes,
+      observeSignedTransaction: activeFollower.observeSignedTransaction,
+      alertSink: () => operations.sink,
     });
     proverFundingStore = fundingRuntime.store;
 
@@ -296,7 +283,7 @@ export const startWatcherRuntime = async (
       fundingFactory: fundingRuntime.factory,
       walletAddress: proverWalletAddress,
       provider,
-      journalRoot: input.config.workflowJournalDirectory,
+      workflowJournal: fundingRuntime.store.journal,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => operations.sink,
@@ -304,12 +291,10 @@ export const startWatcherRuntime = async (
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
+      workflowJournal: fundingRuntime.store.journal,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      deadlineAlertHeadroomMs: Math.max(
-        watcherConfig.deadlines.daFetchMs,
-        watcherConfig.deadlines.daPublishMs,
-        watcherConfig.deadlines.proofConstructMs,
-        watcherConfig.deadlines.proofSubmitMs,
+      deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
+        watcherConfig.deadlines,
       ),
       queueAuthenticationKey: rollbackAuthenticationKey,
       execution,
@@ -319,6 +304,7 @@ export const startWatcherRuntime = async (
         releaseUnusedFunding: () => fundingRuntime.factory.releaseUnused(),
         wake: () => decisionDriver?.wake(),
       },
+      settleUnattendedFunding: () => fundingRuntime.factory.settleUnattended(),
     });
     faultProofSupervisor = activeSupervisor;
 

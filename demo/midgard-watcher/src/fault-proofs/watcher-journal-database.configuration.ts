@@ -6,7 +6,14 @@ import {
   sameHex,
   type WatcherJournalCodec,
 } from "./watcher-journal-database.codec.js";
-import { WatcherJournalConfigurationError } from "./watcher-journal-database.types.js";
+import {
+  type StoredRow,
+  WatcherJournalConfigurationError,
+} from "./watcher-journal-database.types.js";
+import {
+  WATCHER_JOURNAL_TABLES,
+  WATCHER_JOURNALS,
+} from "./watcher-journal-schema.js";
 
 /**
  * Creates the journals' directory, refusing one that is not canonical, sits
@@ -43,46 +50,32 @@ export const prepareWatcherJournalDirectory = (journalRoot: string): string => {
   return journalRoot;
 };
 
-type StoredKeyedHead = {
-  journal: string;
-  revision: number;
-  chain: string;
-  live_rows: number;
-  accumulator: string;
-  key_id: string;
-  mac: string;
-};
-
 /**
- * A wrong key, told from corruption: every head names one other key and none
- * carries a MAC under this key. A head written under this key keeps a MAC
- * that verifies, whatever damage its key column took.
+ * A wrong key, told from corruption: every head names one other key and no
+ * stored row carries a MAC under this key.
  */
 export const watcherJournalsWrittenUnderAnotherKey = (
   prepare: (sql: string) => StatementSync,
   codec: WatcherJournalCodec,
 ): boolean => {
-  const heads = prepare(
-    "SELECT journal, revision, chain, live_rows, accumulator, key_id, mac FROM watcher_journal_heads",
-  ).all() as StoredKeyedHead[];
-  const verifies = (head: StoredKeyedHead): boolean => {
-    try {
-      return sameHex(
-        head.mac,
-        codec.headMac(head.journal, {
-          revision: Number(head.revision),
-          chain: head.chain,
-          liveRows: Number(head.live_rows),
-          accumulator: BigInt(`0x${head.accumulator}`),
-        }),
-      );
-    } catch {
-      return false;
-    }
-  };
-  return (
-    new Set(heads.map(({ key_id }) => key_id)).size === 1 &&
-    heads[0]!.key_id !== codec.keyId &&
-    !heads.some(verifies)
+  const keys = new Set(
+    (
+      prepare("SELECT key_id FROM watcher_journal_heads").all() as {
+        key_id: string;
+      }[]
+    ).map(({ key_id }) => key_id),
   );
+  if (keys.size !== 1 || keys.has(codec.keyId)) return false;
+  return !WATCHER_JOURNALS.some((journal) => {
+    const stored = prepare(
+      `SELECT row_key, scope, state, revision, body, mac FROM ${WATCHER_JOURNAL_TABLES[journal]} LIMIT 1`,
+    ).get() as StoredRow | undefined;
+    return (
+      stored !== undefined &&
+      sameHex(
+        stored.mac,
+        codec.rowMac(journal, { ...stored, revision: Number(stored.revision) }),
+      )
+    );
+  });
 };

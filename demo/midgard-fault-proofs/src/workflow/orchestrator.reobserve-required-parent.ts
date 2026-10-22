@@ -4,6 +4,7 @@ import { assertWorkflowJournalActuation } from "./actuation-permit.js";
 import {
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
+  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
 import type {
   FraudProofWorkflowJournalEvent,
@@ -104,19 +105,18 @@ export const reobserveRequiredWorkflowParent = async ({
   adapter,
   context,
   headerHash,
-  journal,
+  writer,
   intent,
   hasUnresolvedDescendant,
   intentReadAbsent = false,
   supersedeDisplacedAttempt,
-  append,
   stalled,
   resumeOnObservation,
 }: {
   readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly context: FraudProofWorkflowAdapterContext;
   readonly headerHash: string;
-  readonly journal: FraudProofWorkflowJournalStore;
+  readonly writer: WorkflowJournalWriter;
   readonly intent: Extract<
     FraudProofWorkflowJournalEvent,
     { kind: "submission_intent" }
@@ -126,7 +126,6 @@ export const reobserveRequiredWorkflowParent = async ({
   readonly intentReadAbsent?: boolean;
   /** Retires the pending later attempt that reobserving `intent` displaces. */
   readonly supersedeDisplacedAttempt: () => Promise<void>;
-  readonly append: (event: FraudProofWorkflowJournalEvent) => Promise<void>;
   readonly stalled: (reason: string) => Promise<FraudProofWorkflowRunResult>;
   readonly resumeOnObservation: (reason: string) => FraudProofWorkflowRunResult;
 }): Promise<
@@ -135,6 +134,7 @@ export const reobserveRequiredWorkflowParent = async ({
   | FraudProofWorkflowRunResult
 > => {
   const { deploymentFingerprint, category } = context.identity;
+  const { journal } = writer;
   const { workflowId } = context;
   const identity = context.identity;
   const entries = context.entries;
@@ -171,9 +171,7 @@ export const reobserveRequiredWorkflowParent = async ({
     const recovery = await readWorkflowFundingRecovery(journal);
     const displaced = recovery.transition;
     const submission =
-      displaced === null ||
-      recovery.abandonmentHandoff !== null ||
-      displaced.transactionHash === intent.txHash
+      displaced === null || displaced.transactionHash === intent.txHash
         ? undefined
         : [...entries]
             .reverse()
@@ -194,10 +192,24 @@ export const reobserveRequiredWorkflowParent = async ({
   }
   if (resolvedOnChain) return { kind: "included" };
   await supersedeDisplacedAttempt();
+  assertWorkflowJournalActuation({
+    journal,
+    deploymentFingerprint,
+    category,
+    headerHash,
+    checkpoint: "before_reconcile",
+  });
   const fundingAvailable = await reobserveWorkflowFundingReservationTransaction(
     {
-      journal,
+      writer,
       transactionHash: intent.txHash,
+      events: [
+        {
+          kind: "reobserved",
+          actionId: intent.actionId,
+          txHash: intent.txHash,
+        },
+      ],
     },
   );
   if (!fundingAvailable)
@@ -210,17 +222,5 @@ export const reobserveRequiredWorkflowParent = async ({
       reason:
         "Required inputs remain reserved by another unresolved transaction",
     };
-  assertWorkflowJournalActuation({
-    journal,
-    deploymentFingerprint,
-    category,
-    headerHash,
-    checkpoint: "before_reconcile",
-  });
-  await append({
-    kind: "reobserved",
-    actionId: intent.actionId,
-    txHash: intent.txHash,
-  });
   return { kind: "reobserved" };
 };

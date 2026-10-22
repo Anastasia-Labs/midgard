@@ -1,19 +1,14 @@
 import {
-  abandonWorkflowFundingReservationTransaction,
-  acknowledgeWorkflowFundingAbandonment,
   assertWorkflowFundingReservationReadyToSubmit,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
-  createWorkflowFundingAbandonmentHandoff,
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
   workflowJournalHasFundingReservation,
+  type WorkflowJournalWriter,
 } from "../workflow/funding-reservation-permit.js";
-import { reconcileLegacyWorkflowFundingAbandonment } from "../workflow/funding-reservation-permit.reopen-legacy-abandonment.js";
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowJournalStore,
-} from "../workflow/journal.js";
+import { reconcileWorkflowFundingSupersededAttempts } from "../workflow/funding-reservation-permit.reconcile-superseded-attempts.js";
+import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.js";
 import { lastActionEvent } from "../workflow/orchestrator.normalize-workflow-terminal.js";
 import { supersedeWorkflowFundingAttempt } from "../workflow/orchestrator.supersede-funding-attempt.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
@@ -28,7 +23,7 @@ export class MintItemWorkflowRecoveryPendingError extends Error {}
 /** Reconcile the retained signed receipt before allowing the family to build. */
 export const createMintItemCanonicalReconciliation =
   ({
-    store,
+    writer,
     entries,
     appendEvent,
     assertActuation,
@@ -36,7 +31,7 @@ export const createMintItemCanonicalReconciliation =
     observeSignedTransaction,
     rebroadcastSignedTransaction,
   }: {
-    readonly store: FraudProofWorkflowJournalStore;
+    readonly writer: WorkflowJournalWriter;
     readonly entries: () => Promise<readonly FraudProofWorkflowJournalEntry[]>;
     readonly appendEvent: (
       event: FraudProofWorkflowJournalEntry["event"],
@@ -53,11 +48,12 @@ export const createMintItemCanonicalReconciliation =
     >[0]["rebroadcast"];
   }) =>
   async (observedStage: MintItemStage): Promise<void> => {
+    const store = writer.journal;
     // Superseded attempts never hold this journal. Stage observation drives
     // the mint item, so a late-landed superseded attempt is read from the
     // chain rather than adopted into the journal.
-    await reconcileLegacyWorkflowFundingAbandonment({
-      journal: store,
+    await reconcileWorkflowFundingSupersededAttempts({
+      writer,
       entries: await entries(),
       append: appendEvent,
       reconcile: async ({ transition }) =>
@@ -88,28 +84,29 @@ export const createMintItemCanonicalReconciliation =
       const pending = displaced.transition?.transactionHash;
       if (pending !== undefined && pending !== reverted.event.txHash)
         await supersedeWorkflowFundingAttempt({
-          journal: store,
+          writer,
           assertReconcile: () => assertActuation("before_reconcile"),
           entries,
-          append: appendEvent,
           transactionHash: pending,
           retirement: undefined,
-          savedHandoff: displaced.abandonmentHandoff,
         });
+      assertActuation("before_reconcile");
       if (
         !(await reobserveWorkflowFundingReservationTransaction({
-          journal: store,
+          writer,
           transactionHash: reverted.event.txHash,
+          events: [
+            {
+              kind: "reobserved",
+              actionId: reverted.event.actionId,
+              txHash: reverted.event.txHash,
+            },
+          ],
         }))
       )
         throw new MintItemWorkflowRecoveryPendingError(
           "An unresolved descendant retains the funding inputs",
         );
-      await appendEvent({
-        kind: "reobserved",
-        actionId: reverted.event.actionId,
-        txHash: reverted.event.txHash,
-      });
     }
     const intent = unresolvedIntent(await entries(), store);
     if (intent?.event.kind !== "submission_intent") return;
@@ -119,19 +116,21 @@ export const createMintItemCanonicalReconciliation =
     const confirmed = await transactionConfirmed(intent.event.txHash);
     if (confirmed && observedStage === recovery.targetStage) {
       await confirmWorkflowFundingReservationTransaction({
-        journal: store,
+        writer,
         transactionHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "reconciled",
-        actionId: intent.event.actionId,
-        outcome: "confirmed",
-        txHash: intent.event.txHash,
-      });
-      await appendEvent({
-        kind: "confirmed",
-        actionId: intent.event.actionId,
-        txHash: intent.event.txHash,
+        events: [
+          {
+            kind: "reconciled",
+            actionId: intent.event.actionId,
+            outcome: "confirmed",
+            txHash: intent.event.txHash,
+          },
+          {
+            kind: "confirmed",
+            actionId: intent.event.actionId,
+            txHash: intent.event.txHash,
+          },
+        ],
       });
       return;
     }
@@ -189,23 +188,19 @@ export const createMintItemCanonicalReconciliation =
         throw new MintItemWorkflowRecoveryPendingError(
           "Exact mint transaction is absent without retirement, and no funding reservation keeps a replacement exclusive",
         );
-      const handoff = createWorkflowFundingAbandonmentHandoff({
-        entries: await entries(),
+      await supersedeWorkflowFundingAttempt({
+        writer,
+        assertReconcile: () => assertActuation("before_reconcile"),
+        entries,
         transactionHash: intent.event.txHash,
         retirement: result.retirement,
       });
-      await abandonWorkflowFundingReservationTransaction({
-        journal: store,
-        transactionHash: intent.event.txHash,
-        handoff,
-      });
-      await appendEvent(handoff.reconciliation);
-      await acknowledgeWorkflowFundingAbandonment({ journal: store, handoff });
       return;
     }
     await conflictWorkflowFundingReservationTransaction({
-      journal: store,
+      writer,
       transactionHash: intent.event.txHash,
+      events: [],
     });
     throw new Error(
       "mintItemNonCanonical authenticated stage/transaction identity substitution",

@@ -29,9 +29,6 @@ export const watcherObjectiveScope = (
   headerHash: string,
 ): string => `${category}:${headerHash}`;
 
-/** How many revisions of each journal keep their chained digest row. */
-export const WATCHER_JOURNAL_RETAINED_REVISIONS = 64;
-
 export const WATCHER_JOURNAL_MIGRATION_NAMESPACE = "midgard-watcher-journals";
 
 const rowTable = (table: string, retention: string): string => `
@@ -61,7 +58,7 @@ CREATE TABLE IF NOT EXISTS watcher_journal_heads (
   mac TEXT NOT NULL
 ) STRICT;
 
--- class: B; retention: the latest ${WATCHER_JOURNAL_RETAINED_REVISIONS} revisions of each journal; each commit prunes older ones
+-- class: B; retention: the latest 64 revisions of each journal; each commit prunes older ones
 CREATE TABLE IF NOT EXISTS watcher_journal_revisions (
   journal TEXT NOT NULL,
   revision INTEGER NOT NULL,
@@ -81,6 +78,18 @@ ${rowTable(
   "one row per proof objective; a completion verified at least k deep marks it, and the next start prunes it",
 )}`;
 
+/** Each journal's head keeps only its revision counter and the key its rows
+ * are written under: the per-row MAC catches a row the disk corrupted, and
+ * whole-row deletions, replays and reorders come from hand edits or
+ * restores, which the watcher does not defend against. */
+const HEAD_COUNTER_SQL = `
+ALTER TABLE watcher_journal_heads DROP COLUMN chain;
+ALTER TABLE watcher_journal_heads DROP COLUMN live_rows;
+ALTER TABLE watcher_journal_heads DROP COLUMN accumulator;
+ALTER TABLE watcher_journal_heads DROP COLUMN mac;
+DROP TABLE watcher_journal_revisions;
+`;
+
 /** The migration ledger, created before any migration. */
 export const WATCHER_JOURNAL_LEDGER_SQL = `
 -- class: A; retention: one row per applied migration, forever
@@ -98,5 +107,6 @@ export const WATCHER_JOURNAL_MIGRATIONS = Object.freeze({
   migrations: Object.freeze([
     Object.freeze({ id: "0000_ledger", sql: WATCHER_JOURNAL_LEDGER_SQL }),
     Object.freeze({ id: "0001_journal_tables", sql: JOURNAL_TABLES_SQL }),
+    Object.freeze({ id: "0002_head_counter", sql: HEAD_COUNTER_SQL }),
   ]),
 });

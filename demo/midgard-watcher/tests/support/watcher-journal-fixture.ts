@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 
 import type { WatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import { openWatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-table.js";
@@ -8,6 +9,14 @@ import {
   openWatcherJournalDatabase,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
+import {
+  createWatcherWorkflowJournal,
+  type WatcherWorkflowJournal,
+} from "../../src/fault-proofs/watcher-workflow-journal.js";
+
+/** A workflow journal with no executions, in memory: a fresh store's. */
+export const emptyWorkflowJournal = (): WatcherWorkflowJournal =>
+  createWatcherWorkflowJournal(new DatabaseSync(":memory:"));
 
 /** The key the test supervisor authenticates its journals with by default. */
 export const TEST_JOURNAL_KEY = Uint8Array.from({ length: 32 }, () => 0xa5);

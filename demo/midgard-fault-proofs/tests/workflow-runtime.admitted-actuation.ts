@@ -5,7 +5,7 @@ import { createWorkflowActuationPermitController } from "../src/workflow/actuati
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   unsafeCreateWorkflowFundingReservationPermitForTest,
-  type WorkflowFundingSubmissionHandoff,
+  type WorkflowJournalWriter,
 } from "../src/workflow/funding-reservation-permit.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -14,8 +14,12 @@ import {
 } from "../src/workflow/header-classifier.js";
 import {
   computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import {
@@ -112,40 +116,68 @@ export const admittedActuation = async () => {
   });
 };
 
-/** Funding-boundary fixtures supply the durable action metadata alongside real CML bytes. */
-export const fundingHandoff = (
-  actuation: Awaited<ReturnType<typeof admittedActuation>>,
+/** The preflight and intent a submission of `action` records, over the
+ * fixture's real CML bytes. */
+export const fundingAttemptEvents = (
   action: FraudProofWorkflowAction,
   preflight: object,
-): WorkflowFundingSubmissionHandoff => {
+): readonly [
+  FraudProofWorkflowJournalEvent,
+  FraudProofWorkflowJournalEvent,
+] => {
   const signed = workflowPreflightTransaction(preflight)!;
-  const identity: FraudProofWorkflowIdentity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: DEPLOYMENT,
-    category: "doubleSpend",
-    target: { kind: "state_queue_header", headerHash: actuation.headerHash },
-    decisionDigest: actuation.decisionDigest,
-  };
-  return {
-    workflowId: computeFraudProofWorkflowId(identity),
-    identity,
-    preparedArtifactDigest: "ab".repeat(32),
-    expectedJournalSequence: 2,
-    preflight: {
+  return [
+    {
       kind: "preflight_passed",
       actionId: action.actionId,
       txHash: signed.toHash(),
       localEvaluator: "funding-boundary-fixture",
       referenceScripts: [],
     },
-    submissionIntent: {
+    {
       kind: "submission_intent",
       actionId: action.actionId,
       actionInput: action.input,
       txHash: signed.toHash(),
       attempt: 1,
     },
+  ];
+};
+
+/** A workflow journal that keeps nothing: funding-boundary fixtures check
+ * the reservation, not the journal. */
+export const discardingWorkflowJournal = (): FraudProofWorkflowJournalStore =>
+  Object.freeze({ load: async () => [], append: async () => undefined });
+
+/** A writer over a funding-bound fixture journal: its entries follow the
+ * workflow's started and prepared records. */
+export const fixtureJournalWriter = (
+  journal: object,
+  headerHash = "ab".repeat(28),
+): WorkflowJournalWriter => {
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint: DEPLOYMENT,
+    category: "doubleSpend",
+    target: { kind: "state_queue_header", headerHash },
+    decisionDigest: "ac".repeat(32),
   };
+  let next = 2;
+  return Object.freeze({
+    journal: journal as FraudProofWorkflowJournalStore,
+    entriesFor: async (events) =>
+      events.map((event, index) => ({
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+        workflowId: computeFraudProofWorkflowId(identity),
+        identity,
+        sequence: next + index,
+        recordedAt: new Date(0).toISOString(),
+        event,
+      })),
+    recorded: (entries) => {
+      next += entries.length;
+    },
+  });
 };
 
 export const fundingKey = CML.PrivateKey.from_normal_bytes(
@@ -165,3 +197,8 @@ export const fundingReferenceScript = Object.freeze({
   type: "PlutusV3" as const,
   script: "4d01000033222220051200120011",
 });
+
+/** A fresh directory journal store for one invocation: each invocation binds
+ * its own actuation authority to the store object it is given. */
+export const directoryJournal = (directory: string) =>
+  new DirectoryFraudProofWorkflowJournalStore(directory);

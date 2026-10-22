@@ -117,7 +117,7 @@ export const runJourney = async (
     const reusedWatcher = session.watcherStarted();
     const baselineStartedAt = new Date().toISOString();
     const baseline = await captureJourneyWorkflowBaseline(
-      session.workflowJournalDirectory,
+      watcherConfig.storage.path,
       category,
     );
     await writeJourneyArtifact(join(directory, "workflow-baseline.json"), {
@@ -298,7 +298,7 @@ export const runJourney = async (
       reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
       context,
       native,
-      workflowJournalDirectory: config.workflowJournalDirectory,
+      watcherStorePath: watcherConfig.storage.path,
       directory,
       category: fixture.category,
       headerHash: staged.current.headerHash,
@@ -378,7 +378,7 @@ export const runJourney = async (
     );
     const observedTerminal = (
       await readJourneyWorkflowEntries({
-        workflowJournalDirectory: config.workflowJournalDirectory,
+        watcherStorePath: watcherConfig.storage.path,
         category: fixture.category,
         headerHash: staged.current.headerHash,
       })
@@ -424,7 +424,7 @@ export const runJourney = async (
     const finalizeEvidence = () =>
       finalizePendingJourneyEvidence({
         journeysDirectory: join(context.runDirectory, "work/journeys"),
-        workflowJournalDirectory: config.workflowJournalDirectory,
+        watcherStorePath: watcherConfig.storage.path,
         deploymentFingerprint: deployment.manifest.manifestId,
         releaseFinalityPolicyDigest: releaseFinality.policyDigest,
         finalityDepth: releaseFinality.policy.confirmationDepth,

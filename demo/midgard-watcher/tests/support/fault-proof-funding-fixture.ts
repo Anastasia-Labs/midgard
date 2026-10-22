@@ -16,6 +16,7 @@ import "../../src/runtime/deployment-identity.js";
 import "./deployment-authority-fixture.js";
 import "./fault-proof-funding-fixture.sources-for.js";
 import "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+export { FixtureProcessStop } from "./fault-proof-funding-fixture.process-stop.js";
 export { setupFundingRecoveryFixture } from "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 export {
   cleanupFundingRecoveryFixtures,

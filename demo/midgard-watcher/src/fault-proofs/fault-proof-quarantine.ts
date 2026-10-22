@@ -88,7 +88,8 @@ export const quarantineWatcherFaultProof = (input: {
   });
 };
 
-/** Clears the objective's alert once a run that began quarantined ends out of it. */
+/** Clears the objective's alert once a run that began in quarantine ends
+ * out of it; quarantine raises its own alert on entering. */
 export const settleWatcherFaultProofQuarantine = (input: {
   readonly holds: Holds;
   readonly job: WatcherProofObjective;

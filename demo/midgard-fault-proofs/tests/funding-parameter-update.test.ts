@@ -132,7 +132,8 @@ it("reconciles the exact signed old intent before refusing a fresh build under a
     }),
   ).rejects.toBeInstanceOf(WorkflowFundingReservationUnavailableError);
   await confirmWorkflowFundingReservationTransaction({
-    journal: restarted.journal,
+    writer: restarted.writer,
+    events: [],
     transactionHash: signed.toHash(),
   });
   expect(restarted.confirm).toHaveBeenCalledOnce();

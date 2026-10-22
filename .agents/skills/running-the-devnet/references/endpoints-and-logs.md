@@ -669,15 +669,14 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   read). The watcher stays up and unready under it; the detail names the
   stage and the error. Fix the cause, then restart the watcher.
 - `fault_proof_objective_unreadable`: at startup an objective's workflow
-  journal could not be read (a removal interrupted part way, a symlink, a
-  corrupt journal). The objective is held, never run; clears once its header
+  journal rows in `watcher.sqlite` could not be read (a corrupt row, a
+  storage error). The objective is held, never run; clears once its header
   leaves the finalized queue, which forgets its rows. Report it with the
   detail.
 - `fault_proof_objective_cleanup_failed`: a released or final objective's
-  workflow directory, or a removal's tombstone under
-  `<journal root>/fault-proofs/.removing`, could not be removed;
-  `supervisor.objectiveCleanupFailures` names each. Every admission retries;
-  fix the permissions or disk and wait.
+  workflow rows could not be deleted (a storage error or a lock held past
+  the busy timeout); `supervisor.objectiveCleanupFailures` names each. Every
+  admission retries; fix the disk or the other writer and wait.
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
@@ -693,8 +692,8 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   than maturity, so there it is an alarm only.
 - `fault_proof_objective_quarantined`: one objective's run stalled outside
   preflight, or its funding or run met an integrity failure of its own (for
-  example a reconcile that refused its durable transaction, or a stored
-  funding handoff its workflow journal no longer anchors), or its family
+  example a reconcile that refused its durable transaction, or a funding
+  reservation and workflow journal that name different attempts), or its family
   re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or
   returned an outcome of no known kind; the detail is
   `<category>/<headerHash>: <cause>`. Only that objective is held: the
@@ -712,6 +711,21 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   `<category>/<headerHash>: <reason>`. The objective resumes on each
   observation and is never failed for it; the hold clears once a later run
   meets something else. Top up the prover wallet with plain ada.
+- `prover_funding_orphaned_reservation`: a funding reservation holds signed
+  transactions that no workflow will drive again and that are not yet
+  retired past release finality; the detail names the reservation. The
+  `proof_submission_failure` alert stays raised meanwhile. The watcher reads
+  each transaction from its own signed bytes on a bounded backoff and
+  releases the reservation once each has expired, been invalidated or
+  landed, past release finality. A transaction that also names a coin
+  outside the follower's history, such as a collateral from before its
+  origin, is retired by a recorded spend of another of its inputs, by a
+  different transaction or by its own landing that failed phase 2, once past
+  the recovery depth. A transaction without expiry that left the mempool
+  unlanded keeps the hold until another transaction spends one of its
+  inputs. When to report: if the hold outlasts the latest expiry of its
+  transactions plus the recovery depth, or at once for a transaction
+  without expiry.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands
