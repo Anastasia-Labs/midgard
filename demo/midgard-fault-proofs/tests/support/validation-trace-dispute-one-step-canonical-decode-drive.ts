@@ -187,13 +187,12 @@ export const canonicalDecodeDrive = ({
      * past them. */
     plansEvery: async () => {
       const { material } = drive.dispute();
-      const { states } = await material.trace();
       const plan = async (stateIndex: number) =>
         await planValidationTraceOneStep({
           material,
           stateIndex,
           challengerHighHash: hashMidgardValidationMachineState(
-            states[stateIndex + 1]!,
+            (await material.steps(stateIndex)).states[stateIndex + 1]!,
           ).toString("hex"),
           canonicalDecode: true,
         });

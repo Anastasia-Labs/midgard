@@ -11,14 +11,10 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { planValidationTracePhaseStep } from "../src/validation-trace-dispute/one-step-phase.js";
-import {
-  failingMaterial,
-  setUpScene,
-} from "./support/validation-trace-dispute-open-scene.js";
+import { wholeTraceOf } from "./support/validation-trace-claim-material.js";
+import { setUpScene } from "./support/validation-trace-dispute-open-scene.js";
 
-type ValidationTrace = Parameters<
-  typeof buildValidationOneStepArgument
->[0]["trace"];
+type ValidationTrace = Awaited<ReturnType<typeof wholeTraceOf>>;
 
 /** The script-sources semantic resolvers that invoke a yield beside the
  * step: the non-output one, and the stage-twelve redeemer, stage-ten
@@ -70,12 +66,10 @@ describe("validation-trace one-step plan: the script-sources steps a yield verif
   let minting: ValidationTrace;
 
   beforeAll(async () => {
-    failing = await (await failingMaterial(await setUpScene())).trace();
-    minting = await (
-      await failingMaterial(
-        await setUpScene(undefined, { failingNativeMint: true }),
-      )
-    ).trace();
+    failing = await wholeTraceOf((await setUpScene()).failing);
+    minting = await wholeTraceOf(
+      (await setUpScene(undefined, { failingNativeMint: true })).failing,
+    );
   }, 300_000);
 
   it("plans each non-output step beside its role's yield, and each descriptor step beside the redeemer item-step yield or as a scan begin", () => {

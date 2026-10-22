@@ -125,7 +125,7 @@ const selectionReads = async (
   const references = deployment.references.oneStep!.cekSelection!;
   const scriptDecode = deployment.scriptDecode!;
   return {
-    trace: await material.trace(),
+    trace: await material.steps(plan.stateIndex),
     yields: {
       references: [references.authenticate, references.successor],
       scripts: [
@@ -192,8 +192,9 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
     // The script is the one the disputed transaction carries for it.
     expect(plan.script!.item).toStrictEqual(
       material.scriptItem(
-        (await material.trace()).witnesses[SELECTION_STEP_FROM]!
-          .auxiliary as Parameters<typeof material.scriptItem>[0],
+        (await material.steps(SELECTION_STEP_FROM)).witnesses[
+          SELECTION_STEP_FROM
+        ]!.auxiliary as Parameters<typeof material.scriptItem>[0],
       ),
     );
   }, 300_000);

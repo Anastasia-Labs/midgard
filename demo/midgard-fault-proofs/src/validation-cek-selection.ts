@@ -3,8 +3,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildValidationOneStepArgument,
   type CekSelectionDecodeRecord,
-  type DeterministicValidationMachineTrace,
   type ValidationMachineFieldCarriageResolver,
+  type ValidationTraceSteps,
 } from "@al-ft/midgard-validation";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
@@ -26,7 +26,7 @@ export const buildValidationCekExecutionSelectionAction = ({
   resolveFieldCarriage,
 }: {
   readonly context: Pick<RedeemerContext, "referenceInputs">;
-  readonly trace: DeterministicValidationMachineTrace;
+  readonly trace: ValidationTraceSteps;
   readonly stateIndex: number;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;

@@ -91,8 +91,8 @@ const ARM_OF = { 0: "compute", 1: "machine" } as const;
 const lastCoreStepOf =
   (group: SingleHopCoreGroup) =>
   async (material: ValidationTraceClaimMaterial): Promise<number> => {
-    const { states } = await material.trace();
-    for (let index = states.length - 2; index >= 0; index -= 1) {
+    for (let index = Number(material.stepCount) - 1; index >= 0; index -= 1) {
+      const { states } = await material.steps(index);
       const planning = await planValidationTraceOneStep({
         material,
         stateIndex: index,

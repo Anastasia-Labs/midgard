@@ -72,9 +72,11 @@ export {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
+  type ValidationTraceSteps,
 } from "./types.js";
 export {
   commitValidationTraceV1,
+  openValidationTraceStepsV1,
   openValidationTraceV1,
   requiresRealValidationDescriptorV1,
   type ValidationTraceCommitmentV1,

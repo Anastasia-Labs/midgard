@@ -50,7 +50,7 @@ export const validationTraceSelectionReads = async ({
   const { cekSelectionAuthenticate, cekSelectionSuccessor } =
     deployment.chain.yields;
   return Object.freeze({
-    trace: await material.trace(),
+    trace: await material.steps(plan.stateIndex),
     yields: {
       references: [references.authenticate, references.successor] as const,
       scripts: [

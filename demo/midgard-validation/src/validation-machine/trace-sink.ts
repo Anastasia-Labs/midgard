@@ -145,11 +145,13 @@ export class RetainingValidationTraceSink implements ValidationTraceSink {
   }
 }
 
-/** Observes each state a commit build folds, with its hash. */
+/** Observes each state a commit build folds, with its hash and the work
+ * witness it was pushed with. */
 export type ValidationTraceStateObserver = (
   programCounter: number,
   stateHash: Buffer,
   state: () => MidgardValidationMachineState,
+  witness: ValidationMachineWorkWitness,
 ) => void;
 
 /** One state hash per push, handed to `observe` and then dropped. */
@@ -191,6 +193,7 @@ export class HashingValidationTraceSink implements ValidationTraceSink {
       this.count,
       hashMidgardValidationMachineState(state),
       () => state,
+      witness,
     );
     this.count += 1;
     this.terminated = terminal !== null;

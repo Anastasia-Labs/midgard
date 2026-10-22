@@ -83,9 +83,8 @@ export type MidgardCekObservedRun = {
 /**
  * Prepares a streaming commit-mode run: the machine, its step bound and its
  * budget are those of `verdict` mode, and no transition is verified or
- * retained. The observer sees each transition's pre- and post-state as it
- * is taken, so a caller can fold the run into a trace commitment without
- * holding it.
+ * retained. The observer sees each transition as it is taken, so a caller
+ * can fold the run into a trace commitment without holding it.
  */
 export const startMidgardCekObservedRun = (
   input: Omit<ExecuteMidgardCekStructuralProgramInput, "mode">,
@@ -97,8 +96,8 @@ export const startMidgardCekObservedRun = (
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-    new MidgardCekStepRecorder("verdict", input.maxSteps, (pre, post) =>
-      observer!(pre, post),
+    new MidgardCekStepRecorder("verdict", input.maxSteps, (step) =>
+      observer!(step),
     ),
   );
   return {

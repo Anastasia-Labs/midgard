@@ -207,34 +207,6 @@ const commonOf = (
   };
 };
 
-/** Each state's index in our trace, by the state's hash. */
-const stateIndices = new WeakMap<
-  ValidationTraceClaimMaterial,
-  Promise<ReadonlyMap<string, number>>
->();
-
-const indexOfState = async (
-  material: ValidationTraceClaimMaterial,
-  stateHash: string,
-): Promise<number | undefined> => {
-  let indices = stateIndices.get(material);
-  if (indices === undefined) {
-    indices = material
-      .trace()
-      .then(
-        ({ states }) =>
-          new Map(
-            states.map((state, index) => [
-              hashMidgardValidationMachineState(state).toString("hex"),
-              index,
-            ]),
-          ),
-      );
-    stateIndices.set(material, indices);
-  }
-  return (await indices).get(stateHash);
-};
-
 /**
  * The one-step resolution of the step of our trace (in `material`) to our
  * successor hashing to `challengerHighHash`, from the agreed state hashing
@@ -258,9 +230,9 @@ export const planValidationTraceOneStep = async ({
   readonly agreedLowHash?: string;
   readonly challengerHighHash: string;
 }): Promise<ValidationTraceOneStepPlanning> => {
-  const trace = await material.trace();
   const stateIndex =
-    given ?? ((await indexOfState(material, challengerHighHash)) ?? 0) - 1;
+    given ?? (material.stateIndexOf(challengerHighHash) ?? 0) - 1;
+  const trace = await material.steps(stateIndex);
   const preState = trace.states[stateIndex];
   const successor = trace.states[stateIndex + 1];
   if (

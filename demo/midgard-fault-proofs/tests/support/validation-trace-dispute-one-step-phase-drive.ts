@@ -307,7 +307,7 @@ const expectedEvidence = async (
   plan: Constr<Data>,
 ): Promise<Constr<Data>> => {
   if (evidence === undefined) return Data.from(NO_AUXILIARY_WITNESS_CBOR);
-  const trace = await dispute.material.trace();
+  const trace = await dispute.material.steps(from);
   if ("auxiliary" in evidence) {
     const own = Data.from<Constr<Data>>(
       buildValidationOneStepArgument({

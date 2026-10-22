@@ -8,11 +8,11 @@ import {
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildDeterministicValidationMachineTrace,
   buildTraceAtStepCountV1,
-  type DeterministicValidationMachineTrace,
   DirectValidationTraceUnavailable,
+  openValidationTraceStepsV1,
   openValidationTraceV1,
+  type ValidationTraceSteps,
   ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
@@ -30,7 +30,9 @@ import {
 import { WorkflowArtifactPendingError } from "../workflow/workflow-artifact-pending.js";
 import { type CommittedL2Event, plutusReplayInput } from "./replay.js";
 import {
+  recordedSelectionOf,
   selectedScriptItemReader,
+  type ValidationTraceSelection,
   type ValidationTraceSelectionSource,
 } from "./selected-scripts.js";
 
@@ -125,12 +127,18 @@ export type ValidationTraceClaimMaterial = {
   readonly initialState: MidgardValidationMachineState;
   /** The proof of any leaf under `challengerRoot`, for later moves. */
   readonly leafProof: (index: number) => MidgardValidationTraceProof;
+  /** The last index of a state of ours hashing to `stateHashHex`. */
+  readonly stateIndexOf: (stateHashHex: string) => number | undefined;
   /**
-   * The same trace in full, its states and work witnesses, rebuilt from the
-   * same replay on first use: a one-step resolution reads its evidence from
-   * it.
+   * States `stateIndex` and `stateIndex + 1` of the same trace and their
+   * work witnesses, rebuilt from the same replay on first use: a one-step
+   * resolution reads its evidence from them. Only these are held, not the
+   * whole witnessed trace.
    */
-  readonly trace: () => Promise<DeterministicValidationMachineTrace>;
+  readonly steps: (stateIndex: number) => Promise<ValidationTraceSteps>;
+  /** Every CEK script selection of the trace that rests on a decode record,
+   * in trace order (`recordedSelectionOf`), rebuilt on first use. */
+  readonly selections: () => Promise<readonly ValidationTraceSelection[]>;
   /**
    * The versioned item of the script a CEK script selection of the trace
    * runs, from the disputed transaction or its resolved inputs; throws
@@ -193,7 +201,8 @@ export const buildValidationTraceClaimMaterial = async ({
       "validation claim: the honest trace is not Terminal Rejected",
     );
   const trace = buildTraceAtStepCountV1(leaves, leaves.stepCount);
-  let full: Promise<DeterministicValidationMachineTrace> | undefined;
+  const steps = new Map<number, Promise<ValidationTraceSteps>>();
+  let selections: Promise<readonly ValidationTraceSelection[]> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(
       "validation claim: trace root does not match its commitment",
@@ -209,9 +218,39 @@ export const buildValidationTraceClaimMaterial = async ({
     terminalLeafProof: trace.proof(leaves.stepCount),
     initialState,
     leafProof: trace.proof,
-    trace: () =>
-      (full ??= Effect.runPromise(
-        buildDeterministicValidationMachineTrace(input),
+    stateIndexOf: (stateHashHex) => {
+      const hash = Buffer.from(stateHashHex, "hex");
+      for (let index = leaves.stepCount; index >= 0; index -= 1)
+        if (
+          hash.equals(leaves.stateHashes.subarray(index * 32, index * 32 + 32))
+        )
+          return index;
+      return undefined;
+    },
+    steps: (stateIndex) => {
+      let window = steps.get(stateIndex);
+      if (window === undefined) {
+        window = Effect.runPromise(
+          openValidationTraceStepsV1(
+            input,
+            (index) => index === stateIndex || index === stateIndex + 1,
+          ),
+        );
+        steps.set(stateIndex, window);
+      }
+      return window;
+    },
+    selections: () =>
+      (selections ??= Effect.runPromise(
+        openValidationTraceStepsV1(
+          input,
+          (_, witness) => recordedSelectionOf(witness) !== undefined,
+        ),
+      ).then(({ witnesses }) =>
+        Object.values(witnesses).flatMap((witness) => {
+          const selection = recordedSelectionOf(witness);
+          return selection === undefined ? [] : [selection];
+        }),
       )),
     scriptItem: selectedScriptItemReader({
       transactionCbor: event.entry.fullTransactionCbor,

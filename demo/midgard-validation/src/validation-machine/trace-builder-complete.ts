@@ -54,6 +54,7 @@ import {
 } from "../cek-context.js";
 import {
   buildMidgardCekExecutionGraph,
+  type MidgardCekExecutionStep,
   startMidgardCekObservedRun,
 } from "../cek-executor.js";
 import { buildMidgardCanonicalCekProgram } from "../cek-program.js";
@@ -907,7 +908,7 @@ export const completeValidationTrace = (
             );
             // A proof build carries the evaluator's graph and captured run; a
             // commit build derives the graph from the carried Flat program and
-            // re-executes it, streaming its steps (nothing verified or kept).
+            // re-executes it, streaming its steps (unverified, kept by no sink).
             const graph =
               evaluation.graph ??
               buildMidgardCekExecutionGraph(
@@ -1905,11 +1906,8 @@ export const completeValidationTrace = (
               );
             }
 
-            const coreStep = (
-              pre: MidgardCekMachineState,
-              post: MidgardCekMachineState,
-              auxiliary: ValidationMachineWorkWitness["auxiliary"],
-            ): boolean => {
+            const coreStep = (step: MidgardCekExecutionStep): boolean => {
+              const { pre, post } = step;
               pushWitness(
                 "cek",
                 cekWitness({
@@ -1923,7 +1921,7 @@ export const completeValidationTrace = (
                   programScriptHash: contextControl.scriptHash,
                   purposeOf: contextControl,
                 }),
-                auxiliary,
+                { kind: "cekCoreStep", step },
               );
               executionBudget.cpu = completedCpu + post.cpu;
               executionBudget.memory = completedMemory + post.memory;
@@ -1956,17 +1954,12 @@ export const completeValidationTrace = (
             let terminalCekState: MidgardCekMachineState | null;
             if (exactExecution !== null) {
               for (const step of exactExecution.steps) {
-                if (
-                  !coreStep(step.pre, step.post, { kind: "cekCoreStep", step })
-                ) {
-                  break;
-                }
+                if (!coreStep(step)) break;
               }
               terminalCekState = exactExecution.terminalState;
             } else {
               terminalCekState =
-                observedRun!.run((pre, post) => coreStep(pre, post, null))
-                  ?.terminalState ?? null;
+                observedRun!.run(coreStep)?.terminalState ?? null;
             }
             if (stoppedAtRejection) break;
             if (

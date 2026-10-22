@@ -4,8 +4,8 @@ import { lucidDataToCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
 
 import {
-  type DeterministicValidationMachineTrace,
   type ValidationMachineWorkWitness,
+  type ValidationTraceSteps,
 } from "./validation-machine/index.js";
 import {
   type CekSelectionDecodeRecordResolver,
@@ -51,7 +51,8 @@ export const buildValidationOneStepArgument = ({
   resolveFieldCarriage,
   resolveCekDecodeRecord,
 }: {
-  readonly trace: DeterministicValidationMachineTrace;
+  /** At least states `stateIndex` and `stateIndex + 1` and their witnesses. */
+  readonly trace: ValidationTraceSteps;
   readonly stateIndex: number;
   readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolver;
   readonly resolveCekDecodeRecord?: CekSelectionDecodeRecordResolver;

@@ -23,13 +23,11 @@ export type MidgardCekExecutionMode = "proof" | "verdict";
 
 /**
  * Observes each transition of a run that keeps no per-step evidence (the
- * streaming commit mode). Returning `false` stops the run after this
- * transition; the run then ends with the observed post-state.
+ * streaming commit mode): the step a `proof` run would verify and keep, not
+ * verified here. Returning `false` stops the run after this transition; the
+ * run then ends with the observed post-state.
  */
-export type MidgardCekStepObserver = (
-  pre: MidgardCekMachineState,
-  post: MidgardCekMachineState,
-) => boolean;
+export type MidgardCekStepObserver = (step: MidgardCekExecutionStep) => boolean;
 
 /** A `verdict`-mode run: the terminal outcome without per-step evidence. */
 export type MidgardCekStructuralVerdict = Omit<
@@ -101,7 +99,10 @@ export class MidgardCekStepRecorder {
       this.steps.push(Object.freeze({ pre, post, witness }));
     }
     this.count += 1;
-    if (this.observer !== undefined && !this.observer(pre, post)) {
+    if (
+      this.observer !== undefined &&
+      !this.observer(Object.freeze({ pre, post, witness }))
+    ) {
       throw new MidgardCekObservedStop(post, this.count);
     }
   }

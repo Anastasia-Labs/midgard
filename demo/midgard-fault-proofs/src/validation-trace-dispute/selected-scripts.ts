@@ -12,10 +12,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
-import type {
-  DeterministicValidationMachineTrace,
-  ValidationMachineWorkWitness,
-} from "@al-ft/midgard-validation";
+import type { ValidationMachineWorkWitness } from "@al-ft/midgard-validation";
 
 import type { CheckedLedger } from "../ledger-at.js";
 
@@ -50,15 +47,6 @@ export const recordedSelectionOf = (
     return undefined;
   return auxiliary;
 };
-
-/** Every selection of `trace` that rests on a decode record, in order. */
-export const recordedSelectionsOf = (
-  trace: DeterministicValidationMachineTrace,
-): readonly ValidationTraceSelection[] =>
-  trace.witnesses.flatMap((witness) => {
-    const selection = recordedSelectionOf(witness);
-    return selection === undefined ? [] : [selection];
-  });
 
 /**
  * Reads the versioned item of a selection's script: the inline witness at
@@ -113,21 +101,21 @@ export const selectedScriptItemReader =
   };
 
 /**
- * The item of the first script our trace selects whose decode record
- * `recorded` does not find, or null when every one is recorded. The scripts
- * are taken in trace order, each once.
+ * The item of the first script of `selections` (our trace's recorded
+ * selections, in trace order) whose decode record `recorded` does not
+ * find, or null when every one is recorded. Each script is taken once.
  */
 export const unrecordedSelectedScript = async ({
-  trace,
+  selections,
   scriptItem,
   recorded,
 }: {
-  readonly trace: DeterministicValidationMachineTrace;
+  readonly selections: readonly ValidationTraceSelection[];
   readonly scriptItem: (selection: ValidationTraceSelectionSource) => Buffer;
   readonly recorded: (scriptHashHex: string) => Promise<boolean>;
 }): Promise<Buffer | null> => {
   const seen = new Set<string>();
-  for (const selection of recordedSelectionsOf(trace)) {
+  for (const selection of selections) {
     const scriptHashHex = selection.purpose.scriptHash.toString("hex");
     if (seen.has(scriptHashHex)) continue;
     seen.add(scriptHashHex);

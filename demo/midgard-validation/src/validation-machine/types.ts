@@ -438,6 +438,21 @@ export type ValidationMachineSignerSetProof =
       readonly upperSiblings: readonly Buffer[];
     };
 
+/**
+ * States and work witnesses of one trace by program counter: a whole trace,
+ * or the few of it a one-step resolution reads.
+ */
+export type ValidationTraceSteps = {
+  readonly states: {
+    readonly [programCounter: number]:
+      | MidgardValidationMachineState
+      | undefined;
+  };
+  readonly witnesses: {
+    readonly [programCounter: number]: ValidationMachineWorkWitness | undefined;
+  };
+};
+
 export type DeterministicValidationMachineTrace = {
   readonly validationContextCbor: Buffer;
   readonly states: readonly MidgardValidationMachineState[];

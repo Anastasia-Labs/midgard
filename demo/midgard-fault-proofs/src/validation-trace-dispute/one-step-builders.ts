@@ -24,7 +24,7 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { DeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation";
 import {
   Data,
   type LucidEvolution,
@@ -111,7 +111,7 @@ export type ValidationTraceHop = Readonly<{
  * a selection that reads no program goes without.
  */
 export type ValidationTraceSelectionReads = Readonly<{
-  trace: DeterministicValidationMachineTrace;
+  trace: ValidationTraceSteps;
   yields: Readonly<{
     references: readonly [UTxO, UTxO];
     scripts: readonly [Script, Script];
