@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   isWorkflowActuationRevokedError,
@@ -16,6 +18,10 @@ import {
   type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
+import {
+  createWatcherWorkflowJournal,
+  type WatcherWorkflowJournal,
+} from "./watcher-workflow-journal.js";
 
 /** A deadline alert's headroom: the longest single-stage deadline. */
 export const watcherDeadlineAlertHeadroomMs = (
@@ -35,6 +41,8 @@ export const watcherDeadlineAlertHeadroomMs = (
 
 export const createWatcherFaultProofSupervisor = (input: {
   readonly journalRoot: string;
+  /** The per-proof workflow journal in watcher.sqlite. */
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
@@ -53,6 +61,7 @@ export const createWatcherFaultProofSupervisor = (input: {
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
+    workflowJournal: input.workflowJournal,
     deploymentFingerprint: input.deploymentFingerprint,
     deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs,
     queueAuthenticationKey: input.queueAuthenticationKey,
@@ -109,6 +118,8 @@ export const createWatcherFaultProofSupervisor = (input: {
 /** Test-only dependency seam; production category admission cannot be changed. */
 export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   readonly journalRoot: string;
+  /** Defaults to an empty in-memory journal. */
+  readonly workflowJournal?: WatcherWorkflowJournal;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs?: number;
   readonly unsafeNowMsForTest?: () => number;
@@ -125,6 +136,9 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
       ? {}
       : { proofRetention: input.unsafeProofRetentionForTest }),
     journalRoot: input.journalRoot,
+    workflowJournal:
+      input.workflowJournal ??
+      createWatcherWorkflowJournal(new DatabaseSync(":memory:")),
     deploymentFingerprint: input.deploymentFingerprint,
     deadlineAlertHeadroomMs:
       input.deadlineAlertHeadroomMs ??

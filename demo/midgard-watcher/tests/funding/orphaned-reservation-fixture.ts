@@ -39,5 +39,6 @@ export const orphanReadingFactory = (
     protocolParameterHistory: fixture.protocolParameterHistory,
     ...reads,
     store: fixture.store,
+    workflowJournal: fixture.workflowJournal,
   }),
 });

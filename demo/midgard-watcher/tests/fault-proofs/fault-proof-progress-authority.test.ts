@@ -6,7 +6,6 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowActuationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -25,7 +24,10 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -33,8 +35,11 @@ afterEach(async () => {
 });
 const setup = async (unsigned = false) => {
   const fixture = await setupFundingRecoveryFixture(false, false, unsigned);
+  // Every read of the workflow journal, counted.
+  const readExecution = vi.fn(fixture.workflowJournal.readExecution);
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
+    workflowJournal: { ...fixture.workflowJournal, readExecution },
     deploymentFingerprint: deploymentIdentity.manifestId,
     categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
@@ -45,6 +50,7 @@ const setup = async (unsigned = false) => {
   return {
     fixture,
     authority,
+    readExecution,
     request: { observation, rollbackGeneration: "2" },
   };
 };
@@ -78,10 +84,7 @@ describe("supervisor historical progress authority", () => {
 
   it("indexes once, wakes historical work only for changed observations, and evicts acknowledged completion", async () => {
     const test = await setup();
-    const load = vi.spyOn(
-      DirectoryFraudProofWorkflowJournalStore.prototype,
-      "load",
-    );
+    const load = test.readExecution;
     const first = await test.authority.admit(test.request);
     expect(first).toHaveLength(1);
     expect(first[0]!.decision.decisionDigest).toBe(
@@ -173,6 +176,7 @@ describe("supervisor historical progress authority", () => {
         await DecisionJournal.openWatcherFaultDecisionJournal(journalInput);
       const authority = createWatcherFaultProofProgressAuthority({
         journalRoot,
+        workflowJournal: emptyWorkflowJournal(),
         deploymentFingerprint: deploymentIdentity.manifestId,
         categories: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,
@@ -248,6 +252,7 @@ describe("supervisor historical progress authority", () => {
         });
         const authority = createWatcherFaultProofProgressAuthority({
           journalRoot,
+          workflowJournal: emptyWorkflowJournal(),
           deploymentFingerprint: deploymentIdentity.manifestId,
           categories: installedLaunchScope(fixture.old.launchScope),
           authenticationKey: TEST_JOURNAL_KEY,
@@ -439,6 +444,7 @@ describe("supervisor progress authority: proof retention", () => {
       const pinned: string[] = [];
       const authority = createWatcherFaultProofProgressAuthority({
         journalRoot,
+        workflowJournal: emptyWorkflowJournal(),
         deploymentFingerprint: deploymentIdentity.manifestId,
         categories: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,

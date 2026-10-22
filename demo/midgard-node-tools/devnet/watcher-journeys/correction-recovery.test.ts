@@ -5,7 +5,6 @@ import { join } from "node:path";
 
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
@@ -23,10 +22,32 @@ import {
   journeyAnchoredEvidence,
   journeyWorkflowProgressCount,
   journeyWorkflowUpdates,
+  readJourneyWorkflowEntries,
   verifyJourneyComputationThreadAbsent,
   verifyJourneyCorrection,
   verifyJourneyWorkflowTransactions,
 } from "./correction.js";
+
+// The workflow rows the readers see, set per test.
+vi.mock(
+  "./correction.verify-journey-corrected-scheduler.js",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("./correction.verify-journey-corrected-scheduler.js")
+      >();
+    return {
+      ...original,
+      readJourneyWorkflowEntries: vi.fn(original.readJourneyWorkflowEntries),
+    };
+  },
+);
+/** The workflow-row reader, its calls cleared. */
+const workflowLoad = () => {
+  const load = vi.mocked(readJourneyWorkflowEntries);
+  load.mockClear();
+  return load;
+};
 
 const computationThreadFixture = () => {
   const policy = "ab".repeat(28);
@@ -258,20 +279,7 @@ const pollCorrectionProgress = async (
   reconciliationAllowanceMs?: number,
 ) => {
   const directory = await mkdtemp(join(tmpdir(), "journey-progress-"));
-  await mkdir(
-    join(
-      directory,
-      "fault-proofs",
-      identity.category,
-      identity.target.headerHash,
-      computeFraudProofWorkflowId(identity),
-    ),
-    { recursive: true },
-  );
-  const load = vi.spyOn(
-    DirectoryFraudProofWorkflowJournalStore.prototype,
-    "load",
-  );
+  const load = workflowLoad();
   const now = vi.spyOn(Date, "now").mockReturnValue(0);
   const hardTimeout = new Error("whole correction timeout");
   type Input = Parameters<typeof verifyJourneyCorrection>[0];
@@ -283,7 +291,7 @@ const pollCorrectionProgress = async (
         accounts: {},
       } as Input["context"],
       native: {} as Input["native"],
-      workflowJournalDirectory: directory,
+      watcherStorePath: join(directory, "watcher.sqlite"),
       directory,
       category: identity.category,
       headerHash: identity.target.headerHash,
@@ -620,18 +628,7 @@ it("anchors the last included terminal unless a completed one exists", () => {
 const pendingStampFixture = async () => {
   const directory = await mkdtemp(join(tmpdir(), "journey-anchor-"));
   const familyDirectory = join(directory, "transition-trace");
-  const workflowJournalDirectory = join(directory, "workflows");
   await mkdir(familyDirectory);
-  await mkdir(
-    join(
-      workflowJournalDirectory,
-      "fault-proofs",
-      identity.category,
-      identity.target.headerHash,
-      computeFraudProofWorkflowId(identity),
-    ),
-    { recursive: true },
-  );
   const request = {
     category: identity.category,
     headerHash: identity.target.headerHash,
@@ -652,11 +649,11 @@ const pendingStampFixture = async () => {
     input: {
       ...request,
       journeysDirectory: directory,
-      workflowJournalDirectory,
+      watcherStorePath: join(directory, "watcher.sqlite"),
       nativeEvidencePath: join(directory, "native-chain.ndjson"),
       authenticate: vi.fn().mockResolvedValue(false),
     },
-    load: vi.spyOn(DirectoryFraudProofWorkflowJournalStore.prototype, "load"),
+    load: workflowLoad(),
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
 };

@@ -47,6 +47,7 @@ export const openWatcherProverFundingRuntime = async (input: {
       protocolParameters,
       protocolParameterHistory: store.protocolParameterHistory,
       store: store.store,
+      workflowJournal: store.journal,
       ...(input.observeSignedTransaction === undefined
         ? {}
         : { observeSignedTransaction: input.observeSignedTransaction }),

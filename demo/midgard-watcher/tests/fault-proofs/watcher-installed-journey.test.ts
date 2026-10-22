@@ -1,12 +1,5 @@
 import { existsSync } from "node:fs";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -14,7 +7,6 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowJournalEntry,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
@@ -540,38 +532,34 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         await pause(50);
       }
     });
-    const workflowDirectory = join(
-      config.workflowJournalDirectory,
-      "fault-proofs",
-      "transitionTrace",
-      staged.current.headerHash,
-    );
-    const workflowJournal = new DirectoryFraudProofWorkflowJournalStore(
-      workflowDirectory,
-    );
+    // The running watcher's workflow rows, read over a second connection.
     const readWorkflow = async (): Promise<
       readonly FraudProofWorkflowJournalEntry[]
     > => {
-      let entries;
+      if (!existsSync(watcherConfig.storage.path)) return [];
+      const store = new DatabaseSync(watcherConfig.storage.path);
       try {
-        entries = await readdir(workflowDirectory, { withFileTypes: true });
+        const rows = store
+          .prepare(
+            "SELECT workflow_id, body FROM watcher_workflow_journal_v1 WHERE category = 'transitionTrace' AND header_hash = ? ORDER BY workflow_id, sequence",
+          )
+          .all(staged.current.headerHash) as {
+          workflow_id: string;
+          body: string;
+        }[];
+        expect(
+          new Set(rows.map(({ workflow_id }) => workflow_id)).size,
+        ).toBeLessThanOrEqual(1);
+        return rows.map(
+          ({ body }) => JSON.parse(body) as FraudProofWorkflowJournalEntry,
+        );
       } catch (cause) {
-        if (
-          typeof cause === "object" &&
-          cause !== null &&
-          "code" in cause &&
-          cause.code === "ENOENT"
-        )
+        if (cause instanceof Error && cause.message.includes("no such table"))
           return [];
         throw cause;
+      } finally {
+        store.close();
       }
-      const ids = entries
-        .filter(
-          (entry) => entry.isDirectory() && /^[0-9a-f]{64}$/u.test(entry.name),
-        )
-        .map(({ name }) => name);
-      expect(ids.length).toBeLessThanOrEqual(1);
-      return ids.length === 0 ? [] : await workflowJournal.load(ids[0]!);
     };
     let reportedWorkflowSequence = -1;
     const terminalRelease = createTerminalRelease(chain);

@@ -1,13 +1,9 @@
-import { readdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   assertMintWorkflowPreparedEvidence,
   assertWorkflowActuationPermitIdentity,
   assertWorkflowFundingAbandonmentHandoffJournal,
   assertWorkflowFundingCompletionHandoffJournal,
   bindWorkflowActuationRecoveryIdentity,
-  DirectoryFraudProofWorkflowJournalStore,
   journalJsonDigest,
   normalizeJournalJson,
   parseWorkflowFundingAbandonmentHandoff,
@@ -25,6 +21,7 @@ import {
   type WatcherInstalledWorkflowCategory,
 } from "../fault-proofs/fault-proof-application.js";
 import { WatcherProofDecisionMissingError } from "../fault-proofs/watcher-decision-hold.js";
+import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentReleaseFinalityAuthority,
@@ -41,6 +38,7 @@ import {
 export const authorizeWatcherProverFundingRecovery = async (input: {
   readonly journalRoot: string;
   readonly journalAuthenticationKey: Uint8Array;
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly category: FraudProofCatalogueCategoryName;
@@ -54,58 +52,20 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   });
   if (authority.deploymentFingerprint !== input.deploymentIdentity.manifestId)
     throw new Error("workflow recovery changed deployment identity");
-  const directory = join(
-    input.journalRoot,
-    "fault-proofs",
-    input.category,
-    authority.headerHash,
-  );
   // Reconciliation never creates a workflow journal, so it cannot resume
   // one.
-  const withoutJournal = () => {
+  const execution = input.workflowJournal.readExecution({
+    category: input.category as WatcherInstalledWorkflowCategory,
+    headerHash: authority.headerHash,
+  });
+  if (execution === undefined) {
     if (authority.authority === "reconciliation")
       throw new Error(
         "reconciliation funding requires its existing durable workflow",
       );
-  };
-  let names;
-  try {
-    names = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return withoutJournal();
-    throw error;
+    return;
   }
-  if ((await realpath(directory)) !== directory)
-    throw new Error("workflow recovery journal traverses a symlink");
-  if (
-    names.some(
-      (entry) => !entry.isDirectory() || !/^[0-9a-f]{64}$/u.test(entry.name),
-    )
-  )
-    throw new Error(
-      "workflow recovery target contains an invalid journal entry",
-    );
-  const candidates: typeof names = [];
-  for (const candidate of names) {
-    const candidateDirectory = join(directory, candidate.name);
-    if ((await realpath(candidateDirectory)) !== candidateDirectory)
-      throw new Error("workflow recovery execution traverses a symlink");
-    // append creates its directory before validating the first event. A
-    // literally empty one is pre-start debris. Any other needs strict
-    // journal recovery.
-    if ((await readdir(candidateDirectory)).length !== 0)
-      candidates.push(candidate);
-  }
-  if (candidates.length > 1)
-    throw new Error(
-      "workflow recovery has multiple candidate executions for one target",
-    );
-  const candidate = candidates[0];
-  if (candidate === undefined) return withoutJournal();
-  const entries = await new DirectoryFraudProofWorkflowJournalStore(
-    directory,
-  ).load(candidate.name);
+  const { entries } = execution;
   const identity = entries[0]?.identity;
   if (
     identity === undefined ||

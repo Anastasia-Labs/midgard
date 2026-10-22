@@ -2,6 +2,7 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import type { WorkflowActuationPermit } from "./actuation-permit.js";
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "./runner-admission.js";
 
 export const WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION =
@@ -16,7 +17,6 @@ export type WorkflowAdapterReadinessInput = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly journalDirectory: string;
   /** Versioned infrastructure configuration only; never proof evidence. */
   readonly runtimeConfigPath: string;
 };
@@ -28,6 +28,9 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   readonly actuationPermit: WorkflowActuationPermit;
   /** Durable, exact-input funding authority for this decision/generation. */
   readonly fundingReservationPermit: WorkflowFundingReservationPermit;
+  /** The durable journal this objective's workflow appends to; its owner
+   * decides where it lives. */
+  readonly journal: FraudProofWorkflowJournalStore;
   /**
    * Called when a continuing session journals progress past its first poll,
    * so a caller can clear an alarm before the session ends. Never authority.

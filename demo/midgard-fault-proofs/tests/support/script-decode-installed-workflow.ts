@@ -11,7 +11,6 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -25,10 +24,7 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
 import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
-import {
-  recordWatcherFaultDecision,
-  watcherProofObjectiveDirectory,
-} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
+import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
 import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
 import { familyStepContractNames } from "../../src/workflow/family-definition.js";
@@ -336,15 +332,10 @@ export const installScriptDecodeApplication = async ({
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
   // The watcher's journal root, under home as its SQLite stores refuse /tmp:
-  // the decision journal, objective workflow journals and reservation store.
+  // the decision journal and the reservation store with the workflow journal.
   const scratch = await scratchDirectory("script-decode-installed-", homedir());
   const directory = scratch.path;
   await recordWatcherFaultDecision(directory, decision);
-  const journalDirectory = watcherProofObjectiveDirectory(directory, {
-    category,
-    headerHash,
-  });
-  await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   /**
    * The watcher process's in-memory part: the admitted runner and the open
    * reservation store. Booting again over the same directory is a restart.
@@ -452,7 +443,10 @@ export const installScriptDecodeApplication = async ({
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
       fundingReservationPermit,
-      journalDirectory,
+      journal: instance.funding.workflowJournal.forObjective({
+        category,
+        headerHash,
+      }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
     } as never)) as {
       readonly kind: string;
@@ -471,11 +465,10 @@ export const installScriptDecodeApplication = async ({
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),
-    /** The entries the workflow journal holds on disk. */
+    /** The entries the workflow journal holds. */
     journalEntries: async () =>
-      (await readdir(journalDirectory, { recursive: true })).filter((path) =>
-        /\d+\.json$/u.test(path),
-      ).length,
+      instance.funding.workflowJournal.readExecution({ category, headerHash })
+        ?.entries.length ?? 0,
     close: async () => {
       instance.funding.close();
       await scratch.remove();

@@ -4,6 +4,7 @@ import { isAbsolute, normalize } from "node:path";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
+import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import type { WatcherProtocolParameterHistory } from "./prover-funding.js";
 import {
@@ -48,6 +49,8 @@ export const isWatcherProverFundingReservationConflict = (
 export type WatcherSqliteProverFundingReservationStoreRuntime = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE;
   store: WatcherProverFundingReservationStore;
+  /** The per-proof workflow journal on the same connection. */
+  journal: WatcherWorkflowJournal;
   protocolParameterHistory?: WatcherProtocolParameterHistory;
   close(): void;
 }>;

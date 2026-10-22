@@ -5,14 +5,16 @@ import { WATCHER_JOURNAL_DATABASE_FILE } from "../fault-proofs/watcher-journal-d
 import { WATCHER_PACKAGE_NAME } from "./scaffold.js";
 
 /**
- * The file journals the per-row SQLite journals replaced (ticket W2). No
- * importer exists: a deployment starts its journals fresh, and a leftover
- * directory never blocks readiness.
+ * The file journals SQLite tables replaced, each with the file that now
+ * holds its rows. No importer exists: a deployment starts its journals
+ * fresh, and a leftover directory never blocks readiness.
  */
-export const WATCHER_LEGACY_JOURNAL_DIRECTORIES = Object.freeze([
-  "fault-decisions",
-  "fault-proof-queue-v1",
-  "fault-proof-completions-v1",
+const LEGACY_JOURNAL_DIRECTORIES = Object.freeze([
+  ["fault-decisions", WATCHER_JOURNAL_DATABASE_FILE],
+  ["fault-proof-queue-v1", WATCHER_JOURNAL_DATABASE_FILE],
+  ["fault-proof-completions-v1", WATCHER_JOURNAL_DATABASE_FILE],
+  // The per-proof workflow journals, now rows in the watcher's storage file.
+  ["fault-proofs", "the watcher storage database"],
 ] as const);
 
 export type WatcherLegacyJournalIgnored = Readonly<{
@@ -32,7 +34,7 @@ export const warnWatcherLegacyJournalDirectories = async (
   journalRoot: string,
   warn: (warning: WatcherLegacyJournalIgnored) => void = writeWarning,
 ): Promise<void> => {
-  for (const name of WATCHER_LEGACY_JOURNAL_DIRECTORIES) {
+  for (const [name, replacement] of LEGACY_JOURNAL_DIRECTORIES) {
     const path = join(journalRoot, name);
     // Advisory only: a missing or unreadable entry holds nothing to import.
     const entries = await readdir(path).catch(() => []);
@@ -41,7 +43,7 @@ export const warnWatcherLegacyJournalDirectories = async (
         Object.freeze({
           event: "legacy_journal_ignored",
           path,
-          detail: `legacy file journal is ignored, never imported; the watcher journals live in ${WATCHER_JOURNAL_DATABASE_FILE}`,
+          detail: `legacy file journal is ignored, never imported; its rows live in ${replacement}`,
         }),
       );
   }

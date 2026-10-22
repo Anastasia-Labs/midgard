@@ -14,6 +14,7 @@ import {
 } from "../src/workflow/header-classifier.js";
 import {
   computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
 } from "../src/workflow/journal.js";
@@ -165,3 +166,8 @@ export const fundingReferenceScript = Object.freeze({
   type: "PlutusV3" as const,
   script: "4d01000033222220051200120011",
 });
+
+/** A fresh directory journal store for one invocation: each invocation binds
+ * its own actuation authority to the store object it is given. */
+export const directoryJournal = (directory: string) =>
+  new DirectoryFraudProofWorkflowJournalStore(directory);

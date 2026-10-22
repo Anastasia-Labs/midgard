@@ -1,5 +1,3 @@
-import { rm } from "node:fs/promises";
-
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +17,7 @@ afterEach(async () => {
 /** The original attempt expired at the tip with its workflow gone. */
 const expiredWithJournalsLost = async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
-  await rm(fixture.journalDirectory, { recursive: true, force: true });
+  fixture.workflowJournal.forgetObjective(fixture.objective);
   supersededAttemptReadSchedule.forget(fixture.transactionHash);
   fixture.useUnspentPendingInputs();
   fundWallet(fixture);

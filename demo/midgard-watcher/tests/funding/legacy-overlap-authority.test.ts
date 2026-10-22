@@ -1,6 +1,5 @@
 import "./prover-funding-recovery.registration.js";
 
-import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -52,23 +51,17 @@ it("opens the existing production funding permit read-only under a legacy overla
   );
   db.close();
   // This local fixture represents the previous journal format as well as SQL.
-  for (const entry of await test.journal.load(test.initial.workflowId)) {
-    if (
-      entry.event.kind !== "reconciled" ||
-      entry.event.outcome !== "not_found"
-    )
-      continue;
-    const { retirement: _retirement, ...event } = entry.event;
-    await writeFile(
-      join(
-        test.journalDirectory,
-        test.initial.workflowId,
-        `${entry.sequence.toString().padStart(8, "0")}.json`,
-      ),
-      JSON.stringify({ ...entry, event }) + "\n",
-    );
-  }
-  await test.restartStore();
+  await test.rewriteJournalEntries(
+    (await test.journal.load(test.initial.workflowId)).flatMap((entry) => {
+      if (
+        entry.event.kind !== "reconciled" ||
+        entry.event.outcome !== "not_found"
+      )
+        return [];
+      const { retirement: _retirement, ...event } = entry.event;
+      return [{ ...entry, event }];
+    }),
+  );
   const held = async () =>
     await Promise.all(
       [test.plan, later].map(

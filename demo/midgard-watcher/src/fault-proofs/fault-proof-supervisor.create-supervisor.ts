@@ -59,9 +59,11 @@ import {
   watcherJournalUnavailable,
 } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
+import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 export const createSupervisor = (input: {
   readonly journalRoot: string;
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
@@ -120,6 +122,7 @@ export const createSupervisor = (input: {
   const createAuthority = () =>
     createWatcherFaultProofProgressAuthority({
       journalRoot: input.journalRoot,
+      workflowJournal: input.workflowJournal,
       deploymentFingerprint: input.deploymentFingerprint,
       categories,
       authenticationKey: input.queueAuthenticationKey,
@@ -208,10 +211,9 @@ export const createSupervisor = (input: {
     }
   };
   // One finality threshold (plan section 9: depth > k is final): a completion
-  // is applicable only once it is beyond rollback recovery, the depth its
-  // completion marker needs, so one verified at exactly k waits for the next
-  // block instead of finishing unmarked with its L1 history pinned until a
-  // restart. Without a k nothing is marked and the check is unchanged.
+  // applies only beyond rollback recovery, the depth its marker needs; one
+  // verified at exactly k waits a block rather than finish unmarked with its
+  // L1 history pinned. Without a k nothing is marked.
   const securityParameter = input.proofRetention?.securityParameter;
   const verifyCompleted: SupervisorDependencies["verifyCompleted"] = async (
     request,
@@ -282,10 +284,9 @@ export const createSupervisor = (input: {
     }
     return normalized;
   };
-  // The statement that met a busy database committed nothing. Rebuild the
-  // work from durable state as a fresh process does: drop every in-memory
-  // entry, open the queue and the progress authority again, run the startup
-  // funding sweep while no job runs, then let the decision driver dispatch.
+  // The statement that met a busy database committed nothing. Rebuild from
+  // durable state as a fresh process does: drop in-memory entries, reopen the
+  // queue and authority, sweep funding while no job runs, then dispatch.
   const busy = createWatcherJournalBusyHold({
     requeue: async () => {
       const reset = progressSerial.then(async () => {
@@ -411,8 +412,8 @@ export const createSupervisor = (input: {
           );
       }
       const key = objectiveKey(job);
-      const execution = await readWatcherProofExecution({
-        journalRoot: input.journalRoot,
+      const execution = readWatcherProofExecution({
+        journal: input.workflowJournal,
         deploymentFingerprint: input.deploymentFingerprint,
         objective: job,
         selectedWorkflowId: selectedExecutions.get(key),
@@ -535,8 +536,8 @@ export const createSupervisor = (input: {
           admission,
         });
         if (!input.exposeUnsafeRunnerForTest) {
-          const updated = await readWatcherProofExecution({
-            journalRoot: input.journalRoot,
+          const updated = readWatcherProofExecution({
+            journal: input.workflowJournal,
             deploymentFingerprint: input.deploymentFingerprint,
             objective: job,
             selectedWorkflowId: selectedExecutions.get(key),
@@ -604,11 +605,10 @@ export const createSupervisor = (input: {
         failure = block(error, job);
       }
     } finally {
-      // A failed run blocks the supervisor and the process exits failed
-      // closed, or, on a busy database, holds it until the in-process
-      // requeue. Leave its queue registration active so the next process,
-      // or that requeue, requeues the job instead of reading a durable
-      // finish that never reached the workflow journal.
+      // A failed run blocks the supervisor (exit failed closed), or, on a
+      // busy database, holds it until the in-process requeue. Its queue
+      // registration stays active so the next process, or that requeue,
+      // requeues the job rather than read a finish never journaled.
       if (failure === undefined) {
         try {
           await (

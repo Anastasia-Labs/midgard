@@ -46,6 +46,7 @@ import {
 } from "./watcher-decision-hold.js";
 import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 import { watcherJournalOpener } from "./watcher-journal-database.opener.js";
+import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 export type WatcherFaultProofProgressRequest = Readonly<{
   observation: WatcherAuthenticatedStateQueueObservation;
@@ -126,6 +127,7 @@ const MAX_CACHED_DECISIONS = 2_048;
  * revalidates the latest selected execution immediately before funding. */
 export const createWatcherFaultProofProgressAuthority = (input: {
   readonly journalRoot: string;
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly deploymentFingerprint: string;
   readonly categories: readonly WatcherInstalledWorkflowCategory[];
   readonly authenticationKey: Uint8Array;
@@ -144,7 +146,7 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       authenticationKey: input.authenticationKey,
     });
   const cleanup = createWatcherProofObjectiveCleanup({
-    journalRoot: input.journalRoot,
+    workflowJournal: input.workflowJournal,
     deploymentFingerprint: input.deploymentFingerprint,
     database,
     ...(input.jobInProcess === undefined
@@ -287,8 +289,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     }
   };
   const loadExecution = async (objective: Objective): Promise<void> => {
-    const execution = await readWatcherProofExecution({
-      journalRoot: input.journalRoot,
+    const execution = readWatcherProofExecution({
+      journal: input.workflowJournal,
       deploymentFingerprint: input.deploymentFingerprint,
       objective: objective.decision,
       selectedWorkflowId: objective.workflowId,
@@ -330,8 +332,6 @@ export const createWatcherFaultProofProgressAuthority = (input: {
     for (const { decision } of await (await openDecisions()).readAll())
       if (decision.decision === "fault_detected")
         decisions.set(decision.decisionDigest, decision);
-    // A crash during an earlier removal's delete left its tombstone.
-    await cleanup.sweep();
     // Startup lists the objective table, never the workflow directories.
     const rows = listWatcherProofObjectives(database(), input.categories);
     for (const row of rows) {
@@ -341,8 +341,8 @@ export const createWatcherFaultProofProgressAuthority = (input: {
       if (watcherProofJobPending(database(), target)) cleanup.markStale(target);
       let execution;
       try {
-        execution = await readWatcherProofExecution({
-          journalRoot: input.journalRoot,
+        execution = readWatcherProofExecution({
+          journal: input.workflowJournal,
           deploymentFingerprint: input.deploymentFingerprint,
           objective: target,
         });

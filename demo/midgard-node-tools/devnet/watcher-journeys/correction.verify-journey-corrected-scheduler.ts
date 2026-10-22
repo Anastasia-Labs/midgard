@@ -1,11 +1,7 @@
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -190,33 +186,61 @@ export const verifyJourneyCorrectedScheduler = async (
   return next[0]!;
 };
 
+/** The workflow rows the watcher store holds for each header of `category`,
+ * read over a second connection; none before the watcher created them. */
+export const readJourneyWorkflowRows = (
+  watcherStorePath: string,
+  category: SDK.FraudProofCatalogueCategoryName,
+  headerHash?: string,
+): ReadonlyMap<string, readonly FraudProofWorkflowJournalEntry[]> => {
+  const byHeader = new Map<string, FraudProofWorkflowJournalEntry[]>();
+  if (!existsSync(watcherStorePath)) return byHeader;
+  const store = new DatabaseSync(watcherStorePath);
+  try {
+    const table = store
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'watcher_workflow_journal_v1'",
+      )
+      .get();
+    if (table === undefined) return byHeader;
+    const rows = store
+      .prepare(
+        `SELECT header_hash, workflow_id, body FROM watcher_workflow_journal_v1
+         WHERE category = ?${headerHash === undefined ? "" : " AND header_hash = ?"}
+         ORDER BY header_hash, workflow_id, sequence`,
+      )
+      .all(
+        ...(headerHash === undefined ? [category] : [category, headerHash]),
+      ) as { header_hash: string; workflow_id: string; body: string }[];
+    const workflows = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const ids = workflows.get(row.header_hash) ?? new Set<string>();
+      ids.add(row.workflow_id);
+      workflows.set(row.header_hash, ids);
+      const entries = byHeader.get(row.header_hash) ?? [];
+      entries.push(JSON.parse(row.body) as FraudProofWorkflowJournalEntry);
+      byHeader.set(row.header_hash, entries);
+    }
+    for (const ids of workflows.values())
+      expect(ids.size).toBeLessThanOrEqual(1);
+    return byHeader;
+  } finally {
+    store.close();
+  }
+};
+
 export const readJourneyWorkflowEntries = async ({
-  workflowJournalDirectory,
+  watcherStorePath,
   category,
   headerHash,
 }: {
-  workflowJournalDirectory: string;
+  watcherStorePath: string;
   category: SDK.FraudProofCatalogueCategoryName;
   headerHash: string;
-}): Promise<readonly FraudProofWorkflowJournalEntry[]> => {
-  const workflowDirectory = join(
-    workflowJournalDirectory,
-    `fault-proofs/${category}`,
+}): Promise<readonly FraudProofWorkflowJournalEntry[]> =>
+  readJourneyWorkflowRows(watcherStorePath, category, headerHash).get(
     headerHash,
-  );
-  const workflow = new DirectoryFraudProofWorkflowJournalStore(
-    workflowDirectory,
-  );
-
-  if (!existsSync(workflowDirectory)) return [];
-  const ids = (
-    await readdir(workflowDirectory, { withFileTypes: true })
-  ).filter(
-    (entry) => entry.isDirectory() && /^[0-9a-f]{64}$/u.test(entry.name),
-  );
-  expect(ids.length).toBeLessThanOrEqual(1);
-  return ids.length === 0 ? [] : await workflow.load(ids[0]!.name);
-};
+  ) ?? [];
 
 /**
  * How long a workflow may keep journaling `stalled` before the attempt fails.

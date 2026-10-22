@@ -19,6 +19,7 @@ import { createWatcherOperationsObservability } from "../../src/runtime/operatio
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
+  emptyWorkflowJournal,
   journalDirectory,
   recordObjectives,
   recordRawObjectiveRow,
@@ -42,6 +43,7 @@ const startSupervisor = (journalRoot: string) => {
   const supervisor = createWatcherFaultProofSupervisor({
     reservationDecisionHolds: () => [],
     journalRoot,
+    workflowJournal: emptyWorkflowJournal(),
     deploymentFingerprint: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     queueAuthenticationKey: TEST_JOURNAL_KEY,

@@ -12,6 +12,7 @@ import {
   DaLibp2pRetainedDaSource,
   defineFamilyApplication,
   type FamilyCommonInfrastructure,
+  MemoryFraudProofWorkflowJournalStore,
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadSourceResult,
   WORKFLOW_RUNTIME_CONFIG,
@@ -102,7 +103,7 @@ const invocation = (
   fundingReservationPermit: Object.freeze({
     permitVersion: "midgard-production-workflow-funding-reservation-permit-v1",
   }),
-  journalDirectory: "/var/lib/midgard-watcher/fraud-proof-journals",
+  journal: new MemoryFraudProofWorkflowJournalStore(),
   runtimeConfigPath: "/etc/midgard/watcher-v1.json",
   ...overrides,
 });
@@ -657,8 +658,7 @@ describe("production retained-DA runtime V1", () => {
       });
       expect(loaded.schemaVersion).toBe(WORKFLOW_RUNTIME_CONFIG);
       expect(loaded.retainedDaSources).toHaveLength(1);
-      // The loaded runtime carries exactly what the builder built: the
-      // common infrastructure and the resolver, nothing family-shaped.
+      // Exactly what the builder built; nothing family-shaped.
       expect(loaded.infrastructure).toBe(built.infrastructure);
       expect(loaded.resolveReferenceScript).toBe(built.resolveReferenceScript);
       expect(loaded).not.toHaveProperty("config");

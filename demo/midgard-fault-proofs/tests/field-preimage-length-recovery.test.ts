@@ -532,7 +532,7 @@ it.each([
             decisionDigest: freshDecision.decisionDigest,
             rollbackGeneration: "0",
           }),
-        journalDirectory: directory,
+        journal: new DirectoryFraudProofWorkflowJournalStore(directory),
         runtimeConfigPath: "/fixture/field-runtime.json",
       });
       if (mode === "wrong authorizing decision") {

@@ -1,5 +1,3 @@
-import { rm } from "node:fs/promises";
-
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +19,7 @@ afterEach(async () => {
  * raises its alerts into `alerts`. */
 const sweeping = async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
-  await rm(fixture.journalDirectory, { recursive: true, force: true });
+  fixture.workflowJournal.forgetObjective(fixture.objective);
   supersededAttemptReadSchedule.forget(fixture.transactionHash);
   const alerts: { subjectDigest: string; active: boolean }[] = [];
   let clock = 1_000_000;

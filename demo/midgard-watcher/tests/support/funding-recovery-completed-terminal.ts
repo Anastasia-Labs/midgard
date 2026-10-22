@@ -1,6 +1,5 @@
 import {
   deriveFraudProofRawL1CompletedTerminal,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
@@ -23,9 +22,7 @@ import {
 export const completedTerminalWriter = async (
   fixture: Awaited<ReturnType<typeof setupFundingRecoveryFixture>>,
 ) => {
-  const journal = new DirectoryFraudProofWorkflowJournalStore(
-    fixture.journalDirectory,
-  );
+  const journal = fixture.objectiveJournal();
   const append = async (event: FraudProofWorkflowJournalEvent) => {
     const entries = await journal.load(fixture.initial.workflowId);
     await journal.append(

@@ -214,11 +214,12 @@ const reservationRecords = async (
 
 describe("watcher production prover funding permit mint V1", () => {
   it("refuses a structural funding authority factory without reserving", async () => {
-    const { store } = await openStore();
+    const { store, journal: workflowJournal } = await openStore();
     const admitted = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       journalAuthenticationKey: TEST_JOURNAL_KEY,
+      workflowJournal,
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
@@ -239,11 +240,12 @@ describe("watcher production prover funding permit mint V1", () => {
 
   it("refuses a runner that was not installed by its canonical workflow factory without reserving", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const { store } = await openStore();
+    const { store, journal: workflowJournal } = await openStore();
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       journalAuthenticationKey: TEST_JOURNAL_KEY,
+      workflowJournal,
       deploymentIdentity,
       protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity,
@@ -257,7 +259,7 @@ describe("watcher production prover funding permit mint V1", () => {
 
   it("admits a measured runner and rejects an invalid actuation permit before reserving", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const { store } = await openStore();
+    const { store, journal: workflowJournal } = await openStore();
     const protocolParameters =
       await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity,
@@ -267,6 +269,7 @@ describe("watcher production prover funding permit mint V1", () => {
       launchScope: ["doubleSpend"],
       journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
       journalAuthenticationKey: TEST_JOURNAL_KEY,
+      workflowJournal,
       deploymentIdentity,
       protocolParameters,
       store,

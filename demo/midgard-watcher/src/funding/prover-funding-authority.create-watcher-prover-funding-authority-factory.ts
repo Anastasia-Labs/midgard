@@ -12,6 +12,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
+import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
@@ -116,6 +117,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
+  /** The per-proof workflow journal on the funding store's connection. */
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
   /** Reads signed attempts from their own bytes; it alone settles funding
    * no workflow will drive again. */
@@ -307,6 +310,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       await authorizeWatcherProverFundingRecovery({
         journalRoot: input.journalRoot,
         journalAuthenticationKey: input.journalAuthenticationKey,
+        workflowJournal: input.workflowJournal,
         deploymentIdentity: input.deploymentIdentity,
         actuationPermit: request.actuationPermit,
         category: request.category,

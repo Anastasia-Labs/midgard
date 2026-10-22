@@ -10,7 +10,6 @@ import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-de
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
 
-export { watcherProofObjectiveDirectory } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 export { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
 export { TEST_JOURNAL_KEY };
 

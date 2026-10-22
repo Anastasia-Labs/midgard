@@ -146,7 +146,6 @@ export const invocation = (
   category,
   deploymentFingerprint: DEPLOYMENT,
   headerHash: HEADER,
-  journalDirectory: "/var/lib/midgard-watcher/fraud-proof-journals",
   runtimeConfigPath: configPath,
   ...overrides,
 });

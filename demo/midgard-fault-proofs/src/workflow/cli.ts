@@ -15,7 +15,22 @@ import {
   type WorkflowApplicationRegistry,
 } from "./adapters.js";
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
+
+/** The standalone command's journal: a directory store, whose construction
+ * is side-effect free; the directory is created only by an actual append
+ * after a complete adapter has admitted canonical evidence. */
+export const directoryWorkflowJournal = (
+  directory: string | undefined,
+  usage: string,
+): FraudProofWorkflowJournalStore => {
+  if (directory === undefined)
+    throw new Error(`Missing required --workflow-journal-dir.\n${usage}`);
+  if (directory.trim().length === 0)
+    throw new Error("--workflow-journal-dir must not be empty");
+  return new DirectoryFraudProofWorkflowJournalStore(directory);
+};
 
 export const workflowReadinessReport = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -56,7 +71,7 @@ export const runFraudProofWorkflowCli = async ({
   category,
   deploymentFingerprint,
   headerHash,
-  journalDirectory,
+  journal,
   runtimeConfigPath,
   decisionDigest,
   actuationPermit,
@@ -68,7 +83,8 @@ export const runFraudProofWorkflowCli = async ({
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly journalDirectory: string;
+  /** The durable journal the objective's workflow appends to. */
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly runtimeConfigPath: string;
   /** Opaque authority minted from the admitted classifier decision. */
   readonly decisionDigest?: string;
@@ -90,9 +106,6 @@ export const runFraudProofWorkflowCli = async ({
   if (!/^[0-9a-f]{56}$/u.test(headerHash)) {
     throw new Error("--header-hash must be 28-byte lowercase hex");
   }
-  if (journalDirectory.trim().length === 0) {
-    throw new Error("--workflow-journal-dir must not be empty");
-  }
   if (runtimeConfigPath.trim().length === 0) {
     throw new Error("--workflow-runtime-config must not be empty");
   }
@@ -105,9 +118,6 @@ export const runFraudProofWorkflowCli = async ({
       "production workflow actuation requires admitted decision and funding reservation permits from the application supervisor",
     );
   }
-  // Construction is side-effect free. The directory is created only by an
-  // actual append after a complete adapter has admitted canonical evidence.
-  void new DirectoryFraudProofWorkflowJournalStore(journalDirectory);
   assertWorkflowAdaptersReady([category], applicationRegistry);
   return await workflowAdapterRunner(category, applicationRegistry).runOrResume(
     {
@@ -118,7 +128,7 @@ export const runFraudProofWorkflowCli = async ({
       decisionDigest,
       actuationPermit,
       fundingReservationPermit,
-      journalDirectory,
+      journal,
       runtimeConfigPath,
       ...(onProgress === undefined ? {} : { onProgress }),
     },

@@ -1,11 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
   COMPLETE_CANONICAL_REPLAY,
   computeFraudProofWorkflowId,
   createWorkflowReconciliationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
@@ -21,7 +20,10 @@ import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-pr
 import { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
 import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import {
+  emptyWorkflowJournal,
+  TEST_JOURNAL_KEY,
+} from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -32,7 +34,11 @@ afterEach(async () => {
   );
 });
 
-const setup = async () => {
+type Entry = FraudProofWorkflowJournalEntry;
+
+/** `substitute` names one entry the journal holds in place of the one at
+ * its sequence; the permit is still minted from the original entries. */
+const setup = async (substitute?: (entries: readonly Entry[]) => Entry) => {
   const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
   const journalRoot = await mkdtemp(
     join(
@@ -84,13 +90,11 @@ const setup = async () => {
     decisionDigest: decision.decisionDigest,
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const journalDirectory = join(
-    journalRoot,
-    "fault-proofs",
-    identity.category,
-    decision.headerHash,
-  );
-  const journal = new DirectoryFraudProofWorkflowJournalStore(journalDirectory);
+  const workflowJournal = emptyWorkflowJournal();
+  const journal = workflowJournal.forObjective({
+    category: identity.category,
+    headerHash: decision.headerHash,
+  });
   const familyIdentity = `${txId}:0:0:${"99".repeat(32)}:${"aa".repeat(32)}`;
   const artifact = { category: identity.category, familyIdentity };
   const entries: FraudProofWorkflowJournalEntry[] = [];
@@ -125,9 +129,14 @@ const setup = async () => {
       recordedAt: "2026-09-16T12:00:00.000Z",
       event,
     };
-    await journal.append(entry, entries.length);
     entries.push(entry);
   }
+  const replacement = substitute?.(entries);
+  for (const entry of entries)
+    await journal.append(
+      entry.sequence === replacement?.sequence ? replacement : entry,
+      entry.sequence,
+    );
   const controller = createWorkflowReconciliationPermitController({
     decision,
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -184,21 +193,13 @@ const setup = async () => {
       authorizeWatcherProverFundingRecovery({
         journalRoot,
         journalAuthenticationKey: TEST_JOURNAL_KEY,
+        workflowJournal,
         deploymentIdentity,
         actuationPermit: controller.permit,
         category: identity.category,
         rollbackGeneration: "0",
         store,
       }),
-    replace: async (entry: FraudProofWorkflowJournalEntry) =>
-      writeFile(
-        join(
-          journalDirectory,
-          workflowId,
-          `${entry.sequence.toString().padStart(8, "0")}.json`,
-        ),
-        JSON.stringify(entry),
-      ),
   };
 };
 
@@ -212,18 +213,22 @@ it("recovers mint's exact retained artifact under verified deployment finality w
 it.each(["familyIdentity", "category", "releaseFinality"])(
   "rejects a self-consistent mint artifact with changed %s",
   async (field) => {
-    const test = await setup();
-    const prepared = test.entries[1]!;
-    if (prepared.event.kind !== "prepared")
-      throw new Error("missing prepared fixture");
-    const artifact = { ...prepared.event.artifact, [field]: "ff".repeat(32) };
-    await test.replace({
-      ...prepared,
-      event: {
-        ...prepared.event,
-        artifact,
-        artifactDigest: journalJsonDigest(artifact),
-      },
+    const test = await setup((entries) => {
+      const prepared = entries[1]!;
+      if (prepared.event.kind !== "prepared")
+        throw new Error("missing prepared fixture");
+      const artifact = {
+        ...prepared.event.artifact,
+        [field]: "ff".repeat(32),
+      };
+      return {
+        ...prepared,
+        event: {
+          ...prepared.event,
+          artifact,
+          artifactDigest: journalJsonDigest(artifact),
+        },
+      };
     });
     await expect(test.authorize()).rejects.toThrow();
     expect(test.forbidden).not.toHaveBeenCalled();
@@ -243,13 +248,14 @@ it.each(["deploymentFingerprint", "decisionDigest"] as const)(
 );
 
 it("rejects signed attempt evidence inconsistent with the exact retained mint identity", async () => {
-  const test = await setup();
-  const intent = test.entries[3]!;
-  if (intent.event.kind !== "submission_intent")
-    throw new Error("missing intent fixture");
-  await test.replace({
-    ...intent,
-    event: { ...intent.event, actionInput: { familyIdentity: "changed" } },
+  const test = await setup((entries) => {
+    const intent = entries[3]!;
+    if (intent.event.kind !== "submission_intent")
+      throw new Error("missing intent fixture");
+    return {
+      ...intent,
+      event: { ...intent.event, actionInput: { familyIdentity: "changed" } },
+    };
   });
   await expect(test.authorize()).rejects.toThrow();
   expect(test.forbidden).not.toHaveBeenCalled();

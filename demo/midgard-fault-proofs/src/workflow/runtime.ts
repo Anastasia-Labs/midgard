@@ -29,7 +29,6 @@ import {
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
 import { type InstalledFraudProofCategory } from "./installed-categories.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
 import { resumeRecordedFraudProofWorkflow } from "./orchestrator.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
@@ -133,9 +132,7 @@ const createManifestBoundWorkflowRunOrResume =
     const journal = bindWorkflowFundingReservationJournal({
       permit: invocation.fundingReservationPermit,
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(
-          invocation.journalDirectory,
-        ),
+        journal: invocation.journal,
         permit: invocation.actuationPermit,
         decisionDigest: invocation.decisionDigest,
         deploymentFingerprint: invocation.deploymentFingerprint,

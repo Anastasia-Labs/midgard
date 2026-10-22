@@ -283,7 +283,7 @@ export const startWatcherRuntime = async (
       fundingFactory: fundingRuntime.factory,
       walletAddress: proverWalletAddress,
       provider,
-      journalRoot: input.config.workflowJournalDirectory,
+      workflowJournal: fundingRuntime.store.journal,
       runtimeConfigPath: input.config.watcherRuntimeConfigPath,
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => operations.sink,
@@ -291,6 +291,7 @@ export const startWatcherRuntime = async (
     });
     const activeSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
+      workflowJournal: fundingRuntime.store.journal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: watcherDeadlineAlertHeadroomMs(
         watcherConfig.deadlines,

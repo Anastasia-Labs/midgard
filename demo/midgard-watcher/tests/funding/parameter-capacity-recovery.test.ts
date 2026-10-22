@@ -43,6 +43,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
     launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
@@ -139,6 +140,7 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     });
     const factory = createWatcherProverFundingAuthorityFactory({
       journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
       launchScope: installedLaunchScope(fixture.old.launchScope),
       deploymentIdentity,

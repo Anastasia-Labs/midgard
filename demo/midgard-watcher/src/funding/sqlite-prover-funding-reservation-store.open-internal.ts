@@ -9,6 +9,7 @@ import {
   parseWorkflowFundingSubmissionHandoff,
 } from "@al-ft/midgard-fault-proofs";
 
+import { createWatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
   type WatcherProverFundingReservationPlan,
@@ -62,6 +63,7 @@ import {
   createVerifiedRowMemo,
   verifiedRowKey,
 } from "./sqlite-prover-funding-reservation-store.verified-row-memo.js";
+import { openProverFundingRevision } from "./sqlite-prover-funding-revision.js";
 
 export const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
@@ -155,6 +157,8 @@ export const openInternal = async (
         ON DELETE CASCADE
     ) STRICT;
   `);
+  const journal = createWatcherWorkflowJournal(database);
+  const fundingRevision = openProverFundingRevision(database);
 
   const selectAll = database.prepare(`
     SELECT reservation_id, record_digest, canonical_json
@@ -264,10 +268,6 @@ export const openInternal = async (
         OR EXISTS (SELECT 1 FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ?1)
         AS present
   `);
-  const selectDataVersion = database.prepare("PRAGMA data_version");
-  const selectTotalChanges = database.prepare(
-    "SELECT total_changes() AS changes",
-  );
   const {
     retireLegacyAbandonment,
     insertAbandonment,
@@ -471,10 +471,9 @@ export const openInternal = async (
       ),
     });
 
-  /** The audited store is unchanged while neither this connection nor any
-   * other has written since; its audit and lease projection then stand. */
-  const storeVersion = () =>
-    `${String((selectDataVersion.get() as { data_version: unknown }).data_version)}:${String((selectTotalChanges.get() as { changes: unknown }).changes)}`;
+  /** While the funding revision stands, the audit and lease projection
+   * stand. */
+  const storeVersion = fundingRevision.read;
   let verified: Readonly<{
     version: string;
     records: readonly WatcherProverFundingReservationRecord[];
@@ -771,6 +770,9 @@ export const openInternal = async (
     try {
       acknowledgeOutpacedAbandonments(recordedSubmissions, readOne);
       if (reservationId !== null) assertSubmissionAuthority(reservationId);
+      // Before the operation, so no memo of the old revision serves its
+      // writes.
+      fundingRevision.bump();
       const value = operation();
       if (reservationId !== null) assertSubmissionAuthority(reservationId);
       const audited = audit();
@@ -1482,6 +1484,7 @@ export const openInternal = async (
   return Object.freeze({
     schemaVersion: WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
     store,
+    journal,
     close: () => database.close(),
   });
 };

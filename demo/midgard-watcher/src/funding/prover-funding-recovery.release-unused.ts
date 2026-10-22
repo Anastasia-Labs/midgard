@@ -1,12 +1,7 @@
-import type { Dirent } from "node:fs";
-import { readdir, realpath } from "node:fs/promises";
-import { join } from "node:path";
-
-import { DirectoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs";
-
 import { openWatcherFaultDecisionJournal } from "../fault-proofs/fault-decision-journal.js";
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
+import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type { WatcherOrphanedReservations } from "./prover-funding-recovery.orphaned-reservation.js";
 import {
@@ -39,6 +34,7 @@ const signedReservation = async (
 export const releaseUnusedWatcherProverFundingReservations = async (input: {
   readonly journalRoot: string;
   readonly journalAuthenticationKey: Uint8Array;
+  readonly workflowJournal: WatcherWorkflowJournal;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly store: WatcherProverFundingReservationStore;
@@ -84,55 +80,21 @@ export const releaseUnusedWatcherProverFundingReservations = async (input: {
     if (matches.length !== 1 || decision?.decision !== "fault_detected")
       continue;
     if (input.decisionMissingOnly === true && !signed) continue;
-    const directory = join(
-      input.journalRoot,
-      "fault-proofs",
-      decision.category,
-      decision.headerHash,
-    );
-    let names: Dirent[];
-    try {
-      names = await readdir(directory, { withFileTypes: true });
-    } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT")
-        names = [];
-      else throw error;
-    }
-    if (names.length > 0 && (await realpath(directory)) !== directory)
-      throw new Error("unused funding journal traverses a symlink");
-    let submitted = false;
-    for (const name of names) {
-      if (
-        !name.isDirectory() ||
-        !/^[0-9a-f]{64}$/u.test(name.name) ||
-        (await realpath(join(directory, name.name))) !==
-          join(directory, name.name)
-      )
-        throw new Error(
-          "unused funding target contains an invalid journal entry",
-        );
-      const entries = await new DirectoryFraudProofWorkflowJournalStore(
-        directory,
-      ).load(name.name);
-      const identity = entries[0]?.identity;
-      if (
-        identity !== undefined &&
-        (identity.decisionDigest === undefined ||
-          identity.deploymentFingerprint !== record.deploymentFingerprint ||
-          identity.category !== decision.category ||
-          identity.target.kind !== "state_queue_header" ||
-          identity.target.headerHash !== decision.headerHash)
-      )
-        throw new Error(
-          "unused funding journal changed its execution identity",
-        );
-      if (
-        identity?.decisionDigest === record.decisionDigest &&
-        (signed ||
-          entries.some(({ event }) => event.kind === "submission_intent"))
-      )
-        submitted = true;
-    }
+    const entries =
+      input.workflowJournal.readExecution({
+        category: decision.category,
+        headerHash: decision.headerHash,
+      })?.entries ?? [];
+    const identity = entries[0]?.identity;
+    if (
+      identity !== undefined &&
+      identity.deploymentFingerprint !== record.deploymentFingerprint
+    )
+      throw new Error("unused funding journal changed its execution identity");
+    const submitted =
+      identity?.decisionDigest === record.decisionDigest &&
+      (signed ||
+        entries.some(({ event }) => event.kind === "submission_intent"));
     // A signed reservation is its journal's to settle; with none, it is orphaned.
     if (signed) {
       if (!submitted) orphaned.push(record);

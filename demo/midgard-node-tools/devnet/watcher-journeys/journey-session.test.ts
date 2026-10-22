@@ -5,7 +5,6 @@ import { join } from "node:path";
 
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
@@ -13,6 +12,7 @@ import {
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
 } from "@al-ft/midgard-fault-proofs";
+import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { state } from "./journey-mocks.js";
@@ -233,7 +233,8 @@ it("starts against the retained head before staging and closes after fixture fai
 });
 
 it("captures real 56-hex header / 64-hex workflow journal prefixes before staging", async () => {
-  const directory = join(state.runDirectory, "workflows");
+  const storePath = join(state.runDirectory, "watcher.sqlite");
+  const workflows = openWatcherWorkflowStoreForTest(storePath);
   const headerHash = "12".repeat(28);
   const identity = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -242,9 +243,7 @@ it("captures real 56-hex header / 64-hex workflow journal prefixes before stagin
     target: { kind: "state_queue_header" as const, headerHash },
   };
   const workflowId = computeFraudProofWorkflowId(identity);
-  const store = new DirectoryFraudProofWorkflowJournalStore(
-    join(directory, "fault-proofs/doubleSpend", headerHash),
-  );
+  const store = workflows.forObjective({ category: "doubleSpend", headerHash });
   const entry: FraudProofWorkflowJournalEntry = {
     schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
     workflowId,
@@ -255,7 +254,7 @@ it("captures real 56-hex header / 64-hex workflow journal prefixes before stagin
   };
   await store.append(entry, 0);
   const baseline = await captureJourneyWorkflowBaseline(
-    directory,
+    storePath,
     "doubleSpend",
   );
   expect(workflowId).toHaveLength(64);
@@ -274,15 +273,17 @@ it("captures real 56-hex header / 64-hex workflow journal prefixes before stagin
   );
   expect(baseline.get(headerHash)).toHaveLength(1);
   expect(
-    (await captureJourneyWorkflowBaseline(directory, "doubleSpend")).get(
+    (await captureJourneyWorkflowBaseline(storePath, "doubleSpend")).get(
       headerHash,
     ),
   ).toHaveLength(2);
   expect(baseline.get("34".repeat(28)) ?? []).toEqual([]);
+  workflows.close();
 });
 
 it("distinguishes an old completed proof from a target completed during staging", async () => {
-  const directory = join(state.runDirectory, "workflows");
+  const storePath = join(state.runDirectory, "watcher.sqlite");
+  const workflows = openWatcherWorkflowStoreForTest(storePath);
   const complete = async (headerHash: string) => {
     const identity = {
       schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -291,9 +292,10 @@ it("distinguishes an old completed proof from a target completed during staging"
       target: { kind: "state_queue_header" as const, headerHash },
     };
     const workflowId = computeFraudProofWorkflowId(identity);
-    const store = new DirectoryFraudProofWorkflowJournalStore(
-      join(directory, "fault-proofs/doubleSpend", headerHash),
-    );
+    const store = workflows.forObjective({
+      category: "doubleSpend",
+      headerHash,
+    });
     const terminal: FraudProofWorkflowTerminal = {
       schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
       category: "doubleSpend",
@@ -377,7 +379,7 @@ it("distinguishes an old completed proof from a target completed during staging"
     newHeader = "34".repeat(28);
   await complete(oldHeader);
   const baseline = await captureJourneyWorkflowBaseline(
-    directory,
+    storePath,
     "doubleSpend",
   );
   await complete(newHeader);
@@ -386,10 +388,11 @@ it("distinguishes an old completed proof from a target completed during staging"
   ).toBe(true);
   expect(baseline.get(newHeader) ?? []).toEqual([]);
   expect(
-    (await captureJourneyWorkflowBaseline(directory, "doubleSpend"))
+    (await captureJourneyWorkflowBaseline(storePath, "doubleSpend"))
       .get(newHeader)
       ?.at(-1)?.event.kind,
   ).toBe("completed");
+  workflows.close();
 });
 
 it("closes the remaining services even when one service fails to close", async () => {

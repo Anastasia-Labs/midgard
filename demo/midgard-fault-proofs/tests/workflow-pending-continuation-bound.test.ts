@@ -19,6 +19,7 @@ import {
 import {
   admittedActuation,
   DEPLOYMENT,
+  directoryJournal,
 } from "./workflow-runtime.admitted-actuation.js";
 import {
   doubleSpendRecord,
@@ -49,11 +50,9 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 type Entry = Readonly<{ event: Readonly<Record<string, unknown>> }>;
 
-/**
- * A record session's journal as the orchestrator writes it: every poll of an
- * unconfirmed transaction appends a pending reconciliation; a confirmation is
- * progress.
- */
+/** A record session's journal as the orchestrator writes it: every poll of
+ * an unconfirmed transaction appends a pending reconciliation; a
+ * confirmation is progress. */
 const recordJournal = () => {
   const entries: Entry[] = [
     { event: { kind: "submitted", actionId: "walk", txHash: "aa" } },
@@ -174,7 +173,7 @@ const runnerFor = async (
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
       fundingReservationPermit: actuation.fundingReservationPermit,
-      journalDirectory,
+      journal: directoryJournal(journalDirectory),
       runtimeConfigPath: "/etc/midgard/runtime.json",
       onProgress,
     });
@@ -490,7 +489,7 @@ describe("bounded pending continuation", () => {
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: await scratch(),
+        journal: directoryJournal(await scratch()),
         runtimeConfigPath: "/etc/midgard/runtime.json",
         onProgress,
         applicationRegistry: installWorkflowApplicationRegistry({

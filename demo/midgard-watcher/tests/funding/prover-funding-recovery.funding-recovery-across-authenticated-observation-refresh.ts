@@ -2,8 +2,6 @@ import "./prover-funding-recovery.interrupted-abandonment.js";
 import "./prover-funding-recovery.registration.js";
 
 import { createHash } from "node:crypto";
-import { readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import {
   assertWorkflowJournalActuation,
@@ -12,7 +10,6 @@ import {
   bindWorkflowActuationRecoveryIdentity,
   computeFraudProofWorkflowId,
   createWorkflowActuationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
   journalJsonDigest,
   normalizeJournalJson,
   workflowActuationDecisionDigest,
@@ -187,7 +184,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("reclaims crash-before-journal reservations at startup and never steals a signed DB-before-journal handoff", async () => {
     const unused = await setup(false, false, true);
-    await rm(unused.journalDirectory, { recursive: true });
+    unused.workflowJournal.forgetObjective(unused.objective);
     await unused.restartStore();
     await unused.releaseUnusedAtStartup();
     expect((await unused.records())[0]).toMatchObject({
@@ -214,7 +211,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("scopes runner cleanup to its captured reservation and retains journal-only submission uncertainty", async () => {
     const test = await setup(false, false, true);
-    await rm(test.journalDirectory, { recursive: true });
+    test.workflowJournal.forgetObjective(test.objective);
     test.walletUtxos.push(
       ...[0, 1, 2, 3].map((outputIndex) => ({
         txHash: "a1".repeat(32),
@@ -247,7 +244,7 @@ describe("funding recovery across authenticated observation refresh", () => {
 
   it("refuses reconciliation funding before selection when the durable workflow is absent", async () => {
     const test = await setup();
-    await rm(test.journalDirectory, { recursive: true });
+    test.workflowJournal.forgetObjective(test.objective);
     const controller = createWorkflowActuationPermitController({
       decision: test.fresh,
       rollbackGeneration: "2",
@@ -744,7 +741,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     expect(vi.mocked(test.adapter.reconcile)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(test.adapter.submit)).not.toHaveBeenCalled();
     expect(vi.mocked(test.adapter.prepare)).not.toHaveBeenCalled();
-    expect(await readdir(test.journalDirectory)).toEqual([
+    expect(test.workflowJournal.readWorkflowIds(10)).toEqual([
       test.initial.workflowId,
     ]);
     const entries = await test.journal.load(test.initial.workflowId);
@@ -800,7 +797,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     expect(
       entries.filter(({ event }) => event.kind === "submission_intent"),
     ).toHaveLength(1);
-    expect(await readdir(test.journalDirectory)).toEqual([
+    expect(test.workflowJournal.readWorkflowIds(10)).toEqual([
       test.initial.workflowId,
     ]);
   });
@@ -873,9 +870,7 @@ describe("funding recovery across authenticated observation refresh", () => {
       rollbackGeneration: "2",
     });
     bindWorkflowActuationJournal({
-      journal: new DirectoryFraudProofWorkflowJournalStore(
-        test.journalDirectory,
-      ),
+      journal: test.objectiveJournal(),
       permit: firstBinding.permit,
       category: "doubleSpend",
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -929,41 +924,29 @@ describe("funding recovery across authenticated observation refresh", () => {
         payloadSha256: test.old.payloadSha256,
       },
     };
-    await writeFile(
-      join(
-        test.journalDirectory,
-        test.initial.workflowId,
-        `${entry.sequence.toString().padStart(8, "0")}.json`,
-      ),
-      JSON.stringify({
+    await test.rewriteJournalEntries([
+      {
         ...entry,
         event: {
           ...entry.event,
           artifact,
           artifactDigest: journalJsonDigest(normalizeJournalJson(artifact)),
         },
-      }),
-    );
+      },
+    ]);
     await expect(test.recover()).rejects.toThrow("prepared artifact differs");
     expect(await test.records()).toEqual([test.pending]);
   });
 
   it("refuses a journal intent inconsistent with the reservation's exact signed transaction", async () => {
     const test = await setup();
-    for (const entry of test.originalEntries) {
-      if (!("txHash" in entry.event)) continue;
-      await writeFile(
-        join(
-          test.journalDirectory,
-          test.initial.workflowId,
-          `${entry.sequence.toString().padStart(8, "0")}.json`,
-        ),
-        JSON.stringify({
-          ...entry,
-          event: { ...entry.event, txHash: "fe".repeat(32) },
-        }),
-      );
-    }
+    await test.rewriteJournalEntries(
+      test.originalEntries.flatMap((entry) =>
+        "txHash" in entry.event
+          ? [{ ...entry, event: { ...entry.event, txHash: "fe".repeat(32) } }]
+          : [],
+      ),
+    );
     await expect(test.recover()).rejects.toThrow(
       "funding handoff conflicts with an existing journal action",
     );
@@ -977,9 +960,7 @@ describe("funding recovery across authenticated observation refresh", () => {
       decisionDigest: test.fresh.decisionDigest,
     };
     const workflowId = computeFraudProofWorkflowId(identity);
-    await new DirectoryFraudProofWorkflowJournalStore(
-      test.journalDirectory,
-    ).append(
+    await test.objectiveJournal().append(
       {
         ...test.originalEntries[0]!,
         identity,
@@ -987,9 +968,7 @@ describe("funding recovery across authenticated observation refresh", () => {
       },
       0,
     );
-    await expect(test.recover()).rejects.toThrow(
-      "multiple candidate executions",
-    );
+    await expect(test.recover()).rejects.toThrow("multiple durable executions");
     expect(await test.records()).toEqual([test.pending]);
   });
 
@@ -1002,6 +981,7 @@ describe("funding recovery across authenticated observation refresh", () => {
     await authorizeWatcherProverFundingRecovery({
       journalRoot: test.journalRoot,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
+      workflowJournal: test.workflowJournal,
       deploymentIdentity,
       actuationPermit: controller.permit,
       category: "doubleSpend",

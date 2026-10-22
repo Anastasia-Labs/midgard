@@ -12,7 +12,6 @@
  * deployment binding with `bindingFor` and the L1 observation port with the
  * recorded raw authority. The roster is the installed scene's.
  */
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import { Lucid } from "@lucid-evolution/lucid";
@@ -21,10 +20,7 @@ import {
   watcherDeploymentReleaseFinalityAuthority,
   watcherValidationDisputeFundingTerms,
 } from "midgard-watcher";
-import {
-  recordWatcherFaultDecision,
-  watcherProofObjectiveDirectory,
-} from "midgard-watcher/tests/support/installed-prover-funding-recovery";
+import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
 import { validationTraceComputationSteps } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceAwaitingCounterparty } from "../../src/validation-trace-dispute/waiting.js";
@@ -249,11 +245,6 @@ export const installValidationTraceApplication = async ({
   );
   const directory = scratch.path;
   await recordWatcherFaultDecision(directory, decision);
-  const journalDirectory = watcherProofObjectiveDirectory(directory, {
-    category: CATEGORY,
-    headerHash,
-  });
-  await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
 
   /** The watcher's loader body (`buildCommonInfrastructure`) for one
    * invocation over `headerHash`, with `decisionDigest` when admitted. */
@@ -372,7 +363,10 @@ export const installValidationTraceApplication = async ({
       decisionDigest: decision.decisionDigest,
       actuationPermit: permit,
       fundingReservationPermit,
-      journalDirectory,
+      journal: funding.workflowJournal.forObjective({
+        category: CATEGORY,
+        headerHash,
+      }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
     } as never)) as
       | FraudProofWorkflowRunResult

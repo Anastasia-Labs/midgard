@@ -1,7 +1,4 @@
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalEvent,
-} from "@al-ft/midgard-fault-proofs";
+import { type FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
@@ -40,9 +37,7 @@ describe("an objective whose own funding is refused is quarantined alone", () =>
   it("holds only its objective when its journal no longer anchors the reservation's stored handoff, before querying the wallet", async () => {
     const test = await setup();
     // The journal moved on to an attempt the reservation never signed.
-    const journal = new DirectoryFraudProofWorkflowJournalStore(
-      test.fixture.journalDirectory,
-    );
+    const journal = test.fixture.objectiveJournal();
     const entries = await journal.load(test.fixture.initial.workflowId);
     const signed = (kind: string) =>
       entries.find(({ event }) => event.kind === kind)!.event;

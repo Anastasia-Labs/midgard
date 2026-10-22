@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 import {
   acceptedTransactionSubject,
@@ -13,12 +12,12 @@ import {
   createHeaderClassifier,
   createWorkflowActuationPermitController,
   createWorkflowRuntimeFundingPolicy,
-  DirectoryFraudProofWorkflowJournalStore,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
   type HeaderFaultDecision,
@@ -51,7 +50,6 @@ import {
   parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationPlan,
 } from "../../src/funding/prover-funding-reservation.js";
-import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
 import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentProtocolScriptAuthority,
@@ -69,6 +67,13 @@ import {
   sourcesFor,
   walletAddress,
 } from "./fault-proof-funding-fixture.sources-for.js";
+import {
+  currentWorkflowJournal,
+  editFixtureStore,
+  objectiveWorkflowJournal,
+  openFixtureFundingStore,
+  rewriteWorkflowRows,
+} from "./fault-proof-funding-fixture.workflow-store.js";
 import { createFundingRecoveryDirectory } from "./test-storage-root.js";
 import {
   recordObjectives,
@@ -89,13 +94,7 @@ export const setupFundingRecoveryFixture = async (
   const journalRoot = await createFundingRecoveryDirectory();
   directories.push(journalRoot);
   const path = join(journalRoot, "watcher.sqlite");
-  let database = await openWatcherSqliteProverFundingReservationStore({
-    path,
-    protocolParameterHistory: {
-      deploymentIdentity,
-      authenticationKey: Buffer.alloc(32, 0x91),
-    },
-  });
+  let database = await openFixtureFundingStore(path);
   closers.push(() => database.close());
   const sharedInput = outRefCbor(91, 0n);
   const fixture = await buildCanonicalBlockFixture({
@@ -184,6 +183,7 @@ export const setupFundingRecoveryFixture = async (
       deploymentIdentity,
       protocolParameters,
       protocolParameterHistory: database.protocolParameterHistory,
+      workflowJournal: currentWorkflowJournal(() => database.journal),
       store: {
         ...database.store,
         releaseUnused: (record) => database.store.releaseUnused!(record),
@@ -322,11 +322,13 @@ export const setupFundingRecoveryFixture = async (
   if (capturedPlan === undefined)
     throw new Error("missing admitted reservation plan");
   const plan = capturedPlan;
-  const journalDirectory = join(
-    journalRoot,
-    "fault-proofs",
-    "doubleSpend",
-    old.headerHash,
+  const objective = {
+    category: "doubleSpend",
+    headerHash: old.headerHash,
+  } as const;
+  const objectiveJournal = objectiveWorkflowJournal(
+    () => database.journal,
+    objective,
   );
   const bind = (
     decision: HeaderFaultDecision,
@@ -334,7 +336,7 @@ export const setupFundingRecoveryFixture = async (
   ) =>
     bindWorkflowFundingReservationJournal({
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(journalDirectory),
+        journal: objectiveJournal(),
         permit: admitted.controller.permit,
         category: "doubleSpend",
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -544,24 +546,15 @@ export const setupFundingRecoveryFixture = async (
   if (legacyPending) {
     // Retained workflows written before action handoffs still have their exact
     // signed pending transition and complete intent in the directory journal.
-    const legacy = new DatabaseSync(path);
-    try {
+    editFixtureStore(path, (legacy) =>
       legacy
         .prepare(
           "DELETE FROM watcher_prover_funding_handoff_v1 WHERE reservation_id = ?",
         )
-        .run(plan.reservationId);
-    } finally {
-      legacy.close();
-    }
+        .run(plan.reservationId),
+    );
   }
-  database = await openWatcherSqliteProverFundingReservationStore({
-    path,
-    protocolParameterHistory: {
-      deploymentIdentity,
-      authenticationKey: Buffer.alloc(32, 0x91),
-    },
-  });
+  database = await openFixtureFundingStore(path);
   vi.mocked(adapter.observe).mockClear();
   vi.mocked(adapter.prepare).mockClear();
   const originalEntries = await journal.load(initial.workflowId);
@@ -620,7 +613,8 @@ export const setupFundingRecoveryFixture = async (
     resolveInputs,
     releaseUnusedAtStartup: () => factory().releaseUnused(),
     journalRoot,
-    journalDirectory,
+    objective,
+    objectiveJournal,
     journal,
     initial,
     pending,
@@ -637,21 +631,28 @@ export const setupFundingRecoveryFixture = async (
     append,
     ...chain,
     records,
+    /** Overwrites committed workflow rows in place, then reopens the store
+     * so no cached fold hides them. */
+    rewriteJournalEntries: async (
+      entries: readonly FraudProofWorkflowJournalEntry[],
+    ) => {
+      database.close();
+      editFixtureStore(path, (raw) => rewriteWorkflowRows(raw, entries));
+      database = await openFixtureFundingStore(path);
+    },
     restartStore: async () => {
       database.close();
-      database = await openWatcherSqliteProverFundingReservationStore({
-        path,
-        protocolParameterHistory: {
-          deploymentIdentity,
-          authenticationKey: Buffer.alloc(32, 0x91),
-        },
-      });
+      database = await openFixtureFundingStore(path);
     },
     get protocolParameterHistory() {
       return database.protocolParameterHistory!;
     },
     get store() {
       return database.store;
+    },
+    /** The per-proof workflow journal of the store open now. */
+    get workflowJournal() {
+      return database.journal;
     },
   };
 };

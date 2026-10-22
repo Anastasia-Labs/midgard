@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
@@ -11,7 +9,6 @@ import {
   createWorkflowActuationPermitController,
   deriveFraudProofRawL1CompletedTerminal,
   deriveFraudProofRawL1FamilyStage,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   FraudProofL1UnavailableError,
@@ -55,6 +52,7 @@ import {
   setupFundingRecoveryFixture,
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
+import { stageWorkflowRows } from "../support/fault-proof-funding-fixture.workflow-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
@@ -157,9 +155,7 @@ export const setup = async (
   );
   const getUtxos = vi.fn(async () => fixture.walletUtxos);
   const getUtxosByOutRef = vi.fn(async () => []);
-  const journal = new DirectoryFraudProofWorkflowJournalStore(
-    fixture.journalDirectory,
-  );
+  const journal = fixture.objectiveJournal();
   const append = async (event: FraudProofWorkflowJournalEvent) => {
     const entries = await journal.load(fixture.initial.workflowId);
     await journal.append(
@@ -220,9 +216,7 @@ export const setup = async (
     await beforeRun(invocation);
     const bound = bindWorkflowFundingReservationJournal({
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(
-          fixture.journalDirectory,
-        ),
+        journal: fixture.objectiveJournal(),
         permit: invocation.actuationPermit,
         category: "doubleSpend",
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -256,7 +250,7 @@ export const setup = async (
       fundingFactory: fixture.fundingFactory(),
       walletAddress,
       provider: { getUtxos, getUtxosByOutRef },
-      journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-objective-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink: () => ({ recordProofStep: vi.fn(), setAlert: vi.fn() }),
@@ -268,6 +262,7 @@ export const setup = async (
       reservationDecisionHolds: () => [],
       proofRetention,
       journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
@@ -362,6 +357,8 @@ export const setup = async (
     secondRunStarted: secondRunStarted.promise,
     getUtxos,
     getUtxosByOutRef,
+    executionKept: () =>
+      fixture.workflowJournal.readExecution(fixture.objective) !== undefined,
     setBeforeRun: (callback: typeof beforeRun) => {
       beforeRun = callback;
     },
@@ -582,11 +579,10 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(supervisor.status().phase).toBe("accepting");
   });
 
-  it("releases an unheld objective with no signed attempt once its header leaves the queue, with its workflow directory, and admits it afresh if the header returns", async () => {
+  it("releases an unheld objective with no signed attempt once its header leaves the queue, with its workflow rows, and admits it afresh if the header returns", async () => {
     const test = await setup(BigInt(Date.now()), true, true);
     const { pinned, retention } = recordingRetention();
     const objective = `doubleSpend/${test.fixture.fresh.headerHash}`;
-    const directory = test.fixture.journalDirectory;
     const expectOpen = (
       supervisor: ReturnType<typeof test.createSupervisor>,
     ) => {
@@ -597,7 +593,7 @@ describe("proof objective progress with durable funding and journals", () => {
       });
       expect([...pinned]).toEqual([objective]);
       expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
-      expect(existsSync(directory)).toBe(true);
+      expect(test.executionKept()).toBe(true);
     };
     const expectReleased = (
       supervisor: ReturnType<typeof test.createSupervisor>,
@@ -610,7 +606,7 @@ describe("proof objective progress with durable funding and journals", () => {
       });
       expect([...pinned]).toEqual([]);
       expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
-      expect(existsSync(directory)).toBe(false);
+      expect(test.executionKept()).toBe(false);
     };
     const lastMode = () => test.runOrResume.mock.calls.at(-1)![0].mode;
     const supervisor = test.createSupervisor(retention);
@@ -692,14 +688,14 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(
       journalStates(test.fixture.journalRoot, "fault_proof_queue"),
     ).toEqual([]);
-    expect(existsSync(test.fixture.journalDirectory)).toBe(false);
+    expect(test.executionKept()).toBe(false);
     expect(test.runOrResume).toHaveBeenCalledOnce();
   });
 
   it("forgets a job a crash left active before its execution was written once its header leaves the queue", async () => {
     const test = await setup(BigInt(Date.now()), true, true);
     const { pinned, restarted } = await crashMidJob(test);
-    await rm(test.fixture.journalDirectory, { recursive: true });
+    test.fixture.workflowJournal.forgetObjective(test.fixture.objective);
     // While its header is queued the row stays: a live fault requeues it.
     await restarted.requestProgress({
       observation: progressObservation({
@@ -755,7 +751,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(
       journalStates(test.fixture.journalRoot, "fault_proof_queue"),
     ).toEqual(["finished"]);
-    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+    expect(test.executionKept()).toBe(true);
   });
 
   it.each([
@@ -794,7 +790,7 @@ describe("proof objective progress with durable funding and journals", () => {
       rollbackGeneration: "2",
     });
     await test.idle(supervisor);
-    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+    expect(test.executionKept()).toBe(true);
     // The next pass that does not prunes a final completion, as the next
     // start would.
     await test.request(supervisor, 3, test.fixture.fresh, false).accepted;
@@ -805,7 +801,7 @@ describe("proof objective progress with durable funding and journals", () => {
       objectiveCleanupFailures: [],
     });
     const root = test.fixture.journalRoot;
-    expect(existsSync(test.fixture.journalDirectory)).toBe(!pruned);
+    expect(test.executionKept()).toBe(!pruned);
     expect(objectiveRows(root)).toEqual(
       pruned ? [] : [`doubleSpend/${test.fixture.fresh.headerHash}`],
     );
@@ -851,7 +847,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(test.getUtxos).not.toHaveBeenCalled();
     await test.request(supervisor, 4, test.fixture.fresh, false).accepted;
     await test.idle(supervisor);
-    expect(existsSync(test.fixture.journalDirectory)).toBe(false);
+    expect(test.executionKept()).toBe(false);
     expect(objectiveRows(test.fixture.journalRoot)).toEqual([]);
   });
 
@@ -882,7 +878,7 @@ describe("proof objective progress with durable funding and journals", () => {
     });
     expect([...pinned]).toEqual([objective]);
     expect(objectiveRows(test.fixture.journalRoot)).toEqual([objective]);
-    expect(existsSync(test.fixture.journalDirectory)).toBe(true);
+    expect(test.executionKept()).toBe(true);
   });
 
   it.each([
@@ -1023,9 +1019,9 @@ describe("proof objective progress with durable funding and journals", () => {
     const test = await setup();
     // Stage the real signed fixture outside discovery, then publish its
     // evidence only after the supervisor has opened an empty decision reader.
-    const proofs = join(test.fixture.journalRoot, "fault-proofs");
-    const stagedProofs = join(test.fixture.journalRoot, "staged-proof-fixture");
-    await rename(proofs, stagedProofs);
+    const restoreProofs = stageWorkflowRows(
+      join(test.fixture.journalRoot, "watcher.sqlite"),
+    );
     openWatcherJournalDatabase({
       journalRoot: test.fixture.journalRoot,
       authenticationKey: TEST_JOURNAL_KEY,
@@ -1052,7 +1048,7 @@ describe("proof objective progress with durable funding and journals", () => {
     });
     await writer.appendLiveDecision(test.fixture.old);
     await writer.appendLiveDecision(test.fixture.fresh);
-    await rename(stagedProofs, proofs);
+    restoreProofs();
     const entered = deferred(),
       release = deferred();
     test.setBeforeRun(async () => {

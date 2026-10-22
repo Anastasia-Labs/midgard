@@ -944,7 +944,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory,
+        journal: new DirectoryFraudProofWorkflowJournalStore(journalDirectory),
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       });
       expect(loadRuntime).toHaveBeenCalledWith({
@@ -1025,7 +1025,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: "/tmp/midgard-runtime-pending-session",
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         runtimeConfigPath: "/etc/midgard/runtime.json",
       });
       await vi.advanceTimersByTimeAsync(0);
@@ -1090,7 +1090,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: "/tmp/midgard-runtime-pending-revocation",
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         runtimeConfigPath: "/etc/midgard/runtime.json",
       });
       const rejected = running.catch((error: unknown) => error);
@@ -1265,7 +1265,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         decisionDigest: actuation.decisionDigest,
         actuationPermit: actuation.actuationPermit,
         fundingReservationPermit: actuation.fundingReservationPermit,
-        journalDirectory: "/tmp/midgard-runtime-revoked",
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
       });
     } catch (error) {
@@ -1421,7 +1421,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       decisionDigest: actuation.decisionDigest,
       actuationPermit: actuation.actuationPermit,
       fundingReservationPermit: actuation.fundingReservationPermit,
-      journalDirectory,
+      journal: new DirectoryFraudProofWorkflowJournalStore(journalDirectory),
       runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
     });
     const driveGenericRunOrResume = async ({
@@ -1626,11 +1626,8 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
 
     it("checks the constructed decision digest against the invocation only when the record binds it", async () => {
-      const directory = await mkdtemp(
-        join(tmpdir(), "midgard-runtime-digest-"),
-      );
       const execute = vi.fn(async () => ({ kind: "executed" }));
-      const run = async (bindsDecisionDigest: boolean, index: number) => {
+      const run = async (bindsDecisionDigest: boolean) => {
         const actuation = await admittedActuation();
         const runner = createFamilyApplicationWorkflowRunner(
           defineFamilyApplication({
@@ -1661,17 +1658,16 @@ describe("compiled manifest-bound production runtime V1", () => {
           decisionDigest: actuation.decisionDigest,
           actuationPermit: actuation.actuationPermit,
           fundingReservationPermit: actuation.fundingReservationPermit,
-          journalDirectory: join(directory, `journal-${index}`),
+          journal: new MemoryFraudProofWorkflowJournalStore(),
           runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
         });
       };
-      await expect(run(true, 0)).rejects.toThrow(
+      await expect(run(true)).rejects.toThrow(
         "doubleSpend manifest-bound workflow decision digest differs from invocation",
       );
       expect(execute).not.toHaveBeenCalled();
-      await run(false, 1);
+      await run(false);
       expect(execute).toHaveBeenCalledOnce();
-      await rm(directory, { recursive: true, force: true });
     });
   });
 });

@@ -6,7 +6,6 @@ import {
   classifyHeader,
   createHeaderClassifier,
   createWorkflowActuationPermitController,
-  DirectoryFraudProofWorkflowJournalStore,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   verifyCompletedFraudProofWorkflow,
@@ -133,9 +132,7 @@ const setup = async (cause: () => unknown) => {
     }
     const bound = bindWorkflowFundingReservationJournal({
       journal: bindWorkflowActuationJournal({
-        journal: new DirectoryFraudProofWorkflowJournalStore(
-          fixture.journalDirectory,
-        ),
+        journal: fixture.objectiveJournal(),
         permit: invocation.actuationPermit,
         category: "doubleSpend",
         deploymentFingerprint: deploymentIdentity.manifestId,
@@ -180,7 +177,7 @@ const setup = async (cause: () => unknown) => {
       ],
       getUtxosByOutRef: async () => [],
     },
-    journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     runtimeConfigPath: "/unused-quarantine-test.json",
     deploymentFingerprint: deploymentIdentity.manifestId,
     operationsSink: () => ({ recordProofStep: vi.fn(), setAlert }),
@@ -189,6 +186,7 @@ const setup = async (cause: () => unknown) => {
     reservationDecisionHolds: () => [],
     proofRetention: storelessProofRetention,
     journalRoot: fixture.journalRoot,
+    workflowJournal: fixture.workflowJournal,
     deploymentFingerprint: deploymentIdentity.manifestId,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     queueAuthenticationKey: TEST_JOURNAL_KEY,

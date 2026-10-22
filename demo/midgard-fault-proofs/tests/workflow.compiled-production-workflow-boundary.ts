@@ -23,6 +23,7 @@ import {
   WORKFLOW_ADAPTER_RUNNER,
 } from "../src/workflow/adapters.js";
 import {
+  directoryWorkflowJournal,
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "../src/workflow/cli.js";
@@ -500,14 +501,13 @@ describe("compiled production workflow boundary", () => {
           actuationPermit: {
             permitVersion: WORKFLOW_ACTUATION_PERMIT,
           },
-          // The CLI now demands the funding-reservation permit alongside the
-          // actuation permit before it looks at adapters, so both are present
-          // here: this test is about the missing-adapter refusal, not about
+          // The CLI demands both permits before it looks at adapters, so both
+          // are present: this test is about the missing-adapter refusal, not
           // the permit refusal that precedes it.
           fundingReservationPermit: {
             permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
           },
-          journalDirectory,
+          journal: directoryWorkflowJournal(journalDirectory, ""),
           runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
         }),
       ).rejects.toBeInstanceOf(MissingWorkflowAdaptersError);

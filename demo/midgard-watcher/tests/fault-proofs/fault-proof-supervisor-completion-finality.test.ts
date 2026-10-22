@@ -71,13 +71,14 @@ const complete = async (confirmationDepth: number, rounds: number) => {
   const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-finality-");
   directories.push(root);
   const decision = await classifyDoubleSpend();
-  await writeExecution(root, decision, true);
+  const workflowJournal = await writeExecution(root, decision, true);
   const released: string[] = [];
   const verifyCompleted = vi.fn(
     async () => ({ kind: "applicable", confirmationDepth }) as const,
   );
   const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
     journalRoot: root,
+    workflowJournal,
     deploymentFingerprint: deploymentIdentity.manifestId,
     run: async () => {
       throw new Error("a completed execution never runs");

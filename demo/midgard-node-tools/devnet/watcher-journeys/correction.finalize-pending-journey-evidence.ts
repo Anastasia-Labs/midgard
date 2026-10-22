@@ -66,7 +66,7 @@ export interface JourneyFinalizedEvidenceStamp
  */
 export const finalizePendingJourneyEvidence = async ({
   journeysDirectory,
-  workflowJournalDirectory,
+  watcherStorePath,
   deploymentFingerprint,
   releaseFinalityPolicyDigest,
   finalityDepth,
@@ -74,7 +74,8 @@ export const finalizePendingJourneyEvidence = async ({
   authenticate,
 }: {
   journeysDirectory: string;
-  workflowJournalDirectory: string;
+  /** The watcher store the workflow rows live in. */
+  watcherStorePath: string;
   deploymentFingerprint: string;
   releaseFinalityPolicyDigest: string;
   finalityDepth: number;
@@ -104,7 +105,7 @@ export const finalizePendingJourneyEvidence = async ({
     );
     expect(request.finalityDepth).toBe(finalityDepth);
     const records = await readJourneyWorkflowEntries({
-      workflowJournalDirectory,
+      watcherStorePath,
       category: request.category,
       headerHash: request.headerHash,
     });

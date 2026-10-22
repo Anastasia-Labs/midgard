@@ -77,7 +77,7 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
       fundingFactory: fixture.fundingFactory(),
       walletAddress,
       provider: { getUtxos, getUtxosByOutRef },
-      journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       runtimeConfigPath: "/unused-observer-test.json",
       deploymentFingerprint: deploymentIdentity.manifestId,
       operationsSink,
@@ -92,6 +92,7 @@ describe("an observe-and-prepare watcher with an unfunded prover wallet", () => 
       reservationDecisionHolds: () => [],
       proofRetention: storelessProofRetention,
       journalRoot: fixture.journalRoot,
+      workflowJournal: fixture.workflowJournal,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
