@@ -13,13 +13,13 @@ import {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  deploymentFraudProofCatalogueCategories,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
@@ -63,7 +63,7 @@ let CANONICAL_FRAUD_PROOF_CATALOGUE: FraudProofCatalogueDeploymentInfo;
 beforeAll(async () => {
   CANONICAL_FRAUD_PROOF_CATALOGUE = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+      deploymentFraudProofCatalogueCategories().map(
         (categoryName) =>
           [
             Buffer.from(

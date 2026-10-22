@@ -25,7 +25,7 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
-      da_challenge_window_ms: 259200000,
+      da_challenge_window_ms: 86400000,
       da_slash_grace_ms: 172800000,
       da_bond_withdraw_delay_ms: 778080000,
     },
@@ -117,7 +117,7 @@ export const DEPLOYMENT_PROFILES = {
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
-      da_challenge_window_ms: 259200000,
+      da_challenge_window_ms: 86400000,
       da_slash_grace_ms: 172800000,
       da_bond_withdraw_delay_ms: 778080000,
     },
@@ -174,7 +174,6 @@ export const DEPLOYMENT_PROFILES = {
       ],
     },
     excluded_fraud_proof_categories: [
-      "validationTraceDispute",
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
@@ -261,7 +260,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
-    excluded_fraud_proof_categories: [],
+    excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
   "local-devnet-testing": {
     name: "local-devnet-testing",
@@ -338,7 +337,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
-    excluded_fraud_proof_categories: [],
+    excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
   "preprod-emulator-testing": {
     name: "preprod-emulator-testing",
@@ -497,7 +496,6 @@ export const DEPLOYMENT_PROFILES = {
       ],
     },
     excluded_fraud_proof_categories: [
-      "validationTraceDispute",
       "executionSourceScriptDecoding",
       "receivePurposeLanguage",
       "unusedScriptWitness",
@@ -512,17 +510,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "044406b9464921ec0c7deab82943d37385c64ad9fbaf5c80187a69a7a75d0da4",
+  mainnet: "f61d6aa00bd30087f5ca661a4feef5ef3ac9dc10e680d945b0fbe7f8c28fbf22",
   "preprod-public":
-    "5a7f63fb1225d639e113d67e4d2c67cc8e210dffe7c7683d8692e7e15077683b",
+    "34509247c46e8b0701a68e2c5d15836e914dc6acb9a02b83470e8062f5db28c4",
   "preprod-testing":
-    "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
+    "03d291eb9b001aa7c569f9694f6434621f107e916fbf8f91fb8bb3bce2d460ed",
   "local-devnet-testing":
-    "800570446eff7e5194fa6d1cce5602afda21ba1f7563f567ad68ea8a0e3e6ce3",
+    "54c9f7d9c0b7f23ba0001b567997415c4d23e51790c164ff648fe700aa61619f",
   "preprod-emulator-testing":
     "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
   "preprod-emulator-curated":
-    "4d89aca5b3000750e02610f8828d5e068fc5fce6f766be51e9efd3efc7473b14",
+    "3ece1bd1551e31ca2353715cbcfd501ba4fbd69652eca349ef7cbaeec87dfbc1",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

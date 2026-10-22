@@ -116,6 +116,37 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-timeout.test.ts",
   "./tests/validation-trace-dispute-unbuilt-moves.test.ts",
   "./tests/validation-trace-dispute-unbuilt-stages.test.ts",
+  // Suites that open an execution dispute (00000006) through the deployed
+  // catalogue. The 900 s testing profiles exclude the category, because their
+  // maturity cannot hold a dispute, so these run on the 72 h emulator profile.
+  "./tests/submit-init-emulator-validation-trace-descendant-exemption.test.ts",
+  "./tests/submit-init-emulator-validation-trace-rotated-descendants.test.ts",
+  "./tests/validation-trace-dispute-defend-max-shape.test.ts",
+  "./tests/validation-trace-dispute-defend.test.ts",
+  "./tests/validation-trace-dispute-funded-bindings.test.ts",
+  "./tests/validation-trace-dispute-funded-foreign-close.test.ts",
+  "./tests/validation-trace-dispute-funded-foreign-closed.test.ts",
+  "./tests/validation-trace-dispute-funded-foreign-verify.test.ts",
+  "./tests/validation-trace-dispute-funded-move-bindings.test.ts",
+  "./tests/validation-trace-dispute-funded-move-restarts.test.ts",
+  "./tests/validation-trace-dispute-funded-move-walk.test.ts",
+  "./tests/validation-trace-dispute-funded-moves.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-context-item.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-context.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-decode-records.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-restarts.test.ts",
+  "./tests/validation-trace-dispute-funded-one-step-selection.test.ts",
+  "./tests/validation-trace-dispute-funded-refusals.test.ts",
+  "./tests/validation-trace-dispute-funded-shortfall.test.ts",
+  "./tests/validation-trace-dispute-funded-wallet-move-two-threads.test.ts",
+  "./tests/validation-trace-dispute-funded-wallet-move.test.ts",
+  "./tests/validation-trace-dispute-funded.test.ts",
+  "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
+  "./tests/validation-trace-dispute-lookalikes.test.ts",
+  "./tests/validation-trace-dispute-open.test.ts",
+  "./tests/validation-trace-dispute-replay-hold-runner.test.ts",
+  "./tests/validation-trace-dispute-runner.test.ts",
+  "./tests/validation-trace-dispute-waiting.test.ts",
 ];
 
 /**

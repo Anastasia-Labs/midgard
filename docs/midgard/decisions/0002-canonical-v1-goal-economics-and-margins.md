@@ -11,16 +11,17 @@
 
 ## 1. Fixed protocol constants (recorded, not chosen)
 
-| Constant                                                     | Value                                                             | Source                                                  |
-| ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------- |
-| Canonical V1 block maturity                                  | 604,800,000 ms (7 days)                                           | `docs/consensus-profile-v1.md` (exact V1 maturity)      |
-| Compiled 32-round dispute schedule, derived minimum maturity | 39,600,000 ms (11 h)                                              | `docs/consensus-profile-v1.md`                          |
-| Execution reserve                                            | ≥ 20% below measured protocol limits                              | `docs/consensus-profile-v1.md` §10; `GOAL_SPEC.md` §3.3 |
-| Maturity fit                                                 | complete worst-case correction path ≤ ½ maturity (302,400,000 ms) | `GOAL_SPEC.md` §3.3                                     |
+| Constant                                              | Value                                                             | Source                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| Canonical V1 block maturity                           | 604,800,000 ms (7 days)                                           | `docs/consensus-profile-v1.md` (exact V1 maturity)      |
+| Execution-dispute case duration D_case, public timing | 210,480,000 ms (58.5 h); minimum maturity 2 D_case + 1            | `onchain/aiken/lib/midgard/validation-dispute-v1.ak`    |
+| Execution reserve                                     | ≥ 20% below measured protocol limits                              | `docs/consensus-profile-v1.md` §10; `GOAL_SPEC.md` §3.3 |
+| Maturity fit                                          | complete worst-case correction path ≤ ½ maturity (302,400,000 ms) | `GOAL_SPEC.md` §3.3                                     |
 
-The compiled dispute schedule (11 h) fits half maturity (84 h) with a 7.6×
-margin before DA fetch/construction/confirmation overhead; W04/C74 must prove
-the complete measured path still fits.
+An execution-dispute case opens by half maturity (84 h) and its game lasts at
+most D_case (58.5 h), so a profile that installs the dispute needs maturity of
+at least 2 D_case + 1 = 420,960,001 ms (116.9 h); 7 days holds it with a 1.44×
+margin.
 
 ## 2. Accepted economics
 
@@ -229,7 +230,7 @@ to it).
 | `da_bond_min_top_up_lovelace` | 1,000 ADA — awaiting owner confirmation                | 5 tADA                                          |
 | `da_bond_pool_floor_lovelace` | 5 ADA — awaiting owner confirmation                    | 5 tADA                                          |
 | `challenge_record_lovelace`   | 27 ADA (measured, below)                               | 27 tADA (measured, below)                       |
-| `da_challenge_window_ms`      | 259,200,000 (3 d) — awaiting owner confirmation        | 720,000 (12 min)                                |
+| `da_challenge_window_ms`      | 86,400,000 (24 h) — owner, 2026-10-15                  | 720,000 (12 min)                                |
 | `da_slash_grace_ms`           | 172,800,000 (2 d) — awaiting owner confirmation        | 300,000 (5 min)                                 |
 | `da_bond_withdraw_delay_ms`   | 778,080,000 (9 d 8 min) — awaiting owner confirmation  | 2,340,000 (39 min)                              |
 
@@ -253,17 +254,21 @@ confirmation_depth × 20 s × 2`, which is 2 × 480,000 + 1,200,000 = 2,160,000
   range may be a full maximum range wide; the second range covers clock skew
   and the poll-and-submit block. The testing profiles keep 120 s of slack
   (720,000 − 600,000) and are exempt (owner flag);
-- public profiles only: the latest DA response deadline, the maximum validity
-  range and the dispute schedule end before block maturity (259,200,000 +
-  480,000 + 172,800,000 + 19,800,000 = 452,280,000 < 604,800,000); this rule
-  now counts from the challenge window instead of the attestation timeout.
+- every profile but the two 900 s testing profiles: the challenge window, the
+  maximum validity range and the full response window end before block maturity
+  (86,400,000 + 480,000 + 172,800,000 = 259,680,000 < 604,800,000); this rule
+  counts from the challenge window instead of the attestation timeout;
+- where `validationTraceDispute` is installed: the same sum ends before half
+  maturity, the case open deadline (259,680,000 < 302,400,000), and maturity is
+  at least 2 D_case + 1 (420,960,001 ms on public timing). preprod-public
+  installs the dispute; mainnet and the 900 s testing profiles exclude it.
 
 **Withdrawal-delay amendment.** An unavailable block can be timed out only once
 it is the state-queue head, and its predecessors merge no earlier than their end
 time plus block maturity, so the slash grace can start as late as maturity
 rather than at the response deadline. The enforced form therefore replaces the
-spec's public 605,280,000 (7 d 8 min, which left zero margin against the 7-day
-maturity) with 778,080,000; the testing figure is unchanged because there the
+spec form's public 432,480,000 (5 d 8 min with the 24 h challenge window; it
+was 605,280,000 with the former 72 h window) with 778,080,000; the testing figure is unchanged because there the
 challenge path (720,000 + 840,000 = 1,560,000) already exceeds the 900,000
 maturity.
 
@@ -295,7 +300,7 @@ availability script's enterprise address, at `coins_per_utxo_byte` 4,310:
 | Rollback handling below `finalityDepth`                          | pending-state rewind (W13), permit invalidation, and submission reconciliation                                                                                                                                             | Spec §3.1.8. Invalidate cached authority, re-observe canonical state, reconcile outstanding submissions, and resume under fresh authority. Reuse suitable signed bytes; rebuild only when necessary. Reconstruct wallet availability from canonical UTxOs and unresolved attempts. Terminal inclusion releases the execution slot but remains recoverable until anchoring; no blanket capital hold until finality is required. |
 | Submission retry budget                                          | 5 attempts, exponential backoff capped at 120 s                                                                                                                                                                            | Bounded by §3.3 maturity fit; W33 reconciles ambiguity before any retry.                                                                                                                                                                                                                                                                                                                                                       |
 | DA availability-challenge response deadline                      | small payloads (≤ 64 KiB): 3,600,000 ms (1 h) public, 720,000 ms (12 min) testing; full payloads: 172,800,000 ms (2 d) public, 840,000 ms (14 min) testing                                                                 | Profile `timing.da_small_response_window_ms` and `da_full_response_window_ms`, counted from the challenge open's inclusive upper validity bound. Validation requires every window to cover the minimum response budget (confirmation depth, five chained publications of a 64 KiB payload and one poll block, at twice the mean block time).                                                                                   |
-| DA challenge window (`da_challenge_window_ms`)                   | 259,200,000 ms (3 d) public — awaiting owner confirmation; 720,000 ms (12 min) testing                                                                                                                                     | An availability challenge must open before `header.end_time` plus this window. Longer than the attestation timeout and at most block maturity (§2.6).                                                                                                                                                                                                                                                                          |
+| DA challenge window (`da_challenge_window_ms`)                   | 86,400,000 ms (24 h) public — owner, 2026-10-15; 720,000 ms (12 min) testing                                                                                                                                               | An availability challenge must open before `header.end_time` plus this window. Longer than the attestation timeout and at most block maturity (§2.6).                                                                                                                                                                                                                                                                          |
 | DA slash grace (`da_slash_grace_ms`)                             | 172,800,000 ms (2 d) public — awaiting owner confirmation; 300,000 ms (5 min) testing                                                                                                                                      | Time the challenger has to land the timeout slash once it is possible: after the response deadline or, when later, once the challenged block is the queue head (its predecessors merge at maturity).                                                                                                                                                                                                                           |
 | DA bond withdrawal delay (`da_bond_withdraw_delay_ms`)           | 778,080,000 ms (9 d 8 min) public — awaiting owner confirmation; 2,340,000 ms (39 min) testing                                                                                                                             | Between BeginWithdraw and CompleteWithdraw; covers the latest possible slash of any block the pool still backs, including the head-only removal amendment (§2.6).                                                                                                                                                                                                                                                              |
 | `da_attestation_timeout` (Q61)                                   | 3,600,000 ms (1 h)                                                                                                                                                                                                         | Bounds how long a pending commitment may remain unattested. Timeout removal discards its dependent suffix at any queue position while preserving the earlier prefix. It does not slash (D-L1 recommendation).                                                                                                                                                                                                                  |

@@ -83,8 +83,8 @@ describe("MIDGARD_RETENTION_WINDOW_V1 derived arithmetic (F04)", () => {
     expect(MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs).toBe(
       MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs,
     );
-    // The measured schedule differs from the half-maturity bound under every
-    // profile (far below it on mainnet, above it on the testing profiles), so
+    // The recorded floor differs from the half-maturity bound under every
+    // profile (below it on the emulator profiles, above it on the others), so
     // the horizon below can only equal maturity plus the bound.
     expect(
       MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs,
