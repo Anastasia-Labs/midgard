@@ -11,9 +11,8 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -407,7 +406,6 @@ export const installScriptDecodeApplication = async ({
       protocolParameters,
       fundingPaymentKeyHash: signer.paymentKeyHash,
       walletAddress: signer.address,
-      computationThreadPolicyId: contracts.computationThread.policyId,
       scriptHashes: Object.fromEntries([
         ...Object.entries(deploymentInfo.contracts)
           .filter(
@@ -470,19 +468,6 @@ export const installScriptDecodeApplication = async ({
     /** Stops the watcher process and starts another over its durable state. */
     restart: async () => {
       instance.funding.close();
-      instance = await boot();
-    },
-    /** Restarts with the workflow journal gone and, with `reservations`, the
-     * reservation store too: only the chain keeps the objective's progress. */
-    loseJournal: async ({ reservations = false } = {}) => {
-      instance.funding.close();
-      await rm(journalDirectory, { recursive: true, force: true });
-      if (reservations)
-        for (const name of await readdir(directory))
-          if (name.startsWith("watcher.sqlite"))
-            await rm(join(directory, name), { force: true });
-      await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-      turns = 0;
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),

@@ -266,10 +266,8 @@ export const startWatcherRuntime = async (
         ),
       launchScope: faultProofApplication.installedCategories,
       journalRoot: input.config.workflowJournalDirectory,
-      fundingInputFacts: activeFollower.fundingInputFacts,
       observeSignedTransaction: activeFollower.observeSignedTransaction,
       alertSink: () => operations.sink,
-      blueprintBytes,
     });
     proverFundingStore = fundingRuntime.store;
 

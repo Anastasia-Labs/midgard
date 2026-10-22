@@ -1,14 +1,15 @@
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 
 /**
- * A proof objective or funding reservation whose recorded fault decision is
- * missing from the decision journal, or differs from the one its work names.
- * It happens when the journal database was moved aside, or when a fault was
- * detected again under a new decision digest. The watcher holds such work,
- * reports `journal_decision_missing` on readiness, and keeps running: a held
- * objective clears once its header leaves the finalized queue (its proof or
- * another landed, or it merged); a held reservation clears once the
- * follower shows its funding inputs final.
+ * A proof objective whose recorded fault decision is missing from the
+ * decision journal, or differs from the one its work names, or a funding
+ * reservation no workflow drives again. A missing decision happens when the
+ * journal database was moved aside, or when a fault was detected again under
+ * a new decision digest. The watcher holds such work, reports it on
+ * readiness, and keeps running: a held objective clears once its header
+ * leaves the finalized queue (its proof or another landed, or it merged); a
+ * held reservation clears once its signed attempts are retired past release
+ * finality and it is released.
  */
 export type WatcherDecisionHold =
   | Readonly<{
@@ -31,12 +32,12 @@ export type WatcherDecisionHold =
       decisionDigest: string;
       detail: string;
       /**
-       * `prover_funding_orphaned_reservation`: no workflow will drive the
-       * reservation's signed attempts again, and they are not retired past
-       * release finality yet. The watcher reads them from their own bytes
-       * and releases the reservation once they are; its detail names it.
+       * No workflow will drive the reservation's signed attempts again, and
+       * they are not retired past release finality yet. The watcher reads
+       * them from their own bytes and releases the reservation once they
+       * are; its detail names it.
        */
-      readiness?: "prover_funding_orphaned_reservation";
+      readiness: "prover_funding_orphaned_reservation";
     }>;
 
 /**

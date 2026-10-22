@@ -1,4 +1,3 @@
-import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
@@ -51,16 +50,6 @@ export const isWatcherFaultProofQuarantined = (
 ): boolean =>
   holds.get(objectiveOf(objective))?.reason === WATCHER_FAULT_PROOF_QUARANTINED;
 
-/** Whether `objective` is held under its failure alert: in quarantine, or
- * waiting on funding no workflow will drive again. */
-export const isWatcherFaultProofAlerting = (
-  holds: Holds,
-  objective: WatcherProofObjective,
-): boolean =>
-  isWatcherFaultProofQuarantined(holds, objective) ||
-  holds.get(objectiveOf(objective))?.reason ===
-    WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION;
-
 /**
  * Holds the objective in quarantine under `cause`. Entering it raises the
  * objective's `proof_submission_failure` alert and logs at error level; the
@@ -99,8 +88,8 @@ export const quarantineWatcherFaultProof = (input: {
   });
 };
 
-/** Raises the objective's alert once a run enters the orphaned-funding
- * wait, and clears it once a run that began alerting ends out of both. */
+/** Clears the objective's alert once a run that began in quarantine ends
+ * out of it; quarantine raises its own alert on entering. */
 export const settleWatcherFaultProofQuarantine = (input: {
   readonly holds: Holds;
   readonly job: WatcherProofObjective;
@@ -108,17 +97,15 @@ export const settleWatcherFaultProofQuarantine = (input: {
   readonly sink: AlertSink;
   readonly wasQuarantined: boolean;
 }): void => {
-  const alerting = isWatcherFaultProofAlerting(input.holds, input.job);
-  // Quarantine raises its own alert on entering.
   if (
-    input.wasQuarantined === alerting ||
-    (alerting && isWatcherFaultProofQuarantined(input.holds, input.job))
+    !input.wasQuarantined ||
+    isWatcherFaultProofQuarantined(input.holds, input.job)
   )
     return;
   input.sink.setAlert({
     code: "proof_submission_failure",
     subjectDigest: input.decisionDigest,
-    active: alerting,
+    active: false,
     observedAtMs: Date.now().toString(),
   });
 };

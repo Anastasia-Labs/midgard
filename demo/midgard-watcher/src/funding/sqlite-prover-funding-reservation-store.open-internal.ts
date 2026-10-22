@@ -1055,14 +1055,12 @@ export const openInternal = async (
     ...createProverFundingReclaimOperations({
       database,
       transaction,
-      assertPlan,
       readOne,
       writeRecord,
       rebuildLeases,
       recordedSubmissions,
       abandonmentsOf,
       hasSignedHistory,
-      persistHandoff,
     }),
     reserve: async (plan, expectedIdleRevision) => {
       assertPlan(plan);

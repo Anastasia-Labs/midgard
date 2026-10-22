@@ -8,10 +8,7 @@ import {
   cleanupFundingRecoveryFixtures,
   setupFundingRecoveryFixture,
 } from "../support/fault-proof-funding-fixture.js";
-import {
-  loseJournals,
-  orphanReadingFactory,
-} from "./orphaned-reservation-fixture.js";
+import { orphanReadingFactory } from "./orphaned-reservation-fixture.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
@@ -20,12 +17,11 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 
-/** A sweep over signed funding no workflow drives: `lose` removes what
- * named it, and the factory raises its alerts into `alerts`. */
-const sweeping = async (lose: "decision" | "workflow") => {
+/** A sweep over signed funding whose workflow is gone, and the factory
+ * raises its alerts into `alerts`. */
+const sweeping = async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
-  if (lose === "decision") await loseJournals(fixture, []);
-  else await rm(fixture.journalDirectory, { recursive: true, force: true });
+  await rm(fixture.journalDirectory, { recursive: true, force: true });
   supersededAttemptReadSchedule.forget(fixture.transactionHash);
   const alerts: { subjectDigest: string; active: boolean }[] = [];
   let clock = 1_000_000;
@@ -58,50 +54,49 @@ const sweeping = async (lose: "decision" | "workflow") => {
 };
 
 describe("signed funding no workflow drives is settled from its own attempts", () => {
-  for (const lose of ["decision", "workflow"] as const)
-    it(`holds it with an alert while its attempt is not retired past release finality, then releases it once it is (${lose} lost)`, async () => {
-      const { fixture, factory, alerts, orphan, later } = await sweeping(lose);
-      fixture.chain.mockResolvedValue({ kind: "not_found" });
-      const before = await fixture.records();
-      await factory.releaseUnused();
-      expect(factory.decisionHolds()).toEqual([
-        expect.objectContaining({
-          kind: "reservation",
-          reservationId: fixture.plan.reservationId,
-          readiness: WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
-        }),
-      ]);
-      expect(alerts).toEqual([
-        { subjectDigest: fixture.plan.reservationId, active: true },
-      ]);
-      expect(await fixture.records()).toEqual(before);
+  it("holds it with an alert while its attempt is not retired past release finality, then releases it once it is", async () => {
+    const { fixture, factory, alerts, orphan, later } = await sweeping();
+    fixture.chain.mockResolvedValue({ kind: "not_found" });
+    const before = await fixture.records();
+    await factory.releaseUnused();
+    expect(factory.decisionHolds()).toEqual([
+      expect.objectContaining({
+        kind: "reservation",
+        reservationId: fixture.plan.reservationId,
+        readiness: WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION,
+      }),
+    ]);
+    expect(alerts).toEqual([
+      { subjectDigest: fixture.plan.reservationId, active: true },
+    ]);
+    expect(await fixture.records()).toEqual(before);
 
-      // A sweep before the next read is due neither reads nor raises again.
-      const reads = fixture.observeSignedTransaction.mock.calls.length;
-      await factory.releaseUnused();
-      expect(fixture.observeSignedTransaction).toHaveBeenCalledTimes(reads);
-      expect(alerts).toHaveLength(1);
+    // A sweep before the next read is due neither reads nor raises again.
+    const reads = fixture.observeSignedTransaction.mock.calls.length;
+    await factory.releaseUnused();
+    expect(fixture.observeSignedTransaction).toHaveBeenCalledTimes(reads);
+    expect(alerts).toHaveLength(1);
 
-      fixture.chain.mockImplementation(async (txHash) =>
-        expiredNotFound(txHash!),
-      );
-      later();
-      await factory.releaseUnused();
-      expect(await orphan()).toMatchObject({
-        state: "released",
-        activeInputs: [],
-        pendingTransition: null,
-      });
-      expect(factory.decisionHolds()).toEqual([]);
-      expect(alerts).toEqual([
-        { subjectDigest: fixture.plan.reservationId, active: true },
-        { subjectDigest: fixture.plan.reservationId, active: false },
-      ]);
-      expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
+    fixture.chain.mockImplementation(async (txHash) =>
+      expiredNotFound(txHash!),
+    );
+    later();
+    await factory.releaseUnused();
+    expect(await orphan()).toMatchObject({
+      state: "released",
+      activeInputs: [],
+      pendingTransition: null,
     });
+    expect(factory.decisionHolds()).toEqual([]);
+    expect(alerts).toEqual([
+      { subjectDigest: fixture.plan.reservationId, active: true },
+      { subjectDigest: fixture.plan.reservationId, active: false },
+    ]);
+    expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
+  });
 
   it("releases it once its attempt landed past release finality", async () => {
-    const { fixture, factory, alerts, orphan } = await sweeping("decision");
+    const { fixture, factory, alerts, orphan } = await sweeping();
     fixture.chain.mockImplementation(async (txHash) => ({
       kind: "pending",
       txHash,
@@ -114,7 +109,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
   });
 
   it("releases it once another transaction spent its input past release finality", async () => {
-    const { fixture, factory, orphan } = await sweeping("workflow");
+    const { fixture, factory, orphan } = await sweeping();
     fixture.chain.mockImplementation(async (txHash) => ({
       kind: "not_found",
       retirement: retirementFixture(txHash),
@@ -125,7 +120,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
   });
 
   it("keeps it while its attempt landed within release finality", async () => {
-    const { fixture, factory, orphan } = await sweeping("decision");
+    const { fixture, factory, orphan } = await sweeping();
     fixture.chain.mockImplementation(async (txHash) => ({
       kind: "confirmed",
       txHash: txHash!,

@@ -706,42 +706,20 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   observation and is never failed for it; the hold clears once a later run
   meets something else. Top up the prover wallet with plain ada.
 - `prover_funding_orphaned_reservation`: a funding reservation holds signed
-  transactions that no workflow will drive again (its journals were lost)
-  and that could still land; the detail names the reservation, and an
-  objective of the same target waits on it with the same reason. The
+  transactions that no workflow will drive again and that are not yet
+  retired past release finality; the detail names the reservation. The
   `proof_submission_failure` alert stays raised meanwhile. The watcher reads
-  each transaction from its own signed bytes on a bounded backoff. Once each
-  has expired, been invalidated or landed, or has left the mempool (with its
-  inputs unspent, or one of them outside the follower's history, such as a
-  wallet coin from before its origin), the objective's next fresh run takes
-  them over; once each is final, the reservation is released. It does not
-  clear while one is in the mempool. One without expiry that left the
-  mempool clears through a fresh run while its target can still run; once
-  the target has left the finalized queue (or its workflow completed),
-  three agreeing reads in a row make the watcher cancel it: it signs one
-  transaction spending that funding back to the prover wallet, valid for
-  an hour, records it, then submits it (a restart submits the recorded
-  bytes again, never a new one). The detail then reads "a cancel of its
-  funding is in flight", and no fresh run takes the reservation over. It
-  clears once the cancel and every transaction are final: the cancel
-  landed (then "its cancel landed; it settles once its attempts are
-  release-final"), or the old transaction landed first. This holds when a
-  transaction also names a coin outside the follower's history, such as a
-  collateral from before its origin: a recorded spend of another of its
-  inputs, by a different transaction or by its own landing that failed
-  phase 2, once past the recovery depth, retires it. A cancel
-  that retired unlanded past finality is dropped: "its cancel expired
-  unlanded" means its hour passed, and a new one may follow; "its cancel
-  was invalidated: another transaction spent its funding" means an old
-  transaction landed first, and the reservation settles once that landing
-  is final. Only one cancel is live at a time. "its funding cancel failed"
-  means signing or recording it failed; it is retried on the next read.
-  When to report: with an expiry on every transaction, if the hold
-  outlasts the latest expiry plus the recovery depth. With a transaction
-  that has no expiry, the hold is expected, and is no fault, for as long as
-  its target's header stays in the finalized queue and no fresh run takes
-  it over. Report it if it outlasts two hours plus the recovery depth after
-  the header left the finalized queue (or its workflow completed).
+  each transaction from its own signed bytes on a bounded backoff and
+  releases the reservation once each has expired, been invalidated or
+  landed, past release finality. A transaction that also names a coin
+  outside the follower's history, such as a collateral from before its
+  origin, is retired by a recorded spend of another of its inputs, by a
+  different transaction or by its own landing that failed phase 2, once past
+  the recovery depth. A transaction without expiry that left the mempool
+  unlanded keeps the hold until another transaction spends one of its
+  inputs. When to report: if the hold outlasts the latest expiry of its
+  transactions plus the recovery depth, or at once for a transaction
+  without expiry.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands

@@ -156,22 +156,19 @@ and its `-wal` and `-shm` files aside (never delete them), and start it again.
 The new journals start empty. The workflow journals, the funding store and
 the L1 follower's facts survive, so proofs and funding reservations may name
 fault decisions the new journals do not hold. The watcher never runs such work
-again and never exits over it: it holds each item, `/readyz` reports
-`journal_decision_missing`, and `supervisor.journalDecisionMissing` in
-`/v1/status` names each held objective or reservation with its decision.
+again and never exits over it: it holds each proof objective, `/readyz`
+reports `journal_decision_missing`, and `supervisor.journalDecisionMissing` in
+`/v1/status` names each held objective with its decision.
 
 - A held proof objective clears once its header leaves the finalized state
   queue: its proof, or another one, landed and is final, or the header merged.
   A fresh detection of the same fault does not restart it.
-- A held funding reservation is read again on every follower change. If every
-  input is spent at or below the release-final point (`automaticRecoveryMaxDepth
-  - 2` blocks deep), it is dropped. If its inputs are unspent there and still
-    unspent at the tip, and it holds no signed transaction, its inputs return to
-    the wallet. Otherwise it stays held.
+- A funding reservation whose decision the new journals do not hold stays
+  reserved: it is never run or reclaimed, and its inputs stay leased.
 
 Retention handles the rest. Workflow directories, follower pins of objectives
-that are never admitted again, and the leases of reservations that hold a
-signed transaction stay in place. The moved-aside file is never read again.
+that are never admitted again, and the leases of those reservations stay in
+place. The moved-aside file is never read again.
 
 Every watcher SQLite file, the journals included, must sit on a local disk,
 never a network filesystem (NFS, SMB and the like): those break SQLite's file

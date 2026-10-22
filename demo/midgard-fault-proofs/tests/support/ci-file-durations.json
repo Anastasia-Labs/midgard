@@ -550,7 +550,6 @@
     "tests/witness-script-decoding-installed-field-carriage-recovery.test.ts": 100.6,
     "tests/witness-script-decoding-installed-field-carriage.test.ts": 44.2,
     "tests/witness-script-decoding-installed-funding-shortfall.test.ts": 13.5,
-    "tests/witness-script-decoding-installed-journal-loss.test.ts": 20.7,
     "tests/witness-script-decoding-installed-own-outputs.test.ts": 74.4,
     "tests/witness-script-decoding-installed-record-recovery.test.ts": 49.7,
     "tests/witness-script-decoding-installed-record.test.ts": 780.4,

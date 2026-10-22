@@ -334,7 +334,6 @@ export const installValidationTraceApplication = async ({
     protocolParameters,
     fundingPaymentKeyHash: signer.paymentKeyHash,
     walletAddress: signer.address,
-    computationThreadPolicyId: h.contracts.computationThread.policyId,
     // The deployment's contracts the funding governs: the dispute's, and
     // the protocol state the block's removal spends.
     scriptHashes: {

@@ -132,14 +132,6 @@ const orphanWithSeedCollateral = async () => {
       clock += 600_000;
       return await orphans.sweep([record]);
     },
-    resolve: async () => {
-      clock += 600_000;
-      return await orphans.resolveTarget({
-        target: "doubleSpend/target",
-        orphans: [record],
-        handOver: true,
-      });
-    },
   };
 };
 
@@ -154,10 +146,7 @@ describe("an orphan whose attempts name a collateral coin from before the follow
     o.held.pending = replacement;
     await o.h.forward([replacement]);
     await o.deepen(RETIRED);
-    expect(await o.resolve()).toEqual({
-      handOver: [],
-      settled: [o.record],
-    });
+    expect(await o.sweep()).toEqual([]);
     expect(o.settlements).toEqual([
       expect.arrayContaining([
         { transactionHash: hashOf(superseded), reason: "invalidated" },

@@ -63,7 +63,6 @@ vi.mock("../../src/l1-follower/deployment-follower.js", () => ({
     provider: {},
     proofRetention: {},
     faultProofL1: {},
-    fundingInputFacts: undefined,
     transport: {
       query: async () => {
         node.queries += 1;

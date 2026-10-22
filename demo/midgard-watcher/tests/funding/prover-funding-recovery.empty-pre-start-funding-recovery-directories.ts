@@ -7,7 +7,6 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { describe, expect, it } from "vitest";
 
 import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.js";
-import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 
 describe("empty pre-start funding recovery directories", () => {
   const emptyExecution = async (test: Awaited<ReturnType<typeof setup>>) => {
@@ -90,57 +89,4 @@ describe("empty pre-start funding recovery directories", () => {
       expect(await test.records()).toEqual(before);
     },
   );
-
-  it("recovers an empty directory with a DB-before-journal signed handoff as a lost journal", async () => {
-    const test = await setup(true);
-    await emptyExecution(test);
-    const journal = await test.recover();
-    expect(await test.run(journal)).toMatchObject({
-      workflowId: test.initial.workflowId,
-    });
-    expect(
-      (await journal.load(test.initial.workflowId))
-        .slice(2, 4)
-        .map(({ event }) => event),
-    ).toEqual([test.handoff.preflight, test.handoff.submissionIntent]);
-    const records = await test.records();
-    expect(records).toHaveLength(1);
-    expect(records[0]!.pendingTransition).toBeNull();
-    expect(test.adapter.preflight).not.toHaveBeenCalled();
-    expect(test.adapter.submit).not.toHaveBeenCalled();
-  });
-
-  it("recovers resolved signed history under an empty directory after its abandonment handoff is acknowledged", async () => {
-    const test = await setup();
-    test.useUnspentPendingInputs();
-    const journal = await test.recover();
-    test.chain.mockResolvedValue(expiredNotFound(test.transactionHash));
-    await test.run(journal);
-    const before = await test.records();
-    expect(before[0]!.pendingTransition).toBeNull();
-    expect(before[0]!.lastConfirmedTransitionDigest).toBeNull();
-    expect(
-      await test.store.readAbandonmentHandoff({
-        reservationId: test.plan.reservationId,
-      }),
-    ).toBeNull();
-    expect(
-      await test.store.hasSignedHistory!({
-        reservationId: test.plan.reservationId,
-      }),
-    ).toBe(true);
-    await emptyExecution(test);
-    expect(await test.run(await test.recover())).toMatchObject({
-      kind: "pending",
-      workflowId: test.initial.workflowId,
-    });
-    expect(await test.records()).toEqual([
-      expect.objectContaining({
-        reservationId: before[0]!.reservationId,
-        pendingTransition: null,
-      }),
-    ]);
-    expect(test.adapter.preflight).not.toHaveBeenCalled();
-    expect(test.adapter.submit).not.toHaveBeenCalled();
-  });
 });

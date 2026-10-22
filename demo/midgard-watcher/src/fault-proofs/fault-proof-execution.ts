@@ -40,7 +40,7 @@ import {
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
 import {
-  isWatcherFaultProofAlerting,
+  isWatcherFaultProofQuarantined,
   quarantineCause,
   quarantineWatcherFaultProof,
   settleWatcherFaultProofQuarantine,
@@ -341,7 +341,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
       record("preflight", "prepare");
       // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
-      const wasQuarantined = isWatcherFaultProofAlerting(holds, job);
+      const wasQuarantined = isWatcherFaultProofQuarantined(holds, job);
       // Set while the objective's own funding and run are in hand: a failure
       // there quarantines this objective alone (fault-proof-quarantine.ts).
       let objectiveWork = false;

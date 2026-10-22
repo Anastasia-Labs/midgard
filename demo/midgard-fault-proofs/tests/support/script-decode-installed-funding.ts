@@ -141,7 +141,6 @@ export const openInstalledProverFunding = async ({
   protocolParameters,
   fundingPaymentKeyHash,
   walletAddress,
-  computationThreadPolicyId,
   scriptHashes,
   referenceUtxos,
   directory,
@@ -159,8 +158,6 @@ export const openInstalledProverFunding = async ({
   >;
   readonly fundingPaymentKeyHash: string;
   readonly walletAddress: string;
-  /** The deployed computation-thread policy (the watcher derives it from the blueprint). */
-  readonly computationThreadPolicyId: string;
   /** Deployed contract name to script hash, as the manifest lists them. */
   readonly scriptHashes: Readonly<Record<string, string>>;
   /** Every published reference UTxO a workflow transaction may read. */
@@ -304,7 +301,6 @@ export const openInstalledProverFunding = async ({
         store: opened.store,
         resolveInputs: async (outRefs) =>
           await emulator.getUtxosByOutRef(outRefs.map(outRefOf)),
-        computationThreadPolicyId,
         resolveProtocolInputAuthority: async ({
           deploymentIdentity,
           outRef,

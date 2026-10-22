@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createWatcherOrphanedReservations,
-  WatcherProverFundingOrphanedReservationError,
-} from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
+import { createWatcherOrphanedReservations } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import type {
   WatcherProverFundingReservationRecord,
   WatcherProverFundingReservationStore,
@@ -99,37 +96,6 @@ describe("orphaned reservations read L1 within the per-pass bound", () => {
     );
   });
 
-  it("resolving a target makes at most its bound of attempt reads, and holds until every orphan settles", async () => {
-    const { orphans, records, settled, reads, later } = orphanedMany();
-    const perPass: number[] = [];
-    let resolved: Awaited<ReturnType<typeof orphans.resolveTarget>> | null =
-      null;
-    for (let pass = 0; pass < 8 && resolved === null; pass += 1) {
-      reads.mockClear();
-      try {
-        resolved = await orphans.resolveTarget({
-          target: "e".repeat(64),
-          orphans: records.filter(
-            ({ reservationId }) => !settled.has(reservationId),
-          ),
-          handOver: true,
-        });
-      } catch (error) {
-        expect(error).toBeInstanceOf(
-          WatcherProverFundingOrphanedReservationError,
-        );
-      }
-      perPass.push(reads.mock.calls.length);
-      later();
-    }
-    expect(Math.max(...perPass)).toBeLessThanOrEqual(BOUND);
-    expect(settled.size).toBe(ORPHANS);
-    expect(resolved).toMatchObject({ handOver: [] });
-    expect(perPass.reduce((sum, count) => sum + count, 0)).toBe(
-      ORPHANS * ATTEMPTS,
-    );
-  });
-
   it("an orphan left unread for want of reads is read at the next pass, without waiting out a backoff", async () => {
     const { orphans, records, settled, reads } = orphanedMany({
       orphans: 2,
@@ -148,21 +114,14 @@ describe("orphaned reservations read L1 within the per-pass bound", () => {
     expect(settled.size).toBe(2);
   });
 
-  it("an orphan with more open attempts than the bound is still read whole, so it can be taken over", async () => {
-    const { orphans, records, reads, chain } = orphanedMany({
+  it("an orphan with more open attempts than the bound is still read whole, so it settles in one pass", async () => {
+    const { orphans, records, settled, reads } = orphanedMany({
       orphans: 1,
       attempts: 6,
       bound: 4,
     });
-    // Absent at the tip: never final, but a fresh execution may take it over.
-    chain.mockResolvedValue({ kind: "not_found" });
-    expect(
-      await orphans.resolveTarget({
-        target: "e".repeat(64),
-        orphans: records,
-        handOver: true,
-      }),
-    ).toEqual({ handOver: records, settled: [] });
+    expect(await orphans.sweep(records)).toEqual([]);
     expect(reads).toHaveBeenCalledTimes(6);
+    expect(settled.size).toBe(1);
   });
 });

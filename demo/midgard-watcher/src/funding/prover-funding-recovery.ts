@@ -9,7 +9,6 @@ import {
   bindWorkflowActuationRecoveryIdentity,
   DirectoryFraudProofWorkflowJournalStore,
   journalJsonDigest,
-  lostWorkflowFundingJournalRecords,
   normalizeJournalJson,
   parseWorkflowFundingAbandonmentHandoff,
   parseWorkflowFundingCompletionHandoff,
@@ -17,10 +16,6 @@ import {
   parseWorkflowFundingSubmissionHandoff,
   reconcileWorkflowFundingSubmissionHandoff,
   type WorkflowActuationPermit,
-  workflowFundingAbandonmentJournalLost,
-  workflowFundingCompletionJournalLost,
-  workflowFundingHandoffJournalLost,
-  workflowFundingJournalRecreatable,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
@@ -34,23 +29,15 @@ import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import type { WatcherOrphanedReservations } from "./prover-funding-recovery.orphaned-reservation.js";
-import {
-  emptyExecutionHistory,
-  resumeWatcherProverFundingWithoutJournal,
-  targetOrphans,
-  watcherProverFundingDecisionMissing,
-} from "./prover-funding-recovery.resume-without-journal.js";
 import {
   parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
 } from "./prover-funding-reservation.js";
 
 /** Resolve the existing execution before selecting wallet inputs. Permission
  * remains bound to the fresh decision; journals and leases retain their
- * identity. Returns the orphaned funding to hand over to the fresh
- * reservation (see `resumeWatcherProverFundingWithoutJournal`). */
+ * identity. With no workflow journal for its target, the objective starts a
+ * fresh execution. */
 export const authorizeWatcherProverFundingRecovery = async (input: {
   readonly journalRoot: string;
   readonly journalAuthenticationKey: Uint8Array;
@@ -59,8 +46,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly rollbackGeneration: string;
   readonly store: WatcherProverFundingReservationStore;
-  readonly orphans?: WatcherOrphanedReservations;
-}): Promise<readonly WatcherProverFundingReservationRecord[]> => {
+}): Promise<void> => {
   const authority = assertWorkflowActuationPermitIdentity({
     permit: input.actuationPermit,
     category: input.category,
@@ -75,46 +61,19 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     authority.headerHash,
   );
   // Reconciliation never creates a workflow journal, so it cannot resume
-  // one. Signed funding naming its target settles once its attempts retire.
-  const withoutJournal = async (history: string | null = null) => {
-    if (authority.authority === "reconciliation") {
-      await input.orphans?.resolveTarget({
-        target: `${input.category}/${authority.headerHash}`,
-        orphans: await targetOrphans(input.store, {
-          deploymentFingerprint: authority.deploymentFingerprint,
-          category: input.category,
-          headerHash: authority.headerHash,
-        }),
-        handOver: false,
-      });
+  // one.
+  const withoutJournal = () => {
+    if (authority.authority === "reconciliation")
       throw new Error(
         "reconciliation funding requires its existing durable workflow",
       );
-    }
-    // An empty workflow directory with history and nothing to resume holds
-    // too, unless that history is handed over to the fresh execution.
-    const { resumed, handOver, settled } =
-      await resumeWatcherProverFundingWithoutJournal(input, authority);
-    if (
-      !resumed &&
-      history !== null &&
-      ![...handOver, ...settled].some(
-        ({ decisionDigest }) => decisionDigest === history,
-      )
-    )
-      throw watcherProverFundingDecisionMissing(
-        input.category,
-        authority.headerHash,
-        history,
-      );
-    return handOver;
   };
   let names;
   try {
     names = await readdir(directory, { withFileTypes: true });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return await withoutJournal();
+      return withoutJournal();
     throw error;
   }
   if ((await realpath(directory)) !== directory)
@@ -128,30 +87,22 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       "workflow recovery target contains an invalid journal entry",
     );
   const candidates: typeof names = [];
-  let history: string | null = null;
   for (const candidate of names) {
     const candidateDirectory = join(directory, candidate.name);
     if ((await realpath(candidateDirectory)) !== candidateDirectory)
       throw new Error("workflow recovery execution traverses a symlink");
-    // append creates its directory before validating the first event. A literally
-    // empty one is pre-start debris, or with durable funding history a journal
-    // lost before its first record. Any other needs strict journal recovery.
-    if ((await readdir(candidateDirectory)).length !== 0) {
+    // append creates its directory before validating the first event. A
+    // literally empty one is pre-start debris. Any other needs strict
+    // journal recovery.
+    if ((await readdir(candidateDirectory)).length !== 0)
       candidates.push(candidate);
-      continue;
-    }
-    history =
-      (await emptyExecutionHistory(input, authority, candidate.name)) ??
-      history;
   }
-  if (history !== null && candidates.length !== 0)
-    throw new Error("empty workflow directory has durable funding history");
   if (candidates.length > 1)
     throw new Error(
       "workflow recovery has multiple candidate executions for one target",
     );
   const candidate = candidates[0];
-  if (candidate === undefined) return await withoutJournal(history);
+  if (candidate === undefined) return withoutJournal();
   const entries = await new DirectoryFraudProofWorkflowJournalStore(
     directory,
   ).load(candidate.name);
@@ -248,23 +199,9 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   const record = reservations[0]!;
   const reserved = { reservationId: record.reservationId };
   const stored = await input.store.readCompletionHandoff(reserved);
-  const completion =
-    stored === null ? null : parseWorkflowFundingCompletionHandoff(stored);
-  // The runner rebuilds a lost journal from the store's signed attempts.
-  const records = workflowFundingJournalRecreatable(entries)
-    ? lostWorkflowFundingJournalRecords({
-        workflowId: candidate.name,
-        abandoned:
-          (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
-        submissions:
-          (await input.store.readRecordedSubmissions?.(reserved)) ?? [],
-        completion,
-      })
-    : [];
   if (record.state === "released") {
     const handoff = parseWorkflowFundingCompletionHandoff(stored);
-    if (!workflowFundingCompletionJournalLost(handoff, entries, records))
-      assertWorkflowFundingCompletionHandoffJournal({ handoff, entries });
+    assertWorkflowFundingCompletionHandoffJournal({ handoff, entries });
     // The runner may only reverify and persist this exact completion; its
     // released funding permit cannot select inputs or prepare another action.
   }
@@ -289,8 +226,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       throw new Error(
         "workflow recovery abandonment differs from its exact signed transaction",
       );
-    if (!workflowFundingAbandonmentJournalLost(handoff, entries, records))
-      assertWorkflowFundingAbandonmentHandoffJournal({ handoff, entries });
+    assertWorkflowFundingAbandonmentHandoffJournal({ handoff, entries });
   }
   const pending = record.pendingTransition;
   if (pending !== null) {
@@ -311,9 +247,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
       const transition = parseWorkflowFundingPreparedTransition(
         recovered.transition,
       );
-      // A lost journal is re-recorded from this exact handoff by the runner.
-      if (!workflowFundingHandoffJournalLost(handoff, entries, records))
-        reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
+      reconcileWorkflowFundingSubmissionHandoff({ handoff, entries });
       if (
         journalJsonDigest(normalizeJournalJson(transition)) !==
         pending.transitionDigest
@@ -348,7 +282,6 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
     rollbackGeneration: input.rollbackGeneration,
     originalDecision,
   });
-  return [];
 };
 
 export { releaseUnusedWatcherProverFundingReservations } from "./prover-funding-recovery.release-unused.js";

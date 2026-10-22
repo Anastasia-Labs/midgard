@@ -153,23 +153,6 @@ export type WatcherProverFundingReservationStore = Readonly<{
   releaseUnused?(
     record: WatcherProverFundingReservationRecord,
   ): Promise<boolean>;
-  /** Clear an unused reservation whose inputs the follower shows spent at a
-   * final view, only if its complete snapshot still matches. Its signed
-   * history stays; spent inputs can fund nothing again. */
-  dropSpentUnused?(
-    record: WatcherProverFundingReservationRecord,
-  ): Promise<boolean>;
-  /** Moves the signed attempts of `orphans`, reservations no workflow will
-   * drive again, into the fresh reservation `plan` for the same target as
-   * superseded attempts, with their funding, and releases each orphan.
-   * Atomic and revision-checked; each orphan must still match its snapshot. */
-  handOverOrphanedAttempts?(input: {
-    readonly plan: WatcherProverFundingReservationPlan;
-    readonly expectedRevision: string;
-    readonly orphans: readonly WatcherProverFundingReservationRecord[];
-    readonly category: string;
-    readonly headerHash: string;
-  }): Promise<WatcherProverFundingReservationRecord>;
   /** Releases `orphan` once every signed attempt it holds is retired past
    * release finality, only if its snapshot still matches. */
   settleOrphanedReservation?(input: {

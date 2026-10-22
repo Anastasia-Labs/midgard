@@ -244,7 +244,6 @@ export const openFundedDispute = async (
         scriptHashes(scene, deployment),
       ),
       referenceUtxos: referenceUtxos(scene, deployment),
-      computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
       // The watcher does not install the dispute until its defender exists.
       journalRoot: null,

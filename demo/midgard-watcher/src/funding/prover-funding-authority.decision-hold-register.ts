@@ -2,9 +2,8 @@ import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 
 /**
- * The reservations held because their recorded decision is missing, or
- * because no workflow drives their signed attempts again. An orphaned
- * reservation's failure alert is active exactly while it is held.
+ * The reservations held because no workflow drives their signed attempts
+ * again. A reservation's failure alert is active exactly while it is held.
  */
 export const createWatcherReservationHoldRegister = (
   alertSink?: () => Pick<WatcherOperationsSink, "setAlert">,
@@ -21,9 +20,7 @@ export const createWatcherReservationHoldRegister = (
     if (sink === undefined) return;
     const held = new Set(
       [...holds.values()].flatMap((hold) =>
-        hold.kind === "reservation" && hold.readiness !== undefined
-          ? [hold.reservationId]
-          : [],
+        hold.kind === "reservation" ? [hold.reservationId] : [],
       ),
     );
     for (const id of new Set([...raised, ...held])) {

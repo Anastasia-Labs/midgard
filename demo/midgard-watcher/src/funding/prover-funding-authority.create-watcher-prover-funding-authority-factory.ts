@@ -33,13 +33,11 @@ import { createWatcherProverFundingAuthority } from "./prover-funding-authority.
 import { createWatcherReservationHoldRegister } from "./prover-funding-authority.decision-hold-register.js";
 import {
   admittedFactories,
-  readRecord,
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthorityFactory,
 } from "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
 import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
 import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
-import type { WatcherFundingInputFacts } from "./prover-funding-input-facts.js";
 import {
   authorizeWatcherProverFundingRecovery,
   releaseUnusedWatcherProverFundingReservations,
@@ -119,12 +117,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
   readonly store: WatcherProverFundingReservationStore;
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
-  /** The follower's facts that alone reclaim a reservation whose decision is missing. */
-  readonly fundingInputFacts?: WatcherFundingInputFacts;
-  /** This deployment's computation-thread policy, which proves own thread custody. */
-  readonly computationThreadPolicyId?: string;
-  /** Reads signed attempts from their own bytes; it alone settles or hands
-   * over funding no workflow will drive again. */
+  /** Reads signed attempts from their own bytes; it alone settles funding
+   * no workflow will drive again. */
   readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
   /** The clock that paces those reads. */
   readonly now?: () => number;
@@ -162,7 +156,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
     (await input.store.readAll())
       .map(parseWatcherProverFundingReservationRecord)
       .filter(({ reservationId }) => !live.has(reservationId));
-  // Reservations held because their decision or workflow is missing, by id.
+  // Reservations held because no workflow drives them, by id.
   const decisionHolds = createWatcherReservationHoldRegister(input.alertSink);
   const recordHolds = decisionHolds.record;
   // A sweep, a per-run release and a hold recheck each read the store and
@@ -310,7 +304,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;
-      const handOver = await authorizeWatcherProverFundingRecovery({
+      await authorizeWatcherProverFundingRecovery({
         journalRoot: input.journalRoot,
         journalAuthenticationKey: input.journalAuthenticationKey,
         deploymentIdentity: input.deploymentIdentity,
@@ -318,7 +312,6 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         category: request.category,
         rollbackGeneration: request.rollbackGeneration,
         store: input.store,
-        ...(orphans === undefined ? {} : { orphans }),
       });
       const execution = assertWorkflowActuationPermitIdentity({
         permit: request.actuationPermit,
@@ -461,41 +454,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
             ? (request.walletUtxos ?? (await request.readWalletUtxos()))
             : [],
         readWalletUtxos: request.readWalletUtxos,
-        // Signed funding no workflow drives again becomes this execution's
-        // superseded attempts as it first reserves: excluded by its
-        // replacement, or adopted.
-        store:
-          handOver.length === 0
-            ? input.store
-            : {
-                ...input.store,
-                reserve: async (plan, expectedIdleRevision) => {
-                  const reserved = await input.store.reserve(
-                    plan,
-                    expectedIdleRevision,
-                  );
-                  if (expectedIdleRevision !== undefined) return reserved;
-                  if (input.store.handOverOrphanedAttempts === undefined)
-                    throw new Error(
-                      "prover funding store cannot hand over funding",
-                    );
-                  await input.store.handOverOrphanedAttempts({
-                    plan,
-                    expectedRevision: (
-                      await readRecord({
-                        store: input.store,
-                        reservationId: plan.reservationId,
-                      })
-                    ).revision,
-                    orphans: handOver,
-                    category: request.category,
-                    headerHash: execution.headerHash,
-                  });
-                  return reserved;
-                },
-              },
+        store: input.store,
         resolveInputs: request.resolveInputs,
-        computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
       });
       return authority.permit;
