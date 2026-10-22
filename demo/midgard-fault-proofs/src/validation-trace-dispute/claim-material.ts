@@ -136,6 +136,14 @@ export type ValidationTraceClaimMaterial = {
    * whole witnessed trace.
    */
   readonly steps: (stateIndex: number) => Promise<ValidationTraceSteps>;
+  /**
+   * `steps` of every index in `stateIndices`, in their order, from ONE
+   * replay over the indices not yet read: a pass planning several one-step
+   * resolutions pays one replay, and later `steps` reads are served from it.
+   */
+  readonly stepsAt: (
+    stateIndices: readonly number[],
+  ) => Promise<readonly ValidationTraceSteps[]>;
   /** Every CEK script selection of the trace that rests on a decode record,
    * in trace order (`recordedSelectionOf`), rebuilt on first use. */
   readonly selections: () => Promise<readonly ValidationTraceSelection[]>;
@@ -145,6 +153,22 @@ export type ValidationTraceClaimMaterial = {
    * unless it is the item the selection commits to.
    */
   readonly scriptItem: (selection: ValidationTraceSelectionSource) => Buffer;
+};
+
+/** States `stateIndex` and `stateIndex + 1` of `trace`, as `steps` holds them. */
+const windowOf = (
+  trace: ValidationTraceSteps,
+  stateIndex: number,
+): ValidationTraceSteps => {
+  const pick = <Value>(byIndex: {
+    readonly [programCounter: number]: Value | undefined;
+  }) =>
+    Object.fromEntries(
+      [stateIndex, stateIndex + 1]
+        .filter((index) => index in byIndex)
+        .map((index) => [index, byIndex[index]]),
+    );
+  return { states: pick(trace.states), witnesses: pick(trace.witnesses) };
 };
 
 /**
@@ -202,6 +226,25 @@ export const buildValidationTraceClaimMaterial = async ({
     );
   const trace = buildTraceAtStepCountV1(leaves, leaves.stepCount);
   const steps = new Map<number, Promise<ValidationTraceSteps>>();
+  // Every index of `stateIndices` not yet read is read by one replay that
+  // keeps it and its successor, then split into per-index windows.
+  const readSteps = (stateIndices: readonly number[]) => {
+    const unread = [...new Set(stateIndices)].filter(
+      (index) => !steps.has(index),
+    );
+    if (unread.length > 0) {
+      const kept = new Set(unread.flatMap((index) => [index, index + 1]));
+      const replay = Effect.runPromise(
+        openValidationTraceStepsV1(input, (index) => kept.has(index)),
+      );
+      for (const index of unread)
+        steps.set(
+          index,
+          replay.then((trace) => windowOf(trace, index)),
+        );
+    }
+    return stateIndices.map((index) => steps.get(index)!);
+  };
   let selections: Promise<readonly ValidationTraceSelection[]> | undefined;
   if (!trace.descriptor.traceRoot.equals(leaves.descriptor.traceRoot))
     throw new Error(
@@ -227,19 +270,8 @@ export const buildValidationTraceClaimMaterial = async ({
           return index;
       return undefined;
     },
-    steps: (stateIndex) => {
-      let window = steps.get(stateIndex);
-      if (window === undefined) {
-        window = Effect.runPromise(
-          openValidationTraceStepsV1(
-            input,
-            (index) => index === stateIndex || index === stateIndex + 1,
-          ),
-        );
-        steps.set(stateIndex, window);
-      }
-      return window;
-    },
+    steps: (stateIndex) => readSteps([stateIndex])[0]!,
+    stepsAt: (stateIndices) => Promise.all(readSteps(stateIndices)),
     selections: () =>
       (selections ??= Effect.runPromise(
         openValidationTraceStepsV1(

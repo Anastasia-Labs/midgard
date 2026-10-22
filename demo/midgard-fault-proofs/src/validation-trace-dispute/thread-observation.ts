@@ -155,20 +155,28 @@ const planReadyThreads = async (
 ): Promise<ReadonlyMap<string, ValidationTraceOneStepPlanning>> => {
   const plannings = new Map<string, ValidationTraceOneStepPlanning>();
   if (deployment.references.oneStep === undefined) return plannings;
-  for (const { at, thread, outRef } of threads)
-    if (
-      at === "game" &&
-      thread.turn === "ReadyForOneStep" &&
-      isThreadMaterial(thread, material)
-    )
-      plannings.set(
-        outRef,
-        await planValidationTraceThread(
-          material,
-          thread,
-          validationTraceOneStepDrives(deployment),
-        ),
-      );
+  const ready = threads.flatMap(({ at, thread, outRef }) =>
+    at === "game" &&
+    thread.turn === "ReadyForOneStep" &&
+    isThreadMaterial(thread, material)
+      ? [{ thread, outRef, material }]
+      : [],
+  );
+  // One replay reads every ready step; a failed read is each thread's own
+  // unsupported plan below, as when each read its step alone.
+  if (ready.length > 0)
+    await ready[0]!.material
+      .stepsAt(ready.map(({ thread }) => Number(thread.low_index)))
+      .catch(() => undefined);
+  for (const { thread, outRef, material } of ready)
+    plannings.set(
+      outRef,
+      await planValidationTraceThread(
+        material,
+        thread,
+        validationTraceOneStepDrives(deployment),
+      ),
+    );
   return plannings;
 };
 
