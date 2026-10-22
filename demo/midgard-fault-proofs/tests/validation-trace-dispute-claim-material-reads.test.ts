@@ -1,6 +1,7 @@
 /** The claim material's reads over a trace that runs three scripts (two
- * passing spends before the failing one): one batched read of several steps
- * yields exactly the windows each step's own read does. */
+ * passing spends before the failing one): its recorded script selections
+ * are the proof build's, in trace order, and one batched read of several
+ * steps yields exactly the windows each step's own read does. */
 import {
   buildDeterministicValidationMachineTrace,
   type DeterministicValidationMachineTrace,
@@ -8,6 +9,7 @@ import {
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { recordedSelectionOf } from "../src/validation-trace-dispute/selected-scripts.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
 import {
   claimMaterialOf,
@@ -27,6 +29,16 @@ describe("validation-trace claim material: reads over a three-script trace", () 
         await rejectedReplayInputOf(fixture),
       ),
     );
+  }, 600_000);
+
+  it("reads every recorded selection in the proof build's trace order", async () => {
+    const selections = whole.witnesses.flatMap((witness) => {
+      const selection = recordedSelectionOf(witness);
+      return selection === undefined ? [] : [selection];
+    });
+    expect(selections).toHaveLength(3);
+    const material = await claimMaterialOf(fixture);
+    expect(await material.selections()).toStrictEqual(selections);
   }, 600_000);
 
   it("batches several steps' reads into exactly the windows each step's own read yields", async () => {
