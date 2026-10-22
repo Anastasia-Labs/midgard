@@ -149,6 +149,8 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-funded.test.ts",
   "./tests/validation-trace-dispute-installed-lifecycle.test.ts",
   "./tests/validation-trace-dispute-lookalikes.test.ts",
+  "./tests/validation-trace-dispute-max-shape-copy.test.ts",
+  "./tests/validation-trace-dispute-max-shape-inline.test.ts",
   "./tests/validation-trace-dispute-open.test.ts",
   "./tests/validation-trace-dispute-replay-hold-runner.test.ts",
   "./tests/validation-trace-dispute-runner.test.ts",

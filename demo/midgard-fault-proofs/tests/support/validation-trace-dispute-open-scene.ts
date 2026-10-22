@@ -20,10 +20,8 @@ import {
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";
 import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute/detected-claim.js";
 import {
@@ -31,6 +29,7 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../../src/workflow/complete-replay.js";
 import {
+  FAILING_SCRIPT,
   nativeSpendSeedDeposit,
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
@@ -55,7 +54,8 @@ import {
 } from "./submit-init-emulator-shared.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
-import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";
+
+export { initAndOpen } from "./validation-trace-dispute-open-scene.init-and-open.js";
 
 /** L_d: the longest validity range VerifySource admits. */
 const MAX_RANGE_MS =
@@ -110,9 +110,12 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * redeemer is `failingRedeemerData` when given, it reads
  * `failingReferenceInputs` outputs the deposits create as reference inputs,
  * `failingSigners` sign it beside its owner, its spend runs
- * `failingScript`, by default the failing script, and with
+ * `failingScript`, by default the failing script, under `failingExUnits`
+ * when given, and with
  * `failingNativeSpend` it also spends an output a native script holds;
- * with `failingNativeMint` it also mints under a native script's policy.
+ * with `failingNativeMint` it also mints under a native script's policy;
+ * with `failingStampedInvalid` the failing block stamps that transaction
+ * TxIsInvalid, as an honest block does.
  * The passing transaction spends under `passingSpend` when given.
  */
 export const setUpScene = async (
@@ -122,16 +125,20 @@ export const setUpScene = async (
     failingReferenceInputs = 0,
     failingSigners,
     failingScript,
+    failingExUnits,
     failingNativeSpend = false,
     failingNativeMint = false,
+    failingStampedInvalid = false,
     passingSpend,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
     readonly failingSigners?: ScenarioSigners;
     readonly failingScript?: MidgardVersionedScript;
+    readonly failingExUnits?: readonly [bigint, bigint];
     readonly failingNativeSpend?: boolean;
     readonly failingNativeMint?: boolean;
+    readonly failingStampedInvalid?: boolean;
     readonly passingSpend?: ScriptSpend;
   } = {},
 ): Promise<Scene> => {
@@ -182,12 +189,19 @@ export const setUpScene = async (
     ) - 1,
   );
   const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  /** The failing transaction, whichever way its block stamps it. */
+  const isFailing = (scenario: PlutusExecutionScenario) =>
+    scenario === "failing" || scenario === "failing_stamped_invalid";
   /** The script spend `scenario` runs in place of its own, if any. */
   const scenarioSpend = (
     scenario: PlutusExecutionScenario,
   ): ScriptSpend | undefined =>
-    scenario === "failing" && failingScript !== undefined
-      ? { script: failingScript }
+    isFailing(scenario) &&
+    (failingScript !== undefined || failingExUnits !== undefined)
+      ? {
+          script: failingScript ?? FAILING_SCRIPT,
+          ...(failingExUnits === undefined ? {} : { exUnits: failingExUnits }),
+        }
       : scenario === "passing"
         ? passingSpend
         : undefined;
@@ -240,11 +254,13 @@ export const setUpScene = async (
     const endTime = previous.endTime + 60_000n;
     const spend = scenarioSpend(scenario);
     const block = await plutusExecutionBlockFixture(scenario, {
-      seedByte: seeds[scenario as keyof typeof seeds],
-      ...(scenario === "failing" && failingRedeemerData !== undefined
+      seedByte: isFailing(scenario)
+        ? seeds.failing
+        : seeds[scenario as keyof typeof seeds],
+      ...(isFailing(scenario) && failingRedeemerData !== undefined
         ? { redeemerData: failingRedeemerData }
         : {}),
-      ...(scenario === "failing"
+      ...(isFailing(scenario)
         ? {
             referenceInputs: references.outRefs,
             ...(failingSigners === undefined
@@ -289,7 +305,9 @@ export const setUpScene = async (
     };
     return block;
   };
-  const failing = await commit("failing");
+  const failing = await commit(
+    failingStampedInvalid ? "failing_stamped_invalid" : "failing",
+  );
   const passing = await commit("passing");
   const forced = await commit("forced_failing");
 
@@ -352,91 +370,6 @@ export const failingMaterial = async (
       l1SlotConfig,
     })
   ).material;
-};
-
-const liveBlock = async (scene: Scene, block: Block): Promise<UTxO> => {
-  const { h } = scene;
-  const [node] = await h.proverLucid.utxosAtWithUnit(
-    h.contracts.stateQueue.spendingScriptAddress,
-    toUnit(
-      h.contracts.stateQueue.policyId,
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + block.evidence.headerHash,
-    ),
-  );
-  if (node === undefined) throw new Error("the challenged block is absent");
-  return node;
-};
-
-/** Init a validation-trace thread on `block`, then Open it with `claim`
- * within the transaction limits; returns the pending claim at source-v1. */
-export const initAndOpen = async (
-  scene: Scene,
-  block: Block,
-  claim: SDK.ValidationDisputeClaim,
-): Promise<{ readonly opener: UTxO }> => {
-  const { h, chain } = scene;
-  const category = h.catalogue.categories.validationTraceDispute;
-  if (category === undefined)
-    throw new Error("catalogue has no validation-trace category");
-  const blockUtxo = await liveBlock(scene, block);
-  const init = await submitResolvedInit({
-    lucid: h.proverLucid,
-    blueprint: h.realBlueprint,
-    network,
-    label: "validation-trace open",
-    contracts: {
-      steps: [h.contracts.fraudProofs.validationTraceDispute],
-      computationThread: h.contracts.computationThread,
-      hubOraclePolicyId: h.contracts.hubOracle.policyId,
-      stateQueuePolicyId: h.contracts.stateQueue.policyId,
-    },
-    category,
-    catalogue: {
-      policyId: h.contracts.fraudProofCatalogue.policyId,
-      spendingScriptAddress:
-        h.contracts.fraudProofCatalogue.spendingScriptAddress,
-      root: h.catalogue.root,
-    },
-    signer: h.proverSigner,
-    fraudulentBlockOutRef: `${blockUtxo.txHash}#${blockUtxo.outputIndex.toString()}`,
-    witnessReferenceScripts: h.witnessReferenceScripts,
-    awaitConfirmation: true,
-  });
-  const thread = (
-    await h.proverLucid.utxosAtWithUnit(
-      init.firstStepAddress,
-      init.computationThreadUnit,
-    )
-  ).find((utxo) => utxo.txHash === init.txHash);
-  if (thread === undefined) throw new Error("the Init thread is absent");
-  const challenged = await Effect.runPromise(
-    SDK.validationDisputeChallengedBlock(
-      blockUtxo,
-      h.contracts.stateQueue.policyId,
-    ),
-  );
-  const built = await SDK.appendValidationDisputeOpen(h.proverLucid.newTx(), {
-    contracts: { opener: chain.opener, source: chain.source },
-    computationThreadPolicyId: h.contracts.computationThread.policyId,
-    openerReferenceScript: scene.references.opener,
-    thread,
-    fraudProver: init.fraudProver,
-    hubOracle: scene.hubOracle,
-    challenged,
-    claim,
-  }).complete({ localUPLCEval: true });
-  const signed = await built.sign.withWallet().complete();
-  measureWithinTransactionLimits(signed.toCBOR());
-  const txHash = await signed.submit();
-  await h.proverLucid.awaitTx(txHash);
-  const opener = (
-    await h.proverLucid.utxosAtWithUnit(
-      chain.source.spendingScriptAddress,
-      init.computationThreadUnit,
-    )
-  ).find((utxo) => utxo.txHash === txHash);
-  if (opener === undefined) throw new Error("the pending claim is absent");
-  return { opener };
 };
 
 /** VerifySource over `opener`, valid for L_d from now (plus `offsetMs`). */
