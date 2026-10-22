@@ -49,23 +49,27 @@ type EvidenceSource = Readonly<{
 /** `Inline`'s constructor among the field carriages. */
 const INLINE_CARRIAGE = 0;
 
-/** Each non-output step the runner drives, by its script-sources stage and
- * its auxiliary evidence's constructor: its role (`middle_role`) and that
- * role's yield. The stage-four begin and stage-six fold-asset steps are not
- * yet driven. */
+/** Each non-output step, by its script-sources stage and its auxiliary
+ * evidence's constructor: its role (`middle_role`) and that role's yield. */
 const MIDDLE_ROLES: Readonly<
   Record<string, readonly [number, ValidationTracePhaseYield]>
 > = Object.freeze({
   "2:0": [0, "scriptSourcesStageTwoAdvance"],
   "3:7": [1, "scriptSourcesStageThreeReplay"],
   "3:0": [2, "scriptSourcesStageThreeFinish"],
+  "4:27": [3, "scriptSourcesStageFourBegin"],
   "4:0": [4, "scriptSourcesStageFourFinish"],
   "6:1": [5, "scriptSourcesStageSixBeginPolicy"],
+  "6:35": [6, "scriptSourcesStageSixFoldAsset"],
   "6:0": [7, "scriptSourcesStageSixFinish"],
 });
 
-/** The stage-six begin-policy evidence's field carriage: its third field. */
-const BEGIN_POLICY_CARRIAGE = 2;
+/** The field carriage of the evidence of each role that reads a field's
+ * item through it, by role: the stage-four begin evidence's only field, and
+ * the stage-six begin-policy evidence's third. */
+const ROLE_CARRIAGES: Readonly<Partial<Record<number, number>>> = Object.freeze(
+  { 3: 0, 5: 2 },
+);
 
 const auxiliaryOf = (auxiliaryCbor: string): Constr<Data> => {
   const auxiliary = Data.from(auxiliaryCbor);
@@ -101,8 +105,9 @@ export const scriptSourcesNonOutputEvidence = ({
     MIDDLE_ROLES[`${stageOf(transitionCbor).toString()}:${auxiliary.index}`];
   if (role === undefined) return undefined;
   const [index, name] = role;
-  if (index === 5) {
-    const carriage = auxiliary.fields[BEGIN_POLICY_CARRIAGE];
+  const carriageField = ROLE_CARRIAGES[index];
+  if (carriageField !== undefined) {
+    const carriage = auxiliary.fields[carriageField];
     if (
       !(carriage instanceof Constr) ||
       Number(carriage.index) !== INLINE_CARRIAGE

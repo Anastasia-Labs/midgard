@@ -20,6 +20,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
+use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -513,6 +514,61 @@ pub fn canonical_output_commitment_step_with_successor(
   claimed_output_leaf: ByteArray,
   claimed_output_total_count: Int,
 ) -> Bool {
+  let (pre, begin_transition, carriage, after_item_work_witness_cbor, post) = canonical_output_commitment_steps(
+    claimed_output_leaf,
+    claimed_output_total_count,
+  )
+  if step_to_verify == 0 {
+    vm_script_sources.verify_script_sources_stage_four_semantics_v1(
+      pre,
+      begin_transition,
+      vm_machine_types.TransactionRedeemerItemBeginWitness { carriage },
+      inline_field_door(),
+    )
+  } else {
+    and {
+      step_to_verify == 1,
+      vm_script_sources.verify_script_sources_stage_four_semantics_v1(
+        begin_transition.claimed_successor,
+        vm_machine_types.ValidationOneStepWitnessV1 {
+          work_witness_cbor: after_item_work_witness_cbor,
+          claimed_successor: post,
+        },
+        vm_machine_types.NoAuxiliaryWitness,
+        inline_field_door(),
+      ),
+    }
+  }
+}
+
+/// The honest stage-four begin step over the one-output transaction of
+/// `canonical_output_commitment_step`: its pre state, its transition and the
+/// carriage of field 2.
+pub fn stage_four_begin_step() -> (
+  validation_trace_v1.ValidationMachineStateV1,
+  vm_machine_types.ValidationOneStepWitnessV1,
+  FieldCarriageV1,
+) {
+  let (pre, transition, carriage, _, _) = canonical_output_commitment_steps(
+    script_proof_v1.output_leaf_hash(
+      0,
+      canonical_output_commitment_output_cbor(),
+    ),
+    1,
+  )
+  (pre, transition, carriage)
+}
+
+fn canonical_output_commitment_steps(
+  claimed_output_leaf: ByteArray,
+  claimed_output_total_count: Int,
+) -> (
+  validation_trace_v1.ValidationMachineStateV1,
+  vm_machine_types.ValidationOneStepWitnessV1,
+  FieldCarriageV1,
+  ByteArray,
+  validation_trace_v1.ValidationMachineStateV1,
+) {
   let output = canonical_output_commitment_output()
   let output_cbor = canonical_output_commitment_output_cbor()
   let base = empty_v1_transaction()
@@ -578,32 +634,16 @@ pub fn canonical_output_commitment_step_with_successor(
     output_frontier,
     16,
   )
-  if step_to_verify == 0 {
-    vm_script_sources.verify_script_sources_stage_four_semantics_v1(
-      pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: after_item,
-      },
-      vm_machine_types.TransactionRedeemerItemBeginWitness {
-        carriage: inline_field_carriage([output_cbor]),
-      },
-      inline_field_door(),
-    )
-  } else {
-    and {
-      step_to_verify == 1,
-      vm_script_sources.verify_script_sources_stage_four_semantics_v1(
-        after_item,
-        vm_machine_types.ValidationOneStepWitnessV1 {
-          work_witness_cbor: after_item_work_witness_cbor,
-          claimed_successor: post,
-        },
-        vm_machine_types.NoAuxiliaryWitness,
-        inline_field_door(),
-      ),
-    }
-  }
+  (
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: after_item,
+    },
+    inline_field_carriage([output_cbor]),
+    after_item_work_witness_cbor,
+    post,
+  )
 }
 
 pub fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
@@ -990,6 +1030,31 @@ pub fn maximum_mint_asset_leaves(
 }
 
 pub fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
+  let (pre, transition, current_chunk_proof, next_chunk_proof) = mint_fold_asset_step()
+  vm_script_sources.verify_script_sources_stage_six_semantics_v1(
+    pre,
+    transition,
+    vm_machine_types.MintFoldAssetWitness {
+      chunk_proof: current_chunk_proof,
+      next_chunk_proof: if withhold_next_chunk {
+        None
+      } else {
+        next_chunk_proof
+      },
+    },
+    inline_field_door(),
+  )
+}
+
+/// The honest stage-six fold-asset step of `crossing_mint_fold_step`, whose
+/// asset crosses a chunk boundary: its pre state, its transition, and the
+/// current and next chunk proofs.
+pub fn mint_fold_asset_step() -> (
+  validation_trace_v1.ValidationMachineStateV1,
+  vm_machine_types.ValidationOneStepWitnessV1,
+  bounded_item_v1.ChunkProofV1,
+  Option<bounded_item_v1.ChunkProofV1>,
+) {
   let mint = decode_midgard_tx_mint_preimage_cbor(maximum_mint_preimage_cbor())
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
@@ -1086,21 +1151,14 @@ pub fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
     6,
     52,
   )
-  vm_script_sources.verify_script_sources_stage_six_semantics_v1(
+  (
     pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    vm_machine_types.MintFoldAssetWitness {
-      chunk_proof: current_chunk_proof,
-      next_chunk_proof: if withhold_next_chunk {
-        None
-      } else {
-        Some(next_chunk_proof)
-      },
-    },
-    inline_field_door(),
+    current_chunk_proof,
+    Some(next_chunk_proof),
   )
 }
 

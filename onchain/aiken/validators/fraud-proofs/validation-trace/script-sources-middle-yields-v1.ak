@@ -76,7 +76,8 @@ validator stage_four_begin(
       dispatcher_script_hashes,
       tx,
       3,
-      29,
+      // TransactionRedeemerItemBeginWitness
+      27,
     )
     expect [carriage_data] = fields
     expect carriage: FieldCarriageV1 = carriage_data
@@ -150,7 +151,8 @@ validator stage_six_fold_asset(dispatcher_script_hashes: List<ScriptHash>) {
       dispatcher_script_hashes,
       tx,
       6,
-      39,
+      // MintFoldAssetWitness
+      35,
     )
     expect [chunk, next_chunk] = fields
     expect proof: bounded_item_v1.ChunkProofV1 = chunk
