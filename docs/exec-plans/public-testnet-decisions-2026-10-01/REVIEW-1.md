@@ -30,8 +30,8 @@ files were edited.
 ### [F1] CONFIRMED — major
 
 Where: `demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.ts:253`, `:294`;
-`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.reconcile-workflow-funding-submission-handoff.ts:234`;
-`demo/midgard-watcher/src/fault-proofs/fault-proof-execution.ts:305`.
+`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.reconcile-workflow-funding-submission-handoff.ts:234` (since deleted);
+`demo/midgard-watcher/src/fault-proofs/fault-proof-execution.ts:305`. <!-- doc-links:historical -->
 
 Defect: A reduced live collateral-input limit prevents reconciliation of an
 existing signed attempt, including a transaction already confirmed under the
