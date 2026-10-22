@@ -1,7 +1,7 @@
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
 import { Effect, Ref } from "effect";
 
 import type { Globals } from "../services/globals.js";
-import { LOCAL_FAULT_RUN_LIMIT } from "../services/l1-follower.coalesced-runner.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
