@@ -16,9 +16,10 @@ import type {
 /**
  * Store operations that reclaim a reservation's funding. An unused one
  * returns its inputs to the wallet. One whose workflow will never drive it
- * again is settled, in one revision-checked transaction that
- * leaves it released, with nothing leased and no signed attempt of its own,
- * and deletes the workflow rows of its forgotten objective's execution.
+ * again is settled, in one revision-checked transaction that deletes it
+ * with its rows, so nothing stays leased, and deletes the workflow rows of
+ * its forgotten objective's execution. An objective that returns under the
+ * same decision then plans a fresh reservation.
  */
 export const createProverFundingReclaimOperations = (deps: {
   readonly database: DatabaseSync;
@@ -62,20 +63,16 @@ export const createProverFundingReclaimOperations = (deps: {
       ? current
       : null;
   };
-  /** The orphan leaves nothing behind: released, with no rows of its own. */
+  /** The orphan leaves nothing behind, not even its reservation row. */
   const settle = (orphan: WatcherProverFundingReservationRecord) => {
     deleteRows(orphan.reservationId);
-    deps.writeRecord(
-      orphan.recordDigest,
-      nextRecord({
-        current: orphan,
-        state: "released",
-        activeInputs: [],
-        pendingTransition: null,
-        lastConfirmedTransitionDigest: null,
-        conflictCode: null,
-      }),
-    );
+    const deleted = database
+      .prepare(
+        "DELETE FROM watcher_prover_funding_reservation_v1 WHERE reservation_id = ? AND record_digest = ?",
+      )
+      .run(orphan.reservationId, orphan.recordDigest);
+    if (deleted.changes !== 1)
+      throw new Error("prover funding reservation compare-and-swap failed");
   };
   const clearUnused = async (
     expected: WatcherProverFundingReservationRecord,

@@ -29,13 +29,17 @@ const signedReservation = async (
  * dispatch. A reservation whose recorded decision is missing is left as it
  * is. With `orphans`, signed funding nothing drives (no workflow journal
  * names it, or its objective was forgotten when its header left the queue)
- * is released once each of its attempts is retired past release finality,
- * read from its own bytes, with a forgotten objective's workflow rows, and
- * held until then (prover_funding_orphaned_reservation); the holds are
- * returned. A header that returns between this check and the settle has its
- * old execution's rows deleted under it: that run's next append is refused
- * as a concurrent write, and its job is retried from a fresh execution, with
- * every attempt of the old one already retired. With `decisionMissingOnly`,
+ * is settled once each of its attempts is retired past release finality,
+ * read from its own bytes, and held until then
+ * (prover_funding_orphaned_reservation); the holds are returned. The settle
+ * deletes the reservation with its rows, and a forgotten objective's
+ * workflow rows with it, so its inputs return to the wallet. A header that
+ * returns after the settle (a rollback shallower than release finality, or
+ * between this check and the settle) is funded again: its fresh execution
+ * plans a fresh reservation under the same decision, every attempt of the
+ * old one already retired. A run of the old execution still going when its
+ * rows are deleted has its next write refused, and its job is retried from
+ * that fresh execution. With `decisionMissingOnly`,
  * unsigned reservations are left alone: that re-check runs beside live
  * dispatch, which owns them.
  */

@@ -77,10 +77,7 @@ describe("the store settles signed funding no workflow drives", () => {
         },
       ]),
     ).toBe(true);
-    expect(await orphanOf(fixture)).toMatchObject({
-      state: "released",
-      activeInputs: [],
-    });
-    expect(await fixture.store.hasSignedHistory!(fixture.plan)).toBe(false);
+    expect(await orphanOf(fixture)).toBeUndefined();
+    expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
   });
 });

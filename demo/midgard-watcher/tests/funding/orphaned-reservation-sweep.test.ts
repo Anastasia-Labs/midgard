@@ -80,11 +80,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
     );
     later();
     await factory.releaseUnused();
-    expect(await orphan()).toMatchObject({
-      state: "released",
-      activeInputs: [],
-      pendingTransition: null,
-    });
+    expect(await orphan()).toBeUndefined();
     expect(factory.decisionHolds()).toEqual([]);
     expect(alerts).toEqual([
       { subjectDigest: fixture.plan.reservationId, active: true },
@@ -101,7 +97,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
       retirement: { ...retirementFixture(txHash), reason: "included" },
     }));
     await factory.releaseUnused();
-    expect(await orphan()).toMatchObject({ state: "released" });
+    expect(await orphan()).toBeUndefined();
     expect(factory.decisionHolds()).toEqual([]);
     expect(alerts).toEqual([]);
   });
@@ -113,7 +109,7 @@ describe("signed funding no workflow drives is settled from its own attempts", (
       retirement: retirementFixture(txHash),
     }));
     await factory.releaseUnused();
-    expect(await orphan()).toMatchObject({ state: "released" });
+    expect(await orphan()).toBeUndefined();
     expect(factory.decisionHolds()).toEqual([]);
   });
 

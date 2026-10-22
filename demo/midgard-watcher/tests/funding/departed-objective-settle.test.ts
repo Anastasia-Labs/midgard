@@ -1,4 +1,7 @@
-import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
+import {
+  beginWorkflowFundingReservationAction,
+  supersededAttemptReadSchedule,
+} from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
@@ -108,10 +111,7 @@ it("holds the funding of an objective whose header left the queue with a signed 
   retire();
   // As on each follower change while a reservation is held.
   await factory.recheckDecisionHolds();
-  expect(await funding()).toMatchObject({
-    state: "released",
-    activeInputs: [],
-  });
+  expect(await funding()).toBeUndefined();
   expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
   expect(factory.decisionHolds()).toEqual([]);
   // The forgotten objective's workflow rows went with the settle.
@@ -125,10 +125,7 @@ it("settles that funding at the next start once the attempt is retired, when the
   retire();
   const { factory } = orphanReadingFactory(fixture);
   await factory.releaseUnused();
-  expect(await funding()).toMatchObject({
-    state: "released",
-    activeInputs: [],
-  });
+  expect(await funding()).toBeUndefined();
   expect(await fixture.store.readReservedOutRefs({})).toEqual([]);
   expect(fixture.workflowJournal.readExecution(fixture.objective)).toBe(
     undefined,
@@ -153,4 +150,36 @@ it("leaves the funding and the workflow rows to the objective's run when its hea
       .readExecution(fixture.objective)
       ?.entries.some(({ event }) => event.kind === "submission_intent"),
   ).toBe(true);
+});
+
+it("funds the objective again when its header returns after the settle, and its fresh run begins an action", async () => {
+  const { fixture, factory, funding, admit, retire } = await departed(true);
+  retire();
+  await factory.recheckDecisionHolds();
+  expect(factory.decisionHolds()).toEqual([]);
+  // A rollback shallower than release finality undoes the removal: the
+  // header is queued again and its job registered.
+  await admit(3, true);
+  openWatcherJournalDatabase({
+    journalRoot: fixture.journalRoot,
+    authenticationKey: TEST_JOURNAL_KEY,
+  }).transaction((tx) => openWatcherProofObjective(tx, fixture.objective));
+  const journal = fixture.bind(
+    fixture.old,
+    await fixture.createPermit(fixture.old, "3"),
+  );
+  await fixture.run(journal);
+  await beginWorkflowFundingReservationAction({
+    journal,
+    action: { actionId: "init", input: { actionKind: "proof.init" } },
+  });
+  const refunded = await funding();
+  expect(refunded).toMatchObject({
+    state: "active",
+    decisionDigest: fixture.old.decisionDigest,
+  });
+  expect(refunded!.activeInputs).not.toEqual([]);
+  expect([...(await fixture.store.readReservedOutRefs({}))].sort()).toEqual(
+    refunded!.activeInputs.map(({ outRef }) => outRef).sort(),
+  );
 });
