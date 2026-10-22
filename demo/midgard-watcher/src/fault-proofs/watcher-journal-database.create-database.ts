@@ -4,9 +4,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
   createWatcherJournalCodec,
-  MODULUS,
   sameHex,
-  ZERO_DIGEST,
 } from "./watcher-journal-database.codec.js";
 import {
   prepareWatcherJournalDirectory,
@@ -16,8 +14,6 @@ import { migrateWatcherJournals } from "./watcher-journal-database.migrate.js";
 import { type WatcherJournalRefuse } from "./watcher-journal-database.refusal.js";
 import {
   type Staged,
-  type StoredHead,
-  type StoredRevision,
   type StoredRow,
   WATCHER_JOURNAL_DATABASE_FILE,
   WatcherJournalConfigurationError,
@@ -26,9 +22,7 @@ import {
   type WatcherJournalRowFilter,
   type WatcherJournalTransaction,
 } from "./watcher-journal-database.types.js";
-import { verifyWatcherJournal } from "./watcher-journal-database.verify.js";
 import {
-  WATCHER_JOURNAL_RETAINED_REVISIONS,
   WATCHER_JOURNAL_TABLES,
   WATCHER_JOURNALS,
   type WatcherJournalName,
@@ -89,32 +83,13 @@ export const createWatcherJournalDatabase = (
     return name;
   };
 
-  const readHead = (journal: WatcherJournalName): StoredHead => {
+  // A journal's revision counter; the head's key is read only to tell a
+  // wrong key from corruption (watcherJournalsWrittenUnderAnotherKey).
+  const readRevision = (journal: WatcherJournalName): number => {
     const stored = prepare(
-      "SELECT revision, chain, live_rows, accumulator, key_id, mac FROM watcher_journal_heads WHERE journal = ?",
-    ).get(journal) as
-      | {
-          revision: number;
-          chain: string;
-          live_rows: number;
-          accumulator: string;
-          key_id: string;
-          mac: string;
-        }
-      | undefined;
-    if (stored === undefined)
-      return { revision: 0, chain: ZERO_DIGEST, liveRows: 0, accumulator: 0n };
-    if (stored.key_id !== codec.keyId)
-      refuse(journal, "head is authenticated by another key");
-    const head: StoredHead = {
-      revision: Number(stored.revision),
-      chain: stored.chain,
-      liveRows: Number(stored.live_rows),
-      accumulator: BigInt(`0x${stored.accumulator}`),
-    };
-    if (!sameHex(stored.mac, codec.headMac(journal, head)))
-      refuse(journal, "head MAC differs");
-    return head;
+      "SELECT revision FROM watcher_journal_heads WHERE journal = ?",
+    ).get(journal) as { revision: number } | undefined;
+    return stored === undefined ? 0 : Number(stored.revision);
   };
 
   const admitRow = (
@@ -176,101 +151,65 @@ export const createWatcherJournalDatabase = (
     ).all(...params) as StoredRow[];
   };
 
-  // The head's authenticated live count is O(1). A state's count reads and
-  // admits each of its rows, so a forged or re-stated row refuses the
-  // journal instead of moving a capacity check.
   const countRows = (journal: WatcherJournalName, state?: string): number =>
-    state === undefined
-      ? readHead(journal).liveRows
-      : selectRows(journal, { state }).filter(
-          (stored) => admitRow(journal, stored).state === state,
-        ).length;
+    Number(
+      (
+        (state === undefined
+          ? prepare(`SELECT count(*) AS n FROM ${table(journal)}`).get()
+          : prepare(
+              `SELECT count(*) AS n FROM ${table(journal)} WHERE state = ?`,
+            ).get(state)) as { n: number }
+      ).n,
+    );
 
   /** Applies one journal's staged writes as one revision. */
   const applyStaged = (journal: WatcherJournalName, staged: Staged): void => {
-    const head = readHead(journal);
-    const revision = head.revision + 1;
-    let accumulator = head.accumulator;
-    let liveRows = head.liveRows;
-    const delta: [string, string | null][] = [];
+    const revision = readRevision(journal) + 1;
+    let changed = false;
     for (const key of [...staged.keys()].sort()) {
       const write = staged.get(key)!;
-      const prior = storedRow(journal, key);
-      if (prior !== undefined) {
-        admitRow(journal, prior);
-        accumulator =
-          (accumulator - codec.element(prior.mac) + MODULUS) % MODULUS;
-        liveRows -= 1;
-      }
       if (write === null) {
-        if (prior === undefined) continue;
-        prepare(`DELETE FROM ${table(journal)} WHERE row_key = ?`).run(key);
-        delta.push([key, null]);
+        const { changes } = prepare(
+          `DELETE FROM ${table(journal)} WHERE row_key = ?`,
+        ).run(key);
+        if (Number(changes) > 0) changed = true;
         continue;
       }
-      const rowMac = codec.rowMac(journal, {
-        row_key: key,
-        ...write,
-        revision,
-      });
       prepare(
         `INSERT INTO ${table(journal)} (row_key, scope, state, revision, body, mac)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (row_key) DO UPDATE SET scope = excluded.scope,
            state = excluded.state, revision = excluded.revision,
            body = excluded.body, mac = excluded.mac`,
-      ).run(key, write.scope, write.state, revision, write.body, rowMac);
-      accumulator = (accumulator + codec.element(rowMac)) % MODULUS;
-      liveRows += 1;
-      delta.push([key, rowMac]);
+      ).run(
+        key,
+        write.scope,
+        write.state,
+        revision,
+        write.body,
+        codec.rowMac(journal, { row_key: key, ...write, revision }),
+      );
+      changed = true;
     }
-    if (delta.length === 0) return;
-    const deltaText = watcherCanonicalJson(delta);
-    const chain = codec.chainOf(journal, revision, head.chain, deltaText);
-    const next: StoredHead = { revision, chain, liveRows, accumulator };
+    if (!changed) return;
     prepare(
-      `INSERT INTO watcher_journal_heads (journal, revision, chain, live_rows, accumulator, key_id, mac)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO watcher_journal_heads (journal, revision, key_id)
+       VALUES (?, ?, ?)
        ON CONFLICT (journal) DO UPDATE SET revision = excluded.revision,
-         chain = excluded.chain, live_rows = excluded.live_rows,
-         accumulator = excluded.accumulator, key_id = excluded.key_id,
-         mac = excluded.mac`,
-    ).run(
-      journal,
-      revision,
-      chain,
-      liveRows,
-      accumulator.toString(16).padStart(64, "0"),
-      codec.keyId,
-      codec.headMac(journal, next),
-    );
-    prepare(
-      "INSERT INTO watcher_journal_revisions (journal, revision, chain, delta, mac) VALUES (?, ?, ?, ?, ?)",
-    ).run(
-      journal,
-      revision,
-      chain,
-      deltaText,
-      codec.revisionMac(journal, revision, chain, deltaText),
-    );
-    prepare(
-      "DELETE FROM watcher_journal_revisions WHERE journal = ? AND revision <= ?",
-    ).run(journal, revision - WATCHER_JOURNAL_RETAINED_REVISIONS);
+         key_id = excluded.key_id`,
+    ).run(journal, revision, codec.keyId);
   };
 
   const verify = (): void =>
     inTransaction("BEGIN", () => {
-      for (const journal of WATCHER_JOURNALS)
-        verifyWatcherJournal({
-          journal,
-          head: readHead(journal),
-          rows: selectRows(journal),
-          revisions: prepare(
-            "SELECT revision, chain, delta, mac FROM watcher_journal_revisions WHERE journal = ? ORDER BY revision",
-          ).all(journal) as StoredRevision[],
-          codec,
-          admit: (stored) => admitRow(journal, stored),
-        });
+      for (const journal of WATCHER_JOURNALS) {
+        // A lower counter would reuse revisions and hide rows from readers
+        // that reload after a revision.
+        const revision = readRevision(journal);
+        for (const stored of selectRows(journal))
+          if (admitRow(journal, stored).revision > revision)
+            refuse(journal, `row ${stored.row_key} is newer than the head`);
+      }
     });
 
   const transaction = <T>(run: (tx: WatcherJournalTransaction) => T): T => {
@@ -381,13 +320,11 @@ export const createWatcherJournalDatabase = (
     rows: (journal, filter) =>
       selectRows(journal, filter).map((stored) => admitRow(journal, stored)),
     count: countRows,
-    head: (journal) => {
-      const head = readHead(journal);
-      return Object.freeze({
-        revision: head.revision,
-        liveRows: head.liveRows,
-      });
-    },
+    head: (journal) =>
+      Object.freeze({
+        revision: readRevision(journal),
+        liveRows: countRows(journal),
+      }),
     verify,
     close: () => database.close(),
   });

@@ -57,7 +57,6 @@ const JOURNAL_MODULES = [
   "src/fault-proofs/watcher-journal-database.codec.ts",
   "src/fault-proofs/watcher-journal-database.migrate.ts",
   "src/fault-proofs/watcher-journal-database.refusal.ts",
-  "src/fault-proofs/watcher-journal-database.verify.ts",
   "src/fault-proofs/watcher-journal-database.types.ts",
   "src/fault-proofs/fault-proof-objective-table.ts",
   "src/fault-proofs/fault-proof-queue-journal.ts",

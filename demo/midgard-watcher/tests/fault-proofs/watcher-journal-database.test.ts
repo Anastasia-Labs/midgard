@@ -9,6 +9,10 @@ import {
   watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
 import {
+  createWatcherJournalCodec,
+  sha256Hex,
+} from "../../src/fault-proofs/watcher-journal-database.codec.js";
+import {
   closeWatcherJournalDatabase,
   isWatcherJournalConfigurationError,
   isWatcherJournalIntegrityError,
@@ -20,7 +24,7 @@ import {
   watcherJournalUnavailable,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import {
-  WATCHER_JOURNAL_RETAINED_REVISIONS,
+  WATCHER_JOURNAL_MIGRATIONS,
   watcherObjectiveScope,
 } from "../../src/fault-proofs/watcher-journal-schema.js";
 import {
@@ -61,26 +65,12 @@ const seeded = async (): Promise<string> => {
   return root;
 };
 
-/** Edits the file with a raw connection, as a person or a bug could. */
+/** Changes the file with a raw connection, as disk corruption SQLite does
+ * not detect (a flipped bit inside a record) would. */
 const edit = (root: string, sql: string, ...params: string[]): void => {
   const raw = new DatabaseSync(join(root, WATCHER_JOURNAL_DATABASE_FILE));
   try {
     raw.prepare(sql).run(...params);
-  } finally {
-    raw.close();
-  }
-};
-
-const rawRow = (root: string, key: string) => {
-  const raw = new DatabaseSync(join(root, WATCHER_JOURNAL_DATABASE_FILE), {
-    readOnly: true,
-  });
-  try {
-    return raw
-      .prepare(
-        `SELECT row_key, scope, state, revision, body, mac FROM ${QUEUE} WHERE row_key = ?`,
-      )
-      .get(key) as Record<string, string | number>;
   } finally {
     raw.close();
   }
@@ -108,7 +98,7 @@ describe("watcher journal database integrity at startup", () => {
     expect(database.row("fault_proof_queue", "a")?.state).toBe("active");
   });
 
-  it("refuses a tampered row body", async () => {
+  it("refuses a row body the disk corrupted", async () => {
     const root = await seeded();
     edit(
       root,
@@ -118,70 +108,74 @@ describe("watcher journal database integrity at startup", () => {
     expect(restart(root)).toThrow("row b MAC differs");
   });
 
-  it("refuses a tampered row state", async () => {
+  it("refuses a row state the disk corrupted", async () => {
     const root = await seeded();
     edit(root, `UPDATE ${QUEUE} SET state = 'finished' WHERE row_key = 'b'`);
     expect(restart(root)).toThrow("row b MAC differs");
   });
 
-  it("refuses two revisions swapped in order", async () => {
-    const root = await seeded();
-    // Revision 2's row moves to revision 3 and back, one statement each.
-    for (const [from, to] of [
-      [2, 100],
-      [3, 2],
-      [100, 3],
-    ])
-      edit(
-        root,
-        "UPDATE watcher_journal_revisions SET revision = ? WHERE journal = 'fault_proof_queue' AND revision = ?",
-        String(to),
-        String(from),
-      );
-    expect(restart(root)).toThrow("revision 2 is out of order or altered");
-  });
-
-  it("refuses a deleted row", async () => {
-    const root = await seeded();
-    edit(root, `DELETE FROM ${QUEUE} WHERE row_key = 'c'`);
-    expect(restart(root)).toThrow("rows differ from the authenticated head");
-  });
-
-  it("refuses an earlier version of a row replayed over its current one", async () => {
-    const root = await journalDirectory("midgard-journal-integrity");
-    const database = open(root);
-    put(database, "a", "queued");
-    closeWatcherJournalDatabase(root);
-    const earlier = rawRow(root, "a");
-    put(open(root), "a", "active");
-    closeWatcherJournalDatabase(root);
-    edit(
-      root,
-      `UPDATE ${QUEUE} SET state = ?, revision = ?, body = ?, mac = ? WHERE row_key = 'a'`,
-      String(earlier.state),
-      String(earlier.revision),
-      String(earlier.body),
-      String(earlier.mac),
-    );
-    expect(restart(root)).toThrow("rows differ from the authenticated head");
-  });
-
-  it("refuses a dropped revision", async () => {
-    const root = await seeded();
-    edit(
-      root,
-      "DELETE FROM watcher_journal_revisions WHERE journal = 'fault_proof_queue' AND revision = 3",
-    );
-    expect(restart(root)).toThrow("retained revision history is incomplete");
-  });
-
-  it("refuses a head rolled back behind its rows", async () => {
+  it("refuses a head counter corrupted behind its rows", async () => {
     const root = await seeded();
     edit(
       root,
       "UPDATE watcher_journal_heads SET revision = 3 WHERE journal = 'fault_proof_queue'",
     );
-    expect(restart(root)).toThrow("head MAC differs");
+    expect(restart(root)).toThrow("row a is newer than the head");
+  });
+
+  it("opens a journals file written before migration 0002, keeping its rows and counter", async () => {
+    const root = await journalDirectory("midgard-journal-integrity");
+    const raw = new DatabaseSync(join(root, WATCHER_JOURNAL_DATABASE_FILE));
+    const [ledger, tables] = WATCHER_JOURNAL_MIGRATIONS.migrations;
+    for (const migration of [ledger!, tables!]) {
+      raw.exec(migration.sql);
+      raw
+        .prepare(
+          "INSERT INTO watcher_journal_migrations (namespace, id, checksum) VALUES (?, ?, ?)",
+        )
+        .run(
+          WATCHER_JOURNAL_MIGRATIONS.namespace,
+          migration.id,
+          sha256Hex(migration.sql),
+        );
+    }
+    const codec = createWatcherJournalCodec(TEST_JOURNAL_KEY);
+    const row = {
+      row_key: "a",
+      scope: "doubleSpend:a",
+      state: "queued",
+      revision: 7,
+      body: JSON.stringify({ key: "a", state: "queued" }),
+    };
+    raw
+      .prepare(
+        `INSERT INTO ${QUEUE} (row_key, scope, state, revision, body, mac) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(...Object.values(row), codec.rowMac("fault_proof_queue", row));
+    const digest = "00".repeat(32);
+    raw
+      .prepare(
+        "INSERT INTO watcher_journal_heads (journal, revision, chain, live_rows, accumulator, key_id, mac) VALUES ('fault_proof_queue', 7, ?, 1, ?, ?, ?)",
+      )
+      .run(digest, digest, codec.keyId, digest);
+    raw
+      .prepare(
+        "INSERT INTO watcher_journal_revisions (journal, revision, chain, delta, mac) VALUES ('fault_proof_queue', 7, ?, '[]', ?)",
+      )
+      .run(digest, digest);
+    raw.close();
+    const database = open(root);
+    expect(database.head("fault_proof_queue")).toEqual({
+      revision: 7,
+      liveRows: 1,
+    });
+    expect(database.row("fault_proof_queue", "a")?.state).toBe("queued");
+    put(database, "a", "active");
+    closeWatcherJournalDatabase(root);
+    expect(open(root).head("fault_proof_queue")).toEqual({
+      revision: 8,
+      liveRows: 1,
+    });
   });
 
   it("refuses a key the journals were not written under as configuration, not corruption", async () => {
@@ -199,18 +193,6 @@ describe("watcher journal database integrity at startup", () => {
     expect(watcherJournalIntegrityFailure(root)).toBeNull();
     // The right key still opens them.
     expect(open(root).head("fault_proof_queue").liveRows).toBe(3);
-  });
-
-  it("refuses one head naming another key as corruption", async () => {
-    const root = await seeded();
-    edit(
-      root,
-      "UPDATE watcher_journal_heads SET key_id = ? WHERE journal = 'fault_proof_queue'",
-      "ab".repeat(32),
-    );
-    const failure = thrown(restart(root));
-    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
-    expect(String(failure)).toContain("head is authenticated by another key");
   });
 
   it("refuses a malformed key and a second key for an open root as configuration", async () => {
@@ -299,17 +281,6 @@ describe("watcher journal database integrity at startup", () => {
 });
 
 describe("watcher journal counts", () => {
-  it("authenticates every row a state's count reads", async () => {
-    const root = await seeded();
-    const database = open(root);
-    expect(database.count("fault_proof_queue", "queued")).toBe(2);
-    // A row moved into the counted state under the open connection.
-    edit(root, `UPDATE ${QUEUE} SET state = 'queued' WHERE row_key = 'a'`);
-    expect(() => database.count("fault_proof_queue", "queued")).toThrow(
-      "row a MAC differs",
-    );
-  });
-
   it("authenticates the stored row a staged write replaces", async () => {
     const root = await seeded();
     const database = open(root);
@@ -418,11 +389,6 @@ describe("watcher journal growth under retries", () => {
     expect(
       rowsOf("SELECT count(*) AS n FROM watcher_fault_proof_objectives"),
     ).toBe(1);
-    expect(
-      rowsOf(
-        "SELECT count(*) AS n FROM watcher_journal_revisions WHERE journal = 'fault_proof_queue'",
-      ),
-    ).toBe(WATCHER_JOURNAL_RETAINED_REVISIONS);
     raw.close();
     // The file holds no more live pages than after the first thousand.
     expect(pages()).toBeLessThanOrEqual(pagesAfterWarmup * 2);

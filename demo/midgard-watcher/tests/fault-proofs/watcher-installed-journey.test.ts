@@ -824,21 +824,32 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     // The process's journal connection outlives the runtime; a restart is a
     // new process, so close it as an exit would.
     closeWatcherJournalDatabase(config.workflowJournalDirectory);
-    const shiftDecisionHead = (by: number) => {
+    // A decision row whose bytes no longer match its MAC, as a bit the disk
+    // flipped and SQLite does not check would leave. Completion pruning has
+    // emptied the journal tables by now, so the row is written in; deleting
+    // it is the operator's repair.
+    const corruptJournalRow = (corrupt: boolean) => {
       const raw = new DatabaseSync(
         join(config.workflowJournalDirectory, WATCHER_JOURNAL_DATABASE_FILE),
       );
       try {
-        raw
-          .prepare(
-            "UPDATE watcher_journal_heads SET revision = revision + ? WHERE journal = 'fault_decisions'",
-          )
-          .run(by);
+        const { changes } = corrupt
+          ? raw
+              .prepare(
+                "INSERT INTO watcher_fault_decisions (row_key, scope, state, revision, body, mac) VALUES ('corrupt', 'corrupt', 'fault_detected', 1, '{}', ?)",
+              )
+              .run("00".repeat(32))
+          : raw
+              .prepare(
+                "DELETE FROM watcher_fault_decisions WHERE row_key = 'corrupt'",
+              )
+              .run();
+        expect(Number(changes)).toBe(1);
       } finally {
         raw.close();
       }
     };
-    shiftDecisionHead(1);
+    corruptJournalRow(true);
     let restartFailure: unknown;
     const restarting = createWatcherRuntime({ config });
     void restarting.catch((cause: unknown) => {
@@ -865,9 +876,7 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         }
         const live = await probe("/v1/status");
         expect(live.status).toBe(200);
-        expect(live.body.supervisor?.journalIntegrity).toContain(
-          "head MAC differs",
-        );
+        expect(live.body.supervisor?.journalIntegrity).toContain("MAC differs");
         expect(await probe("/v1/metrics")).toEqual({
           status: 503,
           body: { error: "journal_integrity" },
@@ -875,9 +884,9 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
       },
       300_000,
     );
-    // Repair the head and forget the refusal, as the restart that clears it
+    // Repair the row and forget the refusal, as the restart that clears it
     // would; the held startup then completes on the repaired journals.
-    shiftDecisionHead(-1);
+    corruptJournalRow(false);
     closeWatcherJournalDatabase(config.workflowJournalDirectory);
     watcher = await stage("startup after journal repair", () => restarting);
     expect(watcher.faultProofSupervisor.status().journalIntegrity).toBeNull();

@@ -336,11 +336,6 @@ describe("production fault decision journal", () => {
     expect(count("SELECT count(*) AS n FROM watcher_fault_decisions")).toBe(
       2_000,
     );
-    expect(
-      count(
-        "SELECT count(*) AS n FROM watcher_journal_revisions WHERE journal = 'fault_decisions'",
-      ),
-    ).toBe(64);
     database.close();
   }, 120_000);
 });

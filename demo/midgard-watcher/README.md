@@ -114,11 +114,12 @@ remains an explicit recovery operation.
 
 The fault decision, proof queue and proof objective journals are tables in
 `watcher-journals.sqlite` inside the workflow journal directory. Each record is
-one row, authenticated with the rollback key, and each commit is one chained
-revision, so a persist writes only the rows it changes. Startup verifies every
-row and the latest 64 revisions, and refuses a tampered, deleted, replayed or
-reordered record; so does any later read of a row that fails its MAC, does not
-parse, or differs from its key. A refusal holds for the rest of the process:
+one row, and a persist writes only the rows it changes. Each row carries a MAC
+under the rollback key, because SQLite checksums its WAL frames but not the
+records in its pages: a row the disk corrupted is refused, not acted on.
+Startup checks every row, and so does any later read of a row that fails its
+MAC, does not parse, or differs from its key. Rows deleted, replayed or
+restored by hand are not detected. A refusal holds for the rest of the process:
 the watcher stays up, `/readyz` reports `journal_integrity`, and `/v1/status`
 names the failure in `supervisor.journalIntegrity` until an operator repairs
 the journals (below) and restarts the watcher. A journal migration whose SQL

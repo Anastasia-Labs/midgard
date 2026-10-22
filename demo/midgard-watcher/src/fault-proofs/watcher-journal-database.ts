@@ -35,14 +35,11 @@ export {
  * WC4; ticket W2). A commit writes only the rows it changes, so a persist is
  * O(delta), never a rewrite or rescan of the journal.
  *
- * Integrity, checked in full at startup:
- * - each row carries a MAC over its journal, key, scope, state, revision and
- *   body, so an edited row or a row moved to another revision is refused;
- * - each journal's head carries a MAC over its revision, its chained revision
- *   digest, its live row count and a keyed sum of its rows' MACs, so a
- *   deleted, added or replayed row is refused;
- * - the latest revisions keep their chained digest and delta, so a reordered
- *   or substituted revision is refused.
+ * Integrity, against disk corruption SQLite does not catch (it checksums its
+ * WAL frames, not the records in its pages): each row carries a MAC over its
+ * journal, key, scope, state, revision and body, checked on every read and,
+ * with each journal's revision counter, in full at startup. Whole rows
+ * deleted, replayed or restored by hand are not defended against.
  *
  * A failed check refuses the journals for the rest of the process: every
  * later call, and every later open of the same root, throws the first
