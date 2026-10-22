@@ -26,6 +26,7 @@ import {
   verificationRecorder,
 } from "./fault-decision-bridge.classification-record.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
+import { replayLocalFaultBound } from "./replay-local-fault-bound.js";
 
 /**
  * What the bridge does with one header it could not classify:
@@ -132,6 +133,7 @@ export const classificationMissRecorder = (
     dependencies.warn?.(warning);
   };
   const nowMs = dependencies.nowMs ?? (() => BigInt(Date.now()));
+  const localFaults = replayLocalFaultBound();
   const replayHolds = new Map<
     string,
     Readonly<{ reason: string; detail: string; atMs: bigint }>
@@ -165,13 +167,16 @@ export const classificationMissRecorder = (
       return "defer";
     }
     // This watcher's own replay failed, which says nothing about the
-    // header: it is classified again on a later wake.
+    // header: it is classified again on a later wake, up to the local-fault
+    // bound. The bound's exhaustion throws out of here, so `resolve` fails
+    // the pass with it and records no verification for the header.
     if (isReplayLocalFault(error)) {
       warnOnce({
         event: "classification_deferred",
         headerHash: header.headerHash,
         cause: "replay_local_fault",
       });
+      localFaults.fault(header.headerHash, error.message);
       return "defer";
     }
     // Its script re-execution threw on an event that may be the one that
@@ -258,9 +263,11 @@ export const classificationMissRecorder = (
     return "defer";
   };
   return Object.freeze({
-    /** `headerHash` was classified: it no longer waits on a hold. */
+    /** `headerHash` was classified: it no longer waits on a hold, and its
+     * local-fault count starts over. */
     classified: (headerHash: string): void => {
       replayHolds.delete(headerHash);
+      localFaults.progressed(headerHash);
     },
     /** The headers whose classification waits on held re-executions. */
     readiness: (): readonly Readonly<{ reason: string; detail: string }>[] => {

@@ -26,7 +26,7 @@ import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Exit } from "effect";
 
-import { isReplayLocalFault } from "./block-replay.faults.js";
+import { isReplayLocalFault, ReplayLocalFault } from "./block-replay.faults.js";
 import { type BlockReplayContext, replayBlockEvents } from "./block-replay.js";
 import {
   type CheckedLedger,
@@ -119,6 +119,13 @@ type Replayed =
   | { readonly kind: "refused" };
 
 const label = (headerHash: string) => `replayed ledger after ${headerHash}`;
+
+/** Whether `error` is a script run left without a verdict
+ * (`ScriptEvaluationIndeterminateError`), matched by its tag. */
+const isScriptEvaluationIndeterminate = (error: unknown): error is Error =>
+  error instanceof Error &&
+  (error as { readonly _tag?: unknown })._tag ===
+    "ScriptEvaluationIndeterminate";
 
 /**
  * A payload no commitment binds yet that does not replay says nothing of
@@ -229,12 +236,21 @@ export const createReplayedLedger = ({
     );
     if (Exit.isFailure(exit)) {
       // A local fault says nothing about the block: it is raised, so the
-      // block is replayed again, never refused.
-      const local = [
+      // block is replayed again, never refused. A script run left without a
+      // verdict is one: verdict mode leaves that only when the evaluator
+      // itself failed.
+      const causes = [
         ...Cause.defects(exit.cause),
         ...Cause.failures(exit.cause),
-      ].find(isReplayLocalFault);
+      ];
+      const local = causes.find(isReplayLocalFault);
       if (local !== undefined) throw local;
+      const noVerdict = causes.find(isScriptEvaluationIndeterminate);
+      if (noVerdict !== undefined)
+        throw new ReplayLocalFault({
+          message: `the replay of ${headerHash} has no script verdict: ${noVerdict.message}`,
+          cause: noVerdict,
+        });
       const detail = String(exit.cause);
       unboundWait(source, headerHash, detail);
       refuse({ headerHash, kind: "replay-refused", detail });

@@ -50,8 +50,10 @@ const followerExhausted = (
 
 /**
  * The running watcher. Liveness ends when the proof supervisor or the
- * operations server stops, or when the follower's transient store failures
- * outlived their budget (`WatcherFollowerExhaustedError`); any other L1
+ * operations server stops, when the follower's transient store failures
+ * outlived their budget (`WatcherFollowerExhaustedError`), or when a local
+ * replay fault outlived its bound (`WatcherReplayLocalFaultExhaustedError`,
+ * from the decision driver's `exhausted`); any other L1
  * condition (the follower behind, waiting or stopped on an intervention, a
  * failed decision pass, a failed user-event history) is a readiness reason
  * and never ends the process.
@@ -91,6 +93,7 @@ export const createWatcherRuntimeLifecycle = (
     faultProofSupervisor.done,
     operationsHttp.done,
     followerExhausted(follower),
+    decisionDriver.exhausted,
   ]);
   const caughtUpPromise = Promise.race([
     decisionDriver.caughtUp.then(() => {

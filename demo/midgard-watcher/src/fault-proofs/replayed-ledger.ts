@@ -26,6 +26,7 @@ import {
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
+import { replayLocalFaultBound } from "./replay-local-fault-bound.js";
 
 export type WatcherReplayedLedger = Readonly<{
   ledgerAt(
@@ -80,6 +81,7 @@ export const createWatcherReplayedLedger = (
   // Unbound copies a replay refused, kept across operations so a later fetch
   // asks past the peers that served them.
   const releases: RetainedPayloadReleases = new Map();
+  const localFaults = replayLocalFaultBound();
   const source = (
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
@@ -117,9 +119,10 @@ export const createWatcherReplayedLedger = (
       };
     },
     advance: async (observation, sources) => {
+      let head: Readonly<{ headerHash: string; utxosRoot: string }> | undefined;
       try {
         const confirmed = await input.follower.confirmed(observation);
-        const head = {
+        head = {
           headerHash: confirmed.state.headerHash,
           utxosRoot: confirmed.state.utxoRoot,
         };
@@ -148,15 +151,22 @@ export const createWatcherReplayedLedger = (
               detail: `ledger for confirmed head ${head.headerHash} does not open its authenticated root yet`,
             },
           ];
+        localFaults.progressed(head.headerHash);
         input.follower.checkpointDurable(confirmed.state.endTime);
         return [];
       } catch (error) {
         // This watcher's own replay failed: held under its own reason, and
-        // replayed again on the next pass.
-        if (isReplayLocalFault(error))
+        // replayed again on the next pass, up to the local-fault bound,
+        // whose exhaustion throws out of here.
+        if (isReplayLocalFault(error)) {
+          localFaults.fault(
+            head?.headerHash ?? "the confirmed head",
+            error.message,
+          );
           return [
             { reason: "replayed_ledger_local_fault", detail: error.message },
           ];
+        }
         if (
           !isWatcherL1TransientFailure(error) &&
           !isFraudProofL1WaitError(error) &&

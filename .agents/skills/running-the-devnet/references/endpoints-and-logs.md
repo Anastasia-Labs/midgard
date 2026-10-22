@@ -645,7 +645,12 @@ transient a restart may clear (L1 reads past the startup budget, a system
 error such as a port in use) exits the process non-zero, its supervisor's
 restart policy (`restart: unless-stopped` in
 `demo/midgard-watcher/compose.yaml`) being the retry after that. A follower
-whose store transients outlast 15 min exits it the same way. A refused
+whose store transients outlast 15 min exits it the same way. So does a
+local replay fault (the watcher's own replay of a block failed, which says
+nothing about the block): it is held and retried, but after 8 attempts in a
+row on one header or confirmed head with no progress past it the process
+exits non-zero with `WatcherReplayLocalFaultExhaustedError`, its message
+starting `replayed_ledger_local_fault:`. A refused
 process configuration exits 78, before the operations server binds. Every
 reason in `WATCHER_OPERATIONS_READINESS_REASONS`
 (`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`)
