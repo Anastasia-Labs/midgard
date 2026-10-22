@@ -13,7 +13,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { parseValidationTraceAction } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
@@ -51,22 +51,6 @@ import {
   scriptedTrace,
   threadUnitOf,
 } from "./support/validation-trace-dispute-scripted-defender.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 /** The defender's last agreed state: the next step is a CEK compute step. */
 const AGREED_UP_TO = 116;

@@ -177,7 +177,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(567);
+      expect(manifest).toHaveLength(576);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -189,7 +189,7 @@ describe("deployable-script catalogue", () => {
 
   it("pins the publication and per-command orders", () => {
     const realTargets = nodeRuntimeReferenceScriptTargets(real);
-    expect(realTargets).toHaveLength(562);
+    expect(realTargets).toHaveLength(571);
     expect(orderDigest(realTargets.map(({ name }) => name))).toEqual(
       REAL_PUBLICATION_ORDER_DIGEST,
     );

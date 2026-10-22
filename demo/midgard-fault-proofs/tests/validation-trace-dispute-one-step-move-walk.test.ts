@@ -18,7 +18,7 @@
  * objective's actuation permit. */
 import { CML, Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { watcherValidationDisputeFundingTerms } from "midgard-watcher";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { validationTraceOneStepContracts } from "../src/validation-trace-dispute/one-step-holders.js";
 import { VALIDATION_DISPUTE_MOVE_BINDING } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
@@ -47,22 +47,6 @@ import {
   threadClosed,
 } from "./support/validation-trace-dispute-one-step-case.js";
 import { playThreads } from "./support/validation-trace-dispute-one-step-play.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 let journey: WalkJourney;
 let oneStep: NonNullable<Moves["oneStep"]>;
@@ -137,6 +121,7 @@ describe("validation-trace dispute one-step moves walked under their authority",
       contexts: true,
       canonicalDecode: true,
       phases: true,
+      scriptSourcesRedeemers: true,
       wrap: (scene) => captureMoves(scene, moves),
     });
     const { scene, runner, a, b, deployment } = dispute;

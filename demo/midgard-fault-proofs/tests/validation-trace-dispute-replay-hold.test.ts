@@ -371,7 +371,22 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
     });
   });
 
-  it("proves a second failing event while the first is held, and keeps its claim after the first resolves", async () => {
+  it("decides the block on a failing first event while a later event is held", async () => {
+    const block = await plutusExecutionEventsBlockFixture([
+      "failing",
+      "failing",
+    ]);
+    inject(block, 1, "verdict", indeterminate(block, 1));
+    const decided = await decide(clockedReplayer().replayer, block);
+    expect(decided).toMatchObject({
+      decision: "fault_detected",
+      selected: { violationId: "validation-trace" },
+    });
+    if (decided.decision !== "fault_detected") return;
+    expect(decided.detections.map(txIdOf)).toStrictEqual([block.txs[0]!.txId]);
+  });
+
+  it("holds a second failing event's finding while the first is held, then decides on the first once it resolves", async () => {
     const block = await plutusExecutionEventsBlockFixture([
       "failing",
       "failing",
@@ -392,11 +407,20 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
 
     const { clock, replayer } = clockedReplayer();
     inject(block, 0, "verdict", indeterminate(block, 0), 1);
-    const whileHeld = await decide(replayer, block);
-    expect(whileHeld).toMatchObject({ decision: "fault_detected" });
-    if (whileHeld.decision !== "fault_detected") return;
+    // The held first event could still be the block's earliest fault, so the
+    // second's finding does not decide the block; the hold carries it.
+    const whileHeld = await heldBy(replayer, block);
+    expect(whileHeld.holds).toStrictEqual([
+      expect.objectContaining({ txId: block.txs[0]!.txId, attempts: 1 }),
+    ]);
     expect(whileHeld.detections).toStrictEqual([undisturbed.detections[1]]);
-    expect(whileHeld.selected).toStrictEqual(undisturbed.detections[1]);
+
+    // The first event resolves: it is the selected fault, and a claim on the
+    // second, also detected, still validates.
+    clock.now = 1_000;
+    const resolved = await decide(replayer, block);
+    expect(resolved).toStrictEqual(undisturbed);
+    if (resolved.decision !== "fault_detected") return;
     const claim = {
       evidence: block.evidence,
       context: block.context,
@@ -404,24 +428,8 @@ describe("validation-trace dispute replay: an evaluator failure holds only its e
     };
     const artifact = await prepareValidationTraceArtifact({
       ...claim,
-      classification: whileHeld,
+      classification: { ...resolved, selected: resolved.detections[1]! },
     });
-    expect(artifact).toStrictEqual(
-      await prepareValidationTraceArtifact({
-        ...claim,
-        classification: {
-          ...undisturbed,
-          selected: undisturbed.detections[1]!,
-        },
-      }),
-    );
-
-    // The first event resolves: it is now the selected fault, and the claim
-    // already started on the second still stands.
-    clock.now = 1_000;
-    const resolved = await decide(replayer, block);
-    expect(resolved).toStrictEqual(undisturbed);
-    if (resolved.decision !== "fault_detected") return;
     await expect(
       validateValidationTraceArtifact({
         ...claim,

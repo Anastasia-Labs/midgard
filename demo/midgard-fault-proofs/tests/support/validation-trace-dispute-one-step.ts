@@ -3,7 +3,9 @@
  * deployment the runner drives the resolution against; with CEK script
  * selections, the selection's yields under their roles' authentication
  * tokens and the script-decode deployment whose records it reads; the
- * canonical-decode holders; and the phase holders. */
+ * canonical-decode holders; and the phase holders, with the yields their
+ * semantic resolvers invoke under their roles' authentication tokens. */
+import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
 import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
@@ -32,11 +34,20 @@ import {
   type ValidationTraceContextStageHolder,
 } from "../../src/validation-trace-dispute/one-step-holders.js";
 import {
+  isValidationTracePhase,
   PHASE_HOLDERS,
+  PHASE_RESOLUTIONS,
   phaseValidators,
+  phaseYields,
   type ValidationTracePhaseHolder,
+  type ValidationTracePhaseYield,
 } from "../../src/validation-trace-dispute/one-step-phase.js";
 import { CEK_RESOLVER_INDEX } from "../../src/validation-trace-dispute/one-step-plan.js";
+import {
+  SCRIPT_SOURCES_REDEEMER_HOLDERS,
+  scriptSourcesRedeemerValidators,
+  type ValidationTraceScriptSourcesRedeemerHolder,
+} from "../../src/validation-trace-dispute/one-step-script-sources-redeemer.js";
 import type {
   ValidationTraceDisputeDeployment,
   ValidationTraceOneStepReferences,
@@ -90,6 +101,9 @@ export const oneStepScripts = (
     contextSettle: context.settle,
     ...canonicalDecodeValidators(chain),
     ...phaseValidators(chain),
+    ...scriptSourcesRedeemerValidators(
+      chain.scriptSourcesStageOneRedeemerStages,
+    ),
   });
 };
 
@@ -126,6 +140,25 @@ export const publishOneStepReferences = async (
   });
 };
 
+/** Publishes `script` under the authentication token of the role `name`. */
+const publishAuthenticated = async (
+  { h }: SceneContracts,
+  name: Parameters<
+    typeof publishAuthenticatedValidationDisputeControl
+  >[0]["target"]["name"],
+  script: Script,
+): Promise<UTxO> =>
+  (
+    await publishAuthenticatedValidationDisputeControl({
+      lucid: h.proverLucid,
+      authPolicy: h.contracts.referenceScriptAuth as Awaited<
+        ReturnType<typeof createReferenceScriptAuthPolicy>
+      >,
+      publisher: h.contracts.referenceScriptPublisher,
+      target: { name, control: name, script },
+    })
+  ).utxo;
+
 /**
  * Publishes the selection resolver's reference script, and its two yields'
  * under their roles' authentication tokens; the scene's setup registers the
@@ -140,17 +173,7 @@ export const publishSelectionReferences = async (
       | "V1 validation-trace CEK selection authenticate yield"
       | "V1 validation-trace CEK selection successor yield",
     script: Script,
-  ) =>
-    (
-      await publishAuthenticatedValidationDisputeControl({
-        lucid: h.proverLucid,
-        authPolicy: h.contracts.referenceScriptAuth as Awaited<
-          ReturnType<typeof createReferenceScriptAuthPolicy>
-        >,
-        publisher: h.contracts.referenceScriptPublisher,
-        target: { name, control: name, script },
-      })
-    ).utxo;
+  ) => await publishAuthenticated(scene, name, script);
   return Object.freeze({
     semantic: (
       await publishPlainReferenceScriptUtxo({
@@ -254,6 +277,62 @@ export const publishPhaseReferences = async (
       })
     ).utxo;
   return Object.freeze(references as Record<ValidationTracePhaseHolder, UTxO>);
+};
+
+/** Publishes the reference scripts of the script-sources redeemer item
+ * chain's holders past its entry. */
+export const publishScriptSourcesRedeemerReferences = async (
+  scene: SceneContracts,
+): Promise<
+  NonNullable<ValidationTraceOneStepReferences["scriptSourcesRedeemers"]>
+> => {
+  const scripts = oneStepScripts(scene);
+  const references: Partial<
+    Record<ValidationTraceScriptSourcesRedeemerHolder, UTxO>
+  > = {};
+  for (const holder of SCRIPT_SOURCES_REDEEMER_HOLDERS)
+    references[holder] = (
+      await publishPlainReferenceScriptUtxo({
+        lucid: scene.h.proverLucid,
+        script: scripts[holder].spendingScript,
+        label: holder,
+      })
+    ).utxo;
+  return Object.freeze(
+    references as Record<ValidationTraceScriptSourcesRedeemerHolder, UTxO>,
+  );
+};
+
+/** The role of the phase yield `name`: its manifest member's. */
+const yieldRole = (name: ValidationTracePhaseYield) => {
+  const role = Object.values(DEPLOYMENT_MEMBERS).find(
+    ({ family, familyPaths }) =>
+      family === "validationTraceDispute" &&
+      familyPaths.some(([kind, path]) => kind === "yields" && path === name),
+  )?.referenceRole;
+  if (role === undefined || role === null)
+    throw new Error(`the ${name} yield has no manifest role`);
+  return role as Parameters<typeof publishAuthenticated>[1];
+};
+
+/** Publishes the yields the phases' semantic resolvers invoke, under their
+ * roles' authentication tokens; the scene's setup registers the yields'
+ * reward accounts. */
+export const publishPhaseYieldReferences = async (
+  scene: SceneContracts,
+): Promise<Readonly<Partial<Record<ValidationTracePhaseYield, UTxO>>>> => {
+  const references: Partial<Record<ValidationTracePhaseYield, UTxO>> = {};
+  for (const name of new Set(
+    Object.keys(PHASE_RESOLUTIONS)
+      .filter(isValidationTracePhase)
+      .flatMap(phaseYields),
+  ))
+    references[name] = await publishAuthenticated(
+      scene,
+      yieldRole(name),
+      scene.chain.yields[name].withdrawalScript,
+    );
+  return Object.freeze(references);
 };
 
 /**

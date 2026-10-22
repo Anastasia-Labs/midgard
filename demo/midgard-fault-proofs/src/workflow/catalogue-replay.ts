@@ -1,12 +1,15 @@
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import { type FabricatedHistoryEnvironment } from "../fabricated-history-witness.js";
+import type { ValidationTraceReplayHold } from "../validation-trace-dispute/replay-hold.js";
 import {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   createCompleteCanonicalReplayUnion,
   createFabricatedDepositCompleteCanonicalReplay,
   createFabricatedWithdrawalCompleteCanonicalReplay,
+  createValidationTraceDisputeCompleteCanonicalReplay,
   DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
@@ -51,9 +54,16 @@ import { createFabricatedDepositEvidenceAuthority } from "./fabricated-deposit-e
 import { createFabricatedWithdrawalEvidenceAuthority } from "./fabricated-withdrawal-evidence.js";
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "./installed-categories.js";
 
-/** Every installed category, with live event evidence and per-header replay context. */
+/**
+ * Every installed category, with live event evidence and per-header replay
+ * context. The deployment's slot mapping places each re-executed script's
+ * validity range; `onReplayStuck` is told once each time a script
+ * re-execution keeps failing the same way.
+ */
 export const createCatalogueCompleteCanonicalReplay = (input: {
   readonly lucid: LucidEvolution;
+  readonly l1SlotConfig: L1SlotConfig;
+  readonly onReplayStuck?: (hold: ValidationTraceReplayHold) => void;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
@@ -78,6 +88,10 @@ export const createCatalogueCompleteCanonicalReplay = (input: {
     INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
     TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
     ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
+    createValidationTraceDisputeCompleteCanonicalReplay(
+      input.l1SlotConfig,
+      input.onReplayStuck === undefined ? {} : { onStuck: input.onReplayStuck },
+    ),
     DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
     NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
     REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,

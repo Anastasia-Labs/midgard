@@ -220,6 +220,42 @@ const PHASE_RESOLVER_CATALOGUE_ADDITIONS = [
     contract: "validationTraceDisputeInputSetsItemSemantic",
     role: "V1 validation-trace input-sets item semantic",
   },
+  {
+    contract: "validationTraceDisputeSignaturesPrepare",
+    role: "V1 validation-trace signatures prepare",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAdvanceSemantic",
+    role: "V1 validation-trace signatures advance semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesAddressItemSemantic",
+    role: "V1 validation-trace signatures address item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesRequiredItemSemantic",
+    role: "V1 validation-trace signatures required item semantic",
+  },
+  {
+    contract: "validationTraceDisputeSignaturesHandoffSemantic",
+    role: "V1 validation-trace signatures handoff semantic",
+  },
+  {
+    contract: "validationTraceDisputePhaseANativeScriptsPrepare",
+    role: "V1 validation-trace phase-A native scripts prepare",
+  },
+  {
+    contract: "validationTraceDisputePhaseAScriptPreconditionsPrepare",
+    role: "V1 validation-trace phase-A script preconditions prepare",
+  },
+  {
+    contract: "validationTraceDisputeResolveInputsPrepare",
+    role: "V1 validation-trace resolve-inputs prepare",
+  },
+  {
+    contract: "validationTraceDisputeScriptSourcesPrepare",
+    role: "V1 validation-trace script-sources prepare",
+  },
 ] as const;
 
 export const phaseResolverContracts = new Set<string>(

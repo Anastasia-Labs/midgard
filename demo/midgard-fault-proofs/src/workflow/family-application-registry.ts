@@ -16,7 +16,7 @@
  * optional infrastructure it requires — the predecessor replay context or the
  * public retained-DA sources — and the config fields it reads from it. A family whose config shape is its own writes a short record by hand:
  * `doubleSpend`, `transitionTrace`, `mintItemNonCanonical`, `missingSignature`,
- * `networkId` and `valueNotPreserved`.
+ * `networkId`, `valueNotPreserved` and `validationTraceDispute`.
  *
  * The registry's type requires exactly one record per installed category
  * (`installed-categories.ts`), with the record's own category as its key, so
@@ -45,6 +45,7 @@ import "../script-integrity-hash-missing/v1.js";
 import "../spend-input-signer-missing/authenticated-workflow.js";
 import "../transaction-output-non-canonical/workflow.js";
 import "../transition-trace/workflow.js";
+import "../validation-trace-dispute/workflow.js";
 import "../value-not-preserved/contracts.js";
 import "../value-not-preserved/workflow.js";
 import "../withdrawal-mistag/workflow.js";
@@ -64,6 +65,7 @@ import "./family-application-registry.decision-digest-cursor-family-application-
 import "./family-application-registry.authenticated-certificate-family-application-record.js";
 import "./family-application-registry.bundle-cursor-family-application-record.js";
 import "./family-application-registry.value-not-preserved-family-application-record.js";
+import "./family-application-registry.validation-trace-dispute-family-application-record.js";
 import "./family-application-registry.family-application-registry.js";
 export {
   FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_APPLICATION_RECORD,
@@ -94,6 +96,7 @@ export {
 } from "./family-application-registry.decision-digest-cursor-family-application-record.js";
 export { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
 export { DOUBLE_SPEND_FAMILY_APPLICATION_RECORD } from "./family-application-registry.linear-family-application-record.js";
+export { VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD } from "./family-application-registry.validation-trace-dispute-family-application-record.js";
 export {
   type FamilyApplicationRegistryEntry,
   MISSING_SIGNATURE_FAMILY_APPLICATION_RECORD,

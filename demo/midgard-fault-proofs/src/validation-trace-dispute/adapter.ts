@@ -63,6 +63,10 @@ import {
   type ValidationTraceRemovalConfig,
 } from "./removal.js";
 import { withValidationTraceScriptDecodeRecords } from "./script-decode-records.js";
+import {
+  heldClaimBuildAlarm,
+  validationTraceStageUnbuilt,
+} from "./stage-unbuilt.js";
 import { observeValidationTraceThreads } from "./thread-observation.js";
 import {
   type CapturedValidationTraceStage,
@@ -77,9 +81,6 @@ import {
 } from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
-
-/** A non-thread stage that does not build; it is retried on observation. */
-export const VALIDATION_TRACE_STAGE_HELD = "validation-trace-stage-held";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
@@ -99,18 +100,6 @@ export { VALIDATION_TRACE_CASE_CONVICTED };
  * transaction was confirmed is taken for provider lag rather than spent.
  */
 export const VALIDATION_TRACE_PROVIDER_GRACE_MS = 10 * 60_000;
-
-export class ValidationTraceStageHeldError extends WorkflowActionChangedError {
-  constructor(
-    readonly stage: string,
-    override readonly cause: unknown,
-  ) {
-    super(
-      `${VALIDATION_TRACE_STAGE_HELD}: ${stage} does not build: ${cause instanceof Error ? cause.message : String(cause)}`,
-    );
-    this.name = "ValidationTraceStageHeldError";
-  }
-}
 
 export const createValidationTraceDisputeWorkflowAdapter = ({
   lucid,
@@ -143,6 +132,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   )
     throw new Error("validation-trace Init must start at the dispute opener");
   const prepared = new Map<string, LocallyEvaluatedTransaction>();
+  const claimHeld = heldClaimBuildAlarm({ lucid, deployment, now });
   // Each block's claim material, as its saved artifact was last validated.
   const materials = new Map<string, ValidationTraceClaimMaterial>();
   const removalStage = createValidationTraceRemoval({
@@ -223,6 +213,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             caseDatum: found.caseDatum,
             now: now(),
             material: materials.get(artifact.headerHash),
+            skipped: context.unbuiltActionIds,
           })
         : // Nobody has defended it: it closes once its deadline has passed.
           now() > validationTraceDefenseDeadlineMs(found.caseDatum)
@@ -276,6 +267,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       deployment,
       artifact: requireIdentity(context),
     };
+    let found: Awaited<ReturnType<typeof ourCase>> = undefined;
     try {
       switch (action.stage) {
         case "init":
@@ -299,7 +291,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         case "close_awarded":
           break;
       }
-      const found = await ourCase(
+      found = await ourCase(
         input.artifact,
         confirmedValidationTraceStages(context.entries),
       );
@@ -343,7 +335,14 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         isWorkflowFundingShortfall(cause)
       )
         throw cause;
-      throw new ValidationTraceStageHeldError(action.stage, cause);
+      throw await validationTraceStageUnbuilt({
+        action,
+        lucid,
+        deployment,
+        headerHash: input.artifact.headerHash,
+        found,
+        cause,
+      });
     }
   };
 
@@ -358,7 +357,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         classification,
         l1SlotConfig,
         onMaterial: (material) => materials.set(evidence.headerHash, material),
-      }),
+      }).catch(claimHeld(evidence.headerHash)),
     validatePreparedArtifact: async ({
       evidence,
       replayContext,
@@ -372,7 +371,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         artifact,
         l1SlotConfig,
         onMaterial: (material) => materials.set(evidence.headerHash, material),
-      }),
+      }).catch(claimHeld(evidence.headerHash)),
     observe,
     preflight: async (context) => {
       const { action, workflowId } = context;

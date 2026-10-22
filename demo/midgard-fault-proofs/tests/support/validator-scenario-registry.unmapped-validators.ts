@@ -553,7 +553,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
   },
   {
     reason:
-      "validators of families not installed off-chain in this release (validationTraceDispute and the trace-relative families in UNINSTALLED_FRAUD_PROOF_CATEGORIES). Their scenarios read per-transaction validation trace states from the DA payload, which no longer carries them; the validators stay deployed.",
+      "validators of the trace-relative families not installed off-chain in this release (UNINSTALLED_FRAUD_PROOF_CATEGORIES), whose scenarios read per-transaction validation trace states from the DA payload, which no longer carries them, and the validation-trace dispute's stage validators, which its dispute suites drive rather than a per-validator scenario; the validators stay deployed.",
     validators: [
       "fraud_proofs/receive_purpose_language/step_02.main",
       "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main",

@@ -26,7 +26,9 @@ import {
   SEED_LOVELACE,
 } from "./plutus-execution-block-fixture.js";
 
-export type EventSpend = "failing" | "passing";
+/** A failing or passing spend, or a passing one that also requires a
+ * signer that does not sign. */
+export type EventSpend = "failing" | "passing" | "unsigned_required_signer";
 
 /** The deposit seed byte of the block's `index`th spend. */
 const seedByte = (index: number): number => 0x61 + 3 * index;

@@ -121,12 +121,12 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 618,
+    "max": 627,
     "reason": "One frozen declarative contract-name catalogue (574 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Adds the six script-decode class staker withdraw names and the case-on-constant CEK core executor name. Exact formatter-final line count; no transaction budget changes. Adds the five CEK one-step resolver names (CEK prepare and its four semantic resolvers). Adds the validation phases' one-step resolver names, phase by phase. Holds the missing-redeemer family entry, claim custody, adjudication, claimed-redeemer, spend-start and receive-finish roles in the same declarative table."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
-    "max": 815,
+    "max": 828,
     "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. Adds the five CEK one-step resolver token names. Adds the validation phases' one-step resolver token names, phase by phase. Holds the missing-redeemer family entry, claim custody, adjudication, claimed-redeemer, spend-start and receive-finish roles in the same declarative table."
   },
   {
@@ -251,7 +251,7 @@
   },
   {
     "file": "midgard-fault-proofs/src/workflow/adapters.workflow-adapter-registration-rows.ts",
-    "max": 642,
+    "max": 643,
     "reason": "workflowAdapterRegistrationRows: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
   },
   {
@@ -1186,7 +1186,7 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 577,
+    "max": 513,
     "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {

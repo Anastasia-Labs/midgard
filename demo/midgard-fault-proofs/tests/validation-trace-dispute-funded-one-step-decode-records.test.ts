@@ -11,7 +11,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
@@ -35,22 +35,6 @@ import {
   type Scene,
   setUpScene,
 } from "./support/validation-trace-dispute-open-scene.js";
-
-// Stands in for the family's install, which waits on its defender.
-vi.mock("../src/workflow/installed-categories.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../src/workflow/installed-categories.js")
-    >();
-  return {
-    ...actual,
-    isInstalledFraudProofCategory: (
-      category: Parameters<typeof actual.isInstalledFraudProofCategory>[0],
-    ) =>
-      category === "validationTraceDispute" ||
-      actual.isInstalledFraudProofCategory(category),
-  };
-});
 
 let scene: Scene;
 let oneStep: ValidationTraceOneStepReferences;

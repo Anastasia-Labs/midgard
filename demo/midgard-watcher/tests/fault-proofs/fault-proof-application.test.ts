@@ -70,9 +70,9 @@ describe("watcher production fault-proof application V1", () => {
       "minAda",
       "transitionTrace",
     ]);
-    expect(() =>
-      installedLaunchScope(["minAda", "validationTraceDispute"]),
-    ).toThrow("launch scope names a category with no installed workflow");
+    expect(() => installedLaunchScope(["minAda", "unusedRedeemer"])).toThrow(
+      "launch scope names a category with no installed workflow",
+    );
   });
 
   it("installs every runner with an empty signed funding bundle while funding requests stay gated", async () => {
@@ -141,9 +141,8 @@ describe("watcher production fault-proof application V1", () => {
       );
 
       expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
-      // The catalogue in the SDK, less the categories with no off-chain
-      // workflow, is the authority on which families a watcher must be able
-      // to prove, and in which order.
+      // The SDK catalogue less the categories with no off-chain workflow is
+      // the authority on which families a watcher proves, and in what order.
       expect(application.installedCategories).toEqual([
         ...INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
       ]);
@@ -237,9 +236,10 @@ describe("watcher production fault-proof application V1", () => {
             [...TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES].sort(),
           );
         }
-        // The physical steps of a thread are contiguous from step01: a
-        // dropped or renamed intermediate step leaves a gap here.
-        expect(stepOrdinals.length).toBeGreaterThan(0);
+        // The physical steps of a thread are contiguous from step01 (the
+        // dispute walks named stages): a dropped step leaves a gap here.
+        if (category !== "validationTraceDispute")
+          expect(stepOrdinals.length).toBeGreaterThan(0);
         expect(stepOrdinals).toEqual(
           Array.from(
             { length: stepOrdinals.length },
