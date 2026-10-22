@@ -12,7 +12,8 @@
  *
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
  * callbacks' and the root computation's failures pass through, and a
- * callback names a local fault of its own with `ReplayLocalFault`.
+ * callback names a local fault of its own with `ReplayLocalFault`. A defect
+ * of the event replay is a `ReplayLocalFault`.
  */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
@@ -35,7 +36,12 @@ import {
   encodeTransitionStepCbor,
   transitionPhaseRank,
 } from "./block-replay.encoding.js";
-import { blockFault } from "./block-replay.faults.js";
+import {
+  blockFault,
+  isReplayLocalFault,
+  locally,
+  ReplayLocalFault,
+} from "./block-replay.faults.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -277,7 +283,20 @@ export const replayBlockEvents = (
           ...(committed === undefined
             ? {}
             : { committedScriptRun: committed.onScriptRun }),
-        });
+        }).pipe(
+          // What the event's bytes and ledger decide is a verdict or a typed
+          // failure; a throw past them is this process's own fault.
+          Effect.catchAllDefect((cause) =>
+            Effect.die(
+              isReplayLocalFault(cause)
+                ? cause
+                : new ReplayLocalFault({
+                    message: `event replay failed locally: ${String(cause)}`,
+                    cause,
+                  }),
+            ),
+          ),
+        );
         if (
           step.phase === "L2Transaction" &&
           replay.transactionId.toString("hex") !== source.source[0]
@@ -338,12 +357,15 @@ export const replayBlockEvents = (
         throw blockFault(
           "foreign transition differs from deterministic replay",
         );
+      // The phase was read and encoded above: encoding it here is local.
       if (
         mappings.get(key) !==
-        encodeEventToStepValueCbor({
-          step_index: BigInt(index),
-          phase: step.phase,
-        }).toString("hex")
+        locally("event-to-step encoding", () =>
+          encodeEventToStepValueCbor({
+            step_index: BigInt(index),
+            phase: step.phase,
+          }).toString("hex"),
+        )
       )
         throw blockFault("foreign event-to-step mapping mismatch");
       if (priorLedger !== undefined) {
