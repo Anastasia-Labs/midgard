@@ -129,6 +129,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-funded-foreign-verify.test.ts",
   "./tests/validation-trace-dispute-funded-lost-defense-slash.test.ts",
   "./tests/validation-trace-dispute-funded-lost-defense-slash-refusals.test.ts",
+  "./tests/validation-trace-dispute-funded-lost-defense-slash-deadline.test.ts",
   "./tests/validation-trace-dispute-slashed-operator-removal.test.ts",
   "./tests/validation-trace-dispute-funded-move-bindings.test.ts",
   "./tests/validation-trace-dispute-funded-move-restarts.test.ts",

@@ -13,11 +13,7 @@
  * observation and builds the stage again. A claim that does not build
  * before Init (claim-material.ts) is held without an alarm until the case
  * open window it must open our case in is at risk. */
-import {
-  MIDGARD_CONSENSUS_LIMITS,
-  MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
-  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
-} from "@al-ft/midgard-core";
+import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -32,25 +28,13 @@ import {
   type ParsedValidationTraceAction,
   validationTraceActionId,
 } from "./actions.js";
+import { validationTraceCaseBondUnlockMs } from "./case-origin.js";
 import { VALIDATION_TRACE_CLAIM_BUILD_HELD } from "./claim-material.js";
-import { validationTraceLostDefenseSlashDeadlineMs } from "./lost-defense-slash-due.js";
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "./threads.js";
 import {
   challengedBlockUtxo,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
-
-/** P: what is left of maturity after the open window and the longest case. */
-const POST_CASE_ALLOWANCE_MS =
-  MIDGARD_CONSENSUS_LIMITS.blockMaturityMs -
-  MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS -
-  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
-
-/** When the operator's bond on our case unlocks: `started_at + D_case + P`. */
-const validationTraceBondUnlockMs = (caseDatum: SDK.Case): number =>
-  Number(caseDatum.started_at) +
-  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS +
-  POST_CASE_ALLOWANCE_MS;
 
 /** The end of the case open window on a block whose state-queue node has
  * the `block_time` `blockTime`: `block_time + M/2`. */
@@ -174,6 +158,7 @@ export const validationTraceStageUnbuilt = async ({
   headerHash,
   found,
   cause,
+  lostDefenseDeadlineMs,
 }: {
   readonly action: ParsedValidationTraceAction;
   readonly lucid: LucidEvolution;
@@ -181,6 +166,10 @@ export const validationTraceStageUnbuilt = async ({
   readonly headerHash: string;
   readonly found: Readonly<{ caseDatum: SDK.Case }> | undefined;
   readonly cause: unknown;
+  /** The deadline of the slash spending the receipt at an out-ref. */
+  readonly lostDefenseDeadlineMs: (
+    receiptOutRef: string,
+  ) => Promise<number | undefined>;
 }): Promise<ValidationTraceStageUnbuiltError> => {
   const { stage } = action;
   const named = { action, headerHash, cause };
@@ -191,17 +180,13 @@ export const validationTraceStageUnbuilt = async ({
       deadlineMs:
         found === undefined
           ? undefined
-          : validationTraceBondUnlockMs(found.caseDatum),
+          : validationTraceCaseBondUnlockMs(found.caseDatum.started_at),
     });
   if (stage === "slash_lost_defense")
     return new ValidationTraceStageUnbuiltError({
       ...named,
       deadline: "the defender's bond unlock",
-      deadlineMs: await validationTraceLostDefenseSlashDeadlineMs(
-        lucid,
-        deployment,
-        action.consumes!,
-      ),
+      deadlineMs: await lostDefenseDeadlineMs(action.consumes!),
     });
   if (!isValidationTraceMove(stage))
     return new ValidationTraceStageUnbuiltError({

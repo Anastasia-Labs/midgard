@@ -449,6 +449,7 @@
     "tests/validation-trace-dispute-funded-foreign-verify.test.ts": 7.6,
     "tests/validation-trace-dispute-funded-lost-defense-slash.test.ts": 10.3,
     "tests/validation-trace-dispute-funded-lost-defense-slash-refusals.test.ts": 42.0,
+    "tests/validation-trace-dispute-funded-lost-defense-slash-deadline.test.ts": 14,
     "tests/validation-trace-dispute-funded-move-bindings.test.ts": 7.8,
     "tests/validation-trace-dispute-funded-move-restarts.test.ts": 10,
     "tests/validation-trace-dispute-funded-move-walk.test.ts": 7.4,

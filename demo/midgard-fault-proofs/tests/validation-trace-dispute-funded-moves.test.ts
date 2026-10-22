@@ -247,7 +247,7 @@ describe("validation-trace dispute thread moves under the prover funding permit"
         scene.h.proverSigner.paymentKeyHash,
       );
       const name = unit.slice(56);
-      // The receipt the close minted, which the slash has since burned.
+      // The receipt the close minted.
       const receipt = recordedOutput(scene, `${close!}#1`);
       expect(receipt.address).toBe(chain.award.spendingScriptAddress);
       expect(receipt.assets).toStrictEqual({

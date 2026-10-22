@@ -22,31 +22,32 @@ import {
   CML,
   credentialToAddress,
   Data,
-  getAddressDetails,
   type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
-import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
-import { captureValidationTraceLostDefenseSlash } from "../src/validation-trace-dispute/lost-defense-slash.js";
-import {
-  VALIDATION_TRACE_DEFENDER_WON,
-  VALIDATION_TRACE_MOVE_UNBUILT,
-} from "../src/validation-trace-dispute/threads.js";
+import { VALIDATION_TRACE_MOVE_UNBUILT } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { network } from "./support/submit-init-emulator-shared.js";
-import { anotherParty } from "./support/validation-trace-dispute-foreign-verify.js";
+import {
+  confirmed,
+  defenderNodes,
+  landForeignSlash,
+  nodeBondUnlock,
+  outRefOf,
+  playToDefenderWon,
+  receiptUnit,
+  SLASH,
+  unpublishedActiveOperators,
+} from "./support/validation-trace-dispute-funded-lost-defense.js";
 import {
   caseUnitOf,
   type FundedMoves,
   openTwoDefendedFundedCase,
   recordedOutput,
-  type SecondDefense,
-  successorWinsItsThread,
 } from "./support/validation-trace-dispute-funded-moves.js";
 import type { AdapterWrap } from "./support/validation-trace-dispute-funded-runner.js";
 import {
@@ -55,37 +56,6 @@ import {
 } from "./support/validation-trace-dispute-funded-verify-source.js";
 import { liveCase } from "./support/validation-trace-dispute-one-step-case.js";
 import { reportFit } from "./support/validation-trace-dispute-scripted-defender.js";
-
-type TwoDefended = FundedMoves & Readonly<{ second: SecondDefense }>;
-
-const SLASH = "validation-trace-slash-lost-defense:";
-
-const outRefOf = (utxo: Pick<UTxO, "txHash" | "outputIndex">) =>
-  `${utxo.txHash}#${utxo.outputIndex.toString()}`;
-
-/** The defender's operator node, in whichever operator set holds it. */
-const defenderNodes = async ({ scene, defender }: FundedMoves) => {
-  const { h } = scene;
-  const vkh = defender.vkey;
-  return [
-    ...(await h.proverLucid.utxosAtWithUnit(
-      h.contracts.activeOperators.spendingScriptAddress,
-      h.contracts.activeOperators.policyId +
-        SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
-        vkh,
-    )),
-    ...(await h.proverLucid.utxosAtWithUnit(
-      h.contracts.retiredOperators.spendingScriptAddress,
-      h.contracts.retiredOperators.policyId +
-        SDK.RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX +
-        vkh,
-    )),
-  ];
-};
-
-/** The defender's lost-defense receipt token. */
-const receiptUnit = ({ scene, unit }: FundedMoves) =>
-  scene.chain.award.policyId + unit.slice(56);
 
 type CapturedSlash = Readonly<{
   signed: TxSigned;
@@ -115,40 +85,6 @@ const captureSlashes =
       return preflight;
     },
   });
-
-/**
- * The successor wins its thread while the operator stays silent past its
- * deadline, and the watcher turns, with
- * `wrap`, until the run is pending for `until` (defender-won), every alarm
- * each turn raised kept.
- */
-const playToDefenderWon = async (
-  journey: TwoDefended,
-  wrap?: AdapterWrap,
-  until = VALIDATION_TRACE_DEFENDER_WON,
-) => {
-  const { dispute } = journey;
-  await successorWinsItsThread(journey);
-  const alarms: string[] = [];
-  const history: string[] = [];
-  for (let turns = 0; turns < 12; turns += 1) {
-    const result: FraudProofWorkflowRunResult = await dispute.turn(wrap);
-    history.push(
-      "reason" in result ? `${result.kind}: ${result.reason}` : result.kind,
-    );
-    if (result.kind === "pending") {
-      alarms.push(...(result.alarms ?? []).map(({ reason }) => reason));
-      if (result.reason.startsWith(until)) return { result, alarms, history };
-    }
-  }
-  throw new Error(`the run never reached ${until}: ${history.join("\n")}`);
-};
-
-/** The stages the journal confirmed, with each transaction's hash. */
-const confirmed = (result: FraudProofWorkflowRunResult) =>
-  confirmedValidationTraceStages(entriesOf(result)).map(
-    ({ action, txHash }) => ({ stage: action.stage, txHash }),
-  );
 
 describe("the slash of a defender who lost a thread of our case", () => {
   it(
@@ -286,14 +222,6 @@ describe("the slash of a defender who lost a thread of our case", () => {
       const journey = await openTwoDefendedFundedCase();
       const { scene, dispute } = journey;
       try {
-        const lucid = await anotherParty(scene);
-        const address = await lucid.wallet().address();
-        const other = {
-          source: "direct-seed-phrase",
-          address,
-          paymentKeyHash: getAddressDetails(address).paymentCredential!.hash,
-          selectWallet: () => undefined,
-        };
         const foreign: string[] = [];
         // Another watcher lands its slash between our observation and our
         // build of ours.
@@ -303,20 +231,13 @@ describe("the slash of a defender who lost a thread of our case", () => {
             if (
               context.action.actionId.startsWith(SLASH) &&
               foreign.length === 0
-            ) {
-              const receiptOutRef = context.action.actionId.slice(SLASH.length);
-              const { transaction } =
-                await captureValidationTraceLostDefenseSlash({
-                  lucid,
-                  signer: other,
-                  deployment: dispute.deployment,
-                  removal: journey.removal.removal,
-                  headerHash: scene.failing.evidence.headerHash,
-                  receiptOutRef,
-                });
-              foreign.push(await transaction.signed.submit());
-              await lucid.awaitTx(foreign[0]!);
-            }
+            )
+              foreign.push(
+                await landForeignSlash(
+                  journey,
+                  context.action.actionId.slice(SLASH.length),
+                ),
+              );
             return await adapter.preflight(context);
           },
         });
@@ -367,24 +288,7 @@ describe("the slash of a defender who lost a thread of our case", () => {
       // The watcher's removal names a deployment whose active-operators
       // reference script was never published.
       const journey = await openTwoDefendedFundedCase({
-        rewriteRemoval: (recorded) => {
-          const info = recorded.deploymentInfo as Readonly<{
-            contracts: Readonly<Record<string, object>>;
-          }>;
-          return {
-            ...recorded,
-            deploymentInfo: {
-              ...info,
-              contracts: {
-                ...info.contracts,
-                activeOperatorsSpend: {
-                  ...info.contracts.activeOperatorsSpend,
-                  refScriptUTxO: undefined,
-                },
-              },
-            },
-          };
-        },
+        rewriteRemoval: unpublishedActiveOperators,
       });
       const { dispute } = journey;
       try {
@@ -417,12 +321,7 @@ describe("the slash of a defender who lost a thread of our case", () => {
             SDK.Case,
           ),
         ).toMatchObject({ open_threads: 0n, defender_won: true });
-        const element = Data.from(node!.datum!, SDK.LinkedListDatum).data;
-        if (!("Node" in element)) throw new Error("the defender has no node");
-        const unlock = Data.from(
-          Data.to(element.Node.data),
-          SDK.ActiveOperatorDatum,
-        ).bond_unlock_time;
+        const unlock = nodeBondUnlock(node!);
         expect(unlock).not.toBeNull();
         // The run is held under the alarm, which names the slash.
         const slash = [

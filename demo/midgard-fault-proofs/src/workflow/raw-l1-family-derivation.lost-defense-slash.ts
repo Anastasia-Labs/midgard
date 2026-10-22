@@ -62,44 +62,69 @@ export const fraudProofRawL1HistoryReader =
     }).transactions;
   };
 
-/** The one case token the computation thread's outputs carried. */
+/**
+ * The case the proof's record closed: a convicted close locks the case's
+ * token and its bond marker beside the record (validation-case-v1.ak), so
+ * the case id is the one case-policy name in the record's transaction whose
+ * bond marker sits beside it. The case token is unique, whatever other cases
+ * the block had.
+ */
 const caseIdOf = ({
   snapshot,
-  definition,
+  proofUnit,
+  proofOutRef,
   casePolicyId,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
-  readonly definition: FraudProofRawL1TerminalDefinition;
+  readonly proofUnit: string;
+  readonly proofOutRef: string;
   readonly casePolicyId: string;
 }): string | undefined => {
-  const threadUnit = toUnit(
-    definition.computationThread.policyId,
-    `${definition.categoryId}${definition.headerHash}`,
+  const proofTxHash = proofOutRef.split("#")[0];
+  const record = historicalTransactions({ snapshot, unit: proofUnit }).find(
+    ({ txHash }) => txHash === proofTxHash,
   );
-  const cases = new Set<string>();
-  for (const transaction of historicalTransactions({
-    snapshot,
-    unit: threadUnit,
-  }))
-    for (const { output } of transactionOutputs(transaction)) {
-      const { assets } = coreToTxOutput(output);
-      if ((assets[threadUnit] ?? 0n) !== 1n) continue;
-      for (const unit of Object.keys(assets))
-        if (unit.startsWith(casePolicyId) && unit !== casePolicyId)
-          cases.add(unit.slice(56));
-    }
-  return cases.size === 1 ? [...cases][0] : undefined;
+  if (record === undefined) return undefined;
+  const names = new Set<string>();
+  for (const { output } of transactionOutputs(record))
+    for (const unit of Object.keys(coreToTxOutput(output).assets))
+      if (unit.startsWith(casePolicyId) && unit !== casePolicyId)
+        names.add(unit.slice(56));
+  const cases = [...names].filter((name) =>
+    names.has(SDK.validationCaseBondMarkerName(name)),
+  );
+  return cases.length === 1 ? cases[0] : undefined;
+};
+
+/** Whether `earlier` was included before `later`: in an earlier block, or in
+ * the same block when `later` spends or references an output of `earlier`
+ * (the raw L1 view orders no transactions within a block). */
+const includedBefore = (
+  earlier: FraudProofRawL1Transaction,
+  later: FraudProofRawL1Transaction,
+): boolean => {
+  const [a, b] = [earlier, later].map(({ inclusionPoint }) =>
+    BigInt(inclusionPoint.blockNo),
+  );
+  if (a! !== b!) return a! < b!;
+  return [...later.resolvedInputs, ...later.resolvedReferenceInputs].some(
+    ({ outRef }) => outRef.startsWith(`${earlier.txHash}#`),
+  );
 };
 
 /**
  * The slash of the removed block's operator by the receipt of this case's
  * thread it lost, when the family's cases can be defended and that is how
- * its bond ended: the one transaction of the receipt's history that burns
- * the receipt and consumes the operator's bond. `undefined` otherwise.
+ * its bond ended: the one transaction of the receipt's history, before the
+ * block's removal, that burns the receipt and consumes the operator's bond.
+ * `undefined` otherwise.
  */
 export const lostDefenseReceiptSlash = async ({
   snapshot,
   definition,
+  proofUnit,
+  proofOutRef,
+  removal,
   operatorCredential,
   activeUnit,
   retiredUnit,
@@ -107,6 +132,10 @@ export const lostDefenseReceiptSlash = async ({
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly definition: FraudProofRawL1TerminalDefinition;
+  readonly proofUnit: string;
+  readonly proofOutRef: string;
+  /** The block's removal, which the slash must precede. */
+  readonly removal: FraudProofRawL1Transaction;
   readonly operatorCredential: string;
   readonly activeUnit: string;
   readonly retiredUnit: string;
@@ -122,7 +151,8 @@ export const lostDefenseReceiptSlash = async ({
   if (lostDefense === undefined || history === undefined) return undefined;
   const caseId = caseIdOf({
     snapshot,
-    definition,
+    proofUnit,
+    proofOutRef,
     casePolicyId: lostDefense.casePolicyId,
   });
   if (caseId === undefined) return undefined;
@@ -132,7 +162,11 @@ export const lostDefenseReceiptSlash = async ({
   );
   const slashes = (await history(receiptUnit)).flatMap((transaction) => {
     const body = CML.TransactionBody.from_cbor_hex(transaction.bodyCbor);
-    if (mintQuantity(body, receiptUnit) !== -1n) return [];
+    if (
+      mintQuantity(body, receiptUnit) !== -1n ||
+      !includedBefore(transaction, removal)
+    )
+      return [];
     const inputs = operatorBondInputs({
       transaction,
       definition,

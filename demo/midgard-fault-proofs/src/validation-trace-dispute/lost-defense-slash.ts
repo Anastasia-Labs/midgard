@@ -48,7 +48,6 @@ import { validationTraceRecovery } from "./actions.js";
 import {
   type Directory,
   receiptOf,
-  validationTraceLostDefenseSlashDeadlineMs,
   ValidationTraceLostDefenseSlashUnfundedError,
 } from "./lost-defense-slash-due.js";
 import type { ValidationTraceRemovalConfig } from "./removal.js";
@@ -79,6 +78,8 @@ type SlashInput = Readonly<{
   /** The challenged block, which the funding authority names. */
   headerHash: string;
   receiptOutRef: string;
+  /** The slash's deadline, which a shortfall's alarm names. */
+  deadlineMs?: () => Promise<number | undefined>;
 }>;
 
 const buildSlash = async ({
@@ -337,16 +338,12 @@ export const captureValidationTraceLostDefenseSlash = async (
     return await buildSlash(input);
   } catch (cause) {
     if (!isWorkflowFundingShortfall(cause)) throw cause;
-    const { lucid, deployment, receiptOutRef } = input;
+    const { lucid, receiptOutRef } = input;
     const receipt = await ours(lucid, receiptOutRef, "lost-defense receipt");
     throw new ValidationTraceLostDefenseSlashUnfundedError({
       receiptOutRef,
       defenderVkh: receiptOf(receipt).defender_vkh,
-      deadlineMs: await validationTraceLostDefenseSlashDeadlineMs(
-        lucid,
-        deployment,
-        receiptOutRef,
-      ),
+      deadlineMs: await input.deadlineMs?.(),
       cause,
     });
   }

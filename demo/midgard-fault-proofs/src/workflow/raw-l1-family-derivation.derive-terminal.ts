@@ -124,6 +124,9 @@ export const deriveTerminal = async ({
         ? await lostDefenseReceiptSlash({
             snapshot,
             definition,
+            proofUnit,
+            proofOutRef: proof.outRef,
+            removal: removal.transaction,
             operatorCredential,
             activeUnit,
             retiredUnit,

@@ -56,7 +56,10 @@ import {
   validateValidationTraceArtifact,
 } from "./detected-claim.js";
 import { captureValidationTraceLostDefenseSlash } from "./lost-defense-slash.js";
-import { dueValidationTraceLostDefenseSlash } from "./lost-defense-slash-due.js";
+import {
+  dueValidationTraceLostDefenseSlash,
+  validationTraceLostDefenseSlashDeadlines,
+} from "./lost-defense-slash-due.js";
 import { captureValidationTraceThreadMove } from "./move-dispatch.js";
 import { validationTraceObserveCopy } from "./observe-copy.js";
 import { validationTraceReconcile } from "./reconcile.js";
@@ -143,6 +146,10 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const materialOf = (headerHash: string) => materials.get(headerHash);
   const own = { lucid, signer, deployment };
   const removalStage = createValidationTraceRemoval({ ...own, removal });
+  const deadlines = validationTraceLostDefenseSlashDeadlines({
+    ...own,
+    caseHistory,
+  });
   const copy = validationTraceObserveCopy({
     ...own,
     publications,
@@ -186,6 +193,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (!settled) return next;
     const slash = await dueValidationTraceLostDefenseSlash({
       ...own,
+      headerHash: requireIdentity(context).headerHash,
+      deadlines,
       stages,
       live,
       skipped: context.unbuiltActionIds,
@@ -321,6 +330,11 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
             removal,
             headerHash: input.artifact.headerHash,
             receiptOutRef: action.consumes!,
+            deadlineMs: async () =>
+              await deadlines.ofReceipt(
+                input.artifact.headerHash,
+                action.consumes!,
+              ),
           });
       }
       found = await ourCase(
@@ -375,6 +389,8 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         headerHash: input.artifact.headerHash,
         found,
         cause,
+        lostDefenseDeadlineMs: async (receiptOutRef) =>
+          await deadlines.ofReceipt(input.artifact.headerHash, receiptOutRef),
       });
     }
   };
