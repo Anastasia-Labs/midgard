@@ -32,6 +32,16 @@ slower. This setting is ignored by allocators that do not implement it. See the
 [GNU allocator documentation](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)
 and [Node.js memory guidance](https://nodejs.org/api/process.html#processmemoryusage).
 
+Give the watcher process at least 4 GB of memory. Its heaviest proof work is
+the validation-trace dispute (family `00000006`): each runner run replays the
+disputed transaction to rebuild its claim material, and a one-step resolution
+replays it once more, keeping only the two states and work witnesses its move
+reads. At the deepest trace admission allows (394,860 steps, 2026-10-22) each
+replay takes about 8 s and the process peaks at about 1.9 GB; the peak is the
+same in every stage, in later runs and after a restart, which rebuilds the
+same material. The 4 GB covers that peak plus about 2 GB for the watcher's
+own state and headroom.
+
 `start` constructs the watcher runtime and runs until SIGINT/SIGTERM. `replay` constructs the same
 runtime, waits for durable catch-up, and closes it; it is not an offline or
 transport-free command. Both may drive proof and availability workflows.
