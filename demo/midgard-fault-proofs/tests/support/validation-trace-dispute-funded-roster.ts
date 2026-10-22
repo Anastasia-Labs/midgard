@@ -50,6 +50,7 @@ export const referenceUtxos = (
                 ...Object.values(oneStep.cekContext.items),
                 ...Object.values(oneStep.cekContext.followers),
               ]),
+          ...Object.values(oneStep.canonicalDecode ?? {}),
         ]),
     ...(scriptDecode === undefined
       ? []

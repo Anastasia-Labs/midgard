@@ -8,11 +8,13 @@
  * (one-step-moves.ts), closes each thread won into the case and, once none is
  * open, closes the case as an undefended one. On a deployment that drives
  * CEK script selections, the decode record of every script our trace selects
- * is made before Init (script-decode-records.ts). Every output of ours is
- * claimed by out-ref from our own signed body before submission and read
- * back by that out-ref; chain state, not the journal's idea of the step,
- * decides the next action. A thread move needs the claim material, which
- * each run reads back as it prepares or validates its artifact. */
+ * is made before Init (script-decode-records.ts); an observe move of a field
+ * too long to carry inline reads our published copy (observe-copy.ts).
+ * Every output of ours is claimed by out-ref from our own signed body before
+ * submission and read back by that out-ref; chain state, not the journal's
+ * idea of the step, decides the next action. A thread move needs the claim
+ * material, which each run reads back as it prepares or validates its
+ * artifact. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -57,6 +59,7 @@ import {
   validateValidationTraceArtifact,
 } from "./detected-claim.js";
 import { captureValidationTraceThreadMove } from "./move-dispatch.js";
+import { validationTraceObserveCopy } from "./observe-copy.js";
 import {
   createValidationTraceRemoval,
   VALIDATION_TRACE_CASE_CONVICTED,
@@ -135,21 +138,20 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const claimHeld = heldClaimBuildAlarm({ lucid, deployment, now });
   // Each block's claim material, as its saved artifact was last validated.
   const materials = new Map<string, ValidationTraceClaimMaterial>();
-  const removalStage = createValidationTraceRemoval({
-    lucid,
-    signer,
-    deployment,
-    removal,
+  const materialOf = (headerHash: string) => materials.get(headerHash);
+  const own = { lucid, signer, deployment };
+  const removalStage = createValidationTraceRemoval({ ...own, removal });
+  const copy = validationTraceObserveCopy({
+    ...own,
+    publications,
+    signedRecovery,
+    materialOf,
   });
   const read = (outRefs: readonly string[]) =>
     readOwnOutputs((refs) => lucid.utxosByOutRef([...refs]), outRefs);
   const recent = (confirmedAt: string): boolean =>
     now() - Date.parse(confirmedAt) < VALIDATION_TRACE_PROVIDER_GRACE_MS;
-  const { recordAt, ourCase, isContested } = validationTraceCaseReads({
-    lucid,
-    signer,
-    deployment,
-  });
+  const { recordAt, ourCase, isContested } = validationTraceCaseReads(own);
 
   const requireIdentity = (context: FraudProofWorkflowAdapterContext) => {
     if (
@@ -203,9 +205,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (found !== undefined)
       return isContested(found.caseDatum)
         ? await observeValidationTraceThreads({
-            lucid,
-            signer,
-            deployment,
+            ...own,
             caseHistory,
             headerHash: artifact.headerHash,
             caseUnit: found.caseUnit,
@@ -261,12 +261,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     context: FraudProofWorkflowAdapterContext,
     action: ReturnType<typeof parseValidationTraceAction>,
   ): Promise<CapturedValidationTraceStage> => {
-    const input = {
-      lucid,
-      signer,
-      deployment,
-      artifact: requireIdentity(context),
-    };
+    const input = { ...own, artifact: requireIdentity(context) };
     let found: Awaited<ReturnType<typeof ourCase>> = undefined;
     try {
       switch (action.stage) {
@@ -325,6 +320,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
           caseUnit: found.caseUnit,
           caseOpenerOutRef: found.openerOutRef,
           material: materials.get(input.artifact.headerHash),
+          observeCopy: async () => await copy.of(context, action),
         },
         caseOutRef: found.outRef,
         history,
@@ -488,12 +484,10 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     },
   };
   return withValidationTraceScriptDecodeRecords({
-    base: Object.freeze(removalStage.route(adapter)),
-    lucid,
-    signer,
-    deployment,
+    base: copy.wrap(Object.freeze(removalStage.route(adapter))),
+    ...own,
     publications,
     now,
-    materialOf: (headerHash) => materials.get(headerHash),
+    materialOf,
   });
 };

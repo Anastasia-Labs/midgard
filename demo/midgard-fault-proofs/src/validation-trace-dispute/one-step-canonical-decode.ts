@@ -4,10 +4,12 @@
  * one hop, or to its item semantic resolver, which installs the transition
  * into the item's staging chain: the source stage binds the field's
  * commitment and length, the observe stage opens the item through the field
- * door from the carriage the step's evidence delivers, the proof stage
- * derives the item's encoding, and the settlement awards the step whose
- * successor that encoding implies. Each stage's successor is the staging
- * record the stage derives, which we derive here from our own trace. */
+ * door from the carriage the step's evidence delivers (a field too long to
+ * carry inline, from our published copy of it: observe-copy.ts), the proof
+ * stage derives the item's encoding, and the settlement awards the step
+ * whose successor that encoding implies. Each stage's successor is the
+ * staging record the stage derives, which we derive here from our own
+ * trace. */
 import {
   decodeMidgardFieldPreimage,
   decodeSingleCbor,
@@ -20,7 +22,12 @@ import {
   canonicalFieldItemEncodedLength,
   type ValidationMachineWorkWitness,
 } from "@al-ft/midgard-validation";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import {
+  Constr,
+  Data,
+  type RedeemerContext,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   bytes,
@@ -42,15 +49,16 @@ export const CANONICAL_DECODE_EMPTY_SEMANTIC_RESOLVER_INDEX = 0;
 export const CANONICAL_DECODE_ITEM_SEMANTIC_RESOLVER_INDEX = 1;
 
 /** `TransactionFieldItemWitness`'s constructor among the auxiliary
- * witnesses, and `Inline`'s among the field carriages. */
+ * witnesses, and `Inline`'s and `RawUtxo`'s among the field carriages. */
 const TRANSACTION_FIELD_ITEM_AUXILIARY = 28;
 const INLINE_CARRIAGE = 0;
+const RAW_UTXO_CARRIAGE = 1;
 
 /** The longest field preimage whose `Inline` carriage the observe move
  * carries within the transaction size limit less its 512-byte reserve,
  * measured on the move paid from our wallet (the canonical-decode-8
- * inline-cap test). An item of a longer field is not driven: its step waits
- * under the one-step-required alarm. */
+ * observe-copy test). The observe move of an item of a longer field reads
+ * the field from our published bytes-only copy of it instead (`RawUtxo`). */
 export const VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES = 13_623;
 
 /** The holders of a canonical-decode step's resolution, in the order the
@@ -130,6 +138,9 @@ export type ValidationTraceCanonicalDecodeItem = Readonly<{
   /** `CanonicalDecodeItemProofV1`: the active item count, whether the
    * item's width is legal, and the field's encoded length past it. */
   proofCbor: string;
+  /** The field preimage, when it is too long for the observe move to carry
+   * inline: the move reads it from our published copy. */
+  copied: Buffer | undefined;
 }>;
 
 /** A canonical-decode step as its resolution needs it: the evidence hash
@@ -195,11 +206,6 @@ export const planValidationTraceCanonicalDecodeStep = ({
       reason: "a canonical-decode item delivered by reference",
     };
   const preimage = auxiliary.fieldPreimage;
-  if (preimage.length > VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES)
-    return {
-      driven: false,
-      reason: `a canonical-decode item of a ${preimage.length.toString()}-byte field, over the ${VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES.toString()}-byte inline observe limit`,
-    };
   const control = decodeSingleCbor(witness.cbor);
   if (!Array.isArray(control) || control.length !== 9)
     throw new Error("canonical-decode control is not its 9 fields");
@@ -238,6 +244,10 @@ export const planValidationTraceCanonicalDecodeStep = ({
         constr(encoded === null ? 0 : 1, []),
         integer(encoded === null ? 0 : before + encoded),
       ]),
+      copied:
+        preimage.length > VALIDATION_TRACE_INLINE_OBSERVE_MAX_PREIMAGE_BYTES
+          ? Buffer.from(preimage)
+          : undefined,
     }),
   };
 };
@@ -247,8 +257,13 @@ export const planValidationTraceCanonicalDecodeStep = ({
 export type CanonicalDecodeHop = Readonly<{
   next: ValidationTraceCanonicalDecodeHolder | "award";
   datum: string;
-  redeemer: (inputIndex: bigint, outputIndex: bigint) => string;
+  redeemer: (
+    inputIndex: bigint,
+    outputIndex: bigint,
+    context: RedeemerContext,
+  ) => string;
   proverOnly: boolean;
+  reads?: Readonly<{ references: readonly UTxO[]; yields: readonly [] }>;
 }>;
 
 /** The staging record at each stage nests the one before it, one level
@@ -264,7 +279,8 @@ const indices = (inputIndex: bigint, outputIndex: bigint) => [
 /**
  * The hop of the thread with datum `datum`, of prover `prover`, held by
  * the canonical-decode holder `holder`, in the resolution of the step whose
- * transition is `transitionCbor` and whose plan is `step`.
+ * transition is `transitionCbor` and whose plan is `step`; the observe hop
+ * of an item whose field is `copied` reads it from our published `copy`.
  */
 export const canonicalDecodeHop = ({
   holder,
@@ -273,6 +289,7 @@ export const canonicalDecodeHop = ({
   semanticResolverIndex,
   transitionCbor,
   step,
+  copy,
 }: {
   readonly holder: ValidationTraceCanonicalDecodeHolder;
   readonly datum: string;
@@ -283,6 +300,7 @@ export const canonicalDecodeHop = ({
     ValidationTraceCanonicalDecodeStep,
     { preparedEvidenceHash: string }
   >;
+  readonly copy?: UTxO | undefined;
 }): CanonicalDecodeHop => {
   const item = (): ValidationTraceCanonicalDecodeItem => {
     if (step.item === undefined)
@@ -346,19 +364,40 @@ export const canonicalDecodeHop = ({
           continued(constr(0, indices(inputIndex, outputIndex))),
         proverOnly: true,
       };
-    case "canonicalDecodeItemObserve":
+    case "canonicalDecodeItemObserve": {
+      const { observationCbor, carriageCbor, copied } = item();
+      if (copied === undefined)
+        return {
+          next: "canonicalDecodeItemProof",
+          datum: stepDatum(prover, staged(datum, observationCbor)),
+          redeemer: (inputIndex, outputIndex) =>
+            continued(
+              constr(0, [...indices(inputIndex, outputIndex), carriageCbor]),
+            ),
+          proverOnly: true,
+        };
+      if (copy === undefined)
+        throw new Error(
+          `validation-trace observe of a ${copied.length.toString()}-byte field has no published copy of it`,
+        );
       return {
         next: "canonicalDecodeItemProof",
-        datum: stepDatum(prover, staged(datum, item().observationCbor)),
-        redeemer: (inputIndex, outputIndex) =>
+        datum: stepDatum(prover, staged(datum, observationCbor)),
+        redeemer: (inputIndex, outputIndex, context) =>
           continued(
             constr(0, [
               ...indices(inputIndex, outputIndex),
-              item().carriageCbor,
+              constr(RAW_UTXO_CARRIAGE, [
+                integer(
+                  SDK.requireReferenceInputIndex(context, copy, "field copy"),
+                ),
+              ]),
             ]),
           ),
         proverOnly: true,
+        reads: { references: [copy], yields: [] },
       };
+    }
     case "canonicalDecodeItemProof":
       return {
         next: "canonicalDecodeItemSettlement",

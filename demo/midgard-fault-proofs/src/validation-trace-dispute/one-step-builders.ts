@@ -179,7 +179,8 @@ const datumOf = (utxo: UTxO): string => {
  * through a context step's redeemer item step reads `item`, a phase
  * semantic resolver's hop reads `phaseYield`, the yield it invokes, and a
  * hop through a script-sources redeemer normalization step reads
- * `redeemerChain`.
+ * `redeemerChain`, and a canonical-decode item's observe hop of a field too
+ * long to carry inline reads our published `copy` of it.
  */
 export const validationTraceHop = ({
   plan,
@@ -191,6 +192,7 @@ export const validationTraceHop = ({
   phaseYield,
   phaseYieldList,
   redeemerChain,
+  copy,
 }: {
   readonly plan: ValidationTraceOneStepPlan;
   readonly holder: ValidationTraceHopHolder;
@@ -201,6 +203,7 @@ export const validationTraceHop = ({
   readonly phaseYield?: ValidationTracePhaseYieldReads | undefined;
   readonly phaseYieldList?: ValidationTracePhaseYieldListReads | undefined;
   readonly redeemerChain?: ValidationTraceScriptSourcesRedeemerReads;
+  readonly copy?: UTxO | undefined;
 }): ValidationTraceHop => {
   const datum = datumOf(utxo);
   if (plan.kind === "phase" && isScriptSourcesRedeemerChainHolder(holder))
@@ -232,6 +235,7 @@ export const validationTraceHop = ({
       semanticResolverIndex: plan.semanticResolverIndex,
       transitionCbor: plan.transitionCbor,
       step: plan.canonicalDecode,
+      copy,
     });
   }
   if (isValidationTracePhaseHolder(holder)) {
