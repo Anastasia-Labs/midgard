@@ -55,7 +55,7 @@ const transitionOf = (tx: SimTx, consumed: readonly string[]) => ({
  * attempts spend one tracked funding output and name a collateral coin from
  * before the follower's origin, which the follower has no history of and
  * nothing ever spends. `pending` is its last attempt; `recorded` are the
- * ones before it; `cancel` is its recorded cancel, if any.
+ * ones before it.
  */
 const orphanWithSeedCollateral = async () => {
   const h = await harness();
@@ -82,7 +82,6 @@ const orphanWithSeedCollateral = async () => {
   const held: {
     pending?: SimTx;
     recorded: SimTx[];
-    cancel?: SimTx;
   } = { recorded: [] };
   const settlements: { transactionHash: string; reason: string }[][] = [];
   let clock = 1_000_000_000;
@@ -94,10 +93,6 @@ const orphanWithSeedCollateral = async () => {
           : transitionOf(held.pending, consumed),
       readRecordedSubmissions: async () =>
         held.recorded.map((tx) => ({ transition: transitionOf(tx, consumed) })),
-      readOrphanCancel: async () =>
-        held.cancel === undefined
-          ? null
-          : { ...signedOf(held.cancel), inputs: consumed },
       readCompletionHandoff: async () => null,
       settleOrphanedReservation: async ({
         retirements,
@@ -151,32 +146,6 @@ const orphanWithSeedCollateral = async () => {
 const hashOf = (tx: SimTx) => signedOf(tx).transactionHash;
 
 describe("an orphan whose attempts name a collateral coin from before the follower's origin", () => {
-  it("settles once its landed cancel is release-final", async () => {
-    const o = await orphanWithSeedCollateral();
-    const attempt = o.attemptOf(4_000_000n);
-    o.held.pending = attempt;
-    expect(await o.sweep()).toEqual([
-      expect.objectContaining({ reservationId: o.record.reservationId }),
-    ]);
-    const cancel = o.attemptOf(4_800_000n);
-    o.held.cancel = cancel;
-    await o.h.forward([cancel]);
-    // Within release finality the cancel's landing can still roll back.
-    expect(await o.sweep()).toHaveLength(1);
-    await o.deepen(RETIRED - 1);
-    expect(await o.sweep()).toHaveLength(1);
-    expect(o.settlements).toEqual([]);
-    await o.deepen(1);
-    expect(await o.sweep()).toEqual([]);
-    expect(o.settlements).toEqual([
-      expect.arrayContaining([
-        { transactionHash: hashOf(attempt), reason: "invalidated" },
-        { transactionHash: hashOf(cancel), reason: "included" },
-      ]),
-    ]);
-    expect(o.settlements[0]).toHaveLength(2);
-  });
-
   it("settles once a replacement sharing that collateral landed past release finality", async () => {
     const o = await orphanWithSeedCollateral();
     const superseded = o.attemptOf(4_000_000n);

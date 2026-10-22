@@ -9,7 +9,6 @@ import {
   type WatcherProverFundingAuthorityFactory,
 } from "../funding/prover-funding-authority.js";
 import type { WatcherFundingInputFacts } from "../funding/prover-funding-input-facts.js";
-import type { WatcherOrphanCancelInput } from "../funding/prover-funding-recovery.orphan-cancel.js";
 import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
@@ -37,8 +36,6 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
   /** Where an orphaned reservation's alert is raised, once bound. */
   readonly alertSink?: () => Pick<WatcherOperationsSink, "setAlert">;
-  /** Cancels orphaned funding no attempt can release. */
-  readonly orphanCancel?: WatcherOrphanCancelInput;
 }) => {
   const store = await openWatcherSqliteProverFundingReservationStore({
     path: input.path,
@@ -64,9 +61,6 @@ export const openWatcherProverFundingRuntime = async (input: {
         ? {}
         : { observeSignedTransaction: input.observeSignedTransaction }),
       ...(input.alertSink === undefined ? {} : { alertSink: input.alertSink }),
-      ...(input.orphanCancel === undefined
-        ? {}
-        : { orphanCancel: input.orphanCancel }),
       ...(input.blueprintBytes === undefined
         ? {}
         : {

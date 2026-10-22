@@ -71,7 +71,6 @@ import {
 import { createWatcherL1Readiness } from "./watcher-runtime.l1-readiness.js";
 import { type WatcherRuntime } from "./watcher-runtime.launch-checks.js";
 import { watcherObservationSourceId } from "./watcher-runtime.observation-source-id.js";
-import { watcherOrphanCancelInput } from "./watcher-runtime.orphan-cancel-wallet.js";
 import {
   prepareWatcherRuntimeAuthority,
   resolveWatcherRuntimeWalletAddresses,
@@ -271,12 +270,6 @@ export const startWatcherRuntime = async (
       observeSignedTransaction: activeFollower.observeSignedTransaction,
       alertSink: () => operations.sink,
       blueprintBytes,
-      orphanCancel: watcherOrphanCancelInput({
-        config: input.config,
-        address: proverWalletAddress,
-        provider,
-        decisionDriver: () => decisionDriver,
-      }),
     });
     proverFundingStore = fundingRuntime.store;
 

@@ -83,10 +83,7 @@ type FactoryInput = Parameters<
 export const orphanReadingFactory = (
   fixture: Fixture,
   reads: Partial<
-    Pick<
-      FactoryInput,
-      "observeSignedTransaction" | "now" | "alertSink" | "orphanCancel"
-    >
+    Pick<FactoryInput, "observeSignedTransaction" | "now" | "alertSink">
   > = { observeSignedTransaction: fixture.observeSignedTransaction },
   overrides: Partial<WatcherProverFundingReservationStore> = {},
 ) => {
