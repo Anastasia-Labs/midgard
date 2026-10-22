@@ -51,7 +51,6 @@ export const runtimeFunding = async (
     collateral?: boolean | number;
     begin?: boolean;
     recovery?: Parameters<WorkflowFundingReservationPort["prepare"]>[0];
-    assertSubmissionAuthority?: () => Promise<void>;
     additionalInputs?: readonly UTxO[];
     confirmedInput?: UTxO;
     changedLineage?: boolean;
@@ -165,9 +164,6 @@ export const runtimeFunding = async (
     actuationPermit: actuation.actuationPermit,
     rollbackGeneration: "7",
     port: {
-      ...(options.assertSubmissionAuthority === undefined
-        ? {}
-        : { assertSubmissionAuthority: options.assertSubmissionAuthority }),
       ...(options.reobserve === undefined
         ? {}
         : { reobserve: options.reobserve }),

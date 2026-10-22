@@ -328,16 +328,16 @@ export const balanceCbor = (utxos: readonly UTxO[]): string => {
 };
 
 /** Retires a superseded attempt; `events` record its retirement. */
-export const retireLegacyWorkflowFundingAbandonment = async (
+export const retireWorkflowFundingSupersededAttempt = async (
   input: JournaledChange & {
     readonly transactionHash: string;
     readonly retirement: SignedWorkflowTransactionRetirement;
   },
 ): Promise<void> => {
   const state = stateForJournal(input.writer.journal);
-  const retire = state?.port.retireLegacyAbandonment?.bind(state.port);
+  const retire = state?.port.retireSupersededAttempt?.bind(state.port);
   if (state === undefined || retire === undefined)
-    throw new Error("Funding authority cannot authenticate legacy retirement");
+    throw new Error("Funding authority cannot retire a superseded attempt");
   state.snapshot = parseStateSnapshot(
     state,
     await commitWithJournal({

@@ -76,7 +76,7 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
-import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import {
   supersedeDisplacedFundingAttempt,

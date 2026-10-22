@@ -44,9 +44,9 @@ export { parseWorkflowFundingPreparedTransition } from "./funding-reservation-pe
 export {
   assertWorkflowFundingReservationReadyToSubmit,
   prepareWorkflowFundingReservationTransaction,
-  readLegacyWorkflowFundingAbandonedTransactions,
   readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
+  readWorkflowFundingSupersededAttempts,
   workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
 export {

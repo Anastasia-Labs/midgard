@@ -450,7 +450,7 @@ describe("SQLite prover funding reservation store V1", () => {
       );
     try {
       expect(
-        await reopened.store.readLegacyAbandonedTransactions!({
+        await reopened.store.readSupersededAttempts!({
           reservationId: currentPlan.reservationId,
         }),
       ).toMatchObject([

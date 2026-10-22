@@ -21,10 +21,7 @@ import type {
  */
 export const createProverFundingReclaimOperations = (deps: {
   readonly database: DatabaseSync;
-  readonly transaction: <T>(
-    operation: () => T,
-    reservationId: string | null,
-  ) => T;
+  readonly transaction: <T>(operation: () => T) => T;
   readonly readOne: (
     reservationId: string,
   ) => WatcherProverFundingReservationRecord | null;
@@ -100,7 +97,7 @@ export const createProverFundingReclaimOperations = (deps: {
       deps.writeRecord(current.recordDigest, next);
       deps.rebuildLeases();
       return true;
-    }, snapshot.reservationId);
+    });
   };
   return Object.freeze({
     releaseUnused: clearUnused,
@@ -140,6 +137,6 @@ export const createProverFundingReclaimOperations = (deps: {
         settle(orphan);
         deps.rebuildLeases();
         return true;
-      }, null),
+      }),
   });
 };

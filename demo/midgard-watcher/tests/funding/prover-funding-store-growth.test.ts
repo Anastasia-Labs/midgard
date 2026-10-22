@@ -93,9 +93,7 @@ const cheapestAction = async (chain: Chain, samples: number) => {
 const readRound = async ({ store, inputHash }: Chain) => {
   await store.readAll();
   await store.readPendingTransition({ reservationId });
-  await store.readLegacyAbandonedTransactions!({ reservationId });
-  await store.isReconciliationOnly!({ reservationId });
-  await store.assertSubmissionAuthority!({ reservationId });
+  await store.readSupersededAttempts!({ reservationId });
   await store.readReservedOutRefs({ excludingReservationId: reservationId });
   await store.readSupersededAttemptFundingOutRefs!({ reservationId });
   await store.hasSignedHistory!({ reservationId });

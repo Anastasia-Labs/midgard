@@ -86,12 +86,10 @@ export interface WorkflowFundingReservationPort {
   /** Whether this port keeps `journal`, committing its entries with each
    * change. */
   commitsJournal?(journal: object): boolean;
-  /** Recheck durable resource holds before building, signing or submitting. */
-  assertSubmissionAuthority?(): Promise<void>;
   readPendingTransition(): Promise<unknown>;
   /** Every superseded attempt, retired or not. */
-  readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
-  retireLegacyAbandonment?(input: {
+  readSupersededAttempts?(): Promise<readonly unknown[]>;
+  retireSupersededAttempt?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
     readonly retirement: SignedWorkflowTransactionRetirement;

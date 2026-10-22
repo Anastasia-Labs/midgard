@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import { reconcileLegacyFundingAbandonmentRecords } from "../src/workflow/funding-reservation-permit.reopen-legacy-abandonment.js";
+import { reconcileSupersededAttemptRecords } from "../src/workflow/funding-reservation-permit.reconcile-superseded-attempts.js";
 import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import { createSupersededAttemptReadSchedule } from "../src/workflow/superseded-attempt-read-schedule.js";
 
@@ -44,7 +44,7 @@ it("bounds the L1 reads of one pass however many superseded attempts accumulate"
         transition: { transactionHash },
         handoff: { reconciliation: {} },
       }) as unknown as Parameters<
-        typeof reconcileLegacyFundingAbandonmentRecords
+        typeof reconcileSupersededAttemptRecords
       >[0]["savedAttempts"][number],
   );
   const entries = hashes.map(
@@ -61,7 +61,7 @@ it("bounds the L1 reads of one pass however many superseded attempts accumulate"
     perPass: 3,
   });
   const pass = async (nowMs: number) =>
-    await reconcileLegacyFundingAbandonmentRecords({
+    await reconcileSupersededAttemptRecords({
       savedAttempts: attempts,
       entries,
       append: async () => undefined,

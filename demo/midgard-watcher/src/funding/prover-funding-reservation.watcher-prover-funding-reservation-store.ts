@@ -80,14 +80,6 @@ export type WatcherProverFundingReservationStore = Readonly<{
   /** Whether a change commits entries of this workflow journal store in its
    * own transaction. */
   commitsJournal?(journal: object): boolean;
-  /** A reservation whose claims overlap a legacy signed attempt permits reads
-   * and exact retirement, never fresh actuation; other reservations proceed. */
-  isReconciliationOnly?(input: {
-    readonly reservationId: string;
-  }): Promise<boolean>;
-  assertSubmissionAuthority?(input: {
-    readonly reservationId: string;
-  }): Promise<void>;
   readReservedOutRefs(input: {
     readonly excludingReservationId?: string;
   }): Promise<readonly string[]>;
@@ -132,14 +124,14 @@ export type WatcherProverFundingReservationStore = Readonly<{
     readonly transactionHash: string;
   }): Promise<string | null>;
   /** Every superseded attempt, retired or not. */
-  readLegacyAbandonedTransactions?(input: {
+  readSupersededAttempts?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;
   /** Every signed attempt, as recorded. */
   readRecordedSubmissions?(input: {
     readonly reservationId: string;
   }): Promise<readonly unknown[]>;
-  retireLegacyAbandonment?(
+  retireSupersededAttempt?(
     input: Journaled & {
       readonly plan: WatcherProverFundingReservationPlan;
       readonly expectedRevision: string;

@@ -8,7 +8,7 @@ import {
   reobserveWorkflowFundingReservationTransaction,
   type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
-import { recordBothAttemptsLanded } from "./funding-reservation-permit.reopen-legacy-abandonment.js";
+import { recordBothAttemptsLanded } from "./funding-reservation-permit.reconcile-superseded-attempts.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
@@ -25,7 +25,7 @@ import {
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import { lastActionEvent } from "./orchestrator.normalize-workflow-terminal.js";
 import { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
-import { reconcileLegacyFraudProofAbandonments } from "./orchestrator.reconcile-legacy-abandonments.js";
+import { reconcileFraudProofSupersededAttempts } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import {
   supersedeDisplacedFundingAttempt,
@@ -93,7 +93,7 @@ export const adoptLandedSupersededAttempt = async ({
   readonly nowMs: number;
 }): Promise<"continue" | FraudProofWorkflowRunResult | null> => {
   const { journal } = writer;
-  const landed = await reconcileLegacyFraudProofAbandonments(
+  const landed = await reconcileFraudProofSupersededAttempts(
     context,
     writer,
     verifier,

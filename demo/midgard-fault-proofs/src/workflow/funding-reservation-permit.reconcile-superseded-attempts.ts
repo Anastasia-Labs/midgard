@@ -1,6 +1,6 @@
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
-import { retireLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.apply-transition.js";
-import { readLegacyWorkflowFundingAbandonedTransactions } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
+import { retireWorkflowFundingSupersededAttempt } from "./funding-reservation-permit.apply-transition.js";
+import { readWorkflowFundingSupersededAttempts } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
   FraudProofWorkflowJournalEntry,
@@ -14,7 +14,7 @@ import {
 } from "./superseded-attempt-read-schedule.js";
 
 type SupersededAttempt = Awaited<
-  ReturnType<typeof readLegacyWorkflowFundingAbandonedTransactions>
+  ReturnType<typeof readWorkflowFundingSupersededAttempts>
 >[number];
 
 /**
@@ -50,7 +50,7 @@ export const recordBothAttemptsLanded = async ({
 /** Owner ruling (whichever lands wins): a superseded attempt never holds the
  * workflow. Its retirement past k is bookkeeping, and its late landing after a
  * rollback is returned so the caller adopts it as the result. */
-export const reconcileLegacyWorkflowFundingAbandonment = async ({
+export const reconcileWorkflowFundingSupersededAttempts = async ({
   writer,
   entries,
   append,
@@ -67,16 +67,14 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
   readonly nowMs?: number;
   readonly schedule?: SupersededAttemptReadSchedule;
 }): Promise<SupersededAttempt | null> =>
-  await reconcileLegacyFundingAbandonmentRecords({
-    savedAttempts: await readLegacyWorkflowFundingAbandonedTransactions(
-      writer.journal,
-    ),
+  await reconcileSupersededAttemptRecords({
+    savedAttempts: await readWorkflowFundingSupersededAttempts(writer.journal),
     entries,
     append,
     reconcile,
     reads: { schedule, nowMs },
     retire: async (transactionHash, retirement) =>
-      await retireLegacyWorkflowFundingAbandonment({
+      await retireWorkflowFundingSupersededAttempt({
         writer,
         transactionHash,
         retirement,
@@ -90,7 +88,7 @@ export const reconcileLegacyWorkflowFundingAbandonment = async ({
       }),
   });
 
-export const reconcileLegacyFundingAbandonmentRecords = async ({
+export const reconcileSupersededAttemptRecords = async ({
   savedAttempts,
   entries,
   append,
@@ -129,7 +127,7 @@ export const reconcileLegacyFundingAbandonmentRecords = async ({
           event.kind === "submission_intent" && event.txHash === hash,
       )
     )
-      throw new Error("Legacy abandonment has no exact durable signed intent");
+      throw new Error("Superseded attempt has no exact durable signed intent");
     if (
       entries.some(
         ({ event }) =>

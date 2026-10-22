@@ -90,15 +90,11 @@ export const restrictWorkflowFundingSigner = ({
         getRewardAddresses: async () => [],
         signTx: async (tx) => {
           assertCurrentAction();
-          await state.port.assertSubmissionAuthority?.();
-          assertCurrentAction();
           return (
             await original.signTx(CML.Transaction.from_cbor_hex(tx))
           ).to_cbor_hex();
         },
         signData: async (address, payload) => {
-          assertCurrentAction();
-          await state.port.assertSubmissionAuthority?.();
           assertCurrentAction();
           return await original.signMessage(
             CML.Address.from_hex(address).to_bech32(),
@@ -106,8 +102,6 @@ export const restrictWorkflowFundingSigner = ({
           );
         },
         submitTx: async (tx) => {
-          assertCurrentAction();
-          await state.port.assertSubmissionAuthority?.();
           assertCurrentAction();
           return await original.submitTx(tx);
         },

@@ -7,7 +7,7 @@ import {
   workflowJournalHasFundingReservation,
   type WorkflowJournalWriter,
 } from "../workflow/funding-reservation-permit.js";
-import { reconcileLegacyWorkflowFundingAbandonment } from "../workflow/funding-reservation-permit.reopen-legacy-abandonment.js";
+import { reconcileWorkflowFundingSupersededAttempts } from "../workflow/funding-reservation-permit.reconcile-superseded-attempts.js";
 import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.js";
 import { lastActionEvent } from "../workflow/orchestrator.normalize-workflow-terminal.js";
 import { supersedeWorkflowFundingAttempt } from "../workflow/orchestrator.supersede-funding-attempt.js";
@@ -52,7 +52,7 @@ export const createMintItemCanonicalReconciliation =
     // Superseded attempts never hold this journal. Stage observation drives
     // the mint item, so a late-landed superseded attempt is read from the
     // chain rather than adopted into the journal.
-    await reconcileLegacyWorkflowFundingAbandonment({
+    await reconcileWorkflowFundingSupersededAttempts({
       writer,
       entries: await entries(),
       append: appendEvent,

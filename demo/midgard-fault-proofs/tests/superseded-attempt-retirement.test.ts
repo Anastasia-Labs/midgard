@@ -1,7 +1,7 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
-import { reconcileLegacyFundingAbandonmentRecords } from "../src/workflow/funding-reservation-permit.reopen-legacy-abandonment.js";
+import { reconcileSupersededAttemptRecords } from "../src/workflow/funding-reservation-permit.reconcile-superseded-attempts.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
@@ -15,7 +15,7 @@ import {
   signedWorkflowTransactionFixture,
 } from "./support/signed-workflow-transaction.js";
 
-it("never holds on a superseded legacy attempt, then certifies the exact old bytes without replacing a later same-action cursor", async () => {
+it("never holds on a superseded attempt, then certifies the exact old bytes without replacing a later same-action cursor", async () => {
   const fixture = await signedWorkflowTransactionFixture({ ttl: 100 });
   const txHash = fixture.input.transactionHash;
   const identity = {
@@ -78,7 +78,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
     reason: "canonical source unavailable",
   }));
   await expect(
-    reconcileLegacyFundingAbandonmentRecords({
+    reconcileSupersededAttemptRecords({
       savedAttempts: [saved],
       entries,
       append,
@@ -89,7 +89,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
   expect(retire).not.toHaveBeenCalled();
   expect(append).not.toHaveBeenCalled();
   await expect(
-    reconcileLegacyFundingAbandonmentRecords({
+    reconcileSupersededAttemptRecords({
       savedAttempts: [saved],
       entries,
       append,
@@ -109,7 +109,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
     retirement: { transactionHash: txHash, reason: "expired" },
   });
   await expect(
-    reconcileLegacyFundingAbandonmentRecords({
+    reconcileSupersededAttemptRecords({
       savedAttempts: [saved],
       entries,
       append,
@@ -137,7 +137,7 @@ it("never holds on a superseded legacy attempt, then certifies the exact old byt
   retire.mockClear();
   unknown.mockClear();
   await expect(
-    reconcileLegacyFundingAbandonmentRecords({
+    reconcileSupersededAttemptRecords({
       savedAttempts: [{ ...saved, retirement: proof.retirement }],
       entries,
       append,
@@ -214,7 +214,7 @@ it("returns a superseded attempt that landed within k for adoption, and nothing 
     { kind: "not_found" as const },
   ])
     await expect(
-      reconcileLegacyFundingAbandonmentRecords({
+      reconcileSupersededAttemptRecords({
         savedAttempts: [saved],
         entries,
         append,
@@ -223,7 +223,7 @@ it("returns a superseded attempt that landed within k for adoption, and nothing 
       }),
     ).resolves.toBeNull();
   await expect(
-    reconcileLegacyFundingAbandonmentRecords({
+    reconcileSupersededAttemptRecords({
       savedAttempts: [saved],
       entries,
       append,
@@ -236,7 +236,7 @@ it("returns a superseded attempt that landed within k for adoption, and nothing 
 });
 
 /** Two superseded attempts of one action, journaled and both landed, and
- * one legacy pass over them in which only the later is due for a read. */
+ * one reconciliation pass over them in which only the later is due for a read. */
 const twoLandedAttempts = async (
   closing: readonly FraudProofWorkflowJournalEvent[] = [],
 ) => {
@@ -306,7 +306,7 @@ const twoLandedAttempts = async (
   const schedule = createSupersededAttemptReadSchedule();
   schedule.unresolved(first.intent.txHash, 0);
   const pass = async () =>
-    await reconcileLegacyFundingAbandonmentRecords({
+    await reconcileSupersededAttemptRecords({
       savedAttempts: [first.saved, second.saved],
       entries,
       append,

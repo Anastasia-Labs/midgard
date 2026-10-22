@@ -229,12 +229,10 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const state = stateForJournal(journal);
   if (state === undefined) return;
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
   const expectedRevision = state.snapshot.revision;
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
   assertCurrentFundingCollateralLimit(state);
   if (state.preparedTransaction !== undefined) {
     const { signed, cborHex } = state.preparedTransaction;
@@ -281,11 +279,11 @@ export const readWorkflowFundingRecovery = async (
 };
 
 /** Every superseded attempt of the bound reservation, retired or not. */
-export const readLegacyWorkflowFundingAbandonedTransactions = async (
+export const readWorkflowFundingSupersededAttempts = async (
   journal: object,
 ): Promise<readonly WorkflowFundingSupersededAttempt[]> => {
   const state = stateForJournal(journal);
-  const saved = (await state?.port.readLegacyAbandonedTransactions?.()) ?? [];
+  const saved = (await state?.port.readSupersededAttempts?.()) ?? [];
   return saved.map(parseWorkflowFundingSupersededAttempt);
 };
 

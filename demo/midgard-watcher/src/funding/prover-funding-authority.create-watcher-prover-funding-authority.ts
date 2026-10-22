@@ -10,7 +10,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import { readProverFundingSubmissionAuthority } from "./prover-funding-authority.reconciliation-only.js";
 import {
   readRecord,
   snapshot,
@@ -102,15 +101,8 @@ export const createWatcherProverFundingAuthority = async (input: {
           walletAddress: input.walletAddress,
           record: existing,
         });
-  const { reconciliationOnly, assertSubmissionAuthority } =
-    await readProverFundingSubmissionAuthority(
-      input.store,
-      plan.reservationId,
-      existing !== undefined,
-    );
   // Released reservations cannot spend.
-  if (existing?.state !== "released" && !reconciliationOnly)
-    await input.store.reserve(plan);
+  if (existing?.state !== "released") await input.store.reserve(plan);
 
   const reserved = { reservationId: plan.reservationId };
   const load = async () =>
@@ -119,7 +111,6 @@ export const createWatcherProverFundingAuthority = async (input: {
   const commitsJournal = input.store.commitsJournal?.bind(input.store);
   const port: WorkflowFundingReservationPort = Object.freeze({
     ...(commitsJournal === undefined ? {} : { commitsJournal }),
-    assertSubmissionAuthority,
     reobserve: async ({
       expectedRevision,
       transactionHash,
@@ -221,16 +212,16 @@ export const createWatcherProverFundingAuthority = async (input: {
         ...reserved,
         transactionHash,
       }),
-    retireLegacyAbandonment: async ({
+    retireSupersededAttempt: async ({
       expectedRevision,
       transactionHash,
       retirement,
       journal,
     }: Parameters<
-      NonNullable<WorkflowFundingReservationPort["retireLegacyAbandonment"]>
+      NonNullable<WorkflowFundingReservationPort["retireSupersededAttempt"]>
     >[0]) => {
-      if (input.store.retireLegacyAbandonment === undefined)
-        throw new Error("Funding store cannot authenticate legacy retirement");
+      if (input.store.retireSupersededAttempt === undefined)
+        throw new Error("Funding store cannot retire a superseded attempt");
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,
         category: input.category,
@@ -238,7 +229,7 @@ export const createWatcherProverFundingAuthority = async (input: {
       });
       return snapshot({
         plan,
-        record: await input.store.retireLegacyAbandonment({
+        record: await input.store.retireSupersededAttempt({
           plan,
           expectedRevision,
           transactionHash,
@@ -248,8 +239,8 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
-    readLegacyAbandonedTransactions: async () =>
-      (await input.store.readLegacyAbandonedTransactions?.(reserved)) ?? [],
+    readSupersededAttempts: async () =>
+      (await input.store.readSupersededAttempts?.(reserved)) ?? [],
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
       assertWorkflowActuationPermitIdentity({
         permit: input.actuationPermit,

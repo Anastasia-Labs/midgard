@@ -81,7 +81,6 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
   let staleInputs = false;
   try {
     await refresh(state);
@@ -114,7 +113,6 @@ export const beginWorkflowFundingReservationAction = async ({
     throw new WorkflowFundingReservationUnavailableError();
   }
   assertFundingSubmissionAuthority(state);
-  await state.port.assertSubmissionAuthority?.();
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
   assertCurrentFundingCollateralLimit(state);

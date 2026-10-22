@@ -39,9 +39,7 @@ const unretiredAttempts = async (
       transition.signedTransactionCborHex,
     );
   };
-  for (const saved of (await store.readLegacyAbandonedTransactions?.(
-    reserved,
-  )) ?? []) {
+  for (const saved of (await store.readSupersededAttempts?.(reserved)) ?? []) {
     const { transition, retirement } =
       parseWorkflowFundingSupersededAttempt(saved);
     add(transition);

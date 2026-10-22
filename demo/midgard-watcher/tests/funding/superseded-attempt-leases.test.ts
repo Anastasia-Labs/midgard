@@ -79,7 +79,7 @@ it.each([false, true])(
         "reserved",
       );
       expect(
-        await reopened.store.readLegacyAbandonedTransactions!({
+        await reopened.store.readSupersededAttempts!({
           reservationId: owner.reservationId,
         }),
       ).toMatchObject([
@@ -100,7 +100,7 @@ it.each([false, true])(
         },
       };
       await expect(
-        reopened.store.retireLegacyAbandonment!({
+        reopened.store.retireSupersededAttempt!({
           journal: [],
           plan: owner,
           expectedRevision: before.revision,
@@ -111,7 +111,7 @@ it.each([false, true])(
       expect(await reopened.store.readReservedOutRefs({})).toContain(
         `${"11".repeat(32)}#0`,
       );
-      const after = await reopened.store.retireLegacyAbandonment!({
+      const after = await reopened.store.retireSupersededAttempt!({
         journal: [],
         plan: owner,
         expectedRevision: before.revision,

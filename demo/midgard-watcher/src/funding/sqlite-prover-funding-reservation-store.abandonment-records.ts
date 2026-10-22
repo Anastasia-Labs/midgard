@@ -116,12 +116,12 @@ export const createProverFundingAbandonmentRecords = (
         ...(retirement === undefined ? {} : { retirement }),
       }),
     );
-  const legacyAbandonedTransactions = (reservationId: string) =>
+  const supersededAttempts = (reservationId: string) =>
     abandonmentsOf(reservationId).map(
       ({ reservationId: _id, transitionDigest: _digest, ...saved }) => saved,
     );
   /** Retires a superseded attempt with its exact retirement. */
-  const retireLegacyAbandonment = (
+  const retireSupersededAttempt = (
     reservationId: string,
     transactionHash: string,
     retirement: SignedWorkflowTransactionRetirement,
@@ -130,7 +130,9 @@ export const createProverFundingAbandonmentRecords = (
       (row) => row.transition.transactionHash === transactionHash,
     );
     if (saved === undefined)
-      throw new Error("Legacy retirement has no exact funding attempt");
+      throw new Error(
+        "Superseded attempt retirement has no exact funding attempt",
+      );
     if (saved.retirement !== undefined)
       throw new Error("Superseded attempt is already retired");
     const { reservationId: _id, transitionDigest, ...attempt } = saved;
@@ -145,11 +147,11 @@ export const createProverFundingAbandonmentRecords = (
   const deleteAbandonment = (reservationId: string, transitionDigest: string) =>
     deleteRow.run(reservationId, transitionDigest);
   return {
-    retireLegacyAbandonment,
+    retireSupersededAttempt,
     insertAbandonment,
     deleteAbandonment,
     abandonmentsOf,
     auditedAbandonments,
-    legacyAbandonedTransactions,
+    supersededAttempts,
   };
 };

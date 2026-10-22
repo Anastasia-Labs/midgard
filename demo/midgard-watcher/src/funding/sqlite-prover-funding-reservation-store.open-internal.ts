@@ -260,12 +260,12 @@ export const openInternal = async (
         AS present
   `);
   const {
-    retireLegacyAbandonment,
+    retireSupersededAttempt,
     insertAbandonment,
     deleteAbandonment,
     abandonmentsOf,
     auditedAbandonments,
-    legacyAbandonedTransactions,
+    supersededAttempts,
   } = createProverFundingAbandonmentRecords(database);
   const attemptMemo = createVerifiedRowMemo(
     (saved: RecordedAttempt) => saved.reservationId,
@@ -430,23 +430,7 @@ export const openInternal = async (
     projectRetainedProverFundingLeases({
       records: all,
       readInputs: leaseInputs,
-      readAttempts: (id) =>
-        [...recordedSubmissions(id), ...legacyAbandonedTransactions(id)].map(
-          ({ transition }) => transition,
-        ),
-      readUnverifiedHashes: (id) =>
-        new Set(
-          legacyAbandonedTransactions(id)
-            .filter(({ retirement }) => retirement === undefined)
-            .map(({ transition }) => transition.transactionHash),
-        ),
       transferred: outputTransferredToAnotherReservation,
-      previousOwners: new Map(
-        (selectAllLeases.all() as LeaseRow[]).map((row) => [
-          String(row.out_ref),
-          String(row.reservation_id),
-        ]),
-      ),
     });
 
   /** While the funding revision stands, the audit and lease projection
@@ -525,7 +509,7 @@ export const openInternal = async (
   };
 
   const uncoveredSuperseded = (reservationId: string) => {
-    const abandoned = legacyAbandonedTransactions(reservationId);
+    const abandoned = supersededAttempts(reservationId);
     // Only a superseded attempt can be uncovered.
     return abandoned.length === 0
       ? []
@@ -543,7 +527,7 @@ export const openInternal = async (
     signedTransactionCborHex: string,
   ) =>
     landedSupersededAttemptOfAction({
-      abandoned: legacyAbandonedTransactions(current.reservationId),
+      abandoned: supersededAttempts(current.reservationId),
       submissions: recordedSubmissions(current.reservationId).map(
         ({ transition }) => transition,
       ),
@@ -676,29 +660,18 @@ export const openInternal = async (
     });
   };
 
-  const assertSubmissionAuthority = (reservationId: string) => {
-    if (leaseProjection().heldReservationIds.has(reservationId))
-      throw new Error(
-        "prover funding reservation overlaps legacy signed attempts; reconciliation only",
-      );
-  };
-  /** Holds only the reservation the operation acts for, before and after it,
-   * so a fresh operation can neither use nor create a legacy overlap. The
-   * workflow journal `entries` the change implies commit with it, or
+  /** The workflow journal `entries` a change implies commit with it, or
    * neither does. */
   const transaction = <T>(
     operation: () => T,
-    reservationId: string | null,
     entries: readonly FraudProofWorkflowJournalEntry[] = [],
   ): T => {
     database.exec("BEGIN IMMEDIATE");
     try {
-      if (reservationId !== null) assertSubmissionAuthority(reservationId);
       // Before the operation, so no memo of the old revision serves its
       // writes.
       fundingRevision.bump();
       const value = operation();
-      if (reservationId !== null) assertSubmissionAuthority(reservationId);
       const journaled = journal.appendWithin(entries);
       const audited = audit();
       database.exec("COMMIT");
@@ -739,25 +712,17 @@ export const openInternal = async (
     (selectSignedHistory.get(reservationId) as { present: unknown }).present ===
     1;
 
-  transaction(rebuildLeases, null);
+  transaction(rebuildLeases);
 
   const store: WatcherProverFundingReservationStore = Object.freeze({
     readAll: async () => auditRead(),
     commitsJournal: (store) => journal.owns(store),
-    isReconciliationOnly: async ({ reservationId }) => {
-      auditRead();
-      return leaseProjection().heldReservationIds.has(reservationId);
-    },
-    assertSubmissionAuthority: async ({ reservationId }) => {
-      auditRead();
-      assertSubmissionAuthority(reservationId);
-    },
     readReservedOutRefs: async ({ excludingReservationId }) => {
       auditRead();
       return [
         ...new Set(
           leaseProjection()
-            .claims.filter(
+            .leases.filter(
               (claim) => claim.reservationId !== excludingReservationId,
             )
             .map((claim) => claim.outRef),
@@ -769,7 +734,7 @@ export const openInternal = async (
         throw new Error("prover funding history reservation is missing");
       return hasSignedHistory(reservationId);
     },
-    retireLegacyAbandonment: async ({
+    retireSupersededAttempt: async ({
       plan,
       expectedRevision,
       transactionHash,
@@ -778,29 +743,25 @@ export const openInternal = async (
     }) => {
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null || current.revision !== expectedRevision)
-            throw new Error("Legacy retirement revision changed");
-          assertPlanMatchesRecord(plan, current);
-          retireLegacyAbandonment(
-            plan.reservationId,
-            transactionHash,
-            retirement,
-          );
-          const next = nextRecord({ current });
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        null,
-        entries,
-      );
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null || current.revision !== expectedRevision)
+          throw new Error("Superseded attempt retirement revision changed");
+        assertPlanMatchesRecord(plan, current);
+        retireSupersededAttempt(
+          plan.reservationId,
+          transactionHash,
+          retirement,
+        );
+        const next = nextRecord({ current });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
-    readLegacyAbandonedTransactions: async ({ reservationId }) => {
+    readSupersededAttempts: async ({ reservationId }) => {
       auditRead();
-      return legacyAbandonedTransactions(reservationId);
+      return supersededAttempts(reservationId);
     },
     readRecordedSubmissions: async ({ reservationId }) => {
       auditRead();
@@ -859,79 +820,69 @@ export const openInternal = async (
     }) => {
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          if (
-            current.revision !== expectedRevision ||
-            current.state !== "active"
-          )
-            throw new Error("prover reservation reobservation mismatch");
-          const recorded = recordedSubmissions(current.reservationId).find(
-            ({ transition }) => transition.transactionHash === transactionHash,
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (current.revision !== expectedRevision || current.state !== "active")
+          throw new Error("prover reservation reobservation mismatch");
+        const recorded = recordedSubmissions(current.reservationId).find(
+          ({ transition }) => transition.transactionHash === transactionHash,
+        );
+        if (recorded === undefined)
+          throw new Error(
+            "reobserved transaction has no signed funding intent",
           );
-          if (recorded === undefined)
-            throw new Error(
-              "reobserved transaction has no signed funding intent",
-            );
-          const candidates = new Map(
-            reobservationInputs(current.reservationId, transactionHash).map(
-              ({ outRef, role }) => [outRef, role],
-            ),
-          );
-          const transition = makeTransition(recorded.transition);
-          if (adoption !== undefined)
-            adoptSupersededAttempt(
-              current,
-              transition,
-              adoption.intentSequence,
-              entries,
-            );
-          const produced = new Set(
-            transition.producedInputs.map(({ outRef }) => outRef),
-          );
-          for (const value of inputs) {
-            if (candidates.get(value.outRef) !== value.role)
-              throw new Error(
-                "reobserved funding input has no recorded lineage",
-              );
-            if (!produced.has(value.outRef))
-              assertLeaseAvailable(value.outRef, current.reservationId);
-          }
-          // Only canonical inputs returned by the authenticated wallet source
-          // are selected again. Historical signed attempts stay recorded.
-          const next = nextRecord({
+        const candidates = new Map(
+          reobservationInputs(current.reservationId, transactionHash).map(
+            ({ outRef, role }) => [outRef, role],
+          ),
+        );
+        const transition = makeTransition(recorded.transition);
+        if (adoption !== undefined)
+          adoptSupersededAttempt(
             current,
-            state: "active",
-            activeInputs: inputs.filter(({ outRef }) => !produced.has(outRef)),
-            pendingTransition: transition,
-            conflictCode: null,
-          });
-          if (current.pendingTransition !== null)
-            deletePendingLineage.run(
-              current.reservationId,
-              current.pendingTransition.transitionDigest,
-            );
-          const confirmed = selectConfirmedLineage.get(
-            current.reservationId,
-            `${transition.transactionHash}#0`,
+            transition,
+            adoption.intentSequence,
+            entries,
           );
-          if (confirmed === undefined)
-            persistPendingLineage({
-              reservationId: current.reservationId,
-              transition,
-              signedTransactionCborHex: transition.signedTransactionCborHex,
-            });
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+        const produced = new Set(
+          transition.producedInputs.map(({ outRef }) => outRef),
+        );
+        for (const value of inputs) {
+          if (candidates.get(value.outRef) !== value.role)
+            throw new Error("reobserved funding input has no recorded lineage");
+          if (!produced.has(value.outRef))
+            assertLeaseAvailable(value.outRef, current.reservationId);
+        }
+        // Only canonical inputs returned by the authenticated wallet source
+        // are selected again. Historical signed attempts stay recorded.
+        const next = nextRecord({
+          current,
+          state: "active",
+          activeInputs: inputs.filter(({ outRef }) => !produced.has(outRef)),
+          pendingTransition: transition,
+          conflictCode: null,
+        });
+        if (current.pendingTransition !== null)
+          deletePendingLineage.run(
+            current.reservationId,
+            current.pendingTransition.transitionDigest,
+          );
+        const confirmed = selectConfirmedLineage.get(
+          current.reservationId,
+          `${transition.transactionHash}#0`,
+        );
+        if (confirmed === undefined)
+          persistPendingLineage({
+            reservationId: current.reservationId,
+            transition,
+            signedTransactionCborHex: transition.signedTransactionCborHex,
+          });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
     readConfirmedInput: async ({ reservationId, outRef }) => {
       const row = selectConfirmedLineage.get(reservationId, outRef) as
@@ -999,209 +950,191 @@ export const openInternal = async (
         writeRecord(null, record);
         rebuildLeases();
         return "reserved" as const;
-      }, plan.reservationId);
+      });
     },
     prepareTransition: async (transitionInput) => {
       const { plan, attempt, journal: entries } = transitionInput;
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
       assertIntentEntry(entries, attempt, transitionInput.transactionHash);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          if (
-            current.state !== "active" ||
-            current.pendingTransition !== null ||
-            current.revision !== transitionInput.expectedRevision
-          ) {
-            throw new Error("prover reservation cannot prepare transition");
-          }
-          const activeOutRefs = new Set(
-            current.activeInputs.map(({ outRef }) => outRef),
-          );
-          if (
-            transitionInput.consumedOutRefs.some(
-              (outRef) => !activeOutRefs.has(outRef),
-            )
-          ) {
-            throw new Error("prover transition consumes an unreserved input");
-          }
-          if (
-            landedSupersededAttempt(
-              current,
-              attempt.actionId,
-              transitionInput.signedTransactionCborHex,
-            ) !== null
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (
+          current.state !== "active" ||
+          current.pendingTransition !== null ||
+          current.revision !== transitionInput.expectedRevision
+        ) {
+          throw new Error("prover reservation cannot prepare transition");
+        }
+        const activeOutRefs = new Set(
+          current.activeInputs.map(({ outRef }) => outRef),
+        );
+        if (
+          transitionInput.consumedOutRefs.some(
+            (outRef) => !activeOutRefs.has(outRef),
           )
-            throw new Error(
-              "prover transition repeats an action whose superseded attempt landed",
-            );
-          if (
-            !excludesEveryUncoveredAttempt({
-              signedTransactionCborHex:
-                transitionInput.signedTransactionCborHex,
-              attempt,
-              uncovered: uncoveredSuperseded(current.reservationId),
-              reservedFundingOutRefs: current.activeInputs
-                .filter(({ role }) => role === "funding")
-                .map(({ outRef }) => outRef),
-            })
-          )
-            throw new Error(
-              "prover transition must share an input with each superseded attempt",
-            );
-          const transition = makeTransition(
-            deriveSignedTransition({
-              plan,
-              activeInputs: current.activeInputs,
-              input: transitionInput,
-            }),
-          );
-          const { transitionDigest: _digest, ...signedTransition } = transition;
-          persistAttempt(current.reservationId, transition.transitionDigest, {
-            transition: signedTransition,
-            workflowId: attempt.workflowId,
-            intentSequence: attempt.intentSequence,
-            actionId: attempt.actionId,
-          });
-          persistPendingLineage({
-            reservationId: current.reservationId,
-            transition,
-            signedTransactionCborHex: transitionInput.signedTransactionCborHex,
-          });
-          for (const value of transition.producedInputs) {
-            assertLeaseAvailable(value.outRef, current.reservationId);
-          }
-          const next = nextRecord({
+        ) {
+          throw new Error("prover transition consumes an unreserved input");
+        }
+        if (
+          landedSupersededAttempt(
             current,
-            pendingTransition: transition,
-          });
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+            attempt.actionId,
+            transitionInput.signedTransactionCborHex,
+          ) !== null
+        )
+          throw new Error(
+            "prover transition repeats an action whose superseded attempt landed",
+          );
+        if (
+          !excludesEveryUncoveredAttempt({
+            signedTransactionCborHex: transitionInput.signedTransactionCborHex,
+            attempt,
+            uncovered: uncoveredSuperseded(current.reservationId),
+            reservedFundingOutRefs: current.activeInputs
+              .filter(({ role }) => role === "funding")
+              .map(({ outRef }) => outRef),
+          })
+        )
+          throw new Error(
+            "prover transition must share an input with each superseded attempt",
+          );
+        const transition = makeTransition(
+          deriveSignedTransition({
+            plan,
+            activeInputs: current.activeInputs,
+            input: transitionInput,
+          }),
+        );
+        const { transitionDigest: _digest, ...signedTransition } = transition;
+        persistAttempt(current.reservationId, transition.transitionDigest, {
+          transition: signedTransition,
+          workflowId: attempt.workflowId,
+          intentSequence: attempt.intentSequence,
+          actionId: attempt.actionId,
+        });
+        persistPendingLineage({
+          reservationId: current.reservationId,
+          transition,
+          signedTransactionCborHex: transitionInput.signedTransactionCborHex,
+        });
+        for (const value of transition.producedInputs) {
+          assertLeaseAvailable(value.outRef, current.reservationId);
+        }
+        const next = nextRecord({
+          current,
+          pendingTransition: transition,
+        });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
     confirmTransition: async (confirmation) => {
       const { plan, journal: entries } = confirmation;
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== confirmation.expectedRevision ||
-            current.pendingTransition === null ||
-            current.pendingTransition.transitionDigest !==
-              confirmation.transitionDigest ||
-            current.pendingTransition.transactionHash !==
-              confirmation.transactionHash
-          ) {
-            throw new Error("prover reservation confirmation mismatch");
-          }
-          // A confirmed transaction's collateral lease ends here, so it never
-          // blocks a later action of any reservation. A rollback that finds it
-          // spent re-signs with fresh collateral; this reservation's next
-          // action selects collateral again.
-          const consumed = new Set([
-            ...current.pendingTransition.consumedOutRefs,
-            ...signedCollateralOutRefs(
-              current.pendingTransition.signedTransactionCborHex,
-            ),
-          ]);
-          const active = [
-            ...current.activeInputs.filter(
-              ({ outRef }) => !consumed.has(outRef),
-            ),
-            ...current.pendingTransition.producedInputs.filter(
-              ({ outRef }) =>
-                !outputTransferredToAnotherReservation(
-                  current.reservationId,
-                  outRef,
-                ),
-            ),
-          ];
-          const next = nextRecord({
-            current,
-            activeInputs: active,
-            pendingTransition: null,
-            lastConfirmedTransitionDigest:
-              current.pendingTransition.transitionDigest,
-          });
-          const confirmedLineage = confirmLineage.run(
-            current.reservationId,
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== confirmation.expectedRevision ||
+          current.pendingTransition === null ||
+          current.pendingTransition.transitionDigest !==
+            confirmation.transitionDigest ||
+          current.pendingTransition.transactionHash !==
+            confirmation.transactionHash
+        ) {
+          throw new Error("prover reservation confirmation mismatch");
+        }
+        // A confirmed transaction's collateral lease ends here, so it never
+        // blocks a later action of any reservation. A rollback that finds it
+        // spent re-signs with fresh collateral; this reservation's next
+        // action selects collateral again.
+        const consumed = new Set([
+          ...current.pendingTransition.consumedOutRefs,
+          ...signedCollateralOutRefs(
+            current.pendingTransition.signedTransactionCborHex,
+          ),
+        ]);
+        const active = [
+          ...current.activeInputs.filter(({ outRef }) => !consumed.has(outRef)),
+          ...current.pendingTransition.producedInputs.filter(
+            ({ outRef }) =>
+              !outputTransferredToAnotherReservation(
+                current.reservationId,
+                outRef,
+              ),
+          ),
+        ];
+        const next = nextRecord({
+          current,
+          activeInputs: active,
+          pendingTransition: null,
+          lastConfirmedTransitionDigest:
             current.pendingTransition.transitionDigest,
-          );
-          if (confirmedLineage.changes < 1) {
-            const prior = selectConfirmedLineage.get(
-              current.reservationId,
-              `${confirmation.transactionHash}#0`,
-            ) as LineageRow | undefined;
-            if (
-              prior === undefined ||
-              parseLineageRow(prior).transitionDigest !==
-                confirmation.transitionDigest
-            )
-              throw new Error("prover reservation confirmation lacks lineage");
-          }
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+        });
+        const confirmedLineage = confirmLineage.run(
+          current.reservationId,
+          current.pendingTransition.transitionDigest,
+        );
+        if (confirmedLineage.changes < 1) {
+          const prior = selectConfirmedLineage.get(
+            current.reservationId,
+            `${confirmation.transactionHash}#0`,
+          ) as LineageRow | undefined;
+          if (
+            prior === undefined ||
+            parseLineageRow(prior).transitionDigest !==
+              confirmation.transitionDigest
+          )
+            throw new Error("prover reservation confirmation lacks lineage");
+        }
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
     abandonPendingTransition: async (abandonment) => {
       const { plan, journal: entries } = abandonment;
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          // Without a retirement the attempt is superseded, not retired: its
-          // funding stays leased and the replacement must spend some of it.
-          if (
-            current.state !== "active" ||
-            current.revision !== abandonment.expectedRevision ||
-            current.pendingTransition === null ||
-            current.pendingTransition.transitionDigest !==
-              abandonment.transitionDigest
-          )
-            throw new Error("prover reservation abandonment mismatch");
-          const { transitionDigest } = current.pendingTransition;
-          const recorded = recordedSubmissions(current.reservationId).find(
-            (saved) => saved.transitionDigest === transitionDigest,
-          );
-          if (recorded === undefined)
-            throw new Error("prover reservation abandonment has no attempt");
-          insertAbandonment(
-            current.reservationId,
-            transitionDigest,
-            recorded,
-            abandonment.retirement,
-          );
-          const next = nextRecord({ current, pendingTransition: null });
-          deletePendingLineage.run(current.reservationId, transitionDigest);
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        // Without a retirement the attempt is superseded, not retired: its
+        // funding stays leased and the replacement must spend some of it.
+        if (
+          current.state !== "active" ||
+          current.revision !== abandonment.expectedRevision ||
+          current.pendingTransition === null ||
+          current.pendingTransition.transitionDigest !==
+            abandonment.transitionDigest
+        )
+          throw new Error("prover reservation abandonment mismatch");
+        const { transitionDigest } = current.pendingTransition;
+        const recorded = recordedSubmissions(current.reservationId).find(
+          (saved) => saved.transitionDigest === transitionDigest,
+        );
+        if (recorded === undefined)
+          throw new Error("prover reservation abandonment has no attempt");
+        insertAbandonment(
+          current.reservationId,
+          transitionDigest,
+          recorded,
+          abandonment.retirement,
+        );
+        const next = nextRecord({ current, pendingTransition: null });
+        deletePendingLineage.run(current.reservationId, transitionDigest);
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
     releaseIdle: async ({ plan, expectedRevision }) => {
       assertPlan(plan);
@@ -1211,10 +1144,8 @@ export const openInternal = async (
         assertPlanMatchesRecord(plan, current);
         if (current.revision !== expectedRevision)
           throw new Error("prover reservation idle release revision changed");
-        // Releasing frees leases and is not actuation, but a held reservation's
-        // leases are part of the legacy overlap, so they stay until it resolves.
+        // Releasing frees leases and is not actuation.
         if (
-          leaseProjection().heldReservationIds.has(plan.reservationId) ||
           current.state !== "active" ||
           current.activeInputs.length === 0 ||
           current.pendingTransition !== null
@@ -1226,43 +1157,38 @@ export const openInternal = async (
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
-      }, null);
+      });
     },
     markConflict: async (conflict) => {
       const { plan, journal: entries } = conflict;
       assertPlan(plan);
       assertJournalIdentity(plan, entries);
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== conflict.expectedRevision
-          ) {
-            throw new Error("prover reservation conflict transition mismatch");
-          }
-          const next = nextRecord({
-            current,
-            state: "conflict",
-            pendingTransition: null,
-            conflictCode: conflict.code,
-          });
-          if (current.pendingTransition !== null) {
-            deletePendingLineage.run(
-              current.reservationId,
-              current.pendingTransition.transitionDigest,
-            );
-          }
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== conflict.expectedRevision
+        ) {
+          throw new Error("prover reservation conflict transition mismatch");
+        }
+        const next = nextRecord({
+          current,
+          state: "conflict",
+          pendingTransition: null,
+          conflictCode: conflict.code,
+        });
+        if (current.pendingTransition !== null) {
+          deletePendingLineage.run(
+            current.reservationId,
+            current.pendingTransition.transitionDigest,
+          );
+        }
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
     release: async (release) => {
       const { plan, journal: entries } = release;
@@ -1271,32 +1197,27 @@ export const openInternal = async (
       const last = entries.at(-1);
       if (last !== undefined && last.event.kind !== "completed")
         throw new Error("prover reservation release lacks its completion");
-      return transaction(
-        () => {
-          const current = readOne(plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== release.expectedRevision ||
-            current.pendingTransition !== null
-          )
-            throw new Error("prover reservation release mismatch");
-          const next = nextRecord({
-            current,
-            state: "released",
-            activeInputs: [],
-            pendingTransition: null,
-            conflictCode: null,
-          });
-          writeRecord(current.recordDigest, next);
-          rebuildLeases();
-          return next;
-        },
-        plan.reservationId,
-        entries,
-      );
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== release.expectedRevision ||
+          current.pendingTransition !== null
+        )
+          throw new Error("prover reservation release mismatch");
+        const next = nextRecord({
+          current,
+          state: "released",
+          activeInputs: [],
+          pendingTransition: null,
+          conflictCode: null,
+        });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
     },
   });
 

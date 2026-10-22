@@ -57,7 +57,7 @@
     "tests/fault-proofs/watcher-journal-database.test.ts": 45.0,
     "tests/fault-proofs/watcher-journal-schema-lint.test.ts": 5.5,
     "tests/funding/confirmed-collateral-release.test.ts": 2.2,
-    "tests/funding/legacy-abandonment-recovery.test.ts": 1.8,
+    "tests/funding/superseded-attempt-leases.test.ts": 1.8,
     "tests/funding/mint-prover-funding-recovery.test.ts": 1.6,
     "tests/funding/parameter-capacity-recovery.test.ts": 3.9,
     "tests/funding/protocol-parameter-history.test.ts": 2.4,
