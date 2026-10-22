@@ -120,6 +120,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   /** The per-proof workflow journal on the funding store's connection. */
   readonly workflowJournal: WatcherWorkflowJournal;
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
+  /** This deployment's computation-thread policy, which proves own thread custody. */
+  readonly computationThreadPolicyId?: string;
   /** Reads signed attempts from their own bytes; it alone settles funding
    * no workflow will drive again. */
   readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
@@ -473,6 +475,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         readWalletUtxos: request.readWalletUtxos,
         store: input.store,
         resolveInputs: request.resolveInputs,
+        computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
       });
       return authority.permit;

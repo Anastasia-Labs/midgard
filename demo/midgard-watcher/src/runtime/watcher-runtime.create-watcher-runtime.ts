@@ -268,6 +268,7 @@ export const startWatcherRuntime = async (
       journalRoot: input.config.workflowJournalDirectory,
       observeSignedTransaction: activeFollower.observeSignedTransaction,
       alertSink: () => operations.sink,
+      blueprintBytes,
     });
     proverFundingStore = fundingRuntime.store;
 

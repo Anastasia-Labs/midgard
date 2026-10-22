@@ -11,7 +11,9 @@
  * binding is the emulator deployment's (the calling test mocks the manifest
  * binding and the L1 observation port with it).
  */
+import { readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -397,6 +399,7 @@ export const installScriptDecodeApplication = async ({
       protocolParameters,
       fundingPaymentKeyHash: signer.paymentKeyHash,
       walletAddress: signer.address,
+      computationThreadPolicyId: contracts.computationThread.policyId,
       scriptHashes: Object.fromEntries([
         ...Object.entries(deploymentInfo.contracts)
           .filter(
@@ -462,6 +465,17 @@ export const installScriptDecodeApplication = async ({
     /** Stops the watcher process and starts another over its durable state. */
     restart: async () => {
       instance.funding.close();
+      instance = await boot();
+    },
+    /** Restarts over an emptied data directory, as after a lost disk: the
+     * watcher detects the fault again, and only the chain keeps the
+     * objective's progress. */
+    loseDataDirectory: async () => {
+      instance.funding.close();
+      for (const name of await readdir(directory))
+        await rm(join(directory, name), { recursive: true, force: true });
+      await recordWatcherFaultDecision(directory, decision);
+      turns = 0;
       instance = await boot();
     },
     readReservations: async () => await instance.funding.readReservations(),

@@ -10,7 +10,9 @@ import {
 } from "../funding/prover-funding-authority.js";
 import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
 import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
+import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
 import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.js";
+import { watcherDeploymentAppliedScriptHashes } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherOperationsSink } from "./operations-observability.js";
 
 /**
@@ -25,6 +27,8 @@ export const openWatcherProverFundingRuntime = async (input: {
   readonly createProtocolParameters: () => Promise<WatcherProtocolParameterRuntimeAuthority>;
   readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly journalRoot: string;
+  /** The deployment blueprint the computation-thread policy derives from. */
+  readonly blueprintBytes?: Uint8Array;
   /** Reads the signed attempts of reservations no workflow drives again. */
   readonly observeSignedTransaction?: WatcherOrphanedReservationObserver;
   /** Where an orphaned reservation's alert is raised, once bound. */
@@ -52,6 +56,18 @@ export const openWatcherProverFundingRuntime = async (input: {
         ? {}
         : { observeSignedTransaction: input.observeSignedTransaction }),
       ...(input.alertSink === undefined ? {} : { alertSink: input.alertSink }),
+      ...(input.blueprintBytes === undefined
+        ? {}
+        : {
+            computationThreadPolicyId: watcherComputationThreadPolicyId({
+              contractScriptHashes: watcherDeploymentAppliedScriptHashes(
+                input.deploymentIdentity,
+              ),
+              blueprint: JSON.parse(
+                Buffer.from(input.blueprintBytes).toString("utf8"),
+              ),
+            }),
+          }),
     });
     // No supervisor jobs exist yet; reclaim reservations left before any signed attempt.
     // A refused decision journal, or one that could not be opened, keeps them

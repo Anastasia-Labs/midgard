@@ -549,6 +549,7 @@
     "tests/withdrawal-mistag.payability-agreement.test.ts": 0.7,
     "tests/withdrawal-mistag.test.ts": 1.4,
     "tests/withdrawn-input.test.ts": 1.4,
+    "tests/witness-script-decoding-installed-data-directory-loss.test.ts": 21.8,
     "tests/witness-script-decoding-installed-field-carriage-in-flight-publication.test.ts": 22.4,
     "tests/witness-script-decoding-installed-field-carriage-recovery.test.ts": 100.6,
     "tests/witness-script-decoding-installed-field-carriage.test.ts": 44.2,

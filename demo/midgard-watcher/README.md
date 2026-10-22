@@ -471,6 +471,15 @@ inside the challengeability horizon. Merged blocks older than the horizon can no
 longer be challenged, so a late watcher needs nothing from before the confirmed
 state.
 
+A watcher that loses its whole data directory in the middle of a proof
+thread, and restarts with the same keys, detects the fault again and continues
+its own thread. Its funding store no longer holds the thread output's lineage,
+so the output is accepted as its own custody only when the authenticated L1
+source shows it carrying this objective's computation-thread token (this
+deployment's policy, quantity 1, the only non-ADA asset) under a step datum
+whose `fraud_prover` is the watcher's funding key. Any other contract output
+without lineage stays refused.
+
 ## Running with compose
 
 [compose.yaml](compose.yaml) runs the watcher as one service, `watcher` (the
