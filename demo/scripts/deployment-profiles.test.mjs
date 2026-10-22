@@ -553,6 +553,15 @@ test("an installed execution dispute needs block maturity of at least 2 D_case +
     () => validateProfile(profile, "preprod-public"),
     /at least 604800001 ms \(2 D_case \+ 1\)/u,
   );
+  // Maturity equal to 2 D_case + 1 (604,799,999 at R = 113,519,999) admits.
+  profile.timing.dispute_resolution_allowance_ms = 113_519_999;
+  profile.timing.block_maturity_ms = 604_799_999;
+  validateProfile(profile, "preprod-public");
+  profile.timing.block_maturity_ms = 604_799_998;
+  assert.throws(
+    () => validateProfile(profile, "preprod-public"),
+    /at least 604799999 ms \(2 D_case \+ 1\)/u,
+  );
   profile.excluded_fraud_proof_categories.push("validationTraceDispute");
   validateProfile(profile, "preprod-public");
   // The emulator profiles keep 72 h maturity, above their 21,560,001 floor.

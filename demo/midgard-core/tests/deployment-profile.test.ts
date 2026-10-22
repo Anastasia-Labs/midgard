@@ -190,6 +190,20 @@ describe("execution dispute fit", () => {
     ).toThrow(/below 2 D_case \+ 1 = 604800001/u);
   });
 
+  it("admits maturity equal to 2 D_case + 1", () => {
+    const emulator = DEPLOYMENT_PROFILES["preprod-emulator-testing"];
+    const withMaturity = (block_maturity_ms: number) => ({
+      ...emulator,
+      timing: { ...emulator.timing, block_maturity_ms },
+    });
+    expect(() =>
+      assertValidationDisputeFitsProfile("p", withMaturity(21_560_001)),
+    ).not.toThrow();
+    expect(() =>
+      assertValidationDisputeFitsProfile("p", withMaturity(21_560_000)),
+    ).toThrow(/below 2 D_case \+ 1 = 21560001/u);
+  });
+
   it("loads a 900 s profile that excludes the execution dispute, and refuses it installed", () => {
     const testing = DEPLOYMENT_PROFILES["preprod-testing"];
     expect(testing.timing.block_maturity_ms).toBe(900_000);
