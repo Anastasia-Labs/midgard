@@ -122,6 +122,7 @@ export type OperatorSlashingLayoutContext =
       readonly slashedOperatorDirectory: "active";
       readonly schedulerUnit: string;
       readonly contracts: RemoveFraudulentBlockContracts;
+      readonly lostDefenseReceipt?: UTxO;
     }
   | {
       readonly operatorDirectoryAnchor: UTxO;
@@ -130,6 +131,7 @@ export type OperatorSlashingLayoutContext =
       readonly operatorDirectoryAnchorUnit: string;
       readonly slashedOperatorDirectory: "retired";
       readonly contracts: RemoveFraudulentBlockContracts;
+      readonly lostDefenseReceipt?: UTxO;
     };
 
 export type RemoveFraudulentBlockCliConfig = SubmitProviderConfig & {

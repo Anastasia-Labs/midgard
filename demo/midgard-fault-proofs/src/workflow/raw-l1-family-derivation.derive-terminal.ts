@@ -21,6 +21,10 @@ import {
   transactionOutputs,
 } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
 import {
+  type FraudProofRawL1HistoryReader,
+  lostDefenseReceiptSlash,
+} from "./raw-l1-family-derivation.lost-defense-slash.js";
+import {
   assertCanonicalComputationSteps,
   type FraudProofRawL1TerminalDefinition,
   HEX_4,
@@ -48,6 +52,7 @@ export const deriveTerminal = async ({
   proofUnit,
   proof,
   releaseEconomics,
+  history,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly definition: FraudProofRawL1TerminalDefinition;
@@ -55,6 +60,8 @@ export const deriveTerminal = async ({
   readonly proofUnit: string;
   readonly proof: FraudProofRawL1Utxo;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  /** Further token histories, for a bond a lost-defense receipt slashed. */
+  readonly history?: FraudProofRawL1HistoryReader | undefined;
 }): Promise<FraudProofWorkflowTerminal> => {
   const verifiedEconomics =
     validateVerifiedFraudProofReleaseEconomicsPolicy(releaseEconomics);
@@ -108,12 +115,26 @@ export const deriveTerminal = async ({
     }
     return inputs.length === 1 ? [{ transaction, bondInput: inputs[0]! }] : [];
   });
-  if (slashCandidates.length !== 1) {
+  // With no proof-referenced slash, the operator's bond can only have ended
+  // in its slash by the receipt of this case's thread it lost.
+  const slash =
+    slashCandidates.length === 1
+      ? slashCandidates[0]
+      : slashCandidates.length === 0
+        ? await lostDefenseReceiptSlash({
+            snapshot,
+            definition,
+            operatorCredential,
+            activeUnit,
+            retiredUnit,
+            history,
+          })
+        : undefined;
+  if (slash === undefined) {
     throw new Error(
       "raw L1 history does not prove exactly one bond-consuming proof-referenced slash",
     );
   }
-  const slash = slashCandidates[0]!;
   const slashBody = CML.TransactionBody.from_cbor_hex(
     slash.transaction.bodyCbor,
   );

@@ -3,8 +3,9 @@
  * convicted case into its fraud-proof record, and the challenger's moves on
  * a defended case's threads: reveal a midpoint, time out a defender whose
  * clock ran out, enter a thread ready for its one step into the resolution
- * and resolve it hop by hop to the award, and close a thread won either way
- * into the case. Each action is keyed by the
+ * and resolve it hop by hop to the award, close a thread won either way
+ * into the case, and slash the defender who lost it by its lost-defense
+ * receipt. Each action is keyed by the
  * output of ours it consumes, and its durable recovery names the outputs of
  * our own signed body it leaves, by out-ref, which every later read
  * follows. A move's recovery also keeps its exact signed bytes: the
@@ -45,11 +46,13 @@ export const VALIDATION_TRACE_STAGES = [
   "enter_resolution",
   "resolve",
   "close_awarded",
+  "slash_lost_defense",
 ] as const;
 
 export type ValidationTraceStage = (typeof VALIDATION_TRACE_STAGES)[number];
 
-/** The challenger's moves on a defended case's threads. */
+/** The challenger's moves on a defended case's threads, and the slash of a
+ * defender who lost one, which spends that thread's receipt as a move. */
 export const isValidationTraceMove = (stage: ValidationTraceStage): boolean =>
   stage !== "init" &&
   stage !== "open" &&
@@ -68,6 +71,7 @@ export const VALIDATION_TRACE_STAGE_ROLES = {
   enter_resolution: ["thread"],
   resolve: ["thread"],
   close_awarded: ["case", "receipt"],
+  slash_lost_defense: [],
 } as const satisfies Record<ValidationTraceStage, readonly string[]>;
 
 export type ValidationTraceOutputRole =
@@ -85,7 +89,8 @@ export type ParsedValidationTraceAction = Readonly<{
    * the timeout validator it closes into the case. Enter resolution: the
    * thread at the game ready for its one step. Resolve: the thread at the
    * one-step holder it moves on. Close awarded: the thread at the award it
-   * closes into the case.
+   * closes into the case. Slash lost defense: the receipt of our won thread
+   * it spends.
    */
   consumes: string | null;
 }>;

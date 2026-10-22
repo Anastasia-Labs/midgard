@@ -190,6 +190,7 @@ export const buildActiveSlashingInputs = ({
   registeredOperatorsElementUtxo,
   fraudProverReward,
   bondExcessLovelace = 0n,
+  lostDefenseReceipt,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -202,6 +203,8 @@ export const buildActiveSlashingInputs = ({
   readonly fraudProverReward?: FraudProverRewardPlan;
   /** What the slashed node holds beyond the slash fee and the reward. */
   readonly bondExcessLovelace?: bigint;
+  /** The lost-defense receipt a slash for a lost defense spends. */
+  readonly lostDefenseReceipt?: UTxO;
 }): SlashingTxPlan => {
   const schedulerUnit = toUnit(
     contracts.schedulerPolicyId,
@@ -236,6 +239,7 @@ export const buildActiveSlashingInputs = ({
           ? {}
           : { registeredOperatorsElement }),
         contracts,
+        ...(lostDefenseReceipt === undefined ? {} : { lostDefenseReceipt }),
       };
       const schedulerSpend =
         plan.schedulerPlan.kind === "inactive"

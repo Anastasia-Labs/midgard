@@ -5,7 +5,9 @@
  * land by the end of the case open window, `block_end + M/2`
  * (validation-dispute-v1 `case_can_open`). The case's close must land
  * before the operator's bond unlocks at `started_at + D_case + P`
- * (validation-case-v1 `defense_bond_unlock_time`). A thread move names its
+ * (validation-case-v1 `defense_bond_unlock_time`), and the slash of a
+ * defender who lost a thread before that defender's bond unlocks
+ * (lost-defense-slash.ts). A thread move names its
  * thread and deadline once it reaches its own build (move-dispatch.ts); one
  * that fails before it names its stage only. The run resumes on the next
  * observation and builds the stage again. A claim that does not build
@@ -31,6 +33,7 @@ import {
   validationTraceActionId,
 } from "./actions.js";
 import { VALIDATION_TRACE_CLAIM_BUILD_HELD } from "./claim-material.js";
+import { validationTraceLostDefenseSlashDeadlineMs } from "./lost-defense-slash-due.js";
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "./threads.js";
 import {
   challengedBlockUtxo,
@@ -189,6 +192,16 @@ export const validationTraceStageUnbuilt = async ({
         found === undefined
           ? undefined
           : validationTraceBondUnlockMs(found.caseDatum),
+    });
+  if (stage === "slash_lost_defense")
+    return new ValidationTraceStageUnbuiltError({
+      ...named,
+      deadline: "the defender's bond unlock",
+      deadlineMs: await validationTraceLostDefenseSlashDeadlineMs(
+        lucid,
+        deployment,
+        action.consumes!,
+      ),
     });
   if (!isValidationTraceMove(stage))
     return new ValidationTraceStageUnbuiltError({

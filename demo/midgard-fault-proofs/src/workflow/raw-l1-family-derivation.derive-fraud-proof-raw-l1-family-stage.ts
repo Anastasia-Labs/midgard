@@ -3,6 +3,7 @@ import {
   authenticateFamilySnapshot,
   deriveTerminal,
 } from "./raw-l1-family-derivation.derive-terminal.js";
+import type { FraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
 import {
   currentUnit,
   type FraudProofRawL1FamilyDefinition,
@@ -23,10 +24,12 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
   snapshot,
   definition,
   releaseEconomics,
+  history,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly definition: FraudProofRawL1TerminalDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly history?: FraudProofRawL1HistoryReader | undefined;
 }): Promise<FraudProofWorkflowTerminal | null> => {
   const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
     snapshot,
@@ -71,6 +74,7 @@ export const deriveFraudProofRawL1CompletedTerminal = async ({
     proofUnit,
     proof,
     releaseEconomics,
+    history,
   });
 };
 
@@ -78,10 +82,13 @@ export const deriveFraudProofRawL1FamilyStage = async ({
   snapshot,
   definition,
   releaseEconomics,
+  history,
 }: {
   readonly snapshot: FraudProofRawL1Snapshot;
   readonly definition: FraudProofRawL1FamilyDefinition;
   readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  /** Further token histories, for a bond a lost-defense receipt slashed. */
+  readonly history?: FraudProofRawL1HistoryReader | undefined;
 }): Promise<FraudProofRawL1FamilyStage> => {
   const { stateUnit, threadUnit, proofUnit } = authenticateFamilySnapshot({
     snapshot,
@@ -160,6 +167,7 @@ export const deriveFraudProofRawL1FamilyStage = async ({
         proofUnit,
         proof,
         releaseEconomics,
+        history,
       }),
     };
   }

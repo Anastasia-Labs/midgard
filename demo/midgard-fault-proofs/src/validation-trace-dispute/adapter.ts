@@ -5,7 +5,8 @@
  * through the shared remove stage (removal.ts), all through the shared
  * workflow orchestrator. On a defended case it plays each thread (threads.ts,
  * moves.ts) through the one-step resolution the deployment installs
- * (one-step-moves.ts), closes each thread won into the case and, once none is
+ * (one-step-moves.ts), closes each thread won into the case, slashes its
+ * defender by the thread's receipt (lost-defense-slash.ts) and, once none is
  * open, closes the case as an undefended one. On a deployment that drives
  * CEK script selections, the decode record of every script our trace selects
  * is made before Init (script-decode-records.ts); an observe move of a field
@@ -31,7 +32,6 @@ import {
 } from "../workflow/orchestrator.js";
 import { readOwnOutputs } from "../workflow/own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
-import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -42,10 +42,7 @@ import {
 import {
   confirmedValidationTraceStages,
   isClaimedOutput,
-  isValidationTraceMove,
   parseValidationTraceAction,
-  parseValidationTraceRecovery,
-  recordedValidationTraceMoveBytes,
   validationTraceAction,
 } from "./actions.js";
 import { parseValidationTraceDisputeArtifact } from "./artifact.js";
@@ -58,8 +55,11 @@ import {
   prepareValidationTraceArtifact,
   validateValidationTraceArtifact,
 } from "./detected-claim.js";
+import { captureValidationTraceLostDefenseSlash } from "./lost-defense-slash.js";
+import { dueValidationTraceLostDefenseSlash } from "./lost-defense-slash-due.js";
 import { captureValidationTraceThreadMove } from "./move-dispatch.js";
 import { validationTraceObserveCopy } from "./observe-copy.js";
+import { validationTraceReconcile } from "./reconcile.js";
 import {
   createValidationTraceRemoval,
   VALIDATION_TRACE_CASE_CONVICTED,
@@ -84,6 +84,8 @@ import {
 } from "./waiting.js";
 
 const CATEGORY = "validationTraceDispute" as const;
+
+import { VALIDATION_TRACE_DEFENDER_WON } from "./threads.js";
 
 export {
   VALIDATION_TRACE_CASE_CONTESTED,
@@ -168,11 +170,39 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
   const observe = async (
     context: FraudProofWorkflowAdapterContext,
   ): Promise<FraudProofWorkflowObservation> => {
-    const artifact = requireIdentity(context);
     const stages = confirmedValidationTraceStages(context.entries);
     const live = await read(
       stages.flatMap(({ outputs }) => outputs.map(({ outRef }) => outRef)),
     );
+    const next = await observeNext(context, stages, live);
+    // A defender who lost a thread of ours is slashed by its receipt only
+    // once nothing else is left: after the conviction's removal, or once a
+    // defender's win ends the case for us. It never holds up a thread move,
+    // the case close or the removal.
+    const settled =
+      next.kind === "completed" ||
+      (next.kind === "pending" &&
+        next.reason.startsWith(`${VALIDATION_TRACE_DEFENDER_WON}:`));
+    if (!settled) return next;
+    const slash = await dueValidationTraceLostDefenseSlash({
+      ...own,
+      stages,
+      live,
+      skipped: context.unbuiltActionIds,
+      now: now(),
+    });
+    if (slash === undefined) return next;
+    return slash.kind === "due"
+      ? slash.observation
+      : { kind: "pending", reason: slash.reason };
+  };
+
+  const observeNext = async (
+    context: FraudProofWorkflowAdapterContext,
+    stages: ReturnType<typeof confirmedValidationTraceStages>,
+    live: Awaited<ReturnType<typeof read>>,
+  ): Promise<FraudProofWorkflowObservation> => {
+    const artifact = requireIdentity(context);
     const newestFirst = [...stages].reverse();
     const liveClaim = (stage: (typeof stages)[number]["action"]["stage"]) =>
       newestFirst
@@ -240,7 +270,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
     if (newest !== undefined && recent(newest.confirmedAt))
       return {
         kind: "pending",
-        reason: `validation-trace output ${newest.outputs[0]!.outRef} is not yet visible to the provider`,
+        reason: `validation-trace transaction ${newest.txHash} is not yet visible to the provider`,
       };
     if (opened)
       return {
@@ -285,6 +315,13 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         case "resolve":
         case "close_awarded":
           break;
+        case "slash_lost_defense":
+          return await captureValidationTraceLostDefenseSlash({
+            ...own,
+            removal,
+            headerHash: input.artifact.headerHash,
+            receiptOutRef: action.consumes!,
+          });
       }
       found = await ourCase(
         input.artifact,
@@ -426,62 +463,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
         prepared.delete(key);
       }
     },
-    reconcile: async ({
-      action,
-      txHash,
-      durableRecovery,
-      signedTransactionCborHex,
-      authorizeResubmission,
-    }) => {
-      if (txHash === undefined)
-        return {
-          kind: "conflict",
-          reason: "validation-trace action omitted its transaction hash",
-        };
-      const { stage } = parseValidationTraceAction(action);
-      let outputs: ReturnType<typeof parseValidationTraceRecovery>;
-      let signed = signedTransactionCborHex;
-      try {
-        outputs = parseValidationTraceRecovery({
-          value: durableRecovery,
-          stage,
-          txHash,
-        });
-        // A move's successor is the defender's to spend at once, so whether
-        // it is live never shows the move landed: a move reconciles from its
-        // exact signed bytes, which its recovery keeps when no funding
-        // transition holds them.
-        if (signed === undefined && isValidationTraceMove(stage))
-          signed = recordedValidationTraceMoveBytes({
-            value: durableRecovery,
-            txHash,
-          });
-      } catch (cause) {
-        return { kind: "conflict", reason: String(cause) };
-      }
-      if (signed !== undefined) {
-        const reconciled = await reconcileSignedWorkflowTransaction({
-          transactionHash: txHash,
-          signedTransactionCborHex: signed,
-          observe: signedRecovery.observeSignedTransaction,
-          rebroadcast: signedRecovery.rebroadcastSignedTransaction,
-          authorizeResubmission,
-          reportInclusion: true,
-        });
-        return reconciled.kind === "pending" &&
-          reconciled.retirement?.reason === "included"
-          ? { kind: "confirmed", txHash }
-          : reconciled;
-      }
-      // Without the signed bytes, any output of this exact transaction still
-      // live with its claimed content shows it landed.
-      const live = await read(outputs.map(({ outRef }) => outRef));
-      return outputs.some((claim) =>
-        isClaimedOutput(claim, live.get(claim.outRef)),
-      )
-        ? { kind: "confirmed", txHash }
-        : { kind: "pending", txHash };
-    },
+    reconcile: validationTraceReconcile({ signedRecovery, read }),
   };
   return withValidationTraceScriptDecodeRecords({
     base: copy.wrap(Object.freeze(removalStage.route(adapter))),

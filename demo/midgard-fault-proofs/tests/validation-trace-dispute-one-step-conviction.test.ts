@@ -7,7 +7,8 @@
  * deadline. Past that deadline, with its thread still open, the runner waits
  * and never closes the case. The defender then plays on to its loss; the
  * runner resolves and closes its thread, closes the case Convicted with our
- * bond back, and, once the L1 view has seen the record, removes the block. */
+ * bond back, and, once the L1 view has seen the record, removes the block;
+ * only then does it slash the successor by its lost-defense receipt. */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -263,6 +264,45 @@ describe("validation-trace dispute runner: conviction after both defenders lose 
       contracts: h.contracts,
       expectedHeaderHashes: [scene.failing.evidence.header.prevHeaderHash],
     });
+  }, 900_000);
+
+  it("slashes no lost defender before the removal; after it, the successor by its receipt, the operator's bond already gone with its block", async () => {
+    const { scene, runner, a, b, prepared } = dispute;
+    const { h } = scene;
+    // The removal's run went on to the slash before the terminal: a later
+    // run signs nothing more.
+    const before = prepared.length;
+    const result = await runner.runOnce(scene.failing);
+    expect(prepared.length).toBe(before);
+    if (!("entries" in result)) throw new Error("no workflow journal");
+    const intents = result.entries.flatMap(({ event }, index) =>
+      event.kind === "submission_intent" ? [{ event, index }] : [],
+    );
+    const removals = intents.filter(
+      ({ event }) => event.actionInput.schemaVersion === CURSOR_FAMILY_ACTION,
+    );
+    expect(removals.length).toBeGreaterThan(0);
+    const slashes = intents.filter(({ event }) =>
+      event.actionId.startsWith("validation-trace-slash-lost-defense:"),
+    );
+    // One slash, the successor's, after every removal intent.
+    const closes = prepared.filter(({ stage }) => stage === "close_awarded");
+    expect(closes).toHaveLength(2);
+    expect(slashes.map(({ event }) => event.actionId)).toStrictEqual([
+      `validation-trace-slash-lost-defense:${closes[1]!.hash}#1`,
+    ]);
+    for (const { index } of slashes)
+      expect(index).toBeGreaterThan(
+        Math.max(...removals.map(({ index: at }) => at)),
+      );
+    expect(prepared.at(-1)!.stage).toBe("slash_lost_defense");
+    for (const defender of [a.defender, b.defender])
+      expect(
+        await h.proverLucid.utxosAtWithUnit(
+          h.contracts.activeOperators.spendingScriptAddress,
+          defender.nodeUnit,
+        ),
+      ).toStrictEqual([]);
   }, 900_000);
 
   it("fits the machine arm's move within the transaction limits", () => {

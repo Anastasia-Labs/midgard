@@ -1,4 +1,3 @@
-import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   applySingleCborEncoding,
   CML,
@@ -7,22 +6,12 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import {
-  fraudSlashFeeLovelace,
-  readFraudSlashFundingAuthority,
-} from "../remove-fraudulent-block.js";
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
-import {
-  assertAuthenticatedFraudSlashReward,
-  isExactFraudSlashRewardOutput,
-} from "./funding-reservation-permit.assert-authenticated-fraud-slash-reward.js";
 import { validationDisputeFunding } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   addAssets,
   isProtocolFundingContract,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 import {
-  actionKind,
   exactResolvedOutputCbor,
   parseConfirmedActionOutput,
   parseProtocolInputAuthority,
@@ -32,6 +21,7 @@ import {
   addMintedAssets,
   assertNoUnrelatedLedgerAccounting,
 } from "./funding-reservation-permit.ledger-accounting.js";
+import { bindSlashFunding } from "./funding-reservation-permit.slash-funding-binding.js";
 import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
@@ -63,86 +53,25 @@ export const assertRuntimeTransactionBound = async ({
   const contracts = new Map(
     policy.contracts.map((contract) => [contract.address, contract]),
   );
-  const slash = readFraudSlashFundingAuthority(signed);
-  if (slash !== null) {
-    const actuation = assertWorkflowActuationPermitIdentity({
-      permit: state.actuationPermit,
-      category: state.category,
-      rollbackGeneration: state.snapshot.rollbackGeneration,
-    });
-    const economics = policy.economics.policy;
-    const bond = BigInt(slash.operatorBondLovelace);
-    const fee = fraudSlashFeeLovelace(economics, bond);
-    const reward = BigInt(economics.fraudProverRewardLovelace);
-    // Removal binds nextRemovalOutRef/fraudProofOutRef; actionKind also
-    // accepts stage. Each refusal names the failed binding.
-    const differing = (
-      [
-        ["current action kind", state.currentActionKind === "remove"],
-        ["action kind", actionKind(action) === "remove"],
-        [
-          "action digest",
-          state.currentActionDigest ===
-            computeDeploymentManifestJsonDigest(action),
-        ],
-        [
-          "nextRemovalOutRef",
-          action.input.nextRemovalOutRef === slash.removedStateQueueOutRef,
-        ],
-        [
-          "fraudProofOutRef",
-          action.input.fraudProofOutRef === slash.fraudProofOutRef,
-        ],
-        ["category", slash.category === state.category],
-        ["header hash", slash.headerHash === actuation.headerHash],
-        [
-          "deployment fingerprint",
-          slash.deploymentFingerprint === policy.deploymentFingerprint,
-        ],
-        [
-          "economics policy digest",
-          slash.economicsPolicyDigest === policy.economicsPolicyDigest,
-        ],
-        ["operator bond", fee !== null],
-        ["reward", BigInt(slash.rewardLovelace) === reward],
-        ["exact fee", BigInt(slash.exactFeeLovelace) === fee],
-        ["body fee", body.fee() === fee],
-        ["funding inputs", fundingOutRefs.length === 0],
-        [
-          "authority inputs",
-          slash.inputs.length === bodyInputs.length &&
-            slash.inputs.every(
-              (input, index) => input.outRef === bodyInputs[index],
-            ),
-        ],
-        ["operator input", bodyInputs.includes(slash.operatorOutRef)],
-        [
-          "removed state-queue input",
-          bodyInputs.includes(slash.removedStateQueueOutRef),
-        ],
-        [
-          "fraud proof reference input",
-          workflowTransactionReferenceInputOutRefs(signed).includes(
-            slash.fraudProofOutRef,
-          ),
-        ],
-      ] as const
-    )
-      .filter(([, holds]) => !holds)
-      .map(([name]) => name);
-    if (differing.length > 0)
-      throw new Error(
-        `fraud slash funding authority differs from its exact removal action or economics (${differing.join(", ")})`,
-      );
-  }
-  // VerifySource's bond and case floor, or a thread move; else refused as before.
-  const dispute = await validationDisputeFunding({
-    signed,
-    slash: slash !== null,
-    policy,
+  const slash = bindSlashFunding({
     state,
     action,
+    signed,
+    policy,
+    bodyInputs,
+    fundingOutRefs,
   });
+  // VerifySource's bond and case floor, or a thread move; else refused as before.
+  // A lost-defense slash spends its receipt under the slash binding alone.
+  const dispute = slash?.lostDefense
+    ? null
+    : await validationDisputeFunding({
+        signed,
+        slash: slash !== null,
+        policy,
+        state,
+        action,
+      });
   if (signedBytes > BigInt(parameters.maxTxSize))
     throw new Error("signed transaction exceeds protocol maxTxSize");
   if (!transaction.is_valid())
@@ -189,13 +118,7 @@ export const assertRuntimeTransactionBound = async ({
     outRefs: [...workflowTransactionReferenceInputOutRefs(signed)].sort(),
     label: "runtime funding reference inputs",
   });
-  if (slash !== null)
-    assertAuthenticatedFraudSlashReward(
-      slash,
-      references,
-      contracts,
-      state.snapshot.walletAddress,
-    );
+  slash?.assertReward(references, contracts, state.snapshot.walletAddress);
   let referenceScriptBytes = 0n;
   const scriptIdentities = new Map(
     policy.referenceScripts.map(({ outRef, scriptHash }) => [
@@ -356,6 +279,10 @@ export const assertRuntimeTransactionBound = async ({
         "fraud slash operator bond differs from its authenticated bond",
       );
     }
+    if (slash?.admitsReceipt(outRef, input, contracts)) {
+      protocolInputLovelace += input.assets.lovelace ?? 0n;
+      continue;
+    }
     // Slashes reacquire live authority; a thread move's thread is its lineage.
     const lineage =
       slash === null
@@ -425,7 +352,7 @@ export const assertRuntimeTransactionBound = async ({
       custodyAllocation += disputed.allocation;
       continue;
     }
-    if (slash !== null && isExactFraudSlashRewardOutput(raw, slash)) {
+    if (slash?.isRewardOutput(raw)) {
       rewardOutputs += 1;
       if (output.address === state.snapshot.walletAddress)
         addAssets(walletOutputAssets, output.assets);

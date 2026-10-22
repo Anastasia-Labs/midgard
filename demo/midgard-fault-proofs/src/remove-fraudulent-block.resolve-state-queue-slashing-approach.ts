@@ -43,6 +43,7 @@ const buildRetiredSlashingInputs = ({
   hubOracleUtxo,
   fraudProverReward,
   bondExcessLovelace,
+  lostDefenseReceipt,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -53,6 +54,7 @@ const buildRetiredSlashingInputs = ({
   readonly hubOracleUtxo: UTxO;
   readonly fraudProverReward?: FraudProverRewardPlan;
   readonly bondExcessLovelace: bigint;
+  readonly lostDefenseReceipt?: UTxO;
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
@@ -65,6 +67,7 @@ const buildRetiredSlashingInputs = ({
       slashedOperatorDirectory: "retired",
       hubOracle: hubOracleUtxo,
       contracts,
+      ...(lostDefenseReceipt === undefined ? {} : { lostDefenseReceipt }),
     };
     return {
       kind: "slashRetiredOperator",
@@ -135,6 +138,7 @@ export const buildSlashingInputs = ({
   registeredOperatorsElementUtxo,
   fraudProverReward,
   bondExcessLovelace = 0n,
+  lostDefenseReceipt,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
@@ -152,7 +156,14 @@ export const buildSlashingInputs = ({
    * (`resolveFraudSlashEconomics`); the continued directory anchor keeps it.
    */
   readonly bondExcessLovelace?: bigint;
+  /**
+   * The lost-defense receipt the slash spends, when the slash is for a lost
+   * defense rather than a removed block.
+   */
+  readonly lostDefenseReceipt?: UTxO;
 }): SlashingTxPlan => {
+  const receipt =
+    lostDefenseReceipt === undefined ? {} : { lostDefenseReceipt };
   switch (plan.approach) {
     case "SlashActiveOperator":
       return buildActiveSlashingInputs({
@@ -163,6 +174,7 @@ export const buildSlashingInputs = ({
         registeredOperatorsElementUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
         bondExcessLovelace,
+        ...receipt,
       });
     case "SlashRetiredOperator":
       return buildRetiredSlashingInputs({
@@ -172,6 +184,7 @@ export const buildSlashingInputs = ({
         hubOracleUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
         bondExcessLovelace,
+        ...receipt,
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });

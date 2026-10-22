@@ -21,7 +21,11 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { Lucid } from "@lucid-evolution/lucid";
+import {
+  Lucid,
+  type UTxO,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
@@ -166,6 +170,9 @@ export const openFundedDispute = async (
   scene: Scene,
   options: {
     readonly removal?: ValidationTraceRemovalConfig;
+    /** The removal's published reference scripts by contract name, whose
+     * contracts the watcher's roster then governs as well. */
+    readonly removalScripts?: Readonly<Record<string, UTxO>>;
     readonly oneStep?: ValidationTraceOneStepReferences;
     /** Whether the watcher's funding follows the emulator's live fees. */
     readonly liveParameters?: boolean;
@@ -243,6 +250,7 @@ export const openFundedDispute = async (
   );
   if (validationDispute === undefined)
     throw new Error("the watcher derives no dispute funding terms");
+  const removalScripts = options.removalScripts ?? {};
   let boots = 0;
   /** The watcher process's in-memory part; booting again is a restart. */
   const boot = async () =>
@@ -255,10 +263,19 @@ export const openFundedDispute = async (
       protocolParameters,
       fundingPaymentKeyHash: h.proverSigner.paymentKeyHash,
       walletAddress: h.proverSigner.address,
-      scriptHashes: (options.roster ?? ((hashes) => hashes))(
-        scriptHashes(scene, deployment),
-      ),
-      referenceUtxos: referenceUtxos(scene, deployment),
+      scriptHashes: (options.roster ?? ((hashes) => hashes))({
+        ...scriptHashes(scene, deployment),
+        ...Object.fromEntries(
+          Object.entries(removalScripts).map(([name, utxo]) => [
+            name,
+            validatorToScriptHash(utxo.scriptRef!),
+          ]),
+        ),
+      }),
+      referenceUtxos: [
+        ...referenceUtxos(scene, deployment),
+        ...Object.values(removalScripts),
+      ],
       computationThreadPolicyId: h.contracts.computationThread.policyId,
       directory,
       // The watcher does not install the dispute until its defender exists.

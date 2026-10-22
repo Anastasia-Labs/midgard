@@ -26,6 +26,7 @@ export {
   StateQueueError,
 } from "./state-queue.build-state-queue-removal-tx.js";
 export {
+  collectRemoveSlashingInputs,
   findLinkStateQueueUTxO,
   requireFraudProverRewardRouting,
   sortStateQueueUTxOs,

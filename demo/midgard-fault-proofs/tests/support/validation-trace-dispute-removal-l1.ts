@@ -3,6 +3,7 @@
  * fixture state-queue mutation lease, and the removal's published reference
  * scripts. The L1 view can be held at one capture, as an observer that has
  * not yet seen the transactions after it. */
+import type { UTxO } from "@lucid-evolution/lucid";
 import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
@@ -19,10 +20,13 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "../../src/workflow/family-l1-observation.js";
 import type { FraudProofWorkflowTerminalVerifier } from "../../src/workflow/orchestrator.js";
+import type { FraudProofRawL1FamilyDefinition } from "../../src/workflow/raw-l1-family-derivation.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
 } from "../../src/workflow/raw-l1-snapshot.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../../src/workflow/release-economics-policy.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "../../src/workflow/release-finality-policy.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
@@ -36,6 +40,8 @@ type Snapshot = Awaited<
 
 export type RecordedRemoval = Readonly<{
   removal: ValidationTraceRemovalConfig;
+  /** The removal's published reference scripts, by contract name. */
+  published: Readonly<Record<string, UTxO>>;
   l1For: (
     headerHash: string,
   ) => FraudProofFamilyL1ObservationPort<"validationTraceDispute">;
@@ -43,6 +49,13 @@ export type RecordedRemoval = Readonly<{
   /** Keeps the L1 view at its next capture until `releaseView`. */
   holdView: () => void;
   releaseView: () => void;
+  /** The raw L1 the ports read, their release policies and definition. */
+  raw: Readonly<{
+    authority: FraudProofRawL1SnapshotAuthority;
+    releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+    releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+    definition: (headerHash: string) => FraudProofRawL1FamilyDefinition;
+  }>;
 }>;
 
 export const recordedRemoval = async (
@@ -63,18 +76,51 @@ export const recordedRemoval = async (
     contracts: h.contracts,
   });
   const signed = emulatorSignedTransactionRecovery(h.emulator);
-  let held: { snapshot?: Snapshot } | undefined;
+  // Each request's capture, kept while the view is held.
+  let held: Map<string, Snapshot> | undefined;
   const authority: FraudProofRawL1SnapshotAuthority = {
     authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
     capture: async (request) => {
       if (held === undefined) return await recorder.authority.capture(request);
-      held.snapshot ??= await recorder.authority.capture(request);
-      return held.snapshot;
+      const key = JSON.stringify(request);
+      const snapshot =
+        held.get(key) ?? (await recorder.authority.capture(request));
+      held.set(key, snapshot);
+      return snapshot;
     },
   };
   const category = h.catalogue.categories.validationTraceDispute;
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
+  const definition = (headerHash: string): FraudProofRawL1FamilyDefinition => ({
+    category: "validationTraceDispute",
+    categoryId: category.categoryId,
+    headerHash,
+    proverCredential: h.proverSigner.paymentKeyHash,
+    stateQueue: {
+      policyId: h.contracts.stateQueue.policyId,
+      address: h.contracts.stateQueue.spendingScriptAddress,
+    },
+    computationThread: {
+      policyId: h.contracts.computationThread.policyId,
+      steps: validationTraceComputationSteps(chain),
+    },
+    proofToken: {
+      policyId: h.contracts.fraudProof.policyId,
+      address: h.contracts.fraudProof.spendingScriptAddress,
+    },
+    operatorDirectory: {
+      activePolicyId: h.contracts.activeOperators.policyId,
+      activeAddress: h.contracts.activeOperators.spendingScriptAddress,
+      retiredPolicyId: h.contracts.retiredOperators.policyId,
+      retiredAddress: h.contracts.retiredOperators.spendingScriptAddress,
+    },
+    schedulerAddress: h.contracts.scheduler.spendingScriptAddress,
+    lostDefense: {
+      casePolicyId: chain.case.policyId,
+      receiptPolicyId: chain.award.policyId,
+    },
+  });
   const ports = new Map<
     string,
     FraudProofFamilyL1ObservationPort<"validationTraceDispute">
@@ -87,29 +133,8 @@ export const recordedRemoval = async (
       releaseFinality,
       releaseEconomics,
       definition: {
+        ...definition(headerHash),
         category: "validationTraceDispute",
-        categoryId: category.categoryId,
-        headerHash,
-        proverCredential: h.proverSigner.paymentKeyHash,
-        stateQueue: {
-          policyId: h.contracts.stateQueue.policyId,
-          address: h.contracts.stateQueue.spendingScriptAddress,
-        },
-        computationThread: {
-          policyId: h.contracts.computationThread.policyId,
-          steps: validationTraceComputationSteps(chain),
-        },
-        proofToken: {
-          policyId: h.contracts.fraudProof.policyId,
-          address: h.contracts.fraudProof.spendingScriptAddress,
-        },
-        operatorDirectory: {
-          activePolicyId: h.contracts.activeOperators.policyId,
-          activeAddress: h.contracts.activeOperators.spendingScriptAddress,
-          retiredPolicyId: h.contracts.retiredOperators.policyId,
-          retiredAddress: h.contracts.retiredOperators.spendingScriptAddress,
-        },
-        schedulerAddress: h.contracts.scheduler.spendingScriptAddress,
       },
     });
     ports.set(headerHash, port);
@@ -140,6 +165,7 @@ export const recordedRemoval = async (
         releaseEconomics.policy.fraudProverRewardLovelace,
       ),
     },
+    published: published.published,
     l1For,
     terminalVerifier: (headerHash) =>
       createFraudProofFamilyAuthenticatedL1TerminalVerifier({
@@ -147,10 +173,11 @@ export const recordedRemoval = async (
         observeSignedTransaction: signed.observeSignedTransaction,
       }),
     holdView: () => {
-      held = {};
+      held = new Map();
     },
     releaseView: () => {
       held = undefined;
     },
+    raw: { authority, releaseFinality, releaseEconomics, definition },
   };
 };

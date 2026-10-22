@@ -5,6 +5,7 @@ import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment
 import {
   type EmulatorStateQueueRemoveSlashingParams,
   type OutputReference,
+  type SlashingReason,
   type StateQueueUTxO,
 } from "@al-ft/midgard-sdk";
 import {
@@ -351,7 +352,7 @@ export type RemoveFraudulentBlockLayout = {
 export type OperatorSlashingLayout = {
   readonly activeOperatorsRedeemerTxInfoIndex?: bigint;
   readonly retiredOperatorsRedeemerTxInfoIndex?: bigint;
-  readonly stateQueueRedeemerTxInfoIndex: bigint;
+  readonly slashingReason: SlashingReason;
   readonly operatorDirectoryAnchorInputOutRef: OutputReference;
   readonly operatorDirectoryAnchorOutputIndex: bigint;
   readonly schedulerRefInputIndex?: bigint;
