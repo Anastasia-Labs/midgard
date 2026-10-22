@@ -532,9 +532,9 @@ funding, the pocket, the commit pause and every named state with its
 
 Keep at least 4 GB of memory free for the node process above its ordinary
 working set. A defense rebuilds the accepted transaction's trace in a worker
-thread: at the deepest trace admission allows (391,441 steps, 2026-10-22) the
-build takes about 8 s and peaks at about 1.9 GB, the same on every rebuild and
-after a restart. The 4 GB covers that peak plus about 2 GB of headroom.
+thread: at the deepest trace that admission allows (391,441 steps, 2026-10-22)
+the build takes about 8 s and peaks at about 1.9 GB, the same on every rebuild
+and after a restart. The 4 GB covers that peak plus about 2 GB of headroom.
 
 ## DA Bond Pool and Availability Challenges
 
