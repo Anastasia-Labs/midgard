@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
@@ -9,10 +10,13 @@ import {
   type WatcherLegacyJournalIgnored,
 } from "../../src/runtime/legacy-journal-directories.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { freeOperationsEndpoint } from "../support/free-port.js";
 import {
   journalDirectory,
   removeJournalDirectories,
 } from "../support/watcher-journal-fixture.js";
+import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-process-config.js";
 
 afterEach(removeJournalDirectories);
 
@@ -26,8 +30,8 @@ describe("legacy file journals (W2-E6)", () => {
     await writeFile(join(legacy, "000001.json"), '{"decision":"legacy"}');
     // An empty legacy directory holds nothing and warns nothing.
     await mkdir(join(journalRoot, "fault-proof-queue-v1"));
-    // The per-proof workflow journals of an earlier layout, now rows in
-    // watcher.sqlite: one warning for the whole tree.
+    // The per-proof workflow journals of an earlier layout: in-flight
+    // proofs, which the error alert names instead.
     const workflows = join(journalRoot, "fault-proofs");
     const execution = join(
       workflows,
@@ -46,12 +50,7 @@ describe("legacy file journals (W2-E6)", () => {
       {
         event: "legacy_journal_ignored",
         path: legacy,
-        detail: expect.stringContaining("ignored, never imported"),
-      },
-      {
-        event: "legacy_journal_ignored",
-        path: workflows,
-        detail: expect.stringContaining("ignored, never imported"),
+        detail: expect.stringContaining("ignored and never imported"),
       },
     ]);
 
@@ -93,5 +92,55 @@ describe("legacy file journals (W2-E6)", () => {
     );
     expect(await readFile(join(execution, "00000000.json"), "utf8")).toBe("{}");
     await supervisor.close();
+  });
+
+  it("logs one error alert at startup naming the earlier layout's in-flight proof state, and leaves it in place", async () => {
+    const directory = await mkdtemp("/var/tmp/midgard-watcher-legacy-proofs-");
+    try {
+      const config = {
+        ...(await writeWatcherRuntimeProcessConfig(directory)),
+        operationsEndpoint: await freeOperationsEndpoint(),
+      };
+      const storagePath = config.watcherConfig.storage.path;
+      const old = new DatabaseSync(storagePath);
+      old.exec(`
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE watcher_prover_funding_handoff_v1 (reservation_id TEXT);
+        CREATE TABLE watcher_prover_funding_abandonment_v1 (reservation_id TEXT);
+        INSERT INTO watcher_prover_funding_handoff_v1 VALUES ('a');
+      `);
+      old.close();
+      const workflows = join(config.workflowJournalDirectory, "fault-proofs");
+      const execution = join(workflows, "doubleSpend", "ab".repeat(32));
+      await mkdir(execution, { recursive: true, mode: 0o700 });
+      await writeFile(join(execution, "00000000.json"), "{}");
+      // Startup stops later, at the deployment authority not written yet.
+      await rm(config.deploymentAuthorityPath);
+      const stderr = vi.spyOn(process.stderr, "write");
+      await expect(createWatcherRuntime({ config })).rejects.toThrow();
+      const alerts = stderr.mock.calls
+        .map(([chunk]) => String(chunk))
+        .filter((line) => line.includes('"legacy_proofs_not_carried_over"'))
+        .map((line) => JSON.parse(line) as unknown);
+      stderr.mockRestore();
+      expect(alerts).toEqual([
+        expect.objectContaining({
+          level: "error",
+          // The empty abandonment table holds nothing in flight.
+          present: [
+            workflows,
+            `${storagePath} table watcher_prover_funding_handoff_v1`,
+          ],
+          detail: expect.stringContaining(
+            "in-flight proofs from the old layout are not carried over",
+          ),
+        }),
+      ]);
+      expect(await readFile(join(execution, "00000000.json"), "utf8")).toBe(
+        "{}",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

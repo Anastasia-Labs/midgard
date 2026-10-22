@@ -6,7 +6,10 @@ import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-fu
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
 import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.js";
-import { warnWatcherLegacyJournalDirectories } from "./legacy-journal-directories.js";
+import {
+  alertWatcherLegacyProofLayout,
+  warnWatcherLegacyJournalDirectories,
+} from "./legacy-journal-directories.js";
 import {
   refusePermanently,
   WatcherPermanentRefusalError,
@@ -83,6 +86,10 @@ export const prepareWatcherRuntimeAuthority = async (
   await warnWatcherLegacyJournalDirectories(
     input.config.workflowJournalDirectory,
   );
+  await alertWatcherLegacyProofLayout({
+    journalRoot: input.config.workflowJournalDirectory,
+    storagePath: input.config.watcherConfig.storage.path,
+  });
   const deploymentAuthority = await startup("deployment_authority", () =>
     refusePermanently("deployment_authority", () =>
       loadWatcherVerifiedDeploymentAuthority({

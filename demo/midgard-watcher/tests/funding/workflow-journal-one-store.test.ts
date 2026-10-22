@@ -12,8 +12,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
 import {
-  warnWatcherLegacyJournalDirectories,
-  type WatcherLegacyJournalIgnored,
+  alertWatcherLegacyProofLayout,
+  type WatcherLegacyProofsNotCarriedOver,
 } from "../../src/runtime/legacy-journal-directories.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -295,7 +295,7 @@ it("keeps a funding change and its journal entries together when a power loss dr
   expect([...seen].sort()).toEqual(["confirmed:2", "pending:0"]);
 });
 
-it("recovers an execution a file journal of an earlier layout left with only a partial first entry, warning once", async () => {
+it("recovers an execution a file journal of an earlier layout left with only a partial first entry, alerting once", async () => {
   const fixture = await setup();
   const leftover = join(
     fixture.journalRoot,
@@ -306,14 +306,18 @@ it("recovers an execution a file journal of an earlier layout left with only a p
   );
   await mkdir(leftover, { recursive: true });
   await writeFile(join(leftover, ".00000000.persisted.tmp"), "partial");
-  const warnings: WatcherLegacyJournalIgnored[] = [];
-  await warnWatcherLegacyJournalDirectories(fixture.journalRoot, (warning) =>
-    warnings.push(warning),
+  const alerts: WatcherLegacyProofsNotCarriedOver[] = [];
+  await alertWatcherLegacyProofLayout(
+    {
+      journalRoot: fixture.journalRoot,
+      storagePath: join(fixture.journalRoot, "watcher.sqlite"),
+    },
+    (alert) => alerts.push(alert),
   );
-  expect(warnings).toEqual([
+  expect(alerts).toEqual([
     expect.objectContaining({
-      event: "legacy_journal_ignored",
-      path: join(fixture.journalRoot, "fault-proofs"),
+      event: "legacy_proofs_not_carried_over",
+      present: [join(fixture.journalRoot, "fault-proofs")],
     }),
   ]);
   expect(await fixture.run(await fixture.recover())).toMatchObject({

@@ -177,12 +177,19 @@ never a network filesystem (NFS, SMB and the like): those break SQLite's file
 locking and its write-ahead log.
 
 The file journals of earlier development formats (`fault-decisions/`,
-`fault-proof-queue-v1/` and `fault-proof-completions-v1/` in the workflow
-journal directory) are ignored, not refused: nothing imports them, the
-journals start fresh, and readiness never waits on them. At start the watcher
-logs one `legacy_journal_ignored` warning naming each non-empty one. Ignoring
-them neither deletes them nor authorizes discarding an existing deployment's
-durable state. Follow [state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
+`fault-proof-queue-v1/`, `fault-proof-completions-v1/` and the per-proof
+`fault-proofs/` in the workflow journal directory), and the
+`watcher_prover_funding_handoff_v1` and `watcher_prover_funding_abandonment_v1`
+tables of an earlier `watcher.sqlite`, are ignored, not refused: nothing
+imports them, the journals start fresh, readiness never waits on them, and
+none of them is deleted. At start the watcher logs one `legacy_journal_ignored`
+warning naming each non-empty decision, queue or completion journal. When
+`fault-proofs/` is non-empty or either legacy table holds rows, it logs one
+error-level `legacy_proofs_not_carried_over` alert naming each of them:
+in-flight proofs from the old layout are not carried over, and the watcher
+neither imports nor resumes them. The launch deployment starts with a fresh
+data directory; before reusing an older one, follow
+[state reset rules](../../docs/agents/state-reset.md). Evidence remains pinned by event, recovery, and
 proof dependencies; this change does not delete archives. See the
 [persistence record inventory](../../docs/midgard/decisions/watcher-persistence.md)
 for consumers and retention rules.
