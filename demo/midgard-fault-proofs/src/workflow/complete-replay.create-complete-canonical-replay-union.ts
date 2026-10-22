@@ -155,6 +155,7 @@ export const createCompleteCanonicalReplayUnion = (
       for (const prerequisite of prerequisites)
         for (const failure of prerequisite.failures)
           assertReplayPrerequisiteCovered(evidence, failure, detections);
+      if (held.length === 0) return detections;
       // Held events can only add findings at or after their own order, so
       // the block is decided without them only by a finding strictly before
       // every held event.
