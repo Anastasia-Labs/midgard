@@ -138,6 +138,7 @@ export const interactiveTests = [
   "./tests/validation-trace-dispute-funded-one-step-restarts.test.ts",
   "./tests/validation-trace-dispute-funded-one-step-selection.test.ts",
   "./tests/validation-trace-dispute-funded-refusals.test.ts",
+  "./tests/validation-trace-dispute-funded-roster-restore.test.ts",
   "./tests/validation-trace-dispute-funded-shortfall.test.ts",
   "./tests/validation-trace-dispute-funded-wallet-move-two-threads.test.ts",
   "./tests/validation-trace-dispute-funded-wallet-move.test.ts",

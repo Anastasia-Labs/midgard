@@ -88,6 +88,11 @@ import {
 
 const CATEGORY = "validationTraceDispute" as const;
 
+/** The watcher's dispute funding terms for a validation-trace policy. */
+export type ValidationDisputeFundingTerms = NonNullable<
+  ReturnType<typeof watcherValidationDisputeFundingTerms>["validationDispute"]
+>;
+
 /** Rewrites the adapter one process turn runs with. */
 export type AdapterWrap = (
   adapter: FraudProofFamilyWorkflowAdapter,
@@ -176,6 +181,13 @@ export const openFundedDispute = async (
     ) => Readonly<Record<string, string>>;
     /** Whether the watcher observes publications; by default it does. */
     readonly publications?: boolean;
+    /** Rewrites the watcher's dispute funding terms at each process boot,
+     * counted from 0 (a restart boots again); by default every boot uses
+     * the watcher's own, from the signed deployment. */
+    readonly disputeTerms?: (
+      terms: ValidationDisputeFundingTerms,
+      boot: number,
+    ) => ValidationDisputeFundingTerms;
   } = {},
 ) => {
   const { h } = scene;
@@ -229,6 +241,9 @@ export const openFundedDispute = async (
     identity,
     CATEGORY,
   );
+  if (validationDispute === undefined)
+    throw new Error("the watcher derives no dispute funding terms");
+  let boots = 0;
   /** The watcher process's in-memory part; booting again is a restart. */
   const boot = async () =>
     await openInstalledProverFunding({
@@ -248,7 +263,8 @@ export const openFundedDispute = async (
       directory,
       // The watcher does not install the dispute until its defender exists.
       journalRoot: null,
-      validationDispute,
+      validationDispute:
+        options.disputeTerms?.(validationDispute, boots++) ?? validationDispute,
       // The supervisor's factory queries its node's parameters afresh at
       // each turn.
       ...(options.liveParameters === true

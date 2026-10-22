@@ -223,6 +223,29 @@ const validationDisputeTerms = ({
 };
 
 /**
+ * The digest a reservation is journaled under. The one-step resolver roster
+ * stays out of it: the permit checks each move against the live policy's
+ * roster, whose every address is a proof-thread contract of this deployment,
+ * and no reservation amount depends on it. A journaled reservation therefore
+ * restores after a roster change instead of being stranded.
+ */
+const withoutResolverRoster = (
+  basis: Readonly<{ validationDispute?: ValidationDisputeTermsValue }>,
+): object => {
+  const oneStep = basis.validationDispute?.moves?.oneStep;
+  if (basis.validationDispute?.moves === undefined || oneStep === undefined)
+    return basis;
+  const { resolverAddresses, ...pinned } = oneStep;
+  return {
+    ...basis,
+    validationDispute: {
+      ...basis.validationDispute,
+      moves: { ...basis.validationDispute.moves, oneStep: pinned },
+    },
+  };
+};
+
+/**
  * The admitted application calls this after authenticating its deployment,
  * current local-node parameters and contract roster. A sample transaction is
  * never funding authority; every actual signed transaction is checked later.
@@ -349,7 +372,9 @@ export const createWorkflowRuntimeFundingPolicy = ({
   });
   const value = Object.freeze({
     ...basis,
-    policyDigest: computeDeploymentManifestJsonDigest(basis),
+    policyDigest: computeDeploymentManifestJsonDigest(
+      withoutResolverRoster(basis),
+    ),
   });
   const policy: WorkflowRuntimeFundingPolicy = Object.freeze({
     policyVersion: "midgard-workflow-runtime-funding-policy-v1",
