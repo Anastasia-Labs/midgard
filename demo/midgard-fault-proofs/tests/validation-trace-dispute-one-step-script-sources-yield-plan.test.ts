@@ -1,11 +1,10 @@
 /** Our plan of the script-sources steps whose semantic resolver invokes a
  * yield beside the step: over the failing transaction, and the failing
  * transaction that also mints under a native script's policy, it plans
- * every non-output step but the stage-four begin and stage-six fold-asset
- * steps, which wait, and every redeemer descriptor step at stage ten and
- * twelve; and it waits at a stage-six begin-policy step whose field is
- * delivered by reference, and at a descriptor step whose descriptor does
- * not advance. */
+ * every non-output step and every redeemer descriptor step at stage ten
+ * and twelve; and it waits at a stage-four begin or stage-six begin-policy
+ * step whose field is delivered by reference, and at a descriptor step
+ * whose descriptor does not advance. */
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -79,12 +78,12 @@ describe("validation-trace one-step plan: the script-sources steps a yield verif
     ).trace();
   }, 300_000);
 
-  it("plans each non-output step beside its role's yield but the stage-four begin step, and each descriptor step beside the redeemer item-step yield or as a scan begin", () => {
+  it("plans each non-output step beside its role's yield, and each descriptor step beside the redeemer item-step yield or as a scan begin", () => {
     expect(yieldingSteps(failing)).toStrictEqual([
       [55, "scriptSourcesStageTwoAdvance"],
       [56, "scriptSourcesStageThreeReplay"],
       [57, "scriptSourcesStageThreeFinish"],
-      [58, "a scriptSources step for semantic resolver 0"],
+      [58, "scriptSourcesStageFourBegin"],
       [59, "scriptSourcesStageFourFinish"],
       [73, "scriptSourcesStageSixFinish"],
       [77, "action 1"],
@@ -96,15 +95,29 @@ describe("validation-trace one-step plan: the script-sources steps a yield verif
     ]);
   });
 
-  it("plans the stage-six begin-policy step of a minting transaction, and leaves its fold-asset step to wait", () => {
+  it("plans the stage-six begin-policy and fold-asset steps of a minting transaction beside their roles' yields", () => {
     expect(
       yieldingSteps(minting).filter(
         ([stateIndex]) => stateIndex === 97 || stateIndex === 98,
       ),
     ).toStrictEqual([
       [97, "scriptSourcesStageSixBeginPolicy"],
-      [98, "a scriptSources step for semantic resolver 0"],
+      [98, "scriptSourcesStageSixFoldAsset"],
     ]);
+  });
+
+  it("waits at a stage-four begin step whose field is delivered by reference", () => {
+    expect(
+      planAt(failing, 58, (auxiliaryCbor) =>
+        replacePlutusConstrFieldCbor(
+          auxiliaryCbor,
+          [0],
+          Data.to(new Constr(1, [0n])),
+        ),
+      ),
+    ).toStrictEqual({
+      reason: "a scriptSources item of a field delivered by reference",
+    });
   });
 
   it("waits at a stage-six begin-policy step whose field is delivered by reference", () => {

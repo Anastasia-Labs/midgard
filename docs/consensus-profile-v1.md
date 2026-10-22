@@ -299,13 +299,16 @@ result only when the L1 one-step verifier selects the challenger. If the
 operator owes a move and withholds it, the timeout transition selects the
 challenger.
 
-Dispute version 1 uses a five-minute (`300,000` ms) response window and at most
-32 bisection rounds. The exact V1 block maturity is seven days
-(`604,800,000` ms). The derived minimum for opening, two full windows per
-round, settlement, and a two-times reserve is `39,600,000` ms. The opening
-validator also rejects a challenge begun too late to finish before maturity.
-A differently versioned response schedule or non-exact maturity fails
-manifest admission.
+Dispute version 1 allows at most 32 bisection rounds. A case opens by the
+challenged block's end time plus half maturity (`case_can_open`), and lasts at
+most D_case = 2 C + 2 (2 rounds + 3) L_d + R, from the profile's side clock C,
+dispute validity range L_d and resolution allowance R
+(`validation-dispute-v1.ak`): `210,480,000` ms on public timing. The exact V1
+block maturity is seven days (`604,800,000` ms). A profile that installs the
+execution dispute needs maturity of at least 2 D_case + 1
+(`minValidationDisputeMaturityMs`, `420,960,001` ms on public timing); one that
+excludes it is not held to this floor. A differently versioned response
+schedule or non-exact maturity fails manifest admission.
 
 For a forced order, a terminal verdict different from the operator verdict is
 a fault. Therefore a valid transaction classified invalid/no-op and an invalid
@@ -450,7 +453,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `4409dbb1701791e29d7edc239c3d22a73d3cfd906d334700e52b34c2de29ba08`
+Profile digest: `31a8ef883056b85276d8c7b88c77ee50162c5ae7aa8e0a6635a9526c145199ca`
 
 ```json
 {
@@ -530,7 +533,7 @@ Profile digest: `4409dbb1701791e29d7edc239c3d22a73d3cfd906d334700e52b34c2de29ba0
     "minSupportedL1MaxTxMemoryUnits": 16500000,
     "minSupportedTransactionExecutionCpuUnits": 10000000000,
     "minSupportedTransactionExecutionMemoryUnits": 16500000,
-    "minValidationDisputeMaturityMs": 7920000,
+    "minValidationDisputeMaturityMs": 21560001,
     "validationDisputeResponseWindowMs": 60000
   },
   "mpfProofSchemaVersion": 2,

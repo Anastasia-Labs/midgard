@@ -53,10 +53,11 @@ P1 has these limits, and the security claim (R1) must state each one:
 - The L1 order of a forced transaction carries a closed validity range of at
   most 10 minutes (A2).
 - DA payloads carry neither validation-trace states nor the UTxO set. The
-  validation dispute game and the nine fault-proof families that read
-  validation-trace states are not in the P1 catalogue
-  (`excluded_fraud_proof_categories` in
-  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)).
+  nine fault-proof families that read validation-trace states are not in the P1
+  catalogue (`excluded_fraud_proof_categories` in
+  [`preprod-public.yaml`](../config/deployments/preprod-public.yaml)). The
+  Plutus execution dispute (`validationTraceDispute`) is in it (owner,
+  2026-10-21); `mainnet` still excludes it.
 - Every party derives ledger state by replaying blocks from genesis. Payloads
   are retained for 120 days, and P1 has no state snapshot.
 - Inactivity strikes skip an operator's shift but never eject the operator.

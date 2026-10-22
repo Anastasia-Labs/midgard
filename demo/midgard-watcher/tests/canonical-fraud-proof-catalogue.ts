@@ -2,11 +2,11 @@ import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
   type DeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { ordinalHex } from "@al-ft/midgard-test-support/hex";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
@@ -64,23 +64,23 @@ export const positionalContractScriptHash = (contractName: string): string => {
 const catalogueKey = (categoryId: string): Buffer =>
   Buffer.concat([Buffer.from([0x44]), Buffer.from(categoryId, "hex")]);
 
-const positionalCategories =
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
-    (categoryName) => {
-      const categoryId =
-        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
-      const contractName =
-        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
-      const scriptHash = positionalContractScriptHash(contractName);
-      return {
-        categoryName,
-        categoryId,
-        scriptHash,
-        key: catalogueKey(categoryId),
-        value: Buffer.from(`581c${scriptHash}`, "hex"),
-      } as const;
-    },
-  );
+// The deployment's catalogue is the selected profile's set.
+const CATALOGUE_CATEGORIES = deploymentFraudProofCatalogueCategories();
+
+const positionalCategories = CATALOGUE_CATEGORIES.map((categoryName) => {
+  const categoryId =
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
+  const contractName =
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
+  const scriptHash = positionalContractScriptHash(contractName);
+  return {
+    categoryName,
+    categoryId,
+    scriptHash,
+    key: catalogueKey(categoryId),
+    value: Buffer.from(`581c${scriptHash}`, "hex"),
+  } as const;
+});
 
 const positionalTrie = await Trie.fromList(
   positionalCategories.map(({ key, value }) => ({ key, value })),
@@ -117,7 +117,7 @@ const matchesDeployedScripts = (
   catalogue: DeploymentManifestFraudProofCatalogueIdentity,
   contracts: Readonly<Record<string, ContractIdentity>>,
 ): boolean =>
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
+  CATALOGUE_CATEGORIES.every(
     (category) =>
       catalogue.categories[category]?.scriptHash ===
       contracts[DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[category]]

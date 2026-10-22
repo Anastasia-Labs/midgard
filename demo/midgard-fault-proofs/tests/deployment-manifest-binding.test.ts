@@ -6,9 +6,10 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-} from "@al-ft/midgard-sdk";
+  deploymentFraudProofCatalogueCategories,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,7 +55,7 @@ const fixture = () => {
   const catalogue = {
     root: "66".repeat(32),
     categories: Object.fromEntries(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => [
+      deploymentFraudProofCatalogueCategories().map((category) => [
         category,
         {
           categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category],
@@ -284,6 +285,57 @@ describe("manifest-bound builder document", () => {
       }),
     ).rejects.toThrow("blueprint SHA-256 does not match");
     expect(dependencies.resolve).not.toHaveBeenCalled();
+  });
+
+  it("refuses an execution-dispute deployment or workflow cleanly under the 900 s profile, which excludes it", async () => {
+    expect(SELECTED_DEPLOYMENT_PROFILE.excluded_fraud_proof_categories).toEqual(
+      ["validationTraceDispute"],
+    );
+    const current = fixture();
+    // Startup: a deployment document that installs 00000006 is not this
+    // profile's deployment.
+    const withDispute = structuredClone(current.deploymentInfo);
+    const catalogue = withDispute.contracts.fraudProofCatalogueMint!
+      .fraudProofCatalogue as { categories: Record<string, unknown> };
+    catalogue.categories.validationTraceDispute = {
+      categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute,
+      scriptHash,
+      membershipProofCbor: "80",
+    };
+    await expect(current.bind(withDispute)).rejects.toThrow(
+      "fraudProofCatalogue.categories contains unsupported category validationTraceDispute",
+    );
+    expect(dependencies.resolve).not.toHaveBeenCalled();
+
+    // Workflow: the profile's deployment has no 00000006 identity, so a
+    // workflow for it binds nothing it could fund or submit.
+    dependencies.resolve.mockResolvedValue({
+      ...current.resolved,
+      contracts: {
+        ...current.resolved.contracts,
+        validationTraceDispute: {
+          steps: [],
+          firstStep: { spendingScriptHash: scriptHash },
+        },
+      },
+    });
+    await expect(
+      bindFraudProofWorkflowDeployment({
+        manifest: current.manifest,
+        blueprintJson,
+        deploymentInfo: current.deploymentInfo,
+        category: "validationTraceDispute",
+        headerHash: "99".repeat(28),
+        proverCredential: "aa".repeat(28),
+        stepDatumSchemas: [],
+      }),
+    ).rejects.toThrow(
+      "validationTraceDispute deployment catalogue identity changed",
+    );
+
+    // The profile's own families still bind.
+    dependencies.resolve.mockResolvedValue(current.resolved);
+    await expect(current.bind()).resolves.toBeDefined();
   });
 
   it("stops before parsing builder metadata when manifest verification fails", async () => {

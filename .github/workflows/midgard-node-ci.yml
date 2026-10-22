@@ -166,8 +166,8 @@ jobs:
           retention-days: 3
 
   # The blueprints only test runs read, built here once rather than in every
-  # shard that reads them: the interactive-emulator one that the fault-proof
-  # and watcher suites' interactive project stamps for itself, the
+  # shard that reads them: the interactive-emulator one that the fault-proof,
+  # watcher and node suites' interactive project stamps for itself, the
   # curated-emulator one the fault-proof suite's curated project stamps, and
   # the two verbose-traced ones the traced-refusal step swaps modules out of.
   # Each is built by the same code the suites would otherwise run, with its
@@ -1118,7 +1118,7 @@ jobs:
   # pins (tests/test-env.ts) never span two shards.
   midgard-node:
     name: midgard-node (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [aiken-fork, blueprint]
+    needs: [aiken-fork, blueprint, test-blueprints]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -1144,6 +1144,7 @@ jobs:
       - uses: ./.github/actions/demo-setup
         with:
           blueprint: "true"
+          interactive-blueprint: "true"
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs midgard-watcher
       # The suite's global setup builds the native MPF owner binary.
       - name: Cache the native MPF cargo build

@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
+  interactiveEmulatorBlueprint,
+  interactiveEmulatorPlugin,
+  interactiveEmulatorSetup,
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
@@ -97,6 +100,8 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/operator-watchdog-citation-emulator.test.ts
  *   tests/operator-watchdog-force-retire-emulator.test.ts
  *   tests/operator-watchdog-manifest-gate-idle.test.ts
+ *   tests/operator-watchdog-slow-tick-emulator.test.ts
+ *   tests/operator-watchdog-strike-retry-emulator.test.ts
  *   tests/published-initialization-recovery.test.ts
  *   tests/reference-publication-chain.test.ts
  *   tests/reference-publication-submit-seam.test.ts
@@ -115,6 +120,23 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/validation-trace-defense-readiness.test.ts
  *   tests/block-commitment-validation-trace-defense-skip.test.ts
  */
+
+/**
+ * The files the interactive-emulator project runs on the 72 h emulator
+ * profile: every suite that exercises the execution dispute (00000006), which
+ * the 900 s testing profiles exclude because their maturity cannot hold it.
+ */
+const interactiveTests = [
+  "./tests/validation-trace-defense-end-to-end-emulator.test.ts",
+  "./tests/validation-trace-defense-fiber-emulator.test.ts",
+  "./tests/validation-trace-defense-funding-emulator.test.ts",
+  "./tests/validation-trace-defense-max-shape-emulator.test.ts",
+  "./tests/validation-trace-defense-race-emulator.test.ts",
+  "./tests/validation-trace-defense-references-emulator.test.ts",
+  "./tests/validation-trace-defense-replacement-emulator.test.ts",
+  "./tests/validation-trace-defense-restart-emulator.test.ts",
+  "./tests/validation-trace-defense-survey-emulator.test.ts",
+];
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:
 // with `bail: 3` a run with three early failures silently skips most of the
@@ -158,29 +180,48 @@ export default defineConfig({
     // Workspace packages load from a per-run source bundle; files that need
     // them module-by-module run in the `midgard-node:source` project. The
     // projects inherit everything else here.
-    projects: workspaceBundleProjects(
+    projects: [
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          test: {
+            name: "midgard-node",
+            // Vitest 3's filter resolution does not reliably match the
+            // eight-way extension brace used here previously, so keep the
+            // overwhelmingly common TypeScript lane explicit. Otherwise a
+            // focused `*.test.ts` invocation can report "No test files found"
+            // and never exercise a release gate.
+            include: [
+              "./tests/**/*.test.ts",
+              "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
+            ],
+            // The explicit public framing config requires retained genuine release inputs.
+            exclude: [
+              ...configDefaults.exclude,
+              "./tests/public-http-release-framing.acceptance.test.ts",
+              ...interactiveTests,
+            ],
+          },
+        },
+        { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
+      ),
+      // Not bundled: its plugin rewrites a midgard-core module.
       {
         extends: true,
+        plugins: [interactiveEmulatorPlugin()],
         test: {
-          name: "midgard-node",
-          // Vitest 3's filter resolution does not reliably match the
-          // eight-way extension brace used here previously, so keep the
-          // overwhelmingly common TypeScript lane explicit. Otherwise a
-          // focused `*.test.ts` invocation can report "No test files found"
-          // and never exercise a release gate.
-          include: [
-            "./tests/**/*.test.ts",
-            "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
-          ],
-          // The explicit public framing config requires retained genuine release inputs.
-          exclude: [
-            ...configDefaults.exclude,
-            "./tests/public-http-release-framing.acceptance.test.ts",
-          ],
+          name: "interactive-emulator",
+          include: interactiveTests,
+          globalSetup: [interactiveEmulatorSetup],
+          env: {
+            // The suite's env defaults name the testing profile; this project
+            // compiles the emulator profile instead.
+            MIDGARD_DEPLOYMENT_PROFILE: "preprod-emulator-testing",
+            MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint,
+          },
         },
       },
-      { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
-    ),
+    ],
     testTimeout: 420_000,
     // Suites drop their test databases in `afterAll`; each `DROP DATABASE …
     // WITH (FORCE)` can outlast the 10 s hook default on a loaded CI runner.

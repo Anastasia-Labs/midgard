@@ -1,5 +1,5 @@
 {
-  "$comment": "CI seconds per test file (Vitest file time: worker start, collection and tests) that durationShards in @al-ft/midgard-test-support packs --shard by. Seeded from the midgard-node job log of Node CI run 37448078028 (each file's test time plus 4.8 s, the run's per-file prepare, setup and collect seconds: 2135 s over 449 files); refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id>, or take the ci-file-durations artifact of any Node CI run. Keyed by package-relative path, so a file weighs the same whether it runs in midgard-node or midgard-node:source. forksPerShard is the suite's CI fork cap (MIDGARD_NODE_TEST_FORKS default, four-core runners). A stale or missing entry only costs balance, never coverage.",
+  "$comment": "CI seconds per test file (Vitest file time: worker start, collection and tests) that durationShards in @al-ft/midgard-test-support packs --shard by. Seeded from the midgard-node job log of Node CI run 37448078028 (each file's test time plus 4.8 s, the run's per-file prepare, setup and collect seconds: 2135 s over 449 files); refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id>, or take the ci-file-durations artifact of any Node CI run. Keyed by package-relative path, so a file weighs the same whether it runs in midgard-node or midgard-node:source. forksPerShard is the suite's CI fork cap (MIDGARD_NODE_TEST_FORKS default, four-core runners). The three operator-watchdog slow-tick, strike-retry and takeover-retry files added after that run carry one local run each, plus 4.8 s. A stale or missing entry only costs balance, never coverage.",
   "forksPerShard": 4,
   "reservedSeconds": {},
   "defaultSeconds": 4.3,
@@ -214,7 +214,10 @@
     "tests/operator-watchdog-force-retire-emulator.test.ts": 51.8,
     "tests/operator-watchdog-manifest-gate-idle.test.ts": 26.5,
     "tests/operator-watchdog-manifest-gate.test.ts": 2.4,
+    "tests/operator-watchdog-slow-tick-emulator.test.ts": 27.5,
+    "tests/operator-watchdog-strike-retry-emulator.test.ts": 161.1,
     "tests/operator-watchdog.test.ts": 0,
+    "tests/operator-watchdog.takeover-retry.test.ts": 4.8,
     "tests/orphan-funded-transfer-repair-emulator.test.ts": 55.8,
     "tests/pending-finalization.test.ts": 2.4,
     "tests/phas-membership-registration.test.ts": 3.1,

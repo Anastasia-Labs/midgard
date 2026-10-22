@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -78,7 +79,8 @@ for (const category of [
             ? built.fabricatedWithdrawal
             : built.transitionTrace;
       const ids = SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS;
-      const names = SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER;
+      // The deployment's catalogue is the selected profile's set.
+      const names = deploymentFraudProofCatalogueCategories();
       const scriptHash = (name: (typeof names)[number]) =>
         name === category
           ? chain.firstStep.spendingScriptHash

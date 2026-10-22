@@ -55,6 +55,13 @@ const GROWN = MIDGARD_CEK_DIFFERENTIAL_CORPUS.find(
  * 209 lists the direct witness carries 9,206 payload bytes; at 210 it would
  * carry 9,250, past the 9,215-byte bound.
  */
+// One proof-mode run of the grown list, shared by the tests that read it.
+let grownProofRun: ReturnType<typeof runMidgardCekProgram> | undefined;
+const grownRun = (mode: MidgardCekExecutionMode) =>
+  mode === "proof"
+    ? (grownProofRun ??= runMidgardCekProgram(GROWN.prepare(), "proof"))
+    : runMidgardCekProgram(GROWN.prepare(), mode);
+
 const integerListCons = (count: number) =>
   program(
     `mkCons over ${count.toString()} integer lists`,
@@ -87,7 +94,7 @@ describe("mkCons over integer lists at the direct payload bound", () => {
   it.each(["proof", "verdict"] as const)(
     "a list of integer lists grown past the bound halts in %s mode",
     (mode) => {
-      const run = runMidgardCekProgram(GROWN.prepare(), mode);
+      const run = grownRun(mode);
       expect(run.stopReason).toBe("halted");
       expect("steps" in run ? run.steps.length : run.stepCount).toBe(7885);
       expect(hex(hashMidgardCekMachineState(run.initialState))).toBe(
@@ -100,7 +107,7 @@ describe("mkCons over integer lists at the direct payload bound", () => {
   );
 
   it("the grown list's states are the semantic route's states at every step", () => {
-    const run = runMidgardCekProgram(GROWN.prepare(), "proof");
+    const run = grownRun("proof");
     expect("steps" in run).toBe(true);
     if (!("steps" in run)) return;
     expect(stateDigest(run)).toBe(

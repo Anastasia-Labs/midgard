@@ -9,7 +9,10 @@ import {
   MIDGARD_NATIVE_SCRIPT_MAX_DEPTH,
   MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT,
 } from "./codec/native-script.js";
-import { SELECTED_DEPLOYMENT_PROFILE } from "./deployment-profile.js";
+import {
+  minValidationDisputeMaturityMs,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "./deployment-profile.js";
 
 /**
  * Exact protocol tuple for the canonical V1 validator deployment.
@@ -225,12 +228,11 @@ const MAX_VALIDATION_BISECTION_ROUNDS =
   SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
 const PROOF_BLOCK_MATURITY_MS =
   SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms;
-// Opening, two moves per round, and settlement must fit in the first half of
-// maturity even if every party uses its complete response window.
-const MIN_VALIDATION_DISPUTE_MATURITY_MS =
-  2 *
-  (2 * MAX_VALIDATION_BISECTION_ROUNDS + 2) *
-  VALIDATION_DISPUTE_RESPONSE_WINDOW_MS;
+// The least maturity that leaves an execution-dispute case its post-game
+// allowance: 2 D_case + 1 (deployment-profile.ts).
+const MIN_VALIDATION_DISPUTE_MATURITY_MS = minValidationDisputeMaturityMs(
+  SELECTED_DEPLOYMENT_PROFILE,
+);
 
 const MAX_INPUT_PREIMAGE_BYTES = MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
 const MAX_REFERENCE_INPUT_PREIMAGE_BYTES =

@@ -33,6 +33,7 @@ describe("Fraud Proof Catalogue Root", () => {
       const contracts = yield* AlwaysSucceedsContract;
       const indexedFraudProofs = fraudProofsToIndexedValidators(
         contracts.fraudProofs,
+        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
       );
 
       // Every declared family appears exactly once, while its wire identity

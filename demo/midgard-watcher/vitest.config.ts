@@ -41,6 +41,19 @@ const parseMaxForks = (raw: string | undefined): number => {
 
 const maxForks = parseMaxForks(process.env.MIDGARD_WATCHER_FORKS);
 
+/**
+ * The files the interactive-emulator project runs on the 72 h emulator
+ * profile: journeys that need protocol time, and every suite that exercises
+ * the execution dispute (00000006), which the 900 s testing profiles exclude
+ * because their maturity cannot hold it.
+ */
+const interactiveTests = [
+  "./tests/fault-proofs/watcher-installed-journey.test.ts",
+  "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
+  "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
+  "./tests/fault-proofs/fault-decision-bridge-deferral-backoff.test.ts",
+];
+
 export default defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
@@ -54,11 +67,7 @@ export default defineConfig({
           test: {
             name: "testing-profile",
             include: ["./tests/**/*.test.ts"],
-            exclude: [
-              "./tests/fault-proofs/watcher-installed-journey.test.ts",
-              "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
-              "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
-            ],
+            exclude: interactiveTests,
             // The node initialization frame the origin fixtures replay is
             // derived from the blueprint once per run. The interactive
             // project reads another blueprint, so it never derives one.
@@ -76,11 +85,7 @@ export default defineConfig({
         plugins: [interactiveEmulatorPlugin()],
         test: {
           name: "interactive-emulator",
-          include: [
-            "./tests/fault-proofs/watcher-installed-journey.test.ts",
-            "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
-            "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
-          ],
+          include: interactiveTests,
           globalSetup: [interactiveEmulatorSetup],
           env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
         },

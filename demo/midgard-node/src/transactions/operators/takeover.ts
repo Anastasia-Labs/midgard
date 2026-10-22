@@ -66,6 +66,8 @@ export type TakeoverPlanning = {
   readonly plan: SDK.InactivityTakeoverPlan;
   /** The intent plan (S5) opened before `snapshot` was read. */
   readonly intentPlan: IntentPlan;
+  /** The timing parameters `plan` was made under; the defaults when unset. */
+  readonly params?: SDK.InactivityTimingParameters;
 };
 
 /**
@@ -93,7 +95,7 @@ export const planTakeoverFrom = (
       validityWindowMs: OPERATOR_TX_VALIDITY_WINDOW_MS,
       alignValidFrom: (candidate) => alignedUnixTimeAtOrAfter(lucid, candidate),
     });
-    return { nowMs, snapshot, plan, intentPlan };
+    return { nowMs, snapshot, plan, intentPlan, params: options.params };
   });
 
 /**
@@ -144,8 +146,44 @@ export type StrikeSubmission = {
 };
 
 /**
+ * The ready plan re-made from `planning`'s snapshot and citation as of the L1
+ * `slotNow` at build time. A plan's validity window starts from the clock it
+ * was planned at, and the reads and gates between planning and building can
+ * outlast the window: the ledger then refuses the strike as expired. The same
+ * planner picks the bounds again, so every on-chain constraint on them holds
+ * as it did when planned.
+ */
+const replanAtBuildTime = (
+  lucid: LucidEvolution,
+  planning: TakeoverPlanning & { readonly plan: ReadyTakeoverPlan },
+): Effect.Effect<ReadyTakeoverPlan, SDK.SchedulerError> =>
+  planTakeoverFrom(lucid, planning.snapshot, planning.intentPlan, {
+    neglectedEvent: planning.plan.neglectedEvent,
+    params: planning.params,
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SDK.SchedulerError({
+          message: "The strike needs the L1 slot at build time",
+          cause,
+        }),
+    ),
+    Effect.flatMap(({ plan }) =>
+      plan.kind === "ready"
+        ? Effect.succeed(plan)
+        : Effect.fail(
+            new SDK.SchedulerError({
+              message: `The strike is no longer ready at build time (${plan.kind === "blocked" ? `blocked: ${plan.reason}` : plan.kind})`,
+              cause: plan,
+            }),
+          ),
+    ),
+  );
+
+/**
  * Builds, signs over the selected wallet's view, and submits the strike a
- * ready plan describes. The wallet only pays the fee, from its view.
+ * ready plan describes, with its validity window chosen at build time
+ * (`replanAtBuildTime`). The wallet only pays the fee, from its view.
  */
 export const submitInactivityStrikeProgram = (
   lucid: LucidEvolution,
@@ -160,13 +198,19 @@ export const submitInactivityStrikeProgram = (
       label,
       lockedLovelace: 0n,
     });
-    const { plan, snapshot } = planning;
+    const { snapshot } = planning;
     const scriptRefs = yield* resolveOperatorScriptRefsProgram(
       lucid,
       contracts,
       referenceScriptsAddress,
       ["scheduler", "active-operators"],
     );
+    const presetWalletInputs = yield* presetOperatorWalletInputs(
+      label,
+      yield* readSelectedWalletViewInputs(lucid, label),
+    );
+    // Every read is done: the window starts from the L1 time of the build.
+    const plan = yield* replanAtBuildTime(lucid, planning);
     const result = yield* SDK.buildStrikeInactiveOperatorTxProgram({
       lucid,
       scheduler: contracts.scheduler,
@@ -188,10 +232,7 @@ export const submitInactivityStrikeProgram = (
       validTo: plan.validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.spending.scheduler,
       activeOperatorsSpendingScriptRef: scriptRefs.spending["active-operators"],
-      presetWalletInputs: yield* presetOperatorWalletInputs(
-        label,
-        yield* readSelectedWalletViewInputs(lucid, label),
-      ),
+      presetWalletInputs,
     });
     yield* Effect.logInfo(
       `${label}: striking ${plan.currentOperator} (tier=${plan.tier}, strikes→${result.struckInactivityStrikes.toString()}, new_operator=${plan.newOperatorKey}, valid=[${plan.validity.validFrom.toString()},${plan.validity.validTo.toString()}))`,

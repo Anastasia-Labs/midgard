@@ -55,6 +55,7 @@ import {
   OPERATOR_WATCHDOG_MANIFEST_MISMATCH,
   OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED,
 } from "../src/fibers/operator-watchdog.manifest-gate.js";
+import { OPERATOR_WATCHDOG_TAKEOVER_FAILING } from "../src/fibers/operator-watchdog.takeover-retry.js";
 import { RETENTION_L1_VIEW_STALE } from "../src/fibers/retention-sweeper.js";
 import { Globals } from "../src/services/globals.js";
 import {
@@ -176,6 +177,7 @@ describe("public status HTTP presentation", () => {
     [OWN_BLOCK_EVENT_ORPHANED_SOURCE, L1_OWN_BLOCK_EVENT_ORPHANED],
     ["operator_watchdog_manifest", OPERATOR_WATCHDOG_MANIFEST_MISMATCH],
     ["operator_watchdog_manifest", OPERATOR_WATCHDOG_MANIFEST_UNVERIFIED],
+    ["operator_watchdog_takeover", OPERATOR_WATCHDOG_TAKEOVER_FAILING],
     [NATIVE_MPF_OWNER_SUPERVISOR_SOURCE, NATIVE_MPF_OWNER_STUCK],
     [NATIVE_MPF_OWNER_SUPERVISOR_SOURCE, NATIVE_MPF_OWNER_RECOVERY_PENDING],
     [

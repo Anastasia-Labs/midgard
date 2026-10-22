@@ -260,11 +260,9 @@ describe("loadCommitteeConfig", () => {
         categoryId: "00000005",
         scriptHash: canonicalContracts.fraudProofZeroInput!.scriptHash,
       },
-      validationTraceDispute: {
-        categoryId: "00000006",
-        scriptHash: canonicalContracts.validationTraceDispute!.scriptHash,
-      },
     });
+    // The 900 s profile excludes the execution dispute (00000006).
+    expect(canonicalCategories).not.toHaveProperty("validationTraceDispute");
     await writeFile(deploymentInfoPath, JSON.stringify(canonicalManifest));
     await expect(
       loadCommitteeConfig(libp2pConfigEnv(manifestPath, deploymentInfoPath)),

@@ -201,12 +201,11 @@ to newly prepared manifests, not a reset of deployed state.
 Fault proofs are **accepted as non-functional** on the two live testing
 profiles (owner ruling, 2026-09-27), and neither profile provides production
 security. Fifteen-minute maturity is shorter than the consensus profile's
-`minValidationDisputeMaturityMs` (7,920,000 ms, two hours twelve minutes) and
-than the transition-trace proof path. The 32-round interactive schedule retains a
-one-minute per-response timeout and cannot fit inside fifteen-minute maturity;
-the on-chain maturity guard therefore refuses interactive dispute opening.
-Validation explicitly requires this exclusion for both live testing profiles; public
-profiles still require the complete interactive schedule to fit in half maturity.
+`minValidationDisputeMaturityMs` (2 D_case + 1 = 21,560,001 ms, about six
+hours) and than the transition-trace proof path. An execution-dispute case
+cannot finish inside fifteen-minute maturity, so both live testing profiles
+exclude `validationTraceDispute` from their catalogue; validation refuses a
+profile that installs it without the maturity it needs.
 Automated fault-proof coverage runs in the emulator on `preprod-emulator-testing`
 (see [Interactive emulator tests](#interactive-emulator-tests)). L1 inclusion and
 node polling add latency, so finalization is not guaranteed at exactly fifteen
@@ -242,7 +241,7 @@ The committee backs every block it attests from one pooled bond. Each profile's
 | `da_bond.da_bond_min_top_up_lovelace` | 1,000 ADA               | 5 tADA                  |
 | `da_bond.da_bond_pool_floor_lovelace` | 5 ADA                   | 5 tADA                  |
 | `da_bond.challenge_record_lovelace`   | 27 ADA                  | 27 tADA                 |
-| `timing.da_challenge_window_ms`       | 259,200,000 (3 d)       | 720,000 (12 min)        |
+| `timing.da_challenge_window_ms`       | 86,400,000 (24 h)       | 720,000 (12 min)        |
 | `timing.da_slash_grace_ms`            | 172,800,000 (2 d)       | 300,000 (5 min)         |
 | `timing.da_bond_withdraw_delay_ms`    | 778,080,000 (9 d 8 min) | 2,380,000 (39 min 40 s) |
 
@@ -254,7 +253,8 @@ comment and the [economics record](../../docs/midgard/decisions/0002-canonical-v
 §2.6 carry its measurement. An availability challenge must open before the
 block's end time plus the challenge window. The withdrawal delay separates the
 two steps of a committee withdrawal, and the timeout slash has the slash grace
-to land. The public figures await owner confirmation.
+to land. The owner set the public challenge window to 24 hours (2026-10-15);
+the other public figures await owner confirmation.
 
 Validation requires:
 
@@ -275,10 +275,18 @@ Validation requires:
   attestation timeout at confirmation depth, then land an open whose validity
   range may be a full maximum range wide. The live testing profiles have two minutes
   of slack and are exempt;
-- on public and interactive emulator profiles, the challenge window, the maximum validity range,
-  the full response window and the dispute schedule fit before block maturity,
-  so fraud stays provable after the latest DA response. This rule used to count
-  from the attestation timeout;
+- on public and interactive emulator profiles, the challenge window, the maximum validity range
+  and the full response window fit before block maturity, so fraud stays
+  provable after the latest DA response. This rule used to count from the
+  attestation timeout;
+- on every profile that installs the execution dispute (`validationTraceDispute`
+  not in `excluded_fraud_proof_categories`), that same sum ends strictly before
+  half maturity, because a case opens by block end plus M / 2 (`case_can_open`),
+  and maturity is at least 2 D_case + 1, where D_case = 2 C + 2 (2 rounds + 3)
+  L_d + R from `dispute_side_clock_ms`, `max_bisection_rounds`,
+  `dispute_max_validity_range_ms` and `dispute_resolution_allowance_ms`
+  (validation-dispute-v1.ak). On preprod-public that is 259,680,000 < 302,400,000
+  and 604,800,000 ≥ 420,960,001. midgard-core repeats this check at load time;
 - on public and interactive emulator profiles, block maturity of at least the
   longest transition-trace thread at twice the 20-second mean block interval:
   the proof against the accepted L2 transaction with 819 spend inputs and 780

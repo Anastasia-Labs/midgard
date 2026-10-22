@@ -206,6 +206,9 @@ describe("operator watchdog forced retirement from the operator set", () => {
         yield* operatorWatchdogTick;
         const withoutAnchor = readOperatorWatchdogRecord();
         const retiredWithoutAnchor = yield* Effect.promise(retiredKeys);
+        // The failure set a retry on the backoff; the next tick is that retry.
+        const withoutAnchorDue = dueReasons();
+        clearSlotAwareDueWork("operator_watchdog", "takeover");
 
         // Honest, on a network with nothing undelivered: forced retirement
         // asks only for the strike cap, so the watchdog retires the operator
@@ -227,6 +230,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
           anchor,
           withoutAnchor,
           retiredWithoutAnchor,
+          withoutAnchorDue,
           honest,
           retiredAfter,
           stale,
@@ -240,6 +244,7 @@ describe("operator watchdog forced retirement from the operator set", () => {
     expect(outcome.withoutAnchor.lastSkipReason).toBe("submission_failed");
     expect(outcome.withoutAnchor.lastTakeoverTxHash).toBeNull();
     expect(outcome.retiredWithoutAnchor).toEqual([]);
+    expect(outcome.withoutAnchorDue).toEqual(["takeover_retry_backoff"]);
 
     expect(outcome.honest.lastTakeoverKind).toBe("force_retire");
     expect(outcome.honest.lastTakeoverTxHash).not.toBeNull();

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
@@ -115,14 +116,18 @@ const trieRootHex = (trie: Trie): string =>
 export const catalogueFor = async (
   scriptHashes: Partial<Record<string, string>>,
 ): Promise<FraudProofCatalogueDeploymentInfo> => {
+  // The deployment's catalogue is the selected profile's set.
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
   const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
+    catalogueCategories.map((name) => [
       name,
       {
         categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
         scriptHash:
           scriptHashes[name] ??
-          `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),
+          `${(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(name) + 3).toString(16).padStart(2, "0")}`.repeat(
+            28,
+          ),
         membershipProofCbor: "",
       },
     ]),
@@ -131,7 +136,7 @@ export const catalogueFor = async (
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const name of catalogueCategories) {
     const category = categories[name]!;
     await trie.insert(
       encodeCatalogueKey(category.categoryId),
@@ -139,7 +144,7 @@ export const catalogueFor = async (
     );
   }
   const withProofs = { ...categories };
-  for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const name of catalogueCategories) {
     const category = categories[name]!;
     const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
     withProofs[name] = {

@@ -359,6 +359,13 @@ Commitment and liveness (raised by fibers, cleared by them):
   manifest or the configuration; it is re-read every ten minutes.
 - `operator_watchdog_manifest_unverified`: the manifest could not be read
   several times in a row. Check the manifest path; it keeps retrying.
+- `operator_watchdog_takeover_failing`: the watchdog failed to build or
+  submit a due strike or forced retirement three times in a row; the detail
+  carries the last error. It keeps retrying on a backoff of up to five
+  minutes and clears when a takeover lands or none is due. A detail naming
+  `insufficient_funds` or `wallet_inputs_empty` means the operator wallet
+  needs funds; otherwise read the watchdog's `could not strike` or
+  `could not force-retire` log lines.
 - `retention_l1_view_stale`: the retention sweeper has had no L1 view for
   longer than `L1_VIEW_FATAL_MS` and stopped sweeping. Check the L1 node and
   the follower; it resumes on the first view.

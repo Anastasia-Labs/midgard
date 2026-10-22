@@ -32,6 +32,7 @@ import {
 } from "../src/deployment-manifest-identity.js";
 import {
   daBondManifestAmounts,
+  deploymentFraudProofCatalogueCategories,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "../src/deployment-profile.js";
@@ -40,7 +41,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "../src/l1-slot-config.js";
 type CatalogueCategory =
   (typeof DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
 
-/** A catalogue whose categories are all present, as the fixture builds it. */
+/** The selected profile's catalogue, as the fixture builds it. */
 export type CatalogueFixture = DeploymentManifestFraudProofCatalogueIdentity & {
   readonly categories: Readonly<
     Record<
@@ -92,7 +93,7 @@ export const buildCatalogueFixture = async (
 
 beforeAll(async () => {
   generatedCatalogueFixture = (await buildCatalogueFixture(
-    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    deploymentFraudProofCatalogueCategories(),
   )) as CatalogueFixture;
 });
 

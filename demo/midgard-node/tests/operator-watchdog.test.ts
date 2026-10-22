@@ -260,6 +260,8 @@ describe("operator watchdog citation failures", () => {
       failures = at(failures, `Deposit:${i.toString()}#0`, true).failures;
     expect(failures.excluded.size).toBe(MAX_EXCLUDED_CITATIONS);
     expect(failures.excluded.has("Deposit:0#0")).toBe(false);
+    expect(failures.refused.size).toBe(MAX_EXCLUDED_CITATIONS);
+    expect(failures.refused.has("Deposit:0#0")).toBe(false);
     expect(
       failures.excluded.has(`Deposit:${MAX_EXCLUDED_CITATIONS.toString()}#0`),
     ).toBe(true);

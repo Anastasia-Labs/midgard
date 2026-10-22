@@ -1,5 +1,5 @@
 {
-  "$comment": "CI seconds per test file (Vitest file time: worker start, collection and tests) that durationShards in @al-ft/midgard-test-support packs --shard by. Seeded from Node CI run 37392916647 job logs (test time plus 5 s import overhead per file); refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id>, or take the ci-file-durations artifact of any Node CI run. forksPerShard is the watcher's CI fork cap (two-core runners). A stale or missing entry only costs balance, never coverage.",
+  "$comment": "CI seconds per test file (Vitest file time: worker start, collection and tests) that durationShards in @al-ft/midgard-test-support packs --shard by. Seeded from Node CI run 37392916647 job logs (test time plus 5 s import overhead per file); refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id>, or take the ci-file-durations artifact of any Node CI run. tests/fault-proofs/fault-decision-bridge-deferral-backoff.test.ts, moved to the interactive-emulator project when the 900 s profiles dropped the execution dispute, carries one local run there. forksPerShard is the watcher's CI fork cap (two-core runners). A stale or missing entry only costs balance, never coverage.",
   "forksPerShard": 2,
   "reservedSeconds": {},
   "defaultSeconds": 2.5,
@@ -27,7 +27,7 @@
     "tests/availability/workflow-release-reverify.test.ts": 1.2,
     "tests/duration-shards.test.ts": 0.3,
     "tests/fault-proofs/fault-decision-bridge-da-deferral.test.ts": 1.5,
-    "tests/fault-proofs/fault-decision-bridge-deferral-backoff.test.ts": 1.4,
+    "tests/fault-proofs/fault-decision-bridge-deferral-backoff.test.ts": 14.7,
     "tests/fault-proofs/fault-decision-bridge-durable-evidence.test.ts": 1.6,
     "tests/fault-proofs/fault-decision-bridge-merged-headers.test.ts": 1.4,
     "tests/fault-proofs/fault-decision-bridge-past-horizon.test.ts": 2.4,

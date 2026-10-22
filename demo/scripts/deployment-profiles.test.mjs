@@ -309,7 +309,7 @@ test("emulator-only profiles cannot be selected for generation, checks or builds
   }
 });
 
-test("fast testing profiles exclude interactive disputes without weakening public profiles", () => {
+test("the 900 s testing profiles load with the execution dispute excluded, which their maturity cannot hold", () => {
   const profiles = readProfiles();
   assert.deepEqual(
     profiles["local-devnet-testing"].timing,
@@ -327,20 +327,14 @@ test("fast testing profiles exclude interactive disputes without weakening publi
     assert.equal(testing.timing.da_slash_grace_ms, 300_000);
     assert.equal(testing.timing.da_bond_withdraw_delay_ms, 2_380_000);
     assert.equal(testing.limits.max_bisection_rounds, 32);
+    assert.deepEqual(testing.excluded_fraud_proof_categories, [
+      "validationTraceDispute",
+    ]);
     validateProfile(testing, name);
-    testing.timing.dispute_response_window_ms = 1_000;
-    assert.throws(
-      () => validateProfile(testing, name),
-      /must exclude interactive/u,
-    );
-  }
-  for (const name of ["mainnet", "preprod-public"]) {
-    const profile = structuredClone(profiles[name]);
-    profile.timing = structuredClone(profiles["preprod-testing"].timing);
-    assert.throws(() => validateProfile(profile, name), /Dispute schedule/u);
+    testing.excluded_fraud_proof_categories = [];
+    assert.throws(() => validateProfile(testing, name), /execution-dispute/u);
   }
 });
-
 test("every DA response window covers the minimum response budget, and the bound is exact", () => {
   const profiles = readProfiles();
   // (confirmation depth + 5 chained 64 KiB publications + 1 poll block)
@@ -378,67 +372,46 @@ test("every DA response window covers the minimum response budget, and the bound
   }
 });
 
-test("public profiles leave the whole dispute schedule after the latest DA response; testing profiles are exempt", () => {
+test("the latest DA answer lands before maturity, and before half maturity where the execution dispute is installed; both bounds are exact", () => {
   const profiles = readProfiles();
-  // (2 × rounds + 2) × dispute response window, as validation-dispute-v1.ak
-  // max_dispute_duration computes it.
-  const disputeDuration = ({ limits, timing }) =>
-    (2 * limits.max_bisection_rounds + 2) * timing.dispute_response_window_ms;
-  for (const name of ["mainnet", "preprod-public"]) {
-    const profile = structuredClone(profiles[name]);
+  // Challenge window + maximum validity range + full window, from block end.
+  const latestFullWindow = (timing, deadline) =>
+    deadline - timing.da_challenge_window_ms - timing.max_validity_range_ms;
+  const boundary = (profile, name, deadline, refusal) => {
     const { timing } = profile;
-    assert.equal(disputeDuration(profile), 19_800_000);
-    const latestFullWindow =
-      timing.block_maturity_ms -
-      timing.da_challenge_window_ms -
-      timing.max_validity_range_ms -
-      disputeDuration(profile);
-    assert.ok(timing.da_full_response_window_ms < latestFullWindow);
-    timing.da_full_response_window_ms = latestFullWindow - 1;
+    const latest = latestFullWindow(timing, deadline);
+    assert.ok(timing.da_full_response_window_ms < latest);
+    timing.da_full_response_window_ms = latest - 1;
     validateProfile(profile, name);
-    timing.da_full_response_window_ms = latestFullWindow;
-    assert.throws(
-      () => validateProfile(profile, name),
-      /dispute schedule must end before block maturity/u,
-    );
-    // A window that clears maturity only without the dispute schedule, which
-    // the half-maturity dispute check alone does not catch.
-    timing.da_full_response_window_ms =
-      latestFullWindow + disputeDuration(profile) - 1;
-    assert.throws(
-      () => validateProfile(profile, name),
-      /dispute schedule must end before block maturity/u,
-    );
-    // The rule counts from the challenge window, not the attestation timeout:
-    // a full window that fits after the timeout but not after the challenge
-    // window is refused.
-    timing.da_full_response_window_ms = latestFullWindow;
-    assert.ok(
-      timing.da_attestation_timeout_ms +
-        timing.max_validity_range_ms +
-        timing.da_full_response_window_ms +
-        disputeDuration(profile) <
-        timing.block_maturity_ms,
-    );
-    assert.throws(
-      () => validateProfile(profile, name),
-      /DA challenge window, maximum validity range, full response window and dispute schedule/u,
-    );
-  }
+    timing.da_full_response_window_ms = latest;
+    assert.throws(() => validateProfile(profile, name), refusal);
+  };
+  // mainnet excludes the dispute, so only maturity bounds the answer.
+  const mainnet = structuredClone(profiles.mainnet);
+  assert.ok(
+    mainnet.excluded_fraud_proof_categories.includes("validationTraceDispute"),
+  );
+  boundary(mainnet, "mainnet", 604_800_000, /must end before block maturity/u);
+  // preprod-public installs it: the case opens by block end + M / 2.
+  const caseOpen = /execution-dispute case open deadline/u;
+  const preprodPublic = structuredClone(profiles["preprod-public"]);
+  assert.equal(
+    latestFullWindow(preprodPublic.timing, 302_400_000),
+    215_520_000,
+  );
+  boundary(preprodPublic, "preprod-public", 302_400_000, caseOpen);
+  // The rule follows the exclusion list, not the profile name.
+  const installed = structuredClone(profiles.mainnet);
+  installed.excluded_fraud_proof_categories =
+    profiles["preprod-public"].excluded_fraud_proof_categories.slice();
+  boundary(installed, "mainnet", 302_400_000, caseOpen);
+  // The 900 s testing profiles are exempt from the maturity rule.
   for (const name of ["preprod-testing", "local-devnet-testing"]) {
-    const profile = profiles[name];
-    const { timing } = profile;
-    assert.ok(
-      timing.da_challenge_window_ms +
-        timing.max_validity_range_ms +
-        timing.da_full_response_window_ms +
-        disputeDuration(profile) >=
-        timing.block_maturity_ms,
-    );
-    validateProfile(structuredClone(profile), name);
+    const { timing } = profiles[name];
+    assert.ok(latestFullWindow(timing, timing.block_maturity_ms) <= 0);
+    validateProfile(structuredClone(profiles[name]), name);
   }
 });
-
 test("digest is independent of YAML key order and changes with timing or economics", () => {
   const profile = readProfiles()["preprod-testing"];
   assert.equal(
@@ -458,7 +431,7 @@ test("digest is independent of YAML key order and changes with timing or economi
 test("profile validation rejects unsafe timing, economics, networks, and unknown fields", () => {
   const mutations = [
     (profile) => {
-      profile.timing.dispute_response_window_ms = 1;
+      profile.timing.dispute_side_clock_ms = 0;
     },
     (profile) => {
       profile.timing.block_maturity_ms = 0;
@@ -566,26 +539,44 @@ test("public profiles wait out the validity range plus confirmation depth before
   }
 });
 
-test("dispute schedule accepts the exact half-maturity bound", () => {
-  const profile = structuredClone(readProfiles()["preprod-public"]);
-  // A half-maturity schedule leaves no room for the public 3 d challenge window
-  // plus the 2 d full response window, so shrink the full window to keep the
-  // DA rule from masking the bound under test.
-  profile.timing.da_full_response_window_ms =
-    profile.timing.da_small_response_window_ms;
-  profile.timing.dispute_response_window_ms = 4_581_818;
-  profile.timing.block_maturity_ms =
-    2 *
-    (2 * profile.limits.max_bisection_rounds + 2) *
-    profile.timing.dispute_response_window_ms;
+test("an installed execution dispute needs block maturity of at least 2 D_case + 1, exactly; an excluded one needs none", () => {
+  const profiles = readProfiles();
+  // D_case = 2 C + 2 (2 rounds + 3) L_d + R (validation-dispute-v1.ak).
+  // Public: 2 * 86,400,000 + 2 * 67 * 120,000 + 21,600,000 = 210,480,000, so
+  // maturity must be at least 420,960,001; it is 604,800,000. R at
+  // 113,519,999 puts D_case at 302,399,999, the last value M admits.
+  const profile = structuredClone(profiles["preprod-public"]);
+  profile.timing.dispute_resolution_allowance_ms = 113_519_999;
   validateProfile(profile, "preprod-public");
-  profile.timing.block_maturity_ms -= 1;
+  profile.timing.dispute_resolution_allowance_ms = 113_520_000;
   assert.throws(
     () => validateProfile(profile, "preprod-public"),
-    /Dispute schedule/u,
+    /at least 604800001 ms \(2 D_case \+ 1\)/u,
   );
+  // Maturity equal to 2 D_case + 1 (604,799,999 at R = 113,519,999) admits.
+  profile.timing.dispute_resolution_allowance_ms = 113_519_999;
+  profile.timing.block_maturity_ms = 604_799_999;
+  validateProfile(profile, "preprod-public");
+  profile.timing.block_maturity_ms = 604_799_998;
+  assert.throws(
+    () => validateProfile(profile, "preprod-public"),
+    /at least 604799999 ms \(2 D_case \+ 1\)/u,
+  );
+  profile.excluded_fraud_proof_categories.push("validationTraceDispute");
+  validateProfile(profile, "preprod-public");
+  // The emulator profiles keep 72 h maturity, above their 21,560,001 floor.
+  for (const name of emulatorOnlyProfileNames) {
+    const emulator = structuredClone(profiles[name]);
+    assert.equal(emulator.timing.block_maturity_ms, 259_200_000);
+    assert.ok(
+      !emulator.excluded_fraud_proof_categories.includes(
+        "validationTraceDispute",
+      ),
+    );
+    emulator.timing.block_maturity_ms = 21_560_000;
+    assert.throws(() => validateProfile(emulator, name), /21560001 ms/u);
+  }
 });
-
 test("every profile carries the pooled DA bond amounts and timing, rendered into env", () => {
   const profiles = readProfiles();
   const expected = {
@@ -598,7 +589,7 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
         challenge_record_lovelace: 27_000_000,
       },
       timing: {
-        da_challenge_window_ms: 259_200_000,
+        da_challenge_window_ms: 86_400_000,
         da_slash_grace_ms: 172_800_000,
         da_bond_withdraw_delay_ms: 778_080_000,
       },
@@ -716,9 +707,9 @@ test("every profile orders attestation timeout < challenge window <= block matur
 test("every profile's withdrawal delay meets the spec relation and the head-removal relation, and both bounds are exact", () => {
   const profiles = readProfiles();
   const floors = {
-    // 480,000 + 259,200,000 + 172,800,000 + 172,800,000 (spec) and
-    // 480,000 + max(432,000,000, 604,800,000) + 172,800,000 (enforced).
-    public: { spec: 605_280_000, enforced: 778_080_000 },
+    // 480,000 + 86,400,000 + 172,800,000 + 172,800,000 (spec) and
+    // 480,000 + max(259,200,000, 604,800,000) + 172,800,000 (enforced).
+    public: { spec: 432_480_000, enforced: 778_080_000 },
     // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
     // the 900,000 maturity, so the two forms coincide.
     testing: { spec: 2_380_000, enforced: 2_380_000 },
@@ -759,7 +750,7 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
   // becomes removable at the queue head.
   for (const name of publicProfiles) {
     const profile = structuredClone(profiles[name]);
-    profile.timing.da_bond_withdraw_delay_ms = 605_280_000;
+    profile.timing.da_bond_withdraw_delay_ms = 432_480_000;
     assert.throws(
       () => validateProfile(profile, name),
       /the later of the challenge response deadline and block maturity/u,
@@ -976,13 +967,18 @@ test("the profile digest keeps list order and shape", () => {
 test("excluded fraud-proof categories are distinct catalogue names", () => {
   const profiles = readProfiles();
   assert.ok(
-    profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+    !profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.ok(
+    profiles["mainnet"].excluded_fraud_proof_categories.includes(
       "validationTraceDispute",
     ),
   );
   assert.deepEqual(
     profiles["preprod-testing"].excluded_fraud_proof_categories,
-    [],
+    ["validationTraceDispute"],
   );
   for (const [categories, message] of [
     [null, /must be a list of catalogue category names/u],

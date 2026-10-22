@@ -11,9 +11,10 @@
  * economics-and-margins.md (maturity 604_800_000 ms; worst-case proof-time
  * bound = half maturity = 302_400_000 ms per 3.3 clause 3; RETENTION_DAYS 15).
  *
- * Enforcement is always against the half-maturity BOUND. The measured dispute
- * schedule (`measuredValidationDisputeScheduleMs`, ~11h) is recorded here for
- * observability only and must never be used as the retention floor.
+ * Enforcement is always against the half-maturity BOUND. The execution
+ * dispute's maturity floor (`measuredValidationDisputeScheduleMs`, 2 D_case + 1
+ * of the selected profile) is recorded here for observability only and must
+ * never be used as the retention floor.
  */
 
 import "./consensus-profile.js";
