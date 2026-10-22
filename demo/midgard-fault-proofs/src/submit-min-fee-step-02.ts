@@ -56,6 +56,10 @@ import {
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -160,6 +164,7 @@ export const submitMinFeeStep02 = async ({
   unsafeSkipLocalViolationCheckForTest = false,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinFeeContracts;
@@ -188,6 +193,8 @@ export const submitMinFeeStep02 = async ({
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitMinFeeStep02Result> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
     throw minFeeSubmitError("step-02 requires exactly nine field preimages.");
@@ -256,6 +263,7 @@ export const submitMinFeeStep02 = async ({
     for (const [fieldIndex, planned] of plans.entries()) {
       published.push(
         ...(await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -280,8 +288,8 @@ export const submitMinFeeStep02 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  // The complete reference-input set, built before the field carriages derive
-  // any reference indices from it.
+  // Every reference input the transaction reads; the field carriages index the
+  // built set inside the redeemer.
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
@@ -289,15 +297,6 @@ export const submitMinFeeStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ]);
-  const fieldCarriages = plans.map(
-    (planned, fieldIndex): FieldCarriage =>
-      faultProofFieldCarriage({
-        planned,
-        referenceInputs,
-        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-        label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
-      }),
-  ) as unknown as MinFeeStep02Args["field_carriages"];
 
   // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
   // never spend anything this transaction must read.
@@ -329,6 +328,15 @@ export const submitMinFeeStep02 = async ({
     | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   const spendRedeemer = ((ctx) => {
+    const fieldCarriages = plans.map(
+      (planned, fieldIndex): FieldCarriage =>
+        faultProofFieldCarriage({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
+        }),
+    ) as unknown as MinFeeStep02Args["field_carriages"];
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

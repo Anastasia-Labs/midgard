@@ -68,6 +68,9 @@ jobs:
       - name: Check registries name only existing files
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run registry-paths
+      - name: Check toolchain version pins
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run toolchain-pins
       - name: Check deterministic contributor build guards
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run contributor-build-guards

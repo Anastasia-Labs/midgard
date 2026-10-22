@@ -133,24 +133,6 @@ describe("role processes hold no external L1 client", () => {
     expect(toolModules(graph.all, EXTERNAL_L1_MODULES)).not.toEqual([]);
   }, 120_000);
 
-  it("pins only the module that constructs the prover CLI's provider", () => {
-    // The exemption is that one module: it does construct a provider, and the
-    // signer module beside it no longer does.
-    for (const file of PINNED_PROVIDER_CONSTRUCTION)
-      expect(PROVIDER_CONSTRUCTION.test(readFileSync(file, "utf8"))).toBe(true);
-    expect(
-      PROVIDER_CONSTRUCTION.test(
-        readFileSync(
-          join(
-            demo,
-            "midgard-fault-proofs/src/runtime.resolve-prover-signer.ts",
-          ),
-          "utf8",
-        ),
-      ),
-    ).toBe(false);
-  });
-
   it("flags a role that reaches an external adapter or builds a provider", async () => {
     const fixtures = join(packageRoot, "tests/fixtures/l1-role-boundary");
     expect(

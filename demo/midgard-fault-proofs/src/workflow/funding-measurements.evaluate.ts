@@ -26,7 +26,7 @@ import {
   canonicalTransaction,
   hasFundingPaymentCredential,
 } from "./funding-requirements.canonical-transaction.js";
-import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-policy.js";
+import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
 import {
   type LocallyEvaluatedTransaction,
   requireReferenceOnlyScriptWitnesses,

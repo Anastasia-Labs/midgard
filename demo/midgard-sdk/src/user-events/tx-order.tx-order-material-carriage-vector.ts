@@ -1,4 +1,4 @@
-import { UTxO } from "@lucid-evolution/lucid";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
   resolveCertificateReferenceIndex,

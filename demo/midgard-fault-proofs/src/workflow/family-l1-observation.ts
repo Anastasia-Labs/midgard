@@ -14,6 +14,7 @@ import {
 } from "./journal.js";
 import {
   type FraudProofL1Source,
+  type FraudProofSignedTransactionRecovery,
   fraudProofSignedTransactionRecovery,
   withFraudProofL1Recovery,
 } from "./l1-source.js";
@@ -234,7 +235,8 @@ export const createFraudProofFamilyL1ObservationPort = <
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
-}): FraudProofFamilyL1ObservationPort<Category> =>
+}): FraudProofFamilyL1ObservationPort<Category> &
+  FraudProofSignedTransactionRecovery =>
   withFraudProofL1Recovery(
     createFraudProofFamilyRawL1ObservationPort({
       authority: l1.snapshotAuthority({
@@ -265,7 +267,8 @@ const sameTerminal = (
 export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   Category extends FraudProofCatalogueCategoryName,
 >(
-  l1: FraudProofFamilyL1ObservationPort<Category>,
+  l1: FraudProofFamilyL1ObservationPort<Category> &
+    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">,
 ): FraudProofWorkflowTerminalVerifier => {
   const verify = async (
     {
@@ -319,6 +322,8 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   };
   return {
     verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    observeSignedTransaction: async (input) =>
+      await l1.observeSignedTransaction(input),
     verify: (input) => verify(input, false),
     verifyIncluded: (input) => verify(input, true),
   };

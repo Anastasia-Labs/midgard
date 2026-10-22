@@ -241,7 +241,6 @@ describe("withdrawalMistag installed cursor actuator", () => {
             signer: h.proverSigner,
             publications: l1.publications,
             requirementForAction: withdrawalMistagEvidenceRequirement,
-            transactionConfirmed: (args) => l1.transactionConfirmed(args),
           });
         const port = createWithdrawalMistagTransactionPort({
           evidencePrerequisite: prerequisite(),

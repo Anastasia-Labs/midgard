@@ -301,6 +301,115 @@ it("lets a child's replacement proceed at once when a rollback lands the superse
   }
 });
 
+it("serves an adopted attempt under the handoff its adoption recorded", async () => {
+  const opened = await openStore();
+  const { store } = opened.runtime;
+  try {
+    const owner = twoFundingPlan();
+    await store.reserve(owner);
+    const a = signedTransition({
+      inputHash: "11".repeat(32),
+      validityUpperBound: 100n,
+    });
+    const attemptOf = {
+      plan: owner,
+      expectedRevision: "0",
+      actionKind: "proof.init",
+      ...a,
+      consumedOutRefs: [first],
+    };
+    const pa = await prepareTransition(store, attemptOf);
+    const recordedAttempt = async () =>
+      (
+        (await store.readPendingHandoff({
+          reservationId: owner.reservationId,
+        })) as { handoff: ReturnType<typeof submissionHandoff> } | null
+      )?.handoff.submissionIntent.attempt;
+    expect(await recordedAttempt()).toBe(1);
+    // A expires unconfirmed, then lands after all: it is adopted under the
+    // handoff that re-records its intent as a second attempt.
+    const ka = await supersedePending(store, owner, pa, "proof.init");
+    const original = submissionHandoff(attemptOf);
+    await reobserve(store, owner, ka.revision, a.transactionHash, {
+      ...original,
+      submissionIntent: { ...original.submissionIntent, attempt: 2 },
+    });
+    expect(await recordedAttempt()).toBe(2);
+  } finally {
+    opened.runtime.close();
+  }
+});
+
+it("re-records a pending attempt in a lost and recreated workflow journal, and nothing else about it", async () => {
+  const opened = await openStore();
+  const { store } = opened.runtime;
+  try {
+    const owner = twoFundingPlan();
+    await store.reserve(owner);
+    const a = signedTransition({
+      inputHash: "11".repeat(32),
+      validityUpperBound: 100n,
+    });
+    const attemptOf = {
+      plan: owner,
+      expectedRevision: "0",
+      actionKind: "proof.step",
+      ...a,
+      consumedOutRefs: [first],
+    };
+    const recorded = {
+      ...submissionHandoff(attemptOf),
+      expectedJournalSequence: 9,
+    };
+    const pending = await store.prepareTransition({
+      ...attemptOf,
+      handoff: {
+        ...recorded,
+        submissionIntent: { ...recorded.submissionIntent, attempt: 3 },
+      },
+    });
+    const pendingHandoff = async () =>
+      (
+        (await store.readPendingHandoff({
+          reservationId: owner.reservationId,
+        })) as { handoff: ReturnType<typeof submissionHandoff> } | null
+      )?.handoff;
+    const before = await pendingHandoff();
+    // Another action, input or transaction is not this attempt.
+    for (const changed of [
+      { ...recorded.submissionIntent, actionInput: { actionKind: "other" } },
+      { ...recorded.submissionIntent, actionId: "proof.other" },
+    ])
+      await expect(
+        reobserve(store, owner, pending.revision, a.transactionHash, {
+          ...recorded,
+          expectedJournalSequence: 2,
+          preflight: { ...recorded.preflight, actionId: changed.actionId },
+          submissionIntent: { ...changed, attempt: 1 },
+        }),
+      ).rejects.toThrow("journal re-anchor mismatch");
+    expect(await pendingHandoff()).toEqual(before);
+    // The recreated journal holds its started and prepared records only: the
+    // same exact attempt is re-recorded there as its first.
+    const anchored = {
+      ...recorded,
+      preparedArtifactDigest: "67".repeat(32),
+      expectedJournalSequence: 2,
+    };
+    const reanchored = await reobserve(
+      store,
+      owner,
+      pending.revision,
+      a.transactionHash,
+      anchored,
+    );
+    expect(reanchored.pendingTransition).toEqual(pending.pendingTransition);
+    expect(await pendingHandoff()).toEqual(anchored);
+  } finally {
+    opened.runtime.close();
+  }
+});
+
 it("expands each superseded attempt through the recorded attempts whose outputs it spends", () => {
   // p spends funding a1; its child c spends p's output and nothing else.
   const p = attempt([hash("a1")], [ref("a1")]);

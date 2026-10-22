@@ -1,4 +1,3 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 /** Durable forced evidence: replay the root and rederive every semantic claim. */
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
@@ -6,6 +5,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   encodeHeaderCbor,
   ForcedInclusionTxV1,

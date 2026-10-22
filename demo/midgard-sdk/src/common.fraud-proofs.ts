@@ -11,6 +11,7 @@ import {
   type WithdrawalValidator,
 } from "./common.utxos-at-by-nftpolicy-id.js";
 import type { FaultProofContractChains } from "./fraud-proof/contracts/index.js";
+import type { ScriptDecodeValidator } from "./fraud-proof/contracts/script-decode.js";
 import type { EventHistoryContractPair } from "./user-events/history-deployment.js";
 
 export type FraudProofs = {
@@ -173,10 +174,11 @@ export type MidgardValidators = {
   /**
    * The script-decode family: anyone may walk a script's decode at its
    * spending address and mint the verdict as a permanent record under its
-   * policy. The validator takes no parameters, so its policy id is a pure
-   * function of the blueprint.
+   * policy. The validator takes its class stakers' hashes and the stakers
+   * take no parameters, so its policy id is a pure function of the
+   * blueprint.
    */
-  scriptDecode: AuthenticatedValidator;
+  scriptDecode: ScriptDecodeValidator;
   settlement: AuthenticatedValidator;
   reserve: SpendingValidator & WithdrawalValidator;
   payout: AuthenticatedValidator;

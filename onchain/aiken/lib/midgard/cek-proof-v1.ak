@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes, slice_len,
 }
@@ -54,6 +55,14 @@ pub const empty_continuation_root_v1 =
   continuation_node_domain
     |> bytearray.concat(#"8100")
     |> blake2b_256
+
+// Shared so that a script hashing more than one continuation kind carries
+// the domain tag once.
+fn hash_continuation_node_v1(body: ByteArray) -> ByteArray {
+  continuation_node_domain
+    |> bytearray.concat(body)
+    |> blake2b_256
+}
 
 fn expect_hash(hash: ByteArray) -> ByteArray {
   expect bytearray.length(hash) == 32
@@ -410,17 +419,15 @@ pub fn hash_case_continuation_v1(
   environment: ByteArray,
   tail: ByteArray,
 ) -> ByteArray {
-  continuation_node_domain
-    |> bytearray.concat(
-        #"86"
-          |> bytearray.concat(cbor.serialise(1))
-          |> bytearray.concat(cbor.serialise(4))
-          |> bytearray.concat(cbor.serialise(expect_uint32(branches_count)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(branches_root)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
-      )
-    |> blake2b_256
+  hash_continuation_node_v1(
+    #"86"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(cbor.serialise(4))
+      |> bytearray.concat(cbor.serialise(expect_uint32(branches_count)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(branches_root)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(tail))),
+  )
 }
 
 pub fn hash_apply_value_continuation_v1(
@@ -443,16 +450,14 @@ pub fn hash_case_select_continuation_v1(
   tail: ByteArray,
   values_count: Int,
 ) -> ByteArray {
-  continuation_node_domain
-    |> bytearray.concat(
-        #"85"
-          |> bytearray.concat(cbor.serialise(1))
-          |> bytearray.concat(cbor.serialise(6))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(tail)))
-          |> bytearray.concat(cbor.serialise(expect_uint32(values_count))),
-      )
-    |> blake2b_256
+  hash_continuation_node_v1(
+    #"85"
+      |> bytearray.concat(cbor.serialise(1))
+      |> bytearray.concat(cbor.serialise(6))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(environment)))
+      |> bytearray.concat(encode_definite_bytes(expect_hash(tail)))
+      |> bytearray.concat(cbor.serialise(expect_uint32(values_count))),
+  )
 }
 
 pub fn hash_case_apply_continuation_v1(
@@ -472,11 +477,9 @@ pub fn hash_case_apply_continuation_v1(
     |> blake2b_256
 }
 
+// The data module's chunk hash, so a script reaching both carries it once.
 pub fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
-  expect bytearray.length(chunk) <= max_blob_chunk_bytes
-  blob_chunk_domain
-    |> bytearray.concat(encode_definite_bytes(chunk))
-    |> blake2b_256
+  cek_data_v1.hash_blob_chunk_v1(chunk)
 }
 
 pub fn hash_blob_branch_v1(

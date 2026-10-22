@@ -230,7 +230,6 @@ export const preSubmit = (
           validationTraceCount: BigInt(txs.length),
         },
         ...blockContentFor(txs, shape),
-        cekProgramMaterial: [],
         envelopeMode,
       }).pipe(Effect.provide(Logger.remove(Logger.defaultLogger))),
     ),

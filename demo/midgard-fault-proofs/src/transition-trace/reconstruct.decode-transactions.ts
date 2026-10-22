@@ -68,10 +68,6 @@ export const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
     payload.block_body.forced_transaction_preimages,
   );
   validatePayloadEntryArray(
-    "cek_program_material",
-    payload.block_body.cek_program_material,
-  );
-  validatePayloadEntryArray(
     "validation_traces",
     payload.block_body.validation_traces,
   );

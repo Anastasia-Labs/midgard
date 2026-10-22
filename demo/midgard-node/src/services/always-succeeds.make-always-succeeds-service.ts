@@ -98,7 +98,12 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       mintingScript: txOrder.mintingScript,
       policyId: txOrder.policyId,
     };
-    const scriptDecode: SDK.AuthenticatedValidator = fieldPreimageCertificate;
+    const scriptDecode: SDK.ScriptDecodeValidator = {
+      ...fieldPreimageCertificate,
+      stakers: Object.fromEntries(
+        SDK.SCRIPT_DECODE_STAKER_CLASS_NAMES.map((c) => [c, stateQueueYield]),
+      ) as SDK.ScriptDecodeStakerValidators,
+    };
     const settlement = yield* mkAuthVal("settlement");
 
     // Reserve
@@ -244,6 +249,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         settle: transitionTrace,
         compute: transitionTrace,
         machine: transitionTrace,
+        caseConstant: transitionTrace,
         mapConversion: transitionTrace,
         directScalar: transitionTrace,
         directStructured: transitionTrace,

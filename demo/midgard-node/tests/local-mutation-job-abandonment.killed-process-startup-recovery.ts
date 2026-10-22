@@ -11,7 +11,7 @@ import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinali
 import { Columns as TxColumns } from "../src/database/utils/tx.js";
 import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.finalize-committed-block-locally.js";
 import { withLocalBlockFinalizationJob } from "../src/workers/utils/commit-submission.with-local-block-finalization-job.js";
-import { makeProofSubmitTx } from "./database.test/fixtures.make-material-proof-submit-tx.js";
+import { makeProofSubmitTx } from "./database.test/fixtures.submit-tx.js";
 import {
   failedLocalJob,
   header,

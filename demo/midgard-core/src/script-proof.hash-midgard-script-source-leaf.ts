@@ -1,20 +1,10 @@
 import { buildMidgardBoundedItem } from "./bounded-item.js";
-import {
-  decodeMidgardCekProgramEnvelope,
-  type MidgardCekProgramEnvelope,
-} from "./cek-proof.js";
 import { midgardBlake2b } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
-import {
-  decodeMidgardNativeByteListPreimage,
-  type MidgardNativeTxCanonical,
-} from "./codec/native.js";
 import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decoders.js";
 import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items.js";
-import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
-  decodeMidgardVersionedScriptListPreimage,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
@@ -106,98 +96,14 @@ const decodeCanonicalReferenceScriptSourceKey = (
   return { outputIndex: BigInt(decoded.outputIndex) };
 };
 
-/**
- * Validates V1's meaning of non-native script bytes.
- */
-export const decodeMidgardScriptProgramEnvelope = (
-  script: MidgardVersionedScript,
-): MidgardCekProgramEnvelope | null =>
-  script.language === "NativeCardano"
-    ? null
-    : decodeMidgardCekProgramEnvelope(script.scriptBytes);
-
-/**
- * Computes a V1 script credential only after the executable program
- * envelope is canonical and within the L1/DA proof bounds.
- */
+/** Hashes the exact stored Flat script bytes with their language prefix. */
 export const hashMidgardV1VersionedScript = (
   script: MidgardVersionedScript,
 ): string => {
-  if (decodeMidgardScriptProgramEnvelope(script) === null) {
-    throw new Error(
-      "NativeCardano scripts are not canonical Midgard V1 program envelopes",
-    );
+  if (script.language === "NativeCardano") {
+    throw new Error("expected a PlutusV3 or MidgardV1 script");
   }
   return hashMidgardVersionedScript(script);
-};
-
-/**
- * Collects every V1 program physically attached to a canonical normal
- * transaction: inline witness scripts and reference scripts created by its
- * outputs. Programs reached through reference inputs are resolved from ledger
- * state later and therefore are intentionally not inferred here.
- */
-export const collectMidgardAttachedProgramEnvelopes = (
-  tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
-): readonly MidgardCekProgramEnvelope[] => {
-  const envelopes: MidgardCekProgramEnvelope[] = [];
-  for (const script of decodeMidgardVersionedScriptListPreimage(
-    tx.witnessSet.scriptTxWitsPreimageCbor,
-  )) {
-    const envelope = decodeMidgardScriptProgramEnvelope(script);
-    if (envelope !== null) envelopes.push(envelope);
-  }
-  const outputs = decodeSingleCbor(tx.body.outputsPreimageCbor);
-  if (!Array.isArray(outputs)) {
-    throw new Error("outputs preimage must be an array");
-  }
-  for (const [index, outputCbor] of outputs.entries()) {
-    if (!(outputCbor instanceof Uint8Array)) {
-      throw new Error(`output ${index.toString()} must be a CBOR byte string`);
-    }
-    const script = decodeMidgardTxOutput(outputCbor).script_ref;
-    if (script === undefined) continue;
-    const envelope = decodeMidgardScriptProgramEnvelope(script);
-    if (envelope !== null) envelopes.push(envelope);
-  }
-  return Object.freeze(envelopes);
-};
-
-/**
- * The V1 programs one event needs: every input resolves against the ledger
- * state immediately before its own transaction, as on Cardano. The set is
- * the programs physically attached to the transaction plus the script_ref
- * program of each reference input present in `preStateOutput`, the ledger
- * state immediately before the event. A reference input absent from that
- * state contributes nothing; the event's own verdict answers for it.
- *
- * `preStateOutput` maps the lowercase hex encoding of the exact canonical
- * output-reference CBOR committed by the transaction to the corresponding
- * canonical ledger-output bytes. Block builders and DA committee members
- * call this one function, so both derive the same program set.
- */
-export const collectMidgardEventProgramEnvelopes = (
-  tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
-  preStateOutput: (outRefHex: string) => Uint8Array | undefined,
-  sourceKind: "normal" | "forced" = "normal",
-): readonly MidgardCekProgramEnvelope[] => {
-  // A forced transaction carries no redeemer and no V1 program, so it
-  // executes nothing and needs no program material.
-  if (sourceKind === "forced") return Object.freeze([]);
-  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
-  // Program sources taken from ledger state: the reference inputs.
-  for (const outRef of decodeMidgardNativeByteListPreimage(
-    tx.body.referenceInputsPreimageCbor,
-    "reference_inputs_preimage",
-  )) {
-    const outputCbor = preStateOutput(Buffer.from(outRef).toString("hex"));
-    if (outputCbor === undefined) continue;
-    const script = decodeMidgardTxOutput(outputCbor).script_ref;
-    if (script === undefined) continue;
-    const envelope = decodeMidgardScriptProgramEnvelope(script);
-    if (envelope !== null) envelopes.push(envelope);
-  }
-  return Object.freeze(envelopes);
 };
 
 export const hashMidgardScriptSourceLeaf = (input: {

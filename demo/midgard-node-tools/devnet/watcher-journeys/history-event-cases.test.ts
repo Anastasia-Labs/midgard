@@ -13,12 +13,13 @@ import {
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   keyValuePhasProof,
   prepareDoubleWithdrawFromCommittedLeaves,
-  prepareWithdrawnInputFromCanonicalEvidence,
-  prepareWithdrawnReferenceInput,
   resolveProverSigner,
   WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { prepareInputExistence } from "@al-ft/midgard-fault-proofs/test-support/input-existence-prepare";
 import { prepareFabricatedDepositFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-deposit";
 import { prepareFabricatedWithdrawalFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-withdrawal";
 import {
@@ -233,10 +234,28 @@ it("ordinary history admission and withdrawn-input honest control stay healthy",
   });
 }, 1_800_000);
 
-it.each(["withdrawnInput", "withdrawnReferenceInput"] as const)(
-  "%s is selected against its real published withdrawal and its honest control passes",
-  async (category) => {
-    const { predecessor, history } = await openFamilyWindow(2);
+// Withdrawals run first, so the withdrawn output is absent from the spender's
+// pre-state: the installed catalogue proves it as input existence, and the
+// family's own replay still selects the fixture as exactly its fault. The
+// input-existence preparation on the published block finds the withdrawn
+// output absent; the control's input is present, which step 04 refuses.
+it.each([
+  {
+    category: "withdrawnInput",
+    proved: "nonExistentInput",
+    replayer: WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  },
+  {
+    category: "withdrawnReferenceInput",
+    proved: "noReferenceInput",
+    replayer: WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  },
+] as const)(
+  "$category against its real published withdrawal is proved as $proved by the installed catalogue and its honest control passes",
+  async ({ category, proved, replayer }) => {
+    const field = category === "withdrawnInput" ? 0 : 1;
+    // The reference control reads a second retained deposit.
+    const { predecessor, history } = await openFamilyWindow(2 + field);
     const body = journeyWithdrawalBody({
       predecessor,
       owner: stage.ownerKey.to_public().hash().to_hex(),
@@ -254,33 +273,26 @@ it.each(["withdrawnInput", "withdrawnReferenceInput"] as const)(
         withdrawal,
         ledgerOwnerSeedPhrase: stage.ownerSeedPhrase,
         honest,
+        controlReferencesRetained: field === 1,
       });
-      await select({ category, block, predecessor, history, honest });
+      await select({ category: proved, block, predecessor, history, honest });
+      await select({ category, block, predecessor, history, honest, replayer });
       const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
         observation: authenticatedHeaderObservation(block),
         payloadEnvelopeCbor: Buffer.from(block.payloadEnvelopeCbor),
         daProvenance,
       });
-      if (category === "withdrawnInput") {
-        const prepared = prepareWithdrawnInputFromCanonicalEvidence({
-          evidence,
-        });
-        if (honest) await expect(prepared).rejects.toThrow();
-        else expect((await prepared).headerHash).toBe(block.headerHash);
-      } else {
-        const prepared = prepareWithdrawnReferenceInput({
-          header: block.header,
-          blockTxs: evidence.transactions,
-          withdrawals: evidence.reconstruction.withdrawals.map(
-            ({ key, value }) => ({ id: key, info: value }),
-          ),
-        });
-        if (honest) await expect(prepared).rejects.toThrow();
-        else
-          expect((await prepared).withdrawalMembership.root).toBe(
-            block.header.withdrawalsRoot,
-          );
-      }
+      const prepared = await prepareInputExistence({
+        block: evidence,
+        eventKey: block.targetEventKey,
+        field,
+        inputIndex: 0n,
+        predecessor: predecessor.ledger,
+        owner: stage.ownerKey.to_public().hash().to_hex(),
+      });
+      expect(prepared.ledgerEvidence).toHaveProperty(
+        honest ? "Present" : "Absent",
+      );
     }
   },
   1_800_000,

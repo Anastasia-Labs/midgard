@@ -39,6 +39,7 @@ import "../step-support.js";
 import "../transaction-output-non-canonical/workflow.js";
 import "../transition-trace/l1-events.js";
 import "../transition-trace/replay-authority.js";
+import "../validation-trace-dispute/replay.js";
 import "../value-not-preserved/replay.js";
 import "../withdrawal-mistag/replay.js";
 import "../witness-script-decoding/workflow.js";
@@ -63,6 +64,7 @@ export {
   completeCanonicalReplayDecisionDigest,
   createCompleteCanonicalReplayUnion,
   createTransitionTraceCompleteCanonicalReplayFromRetainedHistory,
+  createValidationTraceDisputeCompleteCanonicalReplay,
   DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
@@ -75,6 +77,11 @@ export {
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "./complete-replay.create-complete-canonical-replay-union.js";
+export {
+  detectPlutusExecutionFailures,
+  VALIDATION_TRACE_REPLAY_DISAGREEMENT_VIOLATION_ID,
+  VALIDATION_TRACE_VIOLATION_ID,
+} from "./complete-replay.detect-accepted-transaction-faults.js";
 export {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,

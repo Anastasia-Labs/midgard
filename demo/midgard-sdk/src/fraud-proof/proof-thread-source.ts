@@ -1,6 +1,7 @@
 /** Direction-free public source carriage; authentication occurs on chain. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
+
 import { OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";

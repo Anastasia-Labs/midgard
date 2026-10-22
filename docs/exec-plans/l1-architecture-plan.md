@@ -89,7 +89,7 @@ Non-goals:
 | 2026-09-26 | D1: raise `event_wait` with a horizon lag d. The commit window cap becomes `(tip − d) + W − 1`, with d ≈ W / 20 s. Needs a redeploy. | Ticket U3, which rides the single redeploy. Refined 2026-10-09: d is profile-bound and the cap is the commit anchor's (§8.1). |
 | 2026-09-26 | D2: every status below the durable level is reversible, and the API exposes the head level. | §9 (levels redefined per 2026-10-01). |
 | standing | R1b: never prune anything live. A script body lives while a live output's script_ref points at it. "Spent" means spent beyond rollback. | §11. |
-| standing | One redeploy: all on-chain changes ride a single redeploy, which waits for T405. | U3, F3. |
+| standing | One redeploy: all on-chain changes ride a single redeploy, which waits for T405. | U3. (F3's `l1Origin` is an optional off-chain manifest key and does not wait for it, ruled 2026-10-18.) |
 | standing | Replace superseded variants rather than keeping parallel ones. No compat shims; prefer dependency bumps. No redundant on-chain checks. Non-interactive fault proofs first. Every offchain contract plan includes emulator tests in both polarities. | §13, §16. |
 | rev 4, audits | Orphaned-origin ids are readmitted, because the same nonce outref gives the same id. Never-reuse applies only to canonical (live or retired) origins. | §5.4. |
 
@@ -691,11 +691,16 @@ index. Projections filter them by NFT.
 There are no ledger snapshots and no Kupo index.
 
 1. **Origin point O.**
-   - Add `l1Origin: {slot, blockHash}` to the finalized manifest. It is the
-     point immediately before the block that holds the first deployment step,
-     `prepareHubOracleNonce` (`demo/midgard-core/src/deployment-manifest-identity/types.ts:22-30`).
-   - The field rides the single redeploy. Until then, a running deployment
-     supplies O through operator config.
+   - The finalized manifest carries an optional root key
+     `l1Origin: {slot, blockHash}` (`demo/midgard-core/src/deployment-manifest-identity/types.ts`):
+     the local node tip T the deployer reads, and lets `confirmationDepth`
+     blocks settle on, before it signs the first deployment step,
+     `prepareHubOracleNonce`. Finalization proves T is on chain and before
+     that step's block. A manifest without the key keeps its manifestId.
+   - O is T unless operator config overrides it (node and committee
+     `L1_ORIGIN`, watcher `l1.origin`). A store whose origin is after T is
+     R3 (item 3). For a manifest without `l1Origin`, O is the override,
+     the point immediately before the `prepareHubOracleNonce` block.
 2. **Fresh start.**
    - `FindIntersect([O])`, then replay forward.
    - Every Midgard output is created after O, so the tracked scope is
@@ -1028,7 +1033,7 @@ ruling 2026-10-09):
 |---|---|---|---|
 | R1 | `rollback_beyond_k` | `roll_backward` to a point more than k blocks below the stored tip, or below the oldest retained block | Investigate the cardano-node or the chain. A Cardano node would not do this unless the chain broke its security assumption. Recovery: `follower reset --to-origin`, a full replay. |
 | R2 | `intersection_outside_history` | `FindIntersect` matches none of the offered points, which include the origin | Wrong network or a wiped node DB. Fix the node, then reset. |
-| R3 | `origin_after_protocol_init` | Caught up, but the `hubOracleOneShot` spend was never seen (§5.3) | Correct `l1Origin`. |
+| R3 | `origin_after_protocol_init` | Caught up, but the `hubOracleOneShot` spend was never seen (§5.3); or the follower store's origin is after the `l1Origin` the deployment manifest records, so the store may lack outputs created between the two points, whether it saw that spend or not | Set `l1Origin` at or before the recorded one (drop an `L1_ORIGIN` or `l1.origin` override to use the manifest's), then run `follower reset --to-origin`. The loop keeps following meanwhile; a missed spend clears once it is stored, but a store origin after the recorded one needs the reset. |
 | R4 | `origin_not_on_chain` | The origin hash is not on the node's chain | Correct `l1Origin`, or the network. |
 | R5 | `store_integrity` | Invariant INV1–INV6, or the registry check, fails at start or after a rewind | Restore from a backup, or reset. |
 | R6 | `mpf_closure_missing` | `ImportClosure` cannot find a record reachable from a root that is within k and pinned. On the node: the landed-block rebase's native restore finds no root of the processed landed chain retained in full in the native MPF store | Stop the node, install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the root in full, and restart; the next rebase completes. |
@@ -1695,16 +1700,16 @@ tests pass.
    6. The §17 deletions and doc reconciliation.
 
    The lanes overlap wherever the dependency columns in §15 allow.
-3. **The single redeploy** (after T405) carries:
-   - the `l1Origin` manifest field (F3);
-   - the U3 `event_wait` raise and the profile field for the commit-event
-     depth d.
+3. **The single redeploy** (after T405) carries the U3 `event_wait` raise
+   and the profile field for the commit-event depth d.
 
    It is not part of this program. Carriage needs no redeploy (§12.6).
 
-   Until the redeploy, `l1Origin` and d come from operator config, and the
-   startup assertions are identical. This PR changes no running deployment's
-   identity.
+   Until the redeploy, d comes from operator config. The `l1Origin` manifest
+   field (F3) does not wait for it: it is an optional root key, so a
+   manifest without it keeps its manifestId, and this PR changes no running
+   deployment's identity. A fresh deployment records it; until one does,
+   the origin comes from operator config with the same startup assertions.
 4. **Existing deployment.**
    - `follower find-origin --tx <prepareHubOracleNonce txHash>` (F3)
      intersects at a known earlier point, streams forward to the block that
@@ -1741,7 +1746,7 @@ deferred are not part of the program pull request.
 |---|---|---|---|
 | **F1** | Sidecar v2 (§4.2): move to `demo/l1-node-transport/`; one long-lived process; multi-point `FindIntersect`; credit window; length-prefixed frames; LSQ, LocalTxSubmission and LocalTxMonitor. Delete the per-candidate spawns and the exact-point helper service with its per-session node connections (WC3; updated at 17fdffd9b). | — | Conformance against a local devnet node: intersect on the point list, `roll_backward` ordering under a forced fork, credit never exceeded, raw bytes round-trip, `submit` returns the ledger's rejection bytes, `has_tx` agrees with the mempool. A sidecar crash and restart resume from the acknowledged sequence with no gap and no duplicate. |
 | **F2** | The `demo/midgard-l1-follower/` package: the `FactStore` interface, Postgres and SQLite adapters, the §5.2 DDL, rewind (§7.1), the temporal registry (§7.2), schema lint (class and retention), and invariants INV1–INV6. | — | The property test from §7.2 passes on both adapters with 10^4 random operations. The lint fails a fixture migration that has no class. Rewind cost is linear in the rows above the target (B3). |
-| **F3** | Origin: the `l1Origin` manifest field (rides the redeploy), an operator-config override until then, the `deployment:check` invariant (origin before the `prepareHubOracleNonce` block), the R3 and R4 assertions, and the `follower find-origin` tool. | F1, F2 | An origin after protocol init: unready R3. A wrong hash: R4. `find-origin` on devnet returns the point immediately before the block holding the tx. |
+| **F3** | Origin: the optional `l1Origin` manifest field (the tip T the deployer records before signing `prepareHubOracleNonce`, proved at finalization on chain and before that tx's block), an operator-config override, the R3 and R4 assertions, and the `follower find-origin` tool (`--recorded` proves T). | F1, F2 | An origin after protocol init, or a store origin after the recorded `l1Origin`: unready R3. A wrong hash: R4. `find-origin` on devnet returns the point immediately before the block holding the tx; with `--recorded`, T. |
 | **F4** | LSQ wallet seed (§5.3, step 4). | F1, F2 | Pre-origin wallet UTxOs appear as seed rows. A rewind at or above a seed's point never touches it; a rewind below it deletes the seed rows and the wallet re-seeds. Adding a wallet re-seeds. |
 | **F5** | A Lucid `Provider` over the read API and the sidecar (UTxOs, datums, protocol parameters, slot config from era history, submit), with local evaluation. | F1, F2 | Wallet coin selection, reference-script publication and one tx of each node family build and submit on devnet with no Kupo or Ogmios configured. |
 | **F6** | **Deferred (§1.4).** Decode pool, reorder buffer, ordered writer, batching and the tracked-outref cache (§6). | F2 | B1 and B2 targets met. Under random worker delays, writes stay in sequence order. After a rewind, the cache equals a fresh load. |

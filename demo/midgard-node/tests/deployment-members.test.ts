@@ -10,7 +10,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { faultProofMemberFromManifest } from "../src/services/midgard-contracts.linear-fault-proof-chain-from-manifest.js";
 import {
+  isRecordedValidationTracePrepare,
   isRecordedValidationTraceSemantic,
+  VALIDATION_TRACE_PREPARE_KEYS,
   VALIDATION_TRACE_SEMANTIC_KEYS,
 } from "./helpers/deployment-member-baseline.js";
 import { makeGenuineDeploymentRegistryForTest } from "./helpers/deployment-parameter-registry.js";
@@ -57,8 +59,21 @@ describe("deployment member blueprint bindings", () => {
     expect(itemReferences(restored.cekContextItemStages)).toEqual(
       itemReferences(original.cekContextItemStages),
     );
-    for (const member of ["steps", "prepareResolvers", "resolvers"] as const)
-      expect(() => restored[member]).toThrow("Unrecorded SDK member:");
+    expect(() => restored.steps).toThrow("Unrecorded SDK member:");
+    for (const [list, label] of [
+      ["prepareResolvers", "prepare resolver"],
+      ["resolvers", "resolver"],
+    ] as const)
+      VALIDATION_TRACE_PREPARE_KEYS.forEach((key, index) => {
+        if (isRecordedValidationTracePrepare(key))
+          expect(restored[list][index]?.spendingScriptHash).toBe(
+            original[list][index]?.spendingScriptHash,
+          );
+        else
+          expect(() => restored[list][index]).toThrow(
+            `Unrecorded SDK member: ${label} ${key}`,
+          );
+      });
     VALIDATION_TRACE_SEMANTIC_KEYS.forEach((key, index) => {
       if (isRecordedValidationTraceSemantic(key))
         expect(restored.semanticResolvers[index]?.spendingScriptHash).toBe(

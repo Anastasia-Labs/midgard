@@ -7,9 +7,6 @@ use fraud_proofs/missing_redeemer/family_entry
 use fraud_proofs/missing_redeemer/step_05 as terminal_entry
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers as workers
 use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
@@ -17,6 +14,9 @@ use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/missing_redeemer/adjudicate
 use midgard/fraud_proofs/missing_redeemer/claim.{
   ClaimContextV1, ClaimedRedeemerScanV1, FinalStateV1,

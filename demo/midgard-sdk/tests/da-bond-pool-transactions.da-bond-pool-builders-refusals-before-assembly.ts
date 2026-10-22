@@ -325,6 +325,7 @@ describe("DA bond pool builders: refusals before assembly", () => {
         parameters,
         initUtxo: walletUtxo!,
         lovelace: FLOOR - 1n,
+        referenceScripts: { daBondPoolMinting: scene.poolReference },
       }),
       "below_floor",
     );
@@ -334,6 +335,7 @@ describe("DA bond pool builders: refusals before assembly", () => {
         parameters,
         initUtxo: walletUtxo!,
         lovelace: FLOOR,
+        referenceScripts: { daBondPoolMinting: scene.poolReference },
       }),
     );
     // The pool address must be Script(own policy) with no stake part.
@@ -351,8 +353,19 @@ describe("DA bond pool builders: refusals before assembly", () => {
         parameters,
         initUtxo: walletUtxo!,
         lovelace: FLOOR,
+        referenceScripts: { daBondPoolMinting: scene.poolReference },
       }),
       "invalid_pool_address",
+    );
+    await expectRefusal(
+      buildInitDaBondPoolTxProgram(scene.lucid, {
+        poolValidator: scene.pool,
+        parameters,
+        initUtxo: walletUtxo!,
+        lovelace: FLOOR,
+        referenceScripts: { daBondPoolMinting: scene.daParamsUtxo },
+      }),
+      "reference_script_mismatch",
     );
     await expectRefusal(
       buildTopUpDaBondPoolTxProgram(scene.lucid, {

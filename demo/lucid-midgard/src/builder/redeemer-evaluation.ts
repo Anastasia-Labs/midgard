@@ -1,4 +1,3 @@
-import { type MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
 
 import {
@@ -20,8 +19,8 @@ import { nativeInputOutRefs } from "./imported-tx.normalize-resolved-spend-input
 import {
   effectiveMints,
   redeemerIntentKey,
-} from "./script-materialization.collect-known-script-sources.js";
-import { RedeemerTags } from "./script-materialization.known-script-source.js";
+} from "./script-witnesses.collect-known-script-sources.js";
+import { RedeemerTags } from "./script-witnesses.known-script-source.js";
 
 /** Rounds of draft-and-evaluate before giving up on stable budgets. */
 const MAX_REDEEMER_EVALUATION_ROUNDS = 4;
@@ -94,7 +93,7 @@ const withRedeemerExUnits = (
 
 /**
  * Maps evaluated budgets back to the redeemer intents of `state`, using the
- * pointer order deriveScriptMaterialization assigns: spend by the draft's
+ * pointer order deriveScriptWitnesses assigns: spend by the draft's
  * sorted inputs, mint by effective policy id, observe and receive by sorted
  * script hash.
  */
@@ -196,7 +195,6 @@ export const evaluateMissingExUnits = async (
   completeDraft: (draft: BuilderState) => Promise<{
     readonly tx: MidgardNativeTxFull;
     readonly txHex: string;
-    readonly programMaterial: readonly MidgardCekProgramMaterialEntry[];
   }>,
 ): Promise<BuilderState> => {
   let declared: ExUnitsByIntent = new Map();
@@ -214,7 +212,7 @@ export const evaluateMissingExUnits = async (
     const evaluated = exUnitsByIntent(
       state,
       draft.tx,
-      await provider.evaluateTx(draft.txHex, draft.programMaterial),
+      await provider.evaluateTx(draft.txHex),
     );
     if (round > 0 && budgetsFitDeclared(declared, evaluated)) {
       return candidate;

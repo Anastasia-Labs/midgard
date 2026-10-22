@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
   deriveMidgardForcedTxProofSource,
+  type MidgardForcedTxFull,
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
@@ -18,7 +19,6 @@ import {
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
 } from "./commit-block-planner.select-commit-tx-candidates.js";
-import type { DaMaterialTransaction } from "./commit-da-material.program-sources.js";
 
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 const HASH32 = "ff".repeat(32);
@@ -31,7 +31,7 @@ export const daEntryTupleBytes = (key: Uint8Array, value: Uint8Array): bigint =>
   );
 
 /** Widest native header/count integers, fixed hash widths, every outer wrapper,
- * and one extra byte for each of the ten possibly nonempty entry lists. */
+ * and one extra byte for each of the nine possibly nonempty entry lists. */
 export const additiveDaFixedBytes = (): bigint => {
   const header = DA_PAYLOAD_UPPER_BOUND_HEADER;
   const payload: SDK.DaPayload = {
@@ -44,7 +44,6 @@ export const additiveDaFixedBytes = (): bigint => {
       transactions: [],
       transaction_preimages: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       deposits: [],
       transition_trace: [],
       event_to_step: [],
@@ -61,7 +60,7 @@ export const additiveDaFixedBytes = (): bigint => {
       },
     },
   };
-  return BigInt(SDK.daPayloadEncodedSize(payload) + 10);
+  return BigInt(SDK.daPayloadEncodedSize(payload) + 9);
 };
 
 export const additiveEventTraceBytes = (
@@ -113,13 +112,11 @@ export const additiveEventTraceBytes = (
  * DuplicateInput supplies all four; one additional byte covers a constructor
  * tag above the short-tag range. No hash/string/expected value is a payload. */
 export const forcedInclusionValueBytesUpperBound = (
-  transaction: DaMaterialTransaction,
+  transaction: MidgardForcedTxFull,
 ): Buffer => {
-  const source = deriveMidgardForcedTxProofSource(transaction.canonical);
+  const source = deriveMidgardForcedTxProofSource(transaction);
   const value: SDK.ForcedInclusionTxV1 = {
-    tx_id: computeMidgardNativeTxId(transaction.canonical.compact).toString(
-      "hex",
-    ),
+    tx_id: computeMidgardNativeTxId(transaction.compact).toString("hex"),
     submitted_source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),

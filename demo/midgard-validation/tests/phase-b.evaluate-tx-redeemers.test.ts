@@ -35,8 +35,6 @@ const evaluate = (
   Effect.runPromise(
     evaluateMidgardTxRedeemers({
       txCbor: tx.candidate.submission.txCbor,
-      programMaterialSidecarCbor:
-        tx.candidate.submission.programMaterialSidecarCbor!,
       readState: (outRefHexes) =>
         Effect.sync(() => {
           stateReads.push(outRefHexes);

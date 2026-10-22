@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import type { MidgardVersionedScript } from "@al-ft/midgard-core";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
@@ -12,6 +13,7 @@ import {
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
+import { decodeRecordResolverOf } from "./helpers/cek-decode-record-resolver.js";
 
 export const root = (byte: number): string =>
   Buffer.alloc(32, byte).toString("hex");
@@ -223,8 +225,10 @@ export const valueAndMintSemanticIndexByKind = {
   finalize: 10,
 } as const;
 
+/** `scripts` are the transaction's carried scripts, for CEK selections. */
 export const expectCekAndValueAndMintTotality = (
   trace: DeterministicValidationMachineTrace,
+  scripts: readonly MidgardVersionedScript[] = [],
 ) => {
   const cekWitnesses = trace.witnesses.filter(
     (witness) => witness.phase === "cek",
@@ -283,11 +287,13 @@ export const expectCekAndValueAndMintTotality = (
   // Every witness in the trace names a semantic resolver inside its index's
   // count (the totality property the verifier reads live).
   const counts = [2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11] as const;
-  for (const oneStep of trace.states
-    .slice(0, -1)
-    .map((_state, stateIndex) =>
-      buildValidationOneStepArgument({ trace, stateIndex }),
-    )) {
+  for (const oneStep of trace.states.slice(0, -1).map((_state, stateIndex) =>
+    buildValidationOneStepArgument({
+      trace,
+      stateIndex,
+      resolveCekDecodeRecord: decodeRecordResolverOf(scripts),
+    }),
+  )) {
     expect(oneStep.semanticResolverIndex).toBeGreaterThanOrEqual(0);
     expect(oneStep.semanticResolverIndex).toBeLessThan(
       counts[oneStep.resolverIndex]!,

@@ -8,6 +8,10 @@ import {
 
 import { watcherCanonicalJson } from "../storage/durable-store.js";
 import { HEX_32 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
+import {
+  createVerifiedRowMemo,
+  verifiedRowKey,
+} from "./sqlite-prover-funding-reservation-store.verified-row-memo.js";
 export type AbandonmentRow = Readonly<{
   reservation_id: unknown;
   transition_digest: unknown;
@@ -25,14 +29,23 @@ export const createProverFundingAbandonmentRecords = (
   const selectUnacknowledgedAbandonment = database.prepare(`
     SELECT * FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ? AND acknowledged_revision IS NULL
   `);
-  const selectAllAbandonments = database.prepare(
-    `SELECT * FROM watcher_prover_funding_abandonment_v1 ORDER BY reservation_id, transition_digest`,
+  const selectAbandonmentsOf = database.prepare(
+    `SELECT * FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ? ORDER BY transition_digest`,
+  );
+  const selectAllUnacknowledged = database.prepare(
+    `SELECT * FROM watcher_prover_funding_abandonment_v1 WHERE acknowledged_revision IS NULL ORDER BY reservation_id`,
+  );
+  const selectAbandonmentKeys = database.prepare(
+    `SELECT reservation_id, transition_digest, record_digest, acknowledged_revision FROM watcher_prover_funding_abandonment_v1 ORDER BY reservation_id, transition_digest`,
+  );
+  const selectAbandonment = database.prepare(
+    `SELECT * FROM watcher_prover_funding_abandonment_v1 WHERE reservation_id = ? AND transition_digest = ?`,
   );
   const acknowledgeAbandonment = database.prepare(`
     UPDATE watcher_prover_funding_abandonment_v1 SET acknowledged_revision = ?
     WHERE reservation_id = ? AND transition_digest = ? AND acknowledged_revision IS NULL
   `);
-  const readAbandonmentRow = (row: AbandonmentRow) => {
+  const parseAbandonmentRow = (row: AbandonmentRow) => {
     if (
       typeof row.reservation_id !== "string" ||
       !HEX_32.test(row.reservation_id) ||
@@ -72,9 +85,73 @@ export const createProverFundingAbandonmentRecords = (
     return {
       reservationId: row.reservation_id,
       transitionDigest: row.transition_digest,
-      acknowledgedRevision: row.acknowledged_revision,
       transition,
       handoff,
+    };
+  };
+  const memo = createVerifiedRowMemo(
+    (saved: ReturnType<typeof parseAbandonmentRow>) => ({
+      identity: saved.handoff.identity,
+      retired: saved.handoff.reconciliation.retirement !== undefined,
+    }),
+  );
+  const acknowledgedRevisionOf = (row: AbandonmentRow) => {
+    if (
+      row.acknowledged_revision !== null &&
+      (typeof row.acknowledged_revision !== "string" ||
+        !/^(?:0|[1-9][0-9]*)$/u.test(row.acknowledged_revision))
+    )
+      throw new Error("prover funding abandonment row is malformed");
+    return row.acknowledged_revision;
+  };
+  const abandonmentKey = (row: AbandonmentRow) =>
+    verifiedRowKey(
+      row.reservation_id,
+      row.transition_digest,
+      row.record_digest,
+    );
+  /** The acknowledgement column lies outside the row digest, so it is read
+   * from the row each time; the rest is verified once. */
+  const readAbandonmentRow = (row: AbandonmentRow) => ({
+    ...memo.read(abandonmentKey(row), () => parseAbandonmentRow(row)),
+    acknowledgedRevision: acknowledgedRevisionOf(row),
+  });
+  const abandonmentsOf = (reservationId: string) =>
+    (selectAbandonmentsOf.all(reservationId) as AbandonmentRow[]).map(
+      readAbandonmentRow,
+    );
+  /** What the audit checks of every retained abandonment, re-verifying only
+   * rows it has not seen. */
+  const auditedAbandonments = () => {
+    const seen = new Set<string>();
+    const rows = (
+      selectAbandonmentKeys.all() as Omit<AbandonmentRow, "canonical_json">[]
+    ).map((row) => {
+      const key = abandonmentKey({ ...row, canonical_json: null });
+      seen.add(key);
+      const summary = memo.summary(key, () => {
+        const full = selectAbandonment.get(
+          row.reservation_id as string,
+          row.transition_digest as string,
+        ) as AbandonmentRow | undefined;
+        if (full === undefined || full.record_digest !== row.record_digest)
+          throw new Error(
+            "prover funding abandonment row changed during audit",
+          );
+        return parseAbandonmentRow(full);
+      });
+      return {
+        reservationId: row.reservation_id as string,
+        acknowledgedRevision: acknowledgedRevisionOf({
+          ...row,
+          canonical_json: null,
+        }),
+        ...summary,
+      };
+    });
+    return {
+      rows,
+      retain: (released: ReadonlySet<string>) => memo.retain(seen, released),
     };
   };
   /** A superseded attempt's row awaits its journal acknowledgement before
@@ -113,7 +190,7 @@ export const createProverFundingAbandonmentRecords = (
     }>[],
     readRecord: (reservationId: string) => { readonly revision: string } | null,
   ) => {
-    for (const saved of (selectAllAbandonments.all() as AbandonmentRow[]).map(
+    for (const saved of (selectAllUnacknowledged.all() as AbandonmentRow[]).map(
       readAbandonmentRow,
     )) {
       if (
@@ -139,26 +216,19 @@ export const createProverFundingAbandonmentRecords = (
     }
   };
   const legacyAbandonedTransactions = (reservationId: string) =>
-    (selectAllAbandonments.all() as AbandonmentRow[])
-      .filter((row) => row.reservation_id === reservationId)
-      .map(readAbandonmentRow)
-      .map((saved) => ({
-        transition: saved.transition,
-        handoff: saved.handoff,
-      }));
+    abandonmentsOf(reservationId).map((saved) => ({
+      transition: saved.transition,
+      handoff: saved.handoff,
+    }));
   const retireLegacyAbandonment = (
     reservationId: string,
     transactionHash: string,
     retirement: import("@al-ft/midgard-fault-proofs").WorkflowFundingAbandonmentHandoff["reconciliation"]["retirement"],
     acknowledgedRevision: string,
   ) => {
-    const saved = (selectAllAbandonments.all() as AbandonmentRow[])
-      .map(readAbandonmentRow)
-      .find(
-        (row) =>
-          row.reservationId === reservationId &&
-          row.transition.transactionHash === transactionHash,
-      );
+    const saved = abandonmentsOf(reservationId).find(
+      (row) => row.transition.transactionHash === transactionHash,
+    );
     if (saved === undefined)
       throw new Error("Legacy retirement has no exact funding attempt");
     if (saved.handoff.reconciliation.retirement !== undefined) {
@@ -193,9 +263,9 @@ export const createProverFundingAbandonmentRecords = (
   return {
     retireLegacyAbandonment,
     insertAbandonment,
-    selectAllAbandonments,
+    abandonmentsOf,
+    auditedAbandonments,
     acknowledgeAbandonment,
-    readAbandonmentRow,
     unacknowledgedAbandonment,
     acknowledgeOutpacedAbandonments,
     legacyAbandonedTransactions,

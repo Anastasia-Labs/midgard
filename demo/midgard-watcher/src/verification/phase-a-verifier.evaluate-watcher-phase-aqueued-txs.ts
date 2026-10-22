@@ -11,18 +11,16 @@ import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import type { WatcherHeaderRootReconstructionResult } from "./header-root-reconstruction.js";
 import { WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION } from "./header-root-reconstruction.js";
 import {
-  decodeBlockProgramMaterial,
   digestResult,
   HEX_32,
   makeWatcherPhaseAConfig,
   orderReasonCodes,
-  projectProgramMaterialSidecar,
   selectRejection,
   WATCHER_PHASE_A_CREATED_AT,
   type WatcherPhaseABlockTransaction,
   watcherPhaseARejectionProjection,
   type WatcherPhaseAVerificationResult,
-} from "./phase-a-verifier.project-program-material-sidecar.js";
+} from "./phase-a-verifier.canonical-verdict.js";
 import {
   fail,
   REACHABLE_SET,
@@ -46,9 +44,7 @@ import {
  */
 export const watcherPhaseAQueuedTxs = (input: {
   readonly transactions: readonly WatcherPhaseABlockTransaction[];
-  readonly programMaterial: readonly (readonly [string, string])[];
 }): readonly QueuedTx[] => {
-  const blockMaterial = decodeBlockProgramMaterial(input.programMaterial);
   return Object.freeze(
     input.transactions.map((transaction, index) => {
       if (!HEX_32.test(transaction.txId)) {
@@ -61,11 +57,6 @@ export const watcherPhaseAQueuedTxs = (input: {
         txId: Buffer.from(transaction.txId, "hex"),
         txCbor: transaction.txCbor,
         sourceKind: transaction.sourceKind ?? "normal",
-        programMaterialSidecarCbor: projectProgramMaterialSidecar(
-          transaction.txCbor,
-          blockMaterial,
-          transaction.sourceKind ?? "normal",
-        ),
         arrivalSeq: BigInt(index),
         createdAt: WATCHER_PHASE_A_CREATED_AT,
       });
@@ -301,8 +292,6 @@ export const evaluateWatcherPhaseABlock = async (
           txCbor: entry.fullTransactionCbor,
         }),
       ),
-      programMaterial: evidence.reconstruction.payload.block_body
-        .cek_program_material as readonly (readonly [string, string])[],
     });
   } catch (error) {
     return errorResult(

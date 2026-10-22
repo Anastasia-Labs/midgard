@@ -7,28 +7,28 @@ export const validationTraceCekContextItemsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item entry",
       manifestPosition: 497,
-      publicationPosition: 530,
+      publicationPosition: 531,
       referenceRolePosition: 338,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_envelope.main.spend",
       familyPaths: [
-        ["steps", "149"],
         ["cekContextItemStages", "entry"],
+        ["steps", "149"],
       ],
     },
     validationTraceDisputeCekContextItemSettlement: {
       purpose: "spend",
       referenceRole: "V1 validation-trace CEK context item settlement",
       manifestPosition: 498,
-      publicationPosition: 531,
+      publicationPosition: 532,
       referenceRolePosition: 339,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_cek_settlement.main.spend",
       familyPaths: [
-        ["steps", "150"],
         ["cekContextItemStages", "settlement"],
+        ["steps", "150"],
       ],
     },
   },

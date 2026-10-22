@@ -3,12 +3,10 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry/helpers.{nibble}
 use env
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/receive as direct
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 
 const a = #"22222222222222222222222222222222222222222222222222222222"

@@ -1,7 +1,4 @@
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardProofSubmission,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -30,9 +27,6 @@ const SLOT_CONFIG = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
 const envelope = (draft: ReturnType<typeof makeEvaluateDraft>) =>
   encodeMidgardProofSubmission({
     transactionCbor: draft.candidate.submission.txCbor,
-    programMaterial: decodeMidgardCekProgramMaterialSidecar(
-      draft.candidate.submission.programMaterialSidecarCbor!,
-    ),
   });
 
 const post = (
@@ -117,8 +111,6 @@ describe("POST /tx/evaluate", () => {
     const expected = await Effect.runPromise(
       evaluateMidgardTxRedeemers({
         txCbor: draft.candidate.submission.txCbor,
-        programMaterialSidecarCbor:
-          draft.candidate.submission.programMaterialSidecarCbor!,
         readState: () => Effect.succeed(draft.state),
         expectedNetworkId: 0n,
         limits: MIDGARD_CONSENSUS_LIMITS,

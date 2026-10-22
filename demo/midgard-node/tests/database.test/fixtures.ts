@@ -17,7 +17,7 @@ import "../../src/database/migrations/runner.js";
 import ".././helpers/cardano-native-fixtures.js";
 import ".././midgard-output-helpers.js";
 import ".././utils.js";
-import "./fixtures.make-material-proof-submit-tx.js";
+import "./fixtures.submit-tx.js";
 import "./fixtures.make-history-withdrawal-entry.js";
 import "./fixtures.make-deposit-submission-attempt.js";
 export {
@@ -52,17 +52,14 @@ export {
 export {
   databaseFixtureBytes,
   databaseTxHash,
-  emptyProgramMaterialSidecar,
-  emptyProgramMaterialSidecarSha256,
   expectSubmitBody,
   isolatedDb,
-  makeMaterialProofSubmitTx,
   makeNativeSubmitTx,
   makeProofSubmitTx,
-  makeReferenceMaterialProofSubmitTx,
-  readCekProgramMaterialStoreStats,
+  makeReferenceScriptProofSubmitTx,
+  makeScriptProofSubmitTx,
   retrieveAllMempool,
   submitThroughRouter,
   type TxQueueWakeRequirements,
   wrapNativeSubmitTx,
-} from "./fixtures.make-material-proof-submit-tx.js";
+} from "./fixtures.submit-tx.js";

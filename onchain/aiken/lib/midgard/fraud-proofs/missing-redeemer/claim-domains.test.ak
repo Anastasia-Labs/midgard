@@ -3,9 +3,6 @@ use aiken/cbor
 use aiken/collection/list
 use env
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/mint_purpose
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers as workers
 use midgard/fraud_proofs/direct_script_derivation/receive
@@ -13,6 +10,9 @@ use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_mint as mint
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{

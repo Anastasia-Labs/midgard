@@ -32,6 +32,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
@@ -78,6 +82,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -95,6 +100,8 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 2;
   const label = linearFaultStepLabel(FAMILY, stepIndex);
@@ -150,6 +157,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -162,16 +170,6 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${label} staged field 7`,
   });
   const nextDatum = Data.to(
     {
@@ -198,6 +196,12 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} staged field 7`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, label);
     const inputIndex = requireInputIndex(ctx, threadUtxo, label);
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);

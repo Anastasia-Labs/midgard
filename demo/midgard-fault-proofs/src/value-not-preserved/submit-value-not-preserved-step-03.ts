@@ -55,6 +55,10 @@ import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -158,6 +162,7 @@ export const submitValueNotPreservedStep03 = async ({
   unsafeSpendFieldRawUtxoForTest,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ValueNotPreservedContracts;
@@ -187,6 +192,8 @@ export const submitValueNotPreservedStep03 = async ({
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitValueNotPreservedStep03Result> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
@@ -262,6 +269,7 @@ export const submitValueNotPreservedStep03 = async ({
   const outputsCarriageUtxos =
     unsafeSpendFieldRawUtxoForTest === undefined
       ? await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned: outputsPlan,
@@ -273,6 +281,7 @@ export const submitValueNotPreservedStep03 = async ({
     mintPlan === null
       ? []
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned: mintPlan,
@@ -300,28 +309,6 @@ export const submitValueNotPreservedStep03 = async ({
       : [unsafeSpendFieldRawUtxoForTest]),
     ...stepCarriage.referenceInputs,
   ]);
-  // §8.7 indices are into the complete reference-input set, including the
-  // step's own reference script; resolving against carriage alone is only
-  // accidentally correct for some out-ref orderings.
-  const outputsCarriage =
-    unsafeSpendFieldRawUtxoForTest === undefined
-      ? faultProofFieldCarriage({
-          planned: outputsPlan,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} outputs`,
-        })
-      : null;
-  const mintCarriage =
-    mintPlan === null
-      ? null
-      : faultProofFieldCarriage({
-          planned: mintPlan,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} mint`,
-        });
-
   const completedState: ValueNotPreservedStep04State = {
     bad_tx_id: state.bad_tx_id,
     claimed_asset: state.claimed_asset,
@@ -366,6 +353,26 @@ export const submitValueNotPreservedStep03 = async ({
       ),
     };
     resolvedLayout = layout;
+    // §8.7 indices count into the built reference-input set, which includes
+    // the step's own reference script.
+    const outputsCarriage =
+      unsafeSpendFieldRawUtxoForTest === undefined
+        ? faultProofFieldCarriage({
+            planned: outputsPlan,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: `${STEP_LABEL} outputs`,
+          })
+        : null;
+    const mintCarriage =
+      mintPlan === null
+        ? null
+        : faultProofFieldCarriage({
+            planned: mintPlan,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            label: `${STEP_LABEL} mint`,
+          });
     if (outputsCarriage === null && injectedRawUtxo === undefined) {
       throw valueNotPreservedSubmitError(
         "step-03 resolved neither an honest outputs carriage nor an injected one.",

@@ -4,12 +4,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/receive
 use midgard/fraud_proofs/direct_script_derivation/receive_declaration as door
 use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 
 validator main(
   next_step_script_hash: ScriptHash,

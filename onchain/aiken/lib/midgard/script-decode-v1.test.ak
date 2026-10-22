@@ -1056,6 +1056,7 @@ test script_decode_value_refusals() {
     refused([(#"01", [(#"bb", 1), (#"aa", 1)])]),
     refused([(#"01", [(#"aa", 1), (#"aa", 2)])]),
     refused([(#"01", [(#"aa", 1), (#"cc", 1), (#"bb", 1)])]),
+    refused([(#"01", [(#"", 1)]), (#"03", [(#"", 1)]), (#"02", [(#"", 1)])]),
     refused([(#"01", [])]),
     refused([(builtin.replicate_byte(33, 0), [(#"", 1)])]),
     refused([(#"", [(builtin.replicate_byte(33, 0), 1)])]),

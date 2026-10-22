@@ -359,7 +359,6 @@ const captureAndRestart = async (name: string): Promise<void> => {
         action.input.stage,
       );
     },
-    transactionConfirmed: async () => false,
   });
   const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: "mintAuthorization",
@@ -383,7 +382,6 @@ const captureAndRestart = async (name: string): Promise<void> => {
         },
       );
     },
-    transactionConfirmed: async () => false,
   });
   const port = createMintAuthorizationTransactionPort(
     {
@@ -655,6 +653,9 @@ const captureAndRestart = async (name: string): Promise<void> => {
       kind: "submission_intent",
       actionId: action.actionId,
       actionInput: action.input,
+      ...(preflight.durableRecovery === undefined
+        ? {}
+        : { durableRecovery: preflight.durableRecovery }),
       attempt: 1,
       txHash: preflight.txHash,
     });

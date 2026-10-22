@@ -28,13 +28,14 @@ import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
 } from "../src/cek-constant.js";
+import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
 import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // The identity script returns its context, a non-Unit value.
 const compileIdentity = (): Buffer =>
@@ -55,9 +56,9 @@ const compile = (term: UPLCTerm): Buffer =>
 
 describe("V1 CEK trace generator", () => {
   it("derives the script-context application and proves every structural step", () => {
-    const program = buildMidgardCanonicalCekProgram(compileIdentity());
+    const program = buildCekProgramFromRawFlat(compileIdentity());
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -92,9 +93,9 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("fails closed at the declared trace-step bound", () => {
-    const program = buildMidgardCanonicalCekProgram(compileIdentity());
+    const program = buildCekProgramFromRawFlat(compileIdentity());
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -112,11 +113,11 @@ describe("V1 CEK trace generator", () => {
     const selfApplication = new Lambda(
       new Application(new UPLCVar(0), new UPLCVar(0)),
     );
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(new Application(selfApplication, selfApplication)),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -150,14 +151,14 @@ describe("V1 CEK trace generator", () => {
   it("rejects source constants above the independently revealed L1 preimage bound", () => {
     const payload = Buffer.alloc(9_216, 0x5a);
     expect(() =>
-      buildMidgardCanonicalCekProgram(
+      buildCekProgramFromRawFlat(
         compile(UPLCConst.byteString(new DataB(payload).bytes)),
       ),
     ).toThrow(/9,215-byte L1 proof envelope/u);
   });
 
   it("streams constructor fields through case selection and application", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(
           new Case(new Constr(0n, [UPLCConst.int(42)]), [
@@ -167,7 +168,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -187,11 +188,11 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("executes delayed terms and authenticates explicit errors", () => {
-    const delayed = buildMidgardCanonicalCekProgram(
+    const delayed = buildCekProgramFromRawFlat(
       compile(new Force(new Delay(UPLCConst.unit))),
     );
     const execution = executeMidgardCekStructuralProgram({
-      root: delayed.envelope.termRoot,
+      root: delayed.termRoot,
       material: delayed.material.values(),
       constantWitnesses: delayed.constantWitnesses,
       maxSteps: 16,
@@ -201,9 +202,9 @@ describe("V1 CEK trace generator", () => {
       "returnForceDelay",
     );
 
-    const unbound = buildMidgardCanonicalCekProgram(compile(new UPLCVar(0)));
+    const unbound = buildCekProgramFromRawFlat(compile(new UPLCVar(0)));
     const rejected = executeMidgardCekStructuralProgram({
-      root: unbound.envelope.termRoot,
+      root: unbound.termRoot,
       material: unbound.material.values(),
       constantWitnesses: unbound.constantWitnesses,
       maxSteps: 8,
@@ -213,7 +214,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("authenticates builtin runtime-type failures without charging a builtin", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(
           new Application(
@@ -224,7 +225,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -248,7 +249,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("generates direct builtin success and semantic-failure steps", () => {
-    const successfulProgram = buildMidgardCanonicalCekProgram(
+    const successfulProgram = buildCekProgramFromRawFlat(
       compile(
         new Lambda(
           new Application(
@@ -259,7 +260,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const successfulGraph = buildMidgardCekExecutionGraph(
-      successfulProgram.envelope,
+      successfulProgram.termRoot,
       successfulProgram.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -284,7 +285,7 @@ describe("V1 CEK trace generator", () => {
       }
     }
 
-    const failingProgram = buildMidgardCanonicalCekProgram(
+    const failingProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(
           new Application(Builtin.quotientInteger, UPLCConst.int(1)),
@@ -293,7 +294,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const verified = verifyMidgardCekProgramMaterial(
-      failingProgram.envelope,
+      failingProgram.termRoot,
       failingProgram.material.values(),
     );
     const constants = new Map(
@@ -309,7 +310,7 @@ describe("V1 CEK trace generator", () => {
       ]),
     );
     const failed = executeMidgardCekStructuralProgram({
-      root: failingProgram.envelope.termRoot,
+      root: failingProgram.termRoot,
       material: failingProgram.material.values(),
       constantWitnesses: constants,
       maxSteps: 32,
@@ -319,7 +320,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("routes tag-51 direct results to semantic witnesses only past the boundary", () => {
-    const emptyDirectProgram = buildMidgardCanonicalCekProgram(
+    const emptyDirectProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(
           Builtin.serialiseData,
@@ -328,7 +329,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const emptyDirect = executeMidgardCekStructuralProgram({
-      root: emptyDirectProgram.envelope.termRoot,
+      root: emptyDirectProgram.termRoot,
       material: emptyDirectProgram.material.values(),
       constantWitnesses: emptyDirectProgram.constantWitnesses,
       maxSteps: 32,
@@ -355,13 +356,13 @@ describe("V1 CEK trace generator", () => {
     const largeData = new DataList(
       Array.from({ length: 9_000 }, () => new DataI(0n)),
     );
-    const largeProgram = buildMidgardCanonicalCekProgram(
+    const largeProgram = buildCekProgramFromRawFlat(
       compile(
         new Application(Builtin.serialiseData, UPLCConst.data(largeData)),
       ),
     );
     const large = executeMidgardCekStructuralProgram({
-      root: largeProgram.envelope.termRoot,
+      root: largeProgram.termRoot,
       material: largeProgram.material.values(),
       constantWitnesses: largeProgram.constantWitnesses,
       maxSteps: 32,
@@ -400,13 +401,13 @@ describe("V1 CEK trace generator", () => {
   }, 15_000);
 
   it("proves semantic tag-51 zero-count control with its exact result and budget", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(new Application(Builtin.serialiseData, new UPLCVar(0))),
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       encodeMidgardCekPlutusData(new DataList([])),
     );
@@ -454,11 +455,11 @@ describe("V1 CEK trace generator", () => {
       [1n, 2n],
       [3n],
     ]);
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(new Application(new Force(Builtin.headList), nested)),
     );
     const execution = executeMidgardCekStructuralProgram({
-      root: program.envelope.termRoot,
+      root: program.termRoot,
       material: program.material.values(),
       constantWitnesses: program.constantWitnesses,
       maxSteps: 32,
@@ -474,17 +475,20 @@ describe("V1 CEK trace generator", () => {
     );
     expect(step?.witness.kind).toBe("executeBuiltinSemantic");
     if (step?.witness.kind === "executeBuiltinSemantic") {
-      expect(step.witness.result.kind).toBe("constant");
-      if (step.witness.result.kind === "constant") {
-        expect(
-          decodeMidgardCekConstantWitness(step.witness.result.witness).payload,
-        ).toMatchObject({ list: [{ int: 1n }, { int: 2n }] });
+      expect(step.witness.arguments[0]?.kind).toBe("constant");
+      expect(step.witness.result.kind).toBe("semanticConstant");
+      if (step.witness.result.kind === "semanticConstant") {
+        expect(step.witness.result.witness.payload.root).toEqual(
+          commitMidgardCekDataTree(new DataList([new DataI(1n), new DataI(2n)]))
+            .root,
+        );
+        expect(step.witness.result.witness.memory).toBe(2n);
       }
     }
   });
 
   it("proves unMapData one map pair per semantic CEK step", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
     );
     const context = new DataMap<Data, Data>([
@@ -492,7 +496,7 @@ describe("V1 CEK trace generator", () => {
       { fst: new DataI(2n), snd: new DataI(3n) },
     ]);
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       encodeMidgardCekPlutusData(context),
     );
@@ -583,9 +587,9 @@ describe("V1 CEK trace generator", () => {
       },
     ];
     for (const candidate of cases) {
-      const program = buildMidgardCanonicalCekProgram(compile(candidate.term));
+      const program = buildCekProgramFromRawFlat(compile(candidate.term));
       const graph = buildMidgardCekExecutionGraph(
-        program.envelope,
+        program.termRoot,
         program.material.values(),
         encodeMidgardCekPlutusData(candidate.context),
       );
@@ -625,12 +629,12 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("rejects a map-conversion start whose inline result is swapped", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
     );
     const startOf = (context: Data) => {
       const graph = buildMidgardCekExecutionGraph(
-        program.envelope,
+        program.termRoot,
         program.material.values(),
         encodeMidgardCekPlutusData(context),
       );
@@ -672,7 +676,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("fails unMapData on a non-map inline constant at the semantic failure arm", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(
           new Application(
@@ -683,7 +687,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );
@@ -707,7 +711,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("proves large structured Data traversal without revealing the whole constant", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
       ),
@@ -718,7 +722,7 @@ describe("V1 CEK trace generator", () => {
     const contextCbor = encodeMidgardCekPlutusData(context);
     expect(contextCbor.length).toBeGreaterThan(9_000);
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       contextCbor,
     );
@@ -749,7 +753,7 @@ describe("V1 CEK trace generator", () => {
   });
 
   it("proves a wrong semantic Data variant as a zero-budget CEK failure", () => {
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
       ),
@@ -758,7 +762,7 @@ describe("V1 CEK trace generator", () => {
       { fst: new DataI(1n), snd: new DataB(Buffer.alloc(9_000, 0x71)) },
     ]);
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       encodeMidgardCekPlutusData(context),
     );
@@ -811,7 +815,7 @@ describe("V1 CEK trace generator", () => {
           g2Bytes,
         ),
       );
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       compile(
         new Lambda(
           new Application(
@@ -822,7 +826,7 @@ describe("V1 CEK trace generator", () => {
       ),
     );
     const graph = buildMidgardCekExecutionGraph(
-      program.envelope,
+      program.termRoot,
       program.material.values(),
       Buffer.from("d87980", "hex"),
     );

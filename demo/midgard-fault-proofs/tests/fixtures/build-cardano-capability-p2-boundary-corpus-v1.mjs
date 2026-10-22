@@ -25,7 +25,7 @@ const expectedLabels = [
   "maximum-spend-inputs",
   "mixed-size-balanced",
 ];
-const materialLabels = new Set([
+const plutusScriptLabels = new Set([
   "balanced-nested-redeemer",
   "maximum-constructor-redeemer-breadth",
   "maximum-list-redeemer-breadth",
@@ -73,9 +73,7 @@ if (JSON.stringify(labels) !== JSON.stringify(expectedLabels)) {
 for (const entry of entries) {
   const expectedKeys = [
     ...baseKeys,
-    ...(materialLabels.has(entry.label)
-      ? ["canonicalMaterialSidecarCborHex", "sourceRawScriptAuditHash"]
-      : []),
+    ...(plutusScriptLabels.has(entry.label) ? ["sourceScriptHash"] : []),
     ...(resolvedReferenceUtxoLabels.has(entry.label)
       ? ["resolvedReferenceUtxos"]
       : []),
@@ -91,9 +89,8 @@ for (const entry of entries) {
     !canonicalHex(entry.canonicalCborHex) ||
     !/^[0-9a-f]{64}$/.test(entry.transactionIdHex) ||
     !/^[0-9a-f]{64}$/.test(entry.transactionCommitmentHex) ||
-    (materialLabels.has(entry.label) &&
-      (!canonicalHex(entry.canonicalMaterialSidecarCborHex) ||
-        !/^[0-9a-f]{56}$/.test(entry.sourceRawScriptAuditHash))) ||
+    (plutusScriptLabels.has(entry.label) &&
+      !/^[0-9a-f]{56}$/.test(entry.sourceScriptHash)) ||
     (resolvedReferenceUtxoLabels.has(entry.label) &&
       !validResolvedReferenceUtxos(entry.resolvedReferenceUtxos))
   ) {

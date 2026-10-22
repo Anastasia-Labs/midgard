@@ -12,6 +12,7 @@ import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.js";
+import { isWatcherFaultProofContinuationStall } from "./fault-proof-continuation-stall.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";
 import {
@@ -185,6 +186,9 @@ export const createSupervisor = (input: {
   >();
   const selectedExecutions = new Map<string, string>();
   const processedContexts = new Map<string, string>();
+  // Objectives whose session stalled: each yields its place to other queued
+  // objectives for the next pick, then competes by deadline again.
+  const yielded = new Set<string>();
   const completedValidations = new Map<
     string,
     Readonly<{ validation: string; confirmationDepth: number }>
@@ -363,6 +367,8 @@ export const createSupervisor = (input: {
   };
 
   const comparePending = (left: PendingJob, right: PendingJob): number =>
+    Number(yielded.has(objectiveKey(left.job))) -
+      Number(yielded.has(objectiveKey(right.job))) ||
     compareJobs(left.job, right.job);
 
   const runPending = async (entry: PendingJob): Promise<void> => {
@@ -629,6 +635,7 @@ export const createSupervisor = (input: {
         return;
       }
       processedContexts.set(key, contextKey(job));
+      if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
       if (
         typeof outcome === "object" &&
@@ -679,6 +686,7 @@ export const createSupervisor = (input: {
         while (queue.length > 0 && busy.reason() === null) {
           queue.sort(comparePending);
           const entry = queue.shift()!;
+          yielded.clear();
           await runPending(entry);
         }
       } catch (error) {

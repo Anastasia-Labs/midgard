@@ -1,7 +1,7 @@
 /** Forced evidence uses the same source/event/ledger route as the manifest workflow. */
 import {
-  inputExistenceStates,
   type InputExistenceContracts,
+  inputExistenceStates,
 } from "../input-existence/prepare-step-carriage.js";
 import {
   forcedInputExistenceMaterial,

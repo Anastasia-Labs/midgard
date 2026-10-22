@@ -176,7 +176,6 @@ export const payloadOf = async (produced: Produced, baseRoot: string) => {
       withdrawals,
       transactions: [],
       transaction_preimages: [],
-      cek_program_material: [],
       forced_transactions: [],
       forced_transaction_preimages: [],
       transition_trace: produced.transitionTraceMembers.map(entry),

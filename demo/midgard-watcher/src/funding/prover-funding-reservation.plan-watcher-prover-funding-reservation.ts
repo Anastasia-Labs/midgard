@@ -1,4 +1,5 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -134,6 +135,7 @@ export const planWatcherProverFundingReservation = (input: {
     selection.economicsPolicyDigest !== input.calculation.economicsPolicyDigest
   )
     throw new Error("prover funding selection changed reservation authority");
+  const avoided = new Set(input.avoidCollateralOutRefs ?? []);
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
@@ -143,6 +145,9 @@ export const planWatcherProverFundingReservation = (input: {
       throw new Error("prover wallet returned a duplicate output reference");
     }
     seen.add(candidate.outRef);
+    // Only plain-ADA coins fund: a coin holding a token is never spent, save
+    // a superseded attempt's input, which its replacement must spend.
+    if (!isPlainFundingOutput(utxo) && !avoided.has(candidate.outRef)) continue;
     candidates.push(candidate);
   }
   const maximumCollateralInputs = Number(selection.maximumCollateralInputs);
@@ -160,7 +165,6 @@ export const planWatcherProverFundingReservation = (input: {
     const required = BigInt(value);
     return required > maximum ? required : maximum;
   }, 0n);
-  const avoided = new Set(input.avoidCollateralOutRefs ?? []);
   const collateralFrom = (pool: readonly Candidate[]) =>
     selectCollateral({
       candidates: pool,
@@ -227,6 +231,24 @@ export const planWatcherProverFundingReservation = (input: {
     reservationId: computeDeploymentManifestJsonDigest(identity),
   });
   admittedPlans.add(plan);
+  return plan;
+};
+
+/**
+ * Plans an objective's first reservation. A validation dispute's holds its
+ * deployment-bound VerifySource custody, the bond and the case floor, and
+ * the reserve for a move our wallet pays; later reservations spend from it
+ * and never re-require the bond.
+ */
+export const planFirstWatcherProverFundingReservation = (
+  input: Parameters<typeof planWatcherProverFundingReservation>[0],
+): WatcherProverFundingReservationPlan => {
+  const plan = planWatcherProverFundingReservation(input);
+  const required = input.calculation.validationDisputeCustodyLovelace;
+  if (required !== undefined && BigInt(plan.fundingLovelace) < BigInt(required))
+    throw new WatcherProverFundingUnavailableError(
+      `prover wallet cannot reserve the validation dispute bond, case floor and wallet-move reserve: required=${required} available=${plan.fundingLovelace}`,
+    );
   return plan;
 };
 

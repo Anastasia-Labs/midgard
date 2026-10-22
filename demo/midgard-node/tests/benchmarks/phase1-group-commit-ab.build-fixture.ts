@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -103,7 +102,6 @@ export const requestForLane = (
       return {
         txId,
         txCanonicalCbor: deterministicBytes(`${label}:canonical`, 96),
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
         submitSource: "native",
       };
     }

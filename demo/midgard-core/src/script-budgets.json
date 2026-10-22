@@ -221,26 +221,23 @@
     "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim": {
       "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim",
       "ceiling": {
-        "mem": 1530648,
-        "cpu": 773639458
-      },
-      "raisedBecause": "The native-script decoding step-02 now opens its subject through the shared proof-thread substrate, which authenticates the forced leaf under the header's counted root and binds the event key; the earlier step carried those checks in another form."
+        "mem": 1512127,
+        "cpu": 766447574
+      }
     },
     "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance": {
       "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance",
       "ceiling": {
         "mem": 3068771,
-        "cpu": 1456911093
-      },
-      "raisedBecause": "The native-script decoding step-02 now opens its subject through the shared proof-thread substrate, which authenticates the forced leaf under the header's counted root and binds the event key; the earlier step carried those checks in another form."
+        "cpu": 1417729590
+      }
     },
     "fraud_proofs/native_script_decoding/step_02/decoding_step_02_copies_a_malformed_accusation_verbatim": {
       "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_copies_a_malformed_accusation_verbatim",
       "ceiling": {
-        "mem": 3078023,
-        "cpu": 1466799263
-      },
-      "raisedBecause": "The native-script decoding step-02 now opens its subject through the shared proof-thread substrate, which authenticates the forced leaf under the header's counted root and binds the event key; the earlier step carried those checks in another form."
+        "mem": 3076696,
+        "cpu": 1426999854
+      }
     },
     "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_commits_the_authenticated_outpoint": {
       "test": "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_commits_the_authenticated_outpoint",
@@ -483,19 +480,19 @@
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_one_spend_input",
       "minusControl": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "ceiling": {
-        "mem": 736312,
-        "cpu": 267610492
+        "mem": 676812,
+        "cpu": 242158360
       },
-      "raisedBecause": "The no-input selection step now opens its subject through the shared proof-thread substrate and authenticates the event-to-step counted membership of the selected event, as the event-relative input-existence route requires; the fixture control does not carry that work."
+      "raisedBecause": "The shared subject substrate's event-relative binding: the event door 93,627 mem / 48,205,617 cpu, the claimed-input reason and coordinate binding 10,194 / 4,092,881, the InputNotFound allowance 2,404 / 1,619,411, and the carried state shape 34,314 / 22,970,718, after the redundant work in each was removed."
     },
     "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum - q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum",
       "minusControl": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "ceiling": {
-        "mem": 563520,
-        "cpu": 253079261
+        "mem": 504020,
+        "cpu": 227627128
       },
-      "raisedBecause": "The no-input selection step now opens its subject through the shared proof-thread substrate and authenticates the event-to-step counted membership of the selected event, as the event-relative input-existence route requires; the fixture control does not carry that work."
+      "raisedBecause": "The shared subject substrate's event-relative binding: the event door 93,627 mem / 48,205,617 cpu, the claimed-input reason and coordinate binding 10,194 / 4,092,881, the InputNotFound allowance 2,404 / 1,619,411, and the carried state shape 34,314 / 22,970,718, after the redundant work in each was removed."
     },
     "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input - q1x_f6_double_spend_step_04_control_at_one_spend_input": {
       "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input",

@@ -76,6 +76,10 @@ export const buildDeploymentManifest = (
     ...(context.existingManifest?.steps ?? {}),
     ...(context.steps ?? {}),
   };
+  const l1Origin =
+    context.existingManifest === undefined
+      ? context.l1Origin
+      : context.existingManifest.l1Origin;
   const manifest = withManifestId({
     schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -112,6 +116,7 @@ export const buildDeploymentManifest = (
     economics: context.economics,
     availabilityChallenge: context.availabilityChallenge,
     l1SlotConfig: context.l1SlotConfig,
+    ...(l1Origin === undefined ? {} : { l1Origin }),
   });
   return parseDeploymentManifestValue(manifest);
 };

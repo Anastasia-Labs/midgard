@@ -7,7 +7,9 @@
  * off-chain twin `screenMidgardForcedTxAdmission` names, so no order for them
  * can exist on chain. `MINT_ADMITTED_UNDECODABLE` are their admitted neighbours:
  * each is a §5.1 envelope the mint admits whose items do not decode, and the
- * reason is the rejection classification commits for it.
+ * reason is the rejection classification commits for it: the machine's first
+ * fault. Each spends an input absent from the empty pre-state, which the
+ * machine resolves before it reads the outputs.
  */
 import {
   encodeCbor,
@@ -149,7 +151,7 @@ export const MINT_ADMITTED_UNDECODABLE: readonly (readonly [
 ])[] = [
   [
     "an output with a non-canonical inline datum",
-    { OutputNonCanonical: { output_index: 0n } },
+    { InputNotFound: { source_kind: 0n, input_index: 0n } },
     () =>
       withOutputs([
         Buffer.concat([
@@ -163,7 +165,7 @@ export const MINT_ADMITTED_UNDECODABLE: readonly (readonly [
   ],
   [
     "an output whose address does not decode",
-    { OutputNonCanonical: { output_index: 0n } },
+    { InputNotFound: { source_kind: 0n, input_index: 0n } },
     () =>
       withOutputs([
         Buffer.concat([

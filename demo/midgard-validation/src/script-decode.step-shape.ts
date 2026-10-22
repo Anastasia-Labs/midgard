@@ -54,7 +54,7 @@ export type Shape =
 
 export type Kind =
   | {
-      readonly k: "integer" | "bytes" | "string" | "data" | "value" | "stop";
+      readonly k: "integer" | "bytes" | "string" | "value" | "stop";
     }
   | { readonly k: "list"; readonly element: Shape; readonly array: boolean }
   /** `stops` when a component never decodes here. */
@@ -253,7 +253,6 @@ export const shapeOf = (ty: ConstantType): Shape => {
     case "pair":
       return pairShape(shapeOf(ty.first), shapeOf(ty.second));
     case "data":
-      return gen({ k: "data" });
     case "g1":
     case "g2":
     case "ml":

@@ -9,6 +9,7 @@ import {
   refresh,
   stateForJournal,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
 import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
 import {
   admittedPermits,
@@ -134,10 +135,20 @@ export const beginWorkflowFundingReservationAction = async ({
   // whatever lands first wins. Nothing waits for retirement past k. Each set
   // spans the attempt's lineage, so the input most sets share is drawn first:
   // a common ancestor's input excludes its descendants too.
+  // An action whose attempts all spend one protocol input is the exception
+  // (a validation-trace thread move): none is forced on it.
   const required: string[] = [];
-  let open = (
-    (await state.port.readSupersededAttemptFundingOutRefs?.()) ?? []
-  ).filter((attempt) => attempt.some((outRef) => funding.includes(outRef)));
+  let open =
+    workflowFundingExclusiveProtocolInput({
+      category: state.category,
+      actionInput: action.input,
+    }) !== null
+      ? []
+      : (
+          (await state.port.readSupersededAttemptFundingOutRefs?.()) ?? []
+        ).filter((attempt) =>
+          attempt.some((outRef) => funding.includes(outRef)),
+        );
   while (open.length !== 0) {
     const count = (outRef: string) =>
       open.filter((attempt) => attempt.includes(outRef)).length;

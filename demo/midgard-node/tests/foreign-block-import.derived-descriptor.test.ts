@@ -276,67 +276,6 @@ describe("foreign import of derived validation descriptors", () => {
   });
 });
 
-/** Entries in key order, as the committee requires of a payload's sections. */
-const byKey = (entries: readonly SDK.DaPayloadEntry[]) => {
-  const sorted = [...entries].sort(([a], [b]) => (a < b ? -1 : 1));
-  expect(sorted.length).toBeGreaterThan(1);
-  return sorted;
-};
-
-describe("foreign import of uncommitted CEK program material", () => {
-  it("imports a block carrying material no event reaches", async () => {
-    const f = await normalFixture();
-    const plutus = await normalFixture(false, "plutus");
-    const payload = await rebind({
-      ...f.payload,
-      block_body: {
-        ...f.payload.block_body,
-        cek_program_material: byKey(
-          plutus.payload.block_body.cek_program_material,
-        ),
-      },
-    });
-    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
-    const result = await f.imported(payload);
-    importedRoot(result);
-  });
-  it("imports a block carrying a material entry that does not decode", async () => {
-    const f = await normalFixture();
-    const payload = await rebind({
-      ...f.payload,
-      block_body: {
-        ...f.payload.block_body,
-        cek_program_material: [["ab".repeat(32), "00"]],
-      },
-    });
-    const result = await f.imported(payload);
-    importedRoot(result);
-  });
-  it("waits when a material entry an event needs does not decode", async () => {
-    const f = await normalFixture(false, "plutus");
-    const body = f.payload.block_body;
-    const payload = await rebind({
-      ...f.payload,
-      block_body: {
-        ...body,
-        cek_program_material: byKey(
-          body.cek_program_material.map(
-            ([key], index) =>
-              [
-                key,
-                index === 0 ? "00" : body.cek_program_material[index]![1],
-              ] as SDK.DaPayloadEntry,
-          ),
-        ),
-      },
-    });
-    const result = await f.imported(payload);
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({ reason: "missing" });
-  });
-});
-
 // The funded ledger the native normal fixture spends from.
 const parentEntries = () => {
   const signer = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x17));
@@ -377,7 +316,6 @@ const emptyChild = (parent: SDK.DaPayload) => {
       transaction_preimages: [],
       forced_transactions: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       transition_trace: [],
       event_to_step: [],
       validation_traces: [],

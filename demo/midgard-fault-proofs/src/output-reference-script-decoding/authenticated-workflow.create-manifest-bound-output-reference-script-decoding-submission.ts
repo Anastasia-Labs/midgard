@@ -6,6 +6,11 @@ import {
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
@@ -17,6 +22,7 @@ import {
   outputReferenceScriptDecodingStructuralTarget,
 } from "./authenticated-workflow.create-output-reference-script-decoding-raw-l1-stage-resolver.js";
 import { createOutputReferenceScriptDecodingCentralJournalAdapter } from "./central-journal.js";
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 import { submitOutputReferenceScriptDecodingCancel } from "./submit-cancel.js";
 import { submitOutputReferenceScriptDecodingStep01Accepted } from "./submit-step-01-accepted.js";
@@ -38,6 +44,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundOutputReferenceScriptDecodingConfig;
   readonly observe: (
@@ -49,6 +56,8 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     typeof createOutputReferenceScriptDecodingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -198,6 +207,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitOutputReferenceScriptDecodingStep02({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -277,7 +287,14 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     }
     if (action === "submitReferenceBind") {
       const auxiliaryHashes: string[] = [];
+      const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
+        lucid: config.lucid,
+        deployment: config.scriptDecode,
+        item: Buffer.from(evidence.referenceScriptItemHex, "hex"),
+        label: OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL,
+      });
       const result = await submitOutputReferenceScriptDecodingStep04({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -287,6 +304,9 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
           "reconstruction thread out-ref",
         ),
         evidence,
+        ...(scriptDecodeRecordUtxo === undefined
+          ? {}
+          : { scriptDecodeRecordUtxo }),
         nativeTxCompactCbor: required(
           stage.nativeTxCompactCbor,
           "native transaction compact CBOR",

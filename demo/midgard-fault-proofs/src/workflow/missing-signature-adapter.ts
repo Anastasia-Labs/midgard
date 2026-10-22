@@ -9,6 +9,7 @@ import {
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
 import {
+  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
@@ -64,6 +65,8 @@ export interface MissingSignatureTransactionPort {
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
+    /** The workflow journal: its own carriage claims among it. */
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<MissingSignatureCapturedAction>;
 }
 
@@ -265,7 +268,7 @@ export const createMissingSignatureWorkflowAdapter = ({
       }
       return (await current(identity.target.headerHash)).workflow;
     },
-    preflight: async ({ identity, workflowId, artifact, action }) => {
+    preflight: async ({ identity, workflowId, artifact, action, entries }) => {
       if (
         identity.category !== CATEGORY ||
         identity.target.kind !== "state_queue_header"
@@ -287,7 +290,11 @@ export const createMissingSignatureWorkflowAdapter = ({
           "missingSignature preflight already has an outstanding captured body for this workflow action",
         );
       }
-      const captured = await transactions.capture({ action, artifact });
+      const captured = await transactions.capture({
+        action,
+        artifact,
+        entries,
+      });
       if (
         requiresMutationLease(action) !==
         (captured.mutationLease !== undefined)

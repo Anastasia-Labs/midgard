@@ -22,7 +22,6 @@ import { availableParallelism, cpus, hostname } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   processedTxFromValidatedTx,
@@ -493,8 +492,6 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
                   TxAdmissionsDB.tryInsert({
                     txId: queuedTx.txId,
                     txCanonicalCbor: queuedTx.txCbor,
-                    programMaterialSidecarCbor:
-                      encodeMidgardCekProgramMaterialSidecar([]),
                     submitSource: "native",
                   }),
                 { concurrency: 16 },

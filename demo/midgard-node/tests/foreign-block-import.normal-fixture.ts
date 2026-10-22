@@ -1,12 +1,8 @@
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildMidgardCanonicalCekProgram,
   MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
@@ -67,7 +63,7 @@ const signedTransfer = () => {
     witnessMode: "valid",
     witnessSignerPrivateKey: signer,
   });
-  return { spent, output, tx, material: [] };
+  return { spent, output, tx };
 };
 
 /**
@@ -75,7 +71,7 @@ const signedTransfer = () => {
  * program returns Unit, as a PlutusV3 script must to succeed.
  */
 const plutusSpend = () => {
-  const program = buildMidgardCanonicalCekProgram(
+  const scriptBytes = encodeCbor(
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(
@@ -87,7 +83,7 @@ const plutusSpend = () => {
       ),
     ),
   );
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const script = plutusV3ScriptWitness(scriptBytes);
   const spent = outRefFromByte(0x1d);
   const output = makeProtectedScriptOutput(
     hashScriptWitness(script),
@@ -118,18 +114,18 @@ const plutusSpend = () => {
       },
     ]),
   });
-  return { spent, output, tx, material: [...program.material.values()] };
+  return { spent, output, tx };
 };
 
 /** Real normal transaction on a fabricated funded prior ledger: a signed
- * native transfer, or a PlutusV3 spend whose CEK material rides the block. The
+ * native transfer, or a PlutusV3 spend carrying its Flat bytes. The
  * alias control regenerates every semantic commitment using the wrong event
  * identity. */
 export const normalFixture = async (
   alias = false,
   kind: "native" | "plutus" = "native",
 ) => {
-  const { spent, output, tx, material } =
+  const { spent, output, tx } =
     kind === "plutus" ? plutusSpend() : signedTransfer();
   const sourceKey = alias ? "a7".repeat(32) : tx.txId.toString("hex");
   const event: SDK.EventKey = { L2TransactionEventKey: { tx_id: sourceKey } };
@@ -142,8 +138,6 @@ export const normalFixture = async (
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       canonicalTransactionCbor: tx.txCbor,
-      programMaterialSidecarCbor:
-        encodeMidgardCekProgramMaterialSidecar(material),
       ledgerWitnessEntries: [{ outRef: spent, output }],
       blockTimeMs: 2,
       expectedNetworkId: 0n,
@@ -210,10 +204,6 @@ export const normalFixture = async (
       forced_transactions: [],
       forced_transaction_preimages: [],
       deposits: [],
-      cek_program_material: material.map((entry) => [
-        Buffer.from(entry.root).toString("hex"),
-        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-      ]),
       transition_trace: [
         [
           encodeTransitionIntegerCbor(0n).toString("hex"),

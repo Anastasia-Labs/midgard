@@ -22,11 +22,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
 } from "./proof-chunk-carriage.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
@@ -104,20 +103,14 @@ export const prepareNativeTxInclusionCarriage = ({
     ...publishedProofChunks.map((chunk) => chunk.utxo),
     ...witness.referenceInputs,
   ];
-  const orderedChunkReferenceInputIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks: publishedProofChunks,
-    label,
-  });
 
   return {
     referenceInputs,
     chunks: publishedProofChunks,
     redeemer: (ctx, layout) => {
-      requireBuiltChunkReferenceIndices({
+      const orderedChunkReferenceInputIndices = builtChunkReferenceIndices({
         ctx,
         chunks: publishedProofChunks,
-        derived: orderedChunkReferenceInputIndices,
         label,
       });
       const common = {
@@ -153,12 +146,16 @@ export const prepareNativeTxInclusionCarriage = ({
     },
     attachWithdrawal: (tx) => {
       const withWithdrawal = carriedByChunks
-        ? tx.withdraw(rewardAddress, 0n, ((_ctx) =>
+        ? tx.withdraw(rewardAddress, 0n, ((ctx) =>
             chunkedMembershipClaimRedeemer({
               merkleRoot: txInclusion.transactionsPhasRoot,
               keyBytes: txInclusion.nativeTxId,
               valueBytes: txInclusion.l2TransactionSourceCbor,
-              orderedChunkReferenceInputIndices,
+              orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+                ctx,
+                chunks: publishedProofChunks,
+                label,
+              }),
             })) satisfies BuildTxWithRedeemer)
         : tx.withdraw(
             rewardAddress,

@@ -1,5 +1,3 @@
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 /**
  * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
  * remediation): thread state carries the §2.5 anchor rather than a per-field
@@ -7,7 +5,6 @@ import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
  * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
-
 import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
@@ -23,6 +20,8 @@ import {
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 export const ZeroInputStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export type ZeroInputStep01Datum = Data.Static<

@@ -214,7 +214,7 @@ try {
     label: "da-committee-consumer",
     packageDirectory: daCommitteePackageRoot,
     testCounts: {
-      "tests/cardano-capability-retained-da-corpus.test.ts": 20,
+      "tests/cardano-capability-retained-da-corpus.test.ts": 18,
     },
     extraArguments: ["--testTimeout=180000"],
     timeout: 600_000,

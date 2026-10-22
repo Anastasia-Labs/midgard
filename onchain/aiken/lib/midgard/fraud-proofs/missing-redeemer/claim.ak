@@ -2,13 +2,11 @@
 //// exact source-finish binding and, when the observed route ran, its complete
 //// decision. Constructor and field order below is wire format.
 
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
   SourceSelectionV1,
 }
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/fraud_proofs/missing_redeemer/rule.{DecisionStateV1, ScanStateV1}
 
 /// Constr 0 [bound, observed]. `observed` is None only on the claimed-only

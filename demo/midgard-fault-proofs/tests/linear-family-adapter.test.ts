@@ -154,6 +154,7 @@ describe("production linear family adapter V1", () => {
     expect(capture).toHaveBeenCalledExactlyOnceWith({
       action: current.action,
       artifact: context.artifact,
+      entries: context.entries,
     });
   });
 

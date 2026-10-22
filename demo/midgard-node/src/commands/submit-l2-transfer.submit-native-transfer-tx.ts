@@ -49,7 +49,6 @@ export const submitNativeTransferTx = (
       const txBytes = Buffer.from(txHex, "hex");
       const submissionBytes = encodeMidgardProofSubmission({
         transactionCbor: txBytes,
-        programMaterial: [],
       });
       for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
         const controller =

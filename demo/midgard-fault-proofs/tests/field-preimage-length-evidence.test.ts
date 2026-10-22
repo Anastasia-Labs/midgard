@@ -3,6 +3,11 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
 import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
+import { fieldPreimageCertificateAddress } from "../src/field-opening.js";
+import {
+  fieldCertificateClaimKey,
+  fieldPublicationClaimKey,
+} from "../src/field-opening.own-field-carriage.js";
 import {
   planFieldPreimageLengthCarriage,
   resolveFieldPreimageLengthCarriage,
@@ -14,6 +19,7 @@ import {
   fieldPreimageLengthEvidenceFromVerifiedPayload,
 } from "../src/field-preimage-length-mismatch/evidence.js";
 import { forcedFieldPreimageLengthRawFinding } from "../src/field-preimage-length-mismatch/evidence-forced.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   fieldLengthForcedFixture,
   forcedLengthMismatchFixture,
@@ -213,7 +219,11 @@ it.each([
       tier === "Certified"
         ? [
             {
-              address: workflow.config.signer.address,
+              address: fieldPreimageCertificateAddress({
+                network: workflow.config.binding.network,
+                certificatePolicyId:
+                  workflow.config.contracts.fieldPreimageCertificate.policyId,
+              }),
               txHash: "68".repeat(32),
               outputIndex: 0,
               assets: {
@@ -226,13 +236,34 @@ it.each([
             },
           ]
         : [];
-    vi.mocked(workflow.config.lucid.utxosAt).mockResolvedValue([
-      ...publications,
-      ...certificate,
-    ]);
+    // Our journaled carriage, read back by out-ref.
+    const ownOutputs = createOwnOutputJournal();
+    publications.forEach((utxo, index) =>
+      ownOutputs.claim(
+        fieldPublicationClaimKey(index, utxo.datum!),
+        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
+      ),
+    );
+    certificate.forEach((utxo) =>
+      ownOutputs.claim(
+        fieldCertificateClaimKey(utxo.datum!),
+        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
+      ),
+    );
+    vi.spyOn(workflow.config.lucid, "utxosByOutRef").mockImplementation(
+      async (outRefs) =>
+        [...publications, ...certificate].filter((utxo) =>
+          outRefs.some(
+            (outRef) =>
+              outRef.txHash === utxo.txHash &&
+              outRef.outputIndex === utxo.outputIndex,
+          ),
+        ),
+    );
     const resolved = await resolveFieldPreimageLengthCarriage({
       workflow,
       evidence,
+      ownOutputs,
     });
     expect(resolved.carriageReferences).toHaveLength(
       publications.length + certificate.length,

@@ -5,7 +5,10 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createMintItemNonCanonicalCentralJournalAdapter } from "../src/mint-item-non-canonical/central-journal.js";
+import {
+  createMintItemNonCanonicalCentralJournalAdapter,
+  MintItemWorkflowRecoveryPendingError,
+} from "../src/mint-item-non-canonical/central-journal.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
 import {
   type FraudProofWorkflowJournalEntry,
@@ -166,6 +169,60 @@ describe("mintItemNonCanonical durable journal", () => {
     await expect(
       boundary({ txHash: "5".repeat(64), referenceScripts: [] } as never),
     ).rejects.toThrow(/identity changed across restart/u);
+  });
+
+  it("names a signed transaction whose reservation lapses after its intent as awaiting canonical reconciliation, not funding", async () => {
+    const unavailable = new funding.WorkflowFundingReservationUnavailableError()
+      .message;
+    const ready = vi
+      .spyOn(funding, "assertWorkflowFundingReservationReadyToSubmit")
+      .mockRejectedValue(
+        new funding.WorkflowFundingReservationUnavailableError(),
+      );
+    try {
+      // The thread step and a certified-carriage step, each on its own journal.
+      const boundaries = [
+        [
+          "8".repeat(64),
+          async (journal: ReturnType<typeof bridge>) => {
+            await journal.begin("submitStep03", "evidence", "step03", "step04");
+            return journal.boundary(
+              "submitStep03",
+              "evidence",
+              "step03",
+              "step04",
+            );
+          },
+        ],
+        [
+          "9".repeat(64),
+          async (journal: ReturnType<typeof bridge>) =>
+            journal.auxiliaryBoundary("certificate", "evidence", "step03", []),
+        ],
+      ] as const;
+      for (const [txHash, open] of boundaries) {
+        const memory = memoryStore();
+        const boundary = await open(bridge(memory.store));
+        const failure = await Promise.resolve()
+          .then(() => boundary({ txHash, referenceScripts: [] } as never))
+          .then(
+            () => undefined,
+            (cause: unknown) => cause,
+          );
+        expect(memory.entries.at(-1)?.event).toMatchObject({
+          kind: "submission_intent",
+          txHash,
+        });
+        expect(failure).toBeInstanceOf(MintItemWorkflowRecoveryPendingError);
+        const reason = (failure as Error).message;
+        expect(reason).toBe(
+          `signed transaction ${txHash} requires canonical reconciliation: ${unavailable}`,
+        );
+        expect(funding.isWorkflowFundingPauseReason(reason)).toBe(false);
+      }
+    } finally {
+      ready.mockRestore();
+    }
   });
 
   it.each(["step02", "step03"] as const)(

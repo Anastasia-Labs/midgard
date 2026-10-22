@@ -19,7 +19,7 @@ import {
 import type { MidgardUtxo } from "../core/types.js";
 import { type BuilderState, stateNetworkId } from "./context.js";
 
-export type ScriptMaterialization = {
+export type ScriptWitnesses = {
   readonly requiredObserversPreimageCbor: Buffer;
   readonly mintPreimageCbor: Buffer;
   readonly scriptTxWitsPreimageCbor: Buffer;
@@ -72,7 +72,7 @@ const outputCbors = (outputs: readonly AuthoredOutput[]): Buffer[] =>
 export const buildCanonicalUnsignedTx = (
   state: BuilderState,
   fee: bigint,
-  scriptMaterialization: ScriptMaterialization,
+  scriptWitnesses: ScriptWitnesses,
   nativeTxVersion: bigint = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxCanonical => ({
   version: nativeTxVersion,
@@ -90,19 +90,18 @@ export const buildCanonicalUnsignedTx = (
       state.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: state.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
     requiredObserversPreimageCbor:
-      scriptMaterialization.requiredObserversPreimageCbor,
+      scriptWitnesses.requiredObserversPreimageCbor,
     requiredSignersPreimageCbor: encodeByteListPreimage(
       sortedRequiredSignerCbors(state.requiredSigners),
     ),
-    mintPreimageCbor: scriptMaterialization.mintPreimageCbor,
-    scriptIntegrityHash: scriptMaterialization.scriptIntegrityHash,
+    mintPreimageCbor: scriptWitnesses.mintPreimageCbor,
+    scriptIntegrityHash: scriptWitnesses.scriptIntegrityHash,
     auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: stateNetworkId(state),
   },
   witnessSet: {
     addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: scriptMaterialization.scriptTxWitsPreimageCbor,
-    redeemerTxWitsPreimageCbor:
-      scriptMaterialization.redeemerTxWitsPreimageCbor,
+    scriptTxWitsPreimageCbor: scriptWitnesses.scriptTxWitsPreimageCbor,
+    redeemerTxWitsPreimageCbor: scriptWitnesses.redeemerTxWitsPreimageCbor,
   },
 });

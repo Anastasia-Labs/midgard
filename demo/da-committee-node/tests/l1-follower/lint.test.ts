@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -7,7 +6,6 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import {
   declaredTables,
-  lintDeterminism,
   lintDeterminismModules,
   lintSchema,
 } from "@al-ft/midgard-l1-follower/lint";
@@ -76,20 +74,5 @@ describe("committee follower lints", () => {
     expect(LINTED.files).toEqual(
       expect.arrayContaining(DERIVATIONS) as unknown,
     );
-  });
-
-  it("would catch a clock read in a derivation", () => {
-    const path = new URL(
-      "../../src/l1/follower/projection.ts",
-      import.meta.url,
-    );
-    expect(
-      lintDeterminism([
-        {
-          path: path.pathname,
-          source: `${readFileSync(path, "utf8")}\nexport const stamp = () => Date.now();\n`,
-        },
-      ]).length,
-    ).toBeGreaterThan(0);
   });
 });

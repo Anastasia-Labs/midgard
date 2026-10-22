@@ -1,5 +1,10 @@
-/** Traversal precedence twin for the direct CanonicalDecode and ResolveInputs families. */
+/** Traversal precedence for canonical, resolution and direct-purpose faults. */
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { Data } from "@lucid-evolution/lucid";
+
+import type { Header } from "../ledger-state.js";
 import type { RejectionReason } from "../rejection-reason.js";
+import type { NativeTxBodyCompact } from "./native.js";
 import {
   type VerdictSubject,
   verdictSubjectIsCanonical,
@@ -11,7 +16,7 @@ type ReasonArm<R = RejectionReason> = R extends string
     ? keyof R
     : never;
 
-type PhaseRule = number | ((reason: RejectionReason) => number);
+type PhaseRule = number | "network" | ((reason: RejectionReason) => number);
 
 /**
  * A Plutus item is decoded where its native siblings are: a witness script at
@@ -31,7 +36,7 @@ const scriptItemPhase = (reason: RejectionReason): number => {
 const PHASE = {
   FieldPreimageLengthMismatch: 0,
   FieldItemWidthIllegal: 0,
-  NetworkIdMismatch: 2,
+  NetworkIdMismatch: "network",
   FeeBelowMinimum: 2,
   EmptyInputs: 3,
   DuplicateInput: 3,
@@ -83,12 +88,168 @@ const PHASE_BY_ARM: ReadonlyMap<string, PhaseRule> = new Map(
   Object.entries(PHASE),
 );
 
-export const rejectionReasonPhase = (reason: RejectionReason): number => {
-  const arm = typeof reason === "string" ? reason : Object.keys(reason)[0];
-  const phase = arm === undefined ? undefined : PHASE_BY_ARM.get(arm);
+export const NetworkOrderContextSchema = Data.Object({
+  body_network_mismatch: Data.Boolean(),
+});
+export type NetworkOrderContext = Data.Static<typeof NetworkOrderContextSchema>;
+export const NetworkOrderContext = asDataType<NetworkOrderContext>(
+  NetworkOrderContextSchema,
+);
+
+export const PurposeCoordinateSchema = Data.Object({
+  kind: Data.Integer(),
+  index: Data.Integer(),
+});
+export type PurposeCoordinate = Data.Static<typeof PurposeCoordinateSchema>;
+export const PurposeCoordinate = asDataType<PurposeCoordinate>(
+  PurposeCoordinateSchema,
+);
+
+/** The owning CT route proves existence/nonexistence under the same source.
+ * ExistingPurpose does not establish that the leaf's failure predicate is true. */
+export const ClaimedPurposeOrderSchema = Data.Enum([
+  Data.Object({
+    ExistingPurpose: Data.Object({ coordinate: PurposeCoordinateSchema }),
+  }),
+  Data.Object({
+    ImpossiblePurpose: Data.Object({ coordinate: PurposeCoordinateSchema }),
+  }),
+]);
+export type ClaimedPurposeOrder = Data.Static<typeof ClaimedPurposeOrderSchema>;
+export const ClaimedPurposeOrder = asDataType<ClaimedPurposeOrder>(
+  ClaimedPurposeOrderSchema,
+);
+
+const hasExactKeys = (value: unknown, keys: readonly string[]): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+
+const requireContext = (
+  context: NetworkOrderContext | null,
+): NetworkOrderContext => {
+  if (
+    !hasExactKeys(context, ["body_network_mismatch"]) ||
+    typeof context?.body_network_mismatch !== "boolean"
+  )
+    throw new Error("first-fault: missing or malformed network context");
+  return context;
+};
+
+/** Both projections must already be authenticated under the same source/header. */
+export const networkOrderContext = (
+  compact: Readonly<{ body: NativeTxBodyCompact }>,
+  header: Header,
+): NetworkOrderContext => ({
+  body_network_mismatch:
+    compact.body.network_id !== 255n &&
+    compact.body.network_id !== header.expectedNetworkId,
+});
+
+const reasonArm = (reason: RejectionReason): string => {
+  const arm =
+    typeof reason === "string"
+      ? reason
+      : typeof reason === "object" &&
+          reason !== null &&
+          !Array.isArray(reason) &&
+          Object.keys(reason).length === 1
+        ? Object.keys(reason)[0]
+        : undefined;
+  if (arm === undefined || !PHASE_BY_ARM.has(arm))
+    throw new Error("first-fault: unknown rejection arm");
+  return arm;
+};
+
+export const rejectionReasonPhase = (
+  reason: RejectionReason,
+  context: NetworkOrderContext,
+): number => {
+  const checked = requireContext(context);
+  const phase = PHASE_BY_ARM.get(reasonArm(reason));
   if (phase === undefined)
     throw new Error("first-fault: unknown rejection arm");
-  return typeof phase === "function" ? phase(reason) : phase;
+  if (typeof phase === "function") return phase(reason);
+  return phase === "network" ? (checked.body_network_mismatch ? 2 : 8) : phase;
+};
+
+export type PurposeSubcheck = "SourceRequired" | "RedeemerRequired";
+export type PurposeFaultPosition = Readonly<{
+  coordinate: PurposeCoordinate;
+  subcheck: PurposeSubcheck;
+}>;
+export type ClaimedFaultOrder =
+  | "NotRequired"
+  | Readonly<{ ResolutionReopened: ResolutionFaultPosition }>
+  | Readonly<{ PurposeReopened: ClaimedPurposeOrder }>
+  /** The opened source shows the leaf's own coordinate names no input. */
+  | Readonly<{
+      ResolutionOutOfDomain: Readonly<{
+        sourceKind: bigint;
+        inputIndex: bigint;
+      }>;
+    }>;
+
+export const purposeCoordinateOfReason = (
+  reason: RejectionReason,
+): PurposeCoordinate | null => {
+  reasonArm(reason);
+  if (typeof reason === "string") return null;
+  const payload =
+    "ScriptSourceMissing" in reason
+      ? reason.ScriptSourceMissing
+      : "RedeemerMissing" in reason
+        ? reason.RedeemerMissing
+        : null;
+  return payload === null
+    ? null
+    : { kind: payload.purpose_kind, index: payload.purpose_index };
+};
+export const purposeSubcheckOfReason = (
+  reason: RejectionReason,
+): PurposeSubcheck => {
+  switch (reasonArm(reason)) {
+    case "ScriptSourceMissing":
+      return "SourceRequired";
+    case "RedeemerMissing":
+      return "RedeemerRequired";
+    default:
+      throw new Error("first-fault: not a direct-purpose reason");
+  }
+};
+export const purposeCoordinateIsValid = (
+  coordinate: PurposeCoordinate,
+): boolean =>
+  hasExactKeys(coordinate, ["kind", "index"]) &&
+  typeof coordinate.kind === "bigint" &&
+  typeof coordinate.index === "bigint" &&
+  coordinate.kind >= 0n &&
+  coordinate.kind <= 3n &&
+  coordinate.index >= 0n;
+
+const requirePurposePosition = (position: PurposeFaultPosition): void => {
+  if (
+    !purposeCoordinateIsValid(position.coordinate) ||
+    (position.subcheck !== "SourceRequired" &&
+      position.subcheck !== "RedeemerRequired")
+  )
+    throw new Error("first-fault: invalid authenticated purpose position");
+};
+export const purposePositionPrecedesOrEquals = (
+  left: PurposeFaultPosition,
+  right: PurposeFaultPosition,
+): boolean => {
+  requirePurposePosition(left);
+  requirePurposePosition(right);
+  if (left.coordinate.kind !== right.coordinate.kind)
+    return left.coordinate.kind < right.coordinate.kind;
+  if (left.coordinate.index !== right.coordinate.index)
+    return left.coordinate.index < right.coordinate.index;
+  return (
+    left.subcheck === "SourceRequired" || right.subcheck === "RedeemerRequired"
+  );
 };
 
 export type CanonicalFaultPosition =
@@ -104,7 +265,8 @@ export type ResolutionFaultPosition = Readonly<{
 
 export type FaultPosition =
   | Readonly<{ phase: "canonical"; position: CanonicalFaultPosition }>
-  | Readonly<{ phase: "resolve"; position: ResolutionFaultPosition }>;
+  | Readonly<{ phase: "resolve"; position: ResolutionFaultPosition }>
+  | Readonly<{ phase: "purpose"; position: PurposeFaultPosition }>;
 
 export const resolutionCoordinateOfReason = (
   reason: RejectionReason,
@@ -153,10 +315,27 @@ export const resolutionCoordinateOfReason = (
   return null;
 };
 
+const requireCanonicalPosition = (position: CanonicalFaultPosition): void => {
+  if (
+    !hasExactKeys(
+      position,
+      position.kind === "item"
+        ? ["kind", "fieldIndex", "itemIndex"]
+        : ["kind", "fieldIndex"],
+    ) ||
+    (position.kind !== "item" && position.kind !== "fieldEnd") ||
+    typeof position.fieldIndex !== "bigint" ||
+    (position.kind === "item" && typeof position.itemIndex !== "bigint")
+  )
+    throw new Error("first-fault: invalid canonical position");
+};
+
 export const canonicalPositionPrecedesOrEquals = (
   left: CanonicalFaultPosition,
   right: CanonicalFaultPosition,
 ): boolean => {
+  requireCanonicalPosition(left);
+  requireCanonicalPosition(right);
   if (left.fieldIndex !== right.fieldIndex)
     return left.fieldIndex < right.fieldIndex;
   if (left.kind === "fieldEnd") return right.kind === "fieldEnd";
@@ -189,24 +368,28 @@ export const resolutionPositionPrecedesOrEquals = (
   return left.subcheck <= right.subcheck;
 };
 
-/** Claimed resolution bytes are reopened under the same source at the exact original reason coordinate. */
+const requireNotRequired = (claimed: ClaimedFaultOrder): void => {
+  if (claimed !== "NotRequired")
+    throw new Error("first-fault: unused claimed receipt");
+};
+
+/** Receipts must be reopened under the observed proof's authenticated source. */
 export const leafAdmitsFault = (
   subject: VerdictSubject,
+  context: NetworkOrderContext | null,
   observed: FaultPosition,
-  claimedResolution: ResolutionFaultPosition | null = null,
+  claimed: ClaimedFaultOrder,
 ): boolean => {
   if (!verdictSubjectIsCanonical(subject))
     throw new Error("first-fault: noncanonical subject");
   const reason = subject.rejection_reason;
+  if (reason !== null) reasonArm(reason);
   if (observed.phase === "canonical") {
-    if (claimedResolution !== null)
-      throw new Error("first-fault: unused resolution claim");
-    if (
-      reason === null ||
-      rejectionReasonPhase(reason) !== 0 ||
-      typeof reason === "string"
-    )
-      return false;
+    if (context !== null)
+      throw new Error("first-fault: unused network context");
+    requireNotRequired(claimed);
+    requireCanonicalPosition(observed.position);
+    if (reason === null || typeof reason === "string") return false;
     if ("FieldItemWidthIllegal" in reason)
       return canonicalPositionPrecedesOrEquals(
         {
@@ -224,30 +407,113 @@ export const leafAdmitsFault = (
         },
         observed.position,
       );
-    throw new Error("first-fault: unmapped canonical arm");
+    return false;
   }
-  const phase = reason === null ? null : rejectionReasonPhase(reason);
-  const coordinate =
-    reason === null ? null : resolutionCoordinateOfReason(reason);
-  if (coordinate === null) {
-    if (claimedResolution !== null)
-      throw new Error("first-fault: unused resolution claim");
-    return (
-      phase !== null &&
-      (phase < 7 || reason === "ValidityIntervalExcludesBlockSlot")
-    );
+  const checked = requireContext(context);
+  const phase = reason === null ? null : rejectionReasonPhase(reason, checked);
+  if (observed.phase === "resolve") {
+    const coordinate =
+      reason === null ? null : resolutionCoordinateOfReason(reason);
+    if (coordinate === null) {
+      requireNotRequired(claimed);
+      return (
+        phase !== null &&
+        (phase < 7 || reason === "ValidityIntervalExcludesBlockSlot")
+      );
+    }
+    if (
+      hasExactKeys(claimed, ["ResolutionOutOfDomain"]) &&
+      typeof claimed !== "string" &&
+      "ResolutionOutOfDomain" in claimed
+    ) {
+      const receipt = claimed.ResolutionOutOfDomain;
+      if (
+        !hasExactKeys(receipt, ["sourceKind", "inputIndex"]) ||
+        receipt.sourceKind !== coordinate.sourceKind ||
+        receipt.inputIndex !== coordinate.inputIndex
+      )
+        throw new Error(
+          "first-fault: out-of-domain receipt differs from reason",
+        );
+      return false;
+    }
+    if (
+      !hasExactKeys(claimed, ["ResolutionReopened"]) ||
+      typeof claimed === "string" ||
+      !("ResolutionReopened" in claimed)
+    )
+      throw new Error("first-fault: missing claimed resolution receipt");
+    const point = claimed.ResolutionReopened;
+    if (
+      point.sourceKind !== coordinate.sourceKind ||
+      point.inputIndex !== coordinate.inputIndex ||
+      point.subcheck !== coordinate.subcheck
+    )
+      throw new Error(
+        "first-fault: claimed original coordinate differs from leaf reason",
+      );
+    return resolutionPositionPrecedesOrEquals(point, observed.position);
   }
-  if (
-    claimedResolution === null ||
-    claimedResolution.sourceKind !== coordinate.sourceKind ||
-    claimedResolution.inputIndex !== coordinate.inputIndex ||
-    claimedResolution.subcheck !== coordinate.subcheck
-  )
-    throw new Error(
-      "first-fault: claimed original coordinate differs from leaf reason",
-    );
-  return resolutionPositionPrecedesOrEquals(
-    claimedResolution,
-    observed.position,
-  );
+  if (observed.phase !== "purpose")
+    throw new Error("first-fault: unknown observed phase");
+  requirePurposePosition(observed.position);
+  if (phase !== 8 || reason === null) {
+    requireNotRequired(claimed);
+    return phase !== null && phase < 8;
+  }
+  switch (reasonArm(reason)) {
+    case "RedeemerMalformed":
+    case "OutputNonCanonical":
+    case "OutputReferenceScriptMalformed":
+    case "OutputReferenceScriptNodeLimit":
+    case "OutputReferenceScriptDepthLimit":
+    case "ProtectedOutputSignerMissing":
+    case "MintDeclaredAssetLimit":
+    case "MintItemMalformed":
+    case "PlutusScriptUndecodable":
+    case "NetworkIdMismatch":
+      requireNotRequired(claimed);
+      return true;
+    case "UnusedScriptWitness":
+    case "UnusedRedeemer":
+      requireNotRequired(claimed);
+      return false;
+    case "ScriptSourceMissing":
+    case "RedeemerMissing": {
+      if (
+        !hasExactKeys(claimed, ["PurposeReopened"]) ||
+        typeof claimed === "string" ||
+        !("PurposeReopened" in claimed)
+      )
+        throw new Error("first-fault: missing claimed purpose receipt");
+      const receipt = claimed.PurposeReopened;
+      const existing = hasExactKeys(receipt, ["ExistingPurpose"]);
+      if (!existing && !hasExactKeys(receipt, ["ImpossiblePurpose"]))
+        throw new Error("first-fault: unknown claimed purpose receipt");
+      const evidence =
+        "ExistingPurpose" in receipt
+          ? receipt.ExistingPurpose
+          : receipt.ImpossiblePurpose;
+      const coordinate = purposeCoordinateOfReason(reason);
+      if (
+        !hasExactKeys(evidence, ["coordinate"]) ||
+        !hasExactKeys(evidence.coordinate, ["kind", "index"]) ||
+        typeof evidence.coordinate.kind !== "bigint" ||
+        typeof evidence.coordinate.index !== "bigint" ||
+        coordinate === null ||
+        evidence.coordinate.kind !== coordinate.kind ||
+        evidence.coordinate.index !== coordinate.index
+      )
+        throw new Error(
+          "first-fault: claimed purpose coordinate differs from leaf reason",
+        );
+      if (!existing) return false;
+      return purposePositionPrecedesOrEquals(
+        { coordinate, subcheck: purposeSubcheckOfReason(reason) },
+        observed.position,
+      );
+    }
+    default:
+      throw new Error("first-fault: unmapped purpose-phase reason");
+  }
 };

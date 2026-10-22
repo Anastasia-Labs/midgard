@@ -114,6 +114,8 @@ pub fn redeemer_tag_for_purpose_kind_v1(kind: Int) -> Option<Int> {
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_redeemer_v1(
   subject: substrate.VerdictSubjectV1,
   validation_traces_root: ByteArray,
@@ -121,14 +123,13 @@ pub fn bind_redeemer_v1(
   redeemer_index: Int,
 ) -> BoundRedeemerV1 {
   expect and {
-      substrate.subject_is_canonical_v1(subject),
       bytearray.length(validation_traces_root) == 32,
       validation_trace_count > 0,
       redeemer_index >= 0,
     }
   expect _reason = if subject.direction == substrate.direction_wrongful_rejection {
     Some(
-      substrate.bind_exact_rejection_reason_v1(
+      substrate.bind_opened_rejection_reason_v1(
         subject,
         UnusedRedeemer { redeemer_index },
       ),

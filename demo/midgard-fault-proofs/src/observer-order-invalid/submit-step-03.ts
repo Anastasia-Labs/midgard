@@ -26,6 +26,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import type { ObserverOrderInvalidEvidence } from "./family.js";
@@ -54,6 +58,7 @@ export const submitObserverOrderInvalidStep03 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -67,6 +72,8 @@ export const submitObserverOrderInvalidStep03 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const nextCheckpoint = staged.walk[walkOrdinal];
   if (nextCheckpoint === undefined)
@@ -127,6 +134,7 @@ export const submitObserverOrderInvalidStep03 = async ({
     label: "observerOrderInvalid scan field 3",
   });
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -134,6 +142,7 @@ export const submitObserverOrderInvalidStep03 = async ({
   if (carriageUtxos === undefined)
     throw new Error("observerOrderInvalid: field carriage disappeared");
   const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid,
     network: lucid.config().network!,
     planned,
@@ -146,16 +155,6 @@ export const submitObserverOrderInvalidStep03 = async ({
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "observer-order-invalid",
     stepIndex,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "observerOrderInvalid scan field 3",
   });
   const terminal = walkOrdinal === staged.walk.length - 1;
   const nextPrefix = terminal
@@ -193,6 +192,12 @@ export const submitObserverOrderInvalidStep03 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "observerOrderInvalid scan field 3",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "observerOrderInvalid step-03");
     const inputIndex = requireInputIndex(
       ctx,

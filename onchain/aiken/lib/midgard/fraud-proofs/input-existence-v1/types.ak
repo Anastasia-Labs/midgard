@@ -8,6 +8,7 @@ use midgard/fraud_proofs/counted_membership_carriage_v1.{
   CarriedCountedMembershipV1,
 }
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxInput,
   TxCompactView} as native_types
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
@@ -54,6 +55,7 @@ pub type PreStateArgsV1 {
 pub type LedgerStateV1 {
   subject: VerdictSubjectV1,
   compact: TxCompactView,
+  network_order_context: NetworkOrderContextV1,
   source_kind: Int,
   input_index: Int,
   selected_input: Option<MidgardTxInput>,

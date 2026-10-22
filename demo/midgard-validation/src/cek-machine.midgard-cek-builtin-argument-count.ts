@@ -10,10 +10,10 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
+  midgardBlake2b,
   type MidgardCekMachineState,
   type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
-import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
   type Bytes,
@@ -98,7 +98,7 @@ export const hashMidgardCekMapConversionControl = (
     throw new Error("invalid V1 CEK map-conversion control");
   }
   return Buffer.from(
-    blake2b(
+    midgardBlake2b(
       Buffer.concat([
         MAP_CONVERSION_CONTROL_DOMAIN,
         encodeMidgardCekMapConversionControl(control),

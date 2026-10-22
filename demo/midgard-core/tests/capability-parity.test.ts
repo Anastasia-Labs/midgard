@@ -85,20 +85,6 @@ describe("V1 Cardano capability parity evidence", () => {
     );
   });
 
-  it("fails closed when the reference-script network limit is absent", () => {
-    const report = buildMidgardCapabilityParityReport(
-      cardanoSnapshot({
-        maxReferenceScriptBytesPerTransaction: null,
-      }),
-      completeBoundaryEvidence(),
-    );
-
-    expect(report.reportDigest).toBeNull();
-    expect(report.blockers).toContain(
-      "reference_script_material_bytes:unknown",
-    );
-  });
-
   it("reports every Midgard limit below a raised Cardano boundary", () => {
     const report = buildMidgardCapabilityParityReport(
       cardanoSnapshot({ maxTxSize: 32_768 }),

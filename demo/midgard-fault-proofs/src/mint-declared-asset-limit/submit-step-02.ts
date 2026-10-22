@@ -9,6 +9,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -26,6 +27,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
@@ -76,16 +81,20 @@ export const resolveMintDeclaredFieldCarriage = async ({
   contracts,
   signer,
   planned,
+  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
   readonly signer: ResolvedProverSigner;
   readonly planned: PlannedMintDeclaredFieldOpening;
+  /** Our carriage claims, which the carriage is read by. */
+  readonly ownOutputs: OwnOutputJournal;
 }): Promise<{
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
 }> => {
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -95,6 +104,7 @@ export const resolveMintDeclaredFieldCarriage = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await resolveFaultProofFieldPreimageCertificate({
+          ownOutputs,
           lucid,
           network: lucid.config().network!,
           planned,
@@ -145,7 +155,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   signer,
   threadOutRef,
   evidence,
-  opening,
+  openingFor,
   carriageUtxos,
   certificateUtxo,
   action,
@@ -161,7 +171,8 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly evidence: MintDeclaredAssetLimitEvidence;
-  readonly opening: FieldOpening;
+  /** The opening, resolved against the builder's final reference inputs. */
+  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
   readonly action: MintDeclaredAssetLimitStep02WireAction;
@@ -256,7 +267,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     const common = {
       input_index: inputIndex,
       output_index: outputIndex,
-      opening,
+      opening: openingFor(ctx),
     };
     const familyAction =
       action.kind === "direct"
@@ -369,6 +380,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -382,6 +394,8 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const planned = planMintDeclaredFieldOpening({
     evidence,
@@ -392,28 +406,11 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   if (action.kind === "direct" && planned.plan.tier === "Certified")
     throw new Error("mintDeclaredAssetLimit: certified field requires grammar");
   const carriage = await resolveMintDeclaredFieldCarriage({
+    ownOutputs,
     lucid,
     contracts,
     signer,
     planned,
-  });
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[1].spendingScriptHash,
-    family: "mint-declared-asset-limit",
-    stepIndex: 1,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriage.carriageUtxos,
-      stepReference,
-      ...(carriage.certificateUtxo === undefined
-        ? []
-        : [carriage.certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "mintDeclaredAssetLimit field 5",
   });
   return await submitMintDeclaredAssetLimitStep02Raw({
     lucid,
@@ -422,7 +419,13 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     threadOutRef,
     evidence,
-    opening,
+    openingFor: (ctx) =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "mintDeclaredAssetLimit field 5",
+      }),
     ...carriage,
     ...mintDeclaredStep02WirePlan({ staged, action }),
     referenceScriptUtxo,

@@ -6,14 +6,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       purpose: "spend",
       referenceRole: "V1 validation-trace script-sources NonOutput semantic",
       manifestPosition: 75,
-      publicationPosition: 385,
+      publicationPosition: 386,
       referenceRolePosition: 190,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_non_output_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "39"],
         ["semanticResolvers", "32"],
+        ["steps", "39"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofBeginSemantic: {
@@ -21,14 +21,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofBegin semantic",
       manifestPosition: 76,
-      publicationPosition: 386,
+      publicationPosition: 387,
       referenceRolePosition: 191,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_begin_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "40"],
         ["semanticResolvers", "33"],
+        ["steps", "40"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofStepSemantic: {
@@ -36,14 +36,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofStep semantic",
       manifestPosition: 77,
-      publicationPosition: 387,
+      publicationPosition: 388,
       referenceRolePosition: 192,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_step_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "41"],
         ["semanticResolvers", "34"],
+        ["steps", "41"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofFinalizeSemantic: {
@@ -51,14 +51,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofFinalize semantic",
       manifestPosition: 78,
-      publicationPosition: 388,
+      publicationPosition: 389,
       referenceRolePosition: 193,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_finalize_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "42"],
         ["semanticResolvers", "35"],
+        ["steps", "42"],
       ],
     },
     validationTraceDisputeScriptSourcesOutputProofFinishSemantic: {
@@ -66,14 +66,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources OutputProofFinish semantic",
       manifestPosition: 79,
-      publicationPosition: 389,
+      publicationPosition: 390,
       referenceRolePosition: 194,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_output_proof_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "43"],
         ["semanticResolvers", "36"],
+        ["steps", "43"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroBeginSemantic: {
@@ -81,14 +81,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroBegin semantic",
       manifestPosition: 80,
-      publicationPosition: 390,
+      publicationPosition: 391,
       referenceRolePosition: 195,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_begin_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "44"],
         ["semanticResolvers", "37"],
+        ["steps", "44"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroFinishSemantic: {
@@ -96,14 +96,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroFinish semantic",
       manifestPosition: 81,
-      publicationPosition: 391,
+      publicationPosition: 392,
       referenceRolePosition: 196,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "45"],
         ["semanticResolvers", "38"],
+        ["steps", "45"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashBlockSemantic: {
@@ -111,14 +111,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashBlock semantic",
       manifestPosition: 82,
-      publicationPosition: 392,
+      publicationPosition: 393,
       referenceRolePosition: 197,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_block_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "46"],
         ["semanticResolvers", "39"],
+        ["steps", "46"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashAdvanceSemantic: {
@@ -126,14 +126,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashAdvance semantic",
       manifestPosition: 83,
-      publicationPosition: 393,
+      publicationPosition: 394,
       referenceRolePosition: 198,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_advance_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "47"],
         ["semanticResolvers", "40"],
+        ["steps", "47"],
       ],
     },
     validationTraceDisputeScriptSourcesStageZeroHashTerminalSemantic: {
@@ -141,14 +141,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageZeroHashTerminal semantic",
       manifestPosition: 84,
-      publicationPosition: 394,
+      publicationPosition: 395,
       referenceRolePosition: 199,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_zero_hash_terminal_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "48"],
         ["semanticResolvers", "41"],
+        ["steps", "48"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineMismatchSemantic: {
@@ -156,14 +156,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineMismatch semantic",
       manifestPosition: 85,
-      publicationPosition: 395,
+      publicationPosition: 396,
       referenceRolePosition: 200,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_mismatch_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "49"],
         ["semanticResolvers", "42"],
+        ["steps", "49"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineNativeMatchSemantic: {
@@ -171,14 +171,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineNativeMatch semantic",
       manifestPosition: 86,
-      publicationPosition: 396,
+      publicationPosition: 397,
       referenceRolePosition: 201,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_native_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "50"],
         ["semanticResolvers", "43"],
+        ["steps", "50"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineEffectfulMatchSemantic: {
@@ -186,14 +186,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineEffectfulMatch semantic",
       manifestPosition: 87,
-      publicationPosition: 397,
+      publicationPosition: 398,
       referenceRolePosition: 202,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_effectful_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "51"],
         ["semanticResolvers", "44"],
+        ["steps", "51"],
       ],
     },
     validationTraceDisputeScriptSourcesStageNineMissingSemantic: {
@@ -201,14 +201,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageNineMissing semantic",
       manifestPosition: 88,
-      publicationPosition: 398,
+      publicationPosition: 399,
       referenceRolePosition: 203,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_nine_missing_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "52"],
         ["semanticResolvers", "45"],
+        ["steps", "52"],
       ],
     },
     validationTraceDisputeScriptSourcesStageOneFinishSemantic: {
@@ -216,14 +216,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageOneFinish semantic",
       manifestPosition: 89,
-      publicationPosition: 399,
+      publicationPosition: 400,
       referenceRolePosition: 204,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "53"],
         ["semanticResolvers", "46"],
+        ["steps", "53"],
       ],
     },
     validationTraceDisputeScriptSourcesStageOneRedeemerSemantic: {
@@ -231,14 +231,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageOneRedeemer semantic",
       manifestPosition: 90,
-      publicationPosition: 400,
+      publicationPosition: 401,
       referenceRolePosition: 205,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "54"],
         ["semanticResolvers", "47"],
+        ["steps", "54"],
       ],
     },
     validationTraceDisputeScriptSourcesStageElevenFinishSemantic: {
@@ -246,14 +246,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageElevenFinish semantic",
       manifestPosition: 91,
-      publicationPosition: 401,
+      publicationPosition: 402,
       referenceRolePosition: 206,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eleven_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "55"],
         ["semanticResolvers", "48"],
+        ["steps", "55"],
       ],
     },
     validationTraceDisputeScriptSourcesStageElevenSourceSemantic: {
@@ -261,14 +261,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageElevenSource semantic",
       manifestPosition: 92,
-      publicationPosition: 402,
+      publicationPosition: 403,
       referenceRolePosition: 207,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eleven_source_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "56"],
         ["semanticResolvers", "49"],
+        ["steps", "56"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTwelveFinishSemantic: {
@@ -276,14 +276,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTwelveFinish semantic",
       manifestPosition: 93,
-      publicationPosition: 403,
+      publicationPosition: 404,
       referenceRolePosition: 208,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_twelve_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "57"],
         ["semanticResolvers", "50"],
+        ["steps", "57"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTwelveRedeemerSemantic: {
@@ -291,14 +291,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTwelveRedeemer semantic",
       manifestPosition: 94,
-      publicationPosition: 404,
+      publicationPosition: 405,
       referenceRolePosition: 209,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_twelve_redeemer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "58"],
         ["semanticResolvers", "51"],
+        ["steps", "58"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMissingSemantic: {
@@ -306,14 +306,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMissing semantic",
       manifestPosition: 95,
-      publicationPosition: 405,
+      publicationPosition: 406,
       referenceRolePosition: 210,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_missing_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "59"],
         ["semanticResolvers", "52"],
+        ["steps", "59"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMismatchSemantic: {
@@ -321,14 +321,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMismatch semantic",
       manifestPosition: 96,
-      publicationPosition: 406,
+      publicationPosition: 407,
       referenceRolePosition: 211,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_mismatch_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "60"],
         ["semanticResolvers", "53"],
+        ["steps", "60"],
       ],
     },
     validationTraceDisputeScriptSourcesStageTenMatchSemantic: {
@@ -336,14 +336,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageTenMatch semantic",
       manifestPosition: 97,
-      publicationPosition: 407,
+      publicationPosition: 408,
       referenceRolePosition: 212,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_ten_match_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "61"],
         ["semanticResolvers", "54"],
+        ["steps", "61"],
       ],
     },
     validationTraceDisputeScriptSourcesStageEightFinishSemantic: {
@@ -351,14 +351,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageEightFinish semantic",
       manifestPosition: 98,
-      publicationPosition: 408,
+      publicationPosition: 409,
       referenceRolePosition: 213,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eight_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "62"],
         ["semanticResolvers", "55"],
+        ["steps", "62"],
       ],
     },
     validationTraceDisputeScriptSourcesStageEightPurposeSemantic: {
@@ -366,14 +366,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageEightPurpose semantic",
       manifestPosition: 99,
-      publicationPosition: 409,
+      publicationPosition: 410,
       referenceRolePosition: 214,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_eight_purpose_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "63"],
         ["semanticResolvers", "56"],
+        ["steps", "63"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenObserverSemantic: {
@@ -381,14 +381,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenObserver semantic",
       manifestPosition: 100,
-      publicationPosition: 410,
+      publicationPosition: 411,
       referenceRolePosition: 215,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_observer_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "64"],
         ["semanticResolvers", "57"],
+        ["steps", "64"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenReceiveSemantic: {
@@ -396,14 +396,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenReceive semantic",
       manifestPosition: 101,
-      publicationPosition: 411,
+      publicationPosition: 412,
       referenceRolePosition: 216,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_receive_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "65"],
         ["semanticResolvers", "58"],
+        ["steps", "65"],
       ],
     },
     validationTraceDisputeScriptSourcesStageSevenFinishSemantic: {
@@ -411,14 +411,14 @@ export const validationTraceScriptSourcesSemanticsMembers =
       referenceRole:
         "V1 validation-trace script-sources StageSevenFinish semantic",
       manifestPosition: 102,
-      publicationPosition: 412,
+      publicationPosition: 413,
       referenceRolePosition: 217,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_seven_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "66"],
         ["semanticResolvers", "59"],
+        ["steps", "66"],
       ],
     },
   });

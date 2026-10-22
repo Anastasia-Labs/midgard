@@ -1,5 +1,7 @@
 import "./utils.js";
 import "./migration-runner.public-read-indexes.js";
+import "./migration-runner.flat-scripts.js";
+import "./migration-runner.snapshot.js";
 
 import { createHash } from "node:crypto";
 
@@ -102,6 +104,8 @@ describe("splitSqlStatements", () => {
       [26, "drop_utxo_payload_aggregate", true],
       [27, "public_http_read_indexes", true],
       [28, "import_checks", true],
+      [29, "drop_cek_program_material", true],
+      [30, "import_check_retries", true],
     ]);
   });
 

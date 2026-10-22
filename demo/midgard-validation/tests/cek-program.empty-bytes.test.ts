@@ -2,6 +2,10 @@ import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
 import {
+  type MidgardCekDirectValueWitness,
+  semanticizeMidgardCekDirectConstant,
+} from "../src/cek-builtin.js";
+import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
 } from "../src/cek-constant.js";
@@ -11,7 +15,6 @@ import {
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 import { CardanoFlatRefusal } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   midgardEnvelopeDataFromCborIterative,
   plutusDataFromCborIterative,
@@ -22,6 +25,7 @@ import {
   EMPTY_BYTES_RUNS,
   EMPTY_BYTES_STRUCTURED_RUNS,
 } from "./cek-program.empty-bytes.vectors.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * Data that is an empty byte string, or ends in one (as the last list item,
@@ -35,7 +39,7 @@ const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
 
 const programView = (flat: Buffer) => {
-  const program = buildMidgardCanonicalCekProgram(flat);
+  const program = buildCekProgramFromRawFlat(flat);
   return {
     constantWitnesses: [...program.constantWitnesses.entries()]
       .map(([root, value]) =>
@@ -51,7 +55,7 @@ const programView = (flat: Buffer) => {
 /** The detail of the `invalidData` refusal building the program raises. */
 const invalidDataRefusal = (flat: Buffer): string => {
   try {
-    buildMidgardCanonicalCekProgram(flat);
+    buildCekProgramFromRawFlat(flat);
   } catch (error) {
     expect(error).toBeInstanceOf(CardanoFlatRefusal);
     expect((error as CardanoFlatRefusal).refusal).toBe("invalidData");
@@ -69,7 +73,7 @@ const invalidDataRefusal = (flat: Buffer): string => {
 const prove = (flat: Buffer) => {
   const { program } = programView(flat);
   const execution = executeMidgardCekStructuralProgram({
-    root: program.envelope.termRoot,
+    root: program.termRoot,
     material: program.material.values(),
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
@@ -188,7 +192,7 @@ describe("Data that is, or ends in, an empty byte string", () => {
     (_label, flat, _cardano, result, budget) => {
       const { program } = programView(bytes(flat));
       const execution = executeMidgardCekStructuralProgram({
-        root: program.envelope.termRoot,
+        root: program.termRoot,
         material: program.material.values(),
         constantWitnesses: program.constantWitnesses,
         maxSteps: 64,
@@ -209,14 +213,23 @@ describe("Data that is, or ends in, an empty byte string", () => {
         if (
           builtinStep === undefined ||
           (builtinStep.witness.kind !== "executeBuiltinDirect" &&
-            builtinStep.witness.kind !== "executeBuiltinSemantic") ||
-          builtinStep.witness.result.kind !== "constant"
+            builtinStep.witness.kind !== "executeBuiltinSemantic")
         ) {
           throw new Error("the builtin did not return a constant");
         }
-        const witness = builtinStep.witness.result.witness;
-        expect(`${hex(witness.typeCbor)}:${hex(witness.payloadCbor)}`).toBe(
-          result,
+        // A semantic step presents its result by its committed summary.
+        const [typeHex, payloadHex] = result.split(":");
+        const expected: MidgardCekDirectValueWitness = {
+          kind: "constant",
+          witness: {
+            typeCbor: bytes(typeHex!),
+            payloadCbor: bytes(payloadHex!),
+          },
+        };
+        expect(builtinStep.witness.result).toEqual(
+          builtinStep.witness.kind === "executeBuiltinSemantic"
+            ? semanticizeMidgardCekDirectConstant(expected)
+            : expected,
         );
       }
       expect(

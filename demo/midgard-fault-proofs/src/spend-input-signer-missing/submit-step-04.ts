@@ -20,9 +20,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -32,6 +32,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
 import { planSpendInputSignerWitnessOpening } from "./field-plans.js";
@@ -93,6 +97,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
   onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -111,6 +116,8 @@ export const submitSpendInputSignerMissingStep04 = async ({
   readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -192,6 +199,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
       });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -201,28 +209,23 @@ export const submitSpendInputSignerMissingStep04 = async ({
   });
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  "spend-input-signer-missing: certified scan requires certificate reference script",
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificateBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          network,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "spend-input-signer-missing: certified scan requires certificate reference script",
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificateBoundary,
+        })
       : undefined;
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
@@ -230,17 +233,6 @@ export const submitSpendInputSignerMissingStep04 = async ({
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
     family: "spend-input-signer-missing",
     stepIndex,
-  });
-  const referenceInputs = [
-    ...carriageUtxos,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    stepReference,
-  ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "spend-input-signer-missing scan witnesses",
   });
   const nextDatum = terminal
     ? Data.to(
@@ -272,6 +264,12 @@ export const submitSpendInputSignerMissingStep04 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "spend-input-signer-missing scan witnesses",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

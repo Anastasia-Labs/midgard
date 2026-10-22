@@ -19,7 +19,8 @@ import type {
  * The origin point O and its two assertions (l1-architecture-plan §5.3,
  * §7.5): R4 `origin_not_on_chain` on a fresh start whose `FindIntersect([O])`
  * fails, and R3 `origin_after_protocol_init` once the cursor reaches the tip
- * without the tx that spent the manifest's `hubOracleOneShot` outref.
+ * without the tx that spent the manifest's `hubOracleOneShot` outref, or as
+ * soon as the store's origin is after the deployment's recorded origin.
  *
  * Every function here returns an `Intervention` instead of throwing, so the
  * role keeps its process up and fails `/readyz` with the reason.
@@ -31,6 +32,13 @@ export type OriginConfig = Readonly<{
   origin: Point;
   /** The manifest's `hubOracleOneShot` outref; the protocol-init tx spends it. */
   hubOracleOneShot: OutRef;
+  /**
+   * The manifest's `l1Origin`: the local node tip the deployer recorded
+   * before it signed the hub-oracle nonce. A store whose origin is after it
+   * may lack outputs created between the two points, so it is R3 whatever
+   * the spend check says. Absent for a manifest without `l1Origin`.
+   */
+  recordedOrigin?: Point;
 }>;
 
 const intervention = (
@@ -187,6 +195,33 @@ const originMismatch = (cursor: Cursor, origin: Point): Intervention =>
     `the store was initialized at l1Origin ${describePoint(cursor.origin)}, but the configured l1Origin is ${describePoint(origin)}; reset the follower store to the configured origin, or restore the old l1Origin`,
   );
 
+/**
+ * Whether `point` is at or before `recorded`: an earlier slot, or the same
+ * block. Another block at the same slot is not.
+ */
+const atOrBefore = (point: Point, recorded: Point): boolean =>
+  point.slot < recorded.slot ||
+  (point.slot === recorded.slot && point.hash.equals(recorded.hash));
+
+/**
+ * R3 for a store that follows from `origin` when the deployment recorded an
+ * origin (`recordedOrigin`) before it: the store may lack outputs created
+ * between them. Null when it is at or before the recorded origin, or when
+ * none is recorded. It needs no chain data, so the follow loop reports it
+ * from its first status (`followChain`).
+ */
+export const recordedOriginHold = (
+  origin: Point,
+  config: OriginConfig,
+): Intervention | null =>
+  config.recordedOrigin === undefined ||
+  atOrBefore(origin, config.recordedOrigin)
+    ? null
+    : intervention(
+        "origin_after_protocol_init",
+        `the store follows from l1Origin ${describePoint(origin)}, after the deployment's recorded l1Origin ${describePoint(config.recordedOrigin)}, so it may lack outputs created between them; set l1Origin at or before ${describePoint(config.recordedOrigin)} and run midgard-l1-follower reset --to-origin`,
+      );
+
 /** Whether the store was initialized at the configured origin. */
 export const originMatches = (cursor: Cursor, origin: Point): boolean =>
   cursor.origin.slot === origin.slot && cursor.origin.hash.equals(origin.hash);
@@ -204,6 +239,11 @@ export type ProtocolInitStatus =
  * the node tip the answer is `pending`; at the tip without the fact it is
  * R3. It is not sticky: a later call that finds the fact answers `seen`.
  *
+ * With a `recordedOrigin`, a store whose origin is after it is R3
+ * (`recordedOriginHold`) before the spend is looked at, so a seen spend
+ * never clears it; only resetting the store to an origin at or before the
+ * recorded one does. Without one, the answer is the spend check alone.
+ *
  * The fact is class A and outlives the init tx: the tx row is pruned once
  * the outputs it created are spent and k deep, but prune never removes the
  * fact. A rewind below the init block removes it, and the block landing
@@ -215,6 +255,12 @@ export const protocolInitStatus = async (
   tip: Point,
 ): Promise<ProtocolInitStatus> => {
   try {
+    if (config.recordedOrigin !== undefined) {
+      const started = await store.cursor();
+      const hold =
+        started === null ? null : recordedOriginHold(started.origin, config);
+      if (hold !== null) return hold;
+    }
     const spend = await store.protocolInit(config.hubOracleOneShot);
     if (spend !== null) return { kind: "seen", ...spend };
     const cursor = await store.cursor();

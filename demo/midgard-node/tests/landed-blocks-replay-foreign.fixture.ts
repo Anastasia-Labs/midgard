@@ -7,11 +7,11 @@
  */
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type {
   FactStore,
   FactStoreOptions,
+  FollowerProjection,
   OutRef,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
@@ -65,6 +65,9 @@ import { ChainDriver } from "./helpers/l1-events-store.js";
 import {
   attested,
   AVAILABILITY,
+  type DaCopy,
+  envelope,
+  payloadOf,
 } from "./landed-blocks-replay-foreign.availability.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -79,16 +82,27 @@ const union = (...sets: TrackedSet[]): TrackedSet => ({
   policies: new Set(sets.flatMap((set) => [...set.policies])),
 });
 
-/** A follower store in the node database with both projections, and its chain. */
-export const followChain = async (extra: Partial<FactStoreOptions> = {}) => {
+/** A follower store in the node database with both projections (and `more`), and its chain. */
+export const followChain = async (
+  extra: Partial<FactStoreOptions> = {},
+  more: readonly FollowerProjection[] = [],
+) => {
   const store = await openNodeFollowerStore(
-    [eventProjection(EVENTS_CONFIG), forcedOrderProjection(FORCED_CONFIG)],
+    [
+      eventProjection(EVENTS_CONFIG),
+      forcedOrderProjection(FORCED_CONFIG),
+      ...more,
+    ],
     K,
     extra,
   );
   const chain = new ChainDriver(
     store,
-    union(eventTrackedSet(EVENTS_CONFIG), forcedOrderTrackedSet(FORCED_CONFIG)),
+    union(
+      eventTrackedSet(EVENTS_CONFIG),
+      forcedOrderTrackedSet(FORCED_CONFIG),
+      ...more.flatMap((projection) => projection.trackedSet ?? []),
+    ),
   );
   await chain.init();
   return { store, chain };
@@ -158,10 +172,6 @@ export const forcedAndL2Block = async () => {
       header: { ...normal.header, ...counts },
       forced_transactions: forced.forced_transactions,
       forced_transaction_preimages: forced.forced_transaction_preimages,
-      cek_program_material: [
-        ...forced.cek_program_material,
-        ...normal.cek_program_material,
-      ],
       transition_trace: [
         step(0n, forcedEvent, "ForcedTransaction", prior),
         step(1n, l2Event, "L2Transaction", normal.header.utxosRoot),
@@ -240,7 +250,6 @@ const emptyBody = (): SDK.DaPayload["block_body"] => ({
   withdrawals: [],
   transactions: [],
   transaction_preimages: [],
-  cek_program_material: [],
   forced_transactions: [],
   forced_transaction_preimages: [],
   transition_trace: [],
@@ -346,21 +355,21 @@ export const depositBlock = async (entry: {
   });
 };
 
-export const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+export { envelope };
 
-/** The DA row the node retains for `payload`, optionally altered. */
+/** The DA row the node retains for `copy`, optionally altered. */
 export const retainedRow = async (
-  payload: SDK.DaPayload,
+  copy: DaCopy,
   alter: (row: DaPayloadsDB.InsertInput) => DaPayloadsDB.InsertInput = (row) =>
     row,
-) =>
-  alter(
+) => {
+  const payload = payloadOf(copy);
+  return alter(
     foreignRetainedDaInsert(
       payload.block_body.header_hash,
       payload.block_body.header,
       payload.block_body.header.endTime,
-      await envelope(payload),
+      await envelope(copy),
       // The body's validation-trace pair, as the fetch path verifies it; a
       // body that repeats an event list still has one.
       {
@@ -377,6 +386,7 @@ export const retainedRow = async (
       payload.block_body.counts,
     ),
   );
+};
 
 export const MANIFEST_ID = "de".repeat(32);
 
@@ -427,8 +437,9 @@ export const inNode = <A, E>(
   );
 
 /**
- * The replay input for `payload` on an empty parent at the store's view; its
- * node attested `payload`'s envelope unless `daAvailability` says otherwise.
+ * The replay input for `payload` on an empty parent at the store's view, its
+ * node output entered at the view's slot; its node attested `payload`'s
+ * envelope unless `daAvailability` says otherwise.
  */
 export const inputFor = async (
   store: FactStore,
@@ -436,15 +447,17 @@ export const inputFor = async (
   daAvailability?: SDK.DaAvailabilityStateQueueStatus,
 ): Promise<ReplayInput> => {
   const header = payload.block_body.header;
+  const view = (await store.currentView())!;
   return {
     headerHash: payload.block_body.header_hash,
     header,
     blockTime: header.endTime,
     daAvailability: daAvailability ?? (await attested(payload)),
+    enteredSlot: view.point.slot,
     parentHeaderHash: header.prevHeaderHash,
     parentUtxosRoot: header.prevUtxosRoot,
     parentEntries: [],
-    view: (await store.currentView())!,
+    view,
   };
 };
 

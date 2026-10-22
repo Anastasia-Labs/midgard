@@ -43,9 +43,17 @@
       "midgard-source": "./tests/helpers/canonical-block-evidence-fixture.ts",
       "types": "./tests/helpers/canonical-block-evidence-fixture.ts"
     },
+    "./test-support/input-existence-prepare": {
+      "midgard-source": "./src/input-existence/prepare.ts",
+      "types": "./src/input-existence/prepare.ts"
+    },
     "./test-support/family-l1-observation": {
       "midgard-source": "./src/workflow/family-l1-observation.ts",
       "types": "./src/workflow/family-l1-observation.ts"
+    },
+    "./test-support/value-conservation-adapter": {
+      "midgard-source": "./src/value-not-preserved/adapter.ts",
+      "types": "./src/value-not-preserved/adapter.ts"
     },
     "./test-support/transition-trace-l1-events": {
       "midgard-source": "./src/transition-trace/l1-events.ts",
@@ -90,6 +98,14 @@
     "./test-support/funding-measurement": {
       "midgard-source": "./tests/support/funding-measurement.ts",
       "types": "./tests/support/funding-measurement.ts"
+    },
+    "./test-support/validation-trace-defender-scene": {
+      "midgard-source": "./tests/support/validation-trace-defender-scene.ts",
+      "types": "./tests/support/validation-trace-defender-scene.ts"
+    },
+    "./test-support/validation-trace-challenger-runner": {
+      "midgard-source": "./tests/support/validation-trace-challenger-runner.ts",
+      "types": "./tests/support/validation-trace-challenger-runner.ts"
     }
   },
   "type": "module",
@@ -100,6 +116,8 @@
     "dist"
   ],
   "scripts": {
+    "fixtures:withdrawal-mistag-agreement:sync": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs",
+    "fixtures:withdrawal-mistag-agreement:check": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs --check",
     "clean": "rimraf dist",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-fault-proofs",
     "lint": "eslint . --max-warnings=0",

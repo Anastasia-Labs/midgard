@@ -54,12 +54,12 @@ validator main(
         //    next step must pass.
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -73,19 +73,14 @@ validator main(
 
         expect None = m_input_state_data
 
-        // 2. §2.4.3(d): a leaf of the counted `transactions_root` is an
-        //    acceptance verdict only when its own embedded validity scalar
-        //    claims `TxIsValid`; `open_subject_v1` checks that scalar.
-        // 3. The thread advances to step-02 carrying the bound subject.
+        // 2. The thread advances to step-02 carrying the bound subject. The
+        //    accepted-subject opener enforces §2.4.3(d): a leaf of the counted
+        //    `transactions_root` is an acceptance verdict only when its own
+        //    embedded validity scalar claims `TxIsValid`. Direction A's
+        //    accusation is against exactly that acceptance.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = engine.BoundAccepted {
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource {
-              header: subject_header,
-              tx_inclusion: bad_tx_view,
-            },
-          ),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
         }
         expect output_state_data == expected_output_state
 

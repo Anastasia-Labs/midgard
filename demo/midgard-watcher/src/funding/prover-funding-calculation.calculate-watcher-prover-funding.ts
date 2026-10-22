@@ -9,6 +9,7 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
 import {
@@ -71,6 +72,26 @@ export const calculateWatcherProverFunding = async (input: {
     throw new Error("prover funding economics-policy digest mismatch");
   }
 
+  // A measured validation-dispute bond only sizes the reservation; the
+  // permit admits the deployment-bound bond, so the two must agree.
+  if (
+    input.requirements.scope.kind === "fraud_proof_category" &&
+    input.requirements.scope.category === "validationTraceDispute"
+  ) {
+    const bound = BigInt(
+      watcherDeploymentAvailabilityChallengeAuthority(input.deploymentIdentity)
+        .parameters.challengerBondLovelace,
+    );
+    for (const action of input.requirements.actions)
+      for (const output of action.fundingControlledOutputs)
+        if (
+          output.semanticRole === "challenger_bond" &&
+          BigInt(output.fundingLovelace) !== bound
+        )
+          throw new Error(
+            `${action.actionKind} measured validation dispute bond differs from the deployment-bound bond: measured=${output.fundingLovelace} deployment=${bound.toString()}`,
+          );
+  }
   const parameters = input.protocolParameters.snapshot;
   const maxTxSize = BigInt(parameters.maxTxSize);
   const maxValueSize = BigInt(parameters.maxValueSize);

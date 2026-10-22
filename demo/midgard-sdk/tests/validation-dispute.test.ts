@@ -9,6 +9,7 @@ import {
   CaseThread,
   PreparedValidationResolutionDatum,
   type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
+  ValidationAuxiliaryWitness,
   ValidationAwardSpendRedeemer,
   type ValidationAwardSpendRedeemer as ValidationAwardSpendRedeemerData,
   ValidationBoundarySpendRedeemer,
@@ -16,6 +17,8 @@ import {
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
   validationCaseThreadDataFromCore,
+  ValidationCekExecutionSelectionSpendRedeemer,
+  type ValidationCekExecutionSelectionSpendRedeemer as ValidationCekExecutionSelectionSpendRedeemerData,
   ValidationDisputeTurnSchema,
   ValidationGameSpendRedeemer,
   ValidationMachinePhaseSchema,
@@ -291,6 +294,50 @@ describe("validation dispute ABI", () => {
         ]),
       ),
     );
+
+    const selection = {
+      Continue: [
+        {
+          input_index: 0n,
+          output_index: 1n,
+          transition,
+          auxiliary: evidence.auxiliary,
+          yield_ref_input_indices: [2n, 3n],
+          record_reference_input_index: 4n,
+        },
+      ],
+    } satisfies ValidationCekExecutionSelectionSpendRedeemerData;
+    const selectionCbor = Data.to(
+      selection,
+      ValidationCekExecutionSelectionSpendRedeemer,
+    );
+    expect(selectionCbor).toBe(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            0n,
+            1n,
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
+            Data.from(Data.to(evidence.auxiliary, ValidationAuxiliaryWitness)),
+            [2n, 3n],
+            4n,
+          ]),
+        ]),
+      ),
+    );
+    expect(
+      Data.from(selectionCbor, ValidationCekExecutionSelectionSpendRedeemer),
+    ).toEqual(selection);
+    expect(() =>
+      Data.to(
+        {
+          Continue: [
+            { ...selection.Continue[0], yield_ref_input_indices: [2n] },
+          ],
+        },
+        ValidationCekExecutionSelectionSpendRedeemer,
+      ),
+    ).toThrow();
 
     expect(
       Data.from(

@@ -4,7 +4,10 @@
  * the node database: a block held on a verifier fault is not reported and
  * its hold is a local fault on its header hash, whatever the fault's text;
  * once the fault clears and processing commits the block, it is reported,
- * and the runner's progress watching that block says it passed.
+ * and the runner's progress watching that block says it passed. A block
+ * naming an event the facts lack, short of covering its range, is held as a
+ * local fault on it too, and so is a block whose admitted forced order the
+ * facts cannot read back.
  */
 import "./utils.js";
 
@@ -12,7 +15,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { localFaultSubject } from "../src/l1-events/driver.js";
-import { LANDED_BLOCK_VERIFIER_UNAVAILABLE } from "../src/landed-blocks/holds.js";
+import {
+  LANDED_BLOCK_EVENT_UNKNOWN,
+  LANDED_BLOCK_FORCED_ORDER_PENDING,
+  LANDED_BLOCK_VERIFIER_UNAVAILABLE,
+} from "../src/landed-blocks/holds.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
 import { localFaultProgress } from "../src/services/l1-follower.coalesced-runner.js";
@@ -76,6 +83,46 @@ describe("processing reports the blocks it commits", () => {
         expect(progress.passed()).toBe(true);
         // Said once: the next call watches nothing.
         expect(progress.passed()).toBe(false);
+      }),
+    );
+  }, 120_000);
+
+  it("holds a block naming an event the facts lack, short of covering its range, as a local fault on it", async () => {
+    const { a, f, genesisState, journalA } = await fixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    await inNode(
+      Effect.gen(function* () {
+        state.replayEnds = Effect.succeed({
+          kind: "event_unknown",
+          detail: "deposit 00 is not known at the view: injected",
+        } as const);
+        const held = yield* processLandedQueue(
+          ports(state),
+          queueOf(genesisState, [a, f]),
+        );
+        expect(held?.reason).toBe(LANDED_BLOCK_EVENT_UNKNOWN);
+        expect(localFaultSubject(held!)).toBe(f.hash);
+      }),
+    );
+  }, 120_000);
+
+  it("holds a block whose admitted forced order the facts cannot read back as a local fault on it", async () => {
+    const { a, f, genesisState, journalA } = await fixture();
+    const state = harness();
+    state.journals.set(a.hash, journalA);
+    await inNode(
+      Effect.gen(function* () {
+        state.replayEnds = Effect.succeed({
+          kind: "forced_order_pending",
+          detail: "forced order 00 cannot be read back: injected",
+        } as const);
+        const held = yield* processLandedQueue(
+          ports(state),
+          queueOf(genesisState, [a, f]),
+        );
+        expect(held?.reason).toBe(LANDED_BLOCK_FORCED_ORDER_PENDING);
+        expect(localFaultSubject(held!)).toBe(f.hash);
       }),
     );
   }, 120_000);

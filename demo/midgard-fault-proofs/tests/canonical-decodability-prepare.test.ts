@@ -51,7 +51,7 @@ describe("canonical-decodability preparation", () => {
       field_index: 2n,
       verdict: BigInt(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES),
     });
-    expect(prepared.claim).toEqual({
+    expect(prepared.claimWith()).toEqual({
       BodyFieldClaim: {
         field_index: 2n,
         carriage: { Inline: { preimage: preimage.toString("hex") } },

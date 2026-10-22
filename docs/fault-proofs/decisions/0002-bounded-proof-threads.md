@@ -53,7 +53,6 @@ scenarios together. A source installation is not release acceptance.
 
 ## Authorities and verification
 
-- [Typed reason disposition](../../../demo/midgard-fault-proofs/src/workflow/reason-disposition.ts)
 - [Catalogue](../../../demo/midgard-sdk/src/fraud-proof/catalogue.ts)
 - [Family reference](../family-reference.md)
 - [Rejection reasons](../rejection-reason-catalogue-v1.md)

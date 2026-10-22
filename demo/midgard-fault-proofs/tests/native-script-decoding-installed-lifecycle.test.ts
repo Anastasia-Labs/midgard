@@ -6,7 +6,10 @@ import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { createNativeScriptDecodingTransactionPort } from "../src/native-script-decoding/workflow.js";
+import {
+  createNativeScriptDecodingTransactionPort,
+  NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
+} from "../src/native-script-decoding/workflow.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
@@ -16,6 +19,10 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "../src/workflow/field-carriage-prerequisite.js";
 import {
   computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
@@ -30,6 +37,7 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { emulatorPublicationObserver } from "./support/install-field-carriage.js";
 import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
@@ -249,12 +257,38 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           };
         },
       };
+      // The subject field's carriage lands as the workflow's own journaled
+      // actions, under the family's declared requirement, before the step
+      // that reads it.
+      const [subjectField] =
+        NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION.fieldCarriage!;
+      const fieldPrerequisite =
+        createAuthenticatedFieldCarriagePrerequisitePort({
+          category: "nativeScriptDecoding",
+          lucid: h.proverLucid,
+          network: "Custom",
+          signer: h.proverSigner,
+          publications: emulatorPublicationObserver(h.proverLucid),
+          requirementForAction: (input) =>
+            subjectField!.requirementForAction(
+              {
+                certificate: h.contracts.fieldPreimageCertificate,
+                references: { fieldPreimageCertificateMint: certificate },
+                signer: h.proverSigner,
+              } as never,
+              input,
+            ),
+        });
       const adapter = () =>
-        createCursorFamilyWorkflowAdapter({
-          spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
-          l1,
-          transactions: port,
-          stateQueueMutationLeaseCoordinator: leaseCoordinator,
+        withFieldCarriagePrerequisite({
+          category: "nativeScriptDecoding",
+          prerequisite: fieldPrerequisite,
+          base: createCursorFamilyWorkflowAdapter({
+            spec: NATIVE_SCRIPT_DECODING_CURSOR_SPEC,
+            l1,
+            transactions: port,
+            stateQueueMutationLeaseCoordinator: leaseCoordinator,
+          }),
         });
       for (let n = 0; n < 30; n++) {
         const store = new DirectoryFraudProofWorkflowJournalStore(directory);
@@ -288,6 +322,9 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           kind: "submission_intent",
           actionId: action.actionId,
           actionInput: action.input,
+          ...(preflight.durableRecovery === undefined
+            ? {}
+            : { durableRecovery: preflight.durableRecovery }),
           attempt: 1,
           txHash: preflight.txHash,
         });
@@ -305,6 +342,7 @@ describe("nativeScriptDecoding installed cursor actuator", () => {
           ...context,
           action,
           txHash: preflight.txHash,
+          durableRecovery: preflight.durableRecovery,
         });
         expect(recovered).toEqual({
           kind: "confirmed",

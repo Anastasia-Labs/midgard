@@ -14,6 +14,7 @@ use midgard/fraud_proofs/common.{
   NonMembershipCarriage, PublishedChunkNonMembership,
   RedeemerCarriedNonMembership,
 }
+use midgard/fraud_proofs/first_fault_v1 as order
 use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
 use midgard/fraud_proofs/input_existence_v1/terminal
 use midgard/fraud_proofs/input_existence_v1/terminal_step
@@ -58,6 +59,25 @@ fn challenged_reference_input() -> MidgardTxInput {
   fixture.absent_midgard_tx_input()
 }
 
+fn ledger_state_v1(
+  subject: substrate.VerdictSubjectV1,
+  selected_input: Option<MidgardTxInput>,
+  pre_utxos_root: ByteArray,
+) -> LedgerStateV1 {
+  let block = fixture.challenged_block_v1()
+  let compact = carriage_fixture.compact_view_v1(block.compact)
+  LedgerStateV1 {
+    subject,
+    compact,
+    network_order_context: order.network_order_context_v1(compact, block.header),
+    source_kind: 1,
+    input_index: 0,
+    selected_input,
+    claimed_input: selected_input,
+    pre_utxos_root,
+  }
+}
+
 fn run_terminal_absence_with(
   missing_input: MidgardTxInput,
   blocks_prev_utxos_root: ByteArray,
@@ -88,17 +108,7 @@ fn run_terminal_absence_with(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
         data: Some(
-          LedgerStateV1 {
-            compact: carriage_fixture.compact_view_v1(
-              fixture.challenged_block_v1().compact,
-            ),
-            source_kind: 1,
-            input_index: 0,
-            claimed_input: Some(missing_input),
-            subject,
-            selected_input: Some(missing_input),
-            pre_utxos_root: blocks_prev_utxos_root,
-          },
+          ledger_state_v1(subject, Some(missing_input), blocks_prev_utxos_root),
         ),
       },
     ),
@@ -296,19 +306,7 @@ fn run_presence_v1(
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(
-          LedgerStateV1 {
-            compact: carriage_fixture.compact_view_v1(
-              fixture.challenged_block_v1().compact,
-            ),
-            source_kind: 1,
-            input_index: 0,
-            claimed_input: Some(input),
-            subject,
-            selected_input: Some(input),
-            pre_utxos_root: root,
-          },
-        ),
+        data: Some(ledger_state_v1(subject, Some(input), root)),
       },
     ),
     ct.Continue(
@@ -341,17 +339,11 @@ test event_ledger_terminal_rejects_substituting_a_present_value_hash() fail {
 }
 
 test event_ledger_terminal_rejects_presence_evidence_for_an_out_of_domain_input() fail {
-  let state = LedgerStateV1 {
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
-    source_kind: 1,
-    input_index: 0,
-    claimed_input: None,
-    subject: terminal_subject_v1(1, 1),
-    selected_input: None,
-    pre_utxos_root: env.empty_merkle_tree_root,
-  }
+  let state = ledger_state_v1(
+    terminal_subject_v1(1, 1),
+    None,
+    env.empty_merkle_tree_root,
+  )
   terminal.verdict_contradiction_v1(
     state,
     Present { value_hash: blake2b_256(#"d87980"), proof: [] },
@@ -361,33 +353,21 @@ test event_ledger_terminal_rejects_presence_evidence_for_an_out_of_domain_input(
 }
 
 test event_ledger_terminal_convicts_a_forced_rejection_with_no_named_input() {
-  let state = LedgerStateV1 {
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
-    source_kind: 1,
-    input_index: 0,
-    claimed_input: None,
-    subject: terminal_subject_v1(1, 1),
-    selected_input: None,
-    pre_utxos_root: env.empty_merkle_tree_root,
-  }
+  let state = ledger_state_v1(
+    terminal_subject_v1(1, 1),
+    None,
+    env.empty_merkle_tree_root,
+  )
   terminal.verdict_contradiction_v1(state, OutOfDomain, [], [])
 }
 
 test event_ledger_terminal_refuses_honest_rejection_of_an_absent_input() {
   let input = fixture.absent_midgard_tx_input()
-  let state = LedgerStateV1 {
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
-    source_kind: 1,
-    input_index: 0,
-    claimed_input: Some(input),
-    subject: terminal_subject_v1(1, 1),
-    selected_input: Some(input),
-    pre_utxos_root: env.empty_merkle_tree_root,
-  }
+  let state = ledger_state_v1(
+    terminal_subject_v1(1, 1),
+    Some(input),
+    env.empty_merkle_tree_root,
+  )
   let evidence = Absent {
     non_membership: RedeemerCarriedNonMembership {
       non_membership_proof: [],
@@ -410,17 +390,11 @@ test event_ledger_terminal_refuses_honest_rejection_of_an_absent_input() {
 
 test event_ledger_terminal_convicts_forced_acceptance_of_an_absent_input() {
   let input = fixture.absent_midgard_tx_input()
-  let state = LedgerStateV1 {
-    compact: carriage_fixture.compact_view_v1(
-      fixture.challenged_block_v1().compact,
-    ),
-    source_kind: 1,
-    input_index: 0,
-    claimed_input: Some(input),
-    subject: terminal_subject_v1(0, 1),
-    selected_input: Some(input),
-    pre_utxos_root: env.empty_merkle_tree_root,
-  }
+  let state = ledger_state_v1(
+    terminal_subject_v1(0, 1),
+    Some(input),
+    env.empty_merkle_tree_root,
+  )
   let evidence = Absent {
     non_membership: RedeemerCarriedNonMembership {
       non_membership_proof: [],

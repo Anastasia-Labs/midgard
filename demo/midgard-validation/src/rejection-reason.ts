@@ -153,6 +153,18 @@ export const rejectionReasonOfSubject = (
       return { OutputNonCanonical: { output_index: subject.index } };
     case "OutputBelowMinAda":
       return { OutputBelowMinAda: { output_index: subject.index } };
+    case "OutputReferenceScriptMalformed":
+      return {
+        OutputReferenceScriptMalformed: { output_index: subject.index },
+      };
+    case "OutputReferenceScriptNodeLimit":
+      return {
+        OutputReferenceScriptNodeLimit: { output_index: subject.index },
+      };
+    case "OutputReferenceScriptDepthLimit":
+      return {
+        OutputReferenceScriptDepthLimit: { output_index: subject.index },
+      };
     case "InputAssetAccumulationLimit":
       return {
         InputAssetAccumulationLimit: {

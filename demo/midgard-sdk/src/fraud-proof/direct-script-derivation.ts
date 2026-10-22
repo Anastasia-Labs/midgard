@@ -3,13 +3,13 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, ProofSchema, ScriptHashSchema } from "../common.js";
+import { DirectSourceIndexSchema } from "./direct-source-index-state.js";
+import { FieldOpeningSchema } from "./field-opening.js";
 import {
   NetworkOrderContextSchema,
   PurposeCoordinate,
   PurposeCoordinateSchema,
-} from "./direct-script-derivation-first-fault-seam.js";
-import { DirectSourceIndexSchema } from "./direct-source-index-state.js";
-import { FieldOpeningSchema } from "./field-opening.js";
+} from "./first-fault.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,

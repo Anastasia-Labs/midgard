@@ -6,10 +6,6 @@ use aiken/merkle_patricia_forestry.{Proof}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeFaultPositionV1, RedeemerRequired,
-  SourceRequired,
-} as seam
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
   ProgressArgsV1, SourceSelectionV1,
 } as workers
@@ -17,6 +13,10 @@ use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeFaultPositionV1, RedeemerRequired,
+  SourceRequired,
+} as first_fault
 use midgard/fraud_proofs/missing_redeemer/claim.{
   ClaimContextV1, ClaimedPredicateFactV1, ClaimedRedeemerScanV1, FinalStateV1,
 }
@@ -243,7 +243,7 @@ fn leaf_admits_observed_v1(
   observed: DecisionStateV1,
   fact: ClaimedPredicateFactV1,
 ) -> Bool {
-  let phase = seam.phase_of_reason_v1(r, context)
+  let phase = first_fault.phase_of_reason_v1(r, context)
   if phase != 8 {
     expect fact == claim.NotRequired
     phase < 8
@@ -275,9 +275,9 @@ fn leaf_admits_observed_v1(
           claim.ImpossiblePurpose { .. } -> False
           claim.SourcePresent { .. } -> False
           claim.SourceAbsent { .. } ->
-            seam.purpose_position_precedes_or_equals_v1(
+            first_fault.purpose_position_precedes_or_equals_v1(
               PurposeFaultPositionV1 {
-                coordinate: seam.PurposeCoordinateV1 {
+                coordinate: first_fault.PurposeCoordinateV1 {
                   kind: purpose_kind,
                   index: purpose_index,
                 },
@@ -290,9 +290,9 @@ fn leaf_admits_observed_v1(
       reason.RedeemerMissing { purpose_kind, purpose_index } ->
         when fact is {
           claim.RedeemerAbsent { .. } ->
-            seam.purpose_position_precedes_or_equals_v1(
+            first_fault.purpose_position_precedes_or_equals_v1(
               PurposeFaultPositionV1 {
-                coordinate: seam.PurposeCoordinateV1 {
+                coordinate: first_fault.PurposeCoordinateV1 {
                   kind: purpose_kind,
                   index: purpose_index,
                 },

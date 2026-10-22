@@ -1,8 +1,6 @@
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 
 /// A complete authenticated purpose lookup. None is meaningful only after
 /// the physical lookup's exhaustion/count check, never a partial scan default.

@@ -115,19 +115,29 @@ const observedReasons: ReadonlySet<string> = new Set([
   "operator_watchdog_manifest_mismatch",
   "operator_watchdog_manifest_unverified",
   "retention_l1_view_stale",
+  "admission_backlog_unread",
+  "availability_reward_account_unregistered",
   "broken_link",
   "client_protocol_violation",
   "clock_invalid",
   "clock_unavailable",
+  "commit_worker_verifier_unavailable",
+  "commit_worker_withdrawal_unclassifiable",
   "confirmed_ledger_base_mismatch",
   "confirmed_ledger_behind",
   "confirmed_ledger_own_block_pending",
   "cycle",
+  "da_capability_quorum_pending",
+  "da_provider_assertions_unavailable",
   "database_connection_failed",
+  "database_schema_incompatible",
   "database_unreachable",
   "db_unhealthy",
   "deployment_authority_changed",
   "deployment_identity_unavailable",
+  "deployment_manifest_mismatch",
+  "deployment_manifest_missing",
+  "deployment_manifest_unverifiable",
   "duplicate_key",
   "follower_authority_changed",
   "follower_recomputing",
@@ -144,6 +154,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "intent_reconcile_failed",
   "intent_reconcile_transient",
   "intent_resubmit_rejected",
+  "intent_unbounded_validity",
   "intent_undecodable",
   "intersection_outside_history",
   "invalid_output",
@@ -151,6 +162,7 @@ const observedReasons: ReadonlySet<string> = new Set([
   "l1_control_plane_wedged",
   "l1_driver_recompute_failed",
   "l1_driver_recompute_pending",
+  "l1_driver_transient_failure",
   "l1_event_identity_conflict",
   "l1_event_undecodable",
   "l1_events_hook_failed",
@@ -167,7 +179,11 @@ const observedReasons: ReadonlySet<string> = new Set([
   "l1_follower_view_unapplied",
   "l1_follower_waiting",
   "l1_node_behind",
+  "l1_node_config_pending",
   "l1_node_unavailable",
+  "l1_node_unconfigured",
+  "l1_slot_config_mismatch",
+  "l1_slot_mapping_pending",
   "l1_transport_unready",
   "landed_block_awaiting_da",
   "landed_block_da_refetch_pending",
@@ -176,14 +192,18 @@ const observedReasons: ReadonlySet<string> = new Set([
   "landed_block_forced_order_pending",
   "landed_block_invalid",
   "landed_block_local_fault",
+  "landed_block_origin_after_frontier",
   "landed_block_own_journal_mismatch",
   "landed_block_own_revival_pending",
   "landed_block_rebase_failed",
   "landed_block_rebase_pending",
   "landed_block_replay_failed",
   "landed_block_replay_incomplete",
+  "landed_block_verifier_unavailable",
   "landed_blocks_waiting",
+  "ledger_signature_verifier_unavailable",
   "local_finalization_pending",
+  "lucid_initialization_pending",
   "malformed_frame",
   "missing_admitted_parent",
   "missing_follower_permit",
@@ -195,11 +215,15 @@ const observedReasons: ReadonlySet<string> = new Set([
   "node_connection_lost",
   "node_handshake_failed",
   "node_instance_lock_failed",
+  "node_instance_lock_held_elsewhere",
   "node_instance_lock_suspended",
+  "node_instance_lock_unavailable",
   "node_unreachable",
   "operator_membership_unavailable",
   "operator_not_yet_active",
   "operator_removed",
+  "operator_set_unavailable",
+  "operator_set_unhealthy",
   "origin_after_protocol_init",
   "origin_mismatch",
   "origin_not_on_chain",
@@ -207,23 +231,37 @@ const observedReasons: ReadonlySet<string> = new Set([
   "over_cap",
   "plan_expired",
   "planning_started",
+  "protocol_deployment_partial",
+  "protocol_deployment_status_unavailable",
+  "protocol_initialization_failed",
   "queue_unavailable",
   "queue_unhealthy",
   "reset_in_progress",
   "retained_da_payload_missing",
+  "reward_account_status_unavailable",
+  "role_non_follower_l1_config",
   "rollback_beyond_k",
+  "runtime_reference_scripts_failed",
+  "runtime_reference_scripts_input_conflict",
+  "schema_migration_in_progress",
   "services_unavailable",
   "sidecar_restarting",
   "sidecar_starting",
   "sidecar_unavailable",
   "source_timeout",
   "source_unavailable",
+  "startup_failed",
+  "startup_incomplete",
   "startup_preparation_failed",
   "state_queue_lease_stale",
+  "state_queue_unavailable",
   "state_queue_unhealthy",
   "store_integrity",
   "tracked_set_changed",
   "validation_capacity_unavailable",
+  "validation_worker_crashed",
+  "validation_worker_load_failed",
+  "validation_worker_start_failed",
   "version_unsupported",
   "wallet_seed_pending",
 ]);
@@ -234,10 +272,13 @@ const identityField =
 // These are complete server-authored structured reason formats, never message excerpts.
 const boundedReason =
   /^(?:(?:provider_query_unhealthy|provider_query_degraded):l1-provider(?::[0-9]+)?|(?:pending_finalization_age|durable_admission_oldest_age_exceeded):[0-9]+:[0-9]+|(?:unfinished_local_mutation_jobs|da_publication_conflict|l1_own_block_forced_order_orphaned|l1_event_undecodable):[0-9]+|stale_heartbeat:(?:blockCommitment|blockConfirmation|merge|txQueueProcessor):[0-9]+|(?:queue_depth_exceeded|validation_worker_job_timeout|unresolved_block_submission|attestation_timeout_queue_unknown):[0-9]+:[0-9]+|validation_worker_pool_degraded:[0-9]+:[0-9]+:[0-9]+|state_queue_lease_stale:(?:commit|merge|initialize|state_correction|reconcile|unknown):-?[0-9]+|attestation_timeout_correction_(?:failing|stalled):[0-9a-f]{56}:[0-9]+:[0-9]+|native_mpf_full_index_near_cap:FULL_INDEX_MAX_(?:RECORDS|BYTES):[0-9]+:[0-9]+|(?:landed_frontier|intent_journal_replay|operator_activity_record)_prune_floor:[0-9]+|l1_transport_unready:(?:sidecar_starting|sidecar_restarting|sidecar_unavailable|node_unreachable|node_connection_lost|stopped|node_handshake_failed|version_unsupported|malformed_frame|client_protocol_violation)|commit_da_frame_pressure:(?:candidate|initial_candidate|required_work):[0-9]+(?:\.[0-9]+)?)$/u;
+// The validation-trace defender's named states: subject unit, deadline, shortfall.
+const validationTraceDefenseReason =
+  /^(?:validation-trace-defense-(?:awaiting|one-step|won-pending-expiry|thread-lost|operator-fault|trace-disagrees|material-unavailable|history-pruned|references-unresolved|underfunded|funding-pending|not-active|late):[0-9a-f]{56,120}:(?:[0-9]+|none)(?::[0-9]+)?|validation-trace-defense-stalled:[0-9]+)$/u;
 
 // Fixed stage vocabulary from the actual commit-build alarm producers.
 const commitAlarmReason =
-  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|program_material_sidecar|program_material_coverage|withdrawal_classification|unclassified)$/u;
+  /^(?:commit_build_held|commit_stage_breaker):(?:phase_a|phase_b|transaction_root_derivation|withdrawal_classification|unclassified)$/u;
 const pipelineCountPath =
   /^(?:durableAdmission\.backlog|localResidue\.(?:mempoolTxCount|processedMempoolTxCount)|localMutationJobs\.unfinished|settlement\.unfinishedJobs|pendingBlockFinalizations\.countsByStatus\.(?:pending_submission|submitted_local_finalization_pending|submitted_unconfirmed|observed_waiting_stability|locally_applied|abandoned))$/u;
 
@@ -303,7 +344,9 @@ export const publicReadinessPresentation = (
           return "settlement_worker_failing";
         if (safe.startsWith("settlement_jobs_stuck:"))
           return "settlement_jobs_stuck";
-        return observedReasons.has(safe) || boundedReason.test(safe)
+        return observedReasons.has(safe) ||
+          boundedReason.test(safe) ||
+          validationTraceDefenseReason.test(safe)
           ? safe
           : DIAGNOSTIC_REDACTED;
       }

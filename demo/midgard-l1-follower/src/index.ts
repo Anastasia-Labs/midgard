@@ -329,6 +329,7 @@ export {
   pointStatusIn,
   type Spender,
   tipIn,
+  txByHashIn,
   type TxSpending,
   type UtxoFilter,
   type UtxoRead,

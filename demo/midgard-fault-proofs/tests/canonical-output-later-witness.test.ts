@@ -1,7 +1,6 @@
 import {
   deriveMidgardForcedTxFaultEvidenceMaterial,
   encodeCbor,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardForcedTxCanonical,
   ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
@@ -51,15 +50,11 @@ it.each([16384, 16385])(
     expect(material.canonical.witnessSet.addrTxWitsPreimageCbor).toEqual(
       encodeCbor([malformedAddress]),
     );
-    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar(
-      [],
-    );
     const phaseA = validatePhaseASingle(
       {
         txId: material.transactionId,
         txCbor: canonicalTransactionCbor,
         sourceKind: "forced",
-        programMaterialSidecarCbor,
         arrivalSeq: 0n,
         createdAt: new Date(0),
       },

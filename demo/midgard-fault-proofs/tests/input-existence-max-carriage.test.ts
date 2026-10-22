@@ -6,8 +6,8 @@ import {
   computeHash28,
   computeHash32,
   encodeCbor,
-  materializeMidgardNativeTxFromCanonical,
   encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -25,11 +25,12 @@ import {
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { submitInputExistenceStep } from "../src/input-existence/submit.js";
 import {
-  publishProofChunks,
   type PublishedProofChunk,
+  publishProofChunks,
 } from "../src/publish-proof-chunks.js";
 import { submitInit } from "../src/submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { verifiedMaximumForkPrefixes } from "./support/canonical-decodability-emulator.long-fork-proof.js";
 import { registerChunkedVerifyRewardAccount } from "./support/emulator/emulator-context.js";
@@ -87,6 +88,7 @@ describe("registered maximum event/transition counted membership", () => {
     it.each(profiles)(
       `runs field ${field} with $shape and partial=$partial`,
       async ({ shape, partial }) => {
+        const ownOutputs = createOwnOutputJournal();
         const h = await makeFaultProofEmulatorHarness({
           contractOptions: {
             realNonExistentInput: field === 0,
@@ -179,13 +181,6 @@ describe("registered maximum event/transition counted membership", () => {
           ),
           shape,
         );
-        const validationEntry =
-          small.reconstruction.payload.block_body.validation_traces[0]!;
-        const validationProof = proofFor(
-          Buffer.from(validationEntry[0], "hex"),
-          Buffer.from(validationEntry[1], "hex"),
-          shape,
-        );
         const counted = (domain: SDK.RootDomain, phasRoot: string) =>
           commitCountedRoot({ domain, phasRoot, count: MODEL_COUNT });
         const header: SDK.Header = {
@@ -193,7 +188,8 @@ describe("registered maximum event/transition counted membership", () => {
           l2TransactionCount: MODEL_COUNT,
           totalEventCount: MODEL_COUNT,
           transitionStepCount: MODEL_COUNT,
-          validationTraceCount: MODEL_COUNT,
+          // The header pins the validation-trace pair to the empty tree.
+          validationTraceCount: 0n,
           transactionsRoot: await counted(
             SDK.ROOT_DOMAINS.transactionsV1,
             sourceProof.transactionsPhasRoot,
@@ -206,10 +202,7 @@ describe("registered maximum event/transition counted membership", () => {
             SDK.ROOT_DOMAINS.transitionTrace,
             traceProof.transactionsPhasRoot,
           ),
-          validationTracesRoot: await counted(
-            SDK.ROOT_DOMAINS.validationTraces,
-            validationProof.transactionsPhasRoot,
-          ),
+          validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         };
         const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
           "hex",
@@ -291,6 +284,7 @@ describe("registered maximum event/transition counted membership", () => {
         ).utxo;
         const tag = `field${field}-${shape}-${partial ? "eight-partial" : "packed"}`;
         const fieldChunks = await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid: h.proverLucid,
           signer: h.proverSigner,
           planned: prepared.fieldPlan,
@@ -300,6 +294,7 @@ describe("registered maximum event/transition counted membership", () => {
             captureSigned(tag + "-field-publication", signed.toCBOR()),
         });
         const certificate = await certifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid: h.proverLucid,
           network,
           signer: h.proverSigner,

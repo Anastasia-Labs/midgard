@@ -2,7 +2,6 @@ import "./utils.js";
 
 import { writeFile } from "node:fs/promises";
 
-import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
@@ -28,16 +27,11 @@ import {
   hashBlockHeaderLocal,
   updateLatestBlocksDatumAndGetTheNewHeaderLocal,
 } from "../src/workers/commit-block-header/state-queue.js";
-import {
-  commitDaPayloadForSizing,
-  daProgramMaterialFromSidecars,
-  forcedProgramMaterialSidecars,
-} from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import { commitDaPayloadForSizing } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import { makeEventCommitments } from "../src/workers/commit-block-header/transition-commitments.js";
 import {
   delayProgram,
   openNativeFrameFixture,
-  programScript,
   runNativeFrameDatabase,
 } from "./helpers/commit-additive-native-fixture.js";
 import { openPublishedLifecycle } from "./helpers/published-lifecycle.js";
@@ -45,23 +39,18 @@ import { openPublishedLifecycle } from "./helpers/published-lifecycle.js";
 /** Real current validators admit the signed L1 order. The L2 supplier uses
  * real signatures/validation/native roots, but its ConfirmedState parent is a
  * model: this proves the material boundary, not an authenticated L2 landing. */
-it("admits a native-only order referencing a verified CEK supplier and emits no forced program material", async () => {
+it("admits a native-only order referencing a verified Flat script supplier", async () => {
   const l1 = await openPublishedLifecycle();
   const h = await openNativeFrameFixture({ timeMs: l1.fixture.emulator.now() });
   try {
     const program = delayProgram(32);
     const supplierOutputs = [
-      h.output(2_000_000n, 0, programScript(program)),
+      h.output(2_000_000n, 0, program),
       h.output(49_998_000_000n),
     ];
     const supplier = h.signed(h.inputRef, [], supplierOutputs);
-    await h.validate(supplier, h.initial, program.material);
-    const supplied = await h.build(
-      supplier,
-      h.initial,
-      h.root,
-      program.material,
-    );
+    await h.validate(supplier, h.initial);
+    const supplied = await h.build(supplier, h.initial, h.root);
     expect(supplied.processed.processedMempoolTxs).toHaveLength(1);
     expect(supplied.builds).toBe(1);
     await h.exact(supplied.processed, h.root);
@@ -174,13 +163,6 @@ it("admits a native-only order referencing a verified CEK supplier and emits no 
     expect(processed.processedMempoolTxs).toHaveLength(0);
     expect(builds).toBe(1);
     const emitted = processed.includedForcedTransactionEntries[0]!;
-    expect(
-      decodeMidgardCekProgramMaterialSidecar(
-        emitted[
-          ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-        ]!,
-      ),
-    ).toEqual([]);
     const leaf = Data.from(
       emitted[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE].toString(
         "hex",
@@ -238,14 +220,11 @@ it("admits a native-only order referencing a verified CEK supplier and emits no 
         ...processed,
         header,
         headerHash,
-        cekProgramMaterial: daProgramMaterialFromSidecars(
-          forcedProgramMaterialSidecars(
-            processed.includedForcedTransactionEntries,
-          ),
-        ),
       }),
     );
-    expect(payload.block_body.cek_program_material).toEqual([]);
+    expect(Object.keys(payload.block_body)).not.toContain(
+      "cek_program_material",
+    );
     await writeFile(
       "/tmp/c2b-forced-reference-actual80-material-boundary.json",
       JSON.stringify(

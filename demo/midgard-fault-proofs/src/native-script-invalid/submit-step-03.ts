@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
-  type FieldOpening,
   MIDGARD_FIELD_INDEX,
   missingSignatureVkeyHash,
   NativeScriptInvalidStep03DatumSchema,
@@ -25,6 +24,10 @@ import {
 import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
@@ -65,6 +68,7 @@ export const submitNativeScriptInvalidStep03 = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -85,6 +89,8 @@ export const submitNativeScriptInvalidStep03 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   assertNativeScriptInvalidDirectRoute(addressWitnessItems.length);
   const stepIndex = 2;
@@ -148,6 +154,7 @@ export const submitNativeScriptInvalidStep03 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -155,23 +162,6 @@ export const submitNativeScriptInvalidStep03 = async ({
       label: `${FAMILY} final field 7`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const referenceInputs = [
-    ...carriageUtxos,
-    referenceScriptUtxo,
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ...(witnessReferenceScripts.computationThreadMint === undefined
-      ? []
-      : [witnessReferenceScripts.computationThreadMint]),
-    ...(witnessReferenceScripts.fraudProofMint === undefined
-      ? []
-      : [witnessReferenceScripts.fraudProofMint]),
-  ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} final field 7`,
-  });
   return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
@@ -183,13 +173,18 @@ export const submitNativeScriptInvalidStep03 = async ({
     threadUtxo,
     threadToken,
     spendRedeemerSchema: Redeemer,
-    buildFamilyArgs: (layout) => ({
+    buildFamilyArgs: (layout, ctx) => ({
       DirectFinalize: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
         fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
         script_item_cbor: Buffer.from(scriptItemCbor).toString("hex"),
-        addr_tx_wits_opening: opening,
+        addr_tx_wits_opening: faultProofFieldOpening({
+          planned,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: `${FAMILY} final field 7`,
+        }),
       },
     }),
     referenceScriptUtxo,

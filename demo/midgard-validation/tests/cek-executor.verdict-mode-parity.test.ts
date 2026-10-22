@@ -6,11 +6,9 @@ import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
-import {
-  buildMidgardCanonicalCekProgram,
-  encodeMidgardCekCardanoFlatProgram,
-} from "../src/cek-program.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
 import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /**
  * Verdict mode skips per-step verification and retention. Over the CEK
@@ -22,14 +20,14 @@ import * as vectors from "./fixtures/cek-core-step-v1.vectors.mjs";
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 const prepare = (definition: vectors.CekCoreStepProgramV1) => {
-  const program = buildMidgardCanonicalCekProgram(
+  const program = buildCekProgramFromRawFlat(
     vectors.compileMidgardCekGoldenProgram(
       definition.term(),
       encodeMidgardCekCardanoFlatProgram,
     ),
   );
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     encodeMidgardCekPlutusData(definition.context()),
   );

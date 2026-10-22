@@ -2,15 +2,12 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import {
-  collectMidgardAttachedProgramEnvelopes,
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
-  decodeMidgardCekProgramMaterialDaEntry,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
   reconstructMidgardTransaction,
-  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import {
   computeMidgardForcedTxProofCommitment,
@@ -25,8 +22,7 @@ type BoundaryCorpusEntry = {
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
   readonly canonicalCborHex: string;
-  readonly canonicalMaterialSidecarCborHex?: string;
-  readonly sourceRawScriptAuditHash?: string;
+  readonly sourceScriptHash?: string;
   readonly productionAdmission:
     | "required"
     | "diagnostic-synthetic-script-witnesses";
@@ -91,25 +87,6 @@ export const recomputeCorpusIdentity = (
     transactionCommitmentHex:
       computeMidgardNativeTxProofCommitment(source).toString("hex"),
   };
-};
-
-export const verifyFixtureProgramMaterial = ({
-  canonicalCbor,
-  payload,
-}: {
-  readonly canonicalCbor: Uint8Array;
-  readonly payload: SDK.DaPayload;
-}) => {
-  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
-  const envelopes = collectMidgardAttachedProgramEnvelopes(transaction);
-  const material = payload.block_body.cek_program_material.map(
-    ([rootHex, valueHex]) =>
-      decodeMidgardCekProgramMaterialDaEntry(
-        Buffer.from(rootHex, "hex"),
-        Buffer.from(valueHex, "hex"),
-      ),
-  );
-  return verifyMidgardCekProgramMaterialBundle(envelopes, material);
 };
 
 export const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (

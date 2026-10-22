@@ -19,8 +19,7 @@ export const appendBoundaryCorpusEntry = ({
   transactionIdHex,
   transactionCommitmentHex,
   canonicalTransactionCbor,
-  canonicalMaterialSidecarCbor,
-  sourceRawScriptAuditHash,
+  sourceScriptHash,
   resolvedReferenceUtxos,
 }: {
   readonly corpusLabel: string | undefined;
@@ -28,8 +27,7 @@ export const appendBoundaryCorpusEntry = ({
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
   readonly canonicalTransactionCbor: Buffer;
-  readonly canonicalMaterialSidecarCbor: Uint8Array | undefined;
-  readonly sourceRawScriptAuditHash: string | undefined;
+  readonly sourceScriptHash: string | undefined;
   readonly resolvedReferenceUtxos: readonly SDK.DaPayloadEntry[] | undefined;
 }): void => {
   const corpusPath = process.env.MIDGARD_BOUNDARY_CORPUS_JSONL;
@@ -47,16 +45,7 @@ export const appendBoundaryCorpusEntry = ({
       transactionIdHex,
       transactionCommitmentHex,
       canonicalCborHex: canonicalTransactionCbor.toString("hex"),
-      ...(canonicalMaterialSidecarCbor === undefined
-        ? {}
-        : {
-            canonicalMaterialSidecarCborHex: Buffer.from(
-              canonicalMaterialSidecarCbor,
-            ).toString("hex"),
-          }),
-      ...(sourceRawScriptAuditHash === undefined
-        ? {}
-        : { sourceRawScriptAuditHash }),
+      ...(sourceScriptHash === undefined ? {} : { sourceScriptHash }),
       ...(resolvedReferenceUtxos === undefined
         ? {}
         : { resolvedReferenceUtxos }),
@@ -94,8 +83,7 @@ export type RetainedDaBoundaryMeasurement = {
 
 export type RetainedDaCanonicalScriptProjection = {
   readonly canonicalTransactionCbor: Buffer;
-  readonly canonicalMaterialSidecarCbor: Buffer;
-  readonly sourceRawScriptAuditHash: string;
+  readonly sourceScriptHash: string;
 };
 
 const sourceValueHex = (source: SDK.L2TransactionSource): string =>
@@ -179,7 +167,6 @@ export const makeRetainedPairPayload = ({
       forced_transaction_preimages: [
         [forcedOrderIdHex, forcedTransactionCborHex],
       ],
-      cek_program_material: [],
       deposits: [],
       transition_trace: [],
       event_to_step: [],

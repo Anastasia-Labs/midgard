@@ -11,12 +11,7 @@ import {
   summarizeMidgardCekSmallConstrData,
 } from "@al-ft/midgard-core";
 
-import {
-  general,
-  leafOf,
-  quick,
-  type Within,
-} from "./script-decode.step-bulk.js";
+import { general, leafOf, type Within } from "./script-decode.step-bulk.js";
 import {
   at,
   type DecodeEnv,
@@ -37,7 +32,6 @@ import {
   type Shape,
   shapeOf,
   UNITS_PER_TICK,
-  UNMETERED,
 } from "./script-decode.step-shape.js";
 import type {
   ConstantType,
@@ -232,26 +226,13 @@ export const descend = (
         rest,
       );
     }
+    // The first component decoded in the scan; it is decoded again in a tick
+    // of its own and the second after it.
     if (step?.k === "second") {
-      const a = quick(bitsOf(env), shapeOf(ty.first), ex.cursor, UNMETERED);
-      if (a.k === "stop") {
-        throw new Error(
-          "script decode: a scanned pair component no longer decodes",
-        );
-      }
-      return descend(
-        env,
-        {
-          ...push(ex, {
-            k: "valuePairSecond",
-            first: a.summary,
-            memory: step.memory,
-          }),
-          cursor: step.middle,
-        },
-        ty.second,
-        rest,
-      );
+      return to(push(ex, { k: "valuePairFirst", second: ty.second }), {
+        k: "value",
+        ty: ty.first,
+      });
     }
     return nodeValue(env, ex, ty);
   }
@@ -331,15 +312,7 @@ export const tickValueReturn = (
 ): Tick => {
   const popped = pop(ex);
   if (popped === undefined) return undefined;
-  return ascend(
-    env,
-    popped[1],
-    popped[0],
-    summary,
-    memory,
-    UNITS_PER_TICK,
-    true,
-  );
+  return ascend(env, popped[1], popped[0], summary, memory, UNITS_PER_TICK);
 };
 
 /**
@@ -363,14 +336,14 @@ export const climb = (
   if (units < 0) return held;
   const popped = pop(ex);
   if (popped === undefined) return held;
-  const next = ascend(env, popped[1], popped[0], summary, memory, units, false);
+  const next = ascend(env, popped[1], popped[0], summary, memory, units);
   if (next === undefined) throw new Error("script decode: a stuck ascent");
   return next;
 };
 
 /**
- * Returns a decoded value to `frame`, with `units` left, all of a tick's when
- * `full`.
+ * Returns a decoded value to `frame`, with `units` left. A pair's second
+ * component is decoded in a tick of its own.
  */
 const ascend = (
   env: DecodeEnv,
@@ -379,7 +352,6 @@ const ascend = (
   summary: Summary,
   memory: bigint,
   units: number,
-  full: boolean,
 ): Tick => {
   switch (frame.k) {
     case "constant":
@@ -441,24 +413,10 @@ const ascend = (
       );
     }
     case "valuePairFirst":
-      return piece(
-        env,
-        ex,
-        ex.cursor,
-        frame.second,
-        shapeOf(frame.second),
-        units,
-        full,
-        (held) => push(held, { k: "valuePairSecond", first: summary, memory }),
-        (after, second, secondMemory, left) =>
-          climb(
-            env,
-            { ...ex, cursor: after },
-            pairSummary(summary, second),
-            memory + secondMemory,
-            left - PAIR_UNITS,
-          ),
-      );
+      return to(push(ex, { k: "valuePairSecond", first: summary, memory }), {
+        k: "value",
+        ty: frame.second,
+      });
     case "valuePairSecond":
       return climb(
         env,

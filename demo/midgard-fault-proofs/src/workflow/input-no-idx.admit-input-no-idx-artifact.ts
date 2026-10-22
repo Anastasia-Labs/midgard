@@ -40,6 +40,7 @@ import {
 } from "./input-no-idx.parse-inclusion.js";
 import { normalizeJournalJson } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import type { OwnOutputJournal } from "./own-outputs.js";
 
 export const admitInputNoIdxArtifact = (
   value: unknown,
@@ -306,8 +307,10 @@ export const stringField = (
 export const resolveField = async (
   config: BoundConfig,
   planned: FaultProofFieldOpeningPlan,
+  ownOutputs: OwnOutputJournal,
 ) => {
   const publications = await resolveFaultProofFieldCarriagePublications({
+    ownOutputs,
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -316,6 +319,7 @@ export const resolveField = async (
     throw new Error("input-no-idx field publications disappeared");
   }
   const certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid: config.lucid,
     network: config.network,
     planned,

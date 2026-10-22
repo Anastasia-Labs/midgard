@@ -1,10 +1,10 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   computeHash28,
   decodeMidgardFieldPreimage,
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 

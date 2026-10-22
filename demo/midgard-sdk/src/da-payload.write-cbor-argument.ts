@@ -44,7 +44,6 @@ export const DaPayloadBodySchema = Data.Object({
   transactions: Data.Array(DaPayloadEntrySchema),
   transaction_preimages: Data.Array(DaPayloadEntrySchema),
   forced_transaction_preimages: Data.Array(DaPayloadEntrySchema),
-  cek_program_material: Data.Array(DaPayloadEntrySchema),
   deposits: Data.Array(DaPayloadEntrySchema),
   transition_trace: Data.Array(DaPayloadEntrySchema),
   event_to_step: Data.Array(DaPayloadEntrySchema),

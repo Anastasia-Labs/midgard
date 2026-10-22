@@ -1,13 +1,16 @@
 /**
- * The deployment's L1 origin point O (l1-architecture-plan §5.3): the point
- * immediately before the block that holds the first deployment step,
- * `prepareHubOracleNonce`. The L1 follower starts its replay at O, so every
- * Midgard output lies after it.
+ * The deployment's L1 origin (l1-architecture-plan §5.3), where the L1
+ * follower starts its replay, so every Midgard output lies after it.
  *
- * Until the single redeploy adds `l1Origin` to the finalized manifest, a
- * running deployment supplies O through operator config (node and committee
- * env `L1_ORIGIN`, watcher `l1.origin`), in the text form
- * `<slot>.<block hash>` that `follower find-origin` prints.
+ * The finalized manifest records it as `l1Origin`: the local node tip T the
+ * deployer read before it signed the first deployment step,
+ * `prepareHubOracleNonce`, proved at finalization to be on chain and before
+ * that step's block. Operator config overrides it (node and committee env
+ * `L1_ORIGIN`, watcher `l1.origin`) in the text form `<slot>.<block hash>`;
+ * a follower store whose origin is after T is unready. For a manifest
+ * without `l1Origin`, the override is the origin, conventionally O, the
+ * point immediately before the `prepareHubOracleNonce` block, as
+ * `follower find-origin` prints it.
  */
 
 /** A chain point: a block's absolute slot and its 32-byte header hash, lowercase hex. */

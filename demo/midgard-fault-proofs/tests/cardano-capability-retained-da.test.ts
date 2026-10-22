@@ -12,12 +12,9 @@ import "./helpers/cardano-capability-retained-da.js";
 import "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 
 import {
-  collectMidgardAttachedProgramEnvelopes,
-  decodeMidgardCekProgramMaterialSidecar,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardTxOutput,
   hashMidgardVersionedScript,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
@@ -40,7 +37,6 @@ import {
   expectedLabels,
   recomputeCorpusIdentity,
   reconstructAuthenticatedCanonicalTransactionFromFieldChunks,
-  verifyFixtureProgramMaterial,
 } from "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";
 
@@ -58,13 +54,8 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         transactionCommitmentHex: boundary.transactionCommitmentHex,
       });
 
-      const materialSidecar =
-        boundary.canonicalMaterialSidecarCborHex === undefined
-          ? undefined
-          : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex");
       const fixture = await buildStrictRetainedDaPairFixture({
         canonicalTransactionCbor: canonicalCbor,
-        canonicalMaterialSidecarCbor: materialSidecar,
         resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
       });
       expect({
@@ -83,46 +74,20 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       expect(diagnosticSyntheticScripts).toBe(
         boundary.label === "mixed-size-balanced",
       );
+      const scripts = decodeMidgardVersionedScriptListPreimage(
+        transaction.witnessSet.scriptTxWitsPreimageCbor,
+      );
       if (diagnosticSyntheticScripts) {
-        expect(materialSidecar).toBeUndefined();
-        expect(boundary.sourceRawScriptAuditHash).toBeUndefined();
-        expect(fixture.payload.block_body.cek_program_material).toEqual([]);
-      } else if (materialSidecar === undefined) {
-        const attachedPrograms =
-          collectMidgardAttachedProgramEnvelopes(transaction);
-        expect(boundary.sourceRawScriptAuditHash).toBeUndefined();
-        expect(attachedPrograms).toHaveLength(0);
-        expect(fixture.payload.block_body.cek_program_material).toEqual([]);
-      } else {
-        const attachedPrograms =
-          collectMidgardAttachedProgramEnvelopes(transaction);
-        const sidecarEntries =
-          decodeMidgardCekProgramMaterialSidecar(materialSidecar);
-        expect(sidecarEntries.length).toBeGreaterThan(0);
-        expect(fixture.payload.block_body.cek_program_material).toEqual(
-          sidecarEntries
-            .map(
-              (entry): SDK.DaPayloadEntry => [
-                Buffer.from(entry.root).toString("hex"),
-                encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-              ],
-            )
-            .sort(([left], [right]) => left.localeCompare(right)),
-        );
-        expect(attachedPrograms).toHaveLength(1);
+        expect(boundary.sourceScriptHash).toBeUndefined();
+      } else if (boundary.sourceScriptHash === undefined) {
         expect(
-          verifyFixtureProgramMaterial({
-            canonicalCbor,
-            payload: fixture.payload,
-          }),
-        ).toHaveLength(1);
-        const scripts = decodeMidgardVersionedScriptListPreimage(
-          transaction.witnessSet.scriptTxWitsPreimageCbor,
-        );
+          scripts.filter(({ language }) => language !== "NativeCardano"),
+        ).toEqual([]);
+      } else {
         expect(scripts).toHaveLength(1);
-        expect(boundary.sourceRawScriptAuditHash).toMatch(/^[0-9a-f]{56}$/u);
-        expect(boundary.sourceRawScriptAuditHash).not.toBe(
-          hashMidgardVersionedScript(scripts[0]!),
+        expect(boundary.sourceScriptHash).toMatch(/^[0-9a-f]{56}$/u);
+        expect(hashMidgardVersionedScript(scripts[0]!)).toBe(
+          boundary.sourceScriptHash,
         );
       }
 
@@ -229,83 +194,16 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     }
   }, 120_000);
 
-  it("keeps material, roots, counts, and forced-preimage authentication fail closed", async () => {
+  it("keeps roots, counts, and forced-preimage authentication fail closed", async () => {
     const canonicalCbor = Buffer.from(
       corpus.entries.find(
         ({ label }) => label === "maximum-list-redeemer-breadth",
       )!.canonicalCborHex,
       "hex",
     );
-    const materialSidecar = Buffer.from(
-      corpus.entries.find(
-        ({ label }) => label === "maximum-list-redeemer-breadth",
-      )!.canonicalMaterialSidecarCborHex!,
-      "hex",
-    );
     const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
-      canonicalMaterialSidecarCbor: materialSidecar,
     });
-    const missingMaterialPayload: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        cek_program_material: [],
-      },
-    };
-    expect(() =>
-      verifyFixtureProgramMaterial({
-        canonicalCbor,
-        payload: missingMaterialPayload,
-      }),
-    ).toThrow();
-
-    const [materialRootHex, materialValueHex] =
-      fixture.payload.block_body.cek_program_material[0]!;
-    const [materialEntry] =
-      decodeMidgardCekProgramMaterialSidecar(materialSidecar);
-    const mutatedPreimage = Buffer.from(materialEntry!.preimage);
-    mutatedPreimage[mutatedPreimage.length - 1] ^= 0x01;
-    const mutatedMaterialPayload: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        cek_program_material: [
-          [
-            materialRootHex,
-            encodeMidgardCekProgramMaterialDaValue({
-              kind: materialEntry!.kind,
-              preimage: mutatedPreimage,
-            }).toString("hex"),
-          ],
-          ...fixture.payload.block_body.cek_program_material.slice(1),
-        ],
-      },
-    };
-    expect(() =>
-      verifyFixtureProgramMaterial({
-        canonicalCbor,
-        payload: mutatedMaterialPayload,
-      }),
-    ).toThrow();
-
-    const wrongMaterialRootPayload: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        cek_program_material: [
-          ["ff".repeat(32), materialValueHex] satisfies SDK.DaPayloadEntry,
-          ...fixture.payload.block_body.cek_program_material.slice(1),
-        ].sort(([left], [right]) => left.localeCompare(right)),
-      },
-    };
-    expect(() =>
-      verifyFixtureProgramMaterial({
-        canonicalCbor,
-        payload: wrongMaterialRootPayload,
-      }),
-    ).toThrow();
-
     const badRootHeader: SDK.Header = {
       ...fixture.header,
       transactionsRoot: "ff".repeat(32),

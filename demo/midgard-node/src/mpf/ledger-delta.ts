@@ -28,18 +28,6 @@ export const transitionEffectToRawLedgerOps = (
         },
   );
 
-export const transitionEffectToLedgerOps = (
-  effect: CanonicalTransitionEffect,
-): readonly MpfBatchOp[] =>
-  effect.operations.map((operation) =>
-    operation.type === "delete"
-      ? { type: "delete", key: Buffer.from(operation.outRefCbor) }
-      : ledgerOutputToInsertBatchOp({
-          outRef: operation.outRefCbor,
-          outputCbor: operation.outputCbor,
-        }),
-  );
-
 export type LedgerDelta = {
   readonly spent: readonly Buffer[];
   readonly produced: readonly UtxoPayloadEntry[];

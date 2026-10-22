@@ -51,9 +51,7 @@ import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js
 import {
   createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "../src/workflow/orchestrator.js";
 import { StateQueueHeaderNotLiveError } from "../src/workflow/raw-l1-family-derivation.js";
@@ -64,6 +62,10 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  noSignedRead,
+  terminalVerifierOf,
+} from "./support/terminal-verifier.js";
 import {
   canonicalEvidence,
   DEPLOYMENT_FINGERPRINT,
@@ -220,6 +222,7 @@ describe("Q51/W-O4 resumable workflow", () => {
         observeHeader,
         observeRetainedHeader,
         observe: async () => (await observe()).stage,
+        observeSignedTransaction: noSignedRead,
       };
       const networkWorkflow = {
         binding: workflow.binding,
@@ -539,16 +542,13 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("refuses a terminal whose removal references a substituted proof token", async () => {
     const evidence = await canonicalEvidence();
-    const verifier: FraudProofWorkflowTerminalVerifier = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: async ({ candidate }) => ({
-        ...candidate,
-        correction: {
-          ...candidate.correction,
-          referencedProofTokenOutRef: `${"ee".repeat(32)}#1`,
-        },
-      }),
-    };
+    const verifier = terminalVerifierOf(async ({ candidate }) => ({
+      ...candidate,
+      correction: {
+        ...candidate.correction,
+        referencedProofTokenOutRef: `${"ee".repeat(32)}#1`,
+      },
+    }));
     const result = await run({
       evidence,
       adapter: makeAdapter(),
@@ -565,9 +565,8 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("refuses a terminal that claims the permanent proof token was consumed", async () => {
     const evidence = await canonicalEvidence();
-    const verifier: FraudProofWorkflowTerminalVerifier = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: async ({ candidate }) =>
+    const verifier = terminalVerifierOf(
+      async ({ candidate }) =>
         ({
           ...candidate,
           proofToken: {
@@ -579,7 +578,7 @@ describe("Q51/W-O4 resumable workflow", () => {
             proofTokenSpent: true,
           },
         }) as unknown as FraudProofWorkflowTerminal,
-    };
+    );
     const result = await run({
       evidence,
       adapter: makeAdapter(),
@@ -595,9 +594,8 @@ describe("Q51/W-O4 resumable workflow", () => {
   it("binds terminal verification to the configured release confirmation depth", async () => {
     const evidence = await canonicalEvidence();
     const observedPolicies: string[] = [];
-    const verifier: FraudProofWorkflowTerminalVerifier = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
-      verify: async ({ candidate, releaseFinality }) => {
+    const verifier = terminalVerifierOf(
+      async ({ candidate, releaseFinality }) => {
         observedPolicies.push(releaseFinality.policyDigest);
         return {
           ...candidate,
@@ -607,7 +605,7 @@ describe("Q51/W-O4 resumable workflow", () => {
           },
         };
       },
-    };
+    );
     const result = await run({
       evidence,
       adapter: makeAdapter(),

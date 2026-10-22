@@ -54,8 +54,8 @@ Tradeoff order: correctness, safety, liveness, performance, convenience.
   Docs Site CI checks its links, builds it and typechecks it.
 - `docs/agents`: progressive guidance; open only the relevant domain doc.
 
-Use the declared repo toolchain: pnpm/Node in `demo`, Aiken in
-`onchain/aiken`, and `make` for the spec.
+Use the declared repo toolchain (`docs/toolchain.md`): pnpm/Node in `demo`,
+Aiken in `onchain/aiken`, and `make` for the spec.
 
 ## Always-On Rules
 

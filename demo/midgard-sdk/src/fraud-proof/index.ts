@@ -15,7 +15,6 @@ export * from "./da-hash-preimage.js";
 export * from "./direct-receive-finish.js";
 export * from "./direct-script-derivation.js";
 export * from "./direct-script-derivation-binding.js";
-export * from "./direct-script-derivation-first-fault-seam.js";
 export * from "./direct-script-derivation-source.js";
 export * from "./direct-source-index.js";
 export * from "./direct-source-workers.js";

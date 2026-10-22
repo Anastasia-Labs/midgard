@@ -176,16 +176,24 @@ fn bound(block: fixture.NativeBlockFixtureV1) -> rule.BoundExecutionV1 {
 // ---------------------------------------------------------------------------
 
 /// One resolved output the prover walks: item `item_index` of field
-/// `field_index`, whose output carries `script`.
+/// `field_index`, whose output carries `script`. `opens_witness_set` carries
+/// the field through a witness-set opening instead of the body opening.
 type ResolvedStep {
   field_index: Int,
   item_index: Int,
   input: MidgardTxInput,
   script: Option<MidgardVersionedScript>,
+  opens_witness_set: Bool,
 }
 
 fn spent(script: Option<MidgardVersionedScript>) -> ResolvedStep {
-  ResolvedStep { field_index: 0, item_index: 0, input: spent_input(), script }
+  ResolvedStep {
+    field_index: 0,
+    item_index: 0,
+    input: spent_input(),
+    script,
+    opens_witness_set: False,
+  }
 }
 
 fn referenced(script: Option<MidgardVersionedScript>) -> ResolvedStep {
@@ -194,6 +202,7 @@ fn referenced(script: Option<MidgardVersionedScript>) -> ResolvedStep {
     item_index: 0,
     input: reference_input(),
     script,
+    opens_witness_set: False,
   }
 }
 
@@ -383,10 +392,18 @@ fn walk_resolved(
               output_index: 0,
               field_index: step.field_index,
               item_index: step.item_index,
-              inputs_opening: fixture.inline_body_opening(
-                block.compact_cbor,
-                field_items(block, step.field_index),
-              ),
+              inputs_opening: if step.opens_witness_set {
+                fixture.inline_witness_opening(
+                  block.compact_cbor,
+                  block.witness_set_compact,
+                  field_items(block, step.field_index),
+                )
+              } else {
+                fixture.inline_body_opening(
+                  block.compact_cbor,
+                  field_items(block, step.field_index),
+                )
+              },
               descriptor_cbor: descriptor,
               membership: RedeemerCarriedMembership {
                 membership_proof: [],
@@ -665,6 +682,21 @@ test accepted_resolved_walk_refuses_another_field() fail {
   ).origin_kind == 1
 }
 
+/// The thread anchors the transaction body, so the resolved door opens the
+/// spend and reference inputs through the body half only: the same field
+/// items carried through a witness-set opening are refused.
+test accepted_resolved_walk_refuses_a_witness_set_opening() fail {
+  let script = false_script()
+  reconstruct(
+    script,
+    [],
+    [
+      ResolvedStep { ..spent(Some(script)), opens_witness_set: True },
+      referenced(None),
+    ],
+  ).origin_kind == 1
+}
+
 // ---------------------------------------------------------------------------
 // Source order equivalence
 // ---------------------------------------------------------------------------
@@ -728,7 +760,13 @@ fn field_steps(
   list.indexed_map(
     outputs,
     fn(item_index, Pair(input, script)) {
-      ResolvedStep { field_index, item_index, input, script }
+      ResolvedStep {
+        field_index,
+        item_index,
+        input,
+        script,
+        opens_witness_set: False,
+      }
     },
   )
 }

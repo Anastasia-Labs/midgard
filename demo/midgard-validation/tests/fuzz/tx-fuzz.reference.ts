@@ -19,21 +19,29 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../../src/cek-program.cardano-flat.js";
+import { aikenBinary } from "./cek-step-fuzz.oracle.js";
 
 /**
  * The reference leg of the transaction differential: a UPLC evaluator outside
  * this repository, `<bin> uplc eval`, given by `MIDGARD_TX_FUZZ_UPLC_BIN`.
- * The leg and its known classes were written against the PV 11 fork build of
- * the Aiken CLI, `aiken v1.1.24+510bb90`; another build may report other
- * spends. It runs the script applied to the script context the trace builder
- * derived, under its default budget (the Cardano per-transaction maximum),
- * and reports the result and the spent budget. Its verdict under the declared
- * ex-units is: the result is unit (PlutusV3) and the spend is within them.
- * Opt-in only: CI never sets the variable and never depends on the binary.
+ * The leg and its pins are taken against the PV 11 fork build of the Aiken
+ * CLI the repository pins (`demo/flake.lock`, `aiken v1.1.24+28e4288`, the
+ * binary `scripts/aiken` runs); another build may report other spends. It
+ * runs the script applied to the script context the trace builder derived,
+ * under its default budget (the Cardano per-transaction maximum), and reports
+ * the result and the spent budget. Its verdict under the declared ex-units
+ * is: the result is unit (PlutusV3) and the spend is within them.
+ * The value `pinned` names that build, resolved as the step oracle resolves
+ * it; CI runs the leg so (the `tx-fuzz-reference` preflight check). Unset,
+ * the leg is off.
  */
 
-export const referenceBinary = (): string | undefined =>
-  process.env.MIDGARD_TX_FUZZ_UPLC_BIN;
+const PINNED_REFERENCE = "pinned";
+
+export const referenceBinary = (): string | undefined => {
+  const configured = process.env.MIDGARD_TX_FUZZ_UPLC_BIN;
+  return configured === PINNED_REFERENCE ? aikenBinary() : configured;
+};
 
 export type ReferenceRun =
   | {

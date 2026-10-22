@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  encodeMidgardCekProgramMaterialSidecar,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
@@ -25,7 +22,6 @@ import { describe, expect, it, vi } from "vitest";
 import * as cekExecutor from "../src/cek-executor.execute-midgard-cek-structural-program.js";
 import {
   applyUTxOStatePatch,
-  buildMidgardCanonicalCekProgram,
   DirectValidationTraceUnavailable,
   MidgardRedeemerTag,
   RejectCodes,
@@ -34,6 +30,7 @@ import {
   type ValidationMachineLedgerEntry,
   validationMachineLedgerRoot,
 } from "../src/index.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -165,7 +162,7 @@ describe("independent validation event replay", () => {
       );
       evaluator.mockClear();
       // Same accepting unit program as the existing validation-machine suite.
-      const program = buildMidgardCanonicalCekProgram(
+      const program = buildCekProgramFromRawFlat(
         Buffer.from(
           UPLCEncoder.compile(
             new UPLCProgram(
@@ -180,7 +177,7 @@ describe("independent validation event replay", () => {
       const spentInputs = Array.from({ length: executionCount }, (_, index) =>
         outRefFromByte(0x1d + index),
       );
-      const script = plutusV3ScriptWitness(program.envelopeCbor);
+      const script = plutusV3ScriptWitness(program.scriptBytes);
       const entries = spentInputs.map((spent) => ({
         outRef: spent,
         output: makeProtectedScriptOutput(
@@ -210,9 +207,6 @@ describe("independent validation event replay", () => {
       const result = await Effect.runPromise(
         replayValidationMachineEvent({
           ...(await replayInput(transaction, entries)),
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-            ...program.material.values(),
-          ]),
         }),
       );
       expect(result.trace.verdict).toBe("accepted");
@@ -237,11 +231,12 @@ describe("independent validation event replay", () => {
       // when the CEK witness and context control began naming the program
       // by its script hash, and when the ledger-delta phase and the state's
       // ledger-delta root were removed, so acceptance follows multi-asset
-      // accounting directly.
+      // accounting directly, and when a carried Plutus script became its
+      // Cardano bytes.
       const expectedTraceHash =
         executionCount === 1
-          ? "a0d53d48a0a7111ecf983048f701348b862ec04dd576775f1b4689f0d72913b0"
-          : "0a96b179a1a18948ce77e57e9927e3482d3f8f69cc645ee7ee006ae0a3c20b34";
+          ? "64a48985b4d3db4407e14e1e49f47a62a82caec224cfe003f446f767708e7150"
+          : "e207749481fd55fcacb04410ffa2df4b8d73bc4084379832862531d9a2225aa1";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
@@ -360,7 +355,7 @@ describe("independent validation event replay", () => {
 
   it("a forced unit-program spend agrees across intake, classification and mandatory trace", async () => {
     const dataHex = "d8799f01ff";
-    const program = buildMidgardCanonicalCekProgram(
+    const program = buildCekProgramFromRawFlat(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram(
@@ -372,7 +367,7 @@ describe("independent validation event replay", () => {
         ),
       ),
     );
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const spent = outRefFromByte(0x1d);
     const entries = [
       {
@@ -400,16 +395,12 @@ describe("independent validation event replay", () => {
     const txCbor = encodeMidgardForcedTxCanonical(
       materializeMidgardForcedTxFromCanonical(native.tx),
     );
-    const material = encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]);
     const phaseA = await Effect.runPromise(
       runPhaseAValidation(
         [
           {
             ...makeQueued(native.txId, txCbor),
             sourceKind: "forced",
-            programMaterialSidecarCbor: material,
           },
         ],
         { ...context, concurrency: 1, strictnessProfile: "phase1_midgard" },
@@ -441,7 +432,6 @@ describe("independent validation event replay", () => {
         ...context,
         sourceKind: "forced",
         canonicalTransactionCbor: txCbor,
-        programMaterialSidecarCbor: material,
         eventKeyCbor: Buffer.from(
           Data.to(
             {

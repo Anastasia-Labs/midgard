@@ -3,12 +3,12 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/redeemer
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_redeemer_witness}

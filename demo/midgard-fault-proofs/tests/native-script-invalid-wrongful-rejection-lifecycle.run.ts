@@ -13,6 +13,7 @@ import { submitNativeScriptInvalidStep03StartSignerScan } from "../src/native-sc
 import { submitNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
 import { submitNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import {
   buildRemovalDeploymentInfo,
@@ -26,6 +27,7 @@ export const run = async (
   unsafeSkipLocalViolationCheckForTest = false,
   cancelAt?: "grammar" | "signer",
 ): Promise<void> => {
+  const ownOutputs = createOwnOutputJournal();
   const initial = await f.init();
   const reopened = unsafeSkipLocalViolationCheckForTest
     ? undefined
@@ -69,6 +71,7 @@ export const run = async (
       label: "native-script maximum field",
     });
     const chunks = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: f.h.proverLucid,
       signer: f.h.proverSigner,
       planned,
@@ -83,6 +86,7 @@ export const run = async (
       label: "native-script field certificate",
     });
     const certified = await certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid: f.h.proverLucid,
       network,
       signer: f.h.proverSigner,
@@ -108,6 +112,7 @@ export const run = async (
   );
   for (let i = 0; i < 1000; i++) {
     const next = await submitNativeScriptInvalidStep02({
+      ownOutputs,
       ...f.common,
       ...scriptCarriage,
       threadOutRef,
@@ -126,6 +131,7 @@ export const run = async (
   let proof;
   if (f.witnesses.length <= 28) {
     proof = await submitNativeScriptInvalidStep03({
+      ownOutputs,
       ...f.common,
       ...signerCarriage,
       unsafeSkipLocalViolationCheckForTest,
@@ -140,6 +146,7 @@ export const run = async (
     });
   } else {
     const started = await submitNativeScriptInvalidStep03StartSignerScan({
+      ownOutputs,
       ...f.common,
       ...signerCarriage,
       threadOutRef,
@@ -155,6 +162,7 @@ export const run = async (
     }
     for (let i = 0; i < 1000; i++) {
       const advanced = await submitNativeScriptInvalidStep04({
+        ownOutputs,
         ...f.common,
         ...signerCarriage,
         threadOutRef,

@@ -14,7 +14,9 @@
  * revival) and a foreign import's local failures are retried on the
  * driver's backoff, the local failures with the `landed_block_local_fault`
  * alarm; a verdict on the view and a replay failure not known to be
- * transient are `notRetried`, re-read on the next follower change.
+ * transient are `notRetried`, re-read on the next follower change; a
+ * follower store whose origin is too late for the blocks after the landed
+ * frontier is fatal.
  */
 import "./utils.js";
 
@@ -23,7 +25,11 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { isRetriedHold, notRetried } from "../src/l1-events/driver.js";
+import {
+  isFatalHold,
+  isRetriedHold,
+  notRetried,
+} from "../src/l1-events/driver.js";
 import {
   foldMerge,
   retrieveMergeLinks,
@@ -38,6 +44,7 @@ import {
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_LOCAL_FAULT,
+  LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REBASE_PENDING,
@@ -329,6 +336,11 @@ describe("own landed blocks", () => {
         LANDED_BLOCK_INVALID,
         false,
       ],
+      [
+        Effect.succeed({ kind: "origin_after_frontier", detail: "x" }),
+        LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+        false,
+      ],
       [Effect.fail(refused), LANDED_BLOCK_REPLAY_FAILED, true],
       [Effect.fail(new Error("boom")), LANDED_BLOCK_REPLAY_FAILED, false],
     ];
@@ -352,6 +364,10 @@ describe("own landed blocks", () => {
             reason,
             retried,
           ]);
+          // Only a late-origin store stops the node at once.
+          expect(isFatalHold(held!)).toBe(
+            reason === LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
+          );
           expect({
             local_fault: (yield* alarms("local_fault")) - before.local_fault,
             incomplete: (yield* alarms("incomplete")) - before.incomplete,

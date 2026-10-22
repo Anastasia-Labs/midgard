@@ -7,10 +7,8 @@ use midgard/fraud_proofs/direct_script_derivation/bind
 use midgard/fraud_proofs/direct_script_derivation/bind_event as event_door
 use midgard/fraud_proofs/direct_script_derivation/bind_pre_state as pre_door
 use midgard/fraud_proofs/direct_script_derivation/bind_state.{EventSelectedV1}
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, SourceBoundV1}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/input_existence_fixture_v1 as carriage
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf

@@ -12,9 +12,9 @@ import {
 
 import type { LinearFaultContracts } from "../linear-fault-family.js";
 import {
+  builtChunkReferenceIndices,
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
 } from "../proof-chunk-carriage.js";
 import {
@@ -60,6 +60,10 @@ export const inputExistenceStates = (prepared: PreparedInputExistence) =>
     {
       subject: prepared.source.subject,
       compact: prepared.compact,
+      network_order_context: SDK.networkOrderContext(
+        prepared.compact,
+        prepared.source.header,
+      ),
       source_kind: BigInt(prepared.field),
       input_index: prepared.inputIndex,
       selected_input: prepared.selectedInput,
@@ -114,7 +118,6 @@ export const prepareInputExistenceStepCarriage = ({
       >
     | undefined;
   let absenceAddress: string | undefined;
-  let absenceIndices: readonly bigint[] = [];
   let absencePublished = false;
   if (stepIndex === 1) {
     eventCarriage = prepareCountedMembershipCarriage({
@@ -181,11 +184,6 @@ export const prepareInputExistenceStepCarriage = ({
       ...publishedProofChunks.map(({ utxo }) => utxo),
       ...validator.referenceInputs,
     ];
-    absenceIndices = derivedChunkReferenceIndices({
-      referenceInputs,
-      chunks: publishedProofChunks,
-      label: family,
-    });
     const keyBytes =
       SDK.encodeMidgardTxInputCanonical(selected).toString("hex");
     const proofCbor = Data.to(prepared.ledgerEvidence.Absent.proof, SDK.Proof);
@@ -198,11 +196,15 @@ export const prepareInputExistenceStepCarriage = ({
     attach = (tx) =>
       validator.attach(
         absencePublished
-          ? tx.withdraw(address, 0n, (() =>
+          ? tx.withdraw(address, 0n, ((ctx) =>
               chunkedNonMembershipClaimRedeemer({
                 merkleRoot: prepared.transitionMembership.value.pre_utxos_root,
                 keyBytes,
-                orderedChunkReferenceInputIndices: absenceIndices,
+                orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+                  ctx,
+                  chunks: publishedProofChunks,
+                  label: family,
+                }),
               })) satisfies BuildTxWithRedeemer)
           : tx.withdraw(
               address,
@@ -223,7 +225,6 @@ export const prepareInputExistenceStepCarriage = ({
     eventCarriage,
     transitionCarriage,
     absenceAddress,
-    absenceIndices,
     absencePublished,
   };
 };

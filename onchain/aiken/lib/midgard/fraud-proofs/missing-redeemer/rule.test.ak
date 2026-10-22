@@ -1,7 +1,4 @@
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
   SourceSelectionV1,
 }
@@ -10,6 +7,9 @@ use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 

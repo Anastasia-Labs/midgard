@@ -36,6 +36,7 @@ import {
   type LucidEvolution,
   paymentCredentialOf,
   PROTOCOL_PARAMETERS_DEFAULT,
+  type RedeemerContext,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -185,27 +186,11 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
   if (carriage === undefined || nonce === undefined || unrelated === nonce)
     throw new Error("the emulator wallet must hold the carriage and two UTxOs");
   const referenceInputs = [carriage, unrelated!];
-  // The carriage's position among the ledger-sorted reference inputs. The
-  // SDK computes it by finding the publication's digest, so for tampered
-  // bytes the adversary writes it by hand; for honest bytes both agree.
-  const sorted = [...referenceInputs].sort((a, b) =>
-    a.txHash === b.txHash
-      ? a.outputIndex - b.outputIndex
-      : a.txHash < b.txHash
-        ? -1
-        : 1,
-  );
-  const vector: SDK.TxOrderMintRedeemer["material_carriage"] = [
-    { RawUtxo: { ref_input_index: BigInt(sorted.indexOf(carriage)) } },
-  ];
-  if (!tamper)
-    expect([
-      ...SDK.txOrderMaterialCarriageVector({
-        plan,
-        certificatePolicyId: h.contracts.fieldPreimageCertificate.policyId,
-        referenceInputs,
-      }),
-    ]).toEqual(vector);
+  // The carriage's position among the final transaction's reference inputs.
+  // The SDK finds it by the publication's digest, so for tampered bytes the
+  // adversary names the carriage directly; for honest bytes both agree.
+  let written: SDK.TxOrderMintRedeemer["material_carriage"] | undefined;
+  let derived: SDK.TxOrderMintRedeemer["material_carriage"] | undefined;
   const unit = `${h.contracts.txOrder.policyId}${Buffer.from("order").toString("hex")}`;
   const datum: SDK.TxOrderDatum = {
     event: {
@@ -226,16 +211,42 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
     },
     refund_datum: "NoDatum",
   };
-  const redeemer: SDK.TxOrderMintRedeemer = {
-    event: {
-      AuthenticateEvent: {
-        nonce_input_index: 0n,
-        event_output_index: 0n,
-        hub_ref_input_index: 0n,
-        witness_registration_redeemer_index: 0n,
+  const redeemer = (ctx: RedeemerContext): SDK.TxOrderMintRedeemer => {
+    written = [
+      {
+        RawUtxo: {
+          ref_input_index: SDK.requireReferenceInputIndex(
+            ctx,
+            carriage,
+            "carriage",
+          ),
+        },
       },
-    },
-    material_carriage: vector,
+    ];
+    if (!tamper)
+      derived = [
+        ...SDK.txOrderMaterialCarriageVector({
+          plan,
+          certificatePolicyId: h.contracts.fieldPreimageCertificate.policyId,
+          referenceInputs: ctx.referenceInputs,
+        }),
+      ];
+    return {
+      event: {
+        AuthenticateEvent: {
+          nonce_input_index: SDK.requireInputIndex(ctx, nonce, "order nonce"),
+          event_output_index: SDK.requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) => (output.assets[unit] ?? 0n) === 1n,
+            "order",
+          ),
+          // The placeholder policy reads no hub or witness registration.
+          hub_ref_input_index: 0n,
+          witness_registration_redeemer_index: 0n,
+        },
+      },
+      material_carriage: written,
+    };
   };
   const order = await submit(
     h,
@@ -243,7 +254,9 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
       .newTx()
       .collectFrom([nonce])
       .readFrom(referenceInputs)
-      .mintAssets({ [unit]: 1n }, Data.to(redeemer, SDK.TxOrderMintRedeemer))
+      .mintAssets({ [unit]: 1n }, (ctx) =>
+        Data.to(redeemer(ctx), SDK.TxOrderMintRedeemer),
+      )
       .attach.MintingPolicy(h.contracts.txOrder.mintingScript)
       .pay.ToAddressWithData(
         h.contracts.txOrder.spendingScriptAddress,
@@ -252,6 +265,7 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
       )
       .complete({ localUPLCEval: true }),
   );
+  if (!tamper) expect(derived).toEqual(written);
   return { submitted, publication, order };
 };
 

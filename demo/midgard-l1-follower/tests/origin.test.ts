@@ -346,4 +346,86 @@ describe.each(adapters)("R3 completeness assertion ($name)", (adapter) => {
     ).toMatchObject({ kind: "pending" });
     await store.close();
   });
+  describe("against the deployment's recorded origin", () => {
+    /** A point one slot before the store's origin, and one at its slot on another block. */
+    const EARLIER: Point = { slot: 99, hash: fill(0x9f) };
+    const SAME_SLOT: Point = { slot: 100, hash: fill(0x9e) };
+    const recorded = (recordedOrigin: Point): OriginConfig => ({
+      origin: ORIGIN.point,
+      hubOracleOneShot: INIT_SPENT,
+      recordedOrigin,
+    });
+
+    it.each([
+      [
+        "an earlier slot",
+        EARLIER,
+        /from l1Origin 100\.a0a0.* after the deployment's recorded l1Origin 99\.9f9f/u,
+      ],
+      [
+        "the same slot on another block",
+        SAME_SLOT,
+        /from l1Origin 100\.a0a0.* after the deployment's recorded l1Origin 100\.9e9e/u,
+      ],
+    ])(
+      "F-a/F-c: a store origin after the recorded origin (%s) is R3, even with the init spend seen",
+      async (_name, recordedOrigin, detail) => {
+        const store = await startedAt(ORIGIN, blocks, INIT_SPENT);
+        const status = await protocolInitStatus(
+          store,
+          recorded(recordedOrigin),
+          B3,
+        );
+        expect(status).toEqual({
+          kind: "intervention",
+          reason: "origin_after_protocol_init",
+          detail: expect.stringMatching(detail) as unknown,
+        });
+        expect(status).toMatchObject({
+          detail: expect.stringMatching(
+            /set l1Origin at or before .* and run midgard-l1-follower reset --to-origin/u,
+          ) as unknown,
+        });
+        await store.close();
+      },
+    );
+
+    it("F-a: flags it before the cursor catches up, while the tip is ahead", async () => {
+      const store = await startedAt(ORIGIN, [at(0)], INIT_SPENT);
+      expect(
+        await protocolInitStatus(store, recorded(EARLIER), B3),
+      ).toMatchObject({
+        kind: "intervention",
+        reason: "origin_after_protocol_init",
+      });
+      await store.close();
+    });
+
+    it.each([
+      ["equal to", ORIGIN.point],
+      ["after", B1],
+    ])(
+      "F-b: a store origin %s the recorded origin is accepted and sees the spend",
+      async (_name, recordedOrigin) => {
+        const store = await startedAt(ORIGIN, blocks, INIT_SPENT);
+        expect(
+          await protocolInitStatus(store, recorded(recordedOrigin), B3),
+        ).toEqual({
+          kind: "seen",
+          txHash: blocks[0]!.txs[0]!.hash,
+          slot: 101,
+        });
+        await store.close();
+      },
+    );
+
+    it("F-c: an uninitialized store is pending, with a recorded origin too", async () => {
+      const { store } = await adapter.open(2);
+      await store.start();
+      expect(
+        await protocolInitStatus(store, recorded(EARLIER), B3),
+      ).toMatchObject({ kind: "pending" });
+      await store.close();
+    });
+  });
 });

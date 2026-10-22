@@ -6,9 +6,9 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeCekSelectionAuthenticateWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace CEK selection authenticate yield",
-      manifestPosition: 531,
-      publicationPosition: 532,
-      referenceRolePosition: 372,
+      manifestPosition: 532,
+      publicationPosition: 533,
+      referenceRolePosition: 373,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_execution_selection_yields.authenticate.withdraw",
@@ -17,9 +17,9 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeCekSelectionSuccessorWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace CEK selection successor yield",
-      manifestPosition: 532,
-      publicationPosition: 533,
-      referenceRolePosition: 373,
+      manifestPosition: 533,
+      publicationPosition: 534,
+      referenceRolePosition: 374,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/cek_execution_selection_yields.successor.withdraw",
@@ -28,8 +28,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeItemNativeWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace phase-A native item native yield",
-      manifestPosition: 533,
-      publicationPosition: 534,
+      manifestPosition: 534,
+      publicationPosition: 535,
       referenceRolePosition: 302,
       commands: [],
       validatorTitle:
@@ -39,8 +39,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputePhaseANativeItemForeignWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace phase-A native item foreign yield",
-      manifestPosition: 534,
-      publicationPosition: 535,
+      manifestPosition: 535,
+      publicationPosition: 536,
       referenceRolePosition: 303,
       commands: [],
       validatorTitle:
@@ -50,8 +50,8 @@ export const validationTraceMachineYieldsMembers = defineDeploymentFamily(
     validationTraceDisputeValueAndMintAssetFoldWithdraw: {
       purpose: "withdraw",
       referenceRole: "V1 validation-trace value-and-mint asset-fold yield",
-      manifestPosition: 535,
-      publicationPosition: 536,
+      manifestPosition: 536,
+      publicationPosition: 537,
       referenceRolePosition: 301,
       commands: [],
       validatorTitle:

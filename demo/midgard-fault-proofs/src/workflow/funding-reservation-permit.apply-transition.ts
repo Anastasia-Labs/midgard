@@ -14,6 +14,7 @@ import { parseStateSnapshot } from "./funding-reservation-permit.reconcile-workf
 import {
   type WorkflowFundingAbandonmentHandoff,
   type WorkflowFundingCompletionHandoff,
+  WorkflowFundingReservationUnavailableError,
   type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
@@ -200,6 +201,36 @@ export const releaseIdleWorkflowFundingReservation = async (input: {
   );
 };
 
+/**
+ * Releases the inputs of an idle reservation that could not fund the action
+ * it was begun for (`cause` is that shortfall), so the next action reserves
+ * the wallet as it is then: a top-up resumes the workflow. Idleness is the
+ * journal's, read when this iteration began (no attempt is unresolved).
+ */
+export const releaseUnfundedWorkflowFundingInputs = async (input: {
+  readonly journal: object;
+  readonly cause: unknown;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (
+    !(input.cause instanceof WorkflowFundingReservationUnavailableError) ||
+    state?.port.releaseIdle === undefined ||
+    !state.idleReleaseAuthorized
+  )
+    return;
+  assertWorkflowActuationPermitIdentity({
+    permit: state.actuationPermit,
+    category: state.category,
+    rollbackGeneration: state.snapshot.rollbackGeneration,
+  });
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.releaseIdle({
+      expectedRevision: state.snapshot.revision,
+    }),
+  );
+};
+
 export const acknowledgeWorkflowFundingAbandonment = async (input: {
   readonly journal: FraudProofWorkflowJournalStore;
   readonly handoff: WorkflowFundingAbandonmentHandoff;
@@ -222,6 +253,24 @@ export const acknowledgeWorkflowFundingAbandonment = async (input: {
     await state.port.acknowledgeAbandonment({
       expectedRevision: state.snapshot.revision,
       handoff,
+    }),
+  );
+  state.pendingTransactionHash = undefined;
+};
+
+/** Acknowledges an abandonment whose workflow journal was lost. The recreated
+ * journal re-records its exact intent and stored outcome right after. */
+export const acknowledgeLostWorkflowFundingAbandonment = async (input: {
+  readonly journal: object;
+  readonly handoff: WorkflowFundingAbandonmentHandoff;
+}): Promise<void> => {
+  const state = stateForJournal(input.journal);
+  if (state === undefined) return;
+  state.snapshot = parseStateSnapshot(
+    state,
+    await state.port.acknowledgeAbandonment({
+      expectedRevision: state.snapshot.revision,
+      handoff: parseWorkflowFundingAbandonmentHandoff(input.handoff),
     }),
   );
   state.pendingTransactionHash = undefined;

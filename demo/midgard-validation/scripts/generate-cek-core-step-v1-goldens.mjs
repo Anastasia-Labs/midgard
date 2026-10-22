@@ -42,7 +42,7 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { hashMidgardCekMachineState } from "@al-ft/midgard-core";
+import { encodeCbor, hashMidgardCekMachineState } from "@al-ft/midgard-core";
 import {
   aikenBytes,
   formatAikenSource,
@@ -115,14 +115,16 @@ const stateJson = (state) => ({
 
 const buildProgramVector = (definition) => {
   const program = buildMidgardCanonicalCekProgram(
-    compileMidgardCekGoldenProgram(
-      definition.term(),
-      encodeMidgardCekCardanoFlatProgram,
+    encodeCbor(
+      compileMidgardCekGoldenProgram(
+        definition.term(),
+        encodeMidgardCekCardanoFlatProgram,
+      ),
     ),
   );
   const contextCbor = encodeMidgardCekPlutusData(definition.context());
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     contextCbor,
   );
@@ -205,15 +207,8 @@ const buildProgramVector = (definition) => {
       ),
     ),
     contextCbor: hex(contextCbor),
-    envelope: {
-      uplcVersion: program.envelope.uplcVersion.map((part) =>
-        part.toString(10),
-      ),
-      termRoot: hex(program.envelope.termRoot),
-      nodeCount: program.envelope.nodeCount.toString(10),
-      materialByteLength: program.envelope.materialByteLength.toString(10),
-    },
-    envelopeHash: hex(program.envelopeHash),
+    uplcVersion: program.uplcVersion.map((part) => part.toString(10)),
+    termRoot: hex(program.termRoot),
     root: hex(graph.root),
     contextValueRoot: hex(graph.contextValueRoot),
     initialState: stateJson(execution.initialState),

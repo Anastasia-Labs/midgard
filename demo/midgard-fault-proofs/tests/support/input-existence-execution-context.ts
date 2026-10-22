@@ -1,30 +1,30 @@
 /** Current source/event/ledger fixture shared by retained stage journeys.
  * Published references and economic/removal assertions stay in their callers. */
-import * as SDK from "@al-ft/midgard-sdk";
 import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import {
+  certifyFaultProofFieldCarriage,
+  publishFaultProofFieldCarriage,
+} from "../../src/field-opening.js";
+import type { InputExistenceDeploymentStepArguments } from "../../src/input-existence/deployment-step.js";
+import {
   inputExistenceFieldPlans,
   inputExistenceWithPublishedFields,
 } from "../../src/input-existence/field-carriage.js";
-import {
-  publishFaultProofFieldCarriage,
-  certifyFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
 import type { PreparedInputExistence } from "../../src/input-existence/prepare.js";
-import type { submitInputExistenceStep } from "../../src/input-existence/submit.js";
 import { prepareInputExistence } from "../../src/input-existence/prepare.js";
-import type { InputExistenceDeploymentStepArguments } from "../../src/input-existence/deployment-step.js";
+import type { submitInputExistenceStep } from "../../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../../src/ledger-at.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { inputExistenceChronologyFixture } from "../helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "../helpers/input-existence-chronology-seed.js";
 import type { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
-import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
@@ -33,6 +33,7 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 export const inputExistenceExecutionContext = async ({
@@ -203,6 +204,7 @@ export const publishInputExistenceSelectionCarriage = async (
   prepared: PreparedInputExistence,
   usePublishedFieldCarriage = false,
 ) => {
+  const ownOutputs = createOwnOutputJournal();
   const selected = usePublishedFieldCarriage
     ? inputExistenceWithPublishedFields(
         prepared,
@@ -212,6 +214,7 @@ export const publishInputExistenceSelectionCarriage = async (
   const fieldCarriageUtxos: UTxO[] = [];
   for (const planned of inputExistenceFieldPlans(selected)) {
     const chunks = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -227,6 +230,7 @@ export const publishInputExistenceSelectionCarriage = async (
         label: "retained input-existence certificate",
       });
       const certificate = await certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

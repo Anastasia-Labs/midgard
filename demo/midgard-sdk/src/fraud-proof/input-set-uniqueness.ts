@@ -1,5 +1,3 @@
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 /**
  * Input-set-uniqueness fault-proof family (pre-registration): schema twins of
  * `midgard/fraud_proofs/input_set_uniqueness/step_01` / `step_02`.
@@ -16,19 +14,18 @@ import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
  * Deliberately absent from `catalogue.ts` / the category order: like
  * native-script-decoding, this family predates its catalogue registration.
  */
-
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-
 import { FieldCarriageSchema } from "../native-tx-field-access.js";
-
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 export const InputSetUniquenessStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),

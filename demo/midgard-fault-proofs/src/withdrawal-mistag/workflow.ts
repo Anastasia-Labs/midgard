@@ -110,7 +110,7 @@ export const createWithdrawalMistagTransactionPort = (
       ...args,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
     const prepared = await admitWithdrawalMistagWorkflowArtifact(artifact);
     if (prepared.challengedHeaderHash !== config.binding.definition.headerHash)
       throw new Error("withdrawalMistag bound header changed");
@@ -150,6 +150,7 @@ export const createWithdrawalMistagTransactionPort = (
               headerHash: prepared.challengedHeaderHash,
               action,
               artifact,
+              entries,
             })
           ).publications;
     return {

@@ -1,6 +1,7 @@
 /** Current stage artifact/reference interface. This separate unit registration
  * keeps the existing CLI suite at its frozen 804-line cap. */
 import { describe, expect, it } from "vitest";
+
 import { parseArgs } from "../src/bin.parse-args.js";
 import { parseInputExistenceFileReferences } from "../src/input-existence/submit-from-files.js";
 // Regressions: the new stage interface must carry a full artifact and the

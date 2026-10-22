@@ -13,10 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -26,6 +26,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
@@ -107,16 +111,6 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} field 2`,
-  });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -140,6 +134,12 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} field 2`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step02`);
     const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step02`);
     outputIndex = requireUniqueOutputIndex(
@@ -203,6 +203,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   certificatePreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -221,6 +222,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.outputFieldPreimageHex, "hex"),
@@ -239,6 +242,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -246,31 +250,27 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       label: `${FAMILY} field 2`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  // A certificate already on chain (the workflow's certify action ran) is
+  // reused; only an absent one is minted here.
   const certificateUtxo =
     suppliedCertificate ??
     (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  `${FAMILY}: certified opening requires certificate reference`,
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificatePreSubmitBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          network: lucid.config().network!,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript: `${FAMILY}: certified opening requires certificate reference`,
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificatePreSubmitBoundary,
+        })
       : undefined);
   return await submitOutputReferenceScriptDecodingStep02Raw({
     lucid,

@@ -4,11 +4,11 @@ import {
   resolveNonExistentInputDeploymentContracts,
   resolveNoReferenceInputDeploymentContracts,
 } from "../runtime.js";
-import type { InputExistenceContracts } from "./prepare-step-carriage.js";
 import {
   admitInputExistenceArtifact,
   inputExistenceArtifact,
 } from "./artifact.js";
+import type { InputExistenceContracts } from "./prepare-step-carriage.js";
 import { submitInputExistenceStep } from "./submit.js";
 
 export type InputExistenceDeploymentStepArguments = Omit<

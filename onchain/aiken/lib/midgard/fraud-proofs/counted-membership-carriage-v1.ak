@@ -3,10 +3,9 @@
 //// empty inline proof or a publication label.
 
 use cardano/transaction.{Input, Redeemer, ScriptPurpose}
+use env
 use midgard/fraud_proofs/common.{MembershipCarriage, verify_membership_carried}
-use midgard/transition_trace.{
-  RootCountProof, RootDomain, verify_root_count_proof,
-}
+use midgard/transition_trace.{RootDomain, commit_counted_root}
 
 pub type CarriedCountedMembershipV1<key, value> {
   domain: RootDomain,
@@ -31,22 +30,31 @@ pub fn verify_carried_counted_membership_v1(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Bool {
+  let
+      CarriedCountedMembershipV1 {
+        domain,
+        root,
+        phas_root,
+        count,
+        carriage,
+        ..
+      }
+    = witness
   and {
     expected_count > 0,
-    verify_root_count_proof(
-      RootCountProof {
-        domain: witness.domain,
-        root: witness.root,
-        phas_root: witness.phas_root,
-        count: witness.count,
-      },
-      expected_domain,
-      expected_root,
-      expected_count,
-    ),
+    domain == expected_domain,
+    root == expected_root,
+    count == expected_count,
+    // `expected_count > 0` with `count == expected_count` fixes a positive
+    // count, so of `transition_trace.counted_root_is_consistent` only the
+    // non-empty branch can hold: both roots are non-empty and the root commits
+    // to this count.
+    phas_root != env.empty_merkle_tree_root,
+    root != env.empty_merkle_tree_root,
+    root == commit_counted_root(domain, phas_root, count),
     verify_membership_carried(
-      witness.carriage,
-      witness.phas_root,
+      carriage,
+      phas_root,
       key_bytes,
       value_bytes,
       reference_inputs,

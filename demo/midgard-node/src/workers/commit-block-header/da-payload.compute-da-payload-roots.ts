@@ -1,14 +1,7 @@
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  mergeMidgardCekProgramMaterialSidecars,
-} from "@al-ft/midgard-core/cek-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
-import {
-  ForcedTransactionsDB,
-  PendingBlockFinalizationsDB,
-} from "../../database/index.js";
+import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { type MpfError } from "../../mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
@@ -33,11 +26,6 @@ export type PayloadCountSet = {
   readonly transitionStepCount: bigint;
   readonly validationTraceCount: bigint;
 };
-
-type DecodedForcedTransactionJournalMember =
-  ForcedTransactionsDB.ForcedTransactionJournalMember & {
-    readonly key: Buffer;
-  };
 
 export const daPayloadBytesUncompressedGauge = Metric.gauge(
   "da_payload_bytes_uncompressed",
@@ -65,39 +53,6 @@ export const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
   key.toString("hex"),
   value.toString("hex"),
 ];
-
-export const journalCekProgramMaterial = (
-  record: PendingBlockFinalizationsDB.Record,
-  forcedMembers: readonly DecodedForcedTransactionJournalMember[],
-): readonly SDK.DaPayloadEntry[] => {
-  const sidecars: Buffer[] = [];
-  for (const member of record.txMembers) {
-    const sidecar =
-      member[
-        PendingBlockFinalizationsDB.MemberColumns
-          .CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-      ];
-    if (sidecar == null) {
-      throw new Error(
-        `V1 transaction ${member[
-          PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID
-        ].toString("hex")} is missing journaled CEK program material`,
-      );
-    }
-    sidecars.push(Buffer.from(sidecar));
-  }
-  for (const forced of forcedMembers) {
-    sidecars.push(Buffer.from(forced.programMaterialSidecarCbor));
-  }
-  return Object.freeze(
-    mergeMidgardCekProgramMaterialSidecars(sidecars).map((entry) =>
-      bufferEntry(
-        Buffer.from(entry.root),
-        encodeMidgardCekProgramMaterialDaValue(entry),
-      ),
-    ),
-  );
-};
 
 export const sortedEntries = (
   entries: readonly SDK.DaPayloadEntry[],

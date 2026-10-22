@@ -69,7 +69,6 @@ export const watcherReplayTranscriptSemanticProjection = (
       network: event.network,
       committedClaim: event.committedClaim,
       canonicalNativeTxCborHex: event.canonicalNativeTxCborHex,
-      programMaterialSidecarCborHex: event.programMaterialSidecarCborHex,
       transitionEffect: event.transitionEffect,
       deploymentManifestId: event.origin.deploymentManifestId,
       throughHeader: event.origin.throughHeader,

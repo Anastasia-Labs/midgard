@@ -1,4 +1,3 @@
-import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardSpendInputItem,
@@ -27,8 +26,6 @@ export type ImportedTxInput =
 export type FromTxOptions = {
   readonly resolvedSpendInputs?: readonly MidgardUtxo[];
   readonly resolvedReferenceInputs?: readonly MidgardUtxo[];
-  /** Exact canonical V1 sidecar material when importing raw transaction bytes. */
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly allowUnexpectedResolvedInputs?: boolean;
   readonly allowUnknownExpectedWitnesses?: boolean;
   readonly partial?: boolean;

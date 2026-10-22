@@ -1,30 +1,4 @@
 {
-  "midgard/apply-params-through-blueprint": {
-    "midgard-core/scripts/measure-validation-proof-item-envelope.mjs": {
-      "reason": "Measurement script that sizes applied validators outside the SDK; it never deploys or hashes a production script.",
-      "sites": ["script: applyParamsToScript("]
-    },
-    "midgard-fault-proofs/tests/cek-material-traversal-maximum.test.ts": {
-      "reason": "Test harness builds an applied script for the emulator directly to measure a traversal maximum; it is test material, not a deployed script.",
-      "sites": ["script: applyParamsToScript(validator.compiledCode, params),"]
-    },
-    "midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts": {
-      "reason": "Independent oracle: the test recomputes the same applied script outside the blueprint module with the pinned WASM API and canonical Plutus Data, comparing the guarded module's output independently. The original Lucid helper spelling changed; this remains the same single test oracle and does not deploy a production script.",
-      "sites": ["apply_params_to_script("]
-    },
-    "midgard-fault-proofs/tests/runtime-blueprint-construction.test.ts": {
-      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
-      "sites": [").toBe(applyParamsToScript(compiledCode, [policy]));"]
-    },
-    "midgard-node/tests/reference-script-sweep-emulator.test.ts": {
-      "reason": "Test builds a sized always-succeeds filler script for a reference-script sweep; it is not a Midgard validator and has no blueprint entry.",
-      "sites": ["applyParamsToScript(alwaysSucceedsCode, ["]
-    },
-    "midgard-sdk/tests/fault-proof.expected-parameter-application.ts": {
-      "reason": "Independent test oracle migrated from the two resolver and contract-builder expectation files: encodes independently specified bindings with the supported pinned WASM API and canonical Plutus Data. Intentionally supports strict parameter prefixes to prove that underapplied hashes differ; it never deploys a production script.",
-      "sites": ["apply_params_to_script("]
-    }
-  },
   "midgard/depth-through-heads": {
     "midgard-core/src/availability-operation-journal.ts": {
       "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule; I1 takes D-N8 (derived status for the SDK availability challenge).",
@@ -118,30 +92,6 @@
       "sites": [".setMinFee(params.slashingPenaltyLovelace);"]
     }
   },
-  "midgard/fault-proof-reference-scripts-only": {
-    "midgard-sdk/src/fraud-proof/catalogue.ts": {
-      "reason": "One-shot catalogue initialization mint attaches its minting policy inline; it is not a fault-proof step validator, and whether the reference-script ruling covers it is an open owner question.",
-      "sites": [".attach.Script(params.validator.mintingScript);"]
-    },
-    "midgard-sdk/src/fraud-proof/field-preimage-carriage.build-unsigned-field-preimage-certification-program.ts": {
-      "reason": "The inline_emulator_only certificate witness branch, which exists for emulator tests; production carriage takes the reference-script branch.",
-      "sites": ["? transaction.attach.MintingPolicy("]
-    }
-  },
-  "midgard/local-uplc-eval": {
-    "midgard-node-tools/devnet/watcher-journeys/attestation-evaluation.test.ts": {
-      "reason": "Deliberate evaluator switch: MIDGARD_WATCHER_ATTESTATION_EVALUATOR=node hands evaluation to the real devnet node, which is the point of that journey mode.",
-      "sites": ["localUPLCEval:"]
-    },
-    "midgard-sdk/tests/scheduler-refresh.scheduler-refresh-sdk-builder-on-the-lucid-emulator.ts": {
-      "reason": "Structural test of script carriage (reference versus attached witness) whose causal negative expects the builder itself to throw; local evaluation would change why the negative fails, so switching it is not behaviour-neutral.",
-      "sites": [
-        ").complete({ localUPLCEval: false });",
-        ").complete({ localUPLCEval: false });",
-        ").complete({ localUPLCEval: false }),"
-      ]
-    }
-  },
   "midgard/locale-compare-explicit-locale": {
     "da-committee-node/src/availability/factory.availability-responder-operations.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -197,8 +147,8 @@
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [").sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
-    "da-committee-node/tests/payload.payload-with-program-material.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+    "da-committee-node/tests/payload.payload-with-script-witnesses.ts": {
+      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here. Existing sorting site moved unchanged when the fixture was renamed for stored Flat witnesses.",
       "sites": [".sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
     "midgard-core/src/codec/native.decode-midgard-native-mint.ts": {
@@ -266,12 +216,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.utxo.txHash.localeCompare(right.utxo.txHash) ||"]
     },
-    "midgard-fault-proofs/src/workflow/field-carriage-prerequisite.publication-observation.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => outRef(left).localeCompare(outRef(right)));"
-      ]
-    },
     "midgard-fault-proofs/src/workflow/funding-requirements.canonical-transaction.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
@@ -334,13 +278,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
-    "midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ".sort(([left], [right]) => left.localeCompare(right)),",
-        "].sort(([left], [right]) => left.localeCompare(right)),"
-      ]
-    },
     "midgard-fault-proofs/tests/fixtures/build-cardano-capability-p2-boundary-corpus-v1.mjs": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
@@ -363,16 +300,7 @@
     },
     "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.setup.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,",
-        "keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"
-      ]
-    },
-    "midgard-fault-proofs/tests/support/emulator/history-pair.index.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "(a, b) => a.txHash.localeCompare(b.txHash) || a.outputIndex - b.outputIndex,"
-      ]
+      "sites": ["keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"]
     },
     "midgard-fault-proofs/tests/support/emulator/setup-tx.onboard-emulator-operator.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -381,10 +309,6 @@
     "midgard-fault-proofs/tests/support/emulator/setup-tx.submit-initial-mint-tx.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort((left, right) => left[1]!.localeCompare(right[1]!))"]
-    },
-    "midgard-fault-proofs/tests/support/retained-reason-classifier.build-retained-validation-block-fixture.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": ["([left], [right]) => left.localeCompare(right),"]
     },
     "midgard-fault-proofs/tests/support/transition-trace-retained.deposit-events-retained-block.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -529,10 +453,6 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.txHash.localeCompare(right.txHash) ||"]
     },
-    "midgard-node/src/transactions/script-reward-registration.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["? left.txHash.localeCompare(right.txHash) ||"]
-    },
     "midgard-node/src/transactions/submit-deposit.deposit-submission-attempt-from-completed-tx.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right));"]
@@ -540,6 +460,10 @@
     "midgard-node/src/transactions/submit-deposit.reconcile-deposit-submission-attempt-program.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([a], [b]) => a.localeCompare(b))"]
+    },
+    "midgard-node/src/transactions/utils.reward-registration-funding.ts": {
+      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "sites": ["? left.txHash.localeCompare(right.txHash) ||"]
     },
     "midgard-node/src/workers/mpf-engine-probe-corpus.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -597,10 +521,6 @@
     "midgard-sdk/tests/state-queue-correction-transition.fraud-lock.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
-    },
-    "midgard-validation/tests/cek-program.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [".sort((left, right) => left[1].localeCompare(right[1]));"]
     },
     "midgard-validation/tests/helpers/ordered-collection-boundary.build-signed-cardano-mint-native-policies-candidate.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
@@ -748,14 +668,6 @@
     "da-committee-node/src/l1/submitter.prune-in-flight-spends.ts": {
       "reason": "The DA submitter's readiness refresh pins the verified plain-ADA spendable set on purpose and re-runs before each submission; the persistent pin is the design, and releasing it would drop that filtering.",
       "sites": ["lucid.overrideUTxOs([...summary.spendableUtxos]);"]
-    }
-  },
-  "midgard/valid-from-wall-clock-margin": {
-    "midgard-sdk/src/operator-lifecycle/strike.plan-inactivity-takeover.ts": {
-      "reason": "Genuine finding, recorded for the owner: the inactivity takeover lower bound is max(nowMs, threshold + 1) with no backoff, so a submit whose node clock lags fails OutsideValidityInterval; changing it moves when a takeover becomes valid.",
-      "sites": [
-        "const validity: InactivityTakeoverValidity = { validFrom, validTo };"
-      ]
     }
   }
 }

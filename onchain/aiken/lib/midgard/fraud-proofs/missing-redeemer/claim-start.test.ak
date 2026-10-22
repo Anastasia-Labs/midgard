@@ -1,19 +1,20 @@
 use aiken/builtin
 use aiken/cbor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers as workers
 use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
   ClaimPurposeStateV1, ExistingPurpose, ImpossiblePurpose, NotRequired,
 }
 use midgard/fraud_proofs/missing_redeemer/claim_start as start
+use midgard/fraud_proofs/missing_redeemer/entry
 use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/types as native_types
@@ -163,6 +164,42 @@ test reused_coordinate_requires_an_actual_purpose() fail {
 test finish_refuses_a_receipt_for_another_leaf_coordinate() fail {
   let initial = context(2, 0)
   cbor.serialise(start.finish_v1(initial, initial.bound, impossible(2, 1))) != #""
+}
+
+/// A receipt binds only the purpose kind the leaf's reason names, at the same
+/// purpose index.
+test finish_refuses_a_receipt_for_another_leaf_purpose_kind() fail {
+  let initial = context(0, 7)
+  cbor.serialise(start.finish_v1(initial, initial.bound, impossible(1, 7))) != #""
+}
+
+fn with_leaf_reason(reason: Option<reasons.RejectionReasonV1>) -> BoundIndexV1 {
+  let bound = context(0, 7).bound
+  BoundIndexV1 {
+    ..bound,
+    bound: BoundV1 {
+      ..bound.bound,
+      subject: VerdictSubjectV1 {
+        ..bound.bound.subject,
+        direction: 1,
+        source_kind: 1,
+        rejection_reason: reason,
+      },
+    },
+  }
+}
+
+test claimed_only_route_admits_a_redeemer_missing_leaf() {
+  let bound = with_leaf_reason(reason(0, 7))
+  entry.claim_context_v1(bound) == ClaimContextV1 { bound, observed: None }
+}
+
+/// The claimed-only route opens only on a RedeemerMissing leaf.
+test claimed_only_route_refuses_a_leaf_of_another_reason_constructor() fail {
+  let bound = with_leaf_reason(
+    Some(reasons.UnusedRedeemer { redeemer_index: 7 }),
+  )
+  entry.claim_context_v1(bound).observed == None
 }
 
 test finish_accepts_an_impossible_receipt_at_an_invalid_coordinate() {

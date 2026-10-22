@@ -1,6 +1,7 @@
 /** Exact twin of one counted direct/published opening. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
+
 import { H32Schema } from "../common.js";
 import {
   EventKeySchema,

@@ -60,7 +60,14 @@ describe("raw L1 snapshot V1 admission", () => {
     const observer = createFraudProofAuthenticatedPublicationObserver({
       authority: {
         authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-        capture: async () => snapshot,
+        // The source answers each scope as requested.
+        capture: async (asked) => ({
+          ...snapshot,
+          scopes: asked.scopes.map((entry) => ({
+            ...entry,
+            utxos: scope.utxos,
+          })),
+        }),
       },
       releaseFinality,
     });
@@ -87,6 +94,125 @@ describe("raw L1 snapshot V1 admission", () => {
     await expect(observer.observeExact(request)).rejects.toThrow(
       /resolvedReferenceInputs do not exactly resolve/u,
     );
+  });
+
+  it("observes a publication by its out-ref alone, at an address holding more outputs than one snapshot carries", async () => {
+    const value = fixture();
+    const address = value.request.scopes[0]!.address;
+    const datumCbor = "d8799f4100ff";
+    const outputCbor = CML.TransactionOutput.new(
+      CML.Address.from_bech32(address),
+      CML.Value.from_coin(2_000_000n),
+      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datumCbor)),
+    ).to_canonical_cbor_hex();
+    const publication = (outRef: string) => ({
+      outRef,
+      outputCbor,
+      datumCbor:
+        CML.PlutusData.from_cbor_hex(datumCbor).to_canonical_cbor_hex(),
+      referenceScriptCbor: null,
+    });
+    const ours = `${"5a".repeat(32)}#3`;
+    // Other parties' outputs at the address, past the snapshot's bound.
+    const other = publication(`${"00".repeat(32)}#0`);
+    const others = Array.from({ length: 100_001 }, (_, index) => ({
+      ...other,
+      outRef: `${index.toString(16).padStart(64, "0")}#0`,
+    }));
+    const held = [...others, publication(ours)];
+    const asked: FraudProofRawL1SnapshotRequest["scopes"][] = [];
+    const observer = createFraudProofAuthenticatedPublicationObserver({
+      authority: {
+        authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+        capture: async (request) => {
+          asked.push(request.scopes);
+          return {
+            ...value.snapshot,
+            scopes: request.scopes.map((scope) => ({
+              ...scope,
+              utxos: held.filter(
+                ({ outRef }) =>
+                  scope.outRefs === undefined || scope.outRefs.includes(outRef),
+              ),
+            })),
+            historyUnits: [],
+            history: [],
+            transactions: [],
+          };
+        },
+      },
+      releaseFinality,
+    });
+    const observe = (expectedOutRef: string) =>
+      observer.observeExact({
+        headerHash: value.request.headerHash,
+        kind: "proof_chunk",
+        address,
+        expectedOutRef,
+        expectedDatumCbor: datumCbor,
+      });
+
+    await expect(observe(ours)).resolves.toEqual({
+      kind: "confirmed",
+      outRef: ours,
+    });
+    await expect(observe(`${"5a".repeat(32)}#4`)).resolves.toEqual({
+      kind: "not_found",
+    });
+    expect(asked).toEqual([
+      [{ role: "proof_chunk", address, outRefs: [ours] }],
+      [{ role: "proof_chunk", address, outRefs: [`${"5a".repeat(32)}#4`] }],
+    ]);
+  });
+
+  it("refuses an out-ref scope answered with outputs it was not scoped to, or without its out-refs", () => {
+    const value = fixture();
+    const scope = value.snapshot.scopes[0]!;
+    const outRef = scope.utxos[0]!.outRef;
+    const request = {
+      ...value.request,
+      scopes: [{ ...value.request.scopes[0]!, outRefs: [outRef] }],
+    };
+    const scoped = {
+      ...value.snapshot,
+      scopes: [{ ...scope, outRefs: [outRef] }],
+    };
+    expect(admit(scoped, request)).toEqual(scoped);
+
+    const narrower = {
+      ...request,
+      scopes: [
+        { ...value.request.scopes[0]!, outRefs: [`${"77".repeat(32)}#0`] },
+      ],
+    };
+    expect(() =>
+      admit(
+        {
+          ...value.snapshot,
+          scopes: [{ ...scope, outRefs: narrower.scopes[0]!.outRefs }],
+        },
+        narrower,
+      ),
+    ).toThrow(/output it was not scoped to/u);
+    expect(() => admit(value.snapshot, request)).toThrow(
+      /missing or unknown fields/u,
+    );
+    expect(() =>
+      admit(
+        {
+          ...value.snapshot,
+          scopes: [{ ...scope, outRefs: [`${"77".repeat(32)}#0`] }],
+        },
+        request,
+      ),
+    ).toThrow(/not the requested out-refs/u);
+    for (const outRefs of [[], [outRef, outRef], ["not-an-out-ref"]])
+      expect(() =>
+        admit(scoped, {
+          ...value.request,
+          scopes: [{ ...value.request.scopes[0]!, outRefs }],
+        }),
+      ).toThrow(/outRefs/u);
   });
 
   it("preserves legal noncanonical transaction encoding under its exact signed body hash", () => {

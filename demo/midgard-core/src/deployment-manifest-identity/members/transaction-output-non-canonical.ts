@@ -8,7 +8,7 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-01",
       manifestPosition: 277,
       publicationPosition: 183,
-      referenceRolePosition: 415,
+      referenceRolePosition: 416,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
@@ -19,7 +19,7 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-02",
       manifestPosition: 278,
       publicationPosition: 184,
-      referenceRolePosition: 417,
+      referenceRolePosition: 418,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
@@ -30,7 +30,7 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-03",
       manifestPosition: 279,
       publicationPosition: 185,
-      referenceRolePosition: 419,
+      referenceRolePosition: 420,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
@@ -42,7 +42,7 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
         "V1 fraud-proof transaction-output-non-canonical step-03 datum",
       manifestPosition: 280,
       publicationPosition: 186,
-      referenceRolePosition: 420,
+      referenceRolePosition: 421,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_03_datum.main.spend",
@@ -53,7 +53,7 @@ export const transactionOutputNonCanonicalMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof transaction-output-non-canonical step-04",
       manifestPosition: 281,
       publicationPosition: 187,
-      referenceRolePosition: 422,
+      referenceRolePosition: 423,
       commands: [],
       validatorTitle:
         "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",

@@ -1,10 +1,10 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash28,
   decodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   invalidRangeViolationReason,

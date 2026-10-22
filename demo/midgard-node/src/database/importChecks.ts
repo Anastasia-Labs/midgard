@@ -1,12 +1,12 @@
 /**
- * The import checker's durable set (migration 0028): each Plutus
+ * The import checker's durable set (migrations 0028, 0030): each Plutus
  * transaction of an imported foreign block, applied by its committed
  * verdict, with what its script runs are rebuilt from. An entry is written
  * in the transaction that processes its block, and leaves the set on an
  * accepting local verdict, its block's removal, or its deadline.
  *
  * Storage is linear in the block: each entry holds its transaction's bytes
- * and sidecar once, each output the block's entries spend or reference is
+ * once, each output the block's entries spend or reference is
  * held once per block (`node_import_check_outputs`), and the block's
  * validation context once (`node_import_check_blocks`). No run's context
  * is stored; the checker rebuilds them one at a time.
@@ -15,6 +15,9 @@
  * - `cap_skipped`: not run, the block's checker time was spent (backlog);
  * - `cache_skipped`: not run, a script of it is in the negative cache
  *   (backlog);
+ * - `timed_out`: its last check was killed at its wall-clock limit, which
+ *   is no verdict; the backlog lane runs it again from `retry_at_ms`, on
+ *   spare capacity only, until its deadline;
  * - `faulted`: a run faulted twice, the second time on a fresh instance;
  * - `rejected`: the local evaluator rejected a run. It stays, for a
  *   challenge, until its deadline or its block's removal.
@@ -37,11 +40,12 @@ export type ImportCheckState =
   | "pending"
   | "cap_skipped"
   | "cache_skipped"
+  | "timed_out"
   | "faulted"
   | "rejected";
 
-/** The states that have no local verdict yet and wait for a run; the
- * backlog lane serves all of them. */
+/** The states that have no local verdict and were never run to a kill:
+ * the backlog lane serves them before any `timed_out` entry. */
 export const UNRUN_STATES = [
   "pending",
   "cap_skipped",
@@ -59,6 +63,8 @@ export type ImportCheckEntry = ImportCheckKey &
     position: number;
     deadlineMs: number;
     state: ImportCheckState;
+    /** How many times its check was killed. */
+    timeouts: number;
     /** The sha256 of each distinct script its runs execute. */
     scriptHashes: readonly Buffer[];
   }>;
@@ -66,7 +72,6 @@ export type ImportCheckEntry = ImportCheckKey &
 /** What an entry's runs are rebuilt from. */
 export type ImportCheckMaterial = Readonly<{
   transactionCbor: Buffer;
-  programMaterialSidecarCbor: Buffer;
   context: ImportCheckContext;
   /** Each output the transaction spends or references. */
   outputs: readonly Readonly<{ outRef: Buffer; output: Buffer }>[];
@@ -137,16 +142,12 @@ export const recordChecks = (
       deadline_ms: deadlineMs,
       state: "pending",
       tx_cbor: check.transactionCbor,
-      program_material_sidecar: check.programMaterialSidecarCbor,
       runs: check.runs,
       budget_cpu: check.cpu.toString(),
       run_bytes: check.runBytes,
       script_hashes: Buffer.concat(check.scriptHashes),
     }));
-    for (const batch of batches(
-      rows,
-      (row) => row.tx_cbor.byteLength + row.program_material_sidecar.byteLength,
-    ))
+    for (const batch of batches(rows, (row) => row.tx_cbor.byteLength))
       yield* sql`INSERT INTO node_import_checks ${sql.insert(batch)}
         ON CONFLICT (header_hash, tx_id) DO NOTHING`;
     const outputs = [...block.outputs].map(([outRef, output]) => ({
@@ -203,6 +204,23 @@ export const setCheckState = (key: ImportCheckKey, state: ImportCheckState) =>
     sqlErrorToDatabaseError(tableName, "Failed to update an import check"),
   );
 
+/** Records that `key`'s check was killed for the `timeouts`th time: it
+ * waits as `timed_out` until `retryAtMs`. */
+export const deferCheck = (
+  key: ImportCheckKey,
+  timeouts: number,
+  retryAtMs: number,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE node_import_checks
+      SET state = 'timed_out', timeouts = ${timeouts}, retry_at_ms = ${retryAtMs}
+      WHERE header_hash = ${Buffer.from(key.headerHash, "hex")}
+        AND tx_id = ${key.transactionId}`;
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "Failed to update an import check"),
+  );
+
 /** The `(header_hash, tx_id)` pairs of `keys`, for an `unnest` join. */
 const keyArrays = (pg: PgClient, keys: readonly ImportCheckKey[]) => ({
   headers: pg.array(hashBytes(keys.map((key) => key.headerHash))),
@@ -253,54 +271,6 @@ export const expireChecks = (
     }));
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to expire import checks"));
 
-/** What the entries due at one deadline cost the checker: their count,
- * and their runs' count, declared cpu and bytes (script, context and the
- * sidecar once per run). */
-export type ImportCheckLoad = Readonly<{
-  deadlineMs: number;
-  entries: number;
-  runs: number;
-  cpu: number;
-  bytes: number;
-}>;
-
-/**
- * The load of the entries in `states` whose block is on the landed chain,
- * summed per deadline, earliest first (one row per deadline, whatever the
- * entries' number).
- */
-export const retrieveCheckLoads = (states: readonly ImportCheckState[]) =>
-  Effect.gen(function* () {
-    if (states.length === 0) return [];
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      deadline_ms: string;
-      entries: string;
-      runs: string;
-      budget_cpu: string;
-      run_bytes: string;
-    }>`
-      SELECT c.deadline_ms, COUNT(*) AS entries, SUM(c.runs) AS runs,
-        SUM(c.budget_cpu) AS budget_cpu, SUM(c.run_bytes) AS run_bytes
-      FROM node_import_checks c
-      LEFT JOIN node_landed_blocks b ON b.header_hash = c.header_hash
-      WHERE c.state IN ${sql.in(states)}
-        AND (b.state IS NULL OR b.state <> 'removed')
-      GROUP BY c.deadline_ms
-      ORDER BY c.deadline_ms`;
-    return rows.map(
-      (row): ImportCheckLoad => ({
-        deadlineMs: Number(row.deadline_ms),
-        entries: Number(row.entries),
-        runs: Number(row.runs),
-        cpu: Number(row.budget_cpu),
-        bytes: Number(row.run_bytes),
-      }),
-    );
-  }).pipe(
-    sqlErrorToDatabaseError(tableName, "Failed to read import check loads"),
-  );
-
 /** The most entries, and stored bytes, one read of the set returns. */
 export const READ_PAGE_ROWS = 64;
 export const READ_PAGE_BYTES = 16 * 1024 * 1024;
@@ -310,6 +280,8 @@ export type RetrieveChecksOptions = Readonly<{
   headerHash?: string;
   /** Only entries due after this time. */
   dueAfterMs?: number;
+  /** Only entries whose retry is due by this time (`timed_out` ones). */
+  retryDueByMs?: number;
   /** Not these entries. */
   excluding?: readonly ImportCheckKey[];
   /** At most this many entries (default `READ_PAGE_ROWS`). */
@@ -337,13 +309,14 @@ export const retrieveChecks = (
       block_position: number;
       deadline_ms: string;
       state: ImportCheckState;
+      timeouts: number;
       script_hashes: Buffer;
       preceding_bytes: string;
     }>`
       SELECT * FROM (
         SELECT c.header_hash, c.tx_id, c.block_position, c.deadline_ms,
-          c.state, c.script_hashes,
-          SUM(octet_length(c.tx_cbor) + octet_length(c.program_material_sidecar))
+          c.state, c.timeouts, c.script_hashes,
+          SUM(octet_length(c.tx_cbor))
             OVER (ORDER BY c.deadline_ms, c.header_hash, c.block_position
               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
             AS preceding_bytes
@@ -353,6 +326,7 @@ export const retrieveChecks = (
           AND (b.state IS NULL OR b.state <> 'removed')
           ${options.headerHash === undefined ? sql`` : sql`AND c.header_hash = ${Buffer.from(options.headerHash, "hex")}`}
           ${options.dueAfterMs === undefined ? sql`` : sql`AND c.deadline_ms > ${options.dueAfterMs}`}
+          ${options.retryDueByMs === undefined ? sql`` : sql`AND c.retry_at_ms <= ${options.retryDueByMs}`}
           AND NOT EXISTS (SELECT 1 FROM unnest(${excluded.headers}::bytea[],
               ${excluded.txIds}::bytea[]) AS k(header_hash, tx_id)
             WHERE k.header_hash = c.header_hash AND k.tx_id = c.tx_id)
@@ -367,6 +341,7 @@ export const retrieveChecks = (
         position: entry.block_position,
         deadlineMs: Number(entry.deadline_ms),
         state: entry.state,
+        timeouts: entry.timeouts,
         scriptHashes: Array.from(
           { length: entry.script_hashes.byteLength / 32 },
           (_, index) =>
@@ -451,7 +426,6 @@ export const retrieveCheckMaterial = (
     const header = Buffer.from(key.headerHash, "hex");
     const [row] = yield* sql<{
       tx_cbor: Buffer;
-      program_material_sidecar: Buffer;
       block_time_ms: string;
       block_slot: string;
       network_id: string;
@@ -461,7 +435,7 @@ export const retrieveCheckMaterial = (
       slot_zero_slot: string;
       slot_length: string;
     }>`
-      SELECT c.tx_cbor, c.program_material_sidecar, b.block_time_ms,
+      SELECT c.tx_cbor, b.block_time_ms,
         b.block_slot, b.network_id, b.min_fee_a, b.min_fee_b,
         b.slot_zero_time, b.slot_zero_slot, b.slot_length
       FROM node_import_checks c
@@ -479,7 +453,6 @@ export const retrieveCheckMaterial = (
             AND out_ref = ANY(${pg.array(hashBytes(wanted.map(hexOf)))}::bytea[])`;
     return {
       transactionCbor,
-      programMaterialSidecarCbor: Buffer.from(row.program_material_sidecar),
       context: {
         blockTimeMs: Number(row.block_time_ms),
         blockSlot: BigInt(row.block_slot),

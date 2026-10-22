@@ -39,6 +39,10 @@ import {
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
@@ -72,6 +76,7 @@ export const submitStep04 = async ({
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -102,6 +107,8 @@ export const submitStep04 = async ({
   /** Production workflow seam for carriage and proof-step submissions. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
     await resolveDoubleSpendDeploymentContracts({
@@ -173,6 +180,7 @@ export const submitStep04 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -209,12 +217,6 @@ export const submitStep04 = async ({
       walletUtxos,
     ),
   );
-  const tx2SpendInputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Double-spend step 04 tx2 spend-inputs",
-  });
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -248,7 +250,15 @@ export const submitStep04 = async ({
           fraudProofPolicyId: contracts.fraudProof.policyId,
           fraudProofUnit,
           fraudProofDatum,
-          tx2SpendInputsOpening,
+          tx2SpendInputsOpeningFor: (ctx): FieldOpening =>
+            faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              ...(certificatePolicyId === undefined
+                ? {}
+                : { certificatePolicyId }),
+              label: "Double-spend step 04 tx2 spend-inputs",
+            }),
           doubleSpentInputIndex,
           onLayout: (layout) => {
             spendLayout = layout;

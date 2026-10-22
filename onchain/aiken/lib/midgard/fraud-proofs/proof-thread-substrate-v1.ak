@@ -96,25 +96,48 @@ pub type EventPreStateV1 {
 /// the accepted scalar is checked here. A forced source's header is supplied
 /// by the prover, so its thread binding is checked before its leaf is opened;
 /// the committed header it names was decoded at commit.
+///
+/// A validator whose arms already know the source kind may call
+/// `open_accepted_subject_v1` or `open_forced_subject_v1` directly; each
+/// returns exactly what this function returns for that kind.
 pub fn open_subject_v1(
   thread_name: ByteArray,
   source: SubjectSourceV1,
 ) -> VerdictSubjectV1 {
   when source is {
     AcceptedSource { tx_inclusion, .. } ->
-      bind_accepted_subject_v1(tx_inclusion)
+      open_accepted_subject_v1(tx_inclusion)
     ForcedSource { header, membership } -> {
-      let header_data: Data = header
-      // The thread name binds this header's hash, and thread init binds that
-      // hash to a committed node whose commit decoded the protocol version.
-      expect
-        utils.serialise_and_hash_28(header_data) == bytearray.drop(
-          thread_name,
-          fraud_proof_catalogue.id_byte_count,
-        )
-      bind_forced_subject_v1(header, membership)
+      let Pair(subject, _verified) = open_forced_subject_v1(
+        thread_name,
+        header,
+        membership,
+      )
+      subject
     }
   }
+}
+
+/// `open_subject_v1` on a forced source, also returning the verified view of
+/// the opened leaf's own `submitted_source`. A caller that reads body fields
+/// takes them from this view instead of verifying the same bytes again.
+pub fn open_forced_subject_v1(
+  thread_name: ByteArray,
+  header: ledger_state.HeaderV1,
+  membership: transition_trace.RootMembershipProof<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >,
+) -> Pair<VerdictSubjectV1, VerifiedTxSourceView> {
+  let header_data: Data = header
+  // The thread name binds this header's hash, and thread init binds that
+  // hash to a committed node whose commit decoded the protocol version.
+  expect
+    utils.serialise_and_hash_28(header_data) == bytearray.drop(
+      thread_name,
+      fraud_proof_catalogue.id_byte_count,
+    )
+  bind_forced_subject_v1(header, membership)
 }
 
 fn is_h32(bytes: ByteArray) -> Bool {
@@ -129,11 +152,14 @@ pub fn subject_is_canonical_v1(subject: VerdictSubjectV1) -> Bool {
     subject.version == version,
     is_h32(subject.transaction_id),
     when subject.source_kind is {
-      0 -> and {
-          subject.direction == direction_wrongful_acceptance,
-          subject.source_key == #"",
-          subject.rejection_reason == None,
+      0 -> {
+        let VerdictSubjectV1 { direction, source_key, rejection_reason, .. } = subject
+        and {
+          direction == direction_wrongful_acceptance,
+          source_key == #"",
+          rejection_reason == None,
         }
+      }
       1 -> and {
           bytearray.length(subject.source_key) > 0,
           if subject.direction == direction_wrongful_acceptance {
@@ -179,7 +205,11 @@ pub fn encode_verdict_subject_v1(subject: VerdictSubjectV1) -> ByteArray {
 /// has already authenticated this verified compact transaction under the
 /// header's counted `transactions_root`; this seam additionally enforces the
 /// leaf-is-acceptance validity scalar before constructing canonical state.
-fn bind_accepted_subject_v1(verified: VerifiedTxSourceView) -> VerdictSubjectV1 {
+/// `open_subject_v1` on an accepted source. The carriage that produced
+/// `verified` has already bound its header to the thread.
+pub fn open_accepted_subject_v1(
+  verified: VerifiedTxSourceView,
+) -> VerdictSubjectV1 {
   expect and {
       verified.version == native_tx_version_v1,
       is_h32(verified.tx_id),
@@ -195,19 +225,30 @@ fn bind_accepted_subject_v1(verified: VerifiedTxSourceView) -> VerdictSubjectV1 
   }
 }
 
-/// Whether raw forced-leaf bytes are a member of the header's counted root.
+/// Authenticates raw forced-leaf bytes against the header's counted root.
 /// Typed subjects and raw admission proofs share this membership door; raw
-/// callers keep their own bytes so their grammar predicate can inspect a
-/// committed value that does not decode as a typed leaf.
+/// callers retain the exact bytes so their own grammar predicate can inspect
+/// a committed value that does not decode as a typed leaf.
 pub fn open_forced_leaf_raw_v1(
   header: ledger_state.HeaderV1,
   raw_key: ByteArray,
   raw_value: ByteArray,
   phas_root: ByteArray,
   proof: Proof,
+) -> ByteArray {
+  expect forced_leaf_is_member_v1(header, raw_key, raw_value, phas_root, proof)
+  raw_value
+}
+
+/// The domain, root, and count come from the header itself, so only the
+/// counted-root consistency and the raw membership remain to be checked.
+fn forced_leaf_is_member_v1(
+  header: ledger_state.HeaderV1,
+  raw_key: ByteArray,
+  raw_value: ByteArray,
+  phas_root: ByteArray,
+  proof: Proof,
 ) -> Bool {
-  // The domain, root, and count come from the header itself, so only the
-  // counted-root consistency and the raw membership remain to be checked.
   and {
     transition_trace.counted_root_is_consistent(
       transition_trace.ForcedTransactionsV1RootDomain,
@@ -240,14 +281,15 @@ pub fn event_key_matches_subject_v1(
   subject: VerdictSubjectV1,
 ) -> Bool {
   expect subject_is_canonical_v1(subject)
+  let VerdictSubjectV1 { source_kind, transaction_id, source_key, .. } = subject
   when key is {
     ledger_state.L2TransactionEventKey { tx_id } -> and {
-        subject.source_kind == source_kind_accepted,
-        tx_id == subject.transaction_id,
+        source_kind == source_kind_accepted,
+        tx_id == transaction_id,
       }
     ledger_state.ForcedTransactionEventKey { tx_order_id } -> and {
-        subject.source_kind == source_kind_forced,
-        cbor.serialise(tx_order_id) == subject.source_key,
+        source_kind == source_kind_forced,
+        cbor.serialise(tx_order_id) == source_key,
       }
     _ -> False
   }
@@ -256,15 +298,19 @@ pub fn event_key_matches_subject_v1(
 /// Opens a forced leaf against the challenged header, re-verifies its exact
 /// validity-free proof source and tx id, authenticates the sole verdict,
 /// and fixes the direction's reason polarity. No prover-supplied reason or
-/// coordinate enters the returned state.
+/// coordinate enters the returned state. The verified view is returned
+/// unchanged with the subject.
 fn bind_forced_subject_v1(
   header: ledger_state.HeaderV1,
   membership: transition_trace.RootMembershipProof<
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-) -> VerdictSubjectV1 {
+) -> Pair<VerdictSubjectV1, VerifiedTxSourceView> {
   let leaf = membership.value
+  let source_key = cbor.serialise(membership.key)
+  // The verifier hashes the body bytes against `leaf.tx_id` and returns that
+  // id with version 1, so neither is compared back to the leaf.
   let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
     leaf.tx_id,
     leaf.submitted_source.compact_cbor,
@@ -273,30 +319,30 @@ fn bind_forced_subject_v1(
   )
   // The membership is opened under the header's own domain, root and count,
   // so the carried copies of those three fields are not read.
-  expect and {
-      open_forced_leaf_raw_v1(
-        header,
-        cbor.serialise(membership.key),
-        cbor.serialise(leaf),
-        membership.phas_root,
-        membership.proof,
-      ),
-      verified.version == native_tx_version_v1,
-      verified.tx_id == leaf.tx_id,
-    }
+  expect
+    forced_leaf_is_member_v1(
+      header,
+      source_key,
+      cbor.serialise(leaf),
+      membership.phas_root,
+      membership.proof,
+    )
   let Pair(direction, rejection_reason) = when leaf.verdict is {
     ForcedTxValid -> Pair(direction_wrongful_acceptance, None)
     ForcedTxInvalid { reason } ->
       Pair(direction_wrongful_rejection, Some(reason))
   }
-  VerdictSubjectV1 {
-    version,
-    direction,
-    source_kind: source_kind_forced,
-    transaction_id: leaf.tx_id,
-    source_key: cbor.serialise(membership.key),
-    rejection_reason,
-  }
+  Pair(
+    VerdictSubjectV1 {
+      version,
+      direction,
+      source_kind: source_kind_forced,
+      transaction_id: leaf.tx_id,
+      source_key,
+      rejection_reason,
+    },
+    verified,
+  )
 }
 
 /// The event phase is determined by its authenticated key.
@@ -374,24 +420,33 @@ pub fn subject_event_step_index_v1(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Int {
-  let event = event_membership.value
+  let
+      ledger_state.HeaderV1 {
+        event_to_step_root,
+        total_event_count,
+        transition_step_count,
+        ..
+      }
+    = header
+  let CarriedCountedMembershipV1 { key, value, .. } = event_membership
+  let ledger_state.EventToStepValue { step_index, phase } = value
   expect and {
-      event_key_matches_subject_v1(event_membership.key, subject),
+      event_key_matches_subject_v1(key, subject),
       verify_carried_counted_membership_v1(
         event_membership,
         transition_trace.EventToStepRootDomain,
-        header.event_to_step_root,
-        header.total_event_count,
-        cbor.serialise(event_membership.key),
-        cbor.serialise(event),
+        event_to_step_root,
+        total_event_count,
+        cbor.serialise(key),
+        cbor.serialise(value),
         reference_inputs,
         redeemers,
       ),
-      event.phase == phase_for_event_key_v1(event_membership.key),
-      event.step_index >= 0,
-      event.step_index < header.transition_step_count,
+      phase == phase_for_event_key_v1(key),
+      step_index >= 0,
+      step_index < transition_step_count,
     }
-  event.step_index
+  step_index
 }
 
 /// Physical transition door. `selected_step_index` must be carried from the
@@ -452,18 +507,32 @@ pub fn bind_exact_rejection_reason_v1(
   actual
 }
 
-/// A wrongful acceptance chooses the decisive family coordinate. A wrongful
-/// rejection copies the complete typed reason from its authenticated leaf.
-pub fn bind_reason_or_coordinate_v1(
+/// The typed reason of a wrongful-rejection subject that `open_subject_v1`
+/// returned in the same validator run. Family Step 01 binds use this instead
+/// of `rejection_reason_of_v1`: the opener builds every subject canonical, so
+/// `subject_is_canonical_v1` would only repeat it. An accepted source gets
+/// version 1, wrongful acceptance, an empty key and no reason, and a 32-byte
+/// id (`open_accepted_subject_v1`'s `is_h32`). A forced source gets version
+/// 1, a non-empty CBOR key, the direction and reason from one match on the
+/// leaf verdict, and an id equal to the verified blake2b-256 body hash
+/// (`verify_forced_tx_compact_cbor_v1`). A subject read from a datum must
+/// use the checked accessors instead.
+pub fn opened_rejection_reason_v1(
+  subject: VerdictSubjectV1,
+) -> RejectionReasonV1 {
+  expect Some(reason) = subject.rejection_reason
+  reason
+}
+
+/// `bind_exact_rejection_reason_v1` for a subject `open_subject_v1` returned
+/// in the same validator run; see `opened_rejection_reason_v1`.
+pub fn bind_opened_rejection_reason_v1(
   subject: VerdictSubjectV1,
   expected: RejectionReasonV1,
 ) -> RejectionReasonV1 {
-  expect subject_is_canonical_v1(subject)
-  if subject.direction == direction_wrongful_rejection {
-    bind_exact_rejection_reason_v1(subject, expected)
-  } else {
-    expected
-  }
+  let actual = opened_rejection_reason_v1(subject)
+  expect cbor.serialise(actual) == cbor.serialise(expected)
+  actual
 }
 
 /// Shared terminal polarity. `decisive_fault_holds` must be computed on-chain

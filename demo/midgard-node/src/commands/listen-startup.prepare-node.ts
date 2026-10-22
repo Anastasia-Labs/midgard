@@ -22,7 +22,6 @@ import { Effect } from "effect";
 import * as NodeDeployment from "../database/node-deployment.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
-import { restoreRetainedStatePins } from "../workers/commit-block-header/restore-retained-state-pins.js";
 import { landedStateQueueStartupReasons } from "./listen-startup.await-landed-state-queue.js";
 import {
   assertStartupMutationJobsRecoverable,
@@ -62,7 +61,6 @@ export const prepareNodeOnStartup = Effect.gen(function* () {
     "state-queue boundary seed",
     seedLatestLocalBlockBoundaryOnStartup,
   );
-  yield* step("retained script material recovery", restoreRetainedStatePins);
   yield* step(
     "pending block finalization hydration",
     hydratePendingBlockFinalizationOnStartup,

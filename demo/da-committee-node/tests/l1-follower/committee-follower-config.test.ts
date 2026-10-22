@@ -77,7 +77,11 @@ describe("how the committee's follower runs", () => {
   });
 
   it.each([
-    ["no L1_ORIGIN", { l1Origin: undefined }, "L1_ORIGIN is not set"],
+    [
+      "neither L1_ORIGIN nor a recorded origin",
+      { l1Origin: undefined },
+      "L1_ORIGIN is not set and the deployment manifest records no l1Origin",
+    ],
     [
       "no local node",
       { nativeLedger: undefined },

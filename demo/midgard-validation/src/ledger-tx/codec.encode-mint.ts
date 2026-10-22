@@ -244,6 +244,7 @@ export const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
 
 const decodeMidgardLedgerTxFromNativeTx = (
   nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
+  outputCount: number | undefined,
 ): MidgardLedgerTx => {
   const vkeyWitnesses = decodeVKeyWitnesses(
     nativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -273,7 +274,7 @@ const decodeMidgardLedgerTxFromNativeTx = (
       nativeTx.body.referenceInputsPreimageCbor,
       "native.reference_inputs",
     ),
-    outputs: decodeOutputs(nativeTx.body.outputsPreimageCbor),
+    outputs: decodeOutputs(nativeTx.body.outputsPreimageCbor, outputCount),
     requiredSignerHashes: decodeHashList(
       nativeTx.body.requiredSignersPreimageCbor,
       "native.required_signers",
@@ -301,6 +302,7 @@ const envelopeFromNativeTx = (
   nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
   txCbor: Uint8Array,
   sourceKind: "normal" | "forced",
+  outputCount: number | undefined,
 ): MidgardSubmittedTx => {
   const witnessSetCompact = copyNativeWitnessSetCompact(
     deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
@@ -308,7 +310,7 @@ const envelopeFromNativeTx = (
   return {
     txCbor: Buffer.from(txCbor),
     sourceKind,
-    ledgerTx: decodeMidgardLedgerTxFromNativeTx(nativeTx),
+    ledgerTx: decodeMidgardLedgerTxFromNativeTx(nativeTx, outputCount),
     commitments: {
       transactionCompact: copyNativeTxCompact(nativeTx.compact),
       witnessSetCompact,
@@ -317,9 +319,15 @@ const envelopeFromNativeTx = (
   };
 };
 
+/**
+ * `outputCount`, when given, keeps only that many leading outputs in the
+ * ledger transaction (see `decodeOutputs`); every commitment still binds the
+ * whole transaction.
+ */
 export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   txCbor: Uint8Array,
   sourceKind: "normal" | "forced" = "normal",
+  outputCount?: number,
 ): MidgardSubmittedTx => {
   let nativeTx: MidgardNativeTxFull | MidgardForcedTxFull;
   try {
@@ -333,7 +341,7 @@ export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   }
 
   try {
-    return envelopeFromNativeTx(nativeTx, txCbor, sourceKind);
+    return envelopeFromNativeTx(nativeTx, txCbor, sourceKind, outputCount);
   } catch (e) {
     throw new MidgardLedgerTxDecodeError(
       "ledger",

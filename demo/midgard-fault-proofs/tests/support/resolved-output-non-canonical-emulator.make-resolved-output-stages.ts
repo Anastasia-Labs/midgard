@@ -59,6 +59,7 @@ import {
   submitResolvedOutputNonCanonicalStep05,
 } from "../../src/resolved-output-non-canonical/index.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
@@ -85,6 +86,7 @@ export const makeResolvedOutputStages = async (
     measurement: CompleteSignedTransactionMeasurement,
   ) => void,
 ) => {
+  const ownOutputs = createOwnOutputJournal();
   const { harness, contracts, steps, catalogue, category } = context;
   const references: UTxO[] = [];
   for (const [index, step] of steps.entries()) {
@@ -257,6 +259,7 @@ export const makeResolvedOutputStages = async (
   ) =>
     await capture(() =>
       submitResolvedOutputNonCanonicalStep02({
+        ownOutputs,
         ...common(threadOutRef, 1),
         evidence,
         nativeTxCompactCbor: options.compactCborHex ?? block.compactCborHex,
@@ -309,6 +312,7 @@ export const makeResolvedOutputStages = async (
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
     const chunkUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -316,6 +320,7 @@ export const makeResolvedOutputStages = async (
       label: `${FAMILY} raw field opening`,
     });
     const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       network,
       signer: harness.proverSigner,
@@ -728,6 +733,7 @@ export const makeResolvedOutputStages = async (
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
     const chunkUtxos = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -736,6 +742,7 @@ export const makeResolvedOutputStages = async (
     });
     return (
       await certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,

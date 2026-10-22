@@ -1,8 +1,3 @@
-/**
- * A draft that spends one PlutusV3-locked output, for the evaluate path:
- * the script succeeds (or, with `fails`, errors) after reading the context.
- */
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxOutput,
   protectMidgardAddress,
@@ -24,10 +19,8 @@ import {
 } from "@harmoniclabs/uplc";
 import { CML } from "@lucid-evolution/lucid";
 
-import {
-  buildMidgardCanonicalCekProgram,
-  MidgardRedeemerTag,
-} from "../src/index.js";
+import { MidgardRedeemerTag } from "../src/index.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -86,8 +79,8 @@ export const makeEvaluateDraft = (
   exUnits: readonly [bigint, bigint],
   fails = false,
 ) => {
-  const program = buildMidgardCanonicalCekProgram(contextTagIsZero(fails));
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const program = buildCekProgramFromRawFlat(contextTagIsZero(fails));
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const spent = EVALUATE_DRAFT_SPENT;
   const spentOutput = encodeMidgardTxOutput({
     address: protectMidgardAddress(
@@ -113,9 +106,6 @@ export const makeEvaluateDraft = (
       { tag: MidgardRedeemerTag.Spend, index: 0n, exUnits: [...exUnits] },
     ]),
     scriptLanguages: ["PlutusV3"],
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
   });
   const state = new Map([[spent.toString("hex"), spentOutput]]);
   return { candidate, state };

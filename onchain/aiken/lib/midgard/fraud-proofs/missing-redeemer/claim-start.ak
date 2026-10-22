@@ -7,13 +7,11 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-} as seam
 use midgard/fraud_proofs/direct_script_derivation/purpose
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1 as opening
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1} as first_fault
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{
   ClaimPurposeStateV1, ClaimedPurposeFactV1, ExistingPurpose, ImpossiblePurpose,
@@ -72,7 +70,7 @@ pub fn start_indices_v1(action: StartActionV1) -> Pair<Int, Int> {
 pub fn coordinate_v1(context: ClaimContextV1) -> Option<PurposeCoordinateV1> {
   when context.bound.bound.subject.rejection_reason is {
     None -> None
-    Some(reason) -> seam.purpose_coordinate_of_reason_v1(reason)
+    Some(reason) -> first_fault.purpose_coordinate_of_reason_v1(reason)
   }
 }
 
@@ -84,7 +82,7 @@ pub fn distinct_coordinate_v1(
 ) -> PurposeCoordinateV1 {
   expect Some(coordinate) = coordinate_v1(context)
   expect and {
-      seam.purpose_coordinate_is_valid_v1(coordinate),
+      first_fault.purpose_coordinate_is_valid_v1(coordinate),
       coordinate.kind == kind,
       when context.observed is {
         None -> True
@@ -106,7 +104,7 @@ pub fn finish_v1(
   expect Some(claimed) = coordinate_v1(context)
   let coordinate = when fact is {
     ExistingPurpose { purpose } -> {
-      expect seam.purpose_coordinate_is_valid_v1(purpose.coordinate)
+      expect first_fault.purpose_coordinate_is_valid_v1(purpose.coordinate)
       purpose.coordinate
     }
     ImpossiblePurpose { coordinate } -> coordinate
@@ -122,7 +120,7 @@ pub fn complete_v1(context: ClaimContextV1) -> ClaimPurposeStateV1 {
   when coordinate_v1(context) is {
     None -> ClaimPurposeStateV1 { context, purpose: NotRequired }
     Some(coordinate) -> {
-      let fact = if !seam.purpose_coordinate_is_valid_v1(coordinate) {
+      let fact = if !first_fault.purpose_coordinate_is_valid_v1(coordinate) {
         ImpossiblePurpose { coordinate }
       } else {
         expect Some(observed) = context.observed

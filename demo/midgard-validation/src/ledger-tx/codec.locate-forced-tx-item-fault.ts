@@ -1,18 +1,129 @@
 import {
   classifyMidgardWitnessScriptItem,
-  isCanonicalMidgardCekData,
+  type MidgardLedgerOutputProofRefusalKind,
+  MidgardLedgerOutputProofResultKinds,
+  traceMidgardLedgerOutputProof,
 } from "@al-ft/midgard-core";
-import {
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardTxOutput,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardNativeByteListPreimage } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 
-/** A faulty item of a forced transaction, by field and item position. */
-export type MidgardForcedTxItemFault = Readonly<{
-  field: 2;
+import type { RejectSubject } from "../reject-subject.js";
+import { scriptDecodeRecordOfScript } from "../script-decode.step-walk.js";
+import { type RejectCode, RejectCodes } from "../types.js";
+
+/**
+ * The class of a faulty output of a forced transaction. The first four are
+ * the output proof's refusals; `plutusScriptUndecodable` is a Plutus
+ * reference script whose decode record refuses it.
+ */
+export type MidgardForcedTxOutputFaultClass =
+  | "invalidOutput"
+  | "referenceScriptMalformed"
+  | "referenceScriptNodeLimit"
+  | "referenceScriptDepthLimit"
+  | "plutusScriptUndecodable";
+
+/** A faulty output of a forced transaction, by position, with its class. */
+export type MidgardForcedTxOutputFault = Readonly<{
   itemIndex: number;
+  itemClass: MidgardForcedTxOutputFaultClass;
+  /** The decode record's class (1-17), for `plutusScriptUndecodable`. */
+  refusalClass?: number;
 }>;
+
+const CLASSES_OF_REFUSALS: Readonly<
+  Record<MidgardLedgerOutputProofRefusalKind, MidgardForcedTxOutputFaultClass>
+> = {
+  [MidgardLedgerOutputProofResultKinds.InvalidOutput]: "invalidOutput",
+  [MidgardLedgerOutputProofResultKinds.InvalidReferenceScript]:
+    "referenceScriptMalformed",
+  [MidgardLedgerOutputProofResultKinds.NativeScriptNodeLimit]:
+    "referenceScriptNodeLimit",
+  [MidgardLedgerOutputProofResultKinds.NativeScriptDepthLimit]:
+    "referenceScriptDepthLimit",
+};
+
+/** The class of an output the output proof refuses with `refusal`. */
+export const outputProofRefusalClass = (
+  refusal: MidgardLedgerOutputProofRefusalKind,
+): MidgardForcedTxOutputFaultClass => CLASSES_OF_REFUSALS[refusal];
+
+/**
+ * The class of the output at field position `itemIndex`, or null when it is
+ * not faulty. The output proof the machine runs at the ScriptSources output
+ * scan decides the class; an output it admits is faulty only when it carries
+ * a Plutus reference script whose decode record refuses it.
+ */
+export const classifyMidgardForcedTxOutputItem = (
+  itemIndex: number,
+  outputCbor: Uint8Array,
+): MidgardForcedTxOutputFault | null => {
+  const outcome = traceMidgardLedgerOutputProof({
+    outputIndex: itemIndex,
+    outputCbor,
+  });
+  if (outcome.kind === "refused") {
+    return { itemIndex, itemClass: outputProofRefusalClass(outcome.refusal) };
+  }
+  const scan = outcome.trace.terminal.outputScan;
+  if (scan.referenceScriptLanguage <= 0) return null;
+  const record = scriptDecodeRecordOfScript(
+    scan.referenceScriptLanguage,
+    outputCbor.subarray(
+      scan.referenceScriptOffset,
+      scan.referenceScriptOffset + scan.referenceScriptLength,
+    ),
+  );
+  return record.k === "refused"
+    ? {
+        itemIndex,
+        itemClass: "plutusScriptUndecodable",
+        refusalClass: record.class,
+      }
+    : null;
+};
+
+/**
+ * The rejection that refuses a faulty output: the output proof's refusal,
+ * as the machine emits it at the ScriptSources output scan.
+ */
+export const forcedTxOutputFaultRejection = (
+  fault: MidgardForcedTxOutputFault,
+): { readonly code: RejectCode; readonly subject: RejectSubject } => {
+  const index = BigInt(fault.itemIndex);
+  switch (fault.itemClass) {
+    case "invalidOutput":
+      return {
+        code: RejectCodes.InvalidOutput,
+        subject: { arm: "OutputNonCanonical", index },
+      };
+    case "referenceScriptMalformed":
+      return {
+        code: RejectCodes.InvalidFieldType,
+        subject: { arm: "OutputReferenceScriptMalformed", index },
+      };
+    case "referenceScriptNodeLimit":
+      return {
+        code: RejectCodes.NativeScriptNodeCount,
+        subject: { arm: "OutputReferenceScriptNodeLimit", index },
+      };
+    case "referenceScriptDepthLimit":
+      return {
+        code: RejectCodes.NativeScriptDepth,
+        subject: { arm: "OutputReferenceScriptDepthLimit", index },
+      };
+    case "plutusScriptUndecodable":
+      return {
+        code: RejectCodes.ScriptProgramEncoding,
+        subject: {
+          arm: "PlutusScriptUndecodable",
+          itemKind: 1n,
+          index,
+          refusalClass: BigInt(fault.refusalClass!),
+        },
+      };
+  }
+};
 
 /** A faulty field-6 item of a forced transaction and its proof class. */
 export type MidgardForcedTxWitnessScriptFault = Readonly<{
@@ -21,18 +132,17 @@ export type MidgardForcedTxWitnessScriptFault = Readonly<{
 }>;
 
 /**
- * The first output of a forced transaction that is not a canonical ledger
- * output: its address, value or datum does not decode, or its inline datum is
- * not canonical Data as the on-chain streamed traverse decides it. Returns
- * null when every output is canonical, or when the field-2 list itself is not
- * a §5.1 envelope (the tx-order mint refuses such an order).
+ * The first faulty output of a forced transaction, with its class (see
+ * {@link classifyMidgardForcedTxOutputItem}).
+ * Returns null when no such output exists, or when the field-2 list itself is
+ * not a §5.1 envelope (the tx-order mint refuses such an order).
  *
  * Any item this names is faulty, so a rejection that cites it cannot be
  * disproved; choosing the lowest index keeps the verdict deterministic.
  */
 export const locateMidgardForcedTxOutputFault = (
   txCbor: Uint8Array,
-): MidgardForcedTxItemFault | null => {
+): MidgardForcedTxOutputFault | null => {
   let outputs: readonly Uint8Array[];
   try {
     outputs = decodeMidgardNativeByteListPreimage(
@@ -44,14 +154,11 @@ export const locateMidgardForcedTxOutputFault = (
     return null;
   }
   for (let itemIndex = 0; itemIndex < outputs.length; itemIndex += 1) {
-    let datum: Uint8Array | undefined;
-    try {
-      datum = decodeMidgardTxOutput(outputs[itemIndex]!).datum?.cbor;
-    } catch {
-      return { field: 2, itemIndex };
-    }
-    if (datum !== undefined && !isCanonicalMidgardCekData(datum))
-      return { field: 2, itemIndex };
+    const fault = classifyMidgardForcedTxOutputItem(
+      itemIndex,
+      outputs[itemIndex]!,
+    );
+    if (fault !== null) return fault;
   }
   return null;
 };

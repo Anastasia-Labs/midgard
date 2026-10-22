@@ -2,6 +2,7 @@ import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowRuntimeFundingPolicy,
   readWorkflowRuntimeFundingPolicy,
+  VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES,
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -16,6 +17,7 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentAppliedScriptHashes,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
@@ -48,6 +50,57 @@ import {
 } from "./prover-funding-reservation.js";
 
 /**
+ * A validation-trace dispute policy's custody terms, from the signed
+ * deployment: the manifest's dispute bond (the case validator's applied
+ * bond), the dispute contracts VerifySource pays, and those the thread
+ * moves spend and pay, among them the boundary and the one-step resolvers
+ * a thread visits between the game and the award. Any other category's
+ * policy carries none.
+ */
+export const watcherValidationDisputeFundingTerms = (
+  identity: VerifiedWatcherDeploymentIdentity,
+  category: string,
+): Readonly<{
+  validationDispute?: Parameters<
+    typeof createWorkflowRuntimeFundingPolicy
+  >[0]["validationDispute"];
+}> => {
+  if (category !== "validationTraceDispute") return {};
+  const hashes = watcherDeploymentAppliedScriptHashes(identity);
+  const hash = (name: string) => {
+    const scriptHash = hashes[name];
+    if (scriptHash === undefined)
+      throw new Error(`signed deployment omits validation dispute ${name}`);
+    return scriptHash;
+  };
+  const address = (name: string) =>
+    credentialToAddress(identity.network, scriptHashToCredential(hash(name)));
+  const { boundary, ...resolvers } = VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES;
+  return {
+    validationDispute: {
+      deploymentFingerprint: identity.manifestId,
+      bondLovelace: BigInt(
+        watcherDeploymentAvailabilityChallengeAuthority(identity).parameters
+          .challengerBondLovelace,
+      ),
+      bondAddress: address("validationTraceDisputeBond"),
+      caseAddress: address("validationTraceDisputeCase"),
+      casePolicyId: hash("validationTraceDisputeCaseMint"),
+      moves: {
+        gameAddress: address("validationTraceDisputeGame"),
+        timeoutAddress: address("validationTraceDisputeTimeout"),
+        awardAddress: address("validationTraceDisputeAward"),
+        awardPolicyId: hash("validationTraceDisputeAwardMint"),
+        oneStep: {
+          boundaryAddress: address(boundary),
+          resolverAddresses: Object.values(resolvers).map(address),
+        },
+      },
+    },
+  };
+};
+
+/**
  * Runtime-owned funding authority bound to the admitted runner, deployment,
  * current protocol parameters, and exact wallet leases.
  */
@@ -62,6 +115,8 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
   readonly protocolParameterHistory?: WatcherProtocolParameterHistory;
   /** The follower's facts that alone reclaim a reservation whose decision is missing. */
   readonly fundingInputFacts?: WatcherFundingInputFacts;
+  /** This deployment's computation-thread policy, which proves own thread custody. */
+  readonly computationThreadPolicyId?: string;
 }): WatcherProverFundingAuthorityFactory => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
@@ -230,6 +285,10 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         economics,
         contracts: [...uniqueContracts.values()],
         referenceScripts: [...referenceScripts.values()],
+        ...watcherValidationDisputeFundingTerms(
+          input.deploymentIdentity,
+          request.category,
+        ),
       };
       const policy = createWorkflowRuntimeFundingPolicy(policyInput);
       let reservationPolicy = policy;
@@ -384,6 +443,7 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         readWalletUtxos: request.readWalletUtxos,
         store: input.store,
         resolveInputs: request.resolveInputs,
+        computationThreadPolicyId: input.computationThreadPolicyId,
         resolveProtocolInputAuthority: request.resolveProtocolInputAuthority,
       });
       return authority.permit;

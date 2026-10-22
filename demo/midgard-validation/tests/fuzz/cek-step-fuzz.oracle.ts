@@ -1,9 +1,11 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
+import { memoizeForRun } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import { DataB, dataFromCbor } from "@harmoniclabs/plutus-data";
 
 import {
@@ -78,17 +80,49 @@ export class AikenEvaluationFailed extends Error {
   }
 }
 
-/** The Flat program of an exported function, unwrapped from its CBOR. */
-const exportFunction = (name: string): Uint8Array => {
-  const exported = JSON.parse(
-    aiken(["export", "-m", MACHINE_MODULE, "-n", name], aikenProject),
-  ) as { readonly compiledCode: string };
+/**
+ * The Flat program of an exported function, unwrapped from its CBOR. Each
+ * export type-checks and compiles the whole on-chain project: about 40 s on a
+ * developer machine.
+ */
+const exportFunction = async (name: string): Promise<Uint8Array> => {
+  let stdout: string;
+  try {
+    ({ stdout } = await promisify(execFile)(
+      aikenBinary(),
+      ["export", "-m", MACHINE_MODULE, "-n", name],
+      { cwd: aikenProject, encoding: "utf8", maxBuffer: MAX_OUTPUT },
+    ));
+  } catch (cause) {
+    const failed = cause as { stdout?: string; stderr?: string };
+    throw new AikenEvaluationFailed(
+      `aiken export ${name} failed`,
+      `${failed.stdout ?? ""}${failed.stderr ?? String(cause)}`,
+    );
+  }
+  const exported = JSON.parse(stdout) as { readonly compiledCode: string };
   const wrapped = dataFromCbor(exported.compiledCode);
   if (!(wrapped instanceof DataB)) {
     throw new Error(`the export of ${name} is not a CBOR byte string`);
   }
   return Uint8Array.from(wrapped.bytes);
 };
+
+/**
+ * Both exported functions, produced once per run and shared by every file
+ * that builds an oracle: the two exports run side by side, and files that
+ * start meanwhile wait for them instead of compiling the project again.
+ */
+const machineExports = memoizeForRun(
+  "aiken-cek-machine-v1-exports",
+  async () => {
+    const [verify, hash] = await Promise.all([
+      exportFunction("verify_core_step_v1"),
+      exportFunction("hash_state_v1"),
+    ]);
+    return { verify, hash };
+  },
+);
 
 type EvaluatedList =
   | { readonly kind: "list"; readonly items: readonly string[] }
@@ -150,10 +184,14 @@ const inBatches = <A, B>(
   return results;
 };
 
-/** Builds the oracle: exports both functions once, then evaluates batches. */
-export const makeAikenStepOracle = (): AikenStepOracle => {
-  const verifyFlat = exportFunction("verify_core_step_v1");
-  const hashFlat = exportFunction("hash_state_v1");
+/**
+ * Builds the oracle: exports both functions once per run, then evaluates
+ * batches. A file waiting for another file's exports waits as long as they
+ * take, so call it from a hook sized for two project compiles on a loaded
+ * runner.
+ */
+export const makeAikenStepOracle = async (): Promise<AikenStepOracle> => {
+  const { verify: verifyFlat, hash: hashFlat } = await machineExports();
   const directory = mkdtempSync(join(tmpdir(), "midgard-cek-step-fuzz-"));
   let counter = 0;
 

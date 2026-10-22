@@ -9,11 +9,6 @@ import {
   removedHeader,
 } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
-import {
-  STORE_ADVISORY_LOCK_KEY,
-  STORE_ADVISORY_LOCK_NAMESPACE,
-} from "./cekProgramMaterial.canonical-entries.js";
-import { collectUnownedMaterial } from "./cekProgramMaterial.collect-unowned.js";
 import { recoveryRelevantJournal } from "./retention-holds.js";
 import {
   clearTable,
@@ -152,8 +147,6 @@ export const upsertAvailable = (
     const sql = yield* SqlClient.SqlClient;
     yield* sql.withTransaction(
       Effect.gen(function* () {
-        // Take the material-store lock before the DA row lock, matching prune.
-        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
         const rows = yield* sql<Pick<Row, Columns.HEADER_HASH>>`
       INSERT INTO ${sql(tableName)} ${sql.insert(input)}
       ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
@@ -271,10 +264,8 @@ export const removeByHeaderHash = (
     const sql = yield* SqlClient.SqlClient;
     yield* sql.withTransaction(
       Effect.gen(function* () {
-        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
         yield* sql`DELETE FROM ${sql(tableName)}
           WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
-        yield* collectUnownedMaterial;
       }),
     );
   }).pipe(
@@ -347,7 +338,6 @@ export const pruneBeyondRetention = (args: {
         : removedHeader(sql, `${tableName}.${Columns.HEADER_HASH}`);
     return yield* sql.withTransaction(
       Effect.gen(function* () {
-        yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
         const rows = yield* sql<{ readonly header_hash: Buffer }>`
       DELETE FROM ${sql(tableName)}
       WHERE (${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff} OR ${removed})
@@ -355,7 +345,6 @@ export const pruneBeyondRetention = (args: {
         AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
         AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}
       RETURNING ${sql(Columns.HEADER_HASH)}`;
-        yield* collectUnownedMaterial;
         return rows.length;
       }),
     );

@@ -205,8 +205,6 @@ describe("validation parallelization", () => {
       txIdOffset: 0,
       cborOffset: 32,
       cborLength: 3,
-      programMaterialOffset: 35,
-      programMaterialLength: 0,
       arrivalSeq: 9n,
       createdAtMs: 1234,
     });

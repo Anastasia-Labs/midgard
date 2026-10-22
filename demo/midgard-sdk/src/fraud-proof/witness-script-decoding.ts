@@ -116,6 +116,7 @@ export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
       "step_03_validator_script_hash",
       "computation_thread_token_policy_id",
       "field_preimage_certificate_policy_id",
+      "script_decode_policy_id",
     ],
   },
   {

@@ -197,7 +197,7 @@ type ValidationTraceScripts =
   FaultProofContractChains["validationTraceDispute"];
 type RecordedValidationTraceScripts = Omit<
   ValidationTraceScripts,
-  "cekContextItemStages" | "steps" | "prepareResolvers" | "resolvers"
+  "cekContextItemStages" | "steps"
 > & {
   readonly cekContextItemStages: Pick<
     ValidationTraceScripts["cekContextItemStages"],
@@ -221,22 +221,43 @@ export const restoreValidationTraceDisputeScripts = ({
     "validationTraceDispute",
     resolve,
   );
-  const semantics = projection.semanticResolvers;
-  if (!Array.isArray(semantics))
-    throw new Error(
-      "Validation-trace metadata lacks its semantic resolver projection",
-    );
-  Object.keys(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics).forEach(
-    (key, index) => {
-      if (!(index in semantics))
-        Object.defineProperty(semantics, index, {
+  // Each resolver list keeps its recorded slots; every other slot refuses.
+  const refuseUnrecorded = (
+    list: unknown,
+    keys: readonly string[],
+    label: string,
+  ) => {
+    if (!Array.isArray(list))
+      throw new Error(
+        `Validation-trace metadata lacks its ${label} projection`,
+      );
+    keys.forEach((key, index) => {
+      if (!(index in list))
+        Object.defineProperty(list, index, {
           enumerable: true,
-          get: () => missingMember(`semantic resolver ${key}`),
+          get: () => missingMember(`${label} ${key}`),
         });
-    },
+    });
+  };
+  const titles = VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES;
+  refuseUnrecorded(
+    projection.semanticResolvers,
+    Object.keys(titles.semantics),
+    "semantic resolver",
   );
-  // Every semantic slot now resolves or refuses. Other unavailable arrays
-  // are omitted from this private projection type and replaced below.
+  refuseUnrecorded(
+    projection.prepareResolvers,
+    Object.keys(titles.prepares),
+    "prepare resolver",
+  );
+  refuseUnrecorded(
+    projection.resolvers,
+    Object.keys(titles.prepares),
+    "resolver",
+  );
+  // Every resolver slot now resolves or refuses. The step list, which
+  // includes unrecorded members, is omitted from this private projection
+  // type and replaced below.
   const recorded = projection as RecordedValidationTraceScripts;
   const redeemer = recorded.scriptSourcesStageOneRedeemerStages;
   return {
@@ -253,12 +274,6 @@ export const restoreValidationTraceDisputeScripts = ({
     },
     get steps() {
       return missingMember("steps (the full list includes unrecorded members)");
-    },
-    get prepareResolvers() {
-      return missingMember("prepare resolvers");
-    },
-    get resolvers() {
-      return missingMember("resolvers");
     },
   };
 };

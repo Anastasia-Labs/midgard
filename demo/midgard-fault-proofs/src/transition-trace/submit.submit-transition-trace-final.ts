@@ -45,6 +45,7 @@ import {
 } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -58,7 +59,6 @@ import {
 } from "./history-opening.js";
 import {
   initialTransitionTraceState,
-  nextTransitionTracePhase,
   transitionTracePhaseIsTerminal,
   transitionTracePhaseYield,
 } from "./phases.js";
@@ -102,7 +102,10 @@ type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {
 export const submitTransitionTraceFinal = async (
   config: SubmitTransitionTraceFinalConfig,
 ): Promise<SubmitTransitionTraceFinalResult> => {
-  let step = config;
+  let step: SubmitTransitionTraceFinalConfig = {
+    ...config,
+    ownOutputs: config.ownOutputs ?? createOwnOutputJournal(),
+  };
   for (;;) {
     const outcome = await submitTransitionTraceFinalStep(step);
     if (outcome.kind === "final") return outcome.result;
@@ -124,6 +127,7 @@ const submitTransitionTraceFinalStep = async ({
   fieldCertificateReferenceScript,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs,
 }: SubmitTransitionTraceFinalConfig): Promise<
   | {
       readonly kind: "checkpoint";
@@ -450,9 +454,11 @@ const submitTransitionTraceFinalStep = async ({
       contracts,
       proof: proofInput,
       state: checkpoint.data,
+      yields: allYieldData,
       outputCbors,
       publish: preSubmitBoundary === undefined,
       fieldCertificateReferenceScript,
+      ...(ownOutputs === undefined ? {} : { ownOutputs }),
       baseReferences: [
         hubOracleUtxo,
         finalReferenceScript,
@@ -462,12 +468,9 @@ const submitTransitionTraceFinalStep = async ({
         ...outputReferences,
       ],
     });
-    const planned = nextTransitionTracePhase({
-      state: checkpoint.data,
-      proof: proofInput,
-      yields: allYieldData,
-      ...fieldStep.openings,
-    });
+    // The next state and the verifier claims read no opening; the step
+    // redeemer is re-planned below against the final reference inputs.
+    const planned = fieldStep.plan(fieldStep.referenceInputs);
     const nextDatum = Data.to(
       { fraud_prover: signer.paymentKeyHash, data: planned.state },
       TransitionTraceProofCommitmentDatum,
@@ -583,7 +586,9 @@ const submitTransitionTraceFinalStep = async ({
       checkpointBuilder = checkpointBuilder.withdraw(
         validatorToRewardAddress(network, semantic.validator.withdrawalScript),
         0n,
-        planned.redeemer,
+        ((ctx) =>
+          fieldStep.plan(ctx.referenceInputs)
+            .redeemer) satisfies BuildTxWithRedeemer,
       );
     checkpointBuilder = fieldStep.withdraw(checkpointBuilder, planned);
     const completed = await checkpointBuilder.pay

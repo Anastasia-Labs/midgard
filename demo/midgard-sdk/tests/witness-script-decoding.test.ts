@@ -53,5 +53,11 @@ describe("witnessScriptDecoding V1 ABI", () => {
     expect(
       WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS.map((script) => script.role),
     ).toEqual(["firstStep", "itemAuthenticator", "resumableScan", "terminal"]);
+    expect(WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS[1].parameters).toEqual([
+      "step_03_validator_script_hash",
+      "computation_thread_token_policy_id",
+      "field_preimage_certificate_policy_id",
+      "script_decode_policy_id",
+    ]);
   });
 });

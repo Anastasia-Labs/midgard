@@ -1,11 +1,9 @@
-import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   ForcedRejectionStopped,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
-  applyValidationMachineLedgerMutationStep,
   type CanonicalTransitionEffect,
   type RejectCode,
   type RejectedTx,
@@ -31,7 +29,6 @@ export type ClassifiedForcedTransaction = {
   readonly rejectionCode: RejectCode | null;
   /** The exact reason the forced leaf's verdict records; null when valid. */
   readonly rejectionReason: SDK.RejectionReason | null;
-  readonly programMaterialSidecarCbor: Buffer;
 };
 
 /**
@@ -66,17 +63,6 @@ export const forcedRejectionVerdict = (
         : Effect.void,
     ),
   );
-
-export const applyValidationLedgerMutations = async (
-  trie: Trie,
-  operations: readonly MpfBatchOp[],
-): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
-  const steps: ValidationMachineLedgerMutationStep[] = [];
-  for (const operation of operations) {
-    steps.push(await applyValidationMachineLedgerMutationStep(trie, operation));
-  }
-  return steps;
-};
 
 const ledgerWitnessEntry = (
   outRefHex: string,

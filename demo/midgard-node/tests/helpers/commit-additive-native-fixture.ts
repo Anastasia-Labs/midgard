@@ -3,19 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
+  encodeCbor,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
+import {
+  Delay,
+  ErrorUPLC,
+  UPLCEncoder,
+  UPLCProgram,
+  type UPLCTerm,
+} from "@harmoniclabs/uplc";
 import {
   CML,
   Data,
@@ -52,32 +53,13 @@ import {
   nativeOwnerBinarySha256,
 } from "./native-owner-binary.js";
 
-export const delayProgram = (nodes: number) => {
-  const material: MidgardCekProgramMaterialEntry[] = [];
-  const append = (node: Parameters<typeof encodeMidgardCekTermNode>[0]) => {
-    const entry = {
-      kind: "term" as const,
-      root: hashMidgardCekTermNode(node),
-      preimage: encodeMidgardCekTermNode(node),
-    };
-    material.push(entry);
-    return entry.root;
-  };
-  let root = append({ kind: "error" });
-  for (let i = 1; i < nodes; i += 1)
-    root = append({ kind: "delay", body: root });
-  return {
-    envelope: {
-      uplcVersion: [1n, 1n, 0n] as const,
-      termRoot: root,
-      nodeCount: BigInt(material.length),
-      materialByteLength: material.reduce(
-        (sum, item) => sum + BigInt(item.preimage.length),
-        0n,
-      ),
-    },
-    material,
-  };
+/** Exact stored script bytes: one CBOR wrapper around a generated Flat term. */
+export const delayProgram = (nodes: number): Buffer => {
+  let term: UPLCTerm = new ErrorUPLC();
+  for (let i = 1; i < nodes; i += 1) term = new Delay(term);
+  return encodeCbor(
+    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term))),
+  );
 };
 
 export const runNativeFrameDatabase = <A, E, R>(
@@ -89,7 +71,7 @@ export const runNativeFrameDatabase = <A, E, R>(
     ) as Effect.Effect<A, E, never>,
   );
 
-/** Real canonical signatures, Phase A/B, SQL sidecars and native MPF builds.
+/** Real canonical signatures, Phase A/B, canonical SQL admissions and native MPF builds.
  * The parent is a model ConfirmedState; this does not claim an L1 receipt. */
 export const openNativeFrameFixture = async (
   options: { readonly timeMs?: number } = {},
@@ -210,7 +192,6 @@ export const openNativeFrameFixture = async (
   const validate = async (
     tx: ReturnType<typeof signed>,
     base: readonly MinimalEntry[],
-    material: readonly MidgardCekProgramMaterialEntry[],
   ) => {
     const result = await runBothPhases(
       tx.txId,
@@ -221,8 +202,6 @@ export const openNativeFrameFixture = async (
           row[LedgerColumns.OUTPUT],
         ]),
       ),
-      undefined,
-      material,
     );
     expectBothPhasesAcceptOne(result);
     return result;
@@ -231,14 +210,11 @@ export const openNativeFrameFixture = async (
     tx: ReturnType<typeof signed>,
     base: readonly MinimalEntry[],
     root: string,
-    material: readonly MidgardCekProgramMaterialEntry[],
   ) => {
     await runNativeFrameDatabase(
       TxAdmissionsDB.tryInsert({
         txId: tx.txId,
         txCanonicalCbor: tx.txCbor,
-        programMaterialSidecarCbor:
-          encodeMidgardCekProgramMaterialSidecar(material),
         submitSource: "native",
       }),
     );
@@ -335,6 +311,3 @@ export const openNativeFrameFixture = async (
     },
   };
 };
-
-export const programScript = (program: ReturnType<typeof delayProgram>) =>
-  encodeMidgardCekProgramEnvelope(program.envelope);

@@ -5,10 +5,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
-  NodeConfig,
-} from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.js";
 
 const loadNodeConfig = () =>
   Effect.runPromise(
@@ -107,40 +104,6 @@ describe("submit ingress resource configuration", () => {
     );
     await expect(loadNodeConfig()).rejects.toThrow(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least",
-    );
-  });
-});
-
-describe("CEK program material store configuration", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("defaults to four full V1 DA envelopes", async () => {
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES:
-        CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4,
-    });
-  });
-
-  it("accepts a bounded operator override", async () => {
-    vi.stubEnv(
-      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
-      String(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 2),
-    );
-    await expect(loadNodeConfig()).resolves.toMatchObject({
-      CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES:
-        CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 2,
-    });
-  });
-
-  it("rejects a cap below one full V1 envelope", async () => {
-    vi.stubEnv(
-      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
-      String(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES - 1),
-    );
-    await expect(loadNodeConfig()).rejects.toThrow(
-      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least",
     );
   });
 });

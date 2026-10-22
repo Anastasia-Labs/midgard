@@ -124,7 +124,6 @@ export const withdrawalFixture = async (
       deposits: [],
       transactions: [],
       transaction_preimages: [],
-      cek_program_material: [],
       forced_transactions: [],
       forced_transaction_preimages: [],
       validation_traces: [],

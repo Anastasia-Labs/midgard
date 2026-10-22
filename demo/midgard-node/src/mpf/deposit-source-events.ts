@@ -1,9 +1,11 @@
-import { canonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import {
+  canonicalDepositTransitionEffect,
+  transitionEffectToLedgerOps,
+} from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
 import * as DepositsDB from "../database/deposits.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { transitionEffectToLedgerOps } from "./ledger-delta.js";
 import type { TransitionTraceSourceEvent } from "./trace-events.js";
 import { depositTraceEventKey } from "./trace-events.js";
 

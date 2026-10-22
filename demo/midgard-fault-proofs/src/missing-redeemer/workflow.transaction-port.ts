@@ -29,6 +29,7 @@ import type {
   FamilyStepTuple,
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { prepareMissingRedeemerWorkflowArtifact } from "./artifact.js";
@@ -137,7 +138,11 @@ export const createMissingRedeemerTransactionPort = (
         ...args,
         replayContext: config.replayContext,
       }),
-    capture: async ({ action, artifact }) => {
+    capture: async ({ action, artifact, entries }) => {
+      const ownOutputs = workflowFieldCarriageOwnOutputs({
+        category: "missingRedeemer",
+        entries,
+      });
       const plan = await planned(artifact);
       const { admitted } = plan;
       if (admitted.current.headerHash !== config.binding.definition.headerHash)
@@ -248,6 +253,7 @@ export const createMissingRedeemerTransactionPort = (
               if (opening.plan.tier === "Inline") continue;
               const published =
                 await resolveFaultProofFieldCarriagePublications({
+                  ownOutputs,
                   lucid: config.lucid,
                   planned: opening,
                   publisherAddress: config.signer.address,
@@ -255,6 +261,7 @@ export const createMissingRedeemerTransactionPort = (
               const certificate =
                 opening.plan.tier === "Certified"
                   ? await resolveFaultProofFieldPreimageCertificate({
+                      ownOutputs,
                       lucid: config.lucid,
                       planned: opening,
                       certificatePolicyId:

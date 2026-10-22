@@ -33,7 +33,6 @@ export const MIDGARD_CAPABILITY_DIMENSIONS = Object.freeze([
   "native_script_node_count",
   "transaction_execution_memory_units",
   "transaction_execution_cpu_units",
-  "reference_script_material_bytes",
   "feature_mint_burn",
   "feature_reference_inputs",
   "feature_native_cardano_scripts",
@@ -174,12 +173,6 @@ const cardanoRequiredForDimension = (
       return parseDecimal(parameters.maxTxExecutionMemoryUnits);
     case "transaction_execution_cpu_units":
       return parseDecimal(parameters.maxTxExecutionCpuUnits);
-    case "reference_script_material_bytes":
-      return isSafeNonNegativeInteger(
-        parameters.maxReferenceScriptBytesPerTransaction,
-      )
-        ? BigInt(parameters.maxReferenceScriptBytesPerTransaction)
-        : null;
     default:
       return dimensionFeature(dimension) === null ? null : 1n;
   }
@@ -240,8 +233,6 @@ const midgardSupportedForDimension = (
       return BigInt(limits.minSupportedTransactionExecutionMemoryUnits);
     case "transaction_execution_cpu_units":
       return BigInt(limits.minSupportedTransactionExecutionCpuUnits);
-    case "reference_script_material_bytes":
-      return BigInt(limits.maxCekProgramMaterialBytes);
     default: {
       const feature = dimensionFeature(dimension);
       return feature !== null &&

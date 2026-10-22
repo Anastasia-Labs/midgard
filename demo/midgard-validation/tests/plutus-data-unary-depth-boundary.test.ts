@@ -914,11 +914,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         },
       }),
     );
-    // The Cardano script witness is a raw Flat program, not a canonical Midgard
-    // CEK envelope, so the same single-script projection the nested-redeemer
-    // boundary uses supplies the canonical script identity. It rewrites only
-    // the script witness and the script-integrity commitment; the field-8
-    // redeemer preimage carrying the maximum unary Data is untouched.
+    // The projection preserves the Cardano script's exact stored identity and
+    // updates the script-integrity commitment for the Midgard redeemer schema.
+    // The field-8 preimage carrying the maximum unary Data is untouched.
     const projection = buildMidgardRetainedDaCanonicalScriptProjection({
       canonicalTransactionCbor: canonical,
     });
@@ -974,8 +972,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
 
     const retained = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: projected,
-      canonicalMaterialSidecarCbor: projection.canonicalMaterialSidecarCbor,
-      sourceRawScriptAuditHash: projection.sourceRawScriptAuditHash,
+      sourceScriptHash: projection.sourceScriptHash,
     });
     expect(retained.normal.sourceKind).toBe("normal");
     expect(retained.forced.sourceKind).toBe("forced");

@@ -1,5 +1,5 @@
 /**
- * Bulk decoding of byte strings, strings, Data and Value constants for the
+ * Bulk decoding of byte strings, strings and Value constants for the
  * script-decode step machine, as in
  * `onchain/aiken/lib/midgard/script-decode-bulk-v1.ak`.
  *
@@ -8,9 +8,7 @@
  * and raise any refusal. Work is metered in the same units as on-chain.
  */
 import {
-  emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
-  prependMidgardCekDataListSummary,
   prependMidgardCekDataPairSummary,
   summarizeMidgardCekMapData,
 } from "@al-ft/midgard-core";
@@ -22,35 +20,20 @@ import {
   shortBytesSummary,
 } from "./script-decode.step-bits.js";
 import type { Bits, Quick } from "./script-decode.step-bulk.js";
-import { constrSummary } from "./script-decode.step-data.js";
 import type { SequenceSummary, Summary } from "./script-decode.step-types.js";
 
 /** Units per byte string or string, past those of its chunks. */
 export const STRING_UNITS = 10;
 /** Units per Flat chunk read or stepped over past a value's first. */
 export const CHUNK_UNITS = 1;
-/** Units per Data constant: its filler and its closing chunk. */
-export const DATA_UNITS = 4;
-/** Units per CBOR head or break read. */
-export const HEAD_UNITS = 1;
-/** Units per integer item. */
-export const INTEGER_UNITS = 6;
-/** Units per item of a Data list or constructor. */
-export const ITEM_UNITS = 2;
-/** Units per entry of a Data map. */
-export const ENTRY_UNITS = 4;
-/** Units per Data list, map or constructor node. */
-export const NODE_UNITS = 4;
 /** Units per currency and per token of a Value, past a quantity's groups. */
 export const CURRENCY_UNITS = 16;
 export const TOKEN_UNITS = 16;
 
 /** The most bytes a byte string decoded here may have: one blob chunk. */
 export const MAX_STRING_BYTES = 4_095;
-const MAX_DATA_BYTES_CHUNK = 64n;
 const MAX_KEY_BYTES = 32;
 const MAX_INTEGER_GROUPS = 20;
-const CBOR_BREAK = 255;
 const MIN_QUANTITY = -(1n << 127n);
 const MAX_QUANTITY = (1n << 127n) - 1n;
 
@@ -74,196 +57,14 @@ export const afterFiller = (
   return (q + 1) / 8;
 };
 
-// ## Data
+// ## Values
 
-/** A read position in the Flat chunks of a Data constant, and units left. */
-type Reader = { position: number; left: number; units: number };
+/** Units left to a Value decode. */
+type Reader = { units: number };
 
 const charge = (r: Reader, units: number): boolean => {
   r.units -= units;
   return r.units >= 0;
-};
-
-/** Opens the next Flat chunk when the current one is spent. */
-const open = (bits: Bits, r: Reader): boolean => {
-  if (r.left > 0) return true;
-  const p = r.position;
-  if (p >= bits.flatLength) return false;
-  const n = bits.window[p]!;
-  if (n === 0 || p + 1 + n > bits.flatLength) return false;
-  if (!charge(r, CHUNK_UNITS)) return false;
-  r.position = p + 1;
-  r.left = n;
-  return true;
-};
-
-const nextByte = (bits: Bits, r: Reader): number | undefined => {
-  if (!open(bits, r)) return undefined;
-  const value = bits.window[r.position]!;
-  r.position += 1;
-  r.left -= 1;
-  return value;
-};
-
-/** `count` CBOR bytes, across Flat chunks. */
-const takeBytes = (
-  bits: Bits,
-  r: Reader,
-  count: number,
-): Buffer | undefined => {
-  const parts: Uint8Array[] = [];
-  for (let rest = count; rest > 0; ) {
-    if (!open(bits, r)) return undefined;
-    const k = Math.min(rest, r.left);
-    parts.push(bits.window.subarray(r.position, r.position + k));
-    r.position += k;
-    r.left -= k;
-    rest -= k;
-  }
-  return Buffer.concat(parts);
-};
-
-type Head = readonly [major: number, additional: number, argument: bigint];
-
-/** The head with initial byte `initial`; argument -1 for additional 31. */
-const headOf = (bits: Bits, r: Reader, initial: number): Head | undefined => {
-  const major = initial >> 5;
-  const additional = initial & 31;
-  if (additional < 24) return [major, additional, BigInt(additional)];
-  if (additional === 31) return [major, additional, -1n];
-  if (additional > 27) return undefined;
-  let argument = 0n;
-  for (let width = 1 << (additional - 24); width > 0; width -= 1) {
-    const value = nextByte(bits, r);
-    if (value === undefined) return undefined;
-    argument = argument * 256n + BigInt(value);
-  }
-  return [major, additional, argument];
-};
-
-const readHead = (bits: Bits, r: Reader): Head | undefined => {
-  if (!charge(r, HEAD_UNITS)) return undefined;
-  const initial = nextByte(bits, r);
-  return initial === undefined ? undefined : headOf(bits, r, initial);
-};
-
-/** Reads a break, or the head of the next chunk of an indefinite string. */
-const nextPiece = (bits: Bits, r: Reader): "break" | number | undefined => {
-  if (!charge(r, HEAD_UNITS)) return undefined;
-  const initial = nextByte(bits, r);
-  if (initial === undefined) return undefined;
-  if (initial === CBOR_BREAK) return "break";
-  const head = headOf(bits, r, initial);
-  if (head === undefined) return undefined;
-  const [major, , length] = head;
-  if (major !== 2 || length < 0n || length > MAX_DATA_BYTES_CHUNK) {
-    return undefined;
-  }
-  return Number(length);
-};
-
-/** The bytes of a byte string item of `length` (-1 when indefinite). */
-const stringBytes = (
-  bits: Bits,
-  r: Reader,
-  length: bigint,
-  limit: number,
-): Buffer | undefined => {
-  if (length >= 0n) return takeBytes(bits, r, Number(length));
-  const parts: Buffer[] = [];
-  let total = 0;
-  for (;;) {
-    const piece = nextPiece(bits, r);
-    if (piece === undefined) return undefined;
-    if (piece === "break") return Buffer.concat(parts);
-    total += piece;
-    if (total > limit) return undefined;
-    const part = takeBytes(bits, r, piece);
-    if (part === undefined) return undefined;
-    parts.push(part);
-  }
-};
-
-type Item = Summary | "break" | undefined;
-
-const item = (bits: Bits, r: Reader): Item => {
-  if (!charge(r, HEAD_UNITS)) return undefined;
-  const initial = nextByte(bits, r);
-  if (initial === undefined) return undefined;
-  if (initial === CBOR_BREAK) return "break";
-  const head = headOf(bits, r, initial);
-  if (head === undefined) return undefined;
-  const [major, additional, argument] = head;
-  switch (major) {
-    case 0:
-    case 1:
-      if (argument < 0n || !charge(r, INTEGER_UNITS)) return undefined;
-      return integerSummary(major === 0 ? argument : -1n - argument);
-    case 2: {
-      if (argument > MAX_DATA_BYTES_CHUNK) return undefined;
-      const bytes = stringBytes(bits, r, argument, MAX_STRING_BYTES);
-      if (bytes === undefined) return undefined;
-      if (!charge(r, STRING_UNITS + (bytes.length >> 5))) return undefined;
-      return shortBytesSummary(bytes);
-    }
-    case 4:
-      return items(bits, r, argument, -1n);
-    case 5:
-      return entries(bits, r, argument);
-    case 6:
-      return tagged(bits, r, additional, argument);
-    default:
-      return undefined;
-  }
-};
-
-/** `length` items (-1 until a break) under `constructor` (-1 a list). */
-const items = (
-  bits: Bits,
-  r: Reader,
-  length: bigint,
-  constructor: bigint,
-): Summary | undefined => {
-  const heads: Summary[] = [];
-  for (let index = 0n; length < 0n || index < length; index += 1n) {
-    if (!charge(r, ITEM_UNITS)) return undefined;
-    const got = item(bits, r);
-    if (got === undefined) return undefined;
-    if (got === "break") {
-      if (length >= 0n) return undefined;
-      break;
-    }
-    heads.push(got);
-  }
-  if (!charge(r, NODE_UNITS)) return undefined;
-  let sequence: SequenceSummary = emptyMidgardCekDataListSummary();
-  for (let index = heads.length - 1; index >= 0; index -= 1) {
-    sequence = prependMidgardCekDataListSummary(heads[index]!, sequence);
-  }
-  return constrSummary(constructor, sequence);
-};
-
-/** `length` map entries (-1 until a break in place of a key). */
-const entries = (
-  bits: Bits,
-  r: Reader,
-  length: bigint,
-): Summary | undefined => {
-  const pairs: (readonly [Summary, Summary])[] = [];
-  for (let index = 0n; length < 0n || index < length; index += 1n) {
-    if (!charge(r, ENTRY_UNITS)) return undefined;
-    const key = item(bits, r);
-    if (key === undefined) return undefined;
-    if (key === "break") {
-      if (length >= 0n) return undefined;
-      break;
-    }
-    const value = item(bits, r);
-    if (value === undefined || value === "break") return undefined;
-    pairs.push([key, value]);
-  }
-  if (!charge(r, NODE_UNITS)) return undefined;
-  return mapSummary(pairs);
 };
 
 const mapSummary = (pairs: readonly (readonly [Summary, Summary])[]) => {
@@ -274,82 +75,6 @@ const mapSummary = (pairs: readonly (readonly [Summary, Summary])[]) => {
   }
   return summarizeMidgardCekMapData(sequence);
 };
-
-/** The fields list of a constructor. */
-const fields = (
-  bits: Bits,
-  r: Reader,
-  constructor: bigint,
-): Summary | undefined => {
-  const head = readHead(bits, r);
-  if (head === undefined || head[0] !== 4) return undefined;
-  return items(bits, r, head[2], constructor);
-};
-
-const tagged = (
-  bits: Bits,
-  r: Reader,
-  additional: number,
-  tag: bigint,
-): Summary | undefined => {
-  if (tag < 0n) return undefined;
-  if (additional === 2 || additional === 3) {
-    const head = readHead(bits, r);
-    if (head === undefined) return undefined;
-    const [major, , length] = head;
-    if (major !== 2 || length > MAX_DATA_BYTES_CHUNK) return undefined;
-    const bytes = stringBytes(bits, r, length, Number(MAX_DATA_BYTES_CHUNK));
-    if (bytes === undefined || !charge(r, INTEGER_UNITS)) return undefined;
-    const m = bytes.length === 0 ? 0n : BigInt(`0x${bytes.toString("hex")}`);
-    return integerSummary(additional === 3 ? -1n - m : m);
-  }
-  if (tag === 102n) {
-    const head = readHead(bits, r);
-    if (head === undefined) return undefined;
-    const [major, , length] = head;
-    if (major !== 4 || (length !== 2n && length !== -1n)) return undefined;
-    const index = readHead(bits, r);
-    if (index === undefined || index[0] !== 0 || index[2] < 0n) {
-      return undefined;
-    }
-    const summary = fields(bits, r, index[2]);
-    if (summary === undefined || length === 2n) return summary;
-    if (!charge(r, HEAD_UNITS)) return undefined;
-    return nextByte(bits, r) === CBOR_BREAK ? summary : undefined;
-  }
-  if (tag >= 121n && tag <= 127n) return fields(bits, r, tag - 121n);
-  if (tag >= 1280n && tag <= 1400n) return fields(bits, r, tag - 1273n);
-  return undefined;
-};
-
-/**
- * A Data constant from bit `position`: the filler, the first CBOR item, and
- * the Flat chunks after it up to the empty one.
- */
-export const dataConstant = (
-  bits: Bits,
-  position: number,
-  units: number,
-): Quick => {
-  const { window, flatLength } = bits;
-  const start = afterFiller(bits, position);
-  if (start === undefined) return stop(units);
-  const r: Reader = { position: start, left: 0, units: units - DATA_UNITS };
-  if (r.units < 0) return stop(r.units);
-  const got = item(bits, r);
-  if (got === undefined || got === "break") return stop(r.units);
-  let p = r.position + r.left;
-  for (;;) {
-    if (p >= flatLength) return stop(r.units);
-    const n = window[p]!;
-    if (n === 0) break;
-    if (!charge(r, CHUNK_UNITS)) return stop(r.units);
-    p += 1 + n;
-  }
-  return ok(8 * (p + 1), got, got.memory, r.units);
-};
-
-// ## Values
 
 /** A Value key from bit `position`: at most 32 bytes over its chunks. */
 const valueKey = (
@@ -435,7 +160,7 @@ export const valueConstant = (
   position: number,
   units: number,
 ): Quick => {
-  const r: Reader = { position: 0, left: 0, units };
+  const r: Reader = { units };
   const currencies: Entries = [];
   let previous: Buffer | undefined;
   let total = 0n;

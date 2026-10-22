@@ -1,10 +1,11 @@
-import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
+import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
+  type BuildTxWithRedeemer,
   CML,
   Constr,
   credentialToAddress,
@@ -12,6 +13,7 @@ import {
   datumToHash,
   fromText,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
@@ -27,6 +29,11 @@ import {
   EVENT_WAIT_DURATION_MS,
   MAX_VALIDITY_RANGE_LENGTH_MS,
 } from "../protocol-parameters.js";
+import {
+  requireInputIndex,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "../tx-context-redeemer.js";
 import {
   type applyEventHistoryValidators,
   EventHistoryNode,
@@ -54,14 +61,6 @@ export type EventHistoryBuildContext = {
   readonly scriptReference?: UTxO;
   /** Explicit funding keeps a publication from accidentally consuming its event nonce. */
   readonly fundingInputs: readonly UTxO[];
-};
-
-const inputIndex = (inputs: readonly UTxO[], target: UTxO): bigint => {
-  const index = [...inputs]
-    .sort(compareOutRefs)
-    .findIndex((input) => outRefLabel(input) === outRefLabel(target));
-  if (index < 0) throw new Error("Missing history transaction input");
-  return BigInt(index);
 };
 
 const requireDistinct = (inputs: readonly UTxO[]) => {
@@ -305,75 +304,8 @@ export const buildEventHistoryAdmission = async (
     request.structuralLovelace,
   );
   const promotion = anchor.key === plan.key;
-  const orderIndex = promotion ? 0n : 1n;
-  const externalIndex =
-    retained === undefined ? null : inputIndex(references, retained);
-  const operation: EventHistoryOperation = promotion
-    ? {
-        PromoteFiller: {
-          filler_input_index: inputIndex(inputs, anchor.utxo),
-          order_output_index: orderIndex,
-          refund_output_index: 1n,
-          nonce_input_index: inputIndex(inputs, request.nonce),
-          external_reference_index: externalIndex,
-        },
-      }
-    : {
-        InsertOrder: {
-          predecessor_input_index: inputIndex(inputs, anchor.utxo),
-          predecessor_output_index: 0n,
-          order_output_index: orderIndex,
-          nonce_input_index: inputIndex(inputs, request.nonce),
-          external_reference_index: externalIndex,
-        },
-      };
-  let tx = lucid
-    .newTx()
-    .collectFrom([...context.fundingInputs, request.nonce])
-    .collectFrom([anchor.utxo], Data.to(inputIndex(inputs, anchor.utxo)))
-    .readFrom(references)
-    .withdraw(
-      applied.rewardAddress,
-      0n,
-      Data.to(
-        {
-          Apply: {
-            hub_reference_index: inputIndex(references, context.hubReference),
-            operation,
-          },
-        },
-        EventHistoryObserve,
-      ),
-    )
-    .validFrom(request.validFrom)
-    .validTo(request.validTo);
-  if (context.scriptReference === undefined)
-    tx = tx.attach.Script(applied.validator);
-  if (!promotion) {
-    tx = tx
-      .mintAssets({ [applied.policyId + plan.key]: 1n }, Data.void())
-      .pay.ToContract(
-        applied.address,
-        {
-          kind: "inline",
-          value: replacePlutusConstrFieldCbor(
-            replacePlutusConstrFieldCbor(
-              anchor.utxo.datum!,
-              [1],
-              Data.to(new Constr(0, [plan.key])),
-            ),
-            [2],
-            Data.to(protectedUntil),
-          ),
-        },
-        anchor.utxo.assets,
-      );
-  }
-  tx = tx.pay.ToContract(
-    applied.address,
-    { kind: "inline", value: nodeCbor },
-    { ...request.assets, [applied.policyId + plan.key]: 1n },
-  );
+  const orderUnit = applied.policyId + plan.key;
+  let refundAddress: string | undefined;
   if (promotion) {
     if (
       anchor.node.payload === "RootContent" ||
@@ -383,14 +315,131 @@ export const buildEventHistoryAdmission = async (
     const network = lucid.config().network;
     if (network === undefined)
       throw new Error("Missing history deployment network");
-    tx = tx.pay.ToAddress(
-      credentialToAddress(network, {
-        type: "Key",
-        hash: anchor.node.payload.Filler.refund_key,
-      }),
-      { lovelace: anchor.utxo.assets.lovelace },
+    refundAddress = credentialToAddress(network, {
+      type: "Key",
+      hash: anchor.node.payload.Filler.refund_key,
+    });
+  }
+  // Every index resolves against the builder's final transaction, so the
+  // redeemer cannot drift from the ledger's input and output order.
+  // The refund key may also own the wallet's change address, so the refund is
+  // the first output paying it: the builder appends change after every pay.
+  const refundOutputIndex = (ctx: RedeemerContext): bigint => {
+    const index = ctx.outputs.findIndex(
+      (output) => output.address === refundAddress,
+    );
+    if (index < 0)
+      throw new Error("History filler refund is missing from final outputs");
+    return BigInt(index);
+  };
+  // The builder's last redeemer pass sees the final transaction, so the order
+  // index it resolves is the one the caller is told about.
+  let finalOrderOutputIndex: bigint | undefined;
+  const operationFor = (ctx: RedeemerContext): EventHistoryOperation => {
+    const orderOutputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      (output) =>
+        output.address === applied.address &&
+        (output.assets[orderUnit] ?? 0n) === 1n,
+      "history order",
+    );
+    finalOrderOutputIndex = orderOutputIndex;
+    const nonceInputIndex = requireInputIndex(
+      ctx,
+      request.nonce,
+      "history nonce",
+    );
+    const externalIndex =
+      retained === undefined
+        ? null
+        : requireReferenceInputIndex(ctx, retained, "history publication");
+    return refundAddress !== undefined
+      ? {
+          PromoteFiller: {
+            filler_input_index: requireInputIndex(
+              ctx,
+              anchor.utxo,
+              "history filler",
+            ),
+            order_output_index: orderOutputIndex,
+            refund_output_index: refundOutputIndex(ctx),
+            nonce_input_index: nonceInputIndex,
+            external_reference_index: externalIndex,
+          },
+        }
+      : {
+          InsertOrder: {
+            predecessor_input_index: requireInputIndex(
+              ctx,
+              anchor.utxo,
+              "history predecessor",
+            ),
+            predecessor_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === applied.address &&
+                (output.assets[orderUnit] ?? 0n) === 0n,
+              "history predecessor",
+            ),
+            order_output_index: orderOutputIndex,
+            nonce_input_index: nonceInputIndex,
+            external_reference_index: externalIndex,
+          },
+        };
+  };
+  let tx = lucid
+    .newTx()
+    .collectFrom([...context.fundingInputs, request.nonce])
+    .collectFrom([anchor.utxo], ((ctx) =>
+      Data.to(
+        requireInputIndex(ctx, anchor.utxo, "history anchor"),
+      )) satisfies BuildTxWithRedeemer)
+    .readFrom(references)
+    .withdraw(applied.rewardAddress, 0n, ((ctx) =>
+      Data.to(
+        {
+          Apply: {
+            hub_reference_index: requireReferenceInputIndex(
+              ctx,
+              context.hubReference,
+              "history hub",
+            ),
+            operation: operationFor(ctx),
+          },
+        },
+        EventHistoryObserve,
+      )) satisfies BuildTxWithRedeemer)
+    .validFrom(request.validFrom)
+    .validTo(request.validTo);
+  if (context.scriptReference === undefined)
+    tx = tx.attach.Script(applied.validator);
+  if (!promotion) {
+    tx = tx.mintAssets({ [orderUnit]: 1n }, Data.void()).pay.ToContract(
+      applied.address,
+      {
+        kind: "inline",
+        value: replacePlutusConstrFieldCbor(
+          replacePlutusConstrFieldCbor(
+            anchor.utxo.datum!,
+            [1],
+            Data.to(new Constr(0, [plan.key])),
+          ),
+          [2],
+          Data.to(protectedUntil),
+        ),
+      },
+      anchor.utxo.assets,
     );
   }
+  tx = tx.pay.ToContract(
+    applied.address,
+    { kind: "inline", value: nodeCbor },
+    { ...request.assets, [orderUnit]: 1n },
+  );
+  if (refundAddress !== undefined)
+    tx = tx.pay.ToAddress(refundAddress, {
+      lovelace: anchor.utxo.assets.lovelace,
+    });
   let completed;
   try {
     completed = await tx.complete({
@@ -425,11 +474,13 @@ export const buildEventHistoryAdmission = async (
         );
     }
   }
+  if (finalOrderOutputIndex === undefined)
+    throw new Error("History admission order output was never resolved");
   return {
     tx: completed,
     plan,
     node,
     anchor,
-    orderOutputIndex: Number(orderIndex),
+    orderOutputIndex: Number(finalOrderOutputIndex),
   };
 };

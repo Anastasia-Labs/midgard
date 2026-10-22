@@ -63,8 +63,6 @@ export const createFieldPreimageLengthRecoveryAdapter = (
         network: workflow.binding.network,
         signer: workflow.config.signer,
         publications: workflow.l1.publications,
-        transactionConfirmed: async (input) =>
-          await workflow.l1.transactionConfirmed(input),
         requirementForAction,
       }),
     }),

@@ -34,6 +34,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
 import {
   type PublishedProofChunk,
   splitProofIntoChunkDatums,
@@ -68,10 +69,16 @@ export const resolvePublishedProofChunks = async ({
   lucid,
   address,
   proofCbor,
+  fromTransaction,
 }: {
   readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
+  /**
+   * Resolve only this transaction's outputs, so reconciling a publication
+   * observes only the chunks that transaction paid.
+   */
+  readonly fromTransaction?: string;
 }): Promise<readonly PublishedProofChunk[] | undefined> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) return [];
@@ -82,10 +89,9 @@ export const resolvePublishedProofChunks = async ({
     const match = candidates.find((utxo) => {
       const label = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
       return (
+        (fromTransaction === undefined || utxo.txHash === fromTransaction) &&
         !claimed.has(label) &&
-        typeof utxo.datum === "string" &&
-        utxo.datumHash == null &&
-        utxo.scriptRef == null &&
+        isAdaOnlyInlineDatumOutput(utxo) &&
         canonicalPlutusDataCbor(utxo.datum) === datum
       );
     });

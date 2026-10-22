@@ -23,18 +23,18 @@ import {
   resolveInputExistenceFieldCarriage,
 } from "../src/input-existence/field-carriage.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import {
-  reopenForcedInputExistence,
-  forcedInputExistenceMaterial,
-} from "../src/input-existence/reopen-forced.js";
 import { inputExistenceStates } from "../src/input-existence/prepare-step-carriage.js";
+import {
+  forcedInputExistenceMaterial,
+  reopenForcedInputExistence,
+} from "../src/input-existence/reopen-forced.js";
+import { deriveInputExistenceSelection } from "../src/input-existence/selection.js";
+import { openProofThreadSubjectFromCanonicalEvidence } from "../src/input-existence/source.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { inputExistenceFieldCarriageRequirements } from "../src/workflow/input-existence-field-carriage.js";
 import { LEDGER_ABSENCE_ARTIFACT } from "../src/workflow/ledger-absence-artifact.js";
-import { deriveInputExistenceSelection } from "../src/input-existence/selection.js";
-import { openProofThreadSubjectFromCanonicalEvidence } from "../src/input-existence/source.js";
-import { NON_EXISTENT_INPUT_FAMILY_DEFINITION } from "../src/workflow/non-existent-input.non-existent-input-family-definition.js";
 import { NO_REFERENCE_INPUT_FAMILY_DEFINITION } from "../src/workflow/no-reference-input.no-reference-input-family-definition.js";
+import { NON_EXISTENT_INPUT_FAMILY_DEFINITION } from "../src/workflow/non-existent-input.non-existent-input-family-definition.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";

@@ -18,6 +18,8 @@ export * from "./midgard-redeemers.js";
 export * from "./phase-a.js";
 export * from "./phase-b.js";
 export * from "./plutus-data.js";
+export * from "./plutus-script-evaluator.capability-error.js";
+export * from "./plutus-script-evaluator.js";
 export * from "./reject-subject.js";
 export * from "./rejection-reason.js";
 export * from "./script-context.js";

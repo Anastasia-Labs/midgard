@@ -1,5 +1,4 @@
 import { computeHash28 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeSingleCbor,
   deriveMidgardForcedTxFaultEvidenceMaterial,
@@ -42,8 +41,6 @@ import {
   makeSignedEffectfulTransaction,
   outputReferenceFromHash,
 } from "./forced-transactions.make-signed-effectful-transaction.js";
-
-const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
 const time = new Date("2026-07-23T12:01:00.000Z");
 const validation = {
   l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -218,7 +215,6 @@ describe("forced admission screens", () => {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: transaction.canonicalCbor,
-          programMaterialSidecarCbor: sidecar,
           sourceKind: "forced",
           ledgerWitnessEntries: result.ledgerWitnessEntries,
           blockTimeMs: time.getTime(),
@@ -335,7 +331,6 @@ describe("forced admission screens", () => {
             ],
           ],
           validation_trace_witnesses: [],
-          cek_program_material: [],
         },
       };
       const decoded = decodeDaPayloadStrict(SDK.encodeDaPayload(payload));

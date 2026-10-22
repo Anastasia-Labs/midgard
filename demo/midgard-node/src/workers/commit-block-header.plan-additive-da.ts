@@ -1,7 +1,4 @@
-import {
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
+import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -12,7 +9,6 @@ import {
   ForcedTransactionsDB,
   WithdrawalsDB,
 } from "../database/index.js";
-import type { MinimalEntry } from "../database/utils/ledger.js";
 import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
@@ -31,12 +27,6 @@ import {
   ordinarySourceBytes,
   withdrawalValueBytesUpperBound,
 } from "./utils/commit-da-material.encoding.js";
-import {
-  type DaMaterialTransaction,
-  potentialCommitProgramSources,
-  potentialEventProgramBytes,
-  potentialProgramSourceBytes,
-} from "./utils/commit-da-material.program-sources.js";
 
 const eventKey = (
   id: Buffer,
@@ -53,31 +43,19 @@ const eventKey = (
   }
 };
 
-/** Source/encoding-only budget: no validation replay, mutable verdict read,
- * largest-window sidecar assumption, or shared-material sizing credit. */
+/** Source/encoding-only budget from the transaction preimages and event traces. */
 export const commitDaSourceContributions = (input: {
-  readonly base: readonly MinimalEntry[];
   readonly deposits: readonly DepositsDB.Entry[];
   readonly withdrawals: readonly WithdrawalsDB.Entry[];
   readonly forced: readonly ForcedTransactionsDB.Entry[];
   readonly candidates: readonly EntryWithTimeStamp[];
   readonly profile: MidgardConsensusProfile;
 }) => {
-  const forced: DaMaterialTransaction[] = input.forced.map((row) => ({
-    canonical: decodeMidgardForcedTxFullFromCanonicalCbor(
+  const forced = input.forced.map((row) =>
+    decodeMidgardForcedTxFullFromCanonicalCbor(
       row[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR],
     ),
-    sourceKind: "forced",
-  }));
-  const ordinary: DaMaterialTransaction[] = input.candidates.map((row) => ({
-    canonical: decodeMidgardNativeTxFullFromCanonicalCbor(row[TxColumns.TX]),
-    sourceKind: "normal",
-  }));
-  const normalSources = potentialCommitProgramSources(input.base, [
-    ...forced,
-    ...ordinary,
-  ]);
-  const normalSourceBytes = potentialProgramSourceBytes(normalSources);
+  );
   const events: CommitFrameEventContribution[] = [];
   for (const row of input.deposits) {
     const id = row[DepositsDB.Columns.ID];
@@ -131,7 +109,7 @@ export const commitDaSourceContributions = (input: {
         ),
     });
   }
-  const ordinaryBytes = input.candidates.map((row, index) => {
+  const ordinaryBytes = input.candidates.map((row) => {
     const id = row[TxColumns.TX_ID];
     return (
       ordinarySourceBytes(id, row[TxColumns.TX], input.profile) +
@@ -139,8 +117,7 @@ export const commitDaSourceContributions = (input: {
         { L2TransactionEventKey: { tx_id: id.toString("hex") } },
         "L2Transaction",
         true,
-      ) +
-      potentialEventProgramBytes(ordinary[index]!, normalSourceBytes)
+      )
     );
   });
   return { events, ordinaryBytes, fixedBytes: additiveDaFixedBytes() };
@@ -148,7 +125,6 @@ export const commitDaSourceContributions = (input: {
 
 export const planAdditiveCommitDa = (input: {
   readonly window: Extract<CommitEventWindow, { endTimeMs: number }>;
-  readonly base: readonly MinimalEntry[];
   readonly candidates: readonly EntryWithTimeStamp[];
   readonly profile: MidgardConsensusProfile;
   readonly maxInnerBytes: number;

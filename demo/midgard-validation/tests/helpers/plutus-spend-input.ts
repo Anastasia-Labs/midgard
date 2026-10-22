@@ -1,7 +1,5 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 
-import { type buildMidgardCanonicalCekProgram } from "../../src/cek-program.js";
 import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
@@ -29,18 +27,18 @@ export const MIDGARD_TX_EX_UNITS_CAP = Object.freeze({
 
 /**
  * The replay input of an accepted transaction that spends one output locked
- * by `program` as a PlutusV3 script, with one Spend redeemer declaring
+ * by `program`'s carried script bytes as a PlutusV3 script, with one Spend redeemer declaring
  * `exUnits`, and pays it to one plain output.
  */
 export const plutusV3SpendInput = async (
-  program: ReturnType<typeof buildMidgardCanonicalCekProgram>,
+  program: { readonly scriptBytes: Buffer },
   exUnits: { readonly memory: bigint; readonly steps: bigint } = {
     memory: 5_000_000n,
     steps: 1_000_000_000n,
   },
 ): Promise<ValidationMachineReplayInput> => {
   const spent = outRefFromByte(0x1d);
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const spentOutput = makeProtectedScriptOutput(
     hashScriptWitness(script),
     FUNDED_OUTPUT_LOVELACE,
@@ -76,9 +74,6 @@ export const plutusV3SpendInput = async (
     ...context,
     transactionId: transaction.txId,
     canonicalTransactionCbor: transaction.txCbor,
-    programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-      ...program.material.values(),
-    ]),
     priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
     postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
     ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],

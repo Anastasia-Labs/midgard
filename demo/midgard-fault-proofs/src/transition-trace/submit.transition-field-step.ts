@@ -31,6 +31,11 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
+  nextTransitionTracePhase,
   type TransitionTraceField,
   transitionTraceOutputStepIsWhole,
   transitionTracePhaseField,
@@ -42,6 +47,7 @@ import {
   type TransitionProofInput,
   transitionReplayedTransaction,
 } from "./proof-material.js";
+import { type transitionTraceYieldData } from "./yield-data.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 /** One field's planned opening and the reference inputs that carry it. */
@@ -66,6 +72,7 @@ export const prepareTransitionFieldCarriage = async ({
   certificateMintingScript,
   certificateReferenceScript,
   publish,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -76,6 +83,8 @@ export const prepareTransitionFieldCarriage = async ({
   readonly certificateMintingScript: Script;
   readonly certificateReferenceScript: () => Promise<UTxO>;
   readonly publish: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<TransitionFieldCarriage> => {
   const proof = readTransitionProof(proofInput);
   const replay = transitionL2Replay(proofInput);
@@ -109,6 +118,7 @@ export const prepareTransitionFieldCarriage = async ({
   });
   const chunks = publish
     ? await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,
@@ -116,6 +126,7 @@ export const prepareTransitionFieldCarriage = async ({
         label,
       })
     : await resolveFaultProofFieldCarriagePublications({
+        ownOutputs,
         lucid,
         publisherAddress: signer.address,
         planned,
@@ -125,6 +136,7 @@ export const prepareTransitionFieldCarriage = async ({
   signer.selectWallet(lucid);
   if (planned.plan.tier !== "Certified") return { planned, references: chunks };
   let certificate = await resolveFaultProofFieldPreimageCertificate({
+    ownOutputs,
     lucid,
     network,
     planned,
@@ -137,6 +149,7 @@ export const prepareTransitionFieldCarriage = async ({
         lucid,
         network,
         signer,
+        ownOutputs,
         planned,
         certificatePolicyId,
         certificateMintingScript,
@@ -161,11 +174,13 @@ type TransitionOutputVerifier = {
 export type TransitionFieldStep = {
   /** The step's complete reference inputs: the base, field carriage and verifiers. */
   readonly referenceInputs: readonly UTxO[];
-  /** The opening callbacks against those reference inputs. */
-  readonly openings: {
-    readonly fieldOpening: (field: TransitionTraceField) => SDK.FieldOpening;
-    readonly fieldCarriage: (field: TransitionTraceField) => SDK.FieldCarriage;
-  };
+  /**
+   * The checkpoint's next step, its field openings resolved against
+   * `referenceInputs`. The openings are positions in the final transaction's
+   * sorted reference inputs and only the step redeemer carries them, so a
+   * redeemer is planned against the builder's `ctx.referenceInputs`.
+   */
+  readonly plan: (referenceInputs: readonly UTxO[]) => TransitionTracePhaseStep;
   /** Add the verifier withdrawals a whole output replay names. */
   readonly withdraw: (
     builder: TxBuilder,
@@ -187,10 +202,12 @@ export const prepareTransitionFieldStep = async ({
   contracts,
   proof,
   state,
+  yields,
   outputCbors,
   publish,
   fieldCertificateReferenceScript,
   baseReferences,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -199,11 +216,14 @@ export const prepareTransitionFieldStep = async ({
   readonly contracts: TransitionTraceFaultProofContracts;
   readonly proof: TransitionProofInput;
   readonly state: SDK.TransitionTraceFinalState;
+  readonly yields: ReturnType<typeof transitionTraceYieldData>;
   readonly outputCbors: readonly string[] | undefined;
   readonly publish: boolean;
   readonly fieldCertificateReferenceScript?: UTxO;
   /** The reference inputs the step reads besides its carriage and verifiers. */
   readonly baseReferences: readonly UTxO[];
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<TransitionFieldStep> => {
   const field = transitionTracePhaseField(state);
   const certificatePolicyId = contracts.fieldPreimageCertificate.policyId;
@@ -227,6 +247,7 @@ export const prepareTransitionFieldStep = async ({
               name: "fieldPreimageCertificateMint",
             })),
           publish,
+          ownOutputs,
         });
   const verifiers: readonly TransitionOutputVerifier[] =
     transitionTraceOutputStepIsWhole(state, outputCbors)
@@ -249,31 +270,32 @@ export const prepareTransitionFieldStep = async ({
       throw new Error("transition checkpoint opens another field");
     return carriage.planned;
   };
-  // Opening indices are positions in the transaction's complete, sorted
-  // reference-input set, so they are resolved against all of it.
-  const referenceInputs = distinctUtxos([
-    ...baseReferences,
-    ...(carriage?.references ?? []),
-    ...verifiers.map((verifier) => verifier.reference),
-  ]);
   return {
-    referenceInputs,
-    openings: {
-      fieldOpening: (requested) =>
-        faultProofFieldOpening({
-          planned: requireCarriage(requested),
-          referenceInputs,
-          certificatePolicyId,
-          label: "transition-trace field opening",
-        }),
-      fieldCarriage: (requested) =>
-        faultProofFieldCarriage({
-          planned: requireCarriage(requested),
-          referenceInputs,
-          certificatePolicyId,
-          label: "transition-trace field carriage",
-        }),
-    },
+    referenceInputs: distinctUtxos([
+      ...baseReferences,
+      ...(carriage?.references ?? []),
+      ...verifiers.map((verifier) => verifier.reference),
+    ]),
+    plan: (referenceInputs) =>
+      nextTransitionTracePhase({
+        state,
+        proof,
+        yields,
+        fieldOpening: (requested) =>
+          faultProofFieldOpening({
+            planned: requireCarriage(requested),
+            referenceInputs,
+            certificatePolicyId,
+            label: "transition-trace field opening",
+          }),
+        fieldCarriage: (requested) =>
+          faultProofFieldCarriage({
+            planned: requireCarriage(requested),
+            referenceInputs,
+            certificatePolicyId,
+            label: "transition-trace field carriage",
+          }),
+      }),
     withdraw: (builder, planned) => {
       if ((planned.verifiers === undefined) !== (verifiers.length === 0))
         throw new Error("transition output step disagrees on its verifiers");

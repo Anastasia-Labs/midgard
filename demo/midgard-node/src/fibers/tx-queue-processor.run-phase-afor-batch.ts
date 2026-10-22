@@ -1,10 +1,6 @@
 import "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 
-import type { MidgardCekProgramEnvelope } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import {
-  LedgerColumns,
   type PhaseAResult,
   QueuedTx,
   runPhaseAValidation,
@@ -87,56 +83,9 @@ export const admissionToQueuedTx = (
 ): QueuedTx => ({
   txId: admission.tx_id,
   txCbor: admission.tx_canonical_cbor,
-  programMaterialSidecarCbor: admission.cek_program_material_sidecar_cbor,
   arrivalSeq: admission.arrival_seq,
   createdAt: admission.first_seen_at,
 });
-
-type AcceptedProgramCandidate = {
-  readonly ledgerTx: { readonly txId: Uint8Array };
-  readonly submission: { readonly txCbor: Uint8Array };
-  readonly graph: {
-    readonly produced: readonly {
-      readonly [LedgerColumns.OUTREF]: Uint8Array;
-      readonly [LedgerColumns.OUTPUT]: Uint8Array;
-    }[];
-  };
-};
-
-/**
- * Reconstructs each accepted transaction's program set, the one Phase B
- * resolved: every input resolves against the state before its own
- * transaction, and an out-ref is never re-created, so the batch pre-state
- * plus every accepted output holds each accepted reference input's output.
- * This is persistence metadata, not a second validation decision.
- */
-export const collectAcceptedProgramEnvelopes = (
-  accepted: readonly AcceptedProgramCandidate[],
-  preState: ReadonlyMap<string, Buffer>,
-): ReadonlyMap<string, readonly MidgardCekProgramEnvelope[]> => {
-  const resolvedOutputs = new Map<string, Uint8Array>(preState);
-  for (const candidate of accepted) {
-    for (const produced of candidate.graph.produced) {
-      resolvedOutputs.set(
-        Buffer.from(produced[LedgerColumns.OUTREF]).toString("hex"),
-        produced[LedgerColumns.OUTPUT],
-      );
-    }
-  }
-  return new Map(
-    accepted.map((candidate) => {
-      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
-        candidate.submission.txCbor,
-      );
-      return [
-        Buffer.from(candidate.ledgerTx.txId).toString("hex"),
-        collectMidgardEventProgramEnvelopes(canonicalTx, (outRefHex) =>
-          resolvedOutputs.get(outRefHex),
-        ),
-      ] as const;
-    }),
-  );
-};
 
 /**
  * Clamps a numeric value into an inclusive range.

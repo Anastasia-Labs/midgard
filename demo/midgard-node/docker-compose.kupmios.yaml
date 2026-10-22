@@ -20,8 +20,9 @@
 services:
   # The node's L1 follower reads the in-stack cardano-node directly: its
   # socket, its config (exported by cardano-config-export) and the
-  # midgard-l1-node-transport binary baked into the image. It also needs
-  # L1_ORIGIN from .env (see .env.example); without it the node stays unready
+  # midgard-l1-node-transport binary baked into the image. It starts at the
+  # deployment manifest's recorded l1Origin; L1_ORIGIN in .env overrides it
+  # (see .env.example). With neither the node stays unready
   # (l1_follower_unconfigured) rather than exiting.
   midgard-node:
     environment:

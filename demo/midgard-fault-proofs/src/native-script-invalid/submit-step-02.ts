@@ -16,6 +16,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
@@ -46,6 +47,10 @@ import {
   resolveFieldSemanticCheckpoint,
 } from "../staged-field-walk/index.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
@@ -87,6 +92,7 @@ export const submitNativeScriptInvalidStep02 = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -106,6 +112,8 @@ export const submitNativeScriptInvalidStep02 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const label = linearFaultStepLabel(FAMILY, stepIndex);
@@ -147,6 +155,7 @@ export const submitNativeScriptInvalidStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -160,16 +169,6 @@ export const submitNativeScriptInvalidStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${label} field 6`,
-  });
   const requiresScan =
     planned.plan.tier === "Certified" || scriptWitnessItems.length > 32;
   let nextStep = 2;
@@ -182,9 +181,16 @@ export const submitNativeScriptInvalidStep02 = async ({
     validity_interval_end: state.validity_interval_end,
   };
   const actionFor = (
+    ctx: RedeemerContext,
     input_index: bigint,
     output_index: bigint,
   ): Extract<Step02Redeemer, { Continue: unknown }>["Continue"][0] => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} field 6`,
+    });
     const indices = { input_index, output_index };
     if (!requiresScan)
       return {
@@ -333,7 +339,7 @@ export const submitNativeScriptInvalidStep02 = async ({
     outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);
     return Data.to(
       {
-        Continue: [actionFor(inputIndex, outputIndex)],
+        Continue: [actionFor(ctx, inputIndex, outputIndex)],
       },
       Step02Redeemer,
     );

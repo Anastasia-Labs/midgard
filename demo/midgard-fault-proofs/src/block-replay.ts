@@ -5,11 +5,10 @@
  * transition and event-to-step mapping must equal the replay's canonical bytes.
  * Validation descriptors are derived data the header does not commit: each
  * replayed transaction needs one, canonical and bounded, carrying the replayed
- * verdict, and nothing more is asked of it (the DA committee's rule). CEK
- * program material is likewise uncommitted: replay uses the entries an event
- * reaches and ignores the rest. The node's foreign-block import and the
- * watcher's ledger both run this one function; each supplies its own
- * ledger-root computation and L1 event material.
+ * verdict, and nothing more is asked of it (the DA committee's rule). The
+ * node's foreign-block import and the watcher's ledger both run this one
+ * function; each supplies its own ledger-root computation and L1 event
+ * material.
  *
  * Faults of the payload are thrown as `BlockReplayFault` defects; the
  * callbacks' and the root computation's failures pass through, and a
@@ -37,10 +36,6 @@ import {
   transitionPhaseRank,
 } from "./block-replay.encoding.js";
 import { blockFault } from "./block-replay.faults.js";
-import {
-  importedEventProgramSidecar,
-  importedProgramMaterial,
-} from "./block-replay.program-material.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -81,7 +76,6 @@ export type BlockReplayLedgerEntry = {
 export type CommittedTransaction = Readonly<{
   transactionId: Buffer;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor: Buffer;
   /** The ledger the transaction was replayed on, keyed by out-ref CBOR hex;
    * it changes as the replay goes on. */
   ledger: ReadonlyMap<string, Buffer>;
@@ -220,7 +214,6 @@ export const replayBlockEvents = (
       forcedPreimages.size !== body.forced_transactions.length
     )
       throw blockFault("foreign transaction preimage coverage mismatch");
-    const material = importedProgramMaterial(body.cek_program_material);
     let root = yield* input.ledgerRoot(input.parentEntries);
     for (const [index, { step, value }] of steps.entries()) {
       if (step.step_index !== BigInt(index) || step.schema_version !== 1n)
@@ -265,16 +258,13 @@ export const replayBlockEvents = (
         const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
         const committed =
           step.phase === "L2Transaction" ? input.committedVerdicts : undefined;
-        const programMaterialSidecarCbor = importedEventProgramSidecar({
-          cbor,
-          sourceKind,
-          ledger,
-          material,
-        });
+        // Replay runs Phase A over every carried Flat script, then resolves
+        // execution sources against this event's pre-state in Phase B.
+        // Script bytes are authenticated by the canonical preimage and ledger;
+        // no separately published material participates in the verdict.
         const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor,
           ledgerWitnessEntries: witnessEntries,
           blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
@@ -299,7 +289,6 @@ export const replayBlockEvents = (
         committed?.onTransaction({
           transactionId: replay.transactionId,
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor,
           ledger,
         });
         if (step.phase === "ForcedTransaction")

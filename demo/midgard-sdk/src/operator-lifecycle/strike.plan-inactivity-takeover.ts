@@ -38,6 +38,13 @@ import {
 } from "./strike.compute-inactivity-threshold.js";
 
 /**
+ * How far before the planner's clock a strike's validity range starts, when
+ * the inactivity threshold allows it (docs/agents/transaction-finalization.md,
+ * "Validity Windows").
+ */
+export const STRIKE_VALID_FROM_BACKOFF_MS = 60_000n;
+
+/**
  * Decides whether the scheduled operator can be struck for inactivity right
  * now and, when it can, returns every witness and bound the strike builder
  * needs.
@@ -99,8 +106,17 @@ export const planInactivityTakeover = ({
     };
   }
 
+  // `interval.is_entirely_after(threshold)` needs `threshold < valid_from`,
+  // and nothing else bounds the start from below, so the lower bound backs off
+  // from the wall clock as far as that rule allows: node submit validation can
+  // lag the planner's clock, and a lower bound at `nowMs` would then be refused
+  // as outside the validity interval. The upper bound stays anchored at the
+  // later of `nowMs` and the threshold, so the submission keeps its whole
+  // window.
+  const protocolLowerBound = threshold.thresholdMs + 1n;
+  const backedOff = nowMs - STRIKE_VALID_FROM_BACKOFF_MS;
   const earliestValidFrom =
-    nowMs > threshold.thresholdMs + 1n ? nowMs : threshold.thresholdMs + 1n;
+    backedOff > protocolLowerBound ? backedOff : protocolLowerBound;
   const validFrom = alignValidFrom?.(earliestValidFrom) ?? earliestValidFrom;
   if (validFrom < earliestValidFrom) {
     return blocked(
@@ -109,7 +125,9 @@ export const planInactivityTakeover = ({
       current.operator,
     );
   }
-  const validTo = validFrom + validityWindowMs;
+  const upperAnchor = nowMs > protocolLowerBound ? nowMs : protocolLowerBound;
+  const validTo =
+    (alignValidFrom?.(upperAnchor) ?? upperAnchor) + validityWindowMs;
   const newStartTime = validTo - 1n;
   if (newStartTime - validFrom > params.maxValidityRangeLengthMs) {
     return blocked(

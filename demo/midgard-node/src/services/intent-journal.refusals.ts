@@ -19,6 +19,11 @@ export const INTENT_BYTES_MISMATCH = "intent_bytes_mismatch";
 export const INTENT_UNDECODABLE = "intent_undecodable";
 /** A family that names its content (§8.2) journaled no content reference. */
 export const INTENT_CONTENT_REF_MISSING = "intent_content_ref_missing";
+/**
+ * A dispute defense with no upper validity bound: it could land at any
+ * time, so it could never be known dead, and nothing replaces it.
+ */
+export const INTENT_UNBOUNDED_VALIDITY = "intent_unbounded_validity";
 /** The journal write failed (the database). */
 export const INTENT_JOURNAL_UNAVAILABLE = "intent_journal_unavailable";
 /**

@@ -4,7 +4,10 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
-import type { JournalJsonObject } from "./journal.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
+} from "./journal.js";
 import { journalJsonDigest, normalizeJournalJson } from "./journal.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -51,6 +54,8 @@ export interface CursorFamilyTransactionPort<
   capture(input: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
+    /** The workflow journal: its own carriage claims among it. */
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<CursorFamilyCapturedAction>;
 }
 

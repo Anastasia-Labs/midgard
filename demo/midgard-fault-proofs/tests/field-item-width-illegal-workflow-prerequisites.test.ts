@@ -140,16 +140,16 @@ const admittedForcedSubjects = async (
   const header: SDK.Header = {
     ...base.header,
     ...counts,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTraceCount: 0n,
     forcedTransactionsRoot: await root(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
       forced,
     ),
     transitionTraceRoot: await root(SDK.ROOT_DOMAINS.transitionTrace, steps),
     eventToStepRoot: await root(SDK.ROOT_DOMAINS.eventToStep, events),
-    validationTracesRoot: await root(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validations,
-    ),
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const payload: SDK.DaPayload = {

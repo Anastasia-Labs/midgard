@@ -21,6 +21,7 @@ import {
   submitMissingRedeemerTerminal,
   submitMissingRedeemerTransitions,
 } from "../../src/missing-redeemer/index.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
 import {
   captureEmulatorSubmission,
@@ -117,6 +118,7 @@ export const publishMissingRedeemerCarriage = async ({
     tier: string;
     measurement: CompleteSignedTransactionMeasurement;
   }[] = [];
+  const ownOutputs = createOwnOutputJournal();
   let certificateReference: UTxO | undefined;
   for (const field of MISSING_REDEEMER_FIELDS) {
     const planned = plan(field).openingPlan;
@@ -124,6 +126,7 @@ export const publishMissingRedeemerCarriage = async ({
     if (tier === "Inline") continue;
     const published = await captureEmulatorSubmission(harness.emulator, () =>
       publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -144,6 +147,7 @@ export const publishMissingRedeemerCarriage = async ({
       ).utxo;
       const certified = await captureEmulatorSubmission(harness.emulator, () =>
         certifyFaultProofFieldCarriage({
+          ownOutputs,
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,

@@ -229,6 +229,37 @@
       }
     },
     {
+      "id": "withdrawal-mistag-agreement",
+      "kind": "golden",
+      "summary": "Withdrawal-mistag node-agreement verdicts (step-03 value rule, step-04 payability): one hand-labelled JSON vector file the fault-proofs TypeScript twins load, rendered into two whole Aiken test modules.",
+      "generators": [
+        "demo/midgard-fault-proofs/scripts/generate-withdrawal-mistag-agreement-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-fault-proofs:fixtures:withdrawal-mistag-agreement:sync",
+        "demo/midgard-fault-proofs:fixtures:withdrawal-mistag-agreement:check"
+      ],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-fault-proofs/tests/fixtures/withdrawal-mistag-agreement-vectors.json"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check withdrawal-mistag node-agreement vectors"
+      }
+    },
+    {
       "id": "native-tx-carriage-wire-v1",
       "kind": "golden",
       "summary": "Carriage wire (Plutus Data) surface from the SDK schemas: JSON fixture plus a whole generated Aiken module.",
@@ -735,6 +766,37 @@
       }
     },
     {
+      "id": "cek-builtin-step-evidence",
+      "kind": "golden",
+      "summary": "Pinned CEK builtin step evidence (mkCons by element type, semantic builtin presentation): one JSON vector file the validation TypeScript executor twins load, rendered into two generated Aiken constant modules the step tests import.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-builtin-step-evidence-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-builtin-step-evidence:sync",
+        "demo/midgard-validation:fixtures:cek-builtin-step-evidence:check"
+      ],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-step-evidence-vectors.json"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/cek-direct-list-construct-evidence-generated.ak",
+        "onchain/aiken/lib/midgard/cek-semantic-presentation-evidence-generated.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-builtin-step-evidence:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check CEK builtin step evidence vectors"
+      }
+    },
+    {
       "id": "cek-program-large-integer",
       "kind": "golden",
       "summary": "Canonical CEK program envelope and material for a program that adds a 65-byte integer, decoded and executed by the material-execution vitest suite.",
@@ -812,6 +874,39 @@
       },
       "ci": {
         "none": "No workflow step runs this generator's --check."
+      }
+    },
+    {
+      "id": "emission-order-rows",
+      "kind": "golden",
+      "summary": "The stopping step of every emission-order row's trace (cases b, c, d, a, then e), written by its vitest producer as a whole generated Aiken module that checks each step through the one-step dispatcher. The on-chain half runs the module's focused aiken check: about 3.9 GB peak with RAYON_NUM_THREADS=1, more at default threads, and about 4.5 GB for each failing row.",
+      "generators": [
+        "demo/midgard-validation/tests/emission-order.aiken-rows.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_EMISSION_ORDER_ROWS"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "demo/midgard-validation/tests/emission-order.native.rows.ts",
+        "demo/midgard-validation/tests/emission-order.rows.ts",
+        "demo/midgard-validation/tests/emission-order.resolve-inputs.rows.ts",
+        "demo/midgard-validation/tests/emission-order.support.ts",
+        "demo/midgard-validation/tests/reject-subject.support.ts",
+        "demo/midgard-validation/tests/validation-fixtures.ts"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/validation-machine-tests/emission-order-rows.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "MIDGARD_WRITE_EMISSION_ORDER_ROWS=1 pnpm --dir demo/midgard-validation exec vitest run tests/emission-order.aiken-rows.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/emission-order.aiken-rows.test.ts && RAYON_NUM_THREADS=1 ./scripts/aiken check onchain/aiken -m midgard/validation_machine_tests/emission_order_rows"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/emission-order.aiken-rows.test.ts"
       }
     },
     {

@@ -1,4 +1,3 @@
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -23,6 +22,7 @@ import {
   faultProofStepRedeemerSchema,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { NativeScriptFrameSchema } from "./validation-auxiliary-witness.js";
 
 /** Normative violation identifier. */

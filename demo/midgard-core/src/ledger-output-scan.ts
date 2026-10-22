@@ -11,6 +11,7 @@ export {
   buildMidgardLedgerOutputScanTrace,
   finishMidgardLedgerOutputScan,
   isExactMidgardLedgerOutputScanTerminal,
+  traceMidgardLedgerOutputScan,
 } from "./ledger-output-scan.build-midgard-ledger-output-scan-trace.js";
 export {
   encodeMidgardLedgerOutputScanControl,

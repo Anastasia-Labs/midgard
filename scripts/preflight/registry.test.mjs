@@ -124,6 +124,19 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
       }
       continue;
     }
+    // This oracle records Cardano's own decode verdicts from a Haskell probe;
+    // it has no Aiken module.
+    if (check.id === "golden:script-decode-haskell-v1") {
+      for (const path of [
+        "demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs",
+        "demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs",
+        "demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
     // This fixture is TypeScript program material that only a vitest suite
     // decodes and executes; no Aiken module reads it.
     if (check.id === "golden:cek-program-large-integer") {
@@ -595,7 +608,7 @@ test("golden output manifests select every split Aiken artifact", () => {
   const outputs = channel.triggers.filter((path) =>
     path.startsWith("onchain/aiken/lib/midgard/cek-core-step-goldens/"),
   );
-  assert.equal(outputs.length, 27);
+  assert.equal(outputs.length, 34);
   for (const path of outputs) {
     assert.ok(existsSync(resolve(root, path)), path);
     assert.ok(selectedIds([path]).includes(channel.id), path);

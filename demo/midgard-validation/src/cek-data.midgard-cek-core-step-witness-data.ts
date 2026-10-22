@@ -262,6 +262,15 @@ export const midgardCekCoreStepWitnessData = (
       ]);
     case "computeContextConstant":
       return new Constr(40, [bytesData(witness.valueRoot)]);
+    case "returnCaseConstant":
+      return new Constr(41, [
+        directValueData(witness.scrutinee),
+        semanticBuiltinWitnessData(witness.material),
+        witness.branchesCount,
+        bytesData(witness.branchesRoot),
+        bytesData(witness.capturedEnvironment),
+        bytesData(witness.tail),
+      ]);
     default:
       return unreachable(witness);
   }

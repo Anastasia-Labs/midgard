@@ -39,8 +39,6 @@ export enum Columns {
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
   NATIVE_TX_CBOR = "native_tx_cbor",
   TRANSACTION_COMMITMENT = "transaction_commitment",
-  CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
-  CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   INCLUSION_TIME = "inclusion_time",
   PROJECTED_HEADER_HASH = "projected_header_hash",
   STATUS = "status",
@@ -66,8 +64,6 @@ export type Entry = {
   [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.NATIVE_TX_CBOR]: Buffer;
   [Columns.TRANSACTION_COMMITMENT]: Buffer;
-  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
-  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
   [Columns.PROJECTED_HEADER_HASH]: Buffer | null;
   [Columns.STATUS]: Status;
@@ -105,13 +101,11 @@ if (
 export type ForcedTransactionJournalMember = {
   readonly sourceValueCbor: Buffer;
   readonly canonicalTransactionCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
 };
 
 const FORCED_TRANSACTION_JOURNAL_MEMBER_FIELDS = [
   "sourceValueCbor",
   "canonicalTransactionCbor",
-  "programMaterialSidecarCbor",
 ] as const;
 
 const exactForcedTransactionJournalMember = (
@@ -119,7 +113,7 @@ const exactForcedTransactionJournalMember = (
 ): ForcedTransactionJournalMember => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
-      "ForcedTransactionJournalMemberV1 must be an exact three-field record",
+      "ForcedTransactionJournalMemberV1 must be an exact two-field record",
     );
   }
   const prototype = Object.getPrototypeOf(value);
@@ -139,7 +133,7 @@ const exactForcedTransactionJournalMember = (
     )
   ) {
     throw new Error(
-      "ForcedTransactionJournalMemberV1 must contain exactly sourceValueCbor, canonicalTransactionCbor, and programMaterialSidecarCbor",
+      "ForcedTransactionJournalMemberV1 must contain exactly sourceValueCbor and canonicalTransactionCbor",
     );
   }
   const candidate = value as Record<string, unknown>;
@@ -155,22 +149,17 @@ const exactForcedTransactionJournalMember = (
   return {
     sourceValueCbor: exactNonEmptyBytes("sourceValueCbor"),
     canonicalTransactionCbor: exactNonEmptyBytes("canonicalTransactionCbor"),
-    programMaterialSidecarCbor: exactNonEmptyBytes(
-      "programMaterialSidecarCbor",
-    ),
   };
 };
 
 const encodeExactForcedTransactionJournalMember = ({
   sourceValueCbor,
   canonicalTransactionCbor,
-  programMaterialSidecarCbor,
 }: ForcedTransactionJournalMember): Buffer =>
   encodeCbor([
     FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION,
     sourceValueCbor,
     canonicalTransactionCbor,
-    programMaterialSidecarCbor,
   ]);
 
 /**
@@ -193,12 +182,12 @@ export const decodeForcedTransactionJournalMember = (
     "forced_transaction_journal_member_v1",
   );
   if (
-    fields.length !== 4 ||
+    fields.length !== 3 ||
     asBigInt(fields[0], "forced_transaction_journal_member_v1.version") !==
       FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION
   ) {
     throw new Error(
-      "forced_transaction_journal_member_v1 must contain exact version 1 and three byte fields",
+      "forced_transaction_journal_member_v1 must contain exact version 1 and two byte fields",
     );
   }
   const decoded = exactForcedTransactionJournalMember({
@@ -209,10 +198,6 @@ export const decodeForcedTransactionJournalMember = (
     canonicalTransactionCbor: asBytes(
       fields[2],
       "forced_transaction_journal_member_v1.canonical_transaction_cbor",
-    ),
-    programMaterialSidecarCbor: asBytes(
-      fields[3],
-      "forced_transaction_journal_member_v1.program_material_sidecar_cbor",
     ),
   });
   if (
@@ -279,12 +264,6 @@ export const sameImmutablePayload = (left: Entry, right: Entry): boolean => {
     left[Columns.NATIVE_TX_CBOR].equals(right[Columns.NATIVE_TX_CBOR]) &&
     left[Columns.TRANSACTION_COMMITMENT].equals(
       right[Columns.TRANSACTION_COMMITMENT],
-    ) &&
-    left[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR].equals(
-      right[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
-    ) &&
-    left[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256].equals(
-      right[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256],
     ) &&
     left[Columns.INCLUSION_TIME].getTime() ===
       right[Columns.INCLUSION_TIME].getTime()

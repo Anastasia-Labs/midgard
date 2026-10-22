@@ -35,7 +35,6 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { DatabaseError } from "../src/database/utils/common.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import { buildJournalFixture } from "./da-payload.build-journal-fixture.js";
@@ -221,8 +220,6 @@ describe("DaPayloadV1 builder", () => {
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([pending]),
-          materializeLedgerOutputs: () =>
-            Effect.succeed(utxoEntries.map(([, output]) => output)),
           upsertAvailable: (input) =>
             Effect.sync(() => {
               inserts.push(input);
@@ -245,26 +242,18 @@ describe("DaPayloadV1 builder", () => {
     ).toBe(headerHash.toString("hex"));
   });
 
-  it("skips backfill when the V1 delta chain cannot be materialized", async () => {
-    const { pending, headerHash } = await buildJournalFixture({
-      rootOverrides: {
-        utxosRoot: "00".repeat(32),
-      },
-    });
+  it("skips backfill when the journal is missing a declared payload member", async () => {
+    const { pending, headerHash } = await buildJournalFixture({});
+    const incomplete = {
+      ...pending,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSIT_COUNT]: 1n,
+    };
     const inserts: DaPayloadsDB.InsertInput[] = [];
 
     const summary = await Effect.runPromise(
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
-          retrieveMissingRecords: () => Effect.succeed([pending]),
-          materializeLedgerOutputs: () =>
-            Effect.fail(
-              new DatabaseError({
-                table: PendingBlockFinalizationsDB.tableName,
-                message: "V1 delta chain is incomplete",
-                cause: "test fixture",
-              }),
-            ),
+          retrieveMissingRecords: () => Effect.succeed([incomplete]),
           upsertAvailable: (input) =>
             Effect.sync(() => {
               inserts.push(input);
@@ -279,7 +268,7 @@ describe("DaPayloadV1 builder", () => {
       skipped: [
         {
           headerHash: headerHash.toString("hex"),
-          reason: expect.stringContaining("V1 delta chain is incomplete"),
+          reason: "journal has incomplete payload members",
         },
       ],
     });
@@ -305,7 +294,6 @@ describe("DaPayloadV1 builder", () => {
           retrieveMissingRecords: () => Effect.succeed([]),
           retrieveJournalByHeaderHash: () =>
             Effect.succeed(Option.some(abandoned)),
-          materializeLedgerOutputs: () => Effect.succeed([]),
           upsertAvailable: () => Effect.void,
         },
       }),

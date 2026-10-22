@@ -29,6 +29,7 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
+import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -78,6 +79,8 @@ export type Step03Shared = {
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 };
 
 export const prepareThread = async ({
@@ -160,12 +163,6 @@ export const submitPreparedStep03 = async ({
     ...fieldReferenceInputs,
     ...stepCarriage.referenceInputs,
   ];
-  const fieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
@@ -181,6 +178,12 @@ export const submitPreparedStep03 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const fieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

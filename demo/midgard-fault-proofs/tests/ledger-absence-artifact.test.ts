@@ -1,20 +1,15 @@
-import { describe, expect, it } from "vitest";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-
-import {
-  inputExistenceArtifact,
-  admitInputExistenceArtifact,
-} from "../src/input-existence/artifact.js";
-import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
-import {
-  inputExistenceChronologyFixture,
-  type InputChronology,
-} from "./helpers/input-existence-chronology-fixture.js";
+import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import {
+  admitInputExistenceArtifact,
+  inputExistenceArtifact,
+} from "../src/input-existence/artifact.js";
+import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
@@ -30,6 +25,10 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  type InputChronology,
+  inputExistenceChronologyFixture,
+} from "./helpers/input-existence-chronology-fixture.js";
 
 const OWNER = "91".repeat(28);
 
@@ -190,6 +189,8 @@ describe("production ledger-absence artifacts V1", () => {
   });
 });
 
+// The withdrawal chronology needs a submitted withdrawal; its detection and
+// artifact checks run on the emulator in input-existence-real-withdrawal.test.ts.
 describe("input-existence event chronology", () => {
   const scenarios: readonly InputChronology[] = [
     "forced_creator",
@@ -197,7 +198,6 @@ describe("input-existence event chronology", () => {
     "later_creator",
     "forced_spend",
     "normal_spend",
-    "withdrawal_consumed",
     "rejected_creator",
     "forced_target",
   ];
@@ -255,8 +255,7 @@ describe("input-existence event chronology", () => {
           scenario === "forced_creator" ||
           scenario === "normal_creator" ||
           scenario === "forced_spend" ||
-          scenario === "normal_spend" ||
-          scenario === "withdrawal_consumed"
+          scenario === "normal_spend"
         ) {
           expect(f.targetPreRoot).not.toBe(f.evidence.header.prevUtxosRoot);
         }

@@ -9,7 +9,7 @@ import {
 import {
   normalizeScriptHash,
   normalizeScriptLanguage,
-} from "./builder/script-materialization.js";
+} from "./builder/script-witnesses.js";
 import { BuilderInvariantError } from "./core/errors.js";
 import { normalizeOutRef, type OutRef, outRefLabel } from "./core/out-ref.js";
 import type { TrustedReferenceScriptMetadata } from "./core/scripts.js";

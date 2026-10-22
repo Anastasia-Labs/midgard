@@ -2,12 +2,10 @@ use aiken/builtin
 use aiken/collection/list
 use env
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/mint_purpose as mint
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, mint_field_index}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/preimages.{mint_policy_items}
 use midgard/fraud_proofs/native_tx/types as native_types

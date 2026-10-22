@@ -26,6 +26,7 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -76,7 +77,11 @@ export const createMintAuthorizationTransactionPort = (
       classification,
       replayContext: config.replayContext,
     }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "mintAuthorization",
+      entries,
+    });
     const admitted = await admitMintAuthorizationWorkflowArtifact(artifact);
     if (admitted.current.headerHash !== config.binding.definition.headerHash)
       throw new Error("mint authorization: bound header changed");
@@ -108,7 +113,9 @@ export const createMintAuthorizationTransactionPort = (
       input,
     );
     const carriage =
-      planned === null ? null : await resolveField({ config, plan: planned });
+      planned === null
+        ? null
+        : await resolveField({ ownOutputs, config, plan: planned });
     const rawPreimageUtxos =
       (await mintAuthorizationWorkflowRawRequirement(admitted, stage)) !== null
         ? (
@@ -116,10 +123,12 @@ export const createMintAuthorizationTransactionPort = (
               headerHash: admitted.current.headerHash,
               action,
               artifact,
+              entries,
             })
           ).publications
         : undefined;
     const common = {
+      ownOutputs,
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId,

@@ -1,4 +1,5 @@
 import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { parseL1OriginRecord } from "@al-ft/midgard-core/l1-origin";
 
 import {
   assertIsoString,
@@ -29,6 +30,7 @@ export const parseDeploymentRunIdentity = (
       "manifestPath",
       "manifestSha256",
       "deploymentMarker",
+      "l1Origin",
     ],
   );
   const hubOracleOneShot =
@@ -195,6 +197,20 @@ export const parseDeploymentRunIdentity = (
                 `identity.deploymentMarker is invalid: ${
                   cause instanceof Error ? cause.message : String(cause)
                 }`,
+                { cause },
+              );
+            }
+          })(),
+        }),
+    ...(input.l1Origin === undefined
+      ? {}
+      : {
+          l1Origin: (() => {
+            try {
+              return parseL1OriginRecord(input.l1Origin, "identity.l1Origin");
+            } catch (cause) {
+              throw new RunStateError(
+                cause instanceof Error ? cause.message : String(cause),
                 { cause },
               );
             }

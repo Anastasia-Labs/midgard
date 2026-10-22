@@ -27,7 +27,7 @@ import { RejectCodes, runPhaseAValidation } from "@al-ft/midgard-validation";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { breakDownTx, findSpentAndProducedUTxOs } from "../src/utils.js";
 import {
@@ -87,16 +87,11 @@ import {
   PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX,
   plutusV3Hash,
   TEST_ADDRESS,
-  testProgramMaterial,
   txFixtures,
   uniqueScriptWitnessItems,
 } from "./native-transaction-integration.script-witness-item-to-versioned.js";
 
 describe("native transaction integration", () => {
-  beforeEach(() => {
-    testProgramMaterial.clear();
-  });
-
   it("accepts a canonical native tx in phase A", async () => {
     const { txId, txCbor, inputOutRef } = buildNativeTx();
     const result = await Effect.runPromise(
@@ -208,9 +203,11 @@ describe("native transaction integration", () => {
     expect(phaseA.accepted).toHaveLength(0);
     expect(phaseA.rejected).toHaveLength(1);
     expect(phaseA.rejected[0].code).toBe(RejectCodes.ScriptProgramEncoding);
-    expect(phaseA.rejected[0].detail).toContain(
-      "not a canonical bounded V1 program envelope",
-    );
+    expect(phaseA.rejected[0].subject).toMatchObject({
+      arm: "PlutusScriptUndecodable",
+      itemKind: 0n,
+      index: 0n,
+    });
   });
 
   it("rejects phase A when plutus observer evaluation cannot be reconstructed without network id", async () => {
@@ -1060,46 +1057,45 @@ describe("native transaction integration", () => {
     expect(phaseB.accepted).toHaveLength(1);
   });
 
-  it("rejects malformed reference-script Plutus spends at the authenticated material boundary", async () => {
-    const plutusScript = CML.PlutusV3Script.from_raw_bytes(
-      Buffer.from("4d696467617264", "hex"),
+  it("rejects a malformed carried output reference script at the script-source phase", async () => {
+    const script = CML.Script.new_plutus_v3(
+      CML.PlutusV3Script.from_raw_bytes(Buffer.from("00", "hex")),
     );
-    const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
-    const referenceOutput = Buffer.from(
+    const output = Buffer.from(
       makeMidgardTxOutput(
         CML.Address.from_bech32(TEST_ADDRESS),
-        CML.Value.from_coin(2_000_000n),
+        CML.Value.from_coin(3_000_000n),
         undefined,
-        plutusScriptRef,
+        script,
       ).to_cbor_bytes(),
     );
-    const { phaseA, phaseB } = await runPlutusV3SpendScenario({
-      spendScript: plutusScriptRef,
-      referenceOutput,
-      attachScriptIntegrityHash: false,
-      txOptions: {
-        redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
-          { tag: CML.RedeemerTag.Spend, index: 0n },
-        ]),
-        scriptLanguages: ["PlutusV3"],
-      },
+    const signerKey = CML.PrivateKey.generate_ed25519();
+    const tx = buildNativeTx({
+      outputCbors: [output],
+      witnessMode: "valid",
+      witnessSignerPrivateKey: signerKey,
     });
-
+    const { phaseA, phaseB } = await runBothPhases(
+      tx.txId,
+      tx.txCbor,
+      makeBaseLedger(
+        tx,
+        makePubKeyOutput(signerKey.to_public().hash(), 3_000_000n),
+      ),
+    );
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.CekProgramMaterial);
-    // `ac0e8aa4` widened this boundary from reference-script envelopes only to
-    // the exact attached+reference bundle, renaming the detail. Assert the
-    // decoder cause too, so this still proves the malformed reference-script
-    // envelope is what was caught.
-    expect(phaseB.rejected[0].detail).toContain(
-      "invalid exact attached/reference-script CEK material",
-    );
-    expect(phaseB.rejected[0].detail).toContain(
-      "cek_program_envelope must be an array",
-    );
+    expect(phaseB.rejected[0]).toMatchObject({
+      code: RejectCodes.ScriptProgramEncoding,
+      consensusPhase: "scriptSources",
+      subject: {
+        arm: "PlutusScriptUndecodable",
+        itemKind: 1n,
+        index: 0n,
+      },
+    });
   });
 
   it("rejects Plutus witness bundles when the evaluator reports script failure", async () => {
@@ -1218,7 +1214,7 @@ describe("native transaction integration", () => {
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
-    expect(phaseB.rejected[0].detail).toContain("budget exceeded");
+    expect(phaseB.rejected[0].detail).toContain("execution failed (1)");
   });
 
   it("rejects inline always-fails Plutus spends with the real local evaluator", async () => {
@@ -1574,12 +1570,6 @@ describe("native transaction integration", () => {
           { tag: CML.RedeemerTag.Spend, index: 0n },
         ]),
       },
-      // The script is deliberately absent from the tx, so there is no program
-      // envelope for it and therefore no program material either. Since
-      // `ac0e8aa4` made the sidecar exact (dropping `allowUnreachable`), the
-      // shared harness corpus would be rejected at the material boundary
-      // before witness discovery and mask the condition under test.
-      programMaterial: [],
     });
 
     expect(phaseA.rejected).toHaveLength(0);
@@ -2260,7 +2250,7 @@ describe("native transaction integration", () => {
       RejectCodes.PlutusScriptInvalid,
     );
     expect(lowBudgetResult.phaseB.rejected[0].detail).toContain(
-      "budget exceeded",
+      "execution failed (1)",
     );
   });
 

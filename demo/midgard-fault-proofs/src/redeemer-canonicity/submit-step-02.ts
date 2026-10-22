@@ -29,6 +29,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
 import { redeemerDataScanState } from "./data-plan.js";
@@ -61,6 +65,7 @@ export const submitRedeemerCanonicityStep02 = async ({
   certificatePreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: RedeemerCanonicityContracts;
@@ -79,6 +84,8 @@ export const submitRedeemerCanonicityStep02 = async ({
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -134,6 +141,7 @@ export const submitRedeemerCanonicityStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -146,6 +154,7 @@ export const submitRedeemerCanonicityStep02 = async ({
     (planned.plan.tier === "Certified"
       ? (
           await certifyFaultProofFieldCarriage({
+            ownOutputs,
             lucid,
             network: lucid.config().network!,
             signer,
@@ -172,16 +181,6 @@ export const submitRedeemerCanonicityStep02 = async ({
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "redeemer-canonicity",
     stepIndex,
-  });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "redeemer-canonicity field opening",
   });
   const bound = {
     subject: evidence.subject,
@@ -214,6 +213,12 @@ export const submitRedeemerCanonicityStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "redeemer-canonicity field opening",
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, "redeemer-canonicity step-02");
     const inputIndex = requireInputIndex(
       ctx,

@@ -31,11 +31,10 @@ import { Effect } from "effect";
 
 import { faultProofRawFieldCarriage } from "../field-opening.js";
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -261,8 +260,6 @@ export const submitCanonicalDecodabilityStep01 = async ({
     ...fieldPublications,
     ...(fieldCertificateUtxo === undefined ? [] : [fieldCertificateUtxo]),
   ];
-  // The complete reference-input set must stand before chunk indices derive
-  // from it; a partial set makes ref_input_index a per-run coin flip.
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
@@ -271,25 +268,12 @@ export const submitCanonicalDecodabilityStep01 = async ({
     stepReference,
     ...inclusionCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: STEP_LABEL,
-  });
   const prepared = prepareCanonicalDecodability({
     badTxId: txInclusion.nativeTxId,
     nativeTxCompactCbor: txInclusion.nativeTxCompactCbor,
     fieldIndex,
     committedPreimage,
     ...(witnessSet === undefined ? {} : { witnessSet }),
-    carriage: faultProofRawFieldCarriage({
-      plan: fieldPlan,
-      referenceInputs,
-      ...(fieldCertificatePolicyId === undefined
-        ? {}
-        : { certificatePolicyId: fieldCertificatePolicyId }),
-      label: `${STEP_LABEL} committed field`,
-    }),
   });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: prepared.step02State },
@@ -331,10 +315,9 @@ export const submitCanonicalDecodabilityStep01 = async ({
       l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: STEP_LABEL,
     });
     const inclusion: NativeTxInclusionCarriage = carriedByChunks
@@ -361,7 +344,25 @@ export const submitCanonicalDecodabilityStep01 = async ({
           ],
         };
     return Data.to(
-      { Continue: [{ inclusion, claim: prepared.claim }] },
+      {
+        Continue: [
+          {
+            inclusion,
+            // Carriage indices name positions in the builder's final
+            // reference-input order, never in a hand-assembled list.
+            claim: prepared.claimWith(
+              faultProofRawFieldCarriage({
+                plan: fieldPlan,
+                referenceInputs: ctx.referenceInputs,
+                ...(fieldCertificatePolicyId === undefined
+                  ? {}
+                  : { certificatePolicyId: fieldCertificatePolicyId }),
+                label: `${STEP_LABEL} committed field`,
+              }),
+            ),
+          },
+        ],
+      },
       CanonicalDecodabilityStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -372,12 +373,16 @@ export const submitCanonicalDecodabilityStep01 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs);
   const withCarriage = carriedByChunks
-    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
           valueBytes: txInclusion.l2TransactionSourceCbor,
-          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+            ctx,
+            chunks,
+            label: STEP_LABEL,
+          }),
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
         phasRewardAddress,

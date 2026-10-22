@@ -1,4 +1,5 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -17,13 +18,25 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 const evidenceFor = async () => {
+  const transaction = buildFixtureTransaction({
+    spendInputs: [outRefCbor(12, 0n)],
+    referenceInputs: [outRefCbor(13, 1n)],
+    fee: 1n,
+  });
+  // Inputs are classified at the transaction's committed event pre-state, so
+  // the header commits the transaction's transition step from the empty
+  // genesis ledger.
   const fixture = await buildCanonicalBlockFixture({
-    transactions: [
-      buildFixtureTransaction({
-        spendInputs: [outRefCbor(12, 0n)],
-        referenceInputs: [outRefCbor(13, 1n)],
-        fee: 1n,
-      }),
+    transactions: [transaction],
+    transitionSteps: [
+      {
+        schema_version: 1n,
+        step_index: 0n,
+        event_key: { L2TransactionEventKey: { tx_id: transaction.txId } },
+        phase: "L2Transaction",
+        pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+      },
     ],
   });
   return await canonicalBlockEvidenceFromVerifiedPayload({

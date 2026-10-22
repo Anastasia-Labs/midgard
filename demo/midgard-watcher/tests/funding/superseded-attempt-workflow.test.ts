@@ -7,26 +7,17 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import {
-  type Fixture,
   fundingOf,
   recordReplacement,
+  replaceAfterExpiry,
   signReplacement,
+  supersedeAtTip,
 } from "./superseded-attempt-replacement.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();
   await cleanupFundingRecoveryFixtures();
 });
-
-/** The fixture's attempt expires at the tip: its funding input is unspent and
- * the reader reports absence without retirement. */
-const supersedeAtTip = async (fixture: Fixture) => {
-  fixture.useUnspentPendingInputs();
-  vi.mocked(fixture.adapter.reconcile).mockResolvedValue({ kind: "not_found" });
-  const journal = await fixture.recover();
-  await fixture.run(journal);
-  return journal;
-};
 
 it("admits a replacement for an attempt that expired at the tip at once, drawing on that attempt's funding input", async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
@@ -84,14 +75,25 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
   expect(replacement.transactionHash).not.toBe(fixture.transactionHash);
 });
 
-const replaceAfterExpiry = async (fixture: Fixture) => {
+it("keeps a superseded attempt's input that holds a token as its replacement's funding", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
   const funding = fundingOf(fixture);
   const journal = await supersedeAtTip(fixture);
+  // The expired attempt's input holds a token: the funding plan reserves only
+  // plain-ADA coins, save this one, which the replacement must spend.
+  const coin = fixture.walletUtxos.find(
+    ({ txHash, outputIndex }) => `${txHash}#${outputIndex}` === funding.outRef,
+  )!;
+  coin.assets = { ...coin.assets, [`${"aa".repeat(28)}00`]: 1n };
   await beginWorkflowFundingReservationAction({
     journal,
     action: { actionId: "init", input: { actionKind: "proof.init" } },
   });
-  const collateral = (await fixture.records())[0]!.activeInputs
+  const [refreshed] = await fixture.records();
+  expect(refreshed!.activeInputs).toContainEqual(
+    expect.objectContaining({ outRef: funding.outRef, role: "funding" }),
+  );
+  const collateral = refreshed!.activeInputs
     .filter(({ role }) => role === "collateral")
     .map(({ outRef }) => outRef);
   const replacement = signReplacement(
@@ -101,16 +103,17 @@ const replaceAfterExpiry = async (fixture: Fixture) => {
     collateral,
   );
   await recordReplacement(fixture, journal, replacement, 2);
-  // The process restarts with the replacement in flight.
-  return { journal: await fixture.recover(), replacement };
-};
+  expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
+    replacement.transactionHash,
+  );
+});
 
 it("adopts the expired attempt as the result when it lands late, and retires the replacement's reservation", async () => {
   const fixture = await setupFundingRecoveryFixture(false, false, false, true);
   const { journal, replacement } = await replaceAfterExpiry(fixture);
   // A rollback lands the original attempt; the replacement, which spends one
   // of its inputs, can no longer land.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === fixture.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "not_found" },
@@ -168,7 +171,7 @@ it("does not adopt a late landing while the replacement is unresolved or once th
   const before = await journal.load(fixture.initial.workflowId);
   // Unresolved replacement: the late landing is reported, the replacement is
   // still pending, so nothing is adopted yet.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(async ({ txHash }) =>
+  fixture.chain.mockImplementation(async (txHash) =>
     txHash === fixture.transactionHash
       ? { kind: "confirmed", txHash }
       : { kind: "pending", txHash: txHash! },
@@ -189,9 +192,10 @@ it("does not adopt a late landing while the replacement is unresolved or once th
   );
   // Recorded result: the replacement confirms. A conflicting report for the
   // superseded attempt does not reopen the action.
-  vi.mocked(fixture.adapter.reconcile).mockImplementation(
-    async ({ txHash }) => ({ kind: "confirmed", txHash: txHash! }),
-  );
+  fixture.chain.mockImplementation(async (txHash) => ({
+    kind: "confirmed",
+    txHash: txHash!,
+  }));
   for (let run = 0; run < 2; run += 1) await fixture.run(journal);
   const events = (await journal.load(fixture.initial.workflowId)).map(
     ({ event }) => event,
@@ -211,6 +215,116 @@ it("does not adopt a late landing while the replacement is unresolved or once th
       ),
   ).toBe(false);
   expect((await fixture.records())[0]!.pendingTransition).toBeNull();
+});
+
+it("admits a replacement that spends the superseded attempt's input as before, and takes it as the result once it confirms", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const { journal, replacement } = await replaceAfterExpiry(fixture);
+  // The superseded attempt never landed, so nothing descends from it.
+  expect(
+    await fixture.store.readLandedSupersededAttempt({
+      reservationId: fixture.plan.reservationId,
+      actionId: "init",
+      signedTransactionCborHex: replacement.signedTransactionCborHex,
+    }),
+  ).toBeNull();
+  fixture.chain.mockImplementation(async (txHash) =>
+    txHash === replacement.transactionHash
+      ? { kind: "confirmed", txHash }
+      : { kind: "not_found" },
+  );
+  for (let run = 0; run < 2; run += 1)
+    await fixture.run(journal, () => new Date(Date.now() + run * 60_000));
+  const events = (await journal.load(fixture.initial.workflowId)).map(
+    ({ event }) => event,
+  );
+  expect(events.at(-1)).toEqual({
+    kind: "confirmed",
+    actionId: "init",
+    txHash: replacement.transactionHash,
+  });
+  expect(
+    events.filter(
+      (event) =>
+        event.kind === "submission_intent" &&
+        event.txHash === fixture.transactionHash,
+    ),
+  ).toHaveLength(1);
+  expect(events.some(({ kind }) => kind === "stalled")).toBe(false);
+  expect(fixture.adapter.preflight).not.toHaveBeenCalled();
+});
+
+it("refuses a fresh attempt of an action whose superseded attempt landed, and admits another action's attempt that spends its output", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, false, false, true);
+  const funding = fundingOf(fixture);
+  const journal = await supersedeAtTip(fixture);
+  // The superseded attempt lands: its input is spent, its output is the
+  // wallet's.
+  const landed = `${fixture.transactionHash}#0`;
+  fixture.walletUtxos.splice(
+    0,
+    fixture.walletUtxos.length,
+    ...fixture.walletUtxos.filter(
+      ({ txHash, outputIndex }) =>
+        `${txHash}#${outputIndex}` !== funding.outRef,
+    ),
+    {
+      txHash: fixture.transactionHash,
+      outputIndex: 0,
+      address: walletAddress,
+      assets: { lovelace: BigInt(funding.lovelace) - 1_000_000n },
+    },
+  );
+  await beginWorkflowFundingReservationAction({
+    journal,
+    action: { actionId: "init", input: { actionKind: "proof.init" } },
+  });
+  const [record] = await fixture.records();
+  const spendable = record!.activeInputs.find(
+    ({ role }) => role === "funding",
+  )!;
+  const collateral = record!.activeInputs
+    .filter(({ role }) => role === "collateral")
+    .map(({ outRef }) => outRef);
+  expect(record!.activeInputs.map(({ outRef }) => outRef)).toContain(landed);
+  const fresh = signReplacement(
+    spendable.outRef,
+    BigInt(spendable.lovelace),
+    300n,
+    collateral,
+  );
+  // Same action: that attempt is the result, so no fresh attempt is admitted.
+  expect(
+    await fixture.store.readLandedSupersededAttempt({
+      reservationId: fixture.plan.reservationId,
+      actionId: "init",
+      signedTransactionCborHex: fresh.signedTransactionCborHex,
+    }),
+  ).toBe(fixture.transactionHash);
+  await expect(
+    fixture.store.prepareTransition({
+      handoff: fixture.handoff,
+      plan: fixture.plan,
+      expectedRevision: record!.revision,
+      actionKind: "proof.init",
+      ...fresh,
+    }),
+  ).rejects.toThrow("repeats an action whose superseded attempt landed");
+  // Another action may spend it: it does not repeat that attempt.
+  expect(
+    await fixture.store.readLandedSupersededAttempt({
+      reservationId: fixture.plan.reservationId,
+      actionId: "next",
+      signedTransactionCborHex: fresh.signedTransactionCborHex,
+    }),
+  ).toBeNull();
+  await recordReplacement(fixture, journal, fresh, 1, {
+    actionId: "next",
+    actionKind: "proof.init",
+  });
+  expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
+    fresh.transactionHash,
+  );
 });
 
 it("re-signs a mutually exclusive proof with fresh collateral when a rollback drops a confirmed proof whose collateral was spent meanwhile", async () => {

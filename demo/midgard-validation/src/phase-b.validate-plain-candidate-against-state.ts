@@ -2,23 +2,18 @@ import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
-  decodeMidgardTxOutput,
-  type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 
+import { validateCarriedPlutusOutputScripts } from "./carried-plutus-script-decoding.js";
 import { checkValueAndMint } from "./phase-b.check-value-and-mint.js";
 import {
   type CandidateDecision,
   type CandidateNode,
   type CandidateStatus,
   reject,
-  resolveReferenceInputs,
+  resolveCandidateInputs,
 } from "./phase-b.resolve-reference-inputs.js";
-import {
-  inputOrdinalOf,
-  REJECT_SOURCE_KIND_SPEND,
-  type RejectSubject,
-} from "./reject-subject.js";
+import { type RejectSubject } from "./reject-subject.js";
 import { PhaseBConfig, RejectCodes, RejectedTx } from "./types.js";
 
 const validatePlainCandidateAgainstState = (
@@ -40,8 +35,6 @@ const validatePlainCandidateAgainstState = (
     accepted: false as const,
     rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
   });
-  const spendOrdinal = (outRefHex: string): bigint =>
-    inputOrdinalOf(ledgerTx, REJECT_SOURCE_KIND_SPEND, outRefHex);
 
   if (
     ledgerTx.validityIntervalStart !== undefined &&
@@ -62,61 +55,19 @@ const validatePlainCandidateAgainstState = (
     );
   }
 
-  const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
-  if ("code" in resolvedReferenceInputs) {
-    return {
-      index: node.index,
-      accepted: false,
-      rejection: resolvedReferenceInputs,
-    };
+  const resolvedInputs = resolveCandidateInputs(node, stateValue, {
+    spentByAccepted,
+    witnessKeyHashes: new Set(candidate.derived.witnessKeyHashHexes),
+  });
+  if ("code" in resolvedInputs) {
+    return { index: node.index, accepted: false, rejection: resolvedInputs };
   }
+  // A script-locked spend needs local script discovery: the full path decides.
+  if (resolvedInputs.spendsScriptOutput) return undefined;
 
-  const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-  const spentValues = new Map<string, MidgardValue>();
-  for (const inputOutRefHex of node.spentOutRefs) {
-    if (spentByAccepted.has(inputOutRefHex)) {
-      return fail(RejectCodes.DoubleSpend, inputOutRefHex);
-    }
-    const inputOutput = stateValue(inputOutRefHex);
-    if (inputOutput === undefined) {
-      return fail(RejectCodes.InputNotFound, inputOutRefHex, "resolveInputs", {
-        arm: "InputNotFound",
-        sourceKind: REJECT_SOURCE_KIND_SPEND,
-        index: spendOrdinal(inputOutRefHex),
-      });
-    }
-    try {
-      const output = decodeMidgardTxOutput(inputOutput);
-      const paymentCred = decodeMidgardAddressBytes(
-        output.address,
-      ).paymentCredential;
-      if (paymentCred.kind === "Script") return undefined;
-      const inputSigner = paymentCred.hash.toString("hex");
-      if (!witnessKeyHashes.has(inputSigner)) {
-        return fail(
-          RejectCodes.MissingRequiredWitness,
-          `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
-          "resolveInputs",
-          {
-            arm: "SpendInputSignerMissing",
-            index: spendOrdinal(inputOutRefHex),
-          },
-        );
-      }
-      spentValues.set(inputOutRefHex, output.value);
-    } catch (error) {
-      return fail(
-        RejectCodes.InvalidOutput,
-        `failed to decode input output: ${String(error)}`,
-        "resolveInputs",
-        {
-          arm: "InputSpentOutputNonCanonical",
-          sourceKind: REJECT_SOURCE_KIND_SPEND,
-          index: spendOrdinal(inputOutRefHex),
-        },
-      );
-    }
-  }
+  const outputScriptFault = validateCarriedPlutusOutputScripts(ledgerTx);
+  if (outputScriptFault !== null)
+    return { index: node.index, accepted: false, rejection: outputScriptFault };
 
   for (const [outputIndex, output] of ledgerTx.outputs.entries()) {
     const observedNetworkId = BigInt(
@@ -151,7 +102,7 @@ const validatePlainCandidateAgainstState = (
     candidate,
     spentOutRefs: node.spentOutRefs,
     referenceOutRefs: node.referenceOutRefs,
-    spentValues,
+    spentValues: resolvedInputs.spentValues,
   });
   if (valueAndMint !== null) {
     return fail(

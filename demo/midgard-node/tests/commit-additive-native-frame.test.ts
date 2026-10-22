@@ -17,7 +17,6 @@ import { selectAdditiveCommitFrame } from "../src/workers/utils/commit-block-pla
 import {
   delayProgram,
   openNativeFrameFixture,
-  programScript,
   runNativeFrameDatabase,
 } from "./helpers/commit-additive-native-fixture.js";
 
@@ -29,12 +28,12 @@ it("keeps a canonical supplier reachable through native building and the actual-
   try {
     const program = delayProgram(32);
     const outputs = [
-      h.output(2_000_000n, 0, programScript(program)),
+      h.output(2_000_000n, 0, program),
       h.output(49_998_000_000n),
     ];
     const supplier = h.signed(h.inputRef, [], outputs);
-    await h.validate(supplier, h.initial, program.material);
-    const built = await h.build(supplier, h.initial, h.root, program.material);
+    await h.validate(supplier, h.initial);
+    const built = await h.build(supplier, h.initial, h.root);
     expect(built.processed.processedMempoolTxs).toHaveLength(1);
     expect(built.builds).toBe(1);
     expect(await h.exact(built.processed, h.root)).toBeLessThanOrEqual(
@@ -46,10 +45,10 @@ it("keeps a canonical supplier reachable through native building and the actual-
   }
 }, 180_000);
 
-it("rescues one real ordinary consumer whose repeated verified program references overestimate the frame", async () => {
+it("accounts for repeated script references without republishing their program bytes", async () => {
   const h = await openNativeFrameFixture();
   try {
-    const program = delayProgram(1_200);
+    const program = delayProgram(32);
     const references: Buffer[] = [];
     let base: readonly MinimalEntry[] = h.initial;
     let spend = h.inputRef;
@@ -57,18 +56,16 @@ it("rescues one real ordinary consumer whose repeated verified program reference
     let balance = 50_000_000_000n;
     // Each supplier is independently signed, admitted by Phase A/B, and built
     // by the real native owner. Their model parent remains explicit. Each source
-    // is below the actual canonical field cap; the shared graph is small.
+    // is below the actual canonical field cap and carries the same Flat bytes.
     for (let round = 0; round < 4; round += 1) {
       balance -= 195n * 2_000_000n;
       const outputs = [
-        ...Array.from({ length: 195 }, () =>
-          h.output(2_000_000n, 0, programScript(program)),
-        ),
+        ...Array.from({ length: 195 }, () => h.output(2_000_000n, 0, program)),
         h.output(balance),
       ];
       const supplier = h.signed(spend, [], outputs);
-      await h.validate(supplier, base, program.material);
-      const supplied = await h.build(supplier, base, root, program.material);
+      await h.validate(supplier, base);
+      const supplied = await h.build(supplier, base, root);
       expect(supplied.processed.processedMempoolTxs).toHaveLength(1);
       expect(supplied.builds).toBe(1);
       await h.exact(supplied.processed, root);
@@ -91,12 +88,11 @@ it("rescues one real ordinary consumer whose repeated verified program reference
       root = supplied.processed.utxoRoot;
     }
     const consumer = h.signed(spend, references, [h.output(balance)]);
-    await h.validate(consumer, base, program.material);
+    await h.validate(consumer, base);
     const maxInnerBytes = maxDaPayloadInnerBytes(
       readDaHardeningConfig().envelopeMode,
     );
     const contributions = commitDaSourceContributions({
-      base,
       deposits: [],
       withdrawals: [],
       forced: [],
@@ -116,12 +112,12 @@ it("rescues one real ordinary consumer whose repeated verified program reference
     expect(plan).toMatchObject({
       kind: "selected",
       candidateCount: 1,
-      rescue: "ordinary",
     });
     if (plan.kind !== "selected")
       throw new Error("real consumer was not selected");
-    expect(plan.upperBoundBytes).toBeGreaterThan(BigInt(maxInnerBytes));
-    const built = await h.build(consumer, base, root, program.material);
+    expect(plan.rescue).toBeUndefined();
+    expect(plan.upperBoundBytes).toBeLessThanOrEqual(BigInt(maxInnerBytes));
+    const built = await h.build(consumer, base, root);
     expect(built.processed.processedMempoolTxs).toHaveLength(1);
     expect(built.builds).toBe(1);
     const notices: unknown[] = [];

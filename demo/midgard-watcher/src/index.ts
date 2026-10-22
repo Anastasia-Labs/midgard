@@ -70,6 +70,7 @@ export {
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthority,
   type WatcherProverFundingAuthorityFactory,
+  watcherValidationDisputeFundingTerms,
 } from "./funding/prover-funding-authority.js";
 export {
   aggregateWatcherProverFundingSweep,

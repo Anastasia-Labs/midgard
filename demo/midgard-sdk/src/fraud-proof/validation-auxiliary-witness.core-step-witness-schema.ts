@@ -296,6 +296,16 @@ const CoreStepWitnessSchema = Data.Enum([
       value_root: Data.Bytes(),
     }),
   }),
+  Data.Object({
+    ReturnCaseConstant: Data.Object({
+      scrutinee: DirectValueWitnessSchema,
+      material: SemanticBuiltinWitnessSchema,
+      branches_count: Data.Integer(),
+      branches_root: Data.Bytes(),
+      captured_environment: Data.Bytes(),
+      tail: Data.Bytes(),
+    }),
+  }),
 ]);
 
 export const CoreStepEvidenceSchema = Data.Object({

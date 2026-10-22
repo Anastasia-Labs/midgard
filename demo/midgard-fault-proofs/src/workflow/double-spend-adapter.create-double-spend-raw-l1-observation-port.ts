@@ -7,6 +7,7 @@ import {
 import type { FraudProofWorkflowTerminal } from "./journal.js";
 import {
   type FraudProofL1Source,
+  type FraudProofSignedTransactionRecovery,
   fraudProofSignedTransactionRecovery,
   withFraudProofL1Recovery,
 } from "./l1-source.js";
@@ -179,7 +180,7 @@ export const createDoubleSpendL1ObservationPort = ({
   readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPort =>
+}): DoubleSpendL1ObservationPort & FraudProofSignedTransactionRecovery =>
   withFraudProofL1Recovery(
     createDoubleSpendRawL1ObservationPort({
       authority: l1.snapshotAuthority({
@@ -206,7 +207,8 @@ const sameTerminal = (
 
 /** Second observation through the constrained integration port. */
 export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
-  l1: DoubleSpendL1ObservationPort,
+  l1: DoubleSpendL1ObservationPort &
+    Pick<FraudProofSignedTransactionRecovery, "observeSignedTransaction">,
 ): FraudProofWorkflowTerminalVerifier => {
   const verify = async (
     {
@@ -255,6 +257,8 @@ export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
   };
   return {
     verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    observeSignedTransaction: async (input) =>
+      await l1.observeSignedTransaction(input),
     verify: (input) => verify(input, false),
     verifyIncluded: (input) => verify(input, true),
   };

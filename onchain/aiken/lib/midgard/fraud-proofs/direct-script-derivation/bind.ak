@@ -6,11 +6,9 @@ use midgard/fraud_proofs/counted_membership_carriage_v1.{
   CarriedCountedMembershipV1,
 }
 use midgard/fraud_proofs/direct_script_derivation/bind_state.{EventSelectedV1}
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  network_order_context_v1,
-}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, SourceBoundV1}
 use midgard/fraud_proofs/field_opening_v1.{source_kind_of_anchor}
+use midgard/fraud_proofs/first_fault_v1.{network_order_context_v1}
 use midgard/fraud_proofs/native_tx/compact.{decode_tx_compact_view_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state

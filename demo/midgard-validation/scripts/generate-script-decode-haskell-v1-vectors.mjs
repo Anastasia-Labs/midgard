@@ -37,6 +37,7 @@ const vectorsPath = join(
   packageRoot,
   "tests/fixtures/script-decode-haskell-v1.vectors.json",
 );
+const probeSource = join(packageRoot, "scripts/haskell/ScriptDecodeProbe.hs");
 
 const usage =
   "usage: MIDGARD_SCRIPT_DECODE_PROBE=<binary> node scripts/generate-script-decode-haskell-v1-vectors.mjs [--check]";
@@ -45,7 +46,9 @@ const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 
 const probe = process.env.MIDGARD_SCRIPT_DECODE_PROBE;
 if (probe === undefined || probe.length === 0) {
-  throw new Error(`MIDGARD_SCRIPT_DECODE_PROBE is not set\n${usage}`);
+  throw new Error(
+    `MIDGARD_SCRIPT_DECODE_PROBE is not set; build it from ${probeSource}\n${usage}`,
+  );
 }
 
 const PLUTUS_V3 = 3;

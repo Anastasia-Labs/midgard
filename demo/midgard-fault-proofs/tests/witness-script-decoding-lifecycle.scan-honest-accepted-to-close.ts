@@ -1,6 +1,7 @@
 import {
   computeMidgardNativeTxId,
   encodeMidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
@@ -40,8 +41,15 @@ export const shapeOf = (
   label: string,
   items: readonly Buffer[],
   fee: bigint,
+): Shape =>
+  shapeOfNativeTx(label, items, nativeTxWithScriptWitnesses(items, fee));
+
+/** The shape of `nativeTx`, whose field 6 is `items`. */
+export const shapeOfNativeTx = (
+  label: string,
+  items: readonly Buffer[],
+  nativeTx: MidgardNativeTxFull,
 ): Shape => {
-  const nativeTx = nativeTxWithScriptWitnesses(items, fee);
   const fieldBytes = scriptWitnessField(items).length;
   return {
     label,
@@ -169,20 +177,26 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>;
 // Replay detection over the committed block
 // ---------------------------------------------------------------------------
 
-export const expectReplayDetection = (
+const replayOf = (
   block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
   transactions: readonly Shape[],
-  evidence: WitnessScriptDecodingEvidence,
-  violationIds: readonly string[],
-) => {
-  const replay = {
+) =>
+  ({
     headerHash: block.headerHash,
     transactions: transactions.map((shape) => ({
       nodeTxId: shape.txId,
       txCbor: encodeMidgardNativeTxCanonical(shape.nativeTx).toString("hex"),
     })),
     reconstruction: block.reconstruction,
-  } as never;
+  }) as never;
+
+export const expectReplayDetection = (
+  block: Awaited<ReturnType<Harness["acceptedBlock"]>>["block"],
+  transactions: readonly Shape[],
+  evidence: WitnessScriptDecodingEvidence,
+  violationIds: readonly string[],
+) => {
+  const replay = replayOf(block, transactions);
   expect(
     detectWitnessScriptDecodingCompleteReplay(replay).map(
       (finding) => finding.violationId,

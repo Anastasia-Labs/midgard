@@ -9,8 +9,8 @@ import {
   admitInputExistenceArtifact,
   INPUT_EXISTENCE_ARTIFACT,
 } from "./artifact.js";
-import { deriveInputExistenceSelection } from "./selection.js";
 import type { PreparedInputExistence } from "./prepare.js";
+import { deriveInputExistenceSelection } from "./selection.js";
 import type { OpenedProofThreadSource } from "./source.js";
 
 export type ForcedInputExistenceEvidence = Readonly<{

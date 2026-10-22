@@ -17,9 +17,6 @@ use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{RedeemerCarriedMembership}
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers as workers
 use midgard/fraud_proofs/direct_script_derivation/receive
 use midgard/fraud_proofs/direct_script_derivation/receive_declaration as declaration
@@ -28,6 +25,9 @@ use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
 use midgard/fraud_proofs/field_opening_v1
+use midgard/fraud_proofs/first_fault_v1.{
+  NetworkOrderContextV1, PurposeCoordinateV1,
+}
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 use midgard/fraud_proofs/missing_redeemer/claim_mint as mint
 use midgard/fraud_proofs/missing_redeemer/claim_purpose.{

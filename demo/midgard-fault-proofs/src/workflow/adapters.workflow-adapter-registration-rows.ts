@@ -3,6 +3,9 @@ import {
   type WorkflowAdapterRegistration,
 } from "./adapters.freeze-registration.js";
 
+const daPayloadEvidenceClosure =
+  "a DA payload that carries this family's validation evidence and a manifest-bound runner over it";
+
 /**
  * Exact fail-closed registration audit for the current canonical catalogue.
  *
@@ -103,10 +106,14 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "validationTraceDispute",
     status: "missing",
-    reason: "evidence_not_carried_by_da_payload",
-    existingSurface: [],
+    reason: "challenger_runner_not_written",
+    existingSurface: [
+      "onchain validation-trace/{dispute,source,case,game,boundary,timeout,award}-v1.ak",
+      "@al-ft/midgard-sdk fraud-proof/validation-{dispute,case}.ts schemas",
+      "@al-ft/midgard-validation buildDeterministicValidationMachineTrace",
+    ],
     requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+      "a chain-state-resumable challenger runner over DA replay (detect, open, bisect, one-step, close), built on own-outputs",
   },
   {
     category: "daHashPreimage",
@@ -559,32 +566,28 @@ export const workflowAdapterRegistrationRows = [
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "receivePurposeLanguage",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "unusedScriptWitness",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "missingScriptSource",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "missingRedeemer",
@@ -604,32 +607,28 @@ export const workflowAdapterRegistrationRows = [
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "executionNativeScriptInvalid",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "scriptIntegrityHashMismatch",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "distinctAssetAccumulationLimit",
     status: "missing",
     reason: "evidence_not_carried_by_da_payload",
     existingSurface: [],
-    requiredClosure:
-      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
+    requiredClosure: daPayloadEvidenceClosure,
   },
   {
     category: "mintItemNonCanonical",

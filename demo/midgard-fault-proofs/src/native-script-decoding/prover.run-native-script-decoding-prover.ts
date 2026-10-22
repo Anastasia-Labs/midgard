@@ -9,6 +9,7 @@ import {
 import { Data, toUnit } from "@lucid-evolution/lucid";
 
 import { outRefLabel } from "../runtime.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   assertNativeScriptDecodingFindingProvable,
   type NativeScriptDecodingFinding,
@@ -320,6 +321,8 @@ export const runNativeScriptDecodingProver = async (
   // 7. Drive. Every submitter is idempotent-by-reconstruction; an
   //    unexpected abort stalls loudly with the thread's position.
   const txHashes: string[] = [];
+  // The carriage this run publishes, reused across its steps.
+  const ownOutputs = createOwnOutputJournal();
   const submittedThisRun = () => txHashes.length;
   let currentOutRef: string | null =
     cursor.at === "init" ? null : cursor.threadOutRef;
@@ -441,6 +444,7 @@ export const runNativeScriptDecodingProver = async (
             ? await deps.evidence.subjectTx(finding)
             : null;
           const result = await submitNativeScriptDecodingStep03OpenSubject({
+            ownOutputs,
             lucid,
             contracts,
             categoryId: deps.category.categoryId,

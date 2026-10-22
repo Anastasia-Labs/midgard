@@ -1,10 +1,8 @@
 //// The claimed purpose reopened in its authenticated domain, before source
 //// lookup. Constructor and field order below is wire format.
 
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1}
 
 /// 0 NotRequired, 1 ImpossiblePurpose, 2 ExistingPurpose.

@@ -4,11 +4,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Redeemer, ScriptPurpose}
 use midgard/fraud_proofs/common.{MembershipCarriage, verify_membership_carried}
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
 use midgard/fraud_proofs/field_opening_v1 as opening
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/fraud_proofs/native_tx/codec.{
   byte_at, decode_definite_bytes_at, expect_byte,
 }

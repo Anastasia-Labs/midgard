@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardAddressText,
   midgardAddressFromText,
@@ -38,7 +37,6 @@ export const launchDeploymentIdentity = ContractDeploymentIdentity.make({
 export const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });

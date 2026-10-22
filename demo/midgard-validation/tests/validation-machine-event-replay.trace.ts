@@ -2,7 +2,6 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
@@ -28,7 +27,6 @@ export type ValidationMachineEventReplayInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;
   eventKeyCbor: Buffer;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor?: Buffer;
   /** The complete prior ledger, whose descriptor root must equal priorUtxosRoot. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   priorUtxosRoot: string;
@@ -117,10 +115,6 @@ export const replayValidationMachineEvent = (
       eventKeyCbor: Buffer.from(input.eventKeyCbor),
       canonicalTransactionCbor: Buffer.from(input.canonicalTransactionCbor),
       transactionId: verdictEvent.transactionId,
-      programMaterialSidecarCbor: Buffer.from(
-        input.programMaterialSidecarCbor ??
-          encodeMidgardCekProgramMaterialSidecar([]),
-      ),
       ledgerWitnessEntries,
       priorUtxosRoot: input.priorUtxosRoot,
       blockTimeMs: input.blockTimeMs,

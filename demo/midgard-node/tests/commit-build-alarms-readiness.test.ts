@@ -100,28 +100,20 @@ describe("GET /readyz commit build alarms", () => {
         Effect.zipRight(shouldSkipIdleCommitPipelineBeforeSchedulerAlignment),
       );
     expect(
-      await readyzAfterThen(
-        [held("Program material coverage"), FAILED],
-        preflight(0),
-      ),
+      await readyzAfterThen([held("Phase B"), FAILED], preflight(0)),
     ).toEqual({ ready: true, reasons: [], details: [] });
     expect(
-      await readyzAfterThen(
-        [held("Program material coverage"), FAILED],
-        preflight(1),
-      ),
+      await readyzAfterThen([held("Phase B"), FAILED], preflight(1)),
     ).toMatchObject({
-      reasons: ["commit_build_held:program_material_coverage"],
+      reasons: ["commit_build_held:phase_b"],
     });
   }, 60_000);
 
   it("stays ready naming a stage that reached its rejection limit until a block commits from a build that reached none", async () => {
-    expect(
-      await readyzAfter(breaker("Program material coverage"), COMMITTED),
-    ).toEqual({
+    expect(await readyzAfter(breaker("Phase B"), COMMITTED)).toEqual({
       ready: true,
       reasons: [],
-      details: ["commit_stage_breaker:program_material_coverage"],
+      details: ["commit_stage_breaker:phase_b"],
     });
     expect(
       await readyzAfter(breaker("Phase A"), COMMITTED, breaker("Phase A"), {

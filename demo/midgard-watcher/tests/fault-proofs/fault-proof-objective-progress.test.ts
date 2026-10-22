@@ -36,6 +36,7 @@ import {
   watcherFaultProofDeadline,
 } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
+import { WatcherJournalUnavailableError } from "../../src/fault-proofs/watcher-journal-database.types.js";
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import type {
@@ -657,16 +658,16 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(lastMode()).toBe("run");
   });
 
-  // A crash during a job leaves its queue row active; nothing in a later
-  // process finishes it.
+  // A crash during a job (journals failing mid-run stand in for it) leaves
+  // its queue row active; nothing in a later process finishes it.
   const crashMidJob = async (test: Awaited<ReturnType<typeof setup>>) => {
     const { pinned, retention } = recordingRetention();
     test.setBeforeRun(async () => {
-      throw new Error("the process died mid-job");
+      throw new WatcherJournalUnavailableError("the process died mid-job");
     });
     const crashed = test.createSupervisor(retention);
     await test.request(crashed, 2).accepted;
-    await expect(crashed.done).rejects.toThrow("the process died mid-job");
+    await test.idle(crashed);
     await crashed.close();
     expect(
       journalStates(test.fixture.journalRoot, "fault_proof_queue"),

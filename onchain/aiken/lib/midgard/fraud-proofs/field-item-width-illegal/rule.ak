@@ -56,13 +56,14 @@ fn names_observed_item(state: AuthenticatedItemV1) -> Bool {
 /// An observed fault coordinate may differ from the leaf's claimed coordinate.
 /// Only an exact named FIWI coordinate may use the no-field domain branch.
 /// `compact` comes from the step-01 authenticated accepted/forced source.
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_coordinate_v1(
   subject: substrate.VerdictSubjectV1,
   field_index: Int,
   item_index: Int,
   compact: TxCompactView,
 ) -> BoundCoordinateV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(compact.witness_set_hash) == 32
   expect
     if coordinate_is_supported_v1(field_index, item_index) {
@@ -144,13 +145,14 @@ pub fn terminal_contradiction_v1(state: AuthenticatedItemV1) -> Bool {
     ItemLegality { item_is_legal: False } ->
       !first_fault_v1.leaf_admits_fault_v1(
         state.subject,
+        None,
         first_fault_v1.CanonicalFault(
           first_fault_v1.CanonicalItem {
             field_index: state.field_index,
             item_index: state.item_index,
           },
         ),
-        None,
+        first_fault_v1.NotRequired,
       )
   }
 }

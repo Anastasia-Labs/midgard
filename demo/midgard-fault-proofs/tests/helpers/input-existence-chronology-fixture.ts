@@ -1,5 +1,7 @@
 /** Small canonical source/event chronology. Roots are computed from actual
- * full outputs; no validation-machine or live-withdrawal acceptance is claimed. */
+ * full outputs; no validation-machine acceptance is claimed. A withdrawal
+ * scenario commits the caller's withdrawal event, root entry and ledger
+ * effect exactly as given; it builds none of them itself. */
 import {
   computeHash28,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -12,6 +14,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
+import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
@@ -30,7 +33,6 @@ import {
   reencodeFixturePayload,
 } from "./canonical-block-evidence-fixture.js";
 import {
-  CHRONOLOGY_OWNER_KEY_HASH,
   CHRONOLOGY_SEED_VALUE,
   chronologySeedEntries,
   signedChronologyTransaction,
@@ -43,9 +45,18 @@ export type InputChronology =
   | "forced_spend"
   | "normal_spend"
   | "withdrawal_consumed"
+  | "withdrawal_untouched"
   | "rejected_creator"
   | "forced_target"
   | "prior_ledger_present_rejection";
+/** A committed withdrawal: its event key, withdrawals-root entry and ledger
+ * effect, each as block production derives it. */
+export type CommittedChronologyWithdrawal = Readonly<{
+  eventKey: SDK.EventKey;
+  rootKey: Buffer;
+  rootValue: Buffer;
+  effect: CanonicalTransitionEffect;
+}>;
 const PROVENANCE = {
   trustClass: "public_or_permissionless_da",
   sourceId: "test/input-event-chronology",
@@ -60,9 +71,11 @@ export const inputExistenceChronologyFixture = async (
     startTime: bigint;
     predecessorHeaderHash: string;
   }>,
+  withdrawal?: CommittedChronologyWithdrawal,
 ) => {
   const seed = outRefCbor(81, 0n);
   const feeSeed = outRefCbor(82, 0n);
+  const untouchedSeed = outRefCbor(83, 0n);
   const predecessorEntries = chronologySeedEntries();
   const seedEntry = predecessorEntries.find((entry) =>
     entry.outRef.equals(seed),
@@ -91,7 +104,9 @@ export const inputExistenceChronologyFixture = async (
     ? created
     : scenario === "forced_target"
       ? outRefCbor(82, 1n)
-      : seed;
+      : scenario === "withdrawal_untouched"
+        ? untouchedSeed
+        : seed;
   const target = signedChronologyTransaction({
     spendInputs: field === 0 ? [selected] : [feeSeed],
     referenceInputs: field === 1 ? [selected] : [],
@@ -251,38 +266,27 @@ export const inputExistenceChronologyFixture = async (
   if (scenario === "forced_spend") await forcedTx(consumer, [seed], []);
   if (scenario === "normal_creator") await normal(creator, [seed], [output]);
   if (scenario === "normal_spend") await normal(consumer, [seed], []);
-  if (scenario === "withdrawal_consumed") {
-    const key: SDK.OutputReference = {
-      transactionId: "a2".repeat(32),
-      outputIndex: 0n,
-    };
-    const info: SDK.WithdrawalInfo = {
-      body: {
-        l2_outref: { transactionId: "51".repeat(32), outputIndex: 0n },
-        l2_owner: CHRONOLOGY_OWNER_KEY_HASH,
-        l2_value: new Map([["", new Map([["", 2_000_000n]])]]),
-        l1_address: {
-          paymentCredential: {
-            PublicKeyCredential: [CHRONOLOGY_OWNER_KEY_HASH],
-          },
-          stakeCredential: null,
-        },
-        l1_datum: "NoDatum",
-      },
-      signature: ["ab".repeat(32), "cd".repeat(64)],
-      validity: "WithdrawalIsValid",
-    };
+  if (
+    scenario === "withdrawal_consumed" ||
+    scenario === "withdrawal_untouched"
+  ) {
+    if (withdrawal === undefined)
+      throw new Error("withdrawal chronology needs a committed withdrawal");
     withdrawals.push([
-      Data.to(key, SDK.OutputReference),
-      SDK.committedWithdrawalValueBytes(info),
+      withdrawal.rootKey.toString("hex"),
+      withdrawal.rootValue.toString("hex"),
     ]);
-    await append(
-      { WithdrawalEventKey: { withdrawal_id: key } },
-      "Withdrawal",
-      () => {
-        entries.delete(seed.toString("hex"));
-      },
-    );
+    await append(withdrawal.eventKey, "Withdrawal", () => {
+      for (const operation of withdrawal.effect.operations) {
+        const key = operation.outRefCbor.toString("hex");
+        if (operation.type === "delete") entries.delete(key);
+        else
+          entries.set(key, {
+            outRef: Buffer.from(operation.outRefCbor),
+            output: Buffer.from(operation.outputCbor),
+          });
+      }
+    });
   }
   if (scenario === "prior_ledger_present_rejection")
     await forcedTx(target, [], [], true, true, {
@@ -347,7 +351,9 @@ export const inputExistenceChronologyFixture = async (
     forcedTransactionCount: counts.forcedTransactionCount,
     totalEventCount: counts.totalEventCount,
     transitionStepCount: counts.transitionStepCount,
-    validationTraceCount: counts.validationTraceCount,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members and their count.
+    validationTraceCount: 0n,
     utxosRoot: await ledgerEntriesRoot([...entries.values()]),
     withdrawalsRoot: await root(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
     forcedTransactionsRoot: await root(
@@ -356,10 +362,7 @@ export const inputExistenceChronologyFixture = async (
     ),
     transitionTraceRoot: await root(SDK.ROOT_DOMAINS.transitionTrace, trace),
     eventToStepRoot: await root(SDK.ROOT_DOMAINS.eventToStep, events),
-    validationTracesRoot: await root(
-      SDK.ROOT_DOMAINS.validationTraces,
-      validations,
-    ),
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
@@ -383,7 +386,7 @@ export const inputExistenceChronologyFixture = async (
         forcedTransactionCount: header.forcedTransactionCount,
         totalEventCount: header.totalEventCount,
         transitionStepCount: header.transitionStepCount,
-        validationTraceCount: header.validationTraceCount,
+        validationTraceCount: counts.validationTraceCount,
       },
     },
   };

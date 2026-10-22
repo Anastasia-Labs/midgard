@@ -1,13 +1,12 @@
-import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardMintFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeSingleCbor,
+  encodeCbor,
   hashMidgardVersionedScript,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -151,45 +150,19 @@ const scriptBytes = (domain: string, index: number): Buffer => {
 };
 
 type CanonicalScript = {
-  readonly rawBytes: Buffer;
   readonly bytes: Buffer;
   readonly hash: string;
-  readonly material: readonly MidgardCekProgramMaterialEntry[];
 };
 
 const canonicalScript = (
   language: "PlutusV3" | "MidgardV1",
   raw: Uint8Array,
 ): CanonicalScript => {
-  const canonical = buildMidgardCanonicalCekProgram(raw);
-  const bytes = Buffer.from(canonical.envelopeCbor);
+  const bytes = encodeCbor(Buffer.from(raw));
   return {
-    rawBytes: Buffer.from(raw),
     bytes,
     hash: hashMidgardVersionedScript({ language, scriptBytes: bytes }),
-    material: [...canonical.material.values()],
   };
-};
-
-const mergeProgramMaterial = (
-  scripts: readonly CanonicalScript[],
-): readonly MidgardCekProgramMaterialEntry[] => {
-  const material = new Map<string, MidgardCekProgramMaterialEntry>();
-  for (const script of scripts) {
-    for (const entry of script.material) {
-      const root = Buffer.from(entry.root).toString("hex");
-      const prior = material.get(root);
-      if (
-        prior !== undefined &&
-        (prior.kind !== entry.kind ||
-          !Buffer.from(prior.preimage).equals(entry.preimage))
-      ) {
-        throw new Error(`Conflicting canonical fixture material root: ${root}`);
-      }
-      material.set(root, entry);
-    }
-  }
-  return [...material.values()];
 };
 
 const makeUtxo = (
@@ -249,16 +222,6 @@ export const buildHighCardinalityNativeTxFixture =
       "MidgardV1",
       scriptBytes("output-midgard-ref", 0),
     );
-    const canonicalScripts = [
-      ...spendScripts,
-      ...mintScripts,
-      ...observerScripts,
-      ...receiveScripts,
-      outputPlutusScript,
-      outputMidgardScript,
-    ];
-    const programMaterial = mergeProgramMaterial(canonicalScripts);
-
     let builder = (
       await LucidMidgard.new(fakeProvider, {
         network: "Preview",
@@ -274,14 +237,14 @@ export const buildHighCardinalityNativeTxFixture =
       builder = builder.attach.Script({
         kind: "plutus-v3",
         language: "PlutusV3",
-        script: script.rawBytes,
+        script: script.bytes,
       });
     }
     for (const script of receiveScripts) {
       builder = builder.attach.Script({
         kind: "midgard-v1",
         language: "MidgardV1",
-        script: script.rawBytes,
+        script: script.bytes,
       });
     }
 
@@ -359,7 +322,7 @@ export const buildHighCardinalityNativeTxFixture =
         {
           scriptRef: {
             type: "PlutusV3",
-            script: outputPlutusScript.rawBytes.toString("hex"),
+            script: outputPlutusScript.bytes.toString("hex"),
           },
         },
       )
@@ -369,7 +332,7 @@ export const buildHighCardinalityNativeTxFixture =
         {
           scriptRef: {
             type: "MidgardV1",
-            script: outputMidgardScript.rawBytes.toString("hex"),
+            script: outputMidgardScript.bytes.toString("hex"),
           },
         },
       )
@@ -381,7 +344,7 @@ export const buildHighCardinalityNativeTxFixture =
       })
       .pay.ToAddress(walletAddress, { lovelace: 36_000_000n });
 
-    const completed = await builder.complete({ programMaterial });
+    const completed = await builder.complete();
     const signed = await completed.sign(wallet);
     const tx = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     // Every field the fixture advertises past this point is derived from the

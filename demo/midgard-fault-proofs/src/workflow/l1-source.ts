@@ -150,7 +150,7 @@ export const withFraudProofL1Recovery = <
 >(
   port: Port,
   recovery: FraudProofSignedTransactionRecovery,
-): Port => {
+): Port & FraudProofSignedTransactionRecovery => {
   const methods = {
     observeSignedTransaction: recovery.observeSignedTransaction,
     rebroadcastSignedTransaction: recovery.rebroadcastSignedTransaction,

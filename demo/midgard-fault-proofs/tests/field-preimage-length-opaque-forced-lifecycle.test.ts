@@ -15,6 +15,7 @@ import {
   submitFieldPreimageLengthTerminal,
 } from "../src/field-preimage-length-mismatch/submit-lucid.js";
 import { parseOutRef } from "../src/runtime.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { inlineBodyClaim } from "./field-preimage-length-mismatch-lifecycle.forced-prepared.js";
 import { expectOnChainRefusal } from "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";
 import {
@@ -97,6 +98,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   const carriage = await resolveFieldPreimageLengthCarriage({
     workflow,
     evidence,
+    ownOutputs: createOwnOutputJournal(),
   });
   expect(carriage.carriageReferences).toEqual([]);
   const claim = carriage.claimResolver(carriage.carriageReferences);

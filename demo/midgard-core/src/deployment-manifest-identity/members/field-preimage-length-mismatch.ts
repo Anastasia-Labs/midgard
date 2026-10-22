@@ -8,7 +8,7 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-01",
       manifestPosition: 259,
       publicationPosition: 165,
-      referenceRolePosition: 397,
+      referenceRolePosition: 398,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
@@ -20,7 +20,7 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
         "V1 fraud-proof field-preimage-length-mismatch step-02 accepted",
       manifestPosition: 260,
       publicationPosition: 166,
-      referenceRolePosition: 398,
+      referenceRolePosition: 399,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
@@ -32,7 +32,7 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
         "V1 fraud-proof field-preimage-length-mismatch step-02 forced",
       manifestPosition: 261,
       publicationPosition: 167,
-      referenceRolePosition: 399,
+      referenceRolePosition: 400,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
@@ -43,7 +43,7 @@ export const fieldPreimageLengthMismatchMembers = defineDeploymentFamily(
       referenceRole: "V1 fraud-proof field-preimage-length-mismatch step-03",
       manifestPosition: 262,
       publicationPosition: 168,
-      referenceRolePosition: 400,
+      referenceRolePosition: 401,
       commands: [],
       validatorTitle:
         "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",

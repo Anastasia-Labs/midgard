@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialDaValue } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
@@ -7,7 +6,6 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -36,19 +34,22 @@ export const fixture = async (
     };
   } = {},
 ) => {
-  const program = options.withProgram
-    ? buildMidgardCanonicalCekProgram(
-        Buffer.from(ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX, "hex"),
-      )
-    : undefined;
   const transaction = materializeMidgardForcedTxFromCanonical(
     buildNativeTx({
       spendInputOutRefs: [],
       referenceInputOutRefs: [],
       scriptWitnessItems:
-        program === undefined
+        options.withProgram !== true
           ? []
-          : [{ language: "PlutusV3", scriptBytes: program.envelopeCbor }],
+          : [
+              {
+                language: "PlutusV3",
+                scriptBytes: Buffer.from(
+                  ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
+                  "hex",
+                ),
+              },
+            ],
     }).tx,
   );
   const cbor =
@@ -113,13 +114,6 @@ export const fixture = async (
       withdrawals: [],
       transactions: [],
       transaction_preimages: [],
-      cek_program_material:
-        program === undefined
-          ? []
-          : [...program.material.values()].map((entry) => [
-              Buffer.from(entry.root).toString("hex"),
-              encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-            ]),
       forced_transactions: [[key, encoded.value.toString("hex")]],
       forced_transaction_preimages: [[key, cbor.toString("hex")]],
       transition_trace: [

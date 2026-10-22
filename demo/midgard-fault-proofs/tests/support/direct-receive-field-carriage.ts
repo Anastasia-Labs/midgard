@@ -3,6 +3,7 @@ import {
   CML,
   coreToTxOutput,
   type Emulator,
+  type EmulatorAccount,
   type LucidEvolution,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -13,14 +14,33 @@ import {
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
+import { resolveProverSigner } from "../../src/runtime.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   captureEmulatorSubmission,
   network,
   publishPlainReferenceScriptUtxo,
 } from "./submit-init-emulator-shared.js";
 
+/** The address production publishes carriage from: the prover signer's. */
+const carriagePublisher = (seedPhrase: string) =>
+  resolveProverSigner({ network, walletSeedPhrase: seedPhrase });
+
+/** Ledger funding for the carriage publisher. A Base-wallet row pays its steps
+ * from the Base address, but carriage is published from the Enterprise address
+ * production resolves, so that address is funded too. */
+export const directCarriagePublisherFunding = (
+  account: EmulatorAccount,
+): readonly EmulatorAccount[] => {
+  const address = carriagePublisher(account.seedPhrase).address;
+  return address === account.address ? [] : [{ ...account, address }];
+};
+
 /** Execute the existing strict publication/certificate producers before the
- * receive worker opens a real maximum-sized field. No fabricated certificate. */
+ * receive worker opens a real maximum-sized field. No fabricated certificate.
+ * Publication and certification run as the production prover signer
+ * (`resolveProverSigner`, an Enterprise address); the caller's wallet, of
+ * either address type, is selected again afterwards for the step transactions. */
 export const publishDirectReceiveFieldCarriage = async ({
   lucid,
   emulator,
@@ -43,21 +63,53 @@ export const publishDirectReceiveFieldCarriage = async ({
   readonly walletAddressType: "Base" | "Enterprise";
 }): Promise<UTxO[]> => {
   if (plan.plan.tier === "Inline") return [];
-  const signer = {
-    source: "N6-emulator-account",
-    address: account.address,
-    paymentKeyHash: prover,
-    selectWallet: (selected: LucidEvolution) =>
-      selected.selectWallet.fromSeed(account.seedPhrase, {
-        addressType: walletAddressType,
-      }),
-  };
+  const signer = carriagePublisher(account.seedPhrase);
+  expect(signer.paymentKeyHash).toBe(prover);
+  try {
+    return await publishAsProverSigner({
+      lucid,
+      emulator,
+      signer,
+      plan,
+      certificate,
+      compactCbor,
+      witnessSetCompactCbor,
+      walletAddressType,
+    });
+  } finally {
+    lucid.selectWallet.fromSeed(account.seedPhrase, {
+      addressType: walletAddressType,
+    });
+  }
+};
+
+const publishAsProverSigner = async ({
+  lucid,
+  emulator,
+  signer,
+  plan,
+  certificate,
+  compactCbor,
+  witnessSetCompactCbor,
+  walletAddressType,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly emulator: Emulator;
+  readonly signer: ReturnType<typeof carriagePublisher>;
+  readonly plan: FaultProofFieldOpeningPlan;
+  readonly certificate: SDK.MintingValidator;
+  readonly compactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly walletAddressType: "Base" | "Enterprise";
+}): Promise<UTxO[]> => {
+  const ownOutputs = createOwnOutputJournal();
   const publication = await captureEmulatorSubmission(emulator, () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned: plan,
-      publisherAddress: account.address,
+      publisherAddress: signer.address,
       label: "N6 actual receive field",
     }),
   );
@@ -79,6 +131,9 @@ export const publishDirectReceiveFieldCarriage = async ({
         const body = tx.body();
         return {
           walletAddressType,
+          publisherAddressBytes: CML.Address.from_bech32(
+            signer.address,
+          ).to_raw_bytes().length,
           bodyBytes: body.to_cbor_bytes().length,
           witnessSetBytes: tx.witness_set().to_cbor_bytes().length,
           outputs: Array.from({ length: body.outputs().len() }, (_, index) => {
@@ -108,6 +163,7 @@ export const publishDirectReceiveFieldCarriage = async ({
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
     certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       network,
       signer,
@@ -132,7 +188,9 @@ export const publishDirectReceiveFieldCarriage = async ({
     "N6 actual receive field carriage",
     JSON.stringify({
       tier: plan.plan.tier,
+      walletAddressType,
       fieldBytes: plan.preimage.length,
+      chunkBytes: plan.plan.publications.map((p) => p.bytes.length),
       chunks: publication.measurements.map((m) => m.completeSignedBytes),
       certificate: {
         bytes: certified.measurement.completeSignedBytes,

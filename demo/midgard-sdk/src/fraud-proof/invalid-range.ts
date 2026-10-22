@@ -1,5 +1,3 @@
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
@@ -17,6 +15,8 @@ import {
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 export const InvalidRangeStep01DatumSchema = faultProofStepDatumSchema(
   Data.Any(),

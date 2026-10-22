@@ -161,19 +161,19 @@ describe("bounded MPF proof folding V1", () => {
         },
       ]),
     ).toThrow(/exactly 128 bytes/u);
-    expect(() =>
-      parseMidgardMpfProofJson([
-        {
-          type: "fork",
-          skip: 64,
-          neighbor: {
-            nibble: 16,
-            prefix: "",
-            root: "00".repeat(32),
-          },
-        },
-      ]),
-    ).toThrow(/canonical integer envelope/u);
+    const fork = (skip: number, nibble: number) => [
+      {
+        type: "fork",
+        skip,
+        neighbor: { nibble, prefix: "", root: "00".repeat(32) },
+      },
+    ];
+    expect(() => parseMidgardMpfProofJson(fork(0, 16))).toThrow(
+      /mpf_proof\[0\]\.neighbor\.nibble is outside its canonical integer envelope/u,
+    );
+    expect(() => parseMidgardMpfProofJson(fork(64, 15))).toThrow(
+      /mpf_proof\[0\] advances beyond the key path/u,
+    );
   });
 });
 
@@ -315,35 +315,26 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
     );
   });
 
-  it("refuses a leaf re-read as a terminal fork on deletion and insertion", async () => {
-    // Leaf and branch node preimages are disjoint, so a leaf re-read as a
-    // terminal Fork gives roots the honest trie does not have. On a deletion
-    // the Fork neighbour must also open like a branch preimage.
-    const onlyB = exactRoot(await trieOf([[b, vb]]));
-    const bAndC = exactRoot(
-      await trieOf([
-        [b, vb],
-        [c, vc],
-      ]),
-    );
-    const aBAndC = exactRoot(
-      await trieOf([
-        [a, va],
-        [b, vb],
-        [c, vc],
-      ]),
-    );
+  it("refuses a leaf re-read as a terminal fork on deletion and insertion", () => {
+    // Leaf and branch node preimages are disjoint: a leaf's committed suffix
+    // carries bytes above 15, which a Fork neighbour's nibble prefix cannot,
+    // so a leaf re-read as a terminal Fork is refused as it is parsed.
     const even = [fork(1, 10, suffix(hash(b), 2), hash(vb))];
     const odd = [
       leaf(hash(c), vc, 0),
       fork(0, 0, suffix(hash(b), 1).subarray(1), hash(vb)),
     ];
-    expect(() => foldDeletion(even)).toThrow(
-      /terminal fork neighbor of a deletion does not open like a branch/u,
-    );
-    expect(fold(even).terminal.excludingRoot).not.toEqual(onlyB);
-    expect(foldDeletion(odd).terminal.includingRoot).not.toEqual(aBAndC);
-    expect(fold(odd).terminal.excludingRoot).not.toEqual(bAndC);
+    for (const [proof, frame] of [
+      [even, 0],
+      [odd, 1],
+    ] as const) {
+      const refusal = new RegExp(
+        `^mpf_proof\\[${frame.toString()}\\]\\.neighbor\\.prefix must contain only nibble bytes$`,
+        "u",
+      );
+      expect(() => foldDeletion(proof)).toThrow(refusal);
+      expect(() => fold(proof)).toThrow(refusal);
+    }
   });
 
   it("bounds a terminal fork prefix by the key path", () => {
@@ -352,7 +343,7 @@ describe("bounded MPF proof folding V1 terminal neighbour", () => {
       fork(31, neighborNibble, Buffer.alloc(prefixLength), hash(vc));
     expect(() => fold([deepFork(31)])).not.toThrow();
     expect(() => fold([deepFork(32)])).toThrow(
-      /terminal fork neighbor prefix does not end inside the key path/u,
+      /^mpf_proof\[0\]\.neighbor\.prefix exceeds 31 bytes$/u,
     );
   });
 });

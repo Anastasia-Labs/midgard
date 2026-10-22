@@ -27,7 +27,7 @@
  * while the store replays a tracked-set reset) and the intent
  * journal's refusals, the worker threads' included (`intent_journal_*`,
  * `intent_input_untracked`, `intent_bytes_mismatch`, `intent_undecodable`,
- * `intent_content_ref_missing`), and
+ * `intent_content_ref_missing`, `intent_unbounded_validity`), and
  * `l1_follower_unconfigured` while the node has no follower,
  * `l1_node_config_unreadable` while its network magic is retried, and
  * `l1_node_config_failed` once that read failed for good. Each fails
@@ -47,6 +47,10 @@
  * `intent_journal_replay_prune_floor` for the intent journal's replay,
  * `operator_activity_record_prune_floor` for the operator-activity record).
  * The facts the floor still needs are kept; the store grows until it moves.
+ * In normal operation the landed-frontier floor holds the boundary back by
+ * about the event wait plus the event validity range plus the unmerged span
+ * after the frontier: a lag of that size is expected and the node stays
+ * ready; a lag that keeps growing past it is worth looking into.
  *
  * The report also carries `confirmedLedger`: the confirmed-ledger frontier,
  * the slot of its merge and that merge's level (`landed`, `safe`, `final`).
@@ -186,6 +190,25 @@ export type L1FollowerState =
  */
 export const followerCaughtUp = (status: FollowStatus): boolean =>
   status.atTip && status.interventions.length === 0 && status.stuck === null;
+
+/**
+ * The follower's `onStatus` hook that starts landed-block processing: it
+ * calls `trigger` once per cursor position the follower reaches while caught
+ * up. The driver applies only views at the node's tip; until then a key the
+ * follower lacks may be one it has not reached, not an orphan.
+ */
+export const landedBlockTrigger = (
+  trigger: () => void,
+): ((next: FollowStatus) => void) => {
+  let lastCursor: string | null = null;
+  return (next) => {
+    const key = cursorKey(next);
+    if (key !== null && key !== lastCursor && followerCaughtUp(next)) {
+      lastCursor = key;
+      trigger();
+    }
+  };
+};
 
 /** The running follower, when it is caught up. */
 export const caughtUpFollower = (

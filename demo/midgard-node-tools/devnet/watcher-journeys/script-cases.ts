@@ -18,15 +18,12 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 
 /** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
-const unitProgram = buildMidgardCanonicalCekProgram(
-  Buffer.from("0101002324980041", "hex"),
-);
+const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
 
 /** An executable, signed transaction for real forced-order verdict disputes. */
 export const buildJourneyScriptTransaction = (input: {
@@ -56,7 +53,7 @@ export const buildJourneyScriptTransaction = (input: {
     variant === "plutusMint"
       ? {
           language: "PlutusV3" as const,
-          scriptBytes: unitProgram.envelopeCbor,
+          scriptBytes: unitScriptBytes,
         }
       : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex"));
   const policy = hashMidgardVersionedScript(script);
@@ -118,8 +115,6 @@ export const buildJourneyScriptTransaction = (input: {
   });
   return {
     transaction,
-    programMaterial:
-      variant === "plutusMint" ? [...unitProgram.material.values()] : [],
   };
 };
 
@@ -179,7 +174,6 @@ export const buildJourneyScriptForcedFault = async (
   const material = prepareJourneyScriptForcedTransaction(input);
   const replayInput = {
     canonicalTransactionCbor: material.transaction.canonicalCbor,
-    programMaterial: material.programMaterial,
     predecessor: input.predecessor,
     ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
@@ -213,7 +207,6 @@ export const buildJourneyScriptForcedSuccessor = async (
   const material = prepareJourneyScriptForcedTransaction(input);
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: material.transaction.canonicalCbor,
-    programMaterial: material.programMaterial,
     predecessor: input.predecessor,
     ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,

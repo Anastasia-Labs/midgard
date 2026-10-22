@@ -4,11 +4,7 @@
  * operator committed it. Blocks chain: a block's outputs are spent by the
  * next block built on its ledger.
  */
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeCbor } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
@@ -18,7 +14,6 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildMidgardCanonicalCekProgram,
   type MidgardCekVerdictRequest,
   MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
@@ -63,8 +58,9 @@ import { rebind, verdict } from "./foreign-block-import.fixture.js";
  * spent, or accepts carrying `LARGE_SCRIPT_BYTES` of unused constants. */
 export type ScriptBody = "accept" | "reject" | "loop" | "large";
 
-/** The unused constants a "large" script carries, in 8 KiB constants. */
-export const LARGE_SCRIPT_BYTES = 64 * 1024;
+/** The unused constants a "large" script carries, in 8 KiB constants. The
+ * script is carried in its transaction, within one witness field's bound. */
+export const LARGE_SCRIPT_BYTES = 24 * 1024;
 
 const omega = new Lambda(
   new Application(new UPLCVar(0), new UPLCVar(0)),
@@ -93,12 +89,13 @@ const term = (body: ScriptBody): UPLCTerm =>
         ? carrying(LARGE_SCRIPT_BYTES)
         : new Lambda(new Application(omega, omega));
 
-/** A PlutusV3 program, its witness, and its unprotected script address. */
+/** A PlutusV3 script witness and its unprotected script address. */
 export const scriptOf = (body: ScriptBody) => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term(body)))),
+  const witness = plutusV3ScriptWitness(
+    encodeCbor(
+      Buffer.from(UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term(body)))),
+    ),
   );
-  const witness = plutusV3ScriptWitness(program.envelopeCbor);
   const hash = hashScriptWitness(witness);
   const address = Buffer.from(
     CML.EnterpriseAddress.new(
@@ -108,11 +105,7 @@ export const scriptOf = (body: ScriptBody) => {
       .to_address()
       .to_raw_bytes(),
   );
-  return {
-    witness,
-    address,
-    material: [...program.material.values()],
-  };
+  return { witness, address };
 };
 
 export type LedgerEntry = Readonly<{ outRef: Buffer; output: Buffer }>;
@@ -166,7 +159,7 @@ const buildSpend = (spend: Spend) => {
       })),
     ),
   });
-  return { tx, material: script.material };
+  return { tx };
 };
 
 const ROOT_KEYS = [
@@ -205,15 +198,12 @@ export const committedBlock = async (
   );
   const prior = await ledgerRoot(ledger);
   const built = spends.map(buildSpend);
-  const material = new Map<string, MidgardCekProgramMaterialEntry>();
   const steps: [string, string][] = [];
   const mapping: [string, string][] = [];
   const traces: [string, string][] = [];
   let pre = prior;
   const runs: MidgardCekVerdictRequest[][] = [];
-  for (const [index, { tx, material: own }] of built.entries()) {
-    for (const entry of own)
-      material.set(Buffer.from(entry.root).toString("hex"), entry);
+  for (const [index, { tx }] of built.entries()) {
     const spent = [
       spends[index]!.input,
       ...(spends[index]!.extra ?? []),
@@ -226,7 +216,6 @@ export const committedBlock = async (
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         canonicalTransactionCbor: tx.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(own),
         ledgerWitnessEntries: spent.map((outRef) => ({
           outRef,
           output: ledger.get(outRef.toString("hex"))!,
@@ -327,10 +316,6 @@ export const committedBlock = async (
       forced_transactions: [],
       forced_transaction_preimages: [],
       deposits: [],
-      cek_program_material: [...material].map(([root, entry]) => [
-        root,
-        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-      ]),
       transition_trace: steps,
       event_to_step: mapping,
       validation_traces: traces,
@@ -457,7 +442,6 @@ export const forcedBlock = async (
       forced_transactions: [[key, encoded.value.toString("hex")]],
       forced_transaction_preimages: [[key, cbor.toString("hex")]],
       deposits: [],
-      cek_program_material: [],
       transition_trace: [
         [
           encodeTransitionIntegerCbor(0n).toString("hex"),

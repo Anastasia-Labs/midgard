@@ -2,6 +2,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/first_fault_v1 as order
 use midgard/fraud_proofs/input_existence_v1/types.{
   LedgerStateV1, PreStateArgsV1, SelectedInputStateV1,
 }
@@ -52,6 +53,10 @@ pub fn pre_state_step_v1(
       let expected: Data = LedgerStateV1 {
         subject: state.subject,
         compact: state.compact,
+        network_order_context: order.network_order_context_v1(
+          state.compact,
+          state.header,
+        ),
         source_kind: state.source_kind,
         input_index: state.input_index,
         claimed_input: state.claimed_input,

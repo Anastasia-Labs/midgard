@@ -38,17 +38,7 @@ validator main(
           tx,
         )
       ct.Continue(Args{source: AcceptedSource { inclusion }}) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            next_hash,
-            next_state,
-            header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, next_hash, next_state, header, _, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_policy,
           hub_oracle,
           datum,
@@ -57,10 +47,7 @@ validator main(
           tx,
         )
         let expected: Data = SourceBoundV1 {
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource { header, tx_inclusion: verified },
-          ),
+          subject: substrate.open_accepted_subject_v1(verified),
           header,
           compact_cbor: source_carriage_v1.carriage_compact_cbor_v1(inclusion),
         }
@@ -86,11 +73,13 @@ validator main(
           inputs,
           outputs,
         )
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
+          thread_name,
+          header,
+          membership,
+        )
         let expected: Data = SourceBoundV1 {
-          subject: substrate.open_subject_v1(
-            thread_name,
-            substrate.ForcedSource { header, membership },
-          ),
+          subject,
           header,
           compact_cbor: membership.value.submitted_source.compact_cbor,
         }
