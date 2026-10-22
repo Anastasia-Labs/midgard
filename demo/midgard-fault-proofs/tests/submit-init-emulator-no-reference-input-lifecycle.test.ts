@@ -1,5 +1,3 @@
-import { requireInputExistenceTerminalResult } from "./support/input-existence-execution-context.js";
-import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 /**
  * `no-reference-input` (Q18) emulator lifecycle, both polarities.
  *
@@ -61,11 +59,13 @@ import {
   TIER2_REFERENCE_INPUT_COUNT,
   tier2ReferenceInputs,
 } from "./submit-init-emulator-no-reference-input-lifecycle.drive-no-reference-input-to-step04.js";
+import { requireInputExistenceTerminalResult } from "./support/input-existence-execution-context.js";
 import {
   buildNoReferenceInputFixture,
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   noReferenceInputOutRef,
 } from "./support/no-reference-input-emulator.js";
+import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   expectOnchainRefusal,

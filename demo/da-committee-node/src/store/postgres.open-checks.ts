@@ -38,10 +38,11 @@ export const COMMITTEE_RETIREMENT_BINDING_CHANGED =
 
 /**
  * A stored record names an L1 point older than the configured `L1_ORIGIN`.
- * The follower's origin is the deployment's init point, so no committee
- * record can predate it: the configuration is wrong. The open throws it, so
- * the startup fails on it at once (`committee_startup_failed`) and the
- * process holds, unready, until it is restarted on the corrected `L1_ORIGIN`.
+ * The deployment's origin precedes every committee record, so the override
+ * starts too late. The open throws it, so the startup fails on it at once
+ * (`committee_startup_failed`) and the process holds, unready, until it is
+ * restarted without the override (on the manifest's `l1Origin`) or on a lower
+ * one.
  */
 export const COMMITTEE_STORE_POINT_BEFORE_L1_ORIGIN =
   "committee_store_point_before_l1_origin";
@@ -157,6 +158,6 @@ export const assertNoPointBeforeL1Origin = async (
   const first = found.rows[0];
   if (first !== undefined)
     throw new Error(
-      `${COMMITTEE_STORE_POINT_BEFORE_L1_ORIGIN}: the ${first.holder} names slot ${first.slot}, before L1_ORIGIN slot ${origin.slot.toString()}; L1_ORIGIN must be the deployment's init point`,
+      `${COMMITTEE_STORE_POINT_BEFORE_L1_ORIGIN}: the ${first.holder} names slot ${first.slot}, before L1_ORIGIN slot ${origin.slot.toString()}; L1_ORIGIN must be at or before the deployment's origin: unset it to follow the manifest's l1Origin, or lower it`,
     );
 };

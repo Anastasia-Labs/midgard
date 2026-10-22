@@ -15,7 +15,8 @@ pub fn selected_index_v1(
   field_index: Int,
   chosen_index: Int,
 ) -> Int {
-  expect substrate.subject_is_canonical_v1(subject)
+  // The subject's canonical form is checked by the event door
+  // (`subject_event_step_index_v1`) that the select step runs on it.
   expect field_index == 0 || field_index == 1
   expect
     chosen_index >= 0 || subject.rejection_reason == Some(

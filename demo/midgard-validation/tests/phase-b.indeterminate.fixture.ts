@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core";
 import {
   Builtin,
   ErrorUPLC,
@@ -8,7 +7,6 @@ import {
 } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   MidgardRedeemerTag,
   type PhaseAValidatedTx,
@@ -17,6 +15,7 @@ import {
 } from "../src/index.js";
 import { app, lam, seq, v } from "./helpers/cek-uplc-terms.js";
 import { MIDGARD_TX_EX_UNITS_CAP } from "./helpers/plutus-spend-input.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -30,7 +29,7 @@ import {
 
 /** A PlutusV3 program `\ctx. body`, built at runtime. */
 export const plutusProgram = (body: UPLCTerm) =>
-  buildMidgardCanonicalCekProgram(
+  buildCekProgramFromRawFlat(
     encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], lam(body))),
   );
 
@@ -69,7 +68,7 @@ export const plutusProgramSpend = (
   seed: number,
   program: PlutusProgram,
 ): ProgramSpend => {
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const script = plutusV3ScriptWitness(program.scriptBytes);
   const locked = outRefFromByte(seed);
   return {
     candidate: makePhaseBCandidate({
@@ -87,9 +86,6 @@ export const plutusProgramSpend = (
         },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]),
     }),
     preState: new Map([
       [

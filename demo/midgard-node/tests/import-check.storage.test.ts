@@ -1,6 +1,6 @@
 /**
  * What the import checker stores per block: each transaction once (its
- * bytes and its program sidecar) and each output it spends or references
+ * bytes, carrying its scripts) and each output it spends or references
  * once per block, so a block's stored bytes grow linearly with its
  * transactions' sizes, however many runs read the same outputs. Each test
  * prints what it measured.
@@ -36,7 +36,6 @@ const stored = () =>
       (sql) => sql<{ checks: string; outputs: string; outputRows: string }>`
         SELECT
           (SELECT COALESCE(SUM(octet_length(tx_cbor)
-            + octet_length(program_material_sidecar)
             + octet_length(script_hashes)), 0) FROM node_import_checks)
             AS checks,
           (SELECT COALESCE(SUM(octet_length(out_ref) + octet_length(output)), 0)
@@ -98,6 +97,10 @@ describe("import check storage", () => {
     expect(rows[3]!.stored).toBeLessThan(rows[0]!.stored + 63 * slope * 1.1);
   }, 120_000);
 
+  // The fixture replays all eight transactions to build the block and the
+  // import check replays them again, each committing every run's ~6.6 MB
+  // script context: about 75 s on a developer machine and five to six times
+  // that on a loaded CI runner.
   it("stores a block's 16 KB reference outputs once however many transactions and runs read them, within bounded import memory", async () => {
     const OUTPUT_BYTES = 16 * 1024;
     // Transactions reading the same references: the measured max shape,
@@ -202,5 +205,5 @@ describe("import check storage", () => {
     expect(peak - baseline).toBeLessThan(
       Math.max(256 * 2 ** 20, 8 * (contextBytes + set.outputs)),
     );
-  }, 300_000);
+  }, 900_000);
 });

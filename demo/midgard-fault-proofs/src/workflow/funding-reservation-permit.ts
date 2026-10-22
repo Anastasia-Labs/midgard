@@ -9,6 +9,7 @@ import "./transaction-boundary.js";
 import "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import "./funding-reservation-permit.parse-workflow-funding-prepared-transition.js";
 import "./funding-reservation-permit.parse-workflow-funding-abandonment-handoff.js";
+import "./funding-reservation-permit.lost-workflow-funding-journal.js";
 import "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
 import "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -16,12 +17,16 @@ import "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import "./funding-reservation-permit.apply-transition.js";
 import "./funding-reservation-permit.restrict-workflow-funding-signer.js";
+import "./funding-reservation-permit.workflow-funding-shortfall.js";
+import "./funding-reservation-permit.is-workflow-funding-pause-reason.js";
+import "./funding-reservation-permit.excluded-by-protocol-input.js";
 export {
   abandonWorkflowFundingReservationTransaction,
   acknowledgeWorkflowFundingAbandonment,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
   releaseIdleWorkflowFundingReservation,
+  releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
   reobserveWorkflowFundingReservationTransaction,
 } from "./funding-reservation-permit.apply-transition.js";
@@ -30,6 +35,15 @@ export {
   bindWorkflowFundingReservationJournal,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 export { createWorkflowFundingReservationPermit } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+export { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
+export { isWorkflowFundingPauseReason } from "./funding-reservation-permit.is-workflow-funding-pause-reason.js";
+export {
+  lostWorkflowFundingJournalRecords,
+  workflowFundingAbandonmentJournalLost,
+  workflowFundingCompletionJournalLost,
+  workflowFundingHandoffJournalLost,
+  workflowFundingJournalRecreatable,
+} from "./funding-reservation-permit.lost-workflow-funding-journal.js";
 export {
   assertWorkflowFundingAbandonmentHandoffJournal,
   createWorkflowFundingAbandonmentHandoff,
@@ -45,6 +59,7 @@ export {
   assertWorkflowFundingReservationReadyToSubmit,
   prepareWorkflowFundingReservationTransaction,
   readLegacyWorkflowFundingAbandonedTransactions,
+  readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
   workflowJournalHasFundingReservation,
 } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
@@ -52,6 +67,10 @@ export {
   assertWorkflowFundingCompletionHandoffJournal,
   reconcileWorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.reconcile-workflow-funding-submission-handoff.js";
+export {
+  recoverWorkflowFundingJournal,
+  recoverWorkflowFundingSubmissionHandoff,
+} from "./funding-reservation-permit.recover-workflow-funding-submission-handoff.js";
 export {
   restrictWorkflowFundingSigner,
   unsafeCreateWorkflowFundingReservationPermitForTest,
@@ -69,3 +88,9 @@ export {
   type WorkflowFundingReservedInput,
   type WorkflowFundingSubmissionHandoff,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+export {
+  asWorkflowFundingShortfall,
+  isWorkflowFundingShortfall,
+  WORKFLOW_FUNDING_SHORTFALL,
+  WorkflowFundingShortfallError,
+} from "./funding-reservation-permit.workflow-funding-shortfall.js";

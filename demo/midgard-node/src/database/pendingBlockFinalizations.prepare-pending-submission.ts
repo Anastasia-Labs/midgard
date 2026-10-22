@@ -51,7 +51,6 @@ import {
   parsePendingBlockFinalization,
   txMemberEntry,
 } from "./pendingBlockFinalizations.parse-pending-block-finalization.js";
-import { programMaterialSidecarsByTxId } from "./pendingBlockFinalizations.program-material-sidecars.js";
 import { withdrawalMemberToAssignment } from "./pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
 import {
   ACTIVE_PENDING_JOURNAL_REFUSAL,
@@ -181,14 +180,12 @@ export const preparePendingSubmission = (
       (entry, ordinal) =>
         withdrawalMemberEntry(input.headerHash, entry, ordinal),
     );
-    const programMaterialByTxId = yield* programMaterialSidecarsByTxId(input);
     const txMembers = input.mempoolTxs.map((entry, ordinal) =>
       txMemberEntry(
         input.headerHash,
         entry,
         ordinal,
         input.mempoolTxSourceTable,
-        programMaterialByTxId.get(entry[TxTable.Columns.TX_ID].toString("hex")),
       ),
     );
     const transitionTraceMembers = input.transitionTraceMembers.map(

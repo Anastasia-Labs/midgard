@@ -39,7 +39,7 @@ export const programMaterialEntry = (
 export const makeUnaryProgramMaterial = (
   nodeCount: number,
 ): {
-  readonly envelope: {
+  readonly summary: {
     readonly uplcVersion: readonly [1n, 1n, 0n];
     readonly termRoot: Hash32;
     readonly nodeCount: bigint;
@@ -59,7 +59,7 @@ export const makeUnaryProgramMaterial = (
     material.push({ kind: "term", root, preimage });
   }
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot: root,
       nodeCount: BigInt(material.length),
@@ -96,7 +96,7 @@ export const encodeCanonicalSemanticBytes = (bytes: Buffer): Buffer => {
 export const makeBytesConstantProgramMaterial = (
   rawByteLength: number,
 ): {
-  readonly envelope: {
+  readonly summary: {
     readonly uplcVersion: readonly [1n, 1n, 0n];
     readonly termRoot: Hash32;
     readonly nodeCount: bigint;
@@ -155,7 +155,7 @@ export const makeBytesConstantProgramMaterial = (
     ),
   ];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),
@@ -266,7 +266,7 @@ export const makeNestedListConstantProgramMaterial = (
     ),
   ];
   return {
-    envelope: {
+    summary: {
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: BigInt(material.length),

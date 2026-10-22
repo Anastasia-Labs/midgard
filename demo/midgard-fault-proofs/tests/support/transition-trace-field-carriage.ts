@@ -7,6 +7,7 @@ import {
   type TransitionProofInput,
 } from "../../src/transition-trace/proof-material.js";
 import { prepareTransitionFieldCarriage } from "../../src/transition-trace/submit.transition-field-step.js";
+import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 
 /** Publish the field-preimage certificate minting script as a reference. */
@@ -34,6 +35,7 @@ export const publishTransitionFieldCarriages = async ({
   proof,
   certificate,
   certificateReference,
+  ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -41,6 +43,8 @@ export const publishTransitionFieldCarriages = async ({
   readonly proof: TransitionProofInput;
   readonly certificate: MintingValidator;
   readonly certificateReference: UTxO;
+  /** The claims the steps that follow read the carriage back by. */
+  readonly ownOutputs: OwnOutputJournal;
 }): Promise<void> => {
   if (transitionL2Replay(proof) === undefined) return;
   for (const field of [0, 2] as const)
@@ -54,5 +58,6 @@ export const publishTransitionFieldCarriages = async ({
       certificateMintingScript: certificate.mintingScript,
       certificateReferenceScript: () => Promise.resolve(certificateReference),
       publish: true,
+      ownOutputs,
     });
 };

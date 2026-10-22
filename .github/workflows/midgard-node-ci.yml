@@ -386,6 +386,13 @@ jobs:
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
+      # The withdrawal-mistag node-agreement verdicts: one JSON vector file the
+      # fault-proofs twins load and the generator renders into the step-03 and
+      # step-04 Aiken tests. Without this step an edited Aiken vector passes
+      # both suites while the node and the chain no longer judge the same case.
+      - name: Check withdrawal-mistag node-agreement vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:withdrawal-mistag-agreement
       # The canonical Data corpus: every accepted span bound to the summary the
       # TypeScript traverse twin computes, every other span to the traverse
       # stage that refuses it; the generated Aiken module runs the honest
@@ -497,6 +504,14 @@ jobs:
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
+      # The pinned CEK builtin step evidence: one JSON vector file the
+      # validation executor twins load and the generator renders into the
+      # constant modules the mkCons and semantic-presentation Aiken tests
+      # import. Without this step an edited vector passes the TypeScript twins
+      # while the Aiken tests still prove the old bytes.
+      - name: Check CEK builtin step evidence vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-builtin-step-evidence
       # The V1 CEK builtin cost channel: every builtin's budget at a spread of
       # argument sizes, from the pinned 350-entry cost vector, run against the
       # on-chain cost table as a generated Aiken module.
@@ -650,6 +665,34 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk
       - name: Build, typecheck, and test Midgard validation
         run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      # The transaction differential again with its reference leg on: each
+      # generated spend is also evaluated by the pinned aiken (`uplc eval`).
+      - name: Check the transaction differential against the pinned aiken
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run tx-fuzz-reference
+
+  # Wall-clock benchmarks of the CEK executor and the trace commitment at the
+  # execution budget cap. The validation job gates the same runs on
+  # deterministic work counts; milliseconds depend on the runner and its load,
+  # so these only report.
+  midgard-validation-bench:
+    name: midgard-validation benchmarks
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          prebuild: lucid-midgard midgard-core midgard-sdk
+      # workflow-lint: allow continue-on-error — wall-clock benchmark; its bounds depend on the runner. The validation job gates the same runs on bytes hashed and semantic-store reads per step; this bench is the only check on work neither counts
+      # The step's own limit, well inside the job's, so a slow or hung bench
+      # fails only this step: a job that hits its timeout fails the gate.
+      - name: Benchmark the CEK executor and trace commitment at the budget cap
+        continue-on-error: true
+        timeout-minutes: 20
+        run: pnpm --dir demo/midgard-validation run bench
 
   # The fault-proof package's build and typecheck, once per run. The test
   # shards below resolve every workspace package from source through the
@@ -672,13 +715,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
 
-  # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
-  # on two forks (the five-run median per file in the package's
+  # Six shards keep each job near 30 minutes. The suite is ~19,900
+  # fork-seconds on two forks (the three-run median per file in the package's
   # tests/support/ci-file-durations.json), each job adds a few minutes of setup
   # and Vitest overhead, and shard 1 also runs the ~300 s traced-refusal step,
-  # which that table reserves. At the median each shard projects ~675 s (~17.3
-  # min jobs, measured with a build and typecheck on every shard); three
-  # shards projected ~28.5 min, five ~19.5. The matrix is the one count this
+  # which that table reserves. At the median each shard projects ~1,690 s; the
+  # longest single file (a script-decode walk-cost gate group) is ~1,690 s,
+  # so a group that walks longer is split into its own file rather than
+  # holding one shard past the job's time limit. The matrix is the one count this
   # workflow reads (the jobs and test-durations take it from the matrix);
   # change it together with tests/duration-shards.test.ts, which
   # scripts/ci/shard-counts.test.mjs pins to it, and rekey the table's reserve. On
@@ -1179,6 +1223,7 @@ jobs:
             watcher-journeys/forced-submission.test.ts \
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
+            watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
@@ -1254,6 +1299,7 @@ jobs:
       - midgard-core
       - midgard-sdk
       - midgard-validation
+      - midgard-validation-bench
       - midgard-fault-proofs-build
       - midgard-fault-proofs
       - midgard-watcher-typecheck

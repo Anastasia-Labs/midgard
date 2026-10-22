@@ -19,7 +19,6 @@ import {
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -30,6 +29,7 @@ import {
   MALFORMED_OUTPUT,
   submitOutputStep04Raw,
 } from "./support/transaction-output-non-canonical-emulator.js";
+import { nodeTransactionSpendingHeldInput } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
 import {
   evidenceOf,
   registeredContracts,
@@ -49,19 +49,22 @@ const canonicalOutput = encodeMidgardTxOutput({
   value: { lovelace: 2_000_000n, assets: new Map() },
 });
 
-/** A canonical output, then a malformed one; no other field is filled. */
-const transaction = makeNativeTx({
-  spendInputCbors: [],
-  fee: 0n,
-  referenceByte: "b1",
-  outputCbors: [canonicalOutput, MALFORMED_OUTPUT],
-});
+/**
+ * A canonical output, then a malformed one, spent from a held input carrying
+ * both outputs' 7_000_000 lovelace: the node refuses an output only once the
+ * inputs resolve.
+ */
+const { transaction, ledger } = nodeTransactionSpendingHeldInput(
+  [canonicalOutput, MALFORMED_OUTPUT],
+  7_000_000n,
+);
 
 const writtenOutputIndex = async (): Promise<bigint> => {
   const forced = materializeMidgardForcedTxFromCanonical(transaction);
   const verdict = await nodeForcedVerdict({
     transactionId: computeMidgardNativeTxId(forced),
     forcedCanonicalCbor: encodeMidgardForcedTxCanonical(forced),
+    ledger,
   });
   expect(verdict).toStrictEqual({
     ForcedTxInvalid: { reason: { OutputNonCanonical: { output_index: 1n } } },

@@ -12,6 +12,7 @@ import {
 } from "@al-ft/midgard-core";
 
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../ledger-output-descriptor.js";
+import { type CanonicalTransitionEffect } from "../transition-effect.js";
 
 export type ValidationMachineLedgerEntry = {
   readonly outRef: Buffer;
@@ -108,17 +109,39 @@ export const validationMachineLedgerRoot = async (
   return committedLedgerRoot(exactTrieRoot(trie));
 };
 
-export const buildValidationMachineLedgerMutationSteps = async (input: {
-  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
-  readonly operations: readonly ValidationMachineLedgerOp[];
-}): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
-  const trie = await createLedgerTrie(input.initialEntries);
+/** The consensus ledger operations a transition effect implies, in order. */
+export const transitionEffectToLedgerOps = (
+  effect: CanonicalTransitionEffect,
+): readonly ValidationMachineLedgerOp[] =>
+  effect.operations.map((operation) =>
+    operation.type === "delete"
+      ? { type: "delete", key: Buffer.from(operation.outRefCbor) }
+      : buildValidationMachineLedgerInsertOp({
+          key: operation.outRefCbor,
+          outputCbor: operation.outputCbor,
+        }),
+  );
+
+/** Applies `operations` to `trie` in order, recording each mutation step. */
+export const applyValidationLedgerMutations = async (
+  trie: Trie,
+  operations: readonly ValidationMachineLedgerOp[],
+): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
   const steps: ValidationMachineLedgerMutationStep[] = [];
-  for (const operation of input.operations) {
+  for (const operation of operations) {
     steps.push(await applyValidationMachineLedgerMutationStep(trie, operation));
   }
   return steps;
 };
+
+export const buildValidationMachineLedgerMutationSteps = async (input: {
+  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
+  readonly operations: readonly ValidationMachineLedgerOp[];
+}): Promise<readonly ValidationMachineLedgerMutationStep[]> =>
+  applyValidationLedgerMutations(
+    await createLedgerTrie(input.initialEntries),
+    input.operations,
+  );
 
 export const applyValidationMachineLedgerMutationStep = async (
   trie: Trie,

@@ -13,8 +13,9 @@ import {
   scriptRewardAddress,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
+  type ValidationCaseConfigSource,
 } from "@al-ft/midgard-sdk";
-import { Lucid, toUnit } from "@lucid-evolution/lucid";
+import { Lucid, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { network } from "./blueprints.js";
 import { type MinAdaYieldReferenceScripts } from "./reference-scripts.js";
@@ -32,6 +33,14 @@ export type SetupContracts = MidgardValidators & {
   };
   readonly minAda?: {
     readonly yields: MidgardValidators["fraudProofContracts"]["minAda"]["yields"];
+  };
+  /**
+   * Mint the validation case configuration in the initial mint, which spends
+   * its initialization nonce, from its published minting script.
+   */
+  readonly validationCaseConfig?: {
+    readonly contracts: ValidationCaseConfigSource;
+    readonly referenceScript: UTxO;
   };
 };
 

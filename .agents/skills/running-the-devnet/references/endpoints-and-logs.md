@@ -410,9 +410,14 @@ L1 follower and follower-change driver
   `midgard-l1-follower reset --to-origin`.
 - `origin_after_protocol_init`: the follower reached the node tip without
   seeing the transaction that spends `hubOracleOneShot`, so `l1Origin` is
-  after protocol init. The loop keeps following. Correct `l1Origin` to a
-  point before the `prepareHubOracleNonce` block and reset the follower to
-  its origin.
+  after protocol init; or the store's origin is after the `l1Origin` the
+  deployment manifest records (the detail names both points), so the store
+  may lack outputs created between them, whether it saw that spend or not.
+  The loop keeps following. Set `l1Origin` at or before the manifest's
+  recorded one (drop the `L1_ORIGIN` or `l1.origin` override to use it;
+  for a manifest without one, a point before the `prepareHubOracleNonce`
+  block) and reset the follower to its origin
+  (`midgard-l1-follower reset --to-origin`).
 - `l1_follower_migration_failed`: the follower store refused its migrations
   at start (a recorded migration whose text changed, a duplicate id, or one
   the schema lint refuses). The follow loop stops; the node stays up and
@@ -470,6 +475,13 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   Inspect the named event's rows.
 - `l1_event_undecodable:<count>` (a detail): that many projected events do
   not decode into the node's rows and are left out; `refused` names them.
+- `landed_frontier_prune_floor:<slots>` (a detail): the landed frontier's
+  prune floor holds the follower's prune boundary that many slots back, so
+  the store keeps the facts unprocessed landed blocks are judged on. In
+  normal operation it holds the boundary back by about the event wait plus
+  the event validity range plus the unmerged span after the frontier; a lag
+  of that size is expected and the node stays ready. Look into a lag that
+  keeps growing past it.
 - `l1_own_block_forced_order_orphaned:<count>` (a detail): that many forced
   rows of landed own blocks have an order that left the chain. The node
   follows the block and stays ready; the forced-order hook logs a warning
@@ -505,6 +517,9 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
   the same transaction, bytes that do not decode, a missing content
   reference, a gate that did not journal). Nothing was sent. Each is a
   defect; report it with the detail.
+- `intent_unbounded_validity`: the journal refused a dispute defense with
+  no upper validity bound, which could never be known dead or replaced.
+  Nothing was sent. It is a defect; report it with the detail.
 
 Landed blocks and the confirmed ledger (`src/landed-blocks/holds.ts`; the
 first hold by priority is the reason, the rest are in its detail):
@@ -519,9 +534,63 @@ first hold by priority is the reason, the rest are in its detail):
 - `landed_block_follower_schema_missing`: the follower's admission tables
   are missing from the node database; no timer retries it. Run `migrate`.
 - `landed_block_event_unknown`: a foreign block names an event the follower
-  does not know at the view. Wait; it is re-read every run.
-- `landed_block_forced_order_pending`: a forced order in a foreign block's
-  window cannot be read back yet. Wait.
+  does not know at the view, and the follower's facts do not cover the
+  range the block's events could be admitted in (the prune passed the
+  range's start, so an order admitted in it or the follower's refusal of
+  one may be gone; the store was reset or rolled back since the view; the
+  follower's cursor or its refusals could not be read; the block's start
+  maps to no slot; or its origin is after that range's start and the
+  protocol-init fact that could cover it is unreadable). Where the facts
+  cover the range, the block is
+  `landed_block_invalid` instead. A
+  local fault on the block: it is read again every run, and after eight
+  runs in a row end on it with no progress past it the node exits non-zero
+  (`node_transient_budget_exhausted source=driver
+reason=landed_block_event_unknown`); a restart meets the same bound again.
+  Reset the follower store (`midgard-l1-follower reset --to-origin`, with
+  `l1Origin` early enough for the detail's slot) or resync the node, then
+  restart.
+- `landed_block_forced_order_pending`: a forced order admitted in a foreign
+  block's window cannot be read back from the follower's facts at the view
+  (its output is absent, not authentic, or has no datum there). The landed
+  frontier's prune floor keeps every order and output the window of a block
+  after the frontier can admit, so this arises only from a store pruned
+  while the floor did not apply or from inconsistent facts, never from the
+  block. A local fault on the block: it is read again every run, and after
+  eight runs in a row end on it with no progress past it the node exits
+  non-zero (`node_transient_budget_exhausted source=driver
+reason=landed_block_forced_order_pending`); a restart meets the same bound
+  again. Reset the follower store (`midgard-l1-follower reset --to-origin`)
+  or resync the node, then restart.
+- `landed_block_origin_after_frontier`: the follower store's origin is too
+  late for the blocks after the landed frontier. A foreign block names an
+  event the follower does not know at the view, and the origin is after
+  the slot that block's events could first be admitted at (the detail names
+  both slots), or the block's node output was seeded at the origin, or the
+  block names a deposit or withdrawal the follower refused because the
+  retention output its payload is read from is not in its facts: a
+  retention output the follower's facts do not hold, created before its
+  origin. The detail then names the referenced outputs absent from the
+  facts (`<tx hash>#<index>`), one of which is that retention output. The
+  facts cannot judge the block, and the block is never blamed for it. A
+  store at the deployment manifest's recorded `l1Origin` (or, for a
+  manifest without one, at the documented point before the
+  `prepareHubOracleNonce` block) holds the protocol-init tx (the tx that
+  spends `hubOracleOneShot`), so no event is admitted before its origin
+  and no node output predates it; it also holds every output created
+  between that origin and the `prepareHubOracleNonce` block. Not retried: the node exits non-zero at
+  once (`node_transient_budget_exhausted source=driver
+reason=landed_block_origin_after_frontier`); a restart on the same store
+  exits again. Reset the follower store with an earlier `l1Origin`, then
+  restart (`midgard-l1-follower reset --to-origin`), or resync the node:
+  where the detail names two slots, at or before the earlier one; where it
+  names outputs, before the block that created each of them. For each named
+  `<tx hash>`, `midgard-l1-follower find-origin --tx <tx hash>
+--network-magic <n>` prints the `l1Origin` immediately before the block
+  holding that tx; use the earliest of them (or any earlier point) as
+  `l1Origin`. Otherwise, at or before the manifest's recorded `l1Origin`
+  (by dropping the override), or for a manifest without one, before the
+  `prepareHubOracleNonce` block.
 - `landed_block_local_fault`, `landed_block_verifier_unavailable`: importing
   a foreign block failed in this node's own computation (hashing, the payload
   roots, a library the replay runs), or its Ed25519 verifier could not
@@ -570,10 +639,13 @@ error such as a port in use) exits the process non-zero, its supervisor's
 restart policy (`restart: unless-stopped` in
 `demo/midgard-watcher/compose.yaml`) being the retry after that. A follower
 whose store transients outlast 15 min exits it the same way. A refused
-process configuration exits 78, before the operations server binds. This list covers the reasons and
-degradations added for the L1 follower; the full set is
-`WatcherOperationsReadinessReason` in
-`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts`.
+process configuration exits 78, before the operations server binds. Every
+reason in `WATCHER_OPERATIONS_READINESS_REASONS`
+(`demo/midgard-watcher/src/runtime/operations-observability.watcher-operations-readiness-reasons.ts`)
+has an entry below
+`[script: scripts/ci/check-watcher-readiness-reasons-doc.test.mjs]`; the
+fault-proof execution holds and the L1 follower's reasons are listed by hand
+`[review]`.
 
 - `startup:<stage>`: the operations server binds before the L1-dependent
   startup stages, and until the runtime's observability exists `/readyz`
@@ -602,6 +674,37 @@ degradations added for the L1 follower; the full set is
 - `fault_proof_l1_refused:store_inconsistent`: the follower's stored facts
   contradict one another (two unit histories place one transaction at
   different points). The objective is held; report it with the detail.
+- `fault_proof_continuation_stalled`: an objective's proof session journaled
+  no progress (no confirmation and no new action) for 30 min, or for 1,800
+  polls if the clock stands still. A transaction the submit endpoint accepts
+  but that never lands, resubmitted each validity window, is the usual cause.
+  The session hands its turn back so other objectives run, logs the hold at
+  error level and resumes on the next observation; it is never a refusal. It
+  clears at the first progress of a later run of the objective. Check the
+  `last pending:` reason in the detail, then the L1 submit endpoint and
+  provider. On the testing profiles (15 min maturity) the bound is longer
+  than maturity, so there it is an alarm only.
+- `fault_proof_objective_quarantined`: one objective's run stalled outside
+  preflight, or its funding or run met an integrity failure of its own (for
+  example a reconcile that refused its durable transaction, or a stored
+  funding handoff its workflow journal no longer anchors), or its family
+  re-classified the admitted fault (`no_fault_detected`, `unprovable_gap`) or
+  returned an outcome of no known kind; the detail is
+  `<category>/<headerHash>: <cause>`. Only that objective is held: the
+  `proof_submission_failure` alert is raised, the process keeps running and
+  every other objective keeps proving. The objective is run again on a
+  bounded backoff (1 s doubling to 30 s); each run reconciles before it acts,
+  so it re-checks the cause rather than resending anything, and the hold and
+  alert clear at the first run that meets something else. Report it with the
+  detail if it persists.
+- `prover_funding_unavailable`: an objective paused because the prover
+  wallet cannot fund its next transaction, a script-decode record
+  transaction included (too little plain ada for the fee, collateral or
+  change; a coin holding a token is never spent), or its funding
+  reservation could not be made; the detail is
+  `<category>/<headerHash>: <reason>`. The objective resumes on each
+  observation and is never failed for it; the hold clears once a later run
+  meets something else. Top up the prover wallet with plain ada.
 - `l1_follower_loop_failed`: the follow loop threw. The loop retries every
   transient chain, node and store failure itself, so a throw is a defect no
   retry is known to repair: the loop is not restarted, and the reason stands
@@ -610,6 +713,44 @@ degradations added for the L1 follower; the full set is
 - `deadline_at_risk`, `deadline_unsafe`: a proof deadline is near or past its
   safe start. The watcher keeps running and keeps proving; read
   `deadlineHealth` and `remainingSafeStartMs` in `/v1/metrics`.
+- `supervisor_not_accepting`: the fault-proof supervisor is closing, closed
+  or blocked. A job failure it cannot classify blocks it and ends the
+  runtime, so the process exits non-zero and the restart policy applies. If
+  it lasts on a running watcher, read the log for the failure.
+- `recovery_incomplete`: the supervisor has not yet rebuilt its proof work
+  from the journals, at startup or after a `journal_busy` requeue. Wait; it
+  clears once the rebuild or the next progress admission succeeds.
+- `launch_scope_incomplete`: fewer fault-proof categories are installed than
+  the catalogue names; `launchScope` in `/v1/status` gives both counts. A
+  deployment that installs every category never shows it; check the
+  deployment's installed families.
+- `l1_source_unavailable`: no L1 source has been observed yet. Wait; check
+  the node and the follower if it lasts.
+- `l1_source_stale`: an L1 source reports stale or disagreeing, or its latest
+  observation is older than 120 s. Check the node and its providers.
+- `retained_da_transport_failed`: the shared retained-DA transport failed to
+  start; it is retried after a growing delay. Read the README paragraph on
+  the retained-DA transport (`demo/midgard-watcher/README.md`, Runtime and
+  commands) when it does not clear.
+- `active_alert`: a non-informational alert is active (`activeAlerts` in
+  `/v1/status`); a DA fetch failure counts only for 180 s unless repeated.
+  The DA bond pool, rollback and prepared-proof alerts never hold readiness.
+- `journal_integrity`, `journal_unavailable`, `journal_busy`,
+  `journal_capacity`, `journal_decision_missing`: the watcher's fault-proof
+  journals refused a record, could not be opened, met a lock, reached the
+  objective cap, or name a decision they do not hold. The watcher stays up.
+  Read the journal paragraphs of `demo/midgard-watcher/README.md` (Runtime
+  and commands) before moving journals aside or restarting.
+- `fault_proof_start_deadline_passed`: an objective's latest safe start passed
+  before it signed any attempt, so it never starts; the detail is
+  `<category>/<headerHash>`. Held, never run again, the process up; clears
+  once its header leaves the finalized queue. Report it.
+- `fault_proof_resubmission_required`: an objective running under
+  reconciliation-only authority (such as one past its latest safe start)
+  reached an action that needs a fresh submission; the detail is
+  `<category>/<headerHash>: <reason>`. It is held by name and runs again on
+  the next observation, which clears or renews the hold. The next action
+  needs manual submission; report it with the detail.
 
 Degradations (`l1Degradations`, status and metrics only):
 `l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed

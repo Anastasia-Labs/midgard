@@ -24,11 +24,13 @@ import { settlementProjection } from "./settlement.final-hook.js";
 export const nodeFollowerProjections = (
   plan: Extract<L1FollowerPlan, { kind: "run" }>,
   run: <A, E>(effect: Effect.Effect<A, E, Database>) => Promise<A>,
+  /** The slot holding a POSIX time, as the landed-block replay maps it. */
+  slotOf: (unixTimeMs: number) => number,
 ) => {
   const activity: { record?: OperatorActivityRecord } = {};
   const projections: FollowerProjection[] = [
     eventProjection(plan.projection),
-    landedStateQueueProjection(plan.stateQueue, run),
+    landedStateQueueProjection(plan.stateQueue, run, slotOf),
     queueTerminalProjection(plan.stateQueue),
     operatorSetProjection(plan.operatorSet, () => activity.record),
     forcedOrderProjection(plan.forcedOrders),

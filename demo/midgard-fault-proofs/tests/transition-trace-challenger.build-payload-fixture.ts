@@ -209,7 +209,6 @@ export const buildPayloadFixture = async ({
       event_to_step: sorted(eventToStep),
       transaction_preimages: sorted(transactionPreimages),
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
-      cek_program_material: [],
       validation_traces: sorted(validationTraces),
       validation_trace_witnesses: [...retainedWitnesses],
       counts,

@@ -28,8 +28,8 @@ if (outcome.kind === "rejected") {
 
 Three stages, in order. `sign.withWallet()` returns a partial-sign builder;
 `.complete()` assembles the submit-capable `CompleteTx`. Only then does `submit()`
-post the canonical proof-submission envelope, containing `transactionCbor` and
-`programMaterial`, with content type `application/vnd.midgard.v1+cbor`.
+post the canonical proof-submission envelope, containing the version and
+`transactionCbor`, with content type `application/vnd.midgard.v1+cbor`.
 
 <Callout type="warn" title="Admission is not acceptance">
   A `202` response means the transaction is **queued**, not accepted. `200`

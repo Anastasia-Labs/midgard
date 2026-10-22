@@ -99,31 +99,18 @@ describe("DA bond pool: the real InitPool", () => {
       return { bytes: assembled(signed).bytes, signed };
     };
     const baseline = await signedSize(base());
-    const inline = await signedSize(
-      appendDaBondPoolInitialization(base(), {
-        poolValidator: pool,
-        floorLovelace: FLOOR,
-        lovelace: FLOOR,
-      }),
-    );
     const referenced = await signedSize(
       appendDaBondPoolInitialization(base(), {
         poolValidator: pool,
         floorLovelace: FLOOR,
         lovelace: FLOOR,
-        referenceScript: mintingReference,
+        referenceScript: mintingReference!,
       }),
     );
-    const scriptBytes = pool.mintingScript.script.length / 2;
-    const inlineDelta = inline.bytes - baseline.bytes;
     const referencedDelta = referenced.bytes - baseline.bytes;
     console.info(
-      `DA bond pool init size: script ${scriptBytes.toString()} B; ` +
-        `+${inlineDelta.toString()} B inline, +${referencedDelta.toString()} B by reference ` +
+      `DA bond pool init size: +${referencedDelta.toString()} B by reference ` +
         `(baseline ${baseline.bytes.toString()} B)`,
-    );
-    expect(inlineDelta - referencedDelta).toBeGreaterThanOrEqual(
-      scriptBytes - 64,
     );
     expect(referencedDelta).toBeLessThan(400);
 

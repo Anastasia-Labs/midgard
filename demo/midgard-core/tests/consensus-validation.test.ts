@@ -33,7 +33,7 @@ import {
 import {
   canonical,
   canonicalDataBytes,
-  cekProgramEnvelope,
+  flatProgramBytes,
   nestedNativeScript,
   output,
 } from "./consensus-validation.canonical.js";
@@ -301,7 +301,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     });
   });
 
-  it("rejects malformed inline and reference program envelopes fail closed", () => {
+  it("leaves carried Plutus Flat decoding to Phase A", () => {
     const malformedInline = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       witnessSet: {
@@ -314,10 +314,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusTx(malformedInline, 1)).toMatchObject({
-      code: "E_SCRIPT_PROGRAM_ENCODING",
-      featureId: "script_witnesses",
-    });
+    expect(validateMidgardConsensusTx(malformedInline, 1)).toBeNull();
 
     const malformedReference = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
@@ -335,10 +332,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusTx(malformedReference, 1)).toMatchObject({
-      code: "E_SCRIPT_PROGRAM_ENCODING",
-      featureId: "reference_scripts",
-    });
+    expect(validateMidgardConsensusTx(malformedReference, 1)).toBeNull();
   });
 
   it("uses the sum of bounded fields as the effective transaction cap", () => {
@@ -374,7 +368,7 @@ describe("canonical V1 consensus transaction bounds", () => {
             index === 0
               ? {
                   language: "MidgardV1",
-                  scriptBytes: cekProgramEnvelope(),
+                  scriptBytes: flatProgramBytes(),
                 }
               : undefined,
         }),
@@ -445,10 +439,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     const aboveOldLimit = encodeMidgardVersionedScriptListPreimage([
       ...Array.from({ length: 220 }, () => ({
         language: "PlutusV3" as const,
-        scriptBytes: cekProgramEnvelope(
-          BigInt(MIDGARD_CONSENSUS_LIMITS.maxCekProgramNodeCount),
-          BigInt(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes),
-        ),
+        scriptBytes: Buffer.alloc(48, 0x01),
       })),
     ]);
     const malformed = Buffer.alloc(40_000, 0x80);

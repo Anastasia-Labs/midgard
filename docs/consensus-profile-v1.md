@@ -450,13 +450,10 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `271f645320284a52f09fd1a879453c09d0a738be1a042720d045c8faf9f5ccdb`
+Profile digest: `4409dbb1701791e29d7edc239c3d22a73d3cfd906d334700e52b34c2de29ba08`
 
 ```json
 {
-  "cekProgramEnvelopeVersion": 1,
-  "cekProgramMaterialSidecarVersion": 1,
-  "cekProgramMaterialVersion": 1,
   "cekValueSchemaVersion": 1,
   "daEnvelopeVersion": 1,
   "daPayloadVersion": 1,
@@ -472,7 +469,6 @@ Profile digest: `271f645320284a52f09fd1a879453c09d0a738be1a042720d045c8faf9f5ccd
     "script_witnesses",
     "redeemers",
     "reference_scripts",
-    "l1_program_material_publication",
     "script_payment_credentials",
     "protected_outputs",
     "required_observers",
@@ -493,9 +489,6 @@ Profile digest: `271f645320284a52f09fd1a879453c09d0a738be1a042720d045c8faf9f5ccd
     "maxCekBuiltinTag": 100,
     "maxCekDirectBlsExpressionDepth": 10,
     "maxCekDirectBlsMillerLoopLeaves": 10,
-    "maxCekProgramEnvelopeBytes": 50,
-    "maxCekProgramMaterialBytes": 67108417,
-    "maxCekProgramNodeCount": 1597819,
     "maxDaPayloadBytes": 67108864,
     "maxDepositCount": 10000,
     "maxDistinctAssetCount": 16384,

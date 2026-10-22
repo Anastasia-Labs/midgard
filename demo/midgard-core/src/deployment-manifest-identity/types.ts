@@ -12,6 +12,7 @@ import {
   type DeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
 } from ".././deployment-profile.js";
+import type { L1Origin } from ".././l1-origin.js";
 import type { L1SlotConfig } from ".././l1-slot-config.js";
 import { type DeploymentManifestFraudProofCatalogueIdentity } from "./catalogue-roles.js";
 import {
@@ -255,6 +256,13 @@ export type DeploymentManifest = {
    * Shelley genesis start.
    */
   readonly l1SlotConfig: L1SlotConfig;
+  /**
+   * The local node's tip the deployer read before it first signed the
+   * hub-oracle nonce, settled under `l1Finality.confirmationDepth` blocks: a
+   * point at or before the deployment's L1 origin. Optional, so a manifest
+   * written without it keeps its manifestId.
+   */
+  readonly l1Origin?: L1Origin;
 };
 
 export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
@@ -282,6 +290,14 @@ export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "deploymentProfileDigest",
   "availabilityChallenge",
   "l1SlotConfig",
+] as const);
+
+/**
+ * Root keys a manifest may omit. An absent key is not hashed, so a manifest
+ * without it has the manifestId it had before the key existed.
+ */
+export const DEPLOYMENT_MANIFEST_OPTIONAL_ROOT_KEYS = Object.freeze([
+  "l1Origin",
 ] as const);
 
 export type DeploymentManifestJsonValue =

@@ -42,6 +42,10 @@ import { selectFeeInput } from "../step-support.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
 import {
   structuredDataPublicationPlan,
@@ -88,6 +92,7 @@ export const submitMintAuthorizationStep02 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintAuthorizationContracts;
@@ -121,6 +126,8 @@ export const submitMintAuthorizationStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitMintAuthorizationStep02Result> => {
   const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
     lucid,
@@ -266,6 +273,7 @@ export const submitMintAuthorizationStep02 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -291,12 +299,6 @@ export const submitMintAuthorizationStep02 = async ({
     ...carriageUtxos,
     ...stepCarriage.referenceInputs,
   ];
-  const mintOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} mint`,
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = referenceInputs.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
@@ -324,6 +326,12 @@ export const submitMintAuthorizationStep02 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const mintOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} mint`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),
@@ -453,6 +461,7 @@ export const submitMintAuthorizationStep02 = async ({
 
   if (!complete)
     return submitMintAuthorizationStep02({
+      ownOutputs,
       lucid,
       contracts,
       categoryId,

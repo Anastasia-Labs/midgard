@@ -71,6 +71,16 @@ export const createPermissionlessSlashSqlitePort = async ({
     readPendingHandoff: () => readStore().readPendingHandoff(plan),
     readCompletionHandoff: () => readStore().readCompletionHandoff(plan),
     readAbandonmentHandoff: () => readStore().readAbandonmentHandoff(plan),
+    readLandedSupersededAttempt: (candidate) =>
+      readStore().readLandedSupersededAttempt({
+        ...candidate,
+        reservationId: plan.reservationId,
+      }),
+    readRecordedSignedTransaction: ({ transactionHash }) =>
+      readStore().readRecordedSignedTransaction({
+        reservationId: plan.reservationId,
+        transactionHash,
+      }),
     resolveInputs: async (outRefs) => {
       resolveCalls += 1;
       return callerLucid.utxosByOutRef(

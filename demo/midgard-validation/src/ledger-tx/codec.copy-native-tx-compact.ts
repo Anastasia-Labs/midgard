@@ -305,8 +305,14 @@ const toCodecOutput = (output: MidgardLedgerOutput): MidgardTxOutput => ({
   ...(output.scriptRef === undefined ? {} : { script_ref: output.scriptRef }),
 });
 
+/**
+ * The field-2 outputs, or the first `outputCount` of them: a forced
+ * transaction's outputs from its first non-canonical one on are read only
+ * where the machine reads them.
+ */
 export const decodeOutputs = (
   preimageCbor: Uint8Array,
+  outputCount?: number,
 ): MidgardLedgerOutput[] => {
   let items: readonly Uint8Array[];
   try {
@@ -314,7 +320,7 @@ export const decodeOutputs = (
   } catch (e) {
     throw new MidgardLedgerOutputDecodeError(e);
   }
-  return items.map((outputBytes, index) => {
+  return items.slice(0, outputCount).map((outputBytes, index) => {
     try {
       return toLedgerOutput(decodeMidgardTxOutput(outputBytes));
     } catch (e) {

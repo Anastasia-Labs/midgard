@@ -335,10 +335,15 @@ fn result_is_constant_v1(
   expected_payload: Data,
 ) -> Bool {
   when result is {
-    ConstantValue(witness) -> and {
-        cek_constant_v1.constant_type_v1(witness) == expected_type,
-        cek_constant_v1.constant_payload_v1(witness) == expected_payload,
+    ConstantValue(witness) -> {
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
+      and {
+        constant_type == expected_type,
+        payload == expected_payload,
       }
+    }
     SemanticConstantValue { type_cbor, payload, memory } -> {
       let expected_summary = cek_data_v1.semantic_data_summary_v1(
         expected_payload,
@@ -357,11 +362,17 @@ fn result_is_constant_v1(
   }
 }
 
+/// A result presented as the selected witness itself has the selected root;
+/// any other presentation is compared by root. The selected value is an
+/// argument, whose root the caller has already derived.
 fn result_is_selected_v1(
   result: ValueWitnessV1,
   selected: ValueWitnessV1,
 ) -> Bool {
-  value_root_v1(result) == value_root_v1(selected)
+  or {
+    result == selected,
+    value_root_v1(result) == value_root_v1(selected),
+  }
 }
 
 type SemanticConstantPartsV1 {
@@ -373,11 +384,13 @@ type SemanticConstantPartsV1 {
 fn semantic_constant_parts_v1(value: ValueWitnessV1) -> SemanticConstantPartsV1 {
   when value is {
     ConstantValue(witness) -> {
-      let payload = cek_constant_v1.constant_payload_v1(witness)
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
       SemanticConstantPartsV1 {
-        constant_type: cek_constant_v1.constant_type_v1(witness),
+        constant_type,
         payload: cek_data_v1.semantic_data_summary_v1(payload),
-        memory: cek_constant_v1.constant_memory_size_v1(witness),
+        memory: cek_constant_v1.semantic_memory_size_v1(constant_type, payload),
       }
     }
     SemanticConstantValue { type_cbor, payload, memory } -> {
@@ -1678,15 +1691,24 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.DataConstant -> cek_data_v1.data_node_memory_v1(node)
     cek_constant_v1.ListConstant { element } -> {
       expect cek_data_v1.ListData { items_count, memory, .. } = node
+      // An integer, bytestring or data-pair item costs its data node less
+      // the node's four words; a unit or boolean item costs one word.
       if element == cek_constant_v1.DataConstant {
         memory - 4
-      } else if element == cek_constant_v1.IntegerConstant {
-        memory - 4 - items_count * 4
-      } else if element == cek_constant_v1.PairConstant {
-        first: cek_constant_v1.DataConstant,
-        second: cek_constant_v1.DataConstant,
+      } else if or {
+        element == cek_constant_v1.IntegerConstant,
+        element == cek_constant_v1.ByteStringConstant,
+        element == cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
       } {
         memory - 4 - items_count * 4
+      } else if or {
+        element == cek_constant_v1.UnitConstant,
+        element == cek_constant_v1.BooleanConstant,
+      } {
+        items_count
       } else {
         fail @"semantic list element memory requires a recursive proof"
       }
@@ -1809,6 +1831,404 @@ fn semantic_pair_components_v1(
     Pair(first, second),
     Pair(Pair(first_summary, first_memory), Pair(second_summary, second_memory)),
   )
+}
+
+/// Where `case` sends a constant scrutinee under the protocol version 11
+/// rules: a branch and the values it is applied to, a missing branch, or a
+/// type that `case` does not accept.
+pub type CaseConstantSelectionV1 {
+  CaseConstantBranch { tag: Int, values_count: Int, values_root: ByteArray }
+  CaseConstantMissing
+  CaseConstantUnsupported
+}
+
+fn case_constant_root_v1(
+  type_cbor: ByteArray,
+  summary: cek_data_v1.DataSummaryV1,
+  memory: Int,
+) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    summary.root,
+    summary.cbor_length,
+    summary.root,
+    memory,
+  )
+}
+
+fn case_constant_tag_v1(tag: Int) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag,
+    values_count: 0,
+    values_root: cek_proof_v1.empty_sequence_root_v1,
+  }
+}
+
+// The case-apply step applies the deepest value first, so `first` is pushed
+// below `second`, exactly as a constructor's fields are.
+fn case_constant_values_v1(
+  first: ByteArray,
+  second: ByteArray,
+) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag: 0,
+    values_count: 2,
+    values_root: cek_proof_v1.hash_sequence_node_v1(
+      second,
+      cek_proof_v1.hash_sequence_node_v1(
+        first,
+        cek_proof_v1.empty_sequence_root_v1,
+        1,
+      ),
+      2,
+    ),
+  }
+}
+
+fn direct_case_constant_v1(
+  witness: cek_constant_v1.ConstantWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  let type_cbor = witness.type_cbor
+  let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+    witness,
+  )
+  let memory = cek_constant_v1.semantic_memory_size_v1(constant_type, payload)
+  let root = fn(summary) { case_constant_root_v1(type_cbor, summary, memory) }
+  let whole = fn(selection) {
+    Pair(root(cek_data_v1.semantic_data_summary_v1(payload)), selection)
+  }
+  when constant_type is {
+    cek_constant_v1.UnitConstant ->
+      whole(
+        if branches_count == 1 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.BooleanConstant ->
+      whole(
+        if builtin.un_constr_data(payload).1st == 1 {
+          if branches_count == 2 {
+            case_constant_tag_v1(1)
+          } else {
+            CaseConstantMissing
+          }
+        } else if branches_count == 1 || branches_count == 2 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.IntegerConstant -> {
+      let value = builtin.un_i_data(payload)
+      whole(
+        if value >= 0 && value < branches_count {
+          case_constant_tag_v1(value)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    }
+    cek_constant_v1.ListConstant { element } ->
+      when builtin.un_list_data(payload) is {
+        [] ->
+          whole(
+            if branches_count == 2 {
+              case_constant_tag_v1(1)
+            } else {
+              CaseConstantMissing
+            },
+          )
+        [head, ..tail] ->
+          if branches_count == 1 || branches_count == 2 {
+            // The list is committed from its head and tail, so neither is
+            // walked twice.
+            let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+            let tail_items = cek_data_v1.commit_data_list(tail)
+            let head_memory = cek_constant_v1.semantic_memory_size_v1(
+              element,
+              head,
+            )
+            Pair(
+              root(
+                cek_data_v1.list_data_summary_v1(
+                  cek_data_v1.prepend_data_list_summary_v1(
+                    head_summary,
+                    tail_items,
+                  ),
+                ),
+              ),
+              case_constant_values_v1(
+                case_constant_root_v1(
+                  cek_constant_v1.encode_constant_type_v1(element),
+                  head_summary,
+                  head_memory,
+                ),
+                case_constant_root_v1(
+                  type_cbor,
+                  cek_data_v1.list_data_summary_v1(tail_items),
+                  memory - head_memory,
+                ),
+              ),
+            )
+          } else {
+            whole(CaseConstantMissing)
+          }
+      }
+    cek_constant_v1.PairConstant { first, second } ->
+      if branches_count == 1 {
+        expect [first_payload,
+              second_payload] = builtin.un_constr_data(payload).2nd
+        let first_summary = cek_data_v1.semantic_data_summary_v1(first_payload)
+        let second_summary = cek_data_v1.semantic_data_summary_v1(
+          second_payload,
+        )
+        let first_memory = cek_constant_v1.semantic_memory_size_v1(
+          first,
+          first_payload,
+        )
+        Pair(
+          root(
+            cek_data_v1.small_constr_data_summary_v1(
+              0,
+              cek_data_v1.prepend_data_list_summary_v1(
+                first_summary,
+                cek_data_v1.prepend_data_list_summary_v1(
+                  second_summary,
+                  cek_data_v1.empty_data_list_summary_v1(),
+                ),
+              ),
+            ),
+          ),
+          case_constant_values_v1(
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(first),
+              first_summary,
+              first_memory,
+            ),
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(second),
+              second_summary,
+              memory - first_memory,
+            ),
+          ),
+        )
+      } else {
+        whole(CaseConstantMissing)
+      }
+    _ -> whole(CaseConstantUnsupported)
+  }
+}
+
+// A `case` scrutinee read through material is always a semantic constant, so
+// the two readers below are `semantic_list_head_and_tail_v1` and
+// `semantic_pair_components_v1` without their inline-constant branches. Each
+// source's top node must be the one node kind its reader then matches, so
+// only that kind's `verify_data_node_v1` checks are made.
+fn semantic_case_list_head_and_tail_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  cek_constant_v1.ConstantTypeV1,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSequenceSummaryV1, Int>,
+  >,
+> {
+  expect [source_node, head_node] = witness.data_nodes
+  expect [first_link, ..remaining_links] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let tail_link = if first_link.length == 1 {
+    expect remaining_links == []
+    None
+  } else {
+    expect [link] = remaining_links
+    Some(link)
+  }
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.ListConstant { element } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(source_node)
+  expect cek_data_v1.ListData { items_count, items_root, cbor_length, memory } = source_node
+  expect
+    cek_data_v1.verify_list_data_node_v1(
+      items_count,
+      items_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect
+    parts.memory == constant_memory_from_payload_node_v1(
+      parts.constant_type,
+      source_node,
+    )
+  // The node check has bound `first_link.length` to `items_count`.
+  expect cek_data_v1.verify_data_list_link_v1(first_link, head_node, tail_link)
+  let head_summary = summary_from_node_v1(head_node)
+  let head_memory = constant_memory_from_payload_node_v1(element, head_node)
+  expect parts.memory >= head_memory
+  let tail = cek_data_v1.DataSequenceSummaryV1 {
+    root: first_link.tail,
+    length: first_link.length - 1,
+    payload_cbor_length: first_link.payload_cbor_length - first_link.head_cbor_length,
+    memory: first_link.memory - first_link.head_memory,
+  }
+  Pair(
+    element,
+    Pair(
+      Pair(head_summary, head_memory),
+      Pair(tail, parts.memory - head_memory),
+    ),
+  )
+}
+
+fn semantic_case_pair_components_v1(
+  source: ValueWitnessV1,
+  witness: SemanticBuiltinWitnessV1,
+) -> Pair<
+  Pair<cek_constant_v1.ConstantTypeV1, cek_constant_v1.ConstantTypeV1>,
+  Pair<
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+    Pair<cek_data_v1.DataSummaryV1, Int>,
+  >,
+> {
+  expect [payload_node, first_node, second_node] = witness.data_nodes
+  expect [first_link, second_link] = witness.list_nodes
+  expect witness.pair_nodes == []
+  expect witness.scalar_preimages == []
+  let parts = semantic_constant_parts_v1(source)
+  expect cek_constant_v1.PairConstant { first, second } = parts.constant_type
+  expect parts.payload == summary_from_node_v1(payload_node)
+  expect
+      cek_data_v1.ConstrSmallData {
+        constructor,
+        fields_count,
+        fields_root,
+        cbor_length,
+        memory,
+      }
+    = payload_node
+  expect
+    cek_data_v1.verify_constr_small_data_node_v1(
+      constructor,
+      fields_count,
+      fields_root,
+      cbor_length,
+      memory,
+      Some(first_link),
+      None,
+    )
+  expect constructor == 0
+  // The node check binds `fields_count` to `first_link.length`, and the two
+  // link checks bind that length to 2.
+  expect
+    cek_data_v1.verify_data_list_link_v1(
+      first_link,
+      first_node,
+      Some(second_link),
+    )
+  expect cek_data_v1.verify_data_list_link_v1(second_link, second_node, None)
+  let first_summary = summary_from_node_v1(first_node)
+  let second_summary = summary_from_node_v1(second_node)
+  let first_memory = constant_memory_from_payload_node_v1(first, first_node)
+  let second_memory = constant_memory_from_payload_node_v1(second, second_node)
+  expect parts.memory == first_memory + second_memory
+  Pair(
+    Pair(first, second),
+    Pair(Pair(first_summary, first_memory), Pair(second_summary, second_memory)),
+  )
+}
+
+fn semantic_case_constant_v1(
+  scrutinee: ValueWitnessV1,
+  type_cbor: ByteArray,
+  memory: Int,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> CaseConstantSelectionV1 {
+  when cek_constant_v1.decode_constant_type_v1(type_cbor) is {
+    cek_constant_v1.UnitConstant -> fail @"semantic unit scrutinee"
+    cek_constant_v1.BooleanConstant -> fail @"semantic boolean scrutinee"
+    // A committed integer of two or more words has magnitude at least 2^64,
+    // past every branch index a term can hold.
+    cek_constant_v1.IntegerConstant -> {
+      expect memory >= 2
+      CaseConstantMissing
+    }
+    cek_constant_v1.ListConstant { .. } ->
+      if branches_count == 1 || branches_count == 2 {
+        let Pair(element, Pair(head, tail)) = semantic_case_list_head_and_tail_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(element),
+            head.1st,
+            head.2nd,
+          ),
+          case_constant_root_v1(
+            type_cbor,
+            cek_data_v1.list_data_summary_v1(tail.1st),
+            tail.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    cek_constant_v1.PairConstant { .. } ->
+      if branches_count == 1 {
+        let Pair(types, values) = semantic_case_pair_components_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.1st),
+            values.1st.1st,
+            values.1st.2nd,
+          ),
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.2nd),
+            values.2nd.1st,
+            values.2nd.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    _ -> CaseConstantUnsupported
+  }
+}
+
+/// The committed root of a constant scrutinee and where `case` sends it. An
+/// inline constant is read whole; a semantic one through its list or pair
+/// material.
+pub fn case_constant_selection_v1(
+  scrutinee: ValueWitnessV1,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  when scrutinee is {
+    ConstantValue(witness) -> direct_case_constant_v1(witness, branches_count)
+    SemanticConstantValue { type_cbor, payload, memory } ->
+      Pair(
+        case_constant_root_v1(type_cbor, payload, memory),
+        semantic_case_constant_v1(
+          scrutinee,
+          type_cbor,
+          memory,
+          material,
+          branches_count,
+        ),
+      )
+    OpaqueValue(_) -> fail @"opaque case scrutinee"
+    BlsMillerLoopValue(_) -> fail @"Miller-loop case scrutinee"
+  }
 }
 
 pub fn verify_semantic_pair_v1(
@@ -2572,9 +2992,11 @@ fn revealed_argument_payload_bytes_v1(arguments: List<ValueWitnessV1>) -> Int {
 /// Verifies the semantic result of one successful, direct-payload builtin
 /// execution. Tags requiring partial cryptographic failure proofs, BLS opaque
 /// values, or streaming large-value witnesses remain deliberately closed.
+/// The caller binds `arguments` to the focus value: the machine step derives
+/// the builtin value root from them and checks it against the pre-state focus
+/// (`verify_builtin_direct_step`, cek-machine-v1.ak:1916-1928).
 pub fn verify_direct_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
 ) -> Bool {
@@ -2582,14 +3004,6 @@ pub fn verify_direct_builtin_v1(
     revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
       result,
     ) <= max_direct_builtin_revealed_payload_bytes
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag >= 0 && tag <= 9 {
     verify_integer_binary_v1(tag, arguments, result)
   } else if tag >= 10 && tag <= 20 {
@@ -2622,21 +3036,14 @@ pub fn verify_direct_builtin_v1(
 /// Verifies a successful builtin against content-addressed semantic constant
 /// nodes. Unsupported semantic operations remain closed until they have a
 /// bounded multi-step proof; callers must never fall back to the direct path.
+/// The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_step`, cek-machine-v1.ak:2094-2106).
 pub fn verify_semantic_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag == 29 || tag == 30 {
     verify_semantic_pair_v1(tag, arguments, result, witness)
   } else if tag >= 31 && tag <= 35 {
@@ -2653,21 +3060,13 @@ pub fn verify_semantic_builtin_v1(
 /// Verifies the zero-budget semantic failures whose result is determined by
 /// one authenticated top-level node. The witness must contain exactly the
 /// local topology needed to distinguish the failing variant; no whole Data
-/// value is revealed.
+/// value is revealed. The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_failure_step`, cek-machine-v1.ak:2170-2181).
 pub fn verify_semantic_builtin_failure_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag == 37 {
     constr_data_index_fails_v1(arguments, witness)
   } else {

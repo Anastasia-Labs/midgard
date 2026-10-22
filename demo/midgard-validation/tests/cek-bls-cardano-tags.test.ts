@@ -17,10 +17,8 @@ import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
 } from "../src/cek-executor.js";
-import {
-  buildMidgardCanonicalCekProgram,
-  encodeMidgardCekCardanoFlatProgram,
-} from "../src/cek-program.js";
+import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 // SH-2: scripts name the BLS builtins by Cardano's flat tags (Plutus
 // `Builtins.hs`: 58/65 compress, 59/66 uncompress, 60/67 hashToGroup). The
@@ -66,9 +64,9 @@ const assertEqualBytes = (actual: UPLCTerm, expected: string): Buffer =>
   );
 
 const halts = (flat: Buffer): string => {
-  const program = buildMidgardCanonicalCekProgram(flat);
+  const program = buildCekProgramFromRawFlat(flat);
   const graph = buildMidgardCekExecutionGraph(
-    program.envelope,
+    program.termRoot,
     program.material.values(),
     Buffer.from("d87980", "hex"),
   );

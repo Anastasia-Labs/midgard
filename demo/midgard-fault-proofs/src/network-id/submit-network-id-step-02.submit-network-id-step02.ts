@@ -35,6 +35,10 @@ import {
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
@@ -72,6 +76,7 @@ export const submitNetworkIdStep02 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
   unsafeSkipLocalViolationCheckForTest = false,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NetworkIdContracts;
@@ -90,6 +95,8 @@ export const submitNetworkIdStep02 = async ({
   readonly awaitConfirmation?: boolean;
   /** Test-only: make an honest body-network claim reach the validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitNetworkIdStep02Result> => {
   const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
@@ -202,6 +209,7 @@ export const submitNetworkIdStep02 = async ({
     planned === undefined
       ? []
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -224,8 +232,6 @@ export const submitNetworkIdStep02 = async ({
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  // Every positional opening index is derived only after the transaction's
-  // complete reference-input set has been assembled.
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
@@ -233,15 +239,6 @@ export const submitNetworkIdStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ]);
-  const outputsOpening =
-    planned === undefined
-      ? null
-      : faultProofFieldOpening({
-          planned,
-          referenceInputs,
-          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-          label: `${STEP_LABEL} outputs`,
-        });
 
   const feeInput = selectFeeInput(
     referenceInputs.reduce<readonly UTxO[]>(
@@ -293,7 +290,18 @@ export const submitNetworkIdStep02 = async ({
             output_index: spendLayout.outputIndex,
             fraud_proof_mint_redeemer_index:
               spendLayout.fraudProofMintRedeemerIndex,
-            outputs_opening: outputsOpening,
+            // Opening indices name positions in the builder's final
+            // reference-input order.
+            outputs_opening:
+              planned === undefined
+                ? null
+                : faultProofFieldOpening({
+                    planned,
+                    referenceInputs: ctx.referenceInputs,
+                    certificatePolicyId:
+                      contracts.fieldPreimageCertificatePolicyId,
+                    label: `${STEP_LABEL} outputs`,
+                  }),
           },
         ],
       } as never,

@@ -33,11 +33,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -289,11 +288,6 @@ export const submitStep02 = async ({
     ...stepScriptCarriage.referenceInputs,
     ...inclusionCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: "double-spend step 02",
-  });
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -342,10 +336,9 @@ export const submitStep02 = async ({
     };
     // Same prover-chosen carriage as step-01: the second conflicting
     // transaction's opening is the one that grows with proof depth here.
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: "double-spend step 02",
     });
     const carriage: NativeTxInclusionCarriage = carriedByChunks
@@ -385,12 +378,16 @@ export const submitStep02 = async ({
     .readFrom(referenceInputs);
   const tx = (
     carriedByChunks
-      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+      ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
           chunkedMembershipClaimRedeemer({
             merkleRoot: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
             valueBytes: txInclusion.l2TransactionSourceCbor,
-            orderedChunkReferenceInputIndices: resolvedChunkIndices,
+            orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+              ctx,
+              chunks,
+              label: "double-spend step 02",
+            }),
           })) satisfies BuildTxWithRedeemer)
       : base.withdraw(
           phasRewardAddress,

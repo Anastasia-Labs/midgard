@@ -4,7 +4,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 
 import { Database } from "../services/database.js";
-import { sha256 } from "../sha256.js";
 import {
   admissionBacklogRejectCounter,
   admissionDuplicatePathCounter,
@@ -25,19 +24,16 @@ import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 export const tryInsert = ({
   txId,
   txCanonicalCbor,
-  programMaterialSidecarCbor,
   submitSource,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: SubmitSource;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const txFullHash =
       computeMidgardNativeTxFullHashFromCanonicalCbor(txCanonicalCbor);
-    const materialSidecarSha256 = sha256(programMaterialSidecarCbor);
     const inserted = yield* sql<RawEntry>`WITH inserted_admission AS (
         INSERT INTO ${sql(tableName)} (
           ${sql(Columns.TX_ID)},
@@ -54,25 +50,19 @@ export const tryInsert = ({
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_FULL_HASH_V1)},
-          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+          ${sql(Columns.TX_FULL_HASH_V1)}
         )
         SELECT
           ${sql(Columns.TX_ID)},
           ${txCanonicalCbor},
-          ${txFullHash},
-          ${programMaterialSidecarCbor},
-          ${materialSidecarSha256}
+          ${txFullHash}
         FROM inserted_admission
         RETURNING *
       )
       SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
+        payload.${sql(Columns.TX_FULL_HASH_V1)}
       FROM inserted_admission admission
       INNER JOIN inserted_payload payload
         ON payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}`;
@@ -85,15 +75,11 @@ export const touchDuplicateCount = ({
   txId,
   txFullHashV1: txFullHash,
   txCanonicalCbor,
-  programMaterialSidecarCbor,
-  programMaterialSidecarSha256,
   requestCount,
 }: {
   readonly txId: Buffer;
   readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
-  readonly programMaterialSidecarSha256: Buffer;
   readonly requestCount: number;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -118,19 +104,10 @@ export const touchDuplicateCount = ({
         AND payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
         AND payload.${sql(Columns.TX_FULL_HASH_V1)} = ${txFullHash}
         AND payload.${sql(Columns.TX_CANONICAL_CBOR)} = ${txCanonicalCbor}
-        AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} =
-          ${programMaterialSidecarSha256}
-        AND (
-          payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
-            ${programMaterialSidecarCbor}
-          OR admission.${sql(Columns.STATUS)} IN ('accepted', 'rejected')
-        )
       RETURNING
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_FULL_HASH_V1)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
-        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}`;
+        payload.${sql(Columns.TX_FULL_HASH_V1)}`;
     return updated.length === 0 ? null : normalizeRow(updated[0]!);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to touch duplicate admission"),
@@ -140,33 +117,27 @@ export const touchDuplicate = ({
   txId,
   txFullHashV1: txFullHash,
   txCanonicalCbor,
-  programMaterialSidecarCbor,
 }: {
   readonly txId: Buffer;
   readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   touchDuplicateCount({
     txId,
     txFullHashV1: txFullHash,
     txCanonicalCbor,
-    programMaterialSidecarCbor,
-    programMaterialSidecarSha256: sha256(programMaterialSidecarCbor),
     requestCount: 1,
   });
 
 const admitWithoutByteQuota = ({
   txId,
   txCanonicalCbor,
-  programMaterialSidecarCbor,
   submitSource,
   currentBacklog,
   maxBacklog,
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly currentBacklog: bigint;
   readonly maxBacklog: number;
@@ -184,7 +155,6 @@ const admitWithoutByteQuota = ({
         txId,
         txFullHashV1: txFullHash,
         txCanonicalCbor,
-        programMaterialSidecarCbor,
       });
       if (duplicate !== null) {
         yield* Metric.increment(admissionDuplicatePathCounter);
@@ -203,7 +173,6 @@ const admitWithoutByteQuota = ({
     const inserted = yield* tryInsert({
       txId,
       txCanonicalCbor,
-      programMaterialSidecarCbor,
       submitSource,
     });
     if (inserted !== null) {
@@ -214,7 +183,6 @@ const admitWithoutByteQuota = ({
       txId,
       txFullHashV1: txFullHash,
       txCanonicalCbor,
-      programMaterialSidecarCbor,
     });
     if (duplicate !== null) {
       yield* Metric.increment(admissionDuplicatePathCounter);
@@ -249,9 +217,7 @@ export const currentBacklogPayloadBytes = Effect.gen(function* () {
   const rows = yield* sql<{
     readonly bytes: bigint | number | string;
   }>`SELECT COALESCE(
-      SUM(octet_length(payload.${sql(
-        Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR,
-      )})),
+      SUM(octet_length(payload.${sql(Columns.TX_CANONICAL_CBOR)})),
       0
     )::bigint AS bytes
     FROM ${sql(tableName)} admission
@@ -267,7 +233,6 @@ export const admit = ({
 }: {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly currentBacklog: bigint;
   readonly maxBacklog: number;
@@ -291,9 +256,7 @@ export const admit = ({
         if (existing[0]?.exists !== true) {
           const backlog = yield* currentBacklogPayloadBytes;
           const maxBacklog = normalizedMaxBacklogBytes(maxBacklogBytes);
-          const requestedBytes = BigInt(
-            request.programMaterialSidecarCbor.length,
-          );
+          const requestedBytes = BigInt(request.txCanonicalCbor.length);
           if (backlog + requestedBytes > maxBacklog) {
             return yield* Effect.fail(
               new TxAdmissionBacklogFullError({

@@ -1,15 +1,16 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import { inputExistenceWithPublishedFields } from "../src/input-existence/field-carriage.js";
 import { expect } from "vitest";
+
+import { inputExistenceWithPublishedFields } from "../src/input-existence/field-carriage.js";
+import {
+  inputExistenceExecutionContext,
+  publishInputExistenceSelectionCarriage,
+} from "./support/input-existence-execution-context.js";
 import {
   neSubmitStep01,
   neSubmitStep02,
   submitInit,
 } from "./support/legacy-submit-emulator.js";
-import {
-  inputExistenceExecutionContext,
-  publishInputExistenceSelectionCarriage,
-} from "./support/input-existence-execution-context.js";
 import { buildNonExistentInputFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   captureEmulatorSubmission,

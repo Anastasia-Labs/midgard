@@ -15,6 +15,7 @@ import {
 import {
   type BuildTxWithRedeemer,
   Data,
+  type RedeemerContext,
   type TxOutput,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -175,7 +176,7 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
-  outputsOpening,
+  outputsOpeningFor,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -183,7 +184,8 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly outputsOpening: FieldOpening;
+  /** Resolves the opening's carriage against the built reference inputs. */
+  readonly outputsOpeningFor: (ctx: RedeemerContext) => FieldOpening;
   readonly onLayout: (layout: ReferenceInputNoIdxStep04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -217,7 +219,7 @@ export const makeReferenceInputNoIdxStep04SpendRedeemer = ({
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-            outputs_opening: outputsOpening,
+            outputs_opening: outputsOpeningFor(ctx),
           },
         ],
       },

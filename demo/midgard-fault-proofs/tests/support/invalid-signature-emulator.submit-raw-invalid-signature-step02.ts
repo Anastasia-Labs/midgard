@@ -21,6 +21,7 @@ import {
 } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type InvalidSignatureEmulatorHarness,
   type InvalidSignatureSubject,
@@ -55,6 +56,7 @@ export const submitRawInvalidSignatureStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly badAddrTxWitIndex?: bigint;
 }): Promise<string> => {
+  const ownOutputs = createOwnOutputJournal();
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const { invalidSignatureCategory, contracts } =
@@ -100,6 +102,7 @@ export const submitRawInvalidSignatureStep02 = async ({
   });
   signer.selectWallet(lucid);
   const published = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -112,11 +115,6 @@ export const submitRawInvalidSignatureStep02 = async ({
     label: "raw invalid-signature step 02",
   });
   const referenceInputs = [...published, stepReference];
-  const addrTxWitsOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Raw invalid-signature step 02",
-  });
   const feeInput = selectFeeInput(
     (await lucid.wallet().getUtxos()).filter(
       (utxo) => utxo.datum == null && utxo.datumHash == null,
@@ -155,7 +153,11 @@ export const submitRawInvalidSignatureStep02 = async ({
               contracts.fraudProof.policyId,
               "raw invalid-signature step 02 fraud-proof",
             ),
-            addr_tx_wits_opening: addrTxWitsOpening,
+            addr_tx_wits_opening: faultProofFieldOpening({
+              planned,
+              referenceInputs: ctx.referenceInputs,
+              label: "Raw invalid-signature step 02",
+            }),
             bad_addr_tx_wit_index:
               badAddrTxWitIndex ?? subject.badAddrTxWitIndex,
           },

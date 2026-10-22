@@ -492,13 +492,11 @@ DaPayloadV1 {
   block_body: {
     header_hash,
     header,
-    utxos,
     withdrawals,
     forced_transactions,
     transactions,
     transaction_preimages,
     forced_transaction_preimages,
-    cek_program_material,
     deposits,
     transition_trace,
     event_to_step,
@@ -519,9 +517,12 @@ DaPayloadV1 {
 
 Each member list contains `(key_bytes, value_bytes)` tuples. The committee
 validator requires a byte-for-byte canonical re-encoding, validates the
-embedded header hash and header against L1, recomputes the UTxO, withdrawal,
+embedded header hash and header against L1, recomputes the withdrawal,
 forced-transaction, transaction, deposit, transition-trace, event-to-step, and
-validation-trace roots, and checks all committed counts before signing.
+validation-trace roots, and checks all committed counts before signing. The
+payload carries canonical transaction preimages and their script witnesses.
+The post-state UTxO root is checked by replay against the parent ledger; the
+payload does not contain a separate UTxO set or CEK material section.
 
 Inbound payload submission is admitted through one process-wide FIFO slot
 before any frame read or decompression. One absolute request deadline starts
@@ -639,8 +640,11 @@ waiting:
   deployment, or perform the fresh redeploy the detail names; the next attempt
   then starts.
 - `starting:committee_store_point_before_l1_origin`: a stored record names an
-  L1 point before the configured `L1_ORIGIN`, so the configured origin is
-  wrong. Set `L1_ORIGIN` to the deployment's origin and restart.
+  L1 point before the configured `L1_ORIGIN`, so the override starts too late.
+  When the deployment manifest records `l1Origin`, remove `L1_ORIGIN` (the node
+  then follows from the manifest's origin) or lower it to at or before that
+  origin, and restart. For a manifest without `l1Origin`, set `L1_ORIGIN` to
+  the deployment's origin and restart.
 - `starting:committee_retirement_binding_changed`: the stored retirement floor
   is bound to another member binding than the configured one. Restore the
   configuration the store was adopted under, or start this member on a fresh

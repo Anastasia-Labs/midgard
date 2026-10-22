@@ -12,7 +12,10 @@
 
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
+import {
+  MidgardUplcCapabilityError,
+  type PhaseAValidatedTx,
+} from "@al-ft/midgard-validation";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import * as MempoolDB from "../database/mempool.js";
@@ -100,6 +103,7 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
   if (typeof error !== "object") return false;
   if (
     findLedgerSignatureVerifierUnavailable(error) !== undefined ||
+    error instanceof MidgardUplcCapabilityError ||
     (error instanceof RangeError && !STACK_OVERFLOW.test(error.message)) ||
     (WASM_RUNTIME_ERROR !== undefined && error instanceof WASM_RUNTIME_ERROR)
   )

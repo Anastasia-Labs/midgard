@@ -14,10 +14,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -27,6 +27,10 @@ import {
 import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
@@ -62,6 +66,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   certificatePreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -85,6 +90,8 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -141,6 +148,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
     publishedCarriageUtxos.length > 0
       ? publishedCarriageUtxos
       : await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -148,42 +156,32 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
           label: `${FAMILY} reference bind`,
           preSubmitBoundary: publicationPreSubmitBoundary,
         });
+  // A certificate already on chain (the workflow's certify action ran) is
+  // reused; only an absent one is minted here.
   const resolvedCertificate =
     certificateUtxo ??
     (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  `${FAMILY}: certified opening requires certificate reference`,
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificatePreSubmitBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          network: lucid.config().network!,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript: `${FAMILY}: certified opening requires certificate reference`,
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificatePreSubmitBoundary,
+        })
       : undefined);
   const extraReferenceInputs = [
     ...(resolvedCertificate === undefined ? [] : [resolvedCertificate]),
     ...(scriptDecodeRecordUtxo === undefined ? [] : [scriptDecodeRecordUtxo]),
   ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [...carriageUtxos, stepReference, ...extraReferenceInputs],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${FAMILY} reference bind`,
-  });
   const initialResult =
     evidence.initialControlCbor.length > 0
       ? OutputReferenceScriptResultClasses.Pending
@@ -215,6 +213,12 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${FAMILY} reference bind`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, `${FAMILY} step04`);
     const inputIndex = requireInputIndex(ctx, threadUtxo, `${FAMILY} step04`);
     outputIndex = requireUniqueOutputIndex(

@@ -58,6 +58,7 @@ export const loadCommitteeConfig = async (
     finalityDepth: manifestFinalityDepth,
     automaticRecoveryMaxDepth,
     availabilityChallenge: manifestAvailabilityChallenge,
+    l1Origin: recordedL1Origin,
   } = contractDeploymentManifestConfig(contractDeploymentInfo);
   const network = runtimeManifest.network;
   if (network !== contractDeploymentNetwork) {
@@ -132,6 +133,7 @@ export const loadCommitteeConfig = async (
     deploymentManifest,
     contractDeploymentInfo,
     availabilityChallenge: manifestAvailabilityChallenge,
+    ...(recordedL1Origin === undefined ? {} : { recordedL1Origin }),
     consensusProfile,
     midgardNodeDeployment,
     automaticRecoveryMaxDepth,

@@ -37,6 +37,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
@@ -65,6 +66,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
   ])(
     "proves $count inputs at $index deep=$deep",
     async (scenario) => {
+      const ownOutputs = createOwnOutputJournal();
       const { count, index, deep } = scenario;
       const honest = "honest" in scenario;
       const harness = await makeFaultProofEmulatorHarness({
@@ -369,6 +371,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
           ? []
           : await captures("field-publications", () =>
               publishFaultProofFieldCarriage({
+                ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned: plan,
@@ -385,6 +388,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         });
         const certified = await captures("field-certification", () =>
           certifyFaultProofFieldCarriage({
+            ownOutputs,
             lucid: harness.proverLucid,
             network: "Custom",
             signer: harness.proverSigner,

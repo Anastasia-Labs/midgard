@@ -60,6 +60,10 @@ import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -109,6 +113,8 @@ type Step04Shared = {
   readonly referenceScriptUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 };
 
 const prepareStep04 = async (shared: Step04Shared) => {
@@ -145,6 +151,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
   const carriageUtxos =
     shared.publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs: shared.ownOutputs ?? createOwnOutputJournal(),
       lucid: shared.lucid,
       signer: shared.signer,
       planned,
@@ -225,12 +232,6 @@ const submitPreparedStep04 = async ({
     ...fieldReferenceInputs,
     ...stepCarriage.referenceInputs,
   ];
-  const inputsOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} ${scanLabel}`,
-  });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
@@ -246,6 +247,12 @@ const submitPreparedStep04 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const inputsOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} ${scanLabel}`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

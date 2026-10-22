@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
-  buildChallengerDescriptorV1,
+  buildTraceAtStepCountV1,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   decideValidationChallengeV1,
@@ -84,7 +84,7 @@ const materialisedChallengerStates = (
 
 const verifies = (
   descriptor: MidgardValidationTraceDescriptor,
-  challenger: ReturnType<typeof buildChallengerDescriptorV1>,
+  challenger: ReturnType<typeof buildTraceAtStepCountV1>,
   index: number,
 ): boolean =>
   verifyMidgardValidationTraceProof({
@@ -142,7 +142,7 @@ describe("challenger descriptor", { timeout: 120_000 }, () => {
       honest + 5,
       2 * honest + 3,
     ]) {
-      const challenger = buildChallengerDescriptorV1(leaves, stepCount);
+      const challenger = buildTraceAtStepCountV1(leaves, stepCount);
       const tree = buildMidgardValidationTraceTree(
         materialisedChallengerStates(leaves, stepCount),
         leaves.descriptor.verdict,
@@ -154,14 +154,14 @@ describe("challenger descriptor", { timeout: 120_000 }, () => {
         expect(challenger.proof(index)).toEqual(tree.proofs[index]);
       }
     }
-    expect(buildChallengerDescriptorV1(leaves, honest).descriptor).toEqual(
+    expect(buildTraceAtStepCountV1(leaves, honest).descriptor).toEqual(
       leaves.descriptor,
     );
   });
 
   it("pads lazily to the maximum step count in under a second", () => {
     const started = performance.now();
-    const challenger = buildChallengerDescriptorV1(leaves, MAX_STEP_COUNT);
+    const challenger = buildTraceAtStepCountV1(leaves, MAX_STEP_COUNT);
     const { descriptor } = challenger;
     // Walk two bisection paths to the end, verifying every midpoint.
     for (const goRight of [false, true]) {
@@ -211,11 +211,9 @@ describe("challenger descriptor", { timeout: 120_000 }, () => {
   });
 
   it("refuses step counts and indices outside the descriptor range", () => {
-    expect(() => buildChallengerDescriptorV1(leaves, 0)).toThrow();
-    expect(() =>
-      buildChallengerDescriptorV1(leaves, MAX_STEP_COUNT + 1),
-    ).toThrow();
-    const challenger = buildChallengerDescriptorV1(leaves, 10);
+    expect(() => buildTraceAtStepCountV1(leaves, 0)).toThrow();
+    expect(() => buildTraceAtStepCountV1(leaves, MAX_STEP_COUNT + 1)).toThrow();
+    const challenger = buildTraceAtStepCountV1(leaves, 10);
     expect(() => challenger.proof(11)).toThrow();
     expect(() => challenger.proof(-1)).toThrow();
   });
@@ -284,7 +282,7 @@ describe("challenger descriptor", { timeout: 120_000 }, () => {
         expect(decision.kind).toBe("bisection");
         if (decision.kind !== "bisection") continue;
         expect(decision.challenger.descriptor).toEqual(
-          buildChallengerDescriptorV1(leaves, stepCount).descriptor,
+          buildTraceAtStepCountV1(leaves, stepCount).descriptor,
         );
       }
     });

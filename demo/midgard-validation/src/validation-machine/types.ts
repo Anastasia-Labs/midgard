@@ -24,6 +24,7 @@ import {
 } from "../cek-context.js";
 import { type MidgardCekExecutionStep } from "../cek-executor.js";
 import type { MidgardCekDataSequenceSummary } from "../script-context-proof.js";
+import type { ScriptDecodePhase2Class } from "../script-decode.step-types.js";
 import type { LocalScriptEvaluation, RejectCode } from "../types.js";
 import {
   type ValidationMachineLedgerEntry,
@@ -38,7 +39,6 @@ export type ValidationMachineReplayInput = {
   readonly eventKeyCbor: Buffer;
   readonly transactionId: Buffer;
   readonly canonicalTransactionCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer;
   readonly sourceKind: "normal" | "forced";
   readonly priorUtxosRoot: string;
   readonly postUtxosRoot: string;
@@ -221,6 +221,8 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "nativeExecutionScan";
+        /** Local decode classification; not serialized into the on-chain auxiliary. */
+        readonly phase2Class?: ScriptDecodePhase2Class;
         readonly executionIndex: number;
         readonly languageTag: 0 | 3 | 128;
         readonly purpose: {
@@ -438,8 +440,6 @@ export type ValidationMachineSignerSetProof =
 
 export type DeterministicValidationMachineTrace = {
   readonly validationContextCbor: Buffer;
-  /** Canonical, immutable input material for the CEK selection transition. */
-  readonly programMaterialSidecarCbor: Buffer;
   readonly states: readonly MidgardValidationMachineState[];
   readonly witnesses: readonly ValidationMachineWorkWitness[];
   readonly tree: MidgardValidationTraceTree;

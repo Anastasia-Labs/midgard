@@ -1,17 +1,25 @@
 /**
  * Walk planning over the script-decode step machine port: which frames each
- * Walk reveals, the root below them, and the successor run it writes.
+ * Walk reveals, the root below them, and the successor run it writes; and
+ * how a Walk's ticks split into segments, one per run of a class, each
+ * stepped by that class's staker.
  */
 import {
   initialScriptDecodeRun,
   isScriptDecodeTerminal,
+  scriptDecodeClassStep,
+  scriptDecodeControlClass,
   scriptDecodeEnv,
   scriptDecodeRecordOf,
   scriptDecodeScriptHash,
+  type ScriptDecodeStakerClass,
   scriptDecodeStep,
   scriptDecodeStepWithFrames,
 } from "./script-decode.step.js";
-import { serialiseScriptDecodeData } from "./script-decode.step-data.js";
+import {
+  blake2b256,
+  serialiseScriptDecodeData,
+} from "./script-decode.step-data.js";
 import { machineData } from "./script-decode.step-encode.js";
 import { EMPTY_STACK_ROOT, stackRootOf } from "./script-decode.step-exec.js";
 import type {
@@ -59,6 +67,10 @@ const sameMachine = (left: Machine, right: Machine): boolean =>
   serialiseScriptDecodeData(machineData(left)).equals(
     serialiseScriptDecodeData(machineData(right)),
   );
+
+/** `machine_hash_v1`: the hash a segment's link passes for a machine. */
+export const scriptDecodeMachineHash = (machine: Machine): Buffer =>
+  blake2b256(serialiseScriptDecodeData(machineData(machine)));
 
 /** The cursor at the run a Bind opens for `scriptBytes`. */
 export const startScriptDecodeWalk = (
@@ -176,4 +188,125 @@ export const scriptDecodeRecordOfScript = (
   const record = scriptDecodeRecordOf(done);
   if (record === undefined) throw new Error("script decode: unfinished run");
   return record;
+};
+
+/** One segment of a Walk: `fuel` ticks of one class from `machine`. */
+export type ScriptDecodeWalkSegment = {
+  /** The class whose staker steps the segment. */
+  readonly within: ScriptDecodeStakerClass;
+  readonly fuel: number;
+  /** The machine the segment starts from, carried in full. */
+  readonly machine: Machine;
+  /** The frames the segment reveals, top first. */
+  readonly reveals: readonly Frame[];
+  /** The root of the stack below `reveals`. */
+  readonly base: Buffer;
+  /** The machine the segment reaches. */
+  readonly reached: Machine;
+};
+
+/** A Walk as a chain of segments from `before`'s machine to `after`'s. */
+export type ScriptDecodeChainedWalk = {
+  /** The ticks of all segments. */
+  readonly fuel: number;
+  /** The segments in chain order; position i is `segments[i]`. */
+  readonly segments: readonly ScriptDecodeWalkSegment[];
+  readonly before: ScriptDecodeRun;
+  readonly after: ScriptDecodeRun;
+};
+
+/**
+ * The longest segment of the machine's class from `machine` over `frames`,
+ * up to `fuel` ticks, revealing the fewest top frames that reach it; or
+ * undefined when the machine is terminal or no tick of its class moves it.
+ */
+const nextSegment = (
+  env: DecodeEnv,
+  machine: Machine,
+  frames: readonly Frame[],
+  fuel: number,
+):
+  | {
+      readonly segment: ScriptDecodeWalkSegment;
+      readonly frames: readonly Frame[];
+    }
+  | undefined => {
+  const within = scriptDecodeControlClass(machine.control);
+  if (within === undefined) return undefined;
+  const probe = scriptDecodeStepWithFrames(
+    env,
+    machine,
+    frames,
+    frames.length,
+    fuel,
+    within,
+  );
+  if (probe.ticks === 0) return undefined;
+  const stepWith = (visible: number) => {
+    const reveals = frames.slice(0, visible);
+    const base = stackRootOf(frames.slice(visible), EMPTY_STACK_ROOT);
+    const reached = scriptDecodeClassStep(
+      env,
+      within,
+      machine,
+      reveals,
+      base,
+      probe.ticks,
+    );
+    return { reveals, base, reached };
+  };
+  // As in `nextScriptDecodeWalkStep`: the popped frames may not be enough.
+  let visible = probe.consumed;
+  let { reveals, base, reached } = stepWith(visible);
+  while (!sameMachine(reached, probe.machine) && visible < frames.length) {
+    visible += 1;
+    ({ reveals, base, reached } = stepWith(visible));
+  }
+  if (!sameMachine(reached, probe.machine)) {
+    throw new Error("script decode: minimal reveal changed the segment");
+  }
+  return {
+    segment: { within, fuel: probe.ticks, machine, reveals, base, reached },
+    frames: probe.frames,
+  };
+};
+
+/**
+ * The next Walk from `cursor` as a chain of class segments: up to `fuel`
+ * ticks in all, a new segment at each change of class, and each segment
+ * revealing the fewest top frames that reach the machine a step over the
+ * whole stack reaches.
+ */
+export const nextScriptDecodeChainedWalk = (
+  cursor: ScriptDecodeWalkCursor,
+  fuel: number,
+): {
+  readonly walk: ScriptDecodeChainedWalk;
+  readonly next: ScriptDecodeWalkCursor;
+} => {
+  requireFuel(fuel);
+  const { env, run } = cursor;
+  if (isScriptDecodeTerminal(run.machine.control)) {
+    throw new Error("script decode: the run is finished");
+  }
+  const segments: ScriptDecodeWalkSegment[] = [];
+  let machine = run.machine;
+  let frames = cursor.frames;
+  let left = fuel;
+  while (left > 0) {
+    const found = nextSegment(env, machine, frames, left);
+    if (found === undefined) break;
+    segments.push(found.segment);
+    left -= found.segment.fuel;
+    machine = found.segment.reached;
+    frames = found.frames;
+  }
+  if (segments.length === 0 || sameMachine(machine, run.machine)) {
+    throw new Error("script decode: a step made no progress");
+  }
+  const after = { ...run, machine };
+  return {
+    walk: { fuel: fuel - left, segments, before: run, after },
+    next: { env, run: after, frames },
+  };
 };

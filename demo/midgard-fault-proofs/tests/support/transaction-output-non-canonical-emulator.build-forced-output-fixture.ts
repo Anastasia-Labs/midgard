@@ -212,7 +212,6 @@ export const buildForcedOutputFixture = async ({
             encodeMidgardForcedTxCanonical(nativeTx).toString("hex"),
           ),
         ]),
-        cek_program_material: [],
         validation_traces: sortedDaEntries(validationEntries),
         validation_trace_witnesses: [],
         counts,

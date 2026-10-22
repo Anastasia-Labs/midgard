@@ -24,11 +24,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -195,11 +194,6 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     }),
     ...inclusionCarriage.referenceInputs,
   ];
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: STEP_LABEL,
-  });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: bindState },
     NativeScriptDecodingStep02Datum,
@@ -240,10 +234,9 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
       l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: STEP_LABEL,
     });
     const carriage: NativeTxInclusionCarriage = carriedByChunks
@@ -285,12 +278,16 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs);
   const withCarriage = carriedByChunks
-    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
           valueBytes: txInclusion.l2TransactionSourceCbor,
-          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+            ctx,
+            chunks,
+            label: STEP_LABEL,
+          }),
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
         phasRewardAddress,

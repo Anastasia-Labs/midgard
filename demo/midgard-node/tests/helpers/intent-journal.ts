@@ -92,6 +92,7 @@ export const recordingIntentJournal = () => {
     adopt: () => undefined,
     refresh: () => Effect.void,
     walletView: noFollower.walletView,
+    liveIntents: noFollower.liveIntents,
   });
   return { recorded, layer };
 };

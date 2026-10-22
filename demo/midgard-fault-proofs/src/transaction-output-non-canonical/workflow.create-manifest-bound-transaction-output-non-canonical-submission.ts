@@ -7,6 +7,10 @@ import {
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { createTransactionOutputNonCanonicalCentralJournalAdapter } from "./central-journal.js";
 import { submitTransactionOutputNonCanonicalCancel } from "./submit-cancel.js";
@@ -34,6 +38,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
   centralJournal,
   preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<TransactionOutputStage>;
@@ -43,6 +48,8 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
     typeof createTransactionOutputNonCanonicalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => ({
   observe,
   submit: async (
@@ -176,6 +183,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
       const result = await submitTransactionOutputNonCanonicalStep02({
+        ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,

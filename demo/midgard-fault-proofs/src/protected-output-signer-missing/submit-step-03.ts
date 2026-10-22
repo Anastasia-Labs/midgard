@@ -7,6 +7,10 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import { actuateProtectedOutputSignerFieldOpening } from "./field-opening-actuation.js";
@@ -37,6 +41,7 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
   certificateUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -55,6 +60,8 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
   readonly certificateUtxo?: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const current = await requireLinearFaultThreadUtxo({
     lucid,
@@ -99,6 +106,7 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
     stepIndex: 2,
   });
   const actuated = await actuateProtectedOutputSignerFieldOpening({
+    ownOutputs,
     lucid,
     contracts,
     signer,
@@ -140,7 +148,7 @@ export const submitProtectedOutputSignerMissingStep03 = async ({
     stepIndex: 2,
     nextStepIndex: 3,
     nextDatum,
-    opening: actuated.opening,
+    openingFor: actuated.openingFor,
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,
     redeemerSchema: ProtectedOutputSignerStep03RedeemerSchema as never,

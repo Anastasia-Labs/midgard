@@ -181,7 +181,6 @@ export type WatcherBlockReplayEventAuthorityRecord = Readonly<{
   origin: WatcherBlockReplayEventOriginRecord;
   committedClaim: WatcherCommittedEventClaim;
   canonicalNativeTxCborHex: string | null;
-  programMaterialSidecarCborHex: string | null;
   transitionEffect: WatcherBlockReplayEffectRecord;
 }>;
 
@@ -232,7 +231,6 @@ export type ValidatedEventAuthority = Readonly<{
   eventKeyFingerprint: string;
   effect: CanonicalTransitionEffect | null;
   canonicalNativeTxCbor: Buffer | null;
-  programMaterialSidecarCbor: Buffer | null;
   committedForcedValidity: WatcherForcedOperatorVerdict | null;
   userEvent: WatcherUserEvent;
   authorityManifest: Readonly<Record<string, unknown>>;

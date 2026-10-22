@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { entropyToMnemonic } from "bip39";
+import {
+  createDeploymentRunState,
+  writeDeploymentRunStateAtomic,
+} from "midgard-node/e2e/run-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { committeeEnvironment } from "../src/devnet-stack/da.js";
@@ -68,26 +72,56 @@ const artifacts = {
   transportBinary: "/artifacts/chain-sync",
 };
 const oneShot = { txHash: "AB".repeat(32), outputIndex: 1 };
+/** T: the tip the nonce command recorded in run state before it signed. */
 const origin = { slot: 41, blockHash: "cd".repeat(32) };
-const nonceBlock = { slot: 42, blockHash: "ef".repeat(32) };
+const nonceBlock = { slot: 52, blockHash: "ef".repeat(32) };
+/** The scan from T finds the nonce; the point before its block is later. */
 const found = {
   kind: "found" as const,
-  origin,
+  origin: { slot: 51, blockHash: "12".repeat(32) },
   nonceBlock: { ...nonceBlock, height: 7 },
   txIndex: 0,
   depth: 3,
 };
+/** Writes the run state the nonce command leaves: the nonce and T (null: none). */
+const signNonce = (
+  layout: ReturnType<typeof runLayout>,
+  l1Origin: typeof origin | null = origin,
+) =>
+  writeDeploymentRunStateAtomic(
+    layout.deploymentRunState,
+    createDeploymentRunState({
+      mode: "fresh",
+      identity: {
+        network: "Custom",
+        hubOracleOneShot: {
+          txHash: oneShot.txHash.toLowerCase(),
+          outputIndex: 1,
+        },
+        ...(l1Origin === null ? {} : { l1Origin }),
+      },
+    }),
+  );
 
 describe("the devnet node environment", () => {
-  it("makes the node's L1 follower run from the run's recorded origin", async () => {
+  it("T-a: makes the node's L1 follower run from the origin the run state recorded, proven on the chain", async () => {
     const layout = runLayout();
+    await signNonce(layout);
+    const scans: unknown[] = [];
     const derive = vi.fn((input: Parameters<typeof deriveL1Origin>[0]) =>
-      deriveL1Origin({ ...input, find: () => Promise.resolve(found) }),
+      deriveL1Origin({
+        ...input,
+        find: (options) => {
+          scans.push(options);
+          return Promise.resolve(found);
+        },
+      }),
     );
     const context = { layout, run, artifacts };
     expect(await ensureL1Origin(context, oneShot, derive)).toEqual(origin);
     expect(await ensureL1Origin(context, oneShot, derive)).toEqual(origin);
     expect(derive).toHaveBeenCalledOnce();
+    expect(scans).toEqual([{ txHash: "ab".repeat(32), from: origin }]);
     expect(derive.mock.calls[0]![0].node).toEqual({
       socketPath: layout.cardanoSocket,
       binaryPath: artifacts.transportBinary,
@@ -125,8 +159,9 @@ describe("the devnet node environment", () => {
     );
   });
 
-  it("refuses listen without a recorded origin, and never records a failed derivation", async () => {
+  it("T-b: refuses listen without a recorded origin, and never records an origin the chain does not prove", async () => {
     const layout = runLayout();
+    await signNonce(layout);
     expect(() => recordedL1Origin(layout, oneShot)).toThrow(
       L1OriginUndeterminedError,
     );
@@ -152,8 +187,41 @@ describe("the devnet node environment", () => {
     ).toThrow(L1OriginUndeterminedError);
   });
 
+  it("T-b: refuses, scanning nothing, when the run state records no origin", async () => {
+    const layout = runLayout();
+    await signNonce(layout, null);
+    const find = vi.fn(() => Promise.resolve(found));
+    await expect(
+      ensureL1Origin({ layout, run, artifacts }, oneShot, (input) =>
+        deriveL1Origin({ ...input, find }),
+      ),
+    ).rejects.toThrow(/records no L1 origin/u);
+    expect(find).not.toHaveBeenCalled();
+    expect(new Journal(layout.journal).get("l1Origin")).toBeUndefined();
+  });
+
+  it("T-b: proves the origin again when the record holds another origin for the nonce", async () => {
+    const layout = runLayout();
+    await signNonce(layout);
+    new Journal(layout.journal).set("l1Origin", {
+      origin: found.origin,
+      nonceTxHash: "ab".repeat(32),
+      nonceBlock,
+      recordedAt: "2026-10-18T00:00:00.000Z",
+    });
+    const derive = vi.fn((input: Parameters<typeof deriveL1Origin>[0]) =>
+      deriveL1Origin({ ...input, find: () => Promise.resolve(found) }),
+    );
+    expect(
+      await ensureL1Origin({ layout, run, artifacts }, oneShot, derive),
+    ).toEqual(origin);
+    expect(derive).toHaveBeenCalledOnce();
+    expect(recordedL1Origin(layout, oneShot)).toEqual(origin);
+  });
+
   it("refuses an origin recorded for another nonce", async () => {
     const layout = runLayout();
+    await signNonce(layout);
     await ensureL1Origin({ layout, run, artifacts }, oneShot, () =>
       Promise.resolve({ origin, nonceTxHash: "ab".repeat(32), nonceBlock }),
     );
@@ -180,6 +248,7 @@ describe("the devnet node environment", () => {
 describe("the devnet committee environment", () => {
   it("makes each committee's L1 follower run from the run's recorded origin, with no chain index", async () => {
     const layout = runLayout();
+    await signNonce(layout);
     await ensureL1Origin({ layout, run, artifacts }, oneShot, () =>
       Promise.resolve({ origin, nonceTxHash: "ab".repeat(32), nonceBlock }),
     );

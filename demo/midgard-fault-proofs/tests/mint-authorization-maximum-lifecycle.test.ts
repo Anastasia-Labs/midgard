@@ -31,6 +31,7 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import { submitResolvedInit } from "../src/submit-init.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import {
   addressWitnessItemCbors,
@@ -49,6 +50,7 @@ import {
 it.each(["signers", "native", "cancel"])(
   "measures maximum %s through the real registered native-policy path",
   async (shape) => {
+    const ownOutputs = createOwnOutputJournal();
     try {
       const h = await makeMintAuthorizationEmulatorHarness();
       const nativePayload = Buffer.from(
@@ -126,6 +128,7 @@ it.each(["signers", "native", "cancel"])(
         witnessReferenceScripts: setup.witnessReferenceScripts,
       });
       const two = await submitMintAuthorizationStep02({
+        ownOutputs,
         ...common,
         threadOutRef: one.nextThreadOutRef,
         reconstruction: block.reconstruction,
@@ -152,6 +155,7 @@ it.each(["signers", "native", "cancel"])(
       );
       if (shape === "signers") expect(planned.plan.tier).toBe("Certified");
       const publishedCarriageUtxos = await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
@@ -167,6 +171,7 @@ it.each(["signers", "native", "cancel"])(
         planned.plan.tier !== "Certified"
           ? { certificateUtxo: undefined }
           : await certifyFaultProofFieldCarriage({
+              ownOutputs,
               lucid: h.proverLucid,
               network,
               signer: h.proverSigner,
@@ -182,41 +187,42 @@ it.each(["signers", "native", "cancel"])(
                 subject.nativeTx,
               ).witnessSetCompactCbor.toString("hex"),
             });
+      // Every shape takes the bounded StartUnsatisfied path the installed
+      // workflow takes: the direct EvaluateUnsatisfied arm folds the whole
+      // signer field in one transaction, which 318 signers do not fit.
       const rawPreimageUtxos: UTxO[] = [];
-      if (shape !== "signers") {
-        for (const datum of createRawDatumPreimageRequirement({
-          preimage: mintAuthorizationEvaluationPreimage(
-            Buffer.from(policy.scriptBytesHex, "hex"),
-            encodeMidgardFieldPreimage(
-              witnesses.map((item) => Buffer.from(item, "hex")),
-            ),
+      for (const datum of createRawDatumPreimageRequirement({
+        preimage: mintAuthorizationEvaluationPreimage(
+          Buffer.from(policy.scriptBytesHex, "hex"),
+          encodeMidgardFieldPreimage(
+            witnesses.map((item) => Buffer.from(item, "hex")),
           ),
-        }).publicationDatums) {
-          const unsigned = await h.proverLucid
-            .newTx()
-            .pay.ToAddressWithData(
-              h.proverSigner.address,
-              { kind: "inline", value: datum },
-              { lovelace: 80_000_000n },
-            )
-            .complete();
-          const txHash = await (
-            await unsigned.sign.withWallet().complete()
-          ).submit();
-          await h.proverLucid.awaitTx(txHash);
-          const utxo = (
-            await h.proverLucid.utxosAt(h.proverSigner.address)
-          ).find((item) => item.txHash === txHash && item.datum === datum);
-          if (utxo === undefined)
-            throw new Error("missing published native preimage");
-          rawPreimageUtxos.push(utxo);
-        }
+        ),
+      }).publicationDatums) {
+        const unsigned = await h.proverLucid
+          .newTx()
+          .pay.ToAddressWithData(
+            h.proverSigner.address,
+            { kind: "inline", value: datum },
+            { lovelace: 80_000_000n },
+          )
+          .complete();
+        const txHash = await (
+          await unsigned.sign.withWallet().complete()
+        ).submit();
+        await h.proverLucid.awaitTx(txHash);
+        const utxo = (await h.proverLucid.utxosAt(h.proverSigner.address)).find(
+          (item) => item.txHash === txHash && item.datum === datum,
+        );
+        if (utxo === undefined)
+          throw new Error("missing published native preimage");
+        rawPreimageUtxos.push(utxo);
       }
       const three = await submitMintAuthorizationStep03EvaluateUnsatisfied({
         ...common,
         threadOutRef: two.nextThreadOutRef,
         scriptBytesHex: policy.scriptBytesHex,
-        ...(shape !== "signers" ? { rawPreimageUtxos } : {}),
+        rawPreimageUtxos,
         addrTxWitsItemCbors: witnesses,
         referenceScriptUtxo: refs[2],
         publishedCarriageUtxos,
@@ -310,19 +316,17 @@ it.each(["signers", "native", "cancel"])(
         return;
       }
       let nextThreadOutRef = three.nextThreadOutRef;
-      if (shape !== "signers") {
-        for (let count = 0; count < 3000; count++) {
-          const step = await submitMintAuthorizationEvaluate({
-            ...common,
-            threadOutRef: nextThreadOutRef,
-            scriptBytesHex: policy.scriptBytesHex,
-            addrWitnessItemCbors: witnesses,
-            rawPreimageUtxos,
-            referenceScriptUtxo: refs[5],
-          });
-          nextThreadOutRef = step.nextThreadOutRef;
-          if (step.terminal) break;
-        }
+      for (let count = 0; count < 3000; count++) {
+        const step = await submitMintAuthorizationEvaluate({
+          ...common,
+          threadOutRef: nextThreadOutRef,
+          scriptBytesHex: policy.scriptBytesHex,
+          addrWitnessItemCbors: witnesses,
+          rawPreimageUtxos,
+          referenceScriptUtxo: refs[5],
+        });
+        nextThreadOutRef = step.nextThreadOutRef;
+        if (step.terminal) break;
       }
       const five = await submitMintAuthorizationStep05({
         ...common,

@@ -60,7 +60,11 @@ export const simHeader = (
 const datumOf = (datum: SDK.LinkedListDatum): Buffer =>
   Buffer.from(Data.to(datum, SDK.LinkedListDatum), "hex");
 
-export const rootDatum = (headerHash: string, link: string | null): Buffer =>
+export const rootDatum = (
+  headerHash: string,
+  link: string | null,
+  endTime = 0n,
+): Buffer =>
   datumOf({
     data: {
       Root: {
@@ -70,7 +74,7 @@ export const rootDatum = (headerHash: string, link: string | null): Buffer =>
             prevHeaderHash: GENESIS_HASH,
             utxoRoot: hex32(0),
             startTime: 0n,
-            endTime: 0n,
+            endTime,
             protocolVersion: 1n,
           },
           SDK.ConfirmedState,

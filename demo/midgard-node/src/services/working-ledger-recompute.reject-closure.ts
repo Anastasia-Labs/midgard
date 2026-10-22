@@ -2,7 +2,6 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
-import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import {
   MempoolDB,
   MempoolLedgerDB,
@@ -150,6 +149,5 @@ export const recordRejections = (
     yield* TxAdmissionsDB.markAcceptedRejectedAfterCorrection(rejections);
     yield* sql`DELETE FROM address_history
       WHERE tx_id = ANY(${pg.array(byteaArray(rejectedIds))}::bytea[])`;
-    yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedIds);
     return rejectedIds;
   });

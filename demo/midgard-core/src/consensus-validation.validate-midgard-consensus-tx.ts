@@ -1,4 +1,3 @@
-import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
 import { asArray, decodeSingleCbor } from "./codec/cbor.js";
 import { type MidgardForcedTxFull } from "./codec/forced.js";
 import {
@@ -190,25 +189,11 @@ export const validateMidgardConsensusTx = (
     "redeemers",
   );
   if (bounded !== null) return bounded;
-  const scripts = decodeMidgardVersionedScriptListPreimage(
+  // The ledger decoder bounds native scripts. The pinned UPLC decoder checks
+  // carried Plutus bytes in Phase A, separately from proof-size bounds.
+  decodeMidgardVersionedScriptListPreimage(
     tx.witnessSet.scriptTxWitsPreimageCbor,
   );
-  for (let index = 0; index < scripts.length; index += 1) {
-    const script = scripts[index]!;
-    // Decoding a native script enforces the V1 depth and node-count bounds,
-    // so only program envelopes are checked here.
-    if (script.language !== "NativeCardano") {
-      try {
-        decodeMidgardCekProgramEnvelope(script.scriptBytes);
-      } catch (error) {
-        return violation(
-          "E_SCRIPT_PROGRAM_ENCODING",
-          "script_witnesses",
-          `script[${index.toString()}] is not a canonical bounded V1 program envelope: ${String(error)}`,
-        );
-      }
-    }
-  }
 
   for (let index = 0; index < outputCbors.length; index += 1) {
     if (outputCbors[index]!.length > limits.maxLedgerOutputPreimageBytes) {
@@ -226,21 +211,6 @@ export const validateMidgardConsensusTx = (
         "output_value",
         `output[${index.toString()}] Cardano Value ${cardanoValueBytes.toString()} > ${limits.maxOutputValueCborBytes.toString()}`,
       );
-    }
-    // As for witnesses, decoding the output bounded a native reference script.
-    if (
-      output.script_ref !== undefined &&
-      output.script_ref.language !== "NativeCardano"
-    ) {
-      try {
-        decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
-      } catch (error) {
-        return violation(
-          "E_SCRIPT_PROGRAM_ENCODING",
-          "reference_scripts",
-          `output[${index.toString()}] reference script is not a canonical bounded V1 program envelope: ${String(error)}`,
-        );
-      }
     }
   }
   return null;

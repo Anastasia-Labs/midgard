@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
-import { Effect, TestClock, TestContext } from "effect";
+import { Clock, Effect, TestClock, TestContext } from "effect";
 import { afterEach, beforeEach } from "vitest";
 
 import {
@@ -26,6 +26,7 @@ import {
 } from "../src/import-check/checker.js";
 import {
   type ImportCheckEvaluator,
+  type ImportCheckOutcome,
   poolImportCheckEvaluator,
 } from "../src/import-check/evaluator.js";
 import { makeNegativeCache } from "../src/import-check/negative-cache.js";
@@ -35,6 +36,7 @@ import { Globals } from "../src/services/globals.js";
 import {
   evaluateImportCheckOn,
   FixedValidationWorkerPool,
+  type ImportCheckLane,
 } from "../src/services/validation-pool.js";
 import type { ValidationWorkerInit } from "../src/workers/utils/validation-pool.js";
 import { testWrite } from "./helpers/driver-recompute.js";
@@ -107,6 +109,10 @@ export type InjectedWorker = Readonly<{
   acceptContexts?: readonly Uint8Array[];
   slowContexts?: readonly Uint8Array[];
   slowMs?: number;
+  overBudgetContexts?: readonly Uint8Array[];
+  crashContexts?: readonly Uint8Array[];
+  /** Only this many worker starts succeed; every later one fails. */
+  startsAllowed?: number;
 }>;
 
 /** A pool on the test worker; `jobs()` counts the script jobs decided by
@@ -129,6 +135,9 @@ export const injectedEvaluator = async (
       rejectContexts: hexes(worker.rejectContexts),
       acceptContexts: hexes(worker.acceptContexts),
       slowContexts: hexes(worker.slowContexts),
+      overBudgetContexts: hexes(worker.overBudgetContexts),
+      crashContexts: hexes(worker.crashContexts),
+      starts: new Int32Array(new SharedArrayBuffer(4)),
     } as unknown as ValidationWorkerInit,
     options.backlogShare,
   );
@@ -144,6 +153,71 @@ export const injectedEvaluator = async (
     jobs: () => Atomics.load(log, 0),
     threads: () => [...log.slice(1, Atomics.load(log, 0) + 1)],
   };
+};
+
+/** One run the scripted evaluator was asked for: its context (hex), lane,
+ * whether on a fresh instance, and the (test) clock time. */
+export type ScriptedCall = Readonly<{
+  context: string;
+  lane: ImportCheckLane;
+  fresh: boolean;
+  atMs: number;
+}>;
+
+export const ACCEPTED: ImportCheckOutcome = {
+  kind: "evaluated",
+  result: { kind: "accepted", budget: { cpu: 0n, memory: 0n } },
+};
+export const OVER_BUDGET: ImportCheckOutcome = {
+  kind: "evaluated",
+  result: { kind: "accepted", budget: { cpu: 10n ** 12n, memory: 0n } },
+};
+export const REJECTED: ImportCheckOutcome = {
+  kind: "evaluated",
+  result: { kind: "script_invalid", detail: "scripted rejection" },
+};
+export const KILLED: ImportCheckOutcome = {
+  kind: "timeout",
+  detail: "scripted kill",
+};
+export const FAULT: ImportCheckOutcome = {
+  kind: "fault",
+  detail: "scripted fault",
+};
+export const CANCELLED: ImportCheckOutcome = { kind: "cancelled" };
+
+/** An evaluator with no pool: each run's outcome is `decide(call)`, and
+ * `calls` records every run asked for, so a test controls the outcome and
+ * the clock with no wall-clock wait. A run takes `elapsedMs(call)` of the
+ * test clock (none by default), and `during(call)`, when given, completes
+ * before the run answers. */
+export const scriptedEvaluator = (
+  decide: (call: ScriptedCall) => ImportCheckOutcome,
+  timing: {
+    readonly elapsedMs?: (call: ScriptedCall) => number;
+    readonly during?: (call: ScriptedCall) => Promise<void>;
+  } = {},
+) => {
+  const calls: ScriptedCall[] = [];
+  const evaluator: ImportCheckEvaluator = {
+    backlogShare: 1,
+    evaluate: (run, options) =>
+      Effect.gen(function* () {
+        const call = {
+          context: hex(run.contextCbor),
+          lane: options.lane,
+          fresh: options.fresh,
+          atMs: yield* Clock.currentTimeMillis,
+        };
+        calls.push(call);
+        const during = timing.during;
+        if (during !== undefined) yield* Effect.promise(() => during(call));
+        const elapsedMs = timing.elapsedMs?.(call) ?? 0;
+        if (elapsedMs > 0) yield* TestClock.adjust(elapsedMs);
+        return decide(call);
+      }),
+  };
+  return { evaluator, calls };
 };
 
 export type Block = Awaited<ReturnType<typeof committedBlock>>;
@@ -254,13 +328,18 @@ export const checker = (
     /** Import passes until no block has a pending entry. */
     importPass: (nowMs?: number) =>
       raised(nowMs === undefined ? imports : at(nowMs, imports)),
+    /** One import pass at `nowMs`: whether it found a block. */
+    importStep: async (nowMs: number) => {
+      const worked = await db(at(nowMs, runImportCheckPass(input)));
+      return { worked, alarms: alarms.splice(0) };
+    },
     /** Backlog passes until one reads no entry. */
-    backlog: () =>
-      raised(
-        runBacklogPass(input).pipe(
-          Effect.repeat({ while: (read) => read > 0 }),
-        ),
-      ),
+    backlog: (nowMs?: number) => {
+      const backlog = runBacklogPass(input).pipe(
+        Effect.repeat({ while: (read) => read > 0 }),
+      );
+      return raised(nowMs === undefined ? backlog : at(nowMs, backlog));
+    },
     sweep: (nowMs?: number) =>
       raised(
         nowMs === undefined
@@ -274,6 +353,7 @@ export const ALL_STATES: readonly ImportCheckState[] = [
   "pending",
   "cap_skipped",
   "cache_skipped",
+  "timed_out",
   "faulted",
   "rejected",
 ];

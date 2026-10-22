@@ -1,4 +1,3 @@
-import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
 /**
  * Emulator lifecycles for the three families registered by issue #547:
  * `no-reference-input` (Q18), `reference-input-no-idx` (Q31), and
@@ -24,7 +23,6 @@ import { inputExistenceExecutionContext } from "./support/input-existence-execut
  * every script evaluation and vitest isolates per FILE; that leak is fixed
  * upstream, and the split is kept so each file runs in its own fresh process.
  */
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -44,6 +42,7 @@ import {
 } from "../src/index.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
+import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,

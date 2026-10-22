@@ -41,6 +41,7 @@ import {
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { submitInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { verifiedMaximumForkPrefixes } from "./canonical-decodability-emulator.long-fork-proof.js";
 import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
@@ -336,8 +337,10 @@ export const runPresentMaxJourney = async ({
       : native.body.referenceInputsPreimageCbor
     ).length,
   ).toBe(32763);
+  const ownOutputs = createOwnOutputJournal();
   const chunks = await captures("field-publication", () =>
     publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: plan,
@@ -356,6 +359,7 @@ export const runPresentMaxJourney = async ({
   );
   const certified = await captures("field-certification", () =>
     certifyFaultProofFieldCarriage({
+      ownOutputs,
       lucid: harness.proverLucid,
       network: "Custom",
       signer: harness.proverSigner,

@@ -3,13 +3,19 @@ import { randomUUID } from "node:crypto";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { historyPairPayloads } from "@al-ft/midgard-fault-proofs/test-support/history-pair";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql";
 import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Logger, Option } from "effect";
 import { expect, it } from "vitest";
 
 import * as Journal from "../src/database/eventHistorySubmissions.js";
 import { submitDurableEventHistoryProgram } from "../src/transactions/event-history-submission.js";
+import {
+  gateWalletReads,
+  journal,
+  query,
+  until,
+  waitingOnLock,
+} from "./event-history-submission-concurrency.fixture.js";
 import {
   depositRequest,
   emulatorClock,
@@ -91,59 +97,6 @@ const attemptInputs = (attempt: SDK.EventHistorySubmissionAttempt) => {
     return `${input.transaction_id().to_hex()}#${input.index()}`;
   });
 };
-
-const query = <A extends object>(
-  statement: (sql: SqlClient.SqlClient) => Effect.Effect<readonly A[], unknown>,
-) =>
-  Effect.runPromise(
-    provideDatabaseLayers(Effect.flatMap(SqlClient.SqlClient, statement)),
-  );
-
-const until = async (condition: () => Promise<boolean>, what: string) => {
-  const deadline = Date.now() + 120_000;
-  while (!(await condition())) {
-    if (Date.now() > deadline) throw new Error(`Timed out until ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-};
-
-const journal = async (submissionId: string) =>
-  Effect.runPromise(provideDatabaseLayers(Journal.retrieve(submissionId)));
-
-/** `lucid` whose reads of `wallet` run `before` and `after` around the read,
- * numbered from 1: the first is a fresh submission's nonce choice, each
- * later one a funding. Every read still returns the emulator's view. */
-const gateWalletReads = (
-  lucid: LucidEvolution,
-  wallet: string,
-  gate: {
-    readonly before?: (read: number) => Promise<void>;
-    readonly after?: (read: number, view: readonly UTxO[]) => Promise<void>;
-  },
-): LucidEvolution => {
-  let reads = 0;
-  return {
-    ...lucid,
-    utxosAt: async (address: Parameters<LucidEvolution["utxosAt"]>[0]) => {
-      if (address !== wallet) return lucid.utxosAt(address);
-      const read = ++reads;
-      await gate.before?.(read);
-      const view = await lucid.utxosAt(address);
-      await gate.after?.(read, view);
-      return view;
-    },
-  };
-};
-
-/** Some session of the test database waits on an advisory lock. */
-const waitingOnLock = async () =>
-  (
-    await query<{ waiting: number }>(
-      (sql) => sql`SELECT count(*)::int AS waiting FROM pg_locks
-        WHERE locktype = 'advisory' AND NOT granted AND database =
-          (SELECT oid FROM pg_database WHERE datname = current_database())`,
-    )
-  )[0]!.waiting > 0;
 
 it("keeps a nonce another submission has chosen out of its funding until the chooser reserves it", async () => {
   const { h, contracts } = await setupHistoryContracts();
@@ -397,61 +350,4 @@ it("rebuilds an attempt funded from a wallet view that predates its holder's set
       result.admission.txHash,
     );
   }
-}, 300_000);
-
-it("continues a concurrent run of the same submission ID with the nonce that run reserved", async () => {
-  const { h, contracts } = await setupHistoryContracts();
-  const [nonce] = await sharedPredecessorNonces(h);
-  const submissionId = `same-id-${randomUUID()}`;
-  const run = (
-    prepare: () => Effect.Effect<{
-      request: SDK.EventHistorySubmissionRequest;
-    }>,
-  ) =>
-    Effect.runPromise(
-      provideDatabaseLayers(
-        submitDurableEventHistoryProgram({
-          lucid: h.lucid,
-          contracts,
-          kind: "Deposit",
-          submissionId,
-          intentHash: "ef".repeat(32),
-          nonceInput: nonce,
-          scriptReference: h.scripts[0]!,
-          prepare,
-        }).pipe(Effect.withClock(emulatorClock(h))),
-      ),
-    );
-  // The first run reserves its pinned nonce only once the second, which
-  // found no journal for the ID, waits for the wallet lock.
-  let picked = false;
-  const first = run(() =>
-    Effect.promise(async () => {
-      picked = true;
-      await until(waitingOnLock, "the second run waited on the wallet lock");
-      return { request: depositRequest(h, nonce!) };
-    }),
-  );
-  await until(async () => picked, "the first run picked its nonce");
-  const second = run(() =>
-    Effect.die(new Error("A second run of one submission ID chose a nonce")),
-  );
-  const outcomes = await Promise.allSettled([first, second]);
-  // The second run took the first's reservation instead of choosing again.
-  // Both then build on one journal row, so whichever saves first lands; the
-  // other lands the same admission or stops on the winner's progress.
-  const landed = outcomes.flatMap((outcome) =>
-    outcome.status === "fulfilled" ? [outcome.value.admission.txHash] : [],
-  );
-  if (landed.length === 0) throw (outcomes[0] as PromiseRejectedResult).reason;
-  expect(new Set(landed).size).toBe(1);
-  for (const outcome of outcomes)
-    if (outcome.status === "rejected")
-      expect(String(outcome.reason)).toMatch(
-        /Concurrent history submission changed; reload and reconcile/u,
-      );
-  const saved = await journal(submissionId);
-  if (Option.isNone(saved)) throw new Error("Missing submission journal");
-  expect(saved.value.nonce_out_ref).toBe(outRefLabel(nonce!));
-  expect(saved.value.checkpoint.admission?.txHash).toBe(landed[0]);
 }, 300_000);

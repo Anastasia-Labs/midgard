@@ -2,37 +2,32 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import {
-  collectMidgardAttachedProgramEnvelopes,
-  decodeMidgardCekProgramMaterialDaEntry,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
-  verifyMidgardCekProgramMaterialBundle,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
+import { RejectCodes, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { buildStrictRetainedDaPairFixture } from "../../midgard-fault-proofs/tests/helpers/cardano-capability-retained-da.js";
-import {
-  DaPayloadValidationError,
-  decodeDaPayloadStrict,
-  verifyDaPayloadAgainstHeader,
-} from "../src/da/payload.js";
+import { verifyDaPayloadAgainstHeader } from "../src/da/payload.js";
 
 type CapabilityCorpusEntry = {
   readonly label: string;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
   readonly canonicalCborHex: string;
-  readonly canonicalMaterialSidecarCborHex?: string;
-  readonly sourceRawScriptAuditHash?: string;
+  readonly sourceScriptHash?: string;
   readonly productionAdmission:
     | "required"
     | "diagnostic-synthetic-script-witnesses";
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
 };
 
-const scriptMaterialLabels = new Set([
+const plutusScriptLabels = new Set([
   "balanced-nested-redeemer",
   "maximum-constructor-redeemer-breadth",
   "maximum-list-redeemer-breadth",
@@ -58,26 +53,13 @@ const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
   readonly entries: readonly CapabilityCorpusEntry[];
 };
 
-const materialFor = (payload: SDK.DaPayload) =>
-  payload.block_body.cek_program_material.map(([rootHex, valueHex]) =>
-    decodeMidgardCekProgramMaterialDaEntry(
-      Buffer.from(rootHex, "hex"),
-      Buffer.from(valueHex, "hex"),
-    ),
-  );
-
 describe("Cardano capability corpus production DA admission", () => {
   describe.each(corpus.entries)("$label", (boundary) => {
     it("enforces the exact generated row classification", async () => {
       const label = boundary.label;
       const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-      const materialSidecar =
-        boundary.canonicalMaterialSidecarCborHex === undefined
-          ? undefined
-          : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex");
       const fixture = await buildStrictRetainedDaPairFixture({
         canonicalTransactionCbor: canonicalCbor,
-        canonicalMaterialSidecarCbor: materialSidecar,
         resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
         withForcedTwin: false,
       });
@@ -86,17 +68,38 @@ describe("Cardano capability corpus production DA admission", () => {
         boundary.productionAdmission === "diagnostic-synthetic-script-witnesses"
       ) {
         expect(label).toBe("mixed-size-balanced");
-        let rejection: unknown;
-        try {
-          decodeDaPayloadStrict(SDK.encodeDaPayload(fixture.payload));
-        } catch (cause) {
-          rejection = cause;
-        }
-        expect(rejection).toBeInstanceOf(DaPayloadValidationError);
-        expect(rejection).toMatchObject({ code: "unsupported_feature" });
-        expect((rejection as Error).message).toMatch(
-          /E_SCRIPT_PROGRAM_ENCODING/u,
+        // DA framing is independent of script validity, so this diagnostic
+        // row is refused by admission, at its first fault in machine phase
+        // order: its spend and reference inputs share an outref, and the
+        // input-set phase runs before the carried-script decoding phases.
+        const phaseA = await Effect.runPromise(
+          runPhaseAValidation(
+            [
+              {
+                txId: Buffer.from(boundary.transactionIdHex, "hex"),
+                txCbor: canonicalCbor,
+                arrivalSeq: 0n,
+                createdAt: new Date(0),
+              },
+            ],
+            {
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              expectedNetworkId: 0n,
+              minFeeA: 0n,
+              minFeeB: 0n,
+              concurrency: 1,
+              strictnessProfile: "phase1_midgard",
+            },
+          ),
         );
+        expect(phaseA.accepted).toEqual([]);
+        expect(phaseA.rejected).toEqual([
+          expect.objectContaining({
+            code: RejectCodes.DuplicateInputInTx,
+            consensusPhase: "inputSets",
+            subject: expect.objectContaining({ arm: "DuplicateInput" }),
+          }),
+        ]);
         return;
       }
 
@@ -121,30 +124,19 @@ describe("Cardano capability corpus production DA admission", () => {
 
       const transaction =
         decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
-      const envelopes = collectMidgardAttachedProgramEnvelopes(transaction);
-      const verification = verifyMidgardCekProgramMaterialBundle(
-        envelopes,
-        materialFor(admitted.payload),
+      const scripts = decodeMidgardVersionedScriptListPreimage(
+        transaction.witnessSet.scriptTxWitsPreimageCbor,
       );
-      if (materialSidecar === undefined) {
-        expect(envelopes).toHaveLength(0);
-        expect(admitted.payload.block_body.cek_program_material).toEqual([]);
-        expect(verification).toEqual([]);
+      if (boundary.sourceScriptHash === undefined) {
+        expect(
+          scripts.filter(({ language }) => language !== "NativeCardano"),
+        ).toEqual([]);
       } else {
-        expect(scriptMaterialLabels.has(label)).toBe(true);
-        expect(boundary.sourceRawScriptAuditHash).toMatch(/^[0-9a-f]{56}$/u);
-        const scripts = decodeMidgardVersionedScriptListPreimage(
-          transaction.witnessSet.scriptTxWitsPreimageCbor,
-        );
+        expect(plutusScriptLabels.has(label)).toBe(true);
+        expect(boundary.sourceScriptHash).toMatch(/^[0-9a-f]{56}$/u);
         expect(scripts).toHaveLength(1);
-        expect(hashMidgardVersionedScript(scripts[0]!)).not.toBe(
-          boundary.sourceRawScriptAuditHash,
-        );
-        expect(envelopes).toHaveLength(1);
-        expect(verification).toHaveLength(1);
-        expect(verification[0]!.nodeCount).toBe(envelopes[0]!.nodeCount);
-        expect(verification[0]!.materialByteLength).toBe(
-          envelopes[0]!.materialByteLength,
+        expect(hashMidgardVersionedScript(scripts[0]!)).toBe(
+          boundary.sourceScriptHash,
         );
       }
     }, 120_000);

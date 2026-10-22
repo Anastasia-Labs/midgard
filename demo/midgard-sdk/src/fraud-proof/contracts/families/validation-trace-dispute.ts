@@ -29,4 +29,7 @@ export {
   type ValidationTraceDisputeFaultProofContracts,
 } from "./validation-trace-dispute.types.js";
 export { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
-export { VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES } from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
+export {
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
+  VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUPS,
+} from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";

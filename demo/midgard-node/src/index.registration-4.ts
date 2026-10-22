@@ -126,8 +126,12 @@ program
     "--contract-deployment-info-output <path>",
     "Optional override path for the contract deployment info JSON written after initialization completes",
   )
+  .option(
+    "--run-state <path>",
+    "Deployment run-state path the deployment's prepare-hub-oracle-one-shot-nonce wrote (default: MIDGARD_RUN_STATE_PATH or deploymentInfo/midgard-run-state.json)",
+  )
   .action(async (_args, options) => {
-    const { contractDeploymentInfoOutput } = options.opts();
+    const { contractDeploymentInfoOutput, runState } = options.opts();
     const mainEffect = provideTxServices(
       Effect.gen(function* () {
         const txHash = yield* Initialization.program;
@@ -139,6 +143,9 @@ program
           yield* ContractDeploymentInfo.writeLiveContractDeploymentInfoProgram(
             manifestOutputPath,
             {
+              ...(typeof runState === "string"
+                ? { runStatePath: runState }
+                : {}),
               hubOracleOneShotStatus: "consumed_by_init",
               steps: {
                 initProtocol: {

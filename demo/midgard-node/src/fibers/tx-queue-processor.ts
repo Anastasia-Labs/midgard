@@ -23,7 +23,6 @@ export {
   validationPhaseBDurationTimer,
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 export {
-  collectAcceptedProgramEnvelopes,
   isFollowerWriteHeldCause,
   repeatScheduledWithCauseLogging,
   sampleValidationQueueWaits,

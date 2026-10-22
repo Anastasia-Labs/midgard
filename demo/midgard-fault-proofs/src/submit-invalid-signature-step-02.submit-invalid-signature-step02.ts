@@ -1,6 +1,5 @@
 import {
   encodeMidgardAddressWitnessCanonical,
-  type FieldOpening,
   FraudProofTokenDatum,
   invalidSignatureTerminalContradiction,
   MIDGARD_FIELD_INDEX,
@@ -47,6 +46,10 @@ import {
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -71,6 +74,7 @@ export const submitInvalidSignatureStep02 = async ({
   publishMissingCarriage = true,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -102,6 +106,8 @@ export const submitInvalidSignatureStep02 = async ({
   readonly publishMissingCarriage?: boolean;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
   const { invalidSignatureCategory, contracts } =
     await resolveInvalidSignatureDeploymentContracts({
@@ -159,6 +165,7 @@ export const submitInvalidSignatureStep02 = async ({
     ...existingPublicationUtxos,
     ...(publishMissingCarriage
       ? await publishFaultProofFieldCarriage({
+          ownOutputs,
           lucid,
           signer,
           planned,
@@ -182,8 +189,8 @@ export const submitInvalidSignatureStep02 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "invalid-signature step 02 fraud-proof mint",
   });
-  // The complete reference-input set, built before the field opening derives
-  // any carriage indices from it.
+  // The reference inputs the transaction reads. Opening indices resolve
+  // against the builder's final order inside the redeemer callback.
   const referenceInputs = [
     ...published,
     ...certificateUtxos,
@@ -191,12 +198,6 @@ export const submitInvalidSignatureStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const addrTxWitsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
-    label: "Invalid-signature step 02 address-witnesses",
-  });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
   if (inputDatum.data.subject.direction === 0n && badAddrTxWit === undefined) {
     throw new Error(
@@ -251,7 +252,15 @@ export const submitInvalidSignatureStep02 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        addrTxWitsOpening,
+        addrTxWitsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            ...(certificatePolicyId === undefined
+              ? {}
+              : { certificatePolicyId }),
+            label: "Invalid-signature step 02 address-witnesses",
+          }),
         badAddrTxWitIndex,
         onLayout: (layout) => {
           spendLayout = layout;

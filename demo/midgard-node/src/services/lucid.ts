@@ -204,7 +204,9 @@ const makeLucid: Effect.Effect<
     l1Endpoint: access.endpoint,
     l1ProtocolParametersCbor: access.protocolParametersCbor,
     switchToOperatorsMainWallet: Effect.sync(() =>
-      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE),
+      selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE, {
+        defensePocket: true,
+      }),
     ),
     switchToOperatorsMergingWallet: Effect.sync(() =>
       selectNodeWallet(lucid, nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX),

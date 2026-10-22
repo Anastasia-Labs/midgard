@@ -151,11 +151,6 @@ export const submitZeroInputStep02V1 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const spendInputsOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    label: "Zero-input step 02 spend-inputs",
-  });
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -185,7 +180,12 @@ export const submitZeroInputStep02V1 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        spendInputsOpening,
+        spendInputsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            label: "Zero-input step 02 spend-inputs",
+          }),
         onLayout: (layout) => {
           spendLayout = layout;
         },

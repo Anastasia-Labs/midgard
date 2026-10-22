@@ -19,7 +19,7 @@ import "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corre
 import "../src/workers/utils/commit-submission.finalize-committed-block-locally.js";
 import "../src/workers/utils/commit-submission.js";
 import "../src/workers/utils/commit-submission.with-local-block-finalization-job.js";
-import "./database.test/fixtures.make-material-proof-submit-tx.js";
+import "./database.test/fixtures.submit-tx.js";
 import "./utils.js";
 import "./local-mutation-job-abandonment.journal-fixture.js";
 import "./local-mutation-job-abandonment.local-finalization-job-abandonment.js";

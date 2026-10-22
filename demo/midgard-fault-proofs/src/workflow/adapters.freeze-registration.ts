@@ -28,6 +28,12 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
   readonly actuationPermit: WorkflowActuationPermit;
   /** Durable, exact-input funding authority for this decision/generation. */
   readonly fundingReservationPermit: WorkflowFundingReservationPermit;
+  /**
+   * Called when a continuing session journals progress past its first poll,
+   * so a caller can clear an alarm before the session ends. Never authority.
+   * A throw is ignored and does not end the session.
+   */
+  readonly onProgress?: () => void;
 };
 
 export type WorkflowAdapterRunner = {
@@ -42,7 +48,8 @@ export type MissingWorkflowAdapterReason =
   | "partial_resume_surface_has_no_complete_driver"
   | "detector_or_scanner_only"
   | "constrained_adapter_is_not_launch_scope_complete"
-  | "evidence_not_carried_by_da_payload";
+  | "evidence_not_carried_by_da_payload"
+  | "challenger_runner_not_written";
 
 export type MissingWorkflowAdapterRegistration = {
   readonly category: FraudProofCatalogueCategoryName;

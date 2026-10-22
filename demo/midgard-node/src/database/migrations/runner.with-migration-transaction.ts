@@ -108,8 +108,10 @@ export const ensureMetadataTables: Effect.Effect<
  * and the setting then leaks to unrelated borrowers. SET LOCAL scopes every
  * option to this transaction. Migration/compatibility operations reserve one
  * physical connection and take the session lock before BEGIN, so a waiter
- * starts its serializable snapshot only after the previous migrator commits.
- * The same reserved connection performs the matching unlock.
+ * starts only after the previous migrator commits. Migrations run READ
+ * COMMITTED, so a retained-state guard sees writes committed while it waited
+ * for its table lock; verification keeps SERIALIZABLE. The same reserved
+ * connection performs the matching unlock.
  */
 export const withMigrationTransaction = <A, E, R>({
   mode,
@@ -125,7 +127,11 @@ export const withMigrationTransaction = <A, E, R>({
     const transaction = sql.withTransaction(
       Effect.gen(function* () {
         // This must precede every migration read in the transaction.
-        yield* sql.unsafe("SET LOCAL transaction_isolation = 'serializable'");
+        yield* sql.unsafe(
+          mode === "migrate"
+            ? "SET LOCAL transaction_isolation = 'read committed'"
+            : "SET LOCAL transaction_isolation = 'serializable'",
+        );
         yield* sql.unsafe("SET LOCAL client_min_messages = 'error'");
         yield* sql.unsafe(
           mode === "migrate"

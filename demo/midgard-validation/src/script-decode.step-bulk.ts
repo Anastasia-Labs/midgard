@@ -27,7 +27,6 @@ import {
 import {
   afterFiller,
   CHUNK_UNITS,
-  dataConstant,
   MAX_STRING_BYTES,
   naturalAt,
   ok,
@@ -122,7 +121,7 @@ export const leafOf = (bits: Bits, shape: Shape, position: number): Leaf => {
 };
 
 /** Decodes the value of `shape` at bit `position`, as a compiled decoder. */
-export const quick = (
+const quick = (
   bits: Bits,
   shape: Shape,
   position: number,
@@ -171,8 +170,6 @@ export const general = (
     case "bytes":
     case "string":
       return byteChunks(bits, position, kind.k === "string", units);
-    case "data":
-      return dataConstant(bits, position, units);
     case "value":
       return valueConstant(bits, position, units);
     case "list": {

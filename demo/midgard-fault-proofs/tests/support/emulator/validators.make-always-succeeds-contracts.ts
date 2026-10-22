@@ -29,8 +29,23 @@ export const makeAlwaysSucceedsContracts = (
     reserve,
   );
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
-  // The always-succeeds state-queue pair stands in for the script-decode one.
-  const scriptDecode = alwaysAuthenticated(blueprint, "state_queue");
+  // The always-succeeds state-queue pair stands in for the script-decode one,
+  // and its script for each class staker.
+  const scriptDecodePair = alwaysAuthenticated(blueprint, "state_queue");
+  const scriptDecodeStaker = makeWithdrawalValidator(
+    scriptDecodePair.spendingScriptCBOR,
+  );
+  const scriptDecode = {
+    ...scriptDecodePair,
+    stakers: {
+      term: scriptDecodeStaker,
+      value: scriptDecodeStaker,
+      list: scriptDecodeStaker,
+      fold: scriptDecodeStaker,
+      bytes: scriptDecodeStaker,
+      data: scriptDecodeStaker,
+    },
+  };
   const fieldPreimage = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
   );

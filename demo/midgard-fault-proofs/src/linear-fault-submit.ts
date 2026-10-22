@@ -66,7 +66,11 @@ export const submitLinearFaultContinue = async ({
     .addSignerKey(signerPaymentKeyHash)
     .complete({
       localUPLCEval: true,
-      ...(carriageUtxos.length === 0
+      // Preset only to keep carriage the wallet view holds out of coin
+      // selection: Lucid takes collateral only from among preset inputs, so
+      // a preset would drop a wallet's own collateral (the watcher's
+      // reserved one, never among its funding UTxOs).
+      ...(usableWalletUtxos.length === walletUtxos.length
         ? {}
         : { presetWalletInputs: usableWalletUtxos as UTxO[] }),
     });

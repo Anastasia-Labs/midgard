@@ -1,6 +1,7 @@
 import {
   type DriverHold,
   EVENTS_INGESTION_FAILED,
+  isFatalHold,
   isRetriedHold,
   isTransientFailureHold,
   localFaultSubject,
@@ -68,8 +69,9 @@ export type CoalescedRunnerBound = Readonly<{
   /** Processing's progress past the faulted blocks. Without it, nothing
    * starts the local-fault count over in this process. */
   progress?: LocalFaultProgress;
-  /** Called once, with the transient failures or the local faults, when the
-   * budget or the local-fault bound ran out. */
+  /** Called once, with the transient failures, the local faults or the
+   * fatal holds, when the budget or the local-fault bound ran out or a run
+   * ended on a fatal hold. */
   onExhausted: (holds: readonly DriverHold[]) => void;
 }>;
 
@@ -99,6 +101,10 @@ export type CoalescedRunnerBound = Readonly<{
  * The count is this process's, so a restarted node meeting the same fault
  * on the same block retries within the same bound and exits again; it never
  * waits on the fault unbounded, and never takes it for a verdict.
+ *
+ * A fatal hold (`fatal`: a configuration error no retry clears) stops the
+ * runner on the first run that ends on one, without a retry, and calls
+ * `onExhausted` with it.
  */
 export const coalescedRunner = (
   run: () => Promise<readonly DriverHold[]>,
@@ -149,8 +155,16 @@ export const coalescedRunner = (
     bound.onExhausted(faults);
     return true;
   };
+  /** Whether a run ended on a fatal hold: the runner stops at once. */
+  const fatalSpent = (holds: readonly DriverHold[]): boolean => {
+    const fatal = holds.filter(isFatalHold);
+    if (fatal.length === 0) return false;
+    exhausted = true;
+    bound.onExhausted(fatal);
+    return true;
+  };
   const spent = (holds: readonly DriverHold[]): boolean =>
-    transientSpent(holds) || localFaultSpent(holds);
+    fatalSpent(holds) || transientSpent(holds) || localFaultSpent(holds);
   const trigger = (): void => {
     if (signal.aborted || exhausted) return;
     if (timer !== undefined) {

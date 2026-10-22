@@ -1,7 +1,6 @@
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardCekProgramMaterialSidecar,
   findLedgerSignatureVerifierUnavailable,
   isMidgardConsensusProfile,
   ledgerEd25519SignatureReady,
@@ -33,7 +32,6 @@ import { type ValidationMachineLedgerEntry } from "./ledger-mutation.js";
 export type ValidationVerdictEventInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;
   canonicalTransactionCbor: Buffer;
-  programMaterialSidecarCbor?: Buffer;
   /** Every ledger entry the transaction may resolve, keyed by out-ref. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   /**
@@ -119,10 +117,6 @@ export const replayValidationVerdictEvent = (
                 ).compact,
               ),
         ),
-        programMaterialSidecarCbor: Buffer.from(
-          input.programMaterialSidecarCbor ??
-            encodeMidgardCekProgramMaterialSidecar([]),
-        ),
         l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
       };
     });
@@ -130,7 +124,6 @@ export const replayValidationVerdictEvent = (
       sourceKind: input.sourceKind,
       txId: snapshot.transactionId,
       txCbor: snapshot.canonicalTransactionCbor,
-      programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };

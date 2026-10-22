@@ -1,30 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { buildMidgardBoundedItem } from "../src/bounded-item.js";
-import { encodeMidgardCekProgramEnvelope } from "../src/cek-proof.js";
 import { encodeCbor } from "../src/codec/cbor.js";
-import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  encodeMidgardSpendInputItem,
-  encodeMidgardTxOutput,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  midgardAddressFromText,
-  type MidgardNativeTxCanonical,
-} from "../src/codec/index.js";
+import { encodeMidgardSpendInputItem } from "../src/codec/index.js";
 import {
   decodeMidgardVersionedScript,
   encodeMidgardVersionedScript,
-  encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
 import {
-  collectMidgardAttachedProgramEnvelopes,
-  collectMidgardEventProgramEnvelopes,
-  decodeMidgardScriptProgramEnvelope,
   hashMidgardInlineScriptSourceLeaf,
   hashMidgardMintAssetLeaf,
   hashMidgardOutputDescriptorLeaf,
@@ -222,44 +207,20 @@ describe("script proof primitives", () => {
     ).toBe("3f81171ae98f8745f125cbe28461e23204fe4f39e609e9ac4be7537b9dac126f");
   });
 
-  it("keeps raw Cardano-style hashing isolated from V1 envelope admission", () => {
-    const rawScript = {
+  it("hashes the exact stored Plutus bytes without requiring a retired envelope", () => {
+    const script = {
       language: "PlutusV3",
-      scriptBytes: Buffer.from("010203", "hex"),
+      scriptBytes: Buffer.from("450101006001", "hex"),
     } satisfies MidgardVersionedScript;
-    expect(hashMidgardVersionedScript(rawScript)).toMatch(/^[0-9a-f]{56}$/u);
-    expect(() => hashMidgardV1VersionedScript(rawScript)).toThrow(
-      /program[_ -]envelope/u,
+    expect(hashMidgardV1VersionedScript(script)).toBe(
+      hashMidgardVersionedScript(script),
     );
-
-    const envelopeBackedScript = {
-      language: "PlutusV3",
-      scriptBytes: encodeMidgardCekProgramEnvelope({
-        uplcVersion: [1n, 1n, 0n],
-        termRoot: Buffer.alloc(32, 0x22),
-        nodeCount: 3n,
-        materialByteLength: 144n,
+    expect(
+      hashMidgardV1VersionedScript({
+        ...script,
+        scriptBytes: Buffer.concat([script.scriptBytes, Buffer.from([0])]),
       }),
-    } satisfies MidgardVersionedScript;
-    expect(hashMidgardV1VersionedScript(envelopeBackedScript)).toBe(
-      hashMidgardVersionedScript(envelopeBackedScript),
-    );
-
-    const rawNativeScript = {
-      language: "NativeCardano",
-      scriptBytes: Buffer.alloc(0),
-      nativeScript: {
-        type: "sig",
-        keyHash: Buffer.alloc(28, 0x33),
-      },
-    } satisfies MidgardVersionedScript;
-    expect(decodeMidgardScriptProgramEnvelope(rawNativeScript)).toBeNull();
-    expect(() => hashMidgardV1VersionedScript(rawNativeScript)).toThrow(
-      /not canonical Midgard V1 program envelopes/u,
-    );
-    expect(() => decodeMidgardScriptProgramEnvelope(rawScript)).toThrow(
-      /program[_ -]envelope/u,
-    );
+    ).not.toBe(hashMidgardV1VersionedScript(script));
     expect(() =>
       decodeMidgardVersionedScript(Buffer.from("8218814101", "hex")),
     ).toThrow(/Unsupported Midgard versioned script tag/u);
@@ -268,75 +229,14 @@ describe("script proof primitives", () => {
     ).toThrow(/Trailing bytes/u);
   });
 
-  it("resolves an event's programs against the ledger state immediately before it", () => {
+  it("binds a reference script leaf to its exact script bytes and canonical out-ref", () => {
     // The ledger out-ref, in its one Midgard spelling: §5.3's fixed-index
     // field-0/1 item, so index 2 is `19 0002` and the key is 38 bytes.
     const outRef = encodeMidgardSpendInputItem({
       txId: Buffer.alloc(32, 0x44),
       outputIndex: 2,
     });
-    const envelope = encodeMidgardCekProgramEnvelope({
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: Buffer.alloc(32, 0x55),
-      nodeCount: 3n,
-      materialByteLength: 144n,
-    });
-    const tx: MidgardNativeTxCanonical = {
-      version: MIDGARD_NATIVE_TX_VERSION,
-      validity: "TxIsValid",
-      body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
-        referenceInputsPreimageCbor: encodeCbor([outRef]),
-        outputsPreimageCbor: EMPTY_CBOR_LIST,
-        fee: 0n,
-        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        mintPreimageCbor: EMPTY_CBOR_LIST,
-        scriptIntegrityHash: EMPTY_NULL_ROOT,
-        auxiliaryDataHash: EMPTY_NULL_ROOT,
-        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      },
-    };
-    const output = encodeMidgardTxOutput({
-      address: midgardAddressFromText(
-        "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6",
-      ),
-      value: { lovelace: 2_000_000n, assets: new Map() },
-      script_ref: {
-        language: "PlutusV3",
-        scriptBytes: envelope,
-      },
-    });
-
-    const attachedTx: MidgardNativeTxCanonical = {
-      ...tx,
-      body: {
-        ...tx.body,
-        outputsPreimageCbor: encodeCbor([output]),
-      },
-      witnessSet: {
-        ...tx.witnessSet,
-        scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
-          {
-            language: "PlutusV3",
-            scriptBytes: envelope,
-          },
-        ]),
-      },
-    };
-    const expectedEnvelope = {
-      uplcVersion: [1n, 1n, 0n],
-      termRoot: Buffer.alloc(32, 0x55),
-      nodeCount: 3n,
-      materialByteLength: 144n,
-    };
+    const scriptBytes = Buffer.from("450101006001", "hex");
     const referenceLeafInput = (sourceKey: Uint8Array) =>
       hashMidgardReferenceScriptSourceLeaf({
         sourceKey,
@@ -344,62 +244,31 @@ describe("script proof primitives", () => {
         scriptHash: Buffer.from(
           hashMidgardVersionedScript({
             language: "PlutusV3",
-            scriptBytes: envelope,
+            scriptBytes,
           }),
           "hex",
         ),
         scriptTotalLength: encodeMidgardVersionedScript({
           language: "PlutusV3",
-          scriptBytes: envelope,
+          scriptBytes,
         }).length,
         itemCommitment: buildMidgardBoundedItem({
           fieldIndex: 2,
           itemIndex: 2,
           bytes: encodeMidgardVersionedScript({
             language: "PlutusV3",
-            scriptBytes: envelope,
+            scriptBytes,
           }),
         }).commitment,
       });
-    expect(collectMidgardAttachedProgramEnvelopes(attachedTx)).toEqual([
-      expectedEnvelope,
-      expectedEnvelope,
-    ]);
     expect(referenceLeafInput(outRef)).toEqual(
       hashMidgardScriptSourceLeaf({
         originKind: "reference",
         sourceKey: outRef,
-        script: { language: "PlutusV3", scriptBytes: envelope },
+        script: { language: "PlutusV3", scriptBytes },
       }),
     );
 
-    // Every input resolves against the state immediately before its own
-    // transaction: a reference present there contributes its script_ref
-    // program, and one absent there contributes nothing.
-    const preState = new Map([[outRef.toString("hex"), output]]);
-    expect(
-      collectMidgardEventProgramEnvelopes(tx, (key) => preState.get(key)),
-    ).toEqual([expectedEnvelope]);
-    expect(collectMidgardEventProgramEnvelopes(tx, () => undefined)).toEqual(
-      [],
-    );
-    const plainOutput = encodeMidgardTxOutput({
-      address: midgardAddressFromText(
-        "addr1q9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzs02spk6",
-      ),
-      value: { lovelace: 2_000_000n, assets: new Map() },
-    });
-    expect(collectMidgardEventProgramEnvelopes(tx, () => plainOutput)).toEqual(
-      [],
-    );
-    expect(
-      collectMidgardEventProgramEnvelopes(attachedTx, (key) =>
-        preState.get(key),
-      ),
-    ).toEqual([expectedEnvelope, expectedEnvelope, expectedEnvelope]);
-    expect(
-      collectMidgardEventProgramEnvelopes(attachedTx, () => undefined),
-    ).toEqual(collectMidgardAttachedProgramEnvelopes(attachedTx));
     // A 31-byte tx_id: the wrapper lies about a 38-byte key's contents, so the
     // §5.3 decoder rejects it.
     expect(() =>

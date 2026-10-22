@@ -252,7 +252,7 @@ export const daBondPoolCommitteeSettings = (input: {
   readonly network: string;
   /** Required for `Custom`; omitted for a named network. */
   readonly networkMagic?: number;
-  /** The deployment's origin (`deriveL1Origin` on its hub-oracle nonce). */
+  /** The deployment manifest's recorded origin, proven by `deriveL1Origin`. */
   readonly l1Origin: L1Origin;
   readonly finalityDepth: number;
   readonly nativeLedger?: Readonly<{

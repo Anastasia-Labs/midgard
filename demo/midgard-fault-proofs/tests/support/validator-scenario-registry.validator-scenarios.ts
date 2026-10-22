@@ -36,6 +36,25 @@ const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
   failing: [{ file: STREAMED_REPLAY_FILE, test: failing }],
 });
 
+const CLASS_STAKERS_FILE =
+  "demo/midgard-fault-proofs/tests/script-decode-class-stakers.test.ts";
+
+/** Each class staker's rows step its class honestly and refuse a forged segment. */
+const classStaker: ValidatorScenarioPair = {
+  passing: [
+    {
+      file: CLASS_STAKERS_FILE,
+      test: "the %s staker steps its class honestly and refuses a segment claiming a machine it does not reach",
+    },
+  ],
+  failing: [
+    {
+      file: CLASS_STAKERS_FILE,
+      test: "the %s staker steps its class honestly and refuses a segment claiming a machine it does not reach",
+    },
+  ],
+};
+
 const STREAMED_REPLAY_FILE =
   "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-forged-steps.test.ts";
 
@@ -390,7 +409,7 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
       {
         file: "demo/midgard-fault-proofs/tests/output-reference-script-decoding-plutus-max-shape.test.ts",
-        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance through removal",
+        test: "records the densest Plutus reference script of a 16,384-byte output after Init and convicts its acceptance, the producer's phase-8 first fault, through removal",
       },
     ],
     failing: [
@@ -404,6 +423,12 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "script_decode_v1.script_decode_bytes_v1": classStaker,
+  "script_decode_v1.script_decode_data_v1": classStaker,
+  "script_decode_v1.script_decode_fold_v1": classStaker,
+  "script_decode_v1.script_decode_list_v1": classStaker,
+  "script_decode_v1.script_decode_term_v1": classStaker,
+  "script_decode_v1.script_decode_value_v1": classStaker,
   ...VALIDATION_TRACE_SCENARIOS,
   "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
     streamedReplayStep(

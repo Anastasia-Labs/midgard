@@ -10,18 +10,9 @@ export const WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION =
 // ---------------------------------------------------------------------------
 
 /**
- * The codes `validatePhaseASingle` returns directly, in canonical
- * `RejectCodes` declaration order (types.ts:19-69).
- *
- * Provenance, one entry per `reject(...)` call site in phase-a.ts:
- * `E_CBOR_DESERIALIZATION`/`E_INVALID_OUTPUT`/`E_INVALID_FIELD_TYPE` (:424-427,
- * :377, :420), `E_TX_HASH_MISMATCH` (:435), `E_EMPTY_INPUTS` (:201),
- * `E_DUPLICATE_INPUT_IN_TX` (:217, :237, :249), `E_MIN_FEE` (:513),
- * `E_MISSING_REQUIRED_WITNESS` (:331), `E_INVALID_SIGNATURE` (:313),
- * `E_NATIVE_SCRIPT_INVALID` (:358), `E_INVALID_VALIDITY_INTERVAL_FORMAT`
- * (:268, :277), `E_NETWORK_ID_MISMATCH` (:502), `E_TX_VERSION` (:447 for a
- * non-V1 consensus profile), `E_CEK_PROGRAM_MATERIAL` (:456, :487),
- * `E_TX_EX_UNITS` (the per-tx declared ex-units cap, normal transactions).
+ * Direct Phase A rejection codes, in canonical declaration order. Input-set,
+ * static-ledger, signature, and native-script checks retain their canonical
+ * codes; carried Plutus byte decoding emits E_SCRIPT_PROGRAM_ENCODING.
  */
 export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
   RejectCodes.CborDeserialization,
@@ -37,15 +28,15 @@ export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
   RejectCodes.NativeScriptInvalid,
   RejectCodes.NetworkIdMismatch,
   RejectCodes.TxVersion,
-  RejectCodes.CekProgramMaterial,
+  RejectCodes.ScriptProgramEncoding,
   RejectCodes.TxExUnits,
 ] as const);
 
 /**
  * The codes `consensusProfileRejectCode` (phase-a.ts:73-116) maps the 18
  * `MidgardConsensusV1ViolationCode` values onto, in canonical `RejectCodes`
- * declaration order. `E_TX_VERSION` is also a direct code, so the two lists
- * overlap by exactly one member.
+ * declaration order. `E_TX_VERSION` and `E_SCRIPT_PROGRAM_ENCODING` are
+ * also direct codes.
  */
 export const WATCHER_PHASE_A_CONSENSUS_REJECT_CODES = Object.freeze([
   RejectCodes.IsValidFalseForbidden,
@@ -79,7 +70,7 @@ export const REACHABLE_SET: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
- * The 32 canonical codes Phase A can produce, in `RejectCodes` declaration
+ * The canonical codes Phase A can produce, in `RejectCodes` declaration
  * order so the published table and every emitted list are stable.
  */
 export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
@@ -88,7 +79,7 @@ export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
   ),
 );
 
-/** The 19 canonical codes Phase A cannot produce. */
+/** The canonical codes Phase A cannot produce. */
 export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
   WATCHER_PHASE_A_CANONICAL_REJECT_CODES.filter(
     (code) => !REACHABLE_SET.has(code),
@@ -96,7 +87,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 21 reachable codes the W24 suite pins with a deterministic
+ * The reachable codes the W24 suite pins with a deterministic
  * rejection-evidence case, in `RejectCodes` declaration order.
  *
  * The suite asserts this list equals the set of codes its evidence corpus
@@ -122,7 +113,6 @@ export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.ValueSize,
   RejectCodes.FieldPreimageSize,
   RejectCodes.ScriptProgramEncoding,
-  RejectCodes.CekProgramMaterial,
   RejectCodes.TxExUnits,
 ] as const);
 
@@ -165,7 +155,7 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.LedgerOutputSize]:
       "dominated: the normal and forced canonical output-item width check enforces the same maxLedgerOutputPreimageBytes bound before consensus admission and rejects E_INVALID_FIELD_TYPE with FieldItemWidthIllegal.",
     [RejectCodes.ScriptProgramSize]:
-      "dominated: consensus-validation.ts has no E_SCRIPT_PROGRAM_SIZE call site; oversized programs surface as E_SCRIPT_PROGRAM_ENCODING from the bounded envelope decoder.",
+      "dominated: consensus admission has no E_SCRIPT_PROGRAM_SIZE call site; carried Flat bytes are bounded by canonical field, output-item, and transaction byte limits.",
     [RejectCodes.NativeScriptDepth]:
       "dominated: the canonical native-script encoder refuses nesting past the V1 maximum, so no canonical transaction can carry an over-deep script.",
     [RejectCodes.NativeScriptNodeCount]:
@@ -212,7 +202,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.DatumSize]:
       "no Phase A call site: datum bounds are enforced by canonical output-item width, which surfaces as E_INVALID_FIELD_TYPE before the dominated E_LEDGER_OUTPUT_SIZE screen.",
     [RejectCodes.ScriptProgramAggregateSize]:
-      "no Phase A call site: the aggregate program bound is checked by the CEK bundle verifier and surfaces as E_CEK_PROGRAM_MATERIAL.",
+      "no Phase A call site: normal admission carries Flat bytes within the transaction and has no separate aggregate CEK-material bound.",
     [RejectCodes.RedeemerSize]:
       "no Phase A call site: the redeemer preimage bound surfaces as E_FIELD_PREIMAGE_SIZE.",
     [RejectCodes.MintForbidden]:
@@ -238,7 +228,6 @@ export const WATCHER_PHASE_A_VERIFIER_REASON_CODES = [
   "rule_bundle_profile_mismatch",
   "header_protocol_version_mismatch",
   "canonical_reconstruction_failed",
-  "malformed_program_material",
   "canonical_validation_threw",
   "unknown_reject_code",
   "undeclared_reachable_code",

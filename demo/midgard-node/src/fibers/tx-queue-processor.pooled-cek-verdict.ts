@@ -19,16 +19,18 @@ export const pooledCekVerdictEvaluator = (
   pool.poolSize === 0
     ? undefined
     : (request) =>
-        pool
-          .evaluateCekVerdict(request)
-          .pipe(
-            Effect.catchAll((error) =>
-              Effect.logWarning(
-                `CEK verdict worker failed (${error.message}); evaluating in process`,
-              ).pipe(
-                Effect.zipRight(
-                  Effect.sync(() => evaluateMidgardCekVerdict(request)),
-                ),
+        pool.evaluateCekVerdict(request).pipe(
+          Effect.catchAll((error) =>
+            Effect.logWarning(
+              `CEK verdict worker failed (${error.message}); evaluating in process`,
+            ).pipe(
+              Effect.zipRight(
+                Effect.try({
+                  try: () => evaluateMidgardCekVerdict(request),
+                  catch: (cause) =>
+                    cause instanceof Error ? cause : new Error(String(cause)),
+                }),
               ),
             ),
-          );
+          ),
+        );

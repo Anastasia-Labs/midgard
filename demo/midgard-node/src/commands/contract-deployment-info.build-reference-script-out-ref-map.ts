@@ -279,6 +279,11 @@ export type DeploymentManifestBuildContext = {
   readonly now?: Date;
   readonly existingManifest?: DeploymentManifest;
   readonly steps?: Partial<DeploymentManifest["steps"]>;
+  /**
+   * The deployment's recorded L1 origin. An existing manifest's own value,
+   * or its absence, wins, so a manifest's id never changes on a rewrite.
+   */
+  readonly l1Origin?: DeploymentManifest["l1Origin"];
 };
 
 export type DeploymentManifestIdentityContext = Pick<

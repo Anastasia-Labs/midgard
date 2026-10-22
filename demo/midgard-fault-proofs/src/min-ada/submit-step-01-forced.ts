@@ -1,5 +1,5 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   MinAdaStep01SpendRedeemerSchema,
   MinAdaStep02DatumSchema,

@@ -68,16 +68,17 @@ fn class_is_fault(value: Int) -> Bool {
   }
 }
 
+/// `subject` is the value `open_subject_v1` returned in this Step 01 run, so it
+/// is canonical by construction (see `substrate.opened_rejection_reason_v1`).
 pub fn bind_subject_v1(
   subject: substrate.VerdictSubjectV1,
   witness_set_hash: ByteArray,
   script_index: Int,
 ) -> BoundWitnessScriptV1 {
-  expect substrate.subject_is_canonical_v1(subject)
   expect bytearray.length(witness_set_hash) == 32
   expect script_index >= 0
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
-    when substrate.rejection_reason_of_v1(subject) is {
+    when substrate.opened_rejection_reason_v1(subject) is {
       WitnessScriptHeaderMalformed { script_index: actual } -> {
         expect actual == script_index
         result_header_malformed

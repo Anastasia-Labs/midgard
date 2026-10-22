@@ -109,7 +109,6 @@ export const replayForcedTransitionEffect = async (input: {
     ),
     txCbor: Buffer.from(input.authority.canonicalNativeTxCbor),
     sourceKind: "forced",
-    programMaterialSidecarCbor: input.authority.programMaterialSidecarCbor,
     arrivalSeq: 0n,
     createdAt: new Date(0),
   };

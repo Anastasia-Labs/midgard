@@ -1,10 +1,3 @@
-import {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
-  MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES,
-  MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
-  MIDGARD_MAX_DA_PAYLOAD_BYTES,
-} from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
@@ -94,7 +87,6 @@ const payload = (seed: number): DaPayloadType => {
       transactions,
       transaction_preimages: transactionPreimages,
       forced_transaction_preimages: forcedTransactionPreimages,
-      cek_program_material: [],
       deposits,
       transition_trace: transitionTrace,
       event_to_step: eventToStep,
@@ -131,7 +123,6 @@ const emptyPayload = (): DaPayloadType => {
       transactions: [],
       transaction_preimages: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       deposits: [],
       transition_trace: [],
       event_to_step: [],
@@ -195,9 +186,9 @@ describe("DaPayloadV1 canonical codec", () => {
     const encoded = encodeDaPayload(value);
 
     expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayload), "hex"));
-    expect(encoded).toHaveLength(445);
+    expect(encoded).toHaveLength(444);
     expect(Buffer.from(sha256(encoded)).toString("hex")).toBe(
-      "2f3caa41a48bbf5a5609accecd95ddf8e27af29a2bf9a3043f3394e18e2b334c",
+      "d3f840b2db7ac31bce3123a16b0bf193f802c7d366be0d304a4fd4710ad738e7",
     );
 
     for (const trailingBreaks of [1, 2, 3]) {
@@ -266,7 +257,6 @@ describe("DaPayloadV1 canonical codec", () => {
       "transactions",
       "transaction_preimages",
       "forced_transaction_preimages",
-      "cek_program_material",
       "deposits",
       "transition_trace",
       "event_to_step",
@@ -380,40 +370,25 @@ describe("DaPayloadV1 canonical codec", () => {
     ).toThrow("must use definite framing");
   });
 
-  it("pins the exact DA-derived CEK material ceilings", () => {
-    const empty = emptyPayload();
-    const minimumMaterialEntry: DaPayloadEntry = [bytes(0, 32), "8301004100"];
-    const tupleBytes = daPayloadEntryEncodedSize(minimumMaterialEntry);
-    const nonEmptyBytes = daPayloadEncodedSize({
-      ...empty,
-      block_body: {
-        ...empty.block_body,
-        cek_program_material: [minimumMaterialEntry],
-      },
-    });
-
-    expect(daPayloadEncodedSize(empty)).toBe(445);
-    expect(tupleBytes).toBe(MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES);
-    // The published fixed part was measured when the body also carried a
-    // one-byte empty UTxO list; it stays one byte above the exact framing so
-    // the consensus limits do not move, which keeps the ceilings conservative.
-    expect(nonEmptyBytes).toBe(
-      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES - 1 + tupleBytes,
+  it("refuses the retired program-material section", () => {
+    const value = emptyPayload();
+    const encoded = encodeDaPayload(value);
+    const header = Buffer.from(Data.to(value.block_body.header, Header), "hex");
+    // The old section followed the five transaction/source entry lists.
+    const insertion = encoded.indexOf(header) + header.length + 5;
+    expect(encoded.subarray(insertion - 5, insertion)).toEqual(
+      Buffer.from("8080808080", "hex"),
     );
-    expect(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT).toBe(
-      BigInt(
-        Math.floor(
-          (MIDGARD_MAX_DA_PAYLOAD_BYTES -
-            MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES) /
-            tupleBytes,
-        ),
-      ),
-    );
-    expect(MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES).toBe(
-      BigInt(
-        MIDGARD_MAX_DA_PAYLOAD_BYTES -
-          MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
-      ),
-    );
+    for (const retiredSection of [
+      Buffer.from([0x80]),
+      Buffer.from("9f9f41014102ffff", "hex"),
+    ]) {
+      const obsoletePayload = Buffer.concat([
+        encoded.subarray(0, insertion),
+        retiredSection,
+        encoded.subarray(insertion),
+      ]);
+      expect(() => decodeDaPayload(obsoletePayload)).toThrow();
+    }
   });
 });

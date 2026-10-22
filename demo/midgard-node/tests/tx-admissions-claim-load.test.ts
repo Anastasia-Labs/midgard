@@ -1,6 +1,5 @@
 import "./utils.js";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber } from "effect";
@@ -29,7 +28,6 @@ const insertAdmissions = (inputs: readonly AdmissionInput[]) =>
     for (const input of inputs) {
       const inserted = yield* TxAdmissionsDB.tryInsert({
         ...input,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
         submitSource: "native",
       });
       expect(inserted).not.toBeNull();
@@ -519,7 +517,6 @@ describe("durable admission lightweight claim and payload load", () => {
               ),
             ),
           );
-          const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
 
           const scenario = Effect.gen(function* () {
             yield* sql.unsafe(
@@ -554,7 +551,6 @@ describe("durable admission lightweight claim and payload load", () => {
                         txId: input.txId,
                         txFullHashV1: fullHashes[index]!,
                         txCanonicalCbor: input.txCanonicalCbor,
-                        programMaterialSidecarCbor: sidecar,
                       }),
                     { discard: true },
                   );

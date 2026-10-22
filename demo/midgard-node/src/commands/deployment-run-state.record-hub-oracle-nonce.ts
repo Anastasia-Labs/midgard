@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
+
 import {
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
@@ -30,6 +32,7 @@ export type PendingHubOracleNonceAttempt = {
   readonly lovelace: string;
   readonly inlineDatum: string;
   readonly signedTxCbor?: string;
+  readonly l1Origin?: L1Origin;
 };
 
 /** Run-state step holding the nonce transaction signed before submission. */
@@ -293,7 +296,8 @@ export const recordHubOracleNonceTxHashConfirmed = async ({
 /**
  * Write-ahead record of the signed nonce transaction, persisted before any
  * submission. It is its own step so readers of `hubOracleNonce` are unchanged;
- * a later run resumes it by resubmitting exactly these bytes.
+ * a later run resumes it by resubmitting exactly these bytes. The L1 origin
+ * read before signing goes into the identity in the same write.
  */
 export const recordHubOracleNonceSigned = async ({
   options,
@@ -303,6 +307,7 @@ export const recordHubOracleNonceSigned = async ({
   address,
   lovelace,
   inlineDatum,
+  l1Origin,
 }: {
   readonly options: DeploymentRunCliOptions;
   readonly network: string;
@@ -311,6 +316,7 @@ export const recordHubOracleNonceSigned = async ({
   readonly address: string;
   readonly lovelace: string;
   readonly inlineDatum: string;
+  readonly l1Origin: L1Origin;
 }): Promise<DeploymentRunState> =>
   mutateDeploymentRunState(
     options.runStatePath,
@@ -322,9 +328,14 @@ export const recordHubOracleNonceSigned = async ({
     (state) =>
       transitionDeploymentStep(
         {
+          // `mode` is how the run state was created and must stay equal to
+          // its creation event; a fresh redeploy is recorded on the step.
           ...state,
-          mode: options.freshRedeploy ? "fresh" : state.mode,
-          identity: { ...state.identity, network },
+          identity: {
+            ...state.identity,
+            network,
+            l1Origin: { slot: l1Origin.slot, blockHash: l1Origin.blockHash },
+          },
         },
         HUB_ORACLE_NONCE_SIGNED_STEP,
         "submitted",

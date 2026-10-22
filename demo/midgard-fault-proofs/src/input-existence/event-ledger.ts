@@ -13,8 +13,8 @@ import {
   type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
 import {
-  checkLedgerAgainstRoot,
   type CheckedLedger,
+  checkLedgerAgainstRoot,
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "../ledger-at.js";
@@ -82,42 +82,70 @@ const acceptedEffects = (
   return null;
 };
 
-export const ledgerBeforeTransactionEvent = async ({
+/** The ledger walk's position: every step before `next` is applied. */
+type WalkCursor = {
+  next: bigint;
+  ledger: CheckedLedger;
+  entries: Map<string, LedgerEntry>;
+  priorPhase: number;
+  /** The step whose application failed; the walk never passes it. */
+  failed?: { readonly step: bigint; readonly error: unknown };
+};
+
+/** A step whose phase follows the requested event's: refused for this
+ * request only, before the step is applied. */
+class LaterPhaseStep extends EventLedgerReplayRefusal {}
+
+export type EventLedgerWalk = Readonly<{
+  /** The checked ledger before the transaction event `eventKey`, the
+   * block's step `stepIndex`. */
+  before: (eventKey: SDK.EventKey, stepIndex: bigint) => Promise<CheckedLedger>;
+}>;
+
+/**
+ * One block's committed steps applied in order, once: each request continues
+ * from the last, so the ledgers before several events of the block cost one
+ * walk, and each step's root check reuses the descriptors of the ledger
+ * before it. A request for an earlier step starts over. A step that fails to
+ * apply stops the walk there: a later request meets the same failure, and a
+ * request at or before it starts over.
+ */
+export const createEventLedgerWalk = ({
   block,
-  eventKey,
-  stepIndex,
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly eventKey: SDK.EventKey;
-  readonly stepIndex: bigint;
   readonly predecessor?: CheckedLedger;
-}): Promise<CheckedLedger> => {
+}): EventLedgerWalk => {
   // These are the existing evidence-grade and source-root authorities. A
   // diagnostic/operator-private reconstruction cannot produce proof material.
   blockTransactionsFromCanonicalEvidence(block);
   SDK.assertTransactionSourceInclusionRootAuthenticated(
     block.inclusionRootAuthentication,
   );
-  if (
-    !("L2TransactionEventKey" in eventKey) &&
-    !("ForcedTransactionEventKey" in eventKey)
-  )
-    throw new Error("input-existence: subject is not a transaction event");
-  if (stepIndex < 0n || stepIndex >= block.header.transitionStepCount) {
-    throw new EventLedgerReplayRefusal("step_out_of_range");
-  }
-  let ledger = requireReplayPredecessorLedger({
-    block,
-    predecessor,
-    label: "input-existence",
-  });
-  const entries = new Map<string, LedgerEntry>(
-    ledger.entries.map((entry) => [entry.outRef.toString("hex"), entry]),
-  );
-  let priorPhase = -1;
-  const targetPhase = phaseRank(eventKeyPhase(eventKey));
-  for (let index = 0n; index < stepIndex; index++) {
+  const fresh = (): WalkCursor => {
+    const ledger = requireReplayPredecessorLedger({
+      block,
+      predecessor,
+      label: "input-existence",
+    });
+    return {
+      next: 0n,
+      ledger,
+      entries: new Map(
+        ledger.entries.map((entry) => [entry.outRef.toString("hex"), entry]),
+      ),
+      priorPhase: -1,
+    };
+  };
+  let cursor: WalkCursor | undefined;
+
+  const apply = async (
+    walk: WalkCursor,
+    index: bigint,
+    targetPhase: number,
+  ): Promise<void> => {
+    const { entries } = walk;
     const opening = block.reconstruction.traceByStepIndex.get(index);
     const step = opening?.value;
     if (
@@ -126,7 +154,7 @@ export const ledgerBeforeTransactionEvent = async ({
       opening.key !== index ||
       step.step_index !== index ||
       step.schema_version !== 1n ||
-      step.pre_utxos_root !== ledger.utxosRoot
+      step.pre_utxos_root !== walk.ledger.utxosRoot
     )
       throw new EventLedgerReplayRefusal("transition_link_changed");
     const event = block.reconstruction.sourceEventsByFingerprint.get(
@@ -141,10 +169,11 @@ export const ledgerBeforeTransactionEvent = async ({
       throw new EventLedgerReplayRefusal("source_event_changed");
     }
     const rank = phaseRank(event.phase);
-    if (rank < priorPhase || rank > targetPhase || event.phase === "Deposit") {
+    if (rank < walk.priorPhase || event.phase === "Deposit") {
       throw new EventLedgerReplayRefusal("phase_order_changed");
     }
-    priorPhase = rank;
+    if (rank > targetPhase) throw new LaterPhaseStep("phase_order_changed");
+    walk.priorPhase = rank;
     if (
       event.phase === "Withdrawal" &&
       event.entry.value.validity === "WithdrawalIsValid"
@@ -181,29 +210,83 @@ export const ledgerBeforeTransactionEvent = async ({
     // its existing malformed-reference-script representation. No caller
     // supplies a descriptor or bypasses any committed intermediate root.
     try {
-      ledger = await checkLedgerAgainstRoot({
+      walk.ledger = await checkLedgerAgainstRoot({
         entries: [...entries.values()],
         utxosRoot: step.post_utxos_root,
         label: `input-existence earlier event ${index.toString()}`,
+        from: walk.ledger,
       });
     } catch (cause) {
       if (cause instanceof LedgerRootMismatchError)
         throw new EventLedgerReplayRefusal("post_root_changed");
       throw cause;
     }
-  }
-  const target = block.reconstruction.traceByStepIndex.get(stepIndex);
-  if (
-    target === undefined ||
-    target.key !== stepIndex ||
-    target.value.step_index !== stepIndex ||
-    target.value.schema_version !== 1n ||
-    target.value.phase !== eventKeyPhase(eventKey) ||
-    Data.to(target.value.event_key, SDK.EventKey) !==
-      Data.to(eventKey, SDK.EventKey) ||
-    target.value.pre_utxos_root !== ledger.utxosRoot
-  ) {
-    throw new EventLedgerReplayRefusal("selected_pre_root_changed");
-  }
-  return ledger;
+  };
+
+  return Object.freeze({
+    before: async (eventKey: SDK.EventKey, stepIndex: bigint) => {
+      if (
+        !("L2TransactionEventKey" in eventKey) &&
+        !("ForcedTransactionEventKey" in eventKey)
+      )
+        throw new Error("input-existence: subject is not a transaction event");
+      if (stepIndex < 0n || stepIndex >= block.header.transitionStepCount) {
+        throw new EventLedgerReplayRefusal("step_out_of_range");
+      }
+      if (
+        cursor === undefined ||
+        stepIndex < cursor.next ||
+        (cursor.failed !== undefined && stepIndex <= cursor.failed.step)
+      )
+        cursor = fresh();
+      const walk = cursor;
+      if (walk.failed !== undefined) throw walk.failed.error;
+      const targetPhase = phaseRank(eventKeyPhase(eventKey));
+      // The steps already applied are in phase order, so `priorPhase` is the
+      // latest phase among them.
+      if (walk.priorPhase > targetPhase)
+        throw new EventLedgerReplayRefusal("phase_order_changed");
+      while (walk.next < stepIndex) {
+        try {
+          await apply(walk, walk.next, targetPhase);
+        } catch (error) {
+          if (!(error instanceof LaterPhaseStep))
+            walk.failed = { step: walk.next, error };
+          throw error;
+        }
+        walk.next += 1n;
+      }
+      const target = block.reconstruction.traceByStepIndex.get(stepIndex);
+      if (
+        target === undefined ||
+        target.key !== stepIndex ||
+        target.value.step_index !== stepIndex ||
+        target.value.schema_version !== 1n ||
+        target.value.phase !== eventKeyPhase(eventKey) ||
+        Data.to(target.value.event_key, SDK.EventKey) !==
+          Data.to(eventKey, SDK.EventKey) ||
+        target.value.pre_utxos_root !== walk.ledger.utxosRoot
+      ) {
+        throw new EventLedgerReplayRefusal("selected_pre_root_changed");
+      }
+      return walk.ledger;
+    },
+  });
 };
+
+/** The checked ledger before one transaction event of `block`. */
+export const ledgerBeforeTransactionEvent = async ({
+  block,
+  eventKey,
+  stepIndex,
+  predecessor,
+}: {
+  readonly block: CanonicalBlockEvidence;
+  readonly eventKey: SDK.EventKey;
+  readonly stepIndex: bigint;
+  readonly predecessor?: CheckedLedger;
+}): Promise<CheckedLedger> =>
+  await createEventLedgerWalk({
+    block,
+    ...(predecessor === undefined ? {} : { predecessor }),
+  }).before(eventKey, stepIndex);

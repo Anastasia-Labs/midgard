@@ -5,6 +5,7 @@ import {
   CommittedFieldShapeStep01SpendRedeemer,
   CommittedFieldShapeStep02Datum,
   type CommittedFieldShapeStep02State,
+  type FieldCarriage,
   HUB_ORACLE_ASSET_NAME,
   isCommittedFieldShapeViolation,
   type NativeTxInclusionCarriage,
@@ -28,11 +29,10 @@ import {
 
 import { faultProofRawFieldCarriage } from "../field-opening.js";
 import {
+  builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
   type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -262,8 +262,6 @@ export const submitCommittedFieldShapeStep01 = async ({
       "only a Certified carriage may carry the exact field certificate UTxO.",
     );
   }
-  // The complete reference-input set must stand before any positional index
-  // derives from it; a partial set makes ref_input_index a per-run coin flip.
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
@@ -273,25 +271,12 @@ export const submitCommittedFieldShapeStep01 = async ({
     validatedStepReference,
     ...membershipCarriage.referenceInputs,
   ];
-  const carriage = faultProofRawFieldCarriage({
-    plan: fieldPlan,
-    referenceInputs,
-    ...(fieldPlan.tier === "Certified"
-      ? { certificatePolicyId: contracts.fieldPreimageCertificatePolicyId }
-      : {}),
-    label: `${STEP_LABEL} committed field`,
-  });
-  const claim: CommittedFieldClaim =
+  const claimWithCarriage = (carriage: FieldCarriage): CommittedFieldClaim =>
     "BodyFieldClaim" in prepared.claim
       ? { BodyFieldClaim: { ...prepared.claim.BodyFieldClaim, carriage } }
       : {
           WitnessFieldClaim: { ...prepared.claim.WitnessFieldClaim, carriage },
         };
-  const resolvedChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks,
-    label: STEP_LABEL,
-  });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: derivedState },
     CommittedFieldShapeStep02Datum,
@@ -332,10 +317,9 @@ export const submitCommittedFieldShapeStep01 = async ({
       l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
-    requireBuiltChunkReferenceIndices({
+    const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,
       chunks,
-      derived: resolvedChunkIndices,
       label: STEP_LABEL,
     });
     const inclusion: NativeTxInclusionCarriage = carriedByChunks
@@ -362,7 +346,28 @@ export const submitCommittedFieldShapeStep01 = async ({
           ],
         };
     return Data.to(
-      { Continue: [{ inclusion, claim }] },
+      {
+        Continue: [
+          {
+            inclusion,
+            claim: claimWithCarriage(
+              // Carriage indices name positions in the builder's final
+              // reference-input order, never in a hand-assembled list.
+              faultProofRawFieldCarriage({
+                plan: fieldPlan,
+                referenceInputs: ctx.referenceInputs,
+                ...(fieldPlan.tier === "Certified"
+                  ? {
+                      certificatePolicyId:
+                        contracts.fieldPreimageCertificatePolicyId,
+                    }
+                  : {}),
+                label: `${STEP_LABEL} committed field`,
+              }),
+            ),
+          },
+        ],
+      },
       CommittedFieldShapeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -376,12 +381,16 @@ export const submitCommittedFieldShapeStep01 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom(referenceInputs);
   const withCarriage = carriedByChunks
-    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((ctx) =>
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
           valueBytes: txInclusion.l2TransactionSourceCbor,
-          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+          orderedChunkReferenceInputIndices: builtChunkReferenceIndices({
+            ctx,
+            chunks,
+            label: STEP_LABEL,
+          }),
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
         phasRewardAddress,

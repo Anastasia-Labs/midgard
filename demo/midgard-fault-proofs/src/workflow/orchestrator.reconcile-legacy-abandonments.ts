@@ -2,13 +2,19 @@ import { assertWorkflowJournalActuation } from "./actuation-permit.js";
 import { reconcileLegacyWorkflowFundingAbandonment } from "./funding-reservation-permit.reopen-legacy-abandonment.js";
 import type { FraudProofWorkflowJournalEvent } from "./journal.js";
 import type {
-  FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAdapterContext,
+  FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import { readSignedAttempt } from "./orchestrator.read-signed-attempt.js";
+
+/** Reads each superseded attempt by its own signed bytes alone. */
 export const reconcileLegacyFraudProofAbandonments = async (
   context: FraudProofWorkflowAdapterContext,
   journal: object,
-  adapter: FraudProofFamilyWorkflowAdapter,
+  verifier: Pick<
+    FraudProofWorkflowTerminalVerifier,
+    "observeSignedTransaction"
+  >,
   append: (event: FraudProofWorkflowJournalEvent) => Promise<unknown>,
   nowMs: number,
 ) =>
@@ -17,18 +23,8 @@ export const reconcileLegacyFraudProofAbandonments = async (
     entries: context.entries,
     append,
     nowMs,
-    reconcile: async ({ transition, handoff }) =>
-      await adapter.reconcile({
-        ...context,
-        retirementOnly: true,
-        action: {
-          actionId: handoff.submissionIntent.actionId,
-          input: handoff.submissionIntent.actionInput,
-        },
-        txHash: transition.transactionHash,
-        signedTransactionCborHex: transition.signedTransactionCborHex,
-        durableRecovery: handoff.submissionIntent.durableRecovery,
-      }),
+    reconcile: async ({ transition }) =>
+      await readSignedAttempt(verifier, transition),
   });
 
 export const assertWorkflowJournalReconciliation = (

@@ -1,7 +1,7 @@
-import type { ForcedInclusionTxV1 } from "../ledger-state.js";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type OutputReference, OutputReferenceSchema } from "../common.js";
+import type { ForcedInclusionTxV1 } from "../ledger-state.js";
 import type { RejectionReason } from "../rejection-reason.js";
 import {
   RejectionReason as RejectionReasonData,

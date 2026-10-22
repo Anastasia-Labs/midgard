@@ -112,7 +112,6 @@ const journal = (txOrderId: Buffer, status: string) =>
         {
           sourceValueCbor: Buffer.from([1]),
           canonicalTransactionCbor: Buffer.from([2]),
-          programMaterialSidecarCbor: Buffer.from([3]),
         },
       );
       yield* sql`INSERT INTO pending_block_finalization_forced_transactions ${sql.insert(

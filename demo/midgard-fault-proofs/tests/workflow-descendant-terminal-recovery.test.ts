@@ -33,6 +33,7 @@ import {
   raw,
   releaseFinality,
 } from "./support/raw-l1-terminal-fixture.js";
+import { noSignedRead } from "./support/terminal-verifier.js";
 import { makeAdapter } from "./workflow.make-adapter.js";
 
 it("resumes an included descendant intent twice after another caller completes correction", async () => {
@@ -206,8 +207,10 @@ it("resumes an included descendant intent twice after another caller completes c
         launchScope: ["doubleSpend"],
       }),
       journal,
-      terminalVerifier:
-        createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
+      terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier({
+        ...l1,
+        observeSignedTransaction: noSignedRead,
+      }),
       releaseFinality,
       maxActions,
     });

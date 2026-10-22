@@ -8,9 +8,6 @@
  */
 import "./utils.js";
 
-import { createHash } from "node:crypto";
-
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -91,7 +88,6 @@ const forcedEntry = (
       verdict: "ForcedTxValid",
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     }).pipe(Effect.orDie);
-    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
     return {
       [ForcedTransactionsDB.Columns.TX_ORDER_ID]: Buffer.from(
         Data.to(
@@ -118,9 +114,6 @@ const forcedEntry = (
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
       [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
         encoded.transactionCommitment,
-      [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: sidecar,
-      [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
-        createHash("sha256").update(sidecar).digest(),
       [ForcedTransactionsDB.Columns.INCLUSION_TIME]: inclusionTime,
       [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
       [ForcedTransactionsDB.Columns.STATUS]:

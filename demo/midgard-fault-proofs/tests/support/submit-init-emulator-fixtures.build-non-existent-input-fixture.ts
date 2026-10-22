@@ -1,4 +1,3 @@
-import type { NeInputPreimageEntry } from "../../src/prepare-non-existent-input.js";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import {
@@ -13,6 +12,7 @@ import {
   buildNonMembershipProof,
   type TrieEntry,
 } from "../../src/ne-proofs.js";
+import type { NeInputPreimageEntry } from "../../src/prepare-non-existent-input.js";
 import { parseSubmitStep01TxInclusion } from "./legacy-submit-emulator.js";
 import {
   type MembershipProofShape,

@@ -2,7 +2,7 @@ import {
   assertPreimageConsumed,
   type MidgardCekDecodedProgramBlob,
   readExactHashAt,
-} from "./cek-proof.decode-midgard-cek-program-material-da-entry.js";
+} from "./cek-proof.decode-program-material-entry.js";
 import { encodeMidgardCekBlobChunk } from "./cek-proof.encode-midgard-cek-continuation-frame.js";
 import {
   MIDGARD_CEK_BLOB_CHUNK_BYTES,

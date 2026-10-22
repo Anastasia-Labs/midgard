@@ -202,8 +202,6 @@ export const evaluateWatcherBlockReplay = async (
       transactions: evidence.reconstruction.transactions.map((entry) =>
         Object.freeze({ txId: entry.txId, txCbor: entry.fullTransactionCbor }),
       ),
-      programMaterial: evidence.reconstruction.payload.block_body
-        .cek_program_material as readonly (readonly [string, string])[],
     });
     candidates = deriveCandidates(queuedTxs, phaseAConfig, input.phaseA);
     committedSteps = watcherBlockReplayCommittedSteps({

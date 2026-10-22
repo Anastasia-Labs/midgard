@@ -1,8 +1,4 @@
 import {
-  decodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeScriptIntegrityHashForLanguages,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
@@ -57,25 +53,6 @@ export const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
-    // Phase A refuses a candidate without a sidecar. One that reaches here
-    // without it runs on empty material, so every script goes through the
-    // structural executor.
-    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
-    if (candidate.submission.programMaterialSidecarCbor !== null) {
-      try {
-        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
-          candidate.submission.programMaterialSidecarCbor,
-        );
-      } catch (cause) {
-        return {
-          kind: "rejected",
-          code: RejectCodes.CekProgramMaterial,
-          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
-          consensusPhase: "scriptSources",
-        };
-      }
-    }
-
     const usedInlineSourceIds = new Set(
       discovered.executions
         .filter((execution) => execution.resolved.source.origin === "inline")
@@ -96,6 +73,11 @@ export const runLocalScriptEvaluation = (
           },
         };
       }
+    }
+    // Stage 12 follows stage 11: an unused redeemer is refused only once every
+    // inline witness is used.
+    if (discovered.unusedRedeemer !== undefined) {
+      return discovered.unusedRedeemer;
     }
 
     // Execution ordinals are positions in the discovered execution list
@@ -196,11 +178,12 @@ export const runLocalScriptEvaluation = (
       if (config.committedScriptRun !== undefined) {
         config.committedScriptRun({
           scriptBytes: execution.resolved.source.scriptBytes,
+          scriptLanguage: execution.resolved.version as
+            | "PlutusV3"
+            | "MidgardV1",
           executionBudget,
           executionIndex,
           maxSteps,
-          programMaterialSidecarCbor:
-            candidate.submission.programMaterialSidecarCbor,
         });
         continue;
       }
@@ -211,18 +194,20 @@ export const runLocalScriptEvaluation = (
       );
       const {
         result,
+        phase2Class,
         graph,
         execution: cek,
       } = yield* runScriptExecution(
         {
           scriptBytes: execution.resolved.source.scriptBytes,
+          scriptLanguage: execution.resolved.version as
+            | "PlutusV3"
+            | "MidgardV1",
           contextCbor,
           executionBudget,
           executionIndex,
           maxSteps,
         },
-        candidate.submission.programMaterialSidecarCbor,
-        proofProgramMaterial,
         config,
       );
       config.onScriptEvaluated?.(candidate.ledgerTx.txId, {
@@ -231,6 +216,7 @@ export const runLocalScriptEvaluation = (
         executionIndex,
         executionBudget,
         result,
+        ...(phase2Class === undefined ? {} : { phase2Class }),
         graph,
         execution: cek,
       });

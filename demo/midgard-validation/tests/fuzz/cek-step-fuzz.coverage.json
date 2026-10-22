@@ -55,7 +55,11 @@
       "29": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
       "30": ["executeBuiltinSemantic"],
       "31": ["executeBuiltinSemantic"],
-      "32": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
+      "32": [
+        "executeBuiltinDirect",
+        "executeBuiltinSemantic",
+        "executeBuiltinTypeFailure"
+      ],
       "33": [
         "executeBuiltinSemantic",
         "executeBuiltinSemanticFailure",
@@ -117,7 +121,7 @@
       ],
       "68": ["executeBuiltinDirect"],
       "69": ["executeBuiltinDirect"],
-      "70": ["executeBuiltinBlsFinal"],
+      "70": ["executeBuiltinBlsFinal", "executeBuiltinTypeFailure"],
       "71": ["executeBuiltinDirect"],
       "72": ["executeBuiltinDirect"],
       "73": ["executeBuiltinDirect", "executeBuiltinFailure"],
@@ -176,8 +180,8 @@
       "returnApplyValueBuiltin",
       "returnApplyValueInvalid",
       "returnApplyValueLambda",
+      "returnCaseConstant",
       "returnCaseConstr",
-      "returnCaseInvalid",
       "returnConstrDone",
       "returnConstrNext",
       "returnEmptyContinuation",

@@ -42,6 +42,10 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
@@ -83,6 +87,7 @@ export const submitInputSetUniquenessStep02 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
   unsafeSpendFieldRawUtxoForTest,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -120,6 +125,8 @@ export const submitInputSetUniquenessStep02 = async ({
    * is what refuses the transaction on-chain. Never set outside tests.
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitInputSetUniquenessStep02Result> => {
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
     {
@@ -201,6 +208,7 @@ export const submitInputSetUniquenessStep02 = async ({
         ? []
         : publishMissingCarriage
           ? await publishFaultProofFieldCarriage({
+              ownOutputs,
               lucid,
               signer,
               planned,
@@ -259,8 +267,8 @@ export const submitInputSetUniquenessStep02 = async ({
     label: `${STEP_LABEL} fraud-proof mint`,
   });
   // §8.7: positional carriage indices count into the ledger's canonically
-  // sorted reference-input list, so the carriage resolvers must see the
-  // transaction's complete reference-input set.
+  // sorted reference-input list, so `claimArgs` resolves them against the
+  // built transaction's reference inputs, never against this list.
   const referenceInputs = uniqueUtxos([
     ...published,
     ...(unsafeSpendFieldRawUtxoForTest === undefined
@@ -295,7 +303,7 @@ export const submitInputSetUniquenessStep02 = async ({
             unsafeSpendFieldRawUtxoForTest === undefined
               ? faultProofFieldOpening({
                   planned: plannedSpend,
-                  referenceInputs,
+                  referenceInputs: ctx.referenceInputs,
                   certificatePolicyId:
                     contracts.fieldPreimageCertificatePolicyId,
                   label: STEP_LABEL,
@@ -329,7 +337,7 @@ export const submitInputSetUniquenessStep02 = async ({
           second_index: claim.secondIndex,
           reference_inputs_opening: faultProofFieldOpening({
             planned: plannedReference,
-            referenceInputs,
+            referenceInputs: ctx.referenceInputs,
             certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
             label: STEP_LABEL,
           }),
@@ -349,13 +357,13 @@ export const submitInputSetUniquenessStep02 = async ({
         native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
         spend_inputs_carriage: faultProofFieldCarriage({
           planned: plannedSpend,
-          referenceInputs,
+          referenceInputs: ctx.referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
           label: STEP_LABEL,
         }),
         reference_inputs_carriage: faultProofFieldCarriage({
           planned: plannedReference,
-          referenceInputs,
+          referenceInputs: ctx.referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
           label: STEP_LABEL,
         }),

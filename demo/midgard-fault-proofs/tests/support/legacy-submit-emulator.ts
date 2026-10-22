@@ -13,7 +13,6 @@ export {
 } from "../../src/double-spend/submit-step-03.js";
 export { submitStep04 } from "../../src/double-spend/submit-step-04.js";
 export { neSubmitStep01 } from "../../src/non-existent-input/submit-step-01.js";
-
 export { neSubmitStep02 } from "../../src/non-existent-input/submit-step-02.js";
 export { neSubmitStep03 } from "../../src/non-existent-input/submit-step-03.js";
 export { neSubmitStep04 } from "../../src/non-existent-input/submit-step-04.js";

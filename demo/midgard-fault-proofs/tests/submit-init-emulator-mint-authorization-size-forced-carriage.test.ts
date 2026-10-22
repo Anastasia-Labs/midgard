@@ -8,19 +8,28 @@
  * - the field-5 mint door, forced past `maxTier1RedeemerPreimageBytes` by
  *   distinct absent policies, through the direction-A finalize;
  * - the field-7 address-witness door, forced past the ceiling by decoy
- *   signers, through the direction-B EvaluateUnsatisfied finalize.
+ *   signers, through the bounded direction-B StartUnsatisfied evaluation the
+ *   installed workflow runs (the direct EvaluateUnsatisfied arm folds the
+ *   whole signer field in one transaction, which this many signers do not
+ *   fit).
  *
  * Each asserts the door actually crossed into the RawUtxo window and then
  * that the on-chain door accepts the published preimage end to end.
  */
-import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimage,
+  midgardFieldCarriageBounds,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
+import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
 import {
+  submitMintAuthorizationEvaluate,
   submitMintAuthorizationStep01,
   submitMintAuthorizationStep02,
   submitMintAuthorizationStep03EvaluateUnsatisfied,
@@ -29,6 +38,7 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import { submitResolvedInit } from "../src/submit-init.js";
+import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
@@ -212,7 +222,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       throw new Error("normal mint-authorization fixture has no inclusion");
     }
 
-    const [step01Ref, step02Ref, step03Ref, , step05Ref] =
+    const [step01Ref, step02Ref, step03Ref, , step05Ref, evaluateRef] =
       await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
@@ -277,24 +287,74 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     });
     expect(plannedField07.plan.tier).toBe("RawUtxo");
 
-    const step03 = await submitMintAuthorizationStep03EvaluateUnsatisfied({
+    // The policy bytes followed by the signer-field preimage, published as
+    // the ordered raw chunks the bounded evaluator reads.
+    const rawPreimageUtxos: UTxO[] = [];
+    for (const datum of createRawDatumPreimageRequirement({
+      preimage: mintAuthorizationEvaluationPreimage(
+        Buffer.from(directionB.scriptBytesHex, "hex"),
+        encodeMidgardFieldPreimage(
+          subject.addrWitnessItemCbors.map((hex) => Buffer.from(hex, "hex")),
+        ),
+      ),
+    }).publicationDatums) {
+      const txHash = await (
+        await (
+          await proverLucid
+            .newTx()
+            .pay.ToAddressWithData(
+              proverSigner.address,
+              { kind: "inline", value: datum },
+              { lovelace: 80_000_000n },
+            )
+            .complete()
+        ).sign
+          .withWallet()
+          .complete()
+      ).submit();
+      await proverLucid.awaitTx(txHash);
+      const utxo = (await proverLucid.utxosAt(proverSigner.address)).find(
+        (item) => item.txHash === txHash && item.datum === datum,
+      );
+      if (utxo === undefined) throw new Error("missing published preimage");
+      rawPreimageUtxos.push(utxo);
+    }
+
+    const common = {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
       signer: proverSigner,
-      threadOutRef: step02.nextThreadOutRef,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       witnessSet: subject.witnessSetCompact,
+    };
+    const step03 = await submitMintAuthorizationStep03EvaluateUnsatisfied({
+      ...common,
+      threadOutRef: step02.nextThreadOutRef,
       scriptBytesHex: directionB.scriptBytesHex,
+      rawPreimageUtxos,
       addrTxWitsItemCbors: subject.addrWitnessItemCbors,
       referenceScriptUtxo: step03Ref,
     });
+    let threadOutRef = step03.nextThreadOutRef;
+    for (let count = 0; count < 3000; count++) {
+      const step = await submitMintAuthorizationEvaluate({
+        ...common,
+        threadOutRef,
+        scriptBytesHex: directionB.scriptBytesHex,
+        addrWitnessItemCbors: subject.addrWitnessItemCbors,
+        rawPreimageUtxos,
+        referenceScriptUtxo: evaluateRef,
+      });
+      threadOutRef = step.nextThreadOutRef;
+      if (step.terminal) break;
+    }
     const step05 = await submitMintAuthorizationStep05({
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
       signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
+      threadOutRef,
       referenceScriptUtxo: step05Ref,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });

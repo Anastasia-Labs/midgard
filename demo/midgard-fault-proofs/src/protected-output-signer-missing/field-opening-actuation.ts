@@ -1,13 +1,21 @@
 import type { FieldOpening } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type {
+  LucidEvolution,
+  RedeemerContext,
+  UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 
@@ -27,6 +35,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   onReady,
   publishedCarriageUtxos,
   suppliedCertificateUtxo,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -42,8 +51,10 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly onReady?: () => Promise<void>;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<{
-  readonly opening: FieldOpening;
+  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
   readonly referenceInputs: readonly UTxO[];
   readonly carriageUtxos: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
@@ -52,6 +63,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   const carriage =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -62,22 +74,23 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   const certificate =
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo,
-            chunkUtxos: carriage,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificateBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          network: lucid.config().network!,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "protected-output-signer-missing: certified opening requires certificate reference script",
+          chunkUtxos: carriage,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificateBoundary,
+        })
       : undefined);
   const referenceInputs = [
     ...carriage,
@@ -86,12 +99,13 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   ];
   await onReady?.();
   return Object.freeze({
-    opening: faultProofFieldOpening({
-      planned,
-      referenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label,
-    }),
+    openingFor: (ctx: RedeemerContext): FieldOpening =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label,
+      }),
     referenceInputs: Object.freeze(referenceInputs),
     carriageUtxos: Object.freeze(carriage),
     ...(certificate === undefined ? {} : { certificateUtxo: certificate }),

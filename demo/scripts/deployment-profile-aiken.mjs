@@ -147,3 +147,43 @@ export const renderAiken = (profile, template) => {
   ];
   return `${template.trimEnd()}\n\n${[...constants, ...allowLists, ...treasury].join("\n\n")}\n`;
 };
+
+// The one value of `name` the template pins, in `#"<hex>"` form.
+const templatePin = (template, name, type) => {
+  const pins = [
+    ...template.matchAll(
+      new RegExp(`^pub const ${name}: ${type} =\\s*#"([0-9a-f]+)"`, "gmu"),
+    ),
+  ];
+  if (pins.length !== 1)
+    throw new Error(
+      `config/deployments/env.ak.template must pin ${name} exactly once`,
+    );
+  return pins[0][1];
+};
+
+/**
+ * TypeScript exports for the constants the template pins, the same in every
+ * profile: the user-events witness prefix and the script hashes of the
+ * verifiers other validators delegate to by withdrawal.
+ */
+export const renderTemplateExports = (template) => {
+  const verifierHashes = Object.fromEntries(
+    [
+      "plutarch_phas_validator_hash",
+      "plutarch_pexcludes_validator_hash",
+      "mpf_chunked_verify_validator_hash",
+    ].map((name) => [name, templatePin(template, name, "ScriptHash")]),
+  );
+  const witnessPrefix = templatePin(
+    template,
+    "user_events_witness_script_prefix",
+    "ByteArray",
+  );
+  return (
+    `/** \`user_events_witness_script_prefix\`, the same in every profile's Aiken env. */\n` +
+    `export const USER_EVENT_WITNESS_SCRIPT_PREFIX = ${JSON.stringify(witnessPrefix)};\n\n` +
+    `/** The delegated verifier script hashes pinned in every profile's Aiken env. */\n` +
+    `export const VERIFIER_SCRIPT_HASHES = Object.freeze(${JSON.stringify(verifierHashes, null, 2)} as const);\n\n`
+  );
+};

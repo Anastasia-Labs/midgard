@@ -1,6 +1,5 @@
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 
-import { sha256 } from "../sha256.js";
 import {
   type RawEntry,
   type ReservedAdmissionRequest,
@@ -11,8 +10,6 @@ type ReservedAdmissionVariant = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly txFullHashV1: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
-  readonly programMaterialSidecarSha256: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly requestIndices: readonly number[];
   readonly variantOrdinal: number;
@@ -35,9 +32,6 @@ export const groupReservedAdmissionVariants = (
     const matching = variants.find(
       (variant) =>
         variant.txCanonicalCbor.equals(request.txCanonicalCbor) &&
-        variant.programMaterialSidecarCbor.equals(
-          request.programMaterialSidecarCbor,
-        ) &&
         variant.submitSource === request.submitSource,
     );
     if (matching === undefined) {
@@ -45,9 +39,6 @@ export const groupReservedAdmissionVariants = (
         ...request,
         txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCbor(
           request.txCanonicalCbor,
-        ),
-        programMaterialSidecarSha256: sha256(
-          request.programMaterialSidecarCbor,
         ),
         requestIndices: [index],
         variantOrdinal: -1,

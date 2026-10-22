@@ -1,13 +1,3 @@
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
-import {
-  InputExistenceSourceStateSchema,
-  InputExistenceSelectArgsSchema,
-  InputExistenceSelectedStateSchema,
-  InputExistencePreStateArgsSchema,
-  InputExistenceLedgerStateSchema,
-  InputExistenceTerminalArgsSchema,
-} from "./input-existence.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 /**
  * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
  * remediation): thread state carries the §2.5 anchor rather than a per-field
@@ -21,7 +11,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
-
+import {
+  InputExistenceLedgerStateSchema,
+  InputExistencePreStateArgsSchema,
+  InputExistenceSelectArgsSchema,
+  InputExistenceSelectedStateSchema,
+  InputExistenceSourceStateSchema,
+  InputExistenceTerminalArgsSchema,
+} from "./input-existence.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -30,6 +27,8 @@ import {
   NativeTxInclusionCarriage,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
 /**
  * No-reference-input fault proof — proves a Midgard block includes a native L2

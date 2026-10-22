@@ -232,7 +232,6 @@ export const buildPublicReplayFixture = async (input: {
       event_to_step: sortEntries(eventToStepEntries),
       transaction_preimages: sortEntries(preimageEntries),
       forced_transaction_preimages: sortEntries(forcedPreimages),
-      cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
       validation_trace_witnesses: [],
       counts,

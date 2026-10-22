@@ -207,6 +207,9 @@ export const verifyWatcherDeploymentIdentity = (input: {
     deploymentFingerprint: manifestId,
     network: policy.network,
     hubOracleOneShotOutRef: policy.hubOracleOneShotOutRef,
+    ...(manifest.l1Origin === undefined
+      ? {}
+      : { recordedL1Origin: manifest.l1Origin }),
     protocolScriptHashes,
     referenceScripts,
   });

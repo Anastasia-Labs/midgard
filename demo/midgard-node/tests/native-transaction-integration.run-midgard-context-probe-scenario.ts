@@ -1,4 +1,3 @@
-import { type MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { CML, Constr } from "@lucid-evolution/lucid";
 
@@ -71,7 +70,6 @@ export const runPlutusV3SpendScenario = async (opts: {
   readonly attachScriptIntegrityHash?: boolean;
   readonly referenceOutput?: Buffer;
   readonly phaseBOptions?: Parameters<typeof runBothPhases>[3];
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
 }) => {
   const base = buildNativeTx(opts.txOptions);
   const tx =
@@ -88,13 +86,7 @@ export const runPlutusV3SpendScenario = async (opts: {
 
   return {
     ...tx,
-    ...(await runBothPhases(
-      tx.txId,
-      tx.txCbor,
-      preState,
-      opts.phaseBOptions,
-      opts.programMaterial,
-    )),
+    ...(await runBothPhases(tx.txId, tx.txCbor, preState, opts.phaseBOptions)),
   };
 };
 

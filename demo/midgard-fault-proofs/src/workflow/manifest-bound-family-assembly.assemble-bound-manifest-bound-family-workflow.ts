@@ -34,6 +34,11 @@ import {
   createAuthenticatedProofChunkPrerequisitePort,
   withProofChunkPrerequisite,
 } from "./proof-chunk-prerequisite.js";
+import {
+  createScriptDecodePrerequisitePort,
+  scriptDecodeDeploymentFromReferences,
+  withScriptDecodePrerequisite,
+} from "./script-decode-prerequisite.js";
 
 /**
  * Assembles the manifest-bound workflow for one family definition. The
@@ -208,7 +213,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
         publications: l1.publications,
         requirementForAction: (input) =>
           requirement.requirementForAction(context, input),
-        transactionConfirmed,
       }),
     ),
   );
@@ -231,6 +235,26 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
   });
   const replayer = definition.replayer(context);
   let adapter = familyAdapterBase;
+  const { scriptDecodeRecord } = definition;
+  if (scriptDecodeRecord !== undefined) {
+    adapter = withScriptDecodePrerequisite({
+      category,
+      base: adapter,
+      prerequisite: createScriptDecodePrerequisitePort({
+        category,
+        lucid: deployment.lucid,
+        signer: deployment.signer,
+        deployment: () =>
+          scriptDecodeDeploymentFromReferences({
+            blueprint: binding.blueprint,
+            network: binding.network,
+            references: deployment.auxiliaryReferences,
+          }),
+        itemForAction: (input) => scriptDecodeRecord(context, input),
+        publications: l1.publications,
+      }),
+    });
+  }
   for (const [index, requirement] of (
     definition.fieldCarriage ?? []
   ).entries()) {

@@ -1,22 +1,24 @@
 import {
-  decodeMidgardCekProgramEnvelope,
-  decodeMidgardCekProgramMaterialSidecar,
-  MidgardCekProgramMaterialMissingRootError,
-  type MidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
-
-import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
   type MidgardCekExecutionGraph,
   type MidgardCekExecutionMode,
   type MidgardCekStructuralExecution,
 } from "./cek-executor.js";
+import { buildMidgardCanonicalCekProgram } from "./cek-program.js";
+import { MidgardUplcCapabilityError } from "./plutus-script-evaluator.capability-error.js";
+import {
+  evaluateStoredMidgardPlutusScript,
+  storedMidgardPlutusScriptPhase2Class,
+} from "./plutus-script-evaluator.js";
+import type { ScriptDecodePhase2Class } from "./script-decode.step-types.js";
+import { scriptDecodeRecordOfScript } from "./script-decode.step-walk.js";
 import { type LocalScriptEvalResult } from "./types.js";
 
 /** One Phase B script execution: its program, context and limits. */
 export type MidgardCekScriptRun = {
   readonly scriptBytes: Uint8Array;
+  readonly scriptLanguage: "PlutusV3" | "MidgardV1";
   readonly contextCbor: Uint8Array;
   readonly executionBudget?: {
     readonly cpu: bigint;
@@ -49,51 +51,78 @@ export class ScriptEvaluationIndeterminateError extends Error {
   }
 }
 
-/**
- * A verdict-mode run as it crosses a thread boundary: the transaction's
- * program-material sidecar travels as its canonical bytes.
- */
-export type MidgardCekVerdictRequest = MidgardCekScriptRun & {
-  readonly programMaterialSidecarCbor: Uint8Array | null;
-};
+/** Exact worker request; the carried script is sufficient for evaluation. */
+export type MidgardCekVerdictRequest = MidgardCekScriptRun;
 
-/** Whether the transaction's program material carries the node `rootHex`. */
-const materialCarriesRoot = (
-  material: MidgardCekProgramMaterialSidecar,
-  rootHex: string,
-): boolean => {
-  for (const entry of material) {
-    if (Buffer.from(entry.root).toString("hex") === rootHex) return true;
-  }
-  return false;
-};
+const indeterminate = (cause: unknown): LocalScriptEvalResult => ({
+  kind: "indeterminate",
+  detail: `Plutus evaluation stopped without a verdict: ${String(cause)}`,
+  cause,
+});
 
 /**
- * Runs one Phase B script on the structural CEK executor. A run that halts
- * with an error is a `script_invalid` verdict. A budget stop is reported as
- * accepted with the spent budget; the caller compares it with the declared
+ * Runs one Phase B script. Verdict mode runs the carried Flat program on the
+ * PV11 evaluator. Proof mode derives the local structural trace; a budget
+ * stop records the spent budget for the caller to compare with the declared
  * ex-units.
  *
- * A throw is judged by what the transaction supplied. A program root the
- * transaction's material does not carry is the transaction's own failure:
- * the program cannot run, so the verdict is `script_invalid`. Anything else
- * the run throws is the evaluator's own failure, never the script's:
- * `indeterminate`. That includes a root the material does carry but the run
- * still reports missing, and every bound of the evaluator.
+ * Phase A decodes every carried Plutus script before any run, so a script
+ * that reaches here decodes. A throw is the evaluator's own failure, never
+ * the script's: `indeterminate`. That includes a local capability failure
+ * (`MidgardUplcCapabilityError`), every bound of the evaluator and a proof
+ * self-check.
  */
 export const evaluateMidgardCekScript = (
   run: MidgardCekScriptRun,
-  material: MidgardCekProgramMaterialSidecar,
   mode: MidgardCekExecutionMode,
 ): {
   readonly result: LocalScriptEvalResult;
+  readonly phase2Class?: ScriptDecodePhase2Class;
   readonly graph: MidgardCekExecutionGraph | null;
   readonly execution: MidgardCekStructuralExecution | null;
 } => {
+  if (mode === "verdict") {
+    const result = evaluateMidgardCekVerdict(run);
+    // A run with a verdict decoded, so its class is the cached record's.
+    return {
+      result,
+      ...(result.kind === "indeterminate"
+        ? {}
+        : { phase2Class: storedMidgardPlutusScriptPhase2Class(run) }),
+      graph: null,
+      execution: null,
+    };
+  }
   let graph: MidgardCekExecutionGraph | null = null;
   try {
-    const envelope = decodeMidgardCekProgramEnvelope(run.scriptBytes);
-    graph = buildMidgardCekExecutionGraph(envelope, material, run.contextCbor);
+    const decoded = scriptDecodeRecordOfScript(
+      run.scriptLanguage === "PlutusV3" ? 3 : 128,
+      run.scriptBytes,
+    );
+    if (decoded.k === "refused")
+      throw new MidgardUplcCapabilityError(
+        "Proof evaluation received a Plutus script that failed phase-one decoding",
+      );
+    if (decoded.phase2Class !== 0)
+      return {
+        result: {
+          kind: "script_invalid",
+          detail: `UPLC PV11 phase-two class ${decoded.phase2Class}`,
+        },
+        phase2Class: decoded.phase2Class,
+        graph: null,
+        execution: null,
+      };
+    const program = buildMidgardCanonicalCekProgram(run.scriptBytes);
+    if (!decoded.termRoot.equals(program.termRoot))
+      throw new Error(
+        "Derived CEK material differs from the decoded record term root",
+      );
+    graph = buildMidgardCekExecutionGraph(
+      program.termRoot,
+      program.material.values(),
+      run.contextCbor,
+    );
     const outcome = executeMidgardCekStructuralProgram({
       root: graph.root,
       material: graph.material.values(),
@@ -104,6 +133,7 @@ export const evaluateMidgardCekScript = (
       mode,
     });
     return {
+      phase2Class: 0,
       graph,
       // Only a proof-mode run carries the per-step evidence a trace consumer
       // needs; a verdict-mode run is reported without it.
@@ -124,53 +154,21 @@ export const evaluateMidgardCekScript = (
             },
     };
   } catch (cause) {
-    if (
-      cause instanceof MidgardCekProgramMaterialMissingRootError &&
-      !materialCarriesRoot(material, cause.rootHex)
-    ) {
-      return {
-        graph,
-        execution: null,
-        result: {
-          kind: "script_invalid",
-          detail: `V1 CEK execution failed closed: ${cause.name}: ${cause.message}`,
-        },
-      };
-    }
-    return {
-      graph,
-      execution: null,
-      result: {
-        kind: "indeterminate",
-        detail: `V1 CEK evaluation stopped without a verdict: ${String(cause)}`,
-        cause,
-      },
-    };
+    return { graph, execution: null, result: indeterminate(cause) };
   }
 };
 
 /**
  * The verdict of one script run, as Phase B computes it in process. A pool
  * worker runs this same function, so a verdict never depends on where it was
- * computed. Phase B decodes the same material before it runs any script, so
- * material this cannot decode is `indeterminate`, not a verdict.
+ * computed. An evaluator failure is `indeterminate`, not a verdict.
  */
 export const evaluateMidgardCekVerdict = (
   request: MidgardCekVerdictRequest,
 ): LocalScriptEvalResult => {
-  let material: MidgardCekProgramMaterialSidecar = [];
-  if (request.programMaterialSidecarCbor !== null) {
-    try {
-      material = decodeMidgardCekProgramMaterialSidecar(
-        request.programMaterialSidecarCbor,
-      );
-    } catch (cause) {
-      return {
-        kind: "indeterminate",
-        detail: `V1 CEK material did not decode for evaluation: ${String(cause)}`,
-        cause,
-      };
-    }
+  try {
+    return evaluateStoredMidgardPlutusScript(request);
+  } catch (cause) {
+    return indeterminate(cause);
   }
-  return evaluateMidgardCekScript(request, material, "verdict").result;
 };

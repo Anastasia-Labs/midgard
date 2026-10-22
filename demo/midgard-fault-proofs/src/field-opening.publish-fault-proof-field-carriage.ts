@@ -4,23 +4,30 @@ import {
   type FieldCarriage,
   type FieldOpening,
   fieldOpeningForField,
-  fieldPreimagePublicationDatumCbor,
   resolveCertificateReferenceIndex,
   resolveChunkReferenceIndices,
 } from "@al-ft/midgard-sdk";
-import {
-  coreToTxOutput,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  fieldPublicationSlotClaims,
+  fieldPublicationSlots,
+  lucidOwnOutputReader,
+} from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   type ResolvedProverSigner,
 } from "./runtime.js";
+import {
+  claimOwnOutputs,
+  type OwnOutputJournal,
+  parseOwnOutRef,
+  readOwnOutputs,
+  resolveOwnOutputs,
+} from "./workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -155,7 +162,7 @@ export const faultProofFieldOpening = ({
 
 /**
  * Publishes whatever a plan requires to exist on-chain before the step
- * transaction can reference it, and returns the confirmed carriage UTxOs.
+ * transaction can reference it, and returns the carriage UTxOs in plan order.
  *
  * Empty under tier 1 — the preimage rides in the step's own redeemer and
  * nothing is published. Under tier 2 this is the whole of the carriage; under
@@ -164,8 +171,10 @@ export const faultProofFieldOpening = ({
  * it needs the certificate minting policy from the deployment and a fault-proof
  * step builder holds no such role.
  *
- * §8.7: publication is permissionless and content-addressed, so a chunk that
- * already exists at the publisher's address is reused rather than republished.
+ * Each publication is a slot of `ownOutputs`: one of our earlier outputs for
+ * the slot that is still live is reused; otherwise the slot is published, and
+ * its out-ref, taken from our signed body, is claimed before submission. Two
+ * chunks with the same bytes are two slots and take two outputs.
  */
 export const publishFaultProofFieldCarriage = async ({
   lucid,
@@ -173,6 +182,7 @@ export const publishFaultProofFieldCarriage = async ({
   planned,
   publisherAddress,
   label,
+  ownOutputs,
   preSubmitBoundary,
   beforePublication,
   publicationConfirmed,
@@ -182,6 +192,8 @@ export const publishFaultProofFieldCarriage = async ({
   readonly planned: FaultProofFieldOpeningPlan;
   readonly publisherAddress: string;
   readonly label: string;
+  /** Our claims on the carriage slots; a new publication is claimed here. */
+  readonly ownOutputs: OwnOutputJournal;
   /** Production workflow seam for each content publication transaction. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   /** Refresh reserved inputs before each new publication is built. */
@@ -194,16 +206,23 @@ export const publishFaultProofFieldCarriage = async ({
     return [];
   }
   signer.selectWallet(lucid);
+  const slots = fieldPublicationSlots({
+    plan: planned.plan,
+    publisherAddress,
+  });
+  const live = await readOwnOutputs(
+    lucidOwnOutputReader(lucid),
+    slots.flatMap(({ key }) =>
+      ownOutputs.claims(key).map(({ outRef }) => outRef),
+    ),
+  );
   const published: UTxO[] = [];
-  for (const publication of publications) {
-    const datumCbor = fieldPreimagePublicationDatumCbor(publication.bytes);
-    // Compared byte-for-byte against the datum, exactly as
-    // `resolveChunkReferenceIndices` does when it locates the same UTxO at the
-    // door. Matching on anything looser here would reuse a publication the
-    // resolver then fails to find.
-    const existing = (await lucid.utxosAt(publisherAddress)).find(
-      (utxo) => utxo.datum === datumCbor,
-    );
+  for (const [index, publication] of publications.entries()) {
+    const { key, slot, datumCbor } = slots[index]!;
+    const existing = [...ownOutputs.claims(key)]
+      .reverse()
+      .map(({ outRef }) => live.get(outRef))
+      .find((utxo) => utxo !== undefined && slot.matches(utxo));
     if (existing !== undefined) {
       await publicationConfirmed?.(existing.txHash);
       published.push(existing);
@@ -222,6 +241,8 @@ export const publishFaultProofFieldCarriage = async ({
       }),
     );
     const signed = await unsigned.sign.withWallet().complete();
+    const [claim] = claimOwnOutputs({ signed, slots: [slot] });
+    ownOutputs.claim(key, claim!.outRef);
     const expectedTxHash = await reachFraudProofPreSubmitBoundary({
       signed,
       referenceScripts: [],
@@ -235,25 +256,10 @@ export const publishFaultProofFieldCarriage = async ({
     }
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
     await publicationConfirmed?.(txHash);
-    const outputs = signed.toTransaction().body().outputs();
-    let outputIndex: number | undefined;
-    for (let index = 0; index < outputs.len(); index += 1) {
-      if (
-        outputIndex === undefined &&
-        coreToTxOutput(outputs.get(index)).datum === datumCbor
-      ) {
-        outputIndex = index;
-      }
-    }
-    if (outputIndex === undefined) {
-      throw new Error(
-        `${label} §8 carriage publication did not produce an output carrying chunk ${publication.chunkIndex.toString()}.`,
-      );
-    }
     published.push(
       await fetchUtxoByOutRef({
         lucid,
-        outRef: { txHash, outputIndex },
+        outRef: parseOwnOutRef(claim!.outRef),
         label: `${label} §8 carriage publication`,
       }),
     );
@@ -261,64 +267,28 @@ export const publishFaultProofFieldCarriage = async ({
   return published;
 };
 
-/** Resolves every publication in plan order from authenticated L1 UTxOs. */
+/**
+ * Our live publications of a plan, in plan order, read by their claimed
+ * out-refs; undefined when any slot has none.
+ */
 export const resolveFaultProofFieldCarriagePublications = async ({
   lucid,
   publisherAddress,
   planned,
+  ownOutputs,
 }: {
-  readonly lucid: LucidEvolution;
+  readonly lucid: Pick<LucidEvolution, "utxosByOutRef">;
   readonly publisherAddress: string;
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
+  readonly ownOutputs: OwnOutputJournal;
 }): Promise<readonly UTxO[] | undefined> => {
-  const candidates = await lucid.utxosAt(publisherAddress);
-  const claimed = new Set<string>();
-  const resolved: UTxO[] = [];
-  for (const publication of planned.plan.publications) {
-    const expectedDatum = fieldPreimagePublicationDatumCbor(publication.bytes);
-    const match = candidates.find((candidate) => {
-      const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
-      return !claimed.has(label) && candidate.datum === expectedDatum;
-    });
-    if (match === undefined) return undefined;
-    claimed.add(`${match.txHash}#${match.outputIndex.toString()}`);
-    resolved.push(match);
-  }
-  return resolved;
-};
-
-export type MissingFaultProofFieldPublication = {
-  readonly digest: string;
-  readonly datumCbor: string;
-  readonly chunkIndex: number;
-};
-
-/** Deterministically selects the first plan-ordered publication absent on L1. */
-export const findMissingFaultProofFieldPublication = async ({
-  lucid,
-  publisherAddress,
-  planned,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly publisherAddress: string;
-  readonly planned: FaultProofFieldOpeningPlan;
-}): Promise<MissingFaultProofFieldPublication | undefined> => {
-  const candidates = await lucid.utxosAt(publisherAddress);
-  const claimed = new Set<string>();
-  for (const publication of planned.plan.publications) {
-    const datumCbor = fieldPreimagePublicationDatumCbor(publication.bytes);
-    const match = candidates.find((candidate) => {
-      const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
-      return !claimed.has(label) && candidate.datum === datumCbor;
-    });
-    if (match === undefined) {
-      return {
-        digest: publication.digest.toString("hex"),
-        datumCbor,
-        chunkIndex: publication.chunkIndex,
-      };
-    }
-    claimed.add(`${match.txHash}#${match.outputIndex.toString()}`);
-  }
-  return undefined;
+  const resolution = await resolveOwnOutputs({
+    slots: fieldPublicationSlotClaims({
+      plan: planned.plan,
+      publisherAddress,
+      ownOutputs,
+    }),
+    read: lucidOwnOutputReader(lucid),
+  });
+  return resolution.kind === "ready" ? resolution.utxos : undefined;
 };

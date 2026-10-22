@@ -94,9 +94,6 @@ export const admitTransfersTogether = async (
       TxAdmissionsDB.admit({
         txId: queued.txId,
         txCanonicalCbor: queued.txCbor,
-        programMaterialSidecarCbor: Buffer.from(
-          queued.programMaterialSidecarCbor!,
-        ),
         submitSource: "native",
         currentBacklog: 0n,
         maxBacklog: h.production.nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,

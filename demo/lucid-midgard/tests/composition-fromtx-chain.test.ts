@@ -6,7 +6,6 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -143,7 +142,7 @@ describe("fromTx, compose, and local chaining", () => {
     );
   });
 
-  it("preserves canonical program material across CompleteTx and raw imports", async () => {
+  it("preserves exact stored Flat script bytes across CompleteTx and raw imports", async () => {
     const midgard = await LucidMidgard.new(makeProvider(), {
       network: "Preview",
       networkId: 0,
@@ -151,9 +150,7 @@ describe("fromTx, compose, and local chaining", () => {
     const input = makeUtxo(makeOutRef(0x12), address, {
       lovelace: 2_000_000n,
     });
-    const canonical = buildMidgardCanonicalCekProgram(
-      Buffer.from("010100200101", "hex"),
-    );
+    const storedScript = Buffer.from("46010100200101", "hex");
     const completed = await midgard
       .newTx()
       .collectFrom([input])
@@ -163,40 +160,25 @@ describe("fromTx, compose, and local chaining", () => {
         {
           scriptRef: {
             type: "MidgardV1",
-            script: canonical.envelopeCbor.toString("hex"),
+            script: storedScript.toString("hex"),
           },
         },
       )
       .complete({
         fee: 0n,
-        programMaterial: [...canonical.material.values()],
       });
 
     const importedComplete = midgard.fromTx(completed);
-    expect(() =>
-      midgard.fromTx(completed.txHex, {
-        resolvedSpendInputs: [input],
-      }),
-    ).toThrow(/Incomplete or mismatched CEK program material/u);
-
     const importedRaw = midgard.fromTx(completed.txHex, {
       resolvedSpendInputs: [input],
-      programMaterial: completed.programMaterial,
     });
-    expect(importedComplete.programMaterial).toEqual(completed.programMaterial);
-    expect(importedRaw.programMaterial).toEqual(completed.programMaterial);
-
-    const corrupted = completed.programMaterial.map((entry, index) =>
-      index === 0
-        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
-        : entry,
-    );
-    expect(() =>
-      midgard.fromTx(completed.txHex, {
-        resolvedSpendInputs: [input],
-        programMaterial: corrupted,
-      }),
-    ).toThrow(/Invalid canonical CEK program material/u);
+    for (const imported of [importedComplete, importedRaw]) {
+      expect(imported.txHex).toBe(completed.txHex);
+      expect(imported.producedOutput(0).output.scriptRef).toEqual({
+        type: "MidgardV1",
+        script: storedScript.toString("hex"),
+      });
+    }
   });
 
   it("fails closed for signed imports without resolved spend pre-state", async () => {

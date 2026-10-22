@@ -34,17 +34,7 @@ validator main(
           tx,
         )
       ct.Continue(Args { source: AcceptedSource { inclusion }, observer_index }) -> {
-        let
-            _,
-            subject_thread_name,
-            _,
-            _,
-            output_hash,
-            output_state,
-            subject_header,
-            _,
-            verified
-          <- pass_native_tx_to_next_step_carried(
+        let _, _, _, _, output_hash, output_state, _, _, verified <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -54,13 +44,7 @@ validator main(
         )
         let expected: Data = Bound {
           bound: bind_observer_v1(
-            substrate.open_subject_v1(
-              subject_thread_name,
-              substrate.AcceptedSource {
-                header: subject_header,
-                tx_inclusion: verified,
-              },
-            ),
+            substrate.open_accepted_subject_v1(verified),
             observer_index,
           ),
         }
@@ -84,9 +68,10 @@ validator main(
           inputs,
           outputs,
         )
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           thread_name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         let expected: Data = Bound {
           bound: bind_observer_v1(subject, observer_index),

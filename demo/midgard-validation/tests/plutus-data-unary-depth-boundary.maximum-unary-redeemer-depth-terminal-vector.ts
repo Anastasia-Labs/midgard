@@ -73,7 +73,7 @@ export const maximumUnaryRedeemerDepthTerminalVector = {
     traverseSteps: 15999,
     maximumSourceSpan: 14,
     sourceCanonicalTransactionBytes: 16356,
-    canonicalTransactionBytes: 16282,
+    canonicalTransactionBytes: 16252,
     redeemerFieldBytes: 16000,
     redeemerFieldChunkCount: 4,
     completeFoldStepCount: 8,

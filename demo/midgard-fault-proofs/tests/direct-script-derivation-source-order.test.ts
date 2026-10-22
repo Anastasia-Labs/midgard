@@ -2,7 +2,6 @@ import {
   encodeMidgardSpendInputItem,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardTxOutput,
   protectMidgardAddress,
@@ -17,7 +16,6 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildMidgardCanonicalCekProgram,
   MidgardRedeemerTag,
   RejectCodes,
   runPhaseBValidationWithPatch,
@@ -303,11 +301,9 @@ describe("direct source order is the shared T224 lookup order", () => {
   });
 
   it("selects a spent-output Plutus source without throwing while admission refuses it with a typed verdict", async () => {
-    const program = buildMidgardCanonicalCekProgram(
-      Buffer.from("010100200101", "hex"),
-    );
+    // A Plutus script is carried as its Cardano bytes: CBOR-wrapped Flat.
     const plutus: MidgardVersionedScript = plutusV3ScriptWitness(
-      program.envelopeCbor,
+      encodeCbor(Buffer.from("010100200101", "hex")),
     );
     const plutusHash = hashScriptWitness(plutus);
     const spent = outRefFromByte(0x81);
@@ -352,10 +348,7 @@ describe("direct source order is the shared T224 lookup order", () => {
     });
 
     const phaseA = validatePhaseASingle(
-      {
-        ...makeQueued(transaction.txId, transaction.txCbor),
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
-      },
+      makeQueued(transaction.txId, transaction.txCbor),
       {
         expectedNetworkId: 0n,
         minFeeA: 0n,

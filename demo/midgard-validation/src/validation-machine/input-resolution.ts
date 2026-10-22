@@ -2,8 +2,7 @@
  * The resolved-inputs accumulator and the input-resolution schedule hashes.
  */
 
-import { encodeCbor } from "@al-ft/midgard-core";
-import { blake2b } from "@noble/hashes/blake2.js";
+import { encodeCbor, midgardBlake2b } from "@al-ft/midgard-core";
 
 export const ZERO_32 = Buffer.alloc(32);
 
@@ -18,7 +17,7 @@ const INPUT_RESOLUTION_SCHEDULE_DOMAIN = Buffer.from(
 );
 
 export const hash32 = (bytes: Uint8Array): Buffer =>
-  Buffer.from(blake2b(Buffer.from(bytes), { dkLen: 32 }));
+  Buffer.from(midgardBlake2b(Buffer.from(bytes), { dkLen: 32 }));
 
 export const initialMidgardResolvedInputsAccumulator = (): Buffer =>
   hash32(RESOLVED_INPUTS_ACCUMULATOR_DOMAIN);

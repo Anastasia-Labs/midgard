@@ -1,9 +1,3 @@
-import {
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
 import type { MidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -111,8 +105,6 @@ export const configFor = (overrides: Partial<SDK.Header> = {}): PhaseAConfig =>
 
 export const CONFIG = configFor();
 
-export const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
-
 export const queuedTx = (
   txId: Buffer,
   txCbor: Buffer,
@@ -122,7 +114,6 @@ export const queuedTx = (
   txCbor,
   arrivalSeq: 0n,
   createdAt: new Date(0),
-  programMaterialSidecarCbor: EMPTY_SIDECAR,
   ...overrides,
 });
 
@@ -156,20 +147,6 @@ export const manyOutputs = (count: number): Buffer[] =>
   Array.from({ length: count }, (_unused, index) =>
     makeOutput(BigInt(index + 1), TEST_ADDRESS_BYTES),
   );
-
-/** An unreachable CEK term node, used as block-wide program material. */
-const ORPHAN_TERM_NODE = { kind: "error" as const };
-
-export const ORPHAN_MATERIAL_ENTRY = {
-  kind: "term" as const,
-  root: hashMidgardCekTermNode(ORPHAN_TERM_NODE),
-  preimage: encodeMidgardCekTermNode(ORPHAN_TERM_NODE),
-};
-
-export const ORPHAN_MATERIAL_DA_ENTRY: SDK.DaPayloadEntry = [
-  Buffer.from(ORPHAN_MATERIAL_ENTRY.root).toString("hex"),
-  encodeMidgardCekProgramMaterialDaValue(ORPHAN_MATERIAL_ENTRY).toString("hex"),
-];
 
 // ---------------------------------------------------------------------------
 // Rejection-evidence corpus

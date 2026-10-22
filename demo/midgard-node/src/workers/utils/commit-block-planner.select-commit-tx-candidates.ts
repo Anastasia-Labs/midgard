@@ -135,7 +135,6 @@ export const EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES =
       transactions: [],
       transaction_preimages: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       deposits: [],
       transition_trace: [],
       event_to_step: [],

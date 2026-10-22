@@ -16,6 +16,7 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FamilyAssemblyContext } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
+import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
@@ -47,7 +48,11 @@ export const transactionPort = (
   category: "minAda",
   prepare: async ({ evidence, classification }) =>
     await prepareMinAdaArtifact({ evidence, classification }),
-  capture: async ({ action, artifact }) => {
+  capture: async ({ action, artifact, entries }) => {
+    const ownOutputs = workflowFieldCarriageOwnOutputs({
+      category: "minAda",
+      entries,
+    });
     const admitted = await admitMinAdaArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
       throw new Error("min-ada artifact changed the bound header");
@@ -131,11 +136,12 @@ export const transactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const carriage = await resolveField({ config, admitted });
+      const carriage = await resolveField({ ownOutputs, config, admitted });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMinAdaTxStep02({
+              ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,

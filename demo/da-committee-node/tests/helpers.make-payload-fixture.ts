@@ -170,7 +170,6 @@ export const makePayloadFixture = async (
       withdrawals: [],
       forced_transactions: [],
       forced_transaction_preimages: [],
-      cek_program_material: [],
       transition_trace: transitionEntries,
       event_to_step: eventToStepEntries,
       validation_traces: sortedEntries(

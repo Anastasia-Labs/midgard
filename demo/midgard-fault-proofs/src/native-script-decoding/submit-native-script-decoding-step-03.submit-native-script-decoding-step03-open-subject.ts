@@ -10,7 +10,12 @@ import {
   nativeScriptDecodingOpenedSubjectState,
   NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
 } from "@al-ft/midgard-sdk";
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type LucidEvolution,
+  type RedeemerContext,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -19,6 +24,10 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import { type FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -28,7 +37,6 @@ import {
 } from "./evidence.js";
 import {
   nativeScriptDecodingSubmitError,
-  requireNativeScriptDecodingReferenceScript,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
 import {
@@ -60,6 +68,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -76,6 +85,8 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
@@ -111,7 +122,8 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
 
   const needsOpening =
     face === null || face === NativeScriptDecodingOutOfDomainFaces.CountFace;
-  let subjectFieldOpening: FieldOpening | null = null;
+  let subjectFieldOpeningFor: ((ctx: RedeemerContext) => FieldOpening) | null =
+    null;
   let carriageUtxos: readonly UTxO[] = [];
   if (needsOpening) {
     if (nativeTxCompactCbor === undefined || subjectFieldInputs === undefined) {
@@ -136,6 +148,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
     const published =
       publishedCarriageUtxos ??
       (await publishFaultProofFieldCarriage({
+        ownOutputs,
         lucid,
         signer,
         planned,
@@ -143,22 +156,13 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
         label: `${OPEN_SUBJECT_LABEL} subject field`,
         preSubmitBoundary: publicationPreSubmitBoundary,
       }));
-    const stepReference = requireNativeScriptDecodingReferenceScript({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash:
-        contracts.steps[OPEN_SUBJECT_INDEX].spendingScriptHash,
-      stepIndex: OPEN_SUBJECT_INDEX,
-    });
-    subjectFieldOpening = faultProofFieldOpening({
-      planned,
-      referenceInputs: [
-        ...published,
-        ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-        stepReference,
-      ],
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: `${OPEN_SUBJECT_LABEL} subject field`,
-    });
+    subjectFieldOpeningFor = (ctx) =>
+      faultProofFieldOpening({
+        planned,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: `${OPEN_SUBJECT_LABEL} subject field`,
+      });
     carriageUtxos = [
       ...published,
       ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
@@ -199,7 +203,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
     destinationAddress = contracts.steps[STEP_04_INDEX].spendingScriptAddress;
   }
 
-  const opening = subjectFieldOpening;
+  const openingFor = subjectFieldOpeningFor;
   const { txHash, layout } = await advanceStep03Thread({
     lucid,
     contracts,
@@ -209,14 +213,14 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
     destinationAddress,
     nextState,
     spendingStepIndex: OPEN_SUBJECT_INDEX,
-    buildRedeemer: (resolved) =>
+    buildRedeemer: (resolved, ctx) =>
       Data.to(
         {
           Continue: [
             {
               input_index: resolved.inputIndex,
               output_index: resolved.outputIndex,
-              subject_field_opening: opening,
+              subject_field_opening: openingFor?.(ctx) ?? null,
             },
           ],
         },

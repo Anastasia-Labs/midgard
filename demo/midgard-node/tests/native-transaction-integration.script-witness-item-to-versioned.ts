@@ -2,15 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  decodeMidgardCekProgramEnvelope,
-  type MidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   decodeMidgardNativeScript,
   encodeCbor,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 
 import {
@@ -111,66 +106,18 @@ export const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX =
 
 export type ScriptWitnessItem = MidgardVersionedScript | Uint8Array;
 
-export const testProgramMaterial = new Map<
-  string,
-  MidgardCekProgramMaterialEntry
->();
-
-const registerTestProgramMaterial = (
-  entries: Iterable<MidgardCekProgramMaterialEntry>,
-): void => {
-  for (const entry of entries) {
-    const key = Buffer.from(entry.root).toString("hex");
-    const prior = testProgramMaterial.get(key);
-    if (
-      prior !== undefined &&
-      (prior.kind !== entry.kind ||
-        !Buffer.from(prior.preimage).equals(entry.preimage))
-    ) {
-      throw new Error(`test CEK program material collision at ${key}`);
-    }
-    testProgramMaterial.set(key, entry);
-  }
-};
-
-export const canonicalizeTestProofScript = (
-  script: MidgardVersionedScript,
-): MidgardVersionedScript => {
-  if (script.language === "NativeCardano") return script;
-  try {
-    decodeMidgardCekProgramEnvelope(script.scriptBytes);
-    return script;
-  } catch {
-    try {
-      const canonical = buildMidgardCanonicalCekProgram(script.scriptBytes);
-      registerTestProgramMaterial(canonical.material.values());
-      return {
-        language: script.language,
-        scriptBytes: canonical.envelopeCbor,
-      };
-    } catch {
-      // Keep malformed authoring bytes only so consensus admission can prove
-      // that it rejects unsupported program encodings fail closed.
-      return script;
-    }
-  }
-};
-
 export const makeAlwaysSucceedsScript = (compiledCode: string): CML.Script => {
-  const canonical = canonicalizeTestProofScript({
-    language: "PlutusV3",
-    scriptBytes: Buffer.from(compiledCode, "hex"),
-  });
   return CML.Script.new_plutus_v3(
-    CML.PlutusV3Script.from_raw_bytes(canonical.scriptBytes),
+    CML.PlutusV3Script.from_raw_bytes(Buffer.from(compiledCode, "hex")),
   );
 };
 
-export const makeRawUplcWitness = (scriptHex: string): MidgardVersionedScript =>
-  canonicalizeTestProofScript({
-    language: "MidgardV1",
-    scriptBytes: Buffer.from(scriptHex, "hex"),
-  });
+export const makeRawUplcWitness = (
+  scriptHex: string,
+): MidgardVersionedScript => ({
+  language: "MidgardV1",
+  scriptBytes: Buffer.from(scriptHex, "hex"),
+});
 
 const cmlScriptToScriptWitness = (
   script: CML.Script,
@@ -223,30 +170,16 @@ export const scriptWitnessItemToVersioned = (
 };
 
 export const makeTypedPlutusV3Witness = (scriptHex: string): CML.Script => {
-  const canonical = canonicalizeTestProofScript({
-    language: "PlutusV3",
-    scriptBytes: Buffer.from(scriptHex, "hex"),
-  });
   return CML.Script.new_plutus_v3(
-    CML.PlutusV3Script.from_raw_bytes(canonical.scriptBytes),
+    CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptHex, "hex")),
   );
 };
 
 export const midgardV1Hash = (scriptHex: string): string =>
-  hashMidgardScript(
-    canonicalizeTestProofScript({
-      language: "MidgardV1",
-      scriptBytes: Buffer.from(scriptHex, "hex"),
-    }).scriptBytes,
-  );
+  hashMidgardScript(Buffer.from(scriptHex, "hex"));
 
 export const plutusV3Hash = (scriptHex: string): string =>
-  hashPlutusV3Script(
-    canonicalizeTestProofScript({
-      language: "PlutusV3",
-      scriptBytes: Buffer.from(scriptHex, "hex"),
-    }).scriptBytes,
-  );
+  hashPlutusV3Script(Buffer.from(scriptHex, "hex"));
 
 export const uniqueScriptWitnessItems = (
   scripts: readonly CML.Script[],

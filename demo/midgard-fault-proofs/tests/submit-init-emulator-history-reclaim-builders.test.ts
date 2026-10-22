@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
+import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -19,7 +20,6 @@ import { afterAll, expect, it } from "vitest";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   historyPairPayloads,
-  index,
   setupHistoryPair,
 } from "./support/emulator/history-pair.js";
 
@@ -198,10 +198,14 @@ it("reclaims both retained event kinds only through their exact published author
         outputIndex: Number(references.get(j).index()),
       })),
     );
+    // The ledger numbers reference inputs by their sorted out-reference order.
+    const ledgerOrder = [...actualReferences].sort(compareOutRefs);
     expect(built.layout.absenceReferenceIndex).toBe(
-      index(actualReferences, absence.anchor.utxo),
+      BigInt(findOutRefIndex(ledgerOrder, absence.anchor.utxo) ?? -1),
     );
-    expect(built.layout.hubReferenceIndex).toBe(index(actualReferences, h.hub));
+    expect(built.layout.hubReferenceIndex).toBe(
+      BigInt(findOutRefIndex(ledgerOrder, h.hub) ?? -1),
+    );
     expect(actualReferences).toContainEqual(authReference);
     const withdrawals = body.withdrawals()!;
     expect(withdrawals.len()).toBe(1);

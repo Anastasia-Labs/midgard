@@ -106,7 +106,7 @@ void (async () => {
     }
     const port = owner.createWorkerPort();
     // The build runs the production default path, which reads the deposit,
-    // withdrawal, and tx-order barriers (and tx-order CEK program material)
+    // withdrawal, and tx-order barriers
     // through `api.utxosAt`. Those reads see an empty chain; any other
     // provider or wallet access is a boundary crossing and fails the run.
     let providerReads = 0;

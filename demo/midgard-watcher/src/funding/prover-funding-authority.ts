@@ -11,7 +11,10 @@ import "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
 import "./prover-funding-authority.create-watcher-prover-funding-authority.js";
 import "./prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
 export { createWatcherProverFundingAuthority } from "./prover-funding-authority.create-watcher-prover-funding-authority.js";
-export { createWatcherProverFundingAuthorityFactory } from "./prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
+export {
+  createWatcherProverFundingAuthorityFactory,
+  watcherValidationDisputeFundingTerms,
+} from "./prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
 export {
   assertWatcherProverFundingAuthorityFactory,
   WATCHER_PROVER_FUNDING_AUTHORITY,

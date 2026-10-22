@@ -1,4 +1,3 @@
-import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import type {
   ScriptLanguageName,
   ScriptLanguageTag,
@@ -69,17 +68,13 @@ export type MidgardProvider = {
   getProtocolInfo(): Promise<MidgardProtocolInfo>;
   getProtocolParameters(): Promise<MidgardProtocolParameters>;
   getCurrentSlot(): Promise<bigint>;
-  submitTx(
-    txCanonicalCborHex: string,
-    programMaterial?: readonly MidgardCekProgramMaterialEntry[],
-  ): Promise<SubmitTxResult>;
+  submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult>;
   /**
    * The ex-units each Plutus redeemer of a draft transaction spends, as the
    * node's Phase B charges them. The draft's declared ex-units are ignored.
    */
   evaluateTx?(
     txCanonicalCborHex: string,
-    programMaterial?: readonly MidgardCekProgramMaterialEntry[],
   ): Promise<readonly MidgardRedeemerBudget[]>;
   getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;

@@ -6,15 +6,15 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
-  type CheckedLedger,
-  type LedgerAt,
-  predecessorLedger,
-} from "../ledger-at.js";
-import {
   EventLedgerReplayRefusal,
   ledgerBeforeTransactionEvent,
 } from "../input-existence/event-ledger.js";
 import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
+import {
+  type CheckedLedger,
+  type LedgerAt,
+  predecessorLedger,
+} from "../ledger-at.js";
 import { detectNetworkIdAcceptedForced } from "../network-id/accepted-forced.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";

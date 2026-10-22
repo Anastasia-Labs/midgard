@@ -60,7 +60,7 @@ const listBit = (
 };
 /**
  * At a cons bit, decodes the run of elements that decode in bulk, or else the
- * next element as a value.
+ * next element as a value. At the nil bit the list's fold is a tick of its own.
  */
 export const tickListBit = (
   env: DecodeEnv,
@@ -101,23 +101,21 @@ export const tickListBit = (
   }
   return listBit(env, ex, { k: "value", ty: element }, (frame, rest, after) => {
     const list = expectFrame(frame, "valueList");
-    return foldMore(
-      env,
-      { ...rest, cursor: after },
-      {
+    return at(rest, after, {
+      k: "constFold",
+      fold: {
         pairs: false,
         remaining: list.count,
         sequence: emptyMidgardCekDataListSummary(),
       },
-      {
+      next: {
         k: "list",
         element,
         array: list.array,
         count: list.count,
         memory: list.memory,
       },
-      UNITS_PER_TICK,
-    );
+    });
   });
 };
 

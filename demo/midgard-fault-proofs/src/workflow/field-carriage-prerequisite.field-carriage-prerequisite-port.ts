@@ -139,10 +139,15 @@ export interface FieldCarriagePrerequisitePort<
 > {
   readonly portVersion: typeof FIELD_CARRIAGE_PREREQUISITE;
   readonly category: Category;
+  /**
+   * The step's carriage, read by the out-refs the workflow's own publish and
+   * certify actions recorded in `entries`.
+   */
   resolveAuthenticated(input: {
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<
     Readonly<{
       publications: readonly UTxO[];
@@ -168,6 +173,7 @@ export interface FieldCarriagePrerequisitePort<
     readonly headerHash: string;
     readonly action: FraudProofWorkflowAction;
     readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<{
     readonly transaction: LocallyEvaluatedTransaction;
     readonly durableRecovery: JournalJsonObject;

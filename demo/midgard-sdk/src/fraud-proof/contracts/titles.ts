@@ -23,4 +23,10 @@ export const FAULT_PROOF_SHARED_TITLES = {
   fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
   scriptDecodeMint: deployedTitle("scriptDecodeMint"),
   scriptDecodeSpend: deployedTitle("scriptDecodeSpend"),
+  scriptDecodeTermWithdraw: deployedTitle("scriptDecodeTermWithdraw"),
+  scriptDecodeValueWithdraw: deployedTitle("scriptDecodeValueWithdraw"),
+  scriptDecodeListWithdraw: deployedTitle("scriptDecodeListWithdraw"),
+  scriptDecodeFoldWithdraw: deployedTitle("scriptDecodeFoldWithdraw"),
+  scriptDecodeBytesWithdraw: deployedTitle("scriptDecodeBytesWithdraw"),
+  scriptDecodeDataWithdraw: deployedTitle("scriptDecodeDataWithdraw"),
 } as const;

@@ -44,7 +44,10 @@ export type DeploymentMember = Readonly<{
   commands: readonly DeploymentScriptCommandName[];
   /** Null only for the native reference-script authorization policy. */
   validatorTitle: string | null;
-  /** Public SDK family aliases, relative to fraudProofContracts[family]. */
+  /**
+   * Public SDK family aliases, relative to fraudProofContracts[family]. The
+   * first path is the one the SDK deployment recipe reads the script from.
+   */
   familyPaths: readonly (readonly string[])[];
 }>;
 

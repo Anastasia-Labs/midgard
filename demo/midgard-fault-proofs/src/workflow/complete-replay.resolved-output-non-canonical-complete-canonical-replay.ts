@@ -51,7 +51,6 @@ import {
   type FabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalEvidenceAuthority,
 } from "./fabricated-withdrawal-evidence.js";
-import { withoutHeldPlutusScriptItems } from "./plutus-script-item-hold.js";
 
 /** Complete Ed25519 verification of every committed address witness. */
 export const INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
@@ -185,12 +184,13 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY =
     detectFieldItemWidthIllegalCompleteReplay(evidence),
   );
 
-/** Complete accepted and forced scan for malformed field-6 native scripts. */
+/**
+ * Complete accepted and forced scan for malformed field-6 native scripts and
+ * undecodable field-6 Plutus scripts.
+ */
 export const WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["witnessScriptDecoding"], async (evidence) =>
-    withoutHeldPlutusScriptItems(
-      detectWitnessScriptDecodingCompleteReplay(evidence),
-    ),
+    detectWitnessScriptDecodingCompleteReplay(evidence),
   );
 
 /** Complete accepted and forced scan for missing required integrity hashes. */
@@ -306,10 +306,11 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY =
     detectObserversForbiddenForcedReplay(evidence),
   );
 
-/** Complete accepted and forced scan for malformed output reference scripts. */
+/**
+ * Complete accepted and forced scan for malformed native and undecodable
+ * Plutus output reference scripts.
+ */
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["outputReferenceScriptDecoding"], async (evidence) =>
-    withoutHeldPlutusScriptItems(
-      detectOutputReferenceScriptDecodingCanonicalViolations(evidence),
-    ),
+    detectOutputReferenceScriptDecodingCanonicalViolations(evidence),
   );

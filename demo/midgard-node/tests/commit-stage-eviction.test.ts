@@ -1,7 +1,7 @@
 import "./utils.js";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { MidgardUplcCapabilityError } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,7 +21,6 @@ import {
 import { heldBuildStage } from "../src/mpf/commit-rejection.evict-uncommittable-normal-txs.js";
 import {
   COMMIT_REJECT_CODE_DA_OVERSIZE,
-  COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
 } from "../src/mpf/commit-rejection.js";
@@ -32,7 +31,6 @@ import {
   BASE,
   EXTRA_BASE,
   EXTRA_TXS,
-  lambdaChain,
   T1,
   T4,
   TXS,
@@ -74,10 +72,6 @@ const fixture = vi.hoisted(() => ({
     return failure;
   },
   forcedStoreFault: false,
-  // Transaction CBOR hex -> its programs, for the block-wide coverage
-  // check, or the error collecting them throws.
-  envelopesByTxCbor: new Map<string, readonly unknown[] | Error>(),
-  sidecarsByTxId: new Map<string, Buffer | null>(),
   phaseBAccepted: [] as string[][],
 }));
 
@@ -93,7 +87,6 @@ vi.mock("@al-ft/midgard-validation", async () => {
           txId: Buffer;
           txCbor: Buffer;
           sourceKind?: string;
-          programMaterialSidecarCbor: Buffer | null;
         }[],
         config: Parameters<typeof actual.runPhaseAValidation>[1],
       ) =>
@@ -114,7 +107,6 @@ vi.mock("@al-ft/midgard-validation", async () => {
                   submission: {
                     sourceKind: "normal",
                     txCbor: tx.txCbor,
-                    programMaterialSidecarCbor: tx.programMaterialSidecarCbor,
                   },
                   graph: {
                     spentOutRefHexes: graph.spent,
@@ -173,42 +165,6 @@ vi.mock("@al-ft/midgard-validation", async () => {
     ),
   };
 });
-// The fixture transactions are opaque bytes: they decode to their own CBOR,
-// and their programs are the fixture's.
-vi.mock("@al-ft/midgard-core/codec", async () => {
-  const actual = await vi.importActual<
-    typeof import("@al-ft/midgard-core/codec")
-  >("@al-ft/midgard-core/codec");
-  return {
-    ...actual,
-    decodeMidgardNativeTxFullFromCanonicalCbor: (cbor: Uint8Array) =>
-      fixture.envelopesByTxCbor.has(hex(cbor))
-        ? { fixtureCbor: hex(cbor) }
-        : actual.decodeMidgardNativeTxFullFromCanonicalCbor(cbor),
-  };
-});
-vi.mock("@al-ft/midgard-core/script-proof", async () => {
-  const actual = await vi.importActual<
-    typeof import("@al-ft/midgard-core/script-proof")
-  >("@al-ft/midgard-core/script-proof");
-  return {
-    ...actual,
-    collectMidgardEventProgramEnvelopes: (
-      tx: { fixtureCbor?: string },
-      ...rest: unknown[]
-    ) => {
-      if (tx.fixtureCbor === undefined)
-        return (
-          actual.collectMidgardEventProgramEnvelopes as (
-            ...args: unknown[]
-          ) => unknown
-        )(tx, ...rest);
-      const programs = fixture.envelopesByTxCbor.get(tx.fixtureCbor)!;
-      if (programs instanceof Error) throw programs;
-      return programs;
-    },
-  };
-});
 vi.mock("../src/mpf/ledger-hydration.js", async () => {
   const actual = await vi.importActual<
     typeof import("../src/mpf/ledger-hydration.js")
@@ -220,30 +176,6 @@ vi.mock("../src/mpf/ledger-hydration.js", async () => {
       if (failure !== undefined) throw failure.error;
       return Buffer.from(txCbor);
     }),
-  };
-});
-vi.mock("../src/database/txAdmissions.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/database/txAdmissions.js")
-  >("../src/database/txAdmissions.js");
-  return {
-    ...actual,
-    retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
-      Effect.succeed(
-        txIds.flatMap((txId) => {
-          const sidecar = fixture.sidecarsByTxId.get(hex(txId));
-          return sidecar === null
-            ? []
-            : [
-                {
-                  txId,
-                  sidecarCbor:
-                    sidecar ?? encodeMidgardCekProgramMaterialSidecar([]),
-                },
-              ];
-        }),
-      ),
-    ),
   };
 });
 vi.mock("../src/database/forcedTransactions.js", async () => {
@@ -276,10 +208,6 @@ for (const { txId, spent, produced } of [...TXS, ...EXTRA_TXS])
 beforeEach(() => {
   for (const injected of Object.values(fixture.injected)) injected.clear();
   fixture.forcedStoreFault = false;
-  fixture.envelopesByTxCbor.clear();
-  for (const { txCbor } of [...TXS, ...EXTRA_TXS])
-    fixture.envelopesByTxCbor.set(hex(txCbor), []);
-  fixture.sidecarsByTxId.clear();
 });
 
 const seed = (
@@ -494,6 +422,12 @@ describe("commit-stage eviction of normal transactions", () => {
   const ALLOCATION = () => new RangeError("Array buffer allocation failed");
   const TRANSIENT = () => new Error("injected transient failure");
   it.each([
+    [
+      "phaseB",
+      "an unavailable Plutus evaluator",
+      () => new MidgardUplcCapabilityError("eval unavailable"),
+      Infinity,
+    ],
     ["phaseA", "a memory allocation failure", ALLOCATION, Infinity],
     [
       "phaseA",
@@ -601,58 +535,6 @@ describe("commit-stage eviction of normal transactions", () => {
     inject("phaseA", t1, new WebAssembly.RuntimeError("unreachable executed"));
     const wasm = await run(held(SELECTION));
     expect(wasm).toMatchObject(NOTHING_REJECTED);
-  }, 60_000);
-
-  it("holds the build when a transaction has no durable program material, rejecting nothing", async () => {
-    fixture.sidecarsByTxId.set(t1, null);
-    const result = await run(held(SELECTION));
-    expect(heldBuildStage(result.failure)).toBe("Program material sidecar");
-    expect(result).toMatchObject(NOTHING_REJECTED);
-  }, 60_000);
-
-  it("rejects a transaction whose own programs fail the coverage check, leaving the rest pending", async () => {
-    fixture.envelopesByTxCbor.set(
-      hex(T4.txCbor),
-      lambdaChain(3).envelopes.slice(-1),
-    );
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        yield* build(SELECTION);
-        return { rejected: yield* rejections, pending: yield* pending };
-      }),
-    );
-    expect(result).toEqual({
-      rejected: { [t4]: COMMIT_REJECT_CODE_PROGRAM_COVERAGE },
-      pending: [t1, t2, t3, t5],
-    });
-  }, 60_000);
-
-  it("holds the build on a node fault of the coverage check, naming its stage, rejecting nothing", async () => {
-    fixture.envelopesByTxCbor.set(
-      hex(T4.txCbor),
-      new RangeError("Array buffer allocation failed"),
-    );
-    const alarms: string[] = [];
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        const failure = yield* attemptBuild(SELECTION, {
-          onCommitBuildAlarm: (alarm: string, stage: string) =>
-            Effect.sync(() => {
-              alarms.push(`${alarm}:${stage}`);
-            }),
-        });
-        return {
-          failure,
-          rejected: yield* rejections,
-          pending: yield* pending,
-        };
-      }),
-    );
-    expect(heldBuildStage(result.failure)).toBe("Program material coverage");
-    expect(alarms).toEqual(["held:Program material coverage"]);
-    expect(result).toMatchObject(NOTHING_REJECTED);
   }, 60_000);
 
   it("rejects up to four failures Phase B confirms, leaves the rest pending with their descendants, and raises the breaker alarm", async () => {

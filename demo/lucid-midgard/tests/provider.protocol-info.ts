@@ -1,8 +1,4 @@
 import {
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -98,16 +94,6 @@ export const submitTx = {
     decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(submitTxHex, "hex")),
   ).toString("hex"),
 };
-
-const submitProgramTerm = { kind: "error" } as const;
-
-export const submitProgramMaterial = [
-  {
-    kind: "term" as const,
-    root: hashMidgardCekTermNode(submitProgramTerm),
-    preimage: encodeMidgardCekTermNode(submitProgramTerm),
-  },
-];
 
 export const submitAdmission = (
   payload: Record<string, unknown> = {},

@@ -54,7 +54,7 @@ import {
   forcedVerdictSubject,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
@@ -88,6 +88,7 @@ import { submitProtectedOutputSignerOpeningTransition } from "../src/protected-o
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
@@ -393,13 +394,17 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       references[3]!,
       step03Result.result.certificateUtxo!,
     ];
-    const honestOpening = faultProofFieldOpening({
-      planned: witnessPlan,
-      referenceInputs: honestReferenceInputs,
-      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-      label: "protected-output max scan opening",
-    });
-    const rawScan = (opening: SDK.FieldOpening, checkpointCbor: string) =>
+    const honestOpening = (ctx: RedeemerContext) =>
+      faultProofFieldOpening({
+        planned: witnessPlan,
+        referenceInputs: ctx.referenceInputs,
+        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+        label: "protected-output max scan opening",
+      });
+    const rawScan = (
+      openingFor: (ctx: RedeemerContext) => SDK.FieldOpening,
+      checkpointCbor: string,
+    ) =>
       submitProtectedOutputSignerOpeningTransition({
         lucid: harness.proverLucid,
         contracts,
@@ -415,7 +420,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
           } as never,
           ProtectedOutputSignerStep04DatumSchema as never,
         ),
-        opening,
+        openingFor,
         checkpointCbor,
         referenceScriptUtxo: references[3]!,
         carriageReferenceInputs: honestReferenceInputs,
@@ -423,7 +428,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       });
     await expectOnchainRefusal(() =>
       rawScan(
-        withSwappedCertificateSlot(honestOpening),
+        (ctx) => withSwappedCertificateSlot(honestOpening(ctx)),
         checkpointAt(0).checkpointCbor,
       ),
     );
@@ -687,6 +692,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   }, 900_000);
 
   it("refuses an honest accepted block, every substituted accepted seam, the adjacent over-bound field, and cancels every step", async () => {
+    const ownOutputs = createOwnOutputJournal();
     // Honest: the protected output's signer is present behind one decoy, so
     // the accepted block is correct and no acceptance thread may close.
     const honestTx = nativeTxWith({
@@ -1028,6 +1034,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnessSetHash: overBoundEvidence.witnessSetHashHex,
     };
     const overBoundChunks = await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
       planned: overBoundPlanned,
@@ -1037,6 +1044,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     expect(overBoundChunks).toHaveLength(3);
     await expectOnchainRefusal(() =>
       certifyFaultProofFieldCarriage({
+        ownOutputs,
         lucid: s.harness.proverLucid,
         network,
         signer: s.harness.proverSigner,

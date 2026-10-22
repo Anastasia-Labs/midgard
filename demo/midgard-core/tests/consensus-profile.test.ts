@@ -83,10 +83,10 @@ describe("canonical V1 consensus profile", () => {
   // repository measure a DIFFERENT transaction shape and must never be bound
   // here:
   //
-  //   14,676 - `scripts/measure-validation-proof-item-envelope.mjs`, whose
-  //            "direct" route sources the validator from a reference input and
-  //            embeds no script witness at all (13,998 on the retired
-  //            counted-shape basis the script modelled before #597).
+  //   14,676 - the retired single-transaction envelope model, whose
+  //            "direct" route sourced the validator from a reference input and
+  //            embedded no script witness at all (13,998 on the counted-shape
+  //            basis it modelled before #597).
   //   13,282 - the single-transaction semantic-proof frontier recorded in
   //            `docs/exec-plans/evidence/necessity/`, the same by-reference
   //            basis measured on a complete signed transaction.

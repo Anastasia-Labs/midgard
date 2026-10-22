@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -17,17 +16,13 @@ import {
   makeWatcherPhaseAConfig,
   WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
   watcherPhaseAQueuedTxs,
-  WatcherPhaseAVerifierError,
 } from "../../src/verification/phase-a-verifier.js";
 import { WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY } from "../../src/verification/rule-bundle.js";
 import { canonicalVerdict } from "./phase-a-verifier.adjacent-boundary.js";
 import {
   CONFIG,
-  EMPTY_SIDECAR,
   fromNativeTx,
   KEY,
-  ORPHAN_MATERIAL_DA_ENTRY,
-  ORPHAN_MATERIAL_ENTRY,
   queuedTx,
   RULE_BUNDLE,
   RULE_BUNDLE_COMMITMENT,
@@ -205,56 +200,35 @@ describe("block verification", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Program-material projection
+// Queued transaction derivation
 // ---------------------------------------------------------------------------
 
-describe("program-material projection", () => {
-  it("does not reject a plain transaction for unrelated block material", async () => {
-    const fixture = await buildBlock({
-      txCbors: [makeNativeTx({ privateKey: KEY }).txCbor],
-      programMaterial: [ORPHAN_MATERIAL_DA_ENTRY],
-    });
-    const result = await evaluateBlock(fixture);
-    expect(result.action).toBe("accept");
-
-    // Control: handing the unprojected block-wide set to the canonical
-    // validator is exactly what the projection exists to avoid.
-    const fullSidecar = encodeMidgardCekProgramMaterialSidecar([
-      ORPHAN_MATERIAL_ENTRY,
-    ]);
-    const tx = makeNativeTx({ privateKey: KEY });
-    const control = canonicalVerdict(
-      queuedTx(tx.txId, tx.txCbor, {
-        programMaterialSidecarCbor: fullSidecar,
-      }),
-      CONFIG,
-    );
-    expect(control.rejected!.code).toBe(RejectCodes.CekProgramMaterial);
-  });
-
-  it("derives an empty sidecar when the block carries no material", () => {
+describe("queued transaction derivation", () => {
+  it("preserves canonical transaction identity and bytes", () => {
     const tx = makeNativeTx({ privateKey: KEY });
     const [queued] = watcherPhaseAQueuedTxs({
       transactions: [{ txId: tx.txId.toString("hex"), txCbor: tx.txCbor }],
-      programMaterial: [],
     });
-    expect(queued!.programMaterialSidecarCbor).toStrictEqual(EMPTY_SIDECAR);
+    expect(queued!.txId).toStrictEqual(tx.txId);
+    expect(queued!.txCbor).toStrictEqual(tx.txCbor);
     expect(queued!.arrivalSeq).toBe(0n);
   });
 
-  it("keeps the complete block material when canonical narrowing throws", () => {
-    // The narrowing fallback is the one place the watcher could silently make
-    // Phase A more permissive than the operator's own admission. Feeding bytes
-    // the canonical decoder rejects forces the fallback and pins it to the
-    // complete block-wide set, not the empty one.
-    const [queued] = watcherPhaseAQueuedTxs({
-      transactions: [{ txId: h32(0x11), txCbor: Buffer.from([0xff]) }],
-      programMaterial: [ORPHAN_MATERIAL_DA_ENTRY],
+  it("forwards undecodable transaction bytes to the canonical validator", () => {
+    const malformed = Buffer.from([0xff]);
+    const queuedTxs = watcherPhaseAQueuedTxs({
+      transactions: [{ txId: h32(0x11), txCbor: malformed }],
     });
-    expect(queued!.programMaterialSidecarCbor).toStrictEqual(
-      encodeMidgardCekProgramMaterialSidecar([ORPHAN_MATERIAL_ENTRY]),
-    );
-    expect(queued!.programMaterialSidecarCbor).not.toStrictEqual(EMPTY_SIDECAR);
+    expect(queuedTxs[0]!.txCbor).toStrictEqual(malformed);
+    const result = evaluateWatcherPhaseAQueuedTxs({
+      queuedTxs,
+      config: CONFIG,
+    });
+    expect(result.action).toBe("reject");
+    expect(result.rejections[0]).toMatchObject({
+      code: RejectCodes.CborDeserialization,
+      stage: "canonicalDecode",
+    });
   });
 
   it("numbers derived queued transactions by canonical block position", () => {
@@ -271,20 +245,10 @@ describe("program-material projection", () => {
         { txId: first.txId.toString("hex"), txCbor: first.txCbor },
         { txId: second.txId.toString("hex"), txCbor: second.txCbor },
       ],
-      programMaterial: [],
     });
     expect(derived.map((entry) => entry.arrivalSeq)).toStrictEqual([0n, 1n]);
     expect(derived.map((entry) => entry.createdAt.getTime())).toStrictEqual([
       0, 0,
     ]);
-  });
-
-  it("fails closed on undecodable block program material", () => {
-    expect(() =>
-      watcherPhaseAQueuedTxs({
-        transactions: [],
-        programMaterial: [[h32(1), "00"]],
-      }),
-    ).toThrow(WatcherPhaseAVerifierError);
   });
 });

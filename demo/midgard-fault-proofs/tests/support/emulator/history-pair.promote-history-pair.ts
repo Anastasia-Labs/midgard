@@ -16,7 +16,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { index, same } from "./history-pair.index.js";
+import { inputAt, referenceAt, same } from "./history-pair.index.js";
 import { setupHistoryPair } from "./history-pair.setup-history-pair.js";
 
 export const promoteHistoryPair = async (
@@ -63,7 +63,6 @@ export const promoteHistoryPair = async (
     );
   }
   const funding = await h.funding();
-  const inputs = [...funding, ...fillers, ...h.eventNonces];
   const refs = [
     h.hub,
     ...h.scripts,
@@ -102,22 +101,20 @@ export const promoteHistoryPair = async (
       },
     };
     tx = tx
-      .collectFrom([filler], Data.to(index(inputs, filler)))
-      .withdraw(
-        a.rewardAddress,
-        0n,
+      .collectFrom([filler], (ctx) => Data.to(inputAt(ctx, filler)))
+      .withdraw(a.rewardAddress, 0n, (ctx) =>
         Data.to(
           {
             Apply: {
-              hub_reference_index: index(refs, h.hub),
+              hub_reference_index: referenceAt(ctx, h.hub),
               operation: {
                 PromoteFiller: {
-                  filler_input_index: index(inputs, filler),
+                  filler_input_index: inputAt(ctx, filler),
                   order_output_index: BigInt(i),
                   refund_output_index: sharedRefund ? 2n : BigInt(2 + i),
-                  nonce_input_index: index(inputs, h.eventNonces[i]!),
+                  nonce_input_index: inputAt(ctx, h.eventNonces[i]!),
                   external_reference_index: retained[i]
-                    ? index(refs, retained[i]!)
+                    ? referenceAt(ctx, retained[i]!)
                     : null,
                 },
               },
@@ -178,26 +175,23 @@ export const insertHistoryFillerAfter = async (
   const funding = (await h.funding()).filter(
     (u) => !excluded.some((x) => same(x, u)),
   );
-  const inputs = [...funding, pred];
   const refs = [h.hub, h.scripts[kind === "Deposit" ? 0 : 1]!];
   const b = h.bounds();
   return h.lucid
     .newTx()
     .collectFrom(funding)
-    .collectFrom([pred], Data.to(index(inputs, pred)))
+    .collectFrom([pred], (ctx) => Data.to(inputAt(ctx, pred)))
     .readFrom(refs)
     .validFrom(b.lower)
     .validTo(b.validTo)
-    .withdraw(
-      a.rewardAddress,
-      0n,
+    .withdraw(a.rewardAddress, 0n, (ctx) =>
       Data.to(
         {
           Apply: {
-            hub_reference_index: index(refs, h.hub),
+            hub_reference_index: referenceAt(ctx, h.hub),
             operation: {
               InsertFiller: {
-                predecessor_input_index: index(inputs, pred),
+                predecessor_input_index: inputAt(ctx, pred),
                 predecessor_output_index: 0n,
                 filler_output_index: 1n,
               },

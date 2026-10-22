@@ -51,12 +51,14 @@ reject code: a ledger-stage failure becomes `E_INVALID_OUTPUT` or
 ### 2. Consensus and transaction body invariants
 
 After binding the decoded id to the queue id, Phase A requires the exact
-compiled V1 consensus profile and a canonical `programMaterialSidecarCbor`
-(including the canonical empty sidecar for transactions with no programs). It
-checks consensus size/count/encoding bounds and verifies attached program
-material. Missing or invalid material yields `E_CEK_PROGRAM_MATERIAL`. With
-reference inputs, exact combined material verification waits for Phase B
-resolution. Configurable strictness does not bypass these checks.
+compiled V1 consensus profile and checks consensus size/count/encoding bounds.
+For normal transactions it also decodes every carried non-native script witness
+and output reference script, even when the transaction does not execute that
+script. A phase-one decoding refusal yields `E_SCRIPT_PROGRAM_ENCODING` with
+the carried item coordinate. Decoded version or scope failures are deferred to
+Phase B if the script executes. Missing or incompatible decoder capability
+raises an operational error. Reference inputs are resolved in Phase B.
+Configurable strictness does not bypass these checks.
 
 | Check          | Reject code                  | Condition                                                                    |
 | -------------- | ---------------------------- | ---------------------------------------------------------------------------- |
@@ -139,7 +141,7 @@ from `ledgerTx`, not authored independently by callers.
 ```text
 type PhaseAValidatedTx = {
   readonly ledgerTx: MidgardLedgerTx;            // authoritative semantics
-  readonly submission: { txCbor; programMaterialSidecarCbor; arrivalSeq; createdAt };
+  readonly submission: { txCbor; arrivalSeq; createdAt };
   readonly graph: {                              // consumed by Phase B
     readonly spentOutRefHexes: readonly string[];
     readonly referenceOutRefHexes: readonly string[];

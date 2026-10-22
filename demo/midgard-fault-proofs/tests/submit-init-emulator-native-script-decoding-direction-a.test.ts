@@ -420,10 +420,9 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       publishedProofChunks: publication.chunks,
       referenceScriptUtxo: step01Ref,
     });
+    // The accepted leaf, bound as a wrongful-acceptance subject for its tx.
     expect(step01.bindState).toStrictEqual({
-      direction: 0n,
-      source_kind: 0n,
-      verified_tx_id: block.nativeTxId,
+      BoundAccepted: { subject: SDK.acceptedVerdictSubject(block.nativeTxId) },
     });
 
     const step02 = await submitNativeScriptDecodingStep02({

@@ -8,8 +8,8 @@ use midgard/fraud_proofs/execution_native_script_invalid/accepted_reference_sour
   Action, Datum, FinishResolvedOutputs, ScanResolvedOutput, SpendRedeemer,
 }
 use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, BodyTxOpening, anchored_field_view, anchored_native_tx,
-  opened_field_view, reference_inputs_field_index, spend_inputs_field_index,
+  BodyAnchor, BodyFieldOpening, anchored_body_tx, anchored_field_view,
+  reference_inputs_field_index, spend_inputs_field_index,
 }
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
@@ -72,10 +72,13 @@ validator main(
                 field_index == spend_inputs_field_index,
                 field_index == reference_inputs_field_index,
               }
-            let view = opened_field_view(
-              inputs_opening,
-              anchor,
+            // The anchor is a body anchor, so a witness-set opening could
+            // only be refused; open the body half directly.
+            expect BodyFieldOpening { native_tx_compact_cbor, carriage } = inputs_opening
+            let view = anchored_field_view(
+              anchored_body_tx(native_tx_compact_cbor, anchor),
               field_index,
+              carriage,
               reference_inputs,
               field_preimage_certificate_policy_id,
             )
@@ -128,10 +131,7 @@ validator main(
             reference_inputs_carriage,
             ..
           } -> {
-            let anchored = anchored_native_tx(
-              BodyTxOpening { native_tx_compact_cbor },
-              anchor,
-            )
+            let anchored = anchored_body_tx(native_tx_compact_cbor, anchor)
             let resolved_output_count = field_item_count(
               anchored_field_view(
                 anchored,

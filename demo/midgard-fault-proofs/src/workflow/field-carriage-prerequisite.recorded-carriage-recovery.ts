@@ -19,11 +19,11 @@ import {
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import {
   carriageActionInputKeys,
+  carriageReplacementOutRef,
+  carriageReplacementSuffix,
   parseBaseAction,
   PUBLICATION_ENCODINGS,
   type PublicationEncoding,
-  publicationReplacementOutRef,
-  publicationReplacementSuffix,
   publishedContentDigest,
   requirementIdentity,
 } from "./field-carriage-prerequisite.requirement-identity.js";
@@ -221,7 +221,7 @@ export const recordedCarriageRecovery = ({
         (input.publicationIndex !== 0 ||
           input.publicationEncoding !== "structured_data")) ||
       action.actionId !==
-        `publish-${bound ? "bound-data" : raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}${publicationReplacementSuffix(publicationReplacementOutRef(action))}` ||
+        `publish-${bound ? "bound-data" : raw ? "raw-datum-preimage" : "field-carriage"}:${base.actionId}:${input.requirementSha256}:${input.publicationIndex}${carriageReplacementSuffix(carriageReplacementOutRef(action))}` ||
       recovered.unit !== null ||
       sha256(recovered.datumCbor) !== input.datumCborSha256 ||
       !PUBLICATION_ENCODINGS.includes(
@@ -236,7 +236,7 @@ export const recordedCarriageRecovery = ({
   } else {
     if (
       action.actionId !==
-        `certify-field-carriage:${base.actionId}:${input.requirementSha256}` ||
+        `certify-field-carriage:${base.actionId}:${input.requirementSha256}${carriageReplacementSuffix(carriageReplacementOutRef(action))}` ||
       typeof recovered.unit !== "string" ||
       !new RegExp(
         `^[0-9a-f]{56}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}$`,

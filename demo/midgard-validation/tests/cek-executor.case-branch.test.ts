@@ -15,7 +15,7 @@ import {
 } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 /** `\ctx -> case (constr tag []) [error, .., unit, .., error]`. */
 const caseOnConstructor = (tag: number, branches: number): Buffer => {
@@ -39,11 +39,11 @@ describe("V1 CEK case branch selection", () => {
   ])(
     "selects constructor $tag of $branches branches and proves every step",
     ({ tag, branches }) => {
-      const program = buildMidgardCanonicalCekProgram(
+      const program = buildCekProgramFromRawFlat(
         caseOnConstructor(tag, branches),
       );
       const graph = buildMidgardCekExecutionGraph(
-        program.envelope,
+        program.termRoot,
         program.material.values(),
         Buffer.from("d87980", "hex"),
       );

@@ -1,10 +1,5 @@
 import { createHash, type Hash } from "node:crypto";
 
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialEntry,
-} from "@al-ft/midgard-core/cek-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { Columns as TxColumns } from "../../database/utils/tx.js";
@@ -148,27 +143,21 @@ export const depositTraceAggregatesByPrefix = (
   });
 };
 
-/** Exact sizes for the complete accepted prefix family in one material pass.
+/** Exact sizes for the complete accepted prefix family in one pass.
  * Prefix sizes differ only in enumerated lists and actual count integers;
  * unknown final header fields contribute a common additive overhead. */
 export const measureDaPayloadPrefixes = ({
   payload,
   content,
-  ordinarySidecars,
-  forcedSidecars,
   identityContext,
   rejectedTxIds,
 }: {
   readonly payload: SDK.DaPayload;
   readonly content: DaPayloadBlockContent;
-  readonly ordinarySidecars: readonly Buffer[];
-  readonly forcedSidecars: readonly Buffer[];
   readonly identityContext: Buffer;
   readonly rejectedTxIds: readonly Buffer[];
 }): CommitDaFrameMeasurement => {
   const n = content.processedMempoolTxs.length;
-  if (ordinarySidecars.length !== n)
-    throw new Error("Complete DA prefix material accounting is unavailable");
   const body = payload.block_body;
   const w = body.withdrawals.length;
   const f = body.forced_transactions.length;
@@ -199,7 +188,6 @@ export const measureDaPayloadPrefixes = ({
     deposits: add(empty(), body.deposits),
     transactions: empty(),
     transaction_preimages: empty(),
-    cek_program_material: empty(),
     transition_trace: add(empty(), body.transition_trace.slice(0, before)),
     event_to_step: add(empty(), body.event_to_step.slice(0, before)),
     validation_traces: add(empty(), body.validation_traces.slice(0, f)),
@@ -209,31 +197,6 @@ export const measureDaPayloadPrefixes = ({
   for (const member of content.validationTraceMembers.slice(0, f)) {
     bindEntries(digest, [pair(member.keyCbor, member.valueCbor)]);
   }
-  const materialByRoot = new Map<string, Buffer>();
-  const allMaterial: SDK.DaPayloadEntry[] = [];
-  const addMaterial = (sidecar: Buffer): void => {
-    bindBytes(digest, sidecar);
-    for (const entry of decodeMidgardCekProgramMaterialSidecar(sidecar)) {
-      const root = entry.root.toString("hex");
-      const encoded = encodeMidgardCekProgramMaterialEntry(entry);
-      const previous = materialByRoot.get(root);
-      if (previous !== undefined) {
-        if (!previous.equals(encoded))
-          throw new Error("DA prefix CEK material root collision");
-        continue;
-      }
-      materialByRoot.set(root, encoded);
-      const tuple = pair(
-        entry.root,
-        encodeMidgardCekProgramMaterialDaValue(entry),
-      );
-      allMaterial.push(tuple);
-      aggregates.cek_program_material = add(aggregates.cek_program_material, [
-        tuple,
-      ]);
-    }
-  };
-  for (const sidecar of forcedSidecars) addMaterial(sidecar);
   const deposit = depositTraceAggregatesByPrefix(content, n, before);
   const prefixes: { innerBytesUpperBound: number; materialDigest: string }[] =
     [];
@@ -269,7 +232,6 @@ export const measureDaPayloadPrefixes = ({
         descriptor,
       ]);
       bindEntries(digest, [descriptor]);
-      addMaterial(ordinarySidecars[index]!);
     }
     const counts = {
       withdrawalCount: BigInt(w),
@@ -311,14 +273,7 @@ export const measureDaPayloadPrefixes = ({
     });
     if (
       prefix === n &&
-      innerBytesUpperBound !==
-        SDK.daPayloadEncodedSize({
-          ...sizedPayload,
-          block_body: {
-            ...sizedPayload.block_body,
-            cek_program_material: allMaterial,
-          },
-        })
+      innerBytesUpperBound !== SDK.daPayloadEncodedSize(sizedPayload)
     )
       throw new Error(
         "Complete DA prefix accounting differs from canonical full block sizing",

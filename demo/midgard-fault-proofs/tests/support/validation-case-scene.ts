@@ -286,6 +286,12 @@ export const setUpCaseWorld = async (): Promise<CaseWorld> => {
     0,
   );
 
+  const caseConfigReference = scriptReferences.get(
+    contracts.caseConfig.policyId,
+  );
+  if (caseConfigReference === undefined) {
+    throw new Error("unpublished case configuration minting script");
+  }
   const configTx = appendValidationCaseConfigInitialization(
     lucid
       .newTx()
@@ -303,7 +309,7 @@ export const setUpCaseWorld = async (): Promise<CaseWorld> => {
         disputeBond: { spendingScriptHash: bond.hash },
         threadExpiry: contracts.threadExpiry,
       },
-      referenceScript: scriptReferences.get(contracts.caseConfig.policyId),
+      referenceScript: caseConfigReference,
     },
   );
   await submitBuilder({ lucid }, configTx);

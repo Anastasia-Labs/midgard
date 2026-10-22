@@ -13,6 +13,7 @@ import {
 import {
   advanceMidgardCekDataTraverse,
   initialMidgardCekDataTraverseControl,
+  isUnreadableMidgardCekDataTraverse,
   MidgardCekDataTraverseStages,
 } from "./cek-data-traverse.js";
 import { midgardBlake2b } from "./codec/blake2b.js";
@@ -221,9 +222,17 @@ export const advanceMidgardLedgerOutputProof = ({
         sourceBytes: authenticated.sourceBytes,
         action: witness.action,
       });
-      return nextDatum === null
-        ? null
-        : advancedOutputProof({ ...control, datum: nextDatum });
+      if (nextDatum !== null) {
+        return advancedOutputProof({ ...control, datum: nextDatum });
+      }
+      // An inline datum that is not canonical Data refuses the output.
+      return isUnreadableMidgardCekDataTraverse({
+        control: datum,
+        sourceBytes: authenticated.sourceBytes,
+        action: witness.action,
+      })
+        ? { kind: MidgardLedgerOutputProofResultKinds.InvalidOutput }
+        : null;
     }
     if (
       control.stage === MidgardLedgerOutputProofStages.ReferenceScriptCommitment

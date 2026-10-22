@@ -31,6 +31,41 @@ import {
 } from "./raw-l1-snapshot.history-entry.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
+/** The most out-refs one scope may name: a step reads a few, never a population. */
+const MAX_SCOPE_OUT_REFS = 1_024;
+
+const record = (
+  value: unknown,
+  label: string,
+): Readonly<Record<string, unknown>> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be a plain object`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+};
+
+/** A scope's out-refs: exact, distinct, at least one and boundedly many. */
+const scopeOutRefs = (value: unknown, label: string): readonly string[] => {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_SCOPE_OUT_REFS
+  ) {
+    throw new Error(
+      `${label} must name between 1 and ${MAX_SCOPE_OUT_REFS.toString()} out-refs`,
+    );
+  }
+  for (const entry of value) {
+    if (typeof entry !== "string" || !OUT_REF.test(entry)) {
+      throw new Error(`${label} must hold exact out-refs`);
+    }
+  }
+  if (new Set(value).size !== value.length) {
+    throw new Error(`${label} names an out-ref twice`);
+  }
+  return Object.freeze([...(value as string[])]);
+};
+
 export const admitFraudProofRawL1Snapshot = ({
   value,
   request,
@@ -196,17 +231,19 @@ export const admitFraudProofRawL1Snapshot = ({
   }
   const requestedScopes = new Map(
     request.scopes.map((scope, index) => {
+      const label = `raw L1 request scopes[${index.toString()}]`;
       if (!RAW_L1_SCOPE_ROLES.has(scope.role)) {
-        throw new Error(
-          `raw L1 request scopes[${index.toString()}].role is unsupported`,
-        );
+        throw new Error(`${label}.role is unsupported`);
       }
       return [
         scope.role,
-        address(
-          scope.address,
-          `raw L1 request scopes[${index.toString()}].address`,
-        ),
+        {
+          address: address(scope.address, `${label}.address`),
+          outRefs:
+            scope.outRefs === undefined
+              ? undefined
+              : scopeOutRefs(scope.outRefs, `${label}.outRefs`),
+        },
       ] as const;
     }),
   );
@@ -217,7 +254,16 @@ export const admitFraudProofRawL1Snapshot = ({
   const scopes = array(root.scopes, "raw L1 snapshot scopes").map(
     (candidate, index) => {
       const label = `raw L1 snapshot scopes[${index.toString()}]`;
-      const parsed = exact(candidate, ["role", "address", "utxos"], label);
+      const requested = requestedScopes.get(
+        record(candidate, label).role as FraudProofRawL1ScopeRole,
+      );
+      const parsed = exact(
+        candidate,
+        requested?.outRefs === undefined
+          ? ["role", "address", "utxos"]
+          : ["role", "address", "outRefs", "utxos"],
+        label,
+      );
       const role = string(
         parsed.role,
         `${label}.role`,
@@ -226,11 +272,22 @@ export const admitFraudProofRawL1Snapshot = ({
       if (
         !RAW_L1_SCOPE_ROLES.has(role) ||
         seenRoles.has(role) ||
-        requestedScopes.get(role) !== scopedAddress
+        requested?.address !== scopedAddress
       ) {
         throw new Error(`${label} is duplicate or was not exactly requested`);
       }
       seenRoles.add(role);
+      const outRefs =
+        requested.outRefs === undefined
+          ? undefined
+          : scopeOutRefs(parsed.outRefs, `${label}.outRefs`);
+      if (
+        outRefs !== undefined &&
+        (outRefs.length !== requested.outRefs!.length ||
+          outRefs.some((outRef, at) => outRef !== requested.outRefs![at]))
+      ) {
+        throw new Error(`${label}.outRefs are not the requested out-refs`);
+      }
       const utxos = array(parsed.utxos, `${label}.utxos`).map(
         (entry, utxoIndex) =>
           utxo(entry, `${label}.utxos[${utxoIndex.toString()}]`),
@@ -238,10 +295,18 @@ export const admitFraudProofRawL1Snapshot = ({
       if (new Set(utxos.map((entry) => entry.outRef)).size !== utxos.length) {
         throw new Error(`${label} contains duplicate outRefs`);
       }
+      if (
+        outRefs !== undefined &&
+        utxos.some((entry) => !outRefs.includes(entry.outRef))
+      ) {
+        throw new Error(`${label} contains an output it was not scoped to`);
+      }
       if (utxos.some((entry) => outputAddress(entry) !== scopedAddress)) {
         throw new Error(`${label} contains an output from a different address`);
       }
-      return { role, address: scopedAddress, utxos };
+      return outRefs === undefined
+        ? { role, address: scopedAddress, utxos }
+        : { role, address: scopedAddress, outRefs, utxos };
     },
   );
   if (seenRoles.size !== requestedScopes.size) {

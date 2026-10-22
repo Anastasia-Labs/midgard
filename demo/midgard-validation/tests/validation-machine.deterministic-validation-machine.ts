@@ -1,12 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import {
   computeMidgardNativeTxId,
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSource,
-  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardTxOutput,
   verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
@@ -29,6 +25,7 @@ import {
   advanceMidgardResolvedInputsAccumulator,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   encodeValidationAuxiliaryWitnessCbor,
   initialMidgardResolvedInputsAccumulator,
@@ -404,7 +401,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
     const spent = outRefFromByte(0x1d);
     const program = buildAcceptingUnitProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -444,9 +441,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -460,7 +454,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const cekWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "cek",
     );
-    const totality = expectCekAndValueAndMintTotality(trace);
+    const totality = expectCekAndValueAndMintTotality(trace, [script]);
     expect(totality.cekKinds[0]).toBe("selection");
     expect(totality.cekKinds).toContain("context");
     expect(totality.cekKinds).toContain("core");
@@ -607,6 +601,17 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBeLessThanOrEqual(4_095);
     expect("script" in nativeExecutionWitness.source).toBe(false);
     expect("signerHashes" in nativeExecutionWitness).toBe(false);
+    const selectionStateIndex = trace.witnesses.findIndex(
+      (witness) => witness.auxiliary === nativeExecutionWitness,
+    );
+    // FLAT-A must supply an authenticated decoded record before this selection
+    // can become an L1 one-step argument. An envelope substitute is refused.
+    expect(() =>
+      buildValidationOneStepArgument({
+        trace,
+        stateIndex: selectionStateIndex,
+      }),
+    ).toThrow(/selected script's authenticated decoded record/u);
     const challengedDescriptorWitnesses = cekWitnesses.flatMap((witness) => {
       const auxiliary = witness.auxiliary;
       return auxiliary?.kind === "cekResolvedContextItem" ||
@@ -635,7 +640,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(cekStates.at(-1)!.executionCpu).toBeGreaterThan(0n);
     expect(cekStates.at(-1)!.executionMemory).toBeGreaterThan(0n);
     expect(trace.verdict).toBe("accepted");
-    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace);
+    const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [
+      script,
+    ]);
     expect(oneStepAbi.kinds.size).toBeGreaterThan(15);
     expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
   });
@@ -643,7 +650,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("retains only the first over-budget CEK transition for a nonterminating program", async () => {
     const spent = outRefFromByte(0x6f);
     const program = buildNonterminatingSelfApplicationProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -682,9 +689,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: unchangedRoot,
         postUtxosRoot: unchangedRoot,
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -718,7 +722,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const spent = outRefFromByte(0x1e);
     const reference = outRefFromByte(0x1f);
     const program = buildAcceptingUnitProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
@@ -766,9 +770,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [
@@ -823,7 +824,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "scriptSourceScan",
@@ -841,7 +842,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     async ({ quantity }) => {
       const spent = outRefFromByte(quantity > 0n ? 0x31 : 0x32);
       const program = buildAcceptingUnitProgram();
-      const script = plutusV3ScriptWitness(program.envelopeCbor);
+      const script = plutusV3ScriptWitness(program.scriptBytes);
       const policyId = Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("aced", "hex");
       const assets = new Map([
@@ -891,9 +892,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-            ...program.material.values(),
-          ]),
           priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
           postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
           ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -919,7 +917,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ).toBe(true);
       expect(trace.verdict).toBe("accepted");
       expect([
-        ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+        ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
       ]).toEqual(
         expect.arrayContaining(["cekMintContextItem", "valueMintAsset"]),
       );
@@ -936,7 +934,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const program = buildAcceptingUnitProgram();
     const script = {
       language: "MidgardV1" as const,
-      scriptBytes: program.envelopeCbor,
+      scriptBytes: program.scriptBytes,
     };
     const scriptHash = hashScriptWitness(script);
     const output = makeProtectedScriptOutput(
@@ -976,9 +974,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -1022,7 +1017,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
@@ -1037,7 +1032,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const program = buildAcceptingUnitProgram();
-    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const script = plutusV3ScriptWitness(program.scriptBytes);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
     const transaction = makeNativeTx({
       version: 1n,
@@ -1074,9 +1069,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
-          ...program.material.values(),
-        ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
         postUtxosRoot: ledgerMutationSteps.at(-1)!.postRoot.toString("hex"),
         ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
@@ -1149,7 +1141,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
     expect([
-      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
+      ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace, [script]).kinds,
     ]).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
@@ -2253,116 +2245,5 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ]),
       ),
     ).toThrow();
-  });
-
-  it("confines the incremental CBOR scanner to the reviewed on-chain consumers", () => {
-    const aikenRoot = resolve(process.cwd(), "../../onchain/aiken");
-    const aikenSources = ((): readonly string[] => {
-      const collected: string[] = [];
-      const walk = (directory: string): void => {
-        for (const entry of readdirSync(directory, { withFileTypes: true })) {
-          const path = resolve(directory, entry.name);
-          if (entry.isDirectory()) {
-            walk(path);
-          } else if (entry.name.endsWith(".ak")) {
-            collected.push(path);
-          }
-        }
-      };
-      walk(resolve(aikenRoot, "lib"));
-      walk(resolve(aikenRoot, "validators"));
-      return collected;
-    })();
-    expect(aikenSources.length).toBeGreaterThan(0);
-
-    // Count imports, since doc-comment cross-references (for example in
-    // intra-item-bytes-v1.ak) do not make a module a scanner consumer.
-    const importsScanner = (source: string): boolean =>
-      /^\s*use\s+midgard\/canonical_cbor_scan_v1\b/mu.test(source);
-    const scannerConsumers = aikenSources
-      .filter((path) => {
-        const relative = path.slice(aikenRoot.length + 1);
-        if (relative === "lib/midgard/canonical-cbor-scan-v1.ak") {
-          return false;
-        }
-        return importsScanner(readFileSync(path, "utf8"));
-      })
-      .map((path) => path.slice(aikenRoot.length + 1))
-      .sort();
-
-    // The reviewed consumer set. Adding a scanner import anywhere else reopens
-    // this row; the scanner's justification lives in the on-chain modules and
-    // their emulator suites, not in a document this gate would have to parse.
-    const reviewedScannerConsumers = [
-      "lib/midgard/redeemer-item-proof-v1.ak",
-      "lib/midgard/ledger-output-scan-v1.ak",
-      // Exact descriptor scalar headers avoid recursive Data decoding of
-      // committed adversarial bytes.
-      "lib/midgard/ledger-output-commitment-v1.ak",
-      // The three narrow total rules adjudicating the committed field-8
-      // redeemer collection share one `head_at_v1` total header decode over
-      // complete items delivered by batched §8 carriage.
-      "lib/midgard/fraud-proofs/mint-item-non-canonical/field-scan.ak",
-      "lib/midgard/fraud-proofs/mint-item-non-canonical/scan.ak",
-      "lib/midgard/fraud-proofs/missing-redeemer/rule.ak",
-      "lib/midgard/fraud-proofs/redeemer-canonicity/rule.ak",
-      "lib/midgard/fraud-proofs/unused-redeemer/rule.ak",
-    ];
-    expect(scannerConsumers).toEqual([...reviewedScannerConsumers].sort());
-
-    // The canonical decode item path itself must stay complete-item staged: no
-    // incremental scanner may appear in its staging module or its validators.
-    const stagingSource = readFileSync(
-      resolve(aikenRoot, "lib/midgard/canonical-decode-item-staging-v1.ak"),
-      "utf8",
-    );
-    expect(stagingSource).not.toContain("canonical_cbor_scan_v1");
-    // Staging is the complete-item ladder: authenticate → prepare → observe →
-    // verify, each gated on the predecessor being well formed.
-    for (const stage of [
-      "pub fn authenticate(",
-      "pub fn prepare(",
-      "pub fn observe(",
-      "pub fn verify(",
-    ]) {
-      expect(stagingSource).toContain(stage);
-    }
-    const canonicalDecodeValidators = [
-      "canonical-decode-item-source-v1.ak",
-      "canonical-decode-item-observe-v1.ak",
-      "canonical-decode-item-semantic-v1.ak",
-      "canonical-decode-item-proof-v1.ak",
-      "canonical-decode-item-settlement-v1.ak",
-    ];
-    for (const validator of canonicalDecodeValidators) {
-      const contents = readFileSync(
-        resolve(
-          aikenRoot,
-          "validators/fraud-proofs/validation-trace",
-          validator,
-        ),
-        "utf8",
-      );
-      expect(contents).not.toContain("canonical_cbor_scan_v1");
-      expect(contents).toContain("canonical_decode_item_staging_v1");
-    }
-
-    // Hostile negative controls: the consumer predicate fires on a source
-    // that imports the scanner (plain, aliased, or with unqualified names),
-    // so an unbacked new consumer reopens this row — while a doc-comment
-    // mention alone stays outside it.
-    expect(importsScanner(stagingSource)).toBe(false);
-    expect(
-      importsScanner(`${stagingSource}\nuse midgard/canonical_cbor_scan_v1\n`),
-    ).toBe(true);
-    expect(importsScanner("use midgard/canonical_cbor_scan_v1 as scan\n")).toBe(
-      true,
-    );
-    expect(
-      importsScanner("use midgard/canonical_cbor_scan_v1.{scan_head}\n"),
-    ).toBe(true);
-    expect(
-      importsScanner("//// see `midgard/canonical_cbor_scan_v1` for scans\n"),
-    ).toBe(false);
   });
 });

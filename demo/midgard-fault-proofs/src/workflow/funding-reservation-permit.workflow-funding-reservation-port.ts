@@ -100,6 +100,8 @@ export interface WorkflowFundingReservationPort {
   readCompletionHandoff(): Promise<unknown>;
   readAbandonmentHandoff(): Promise<unknown>;
   readLegacyAbandonedTransactions?(): Promise<readonly unknown[]>;
+  /** Every signed attempt with its submission handoff, as recorded. */
+  readRecordedSubmissions?(): Promise<readonly unknown[]>;
   retireLegacyAbandonment?(input: {
     readonly expectedRevision: string;
     readonly transactionHash: string;
@@ -120,6 +122,18 @@ export interface WorkflowFundingReservationPort {
   readSupersededAttemptFundingOutRefs?(): Promise<
     readonly (readonly string[])[]
   >;
+  /** The superseded, unretired attempt of `actionId` that this signed
+   * transaction or a reserved input descends from, or null. Such an attempt
+   * landed, so it is the action's result and is adopted instead. */
+  readLandedSupersededAttempt(input: {
+    readonly actionId: string;
+    readonly signedTransactionCborHex: string;
+  }): Promise<string | null>;
+  /** The exact signed bytes of an attempt this reservation recorded, or null
+   * when it recorded none with this hash. */
+  readRecordedSignedTransaction(input: {
+    readonly transactionHash: string;
+  }): Promise<string | null>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   /** Exact confirmed output from this reservation, or null if it has no lineage. */
   resolveConfirmedInput(input: { readonly outRef: string }): Promise<unknown>;
@@ -170,6 +184,19 @@ export class WorkflowFundingReservationUnavailableError extends Error {
   constructor() {
     super("prover funding is temporarily unavailable for a fresh transaction");
     this.name = "WorkflowFundingReservationUnavailableError";
+  }
+}
+
+/**
+ * Owner ruling (whichever lands wins): a fresh attempt descends from a
+ * superseded attempt of its own action, so that attempt landed. It is the
+ * action's result and is adopted; the fresh attempt waits for that.
+ */
+export class WorkflowFundingSupersededAttemptLandedError extends WorkflowFundingReservationUnavailableError {
+  constructor(readonly transactionHash: string) {
+    super();
+    this.name = "WorkflowFundingSupersededAttemptLandedError";
+    this.message = `superseded attempt ${transactionHash} landed and is adopted as its action's result`;
   }
 }
 

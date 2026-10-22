@@ -12,7 +12,10 @@ import {
 import { Effect } from "effect";
 
 import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
-import { publishDirectReceiveFieldCarriage } from "./direct-receive-field-carriage.js";
+import {
+  directCarriagePublisherFunding,
+  publishDirectReceiveFieldCarriage,
+} from "./direct-receive-field-carriage.js";
 import {
   directSourceAdmissionRedeemer,
   directSourceAuthenticationRedeemer,
@@ -100,6 +103,7 @@ export const driveDirectSourceLifecycle = async (
   const emulator = new Emulator(
     [
       account,
+      ...directCarriagePublisherFunding(account),
       {
         ...account,
         address: roles.start.spendingScriptAddress,

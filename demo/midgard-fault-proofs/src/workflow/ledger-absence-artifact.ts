@@ -9,14 +9,14 @@ import {
   inputExistenceArtifact,
 } from "../input-existence/artifact.js";
 import {
-  prepareInputExistence,
   type PreparedInputExistence,
+  prepareInputExistence,
 } from "../input-existence/prepare.js";
 import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
   type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPredecessorLedger,
 } from "./complete-replay.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {

@@ -20,6 +20,10 @@ import {
 import { unjournaledSubmission } from "../src/services/intent-journal.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
 import { TxConfirmError } from "../src/transactions/utils.js";
+import {
+  SETTLED_ORIGIN,
+  settledOriginSource,
+} from "./helpers/hub-oracle-nonce-origin.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const signSubmitTransactionMock = vi.hoisted(() => vi.fn());
@@ -125,9 +129,10 @@ const runPrepare = (
   options: PrepareHubOracleNonceOptions = {},
 ): Promise<PreparedHubOracleNonce> =>
   runWithoutFollower(
-    prepareHubOracleOneShotNonceProgram(amountLovelace, options).pipe(
-      Effect.provideService(LucidService, lucidService as never),
-    ),
+    prepareHubOracleOneShotNonceProgram(amountLovelace, {
+      l1Origin: settledOriginSource(),
+      ...options,
+    }).pipe(Effect.provideService(LucidService, lucidService as never)),
   );
 
 const runReconcile = (
@@ -230,6 +235,7 @@ describe("prepare hub-oracle one-shot nonce command boundary", () => {
       lovelace: amountLovelace.toString(10),
       inlineDatum: record.payments[0]!.datum.value,
       confirmationStatus: "confirmed",
+      l1Origin: SETTLED_ORIGIN,
     });
 
     const markerHex = markerFromInlineDatum(result.inlineDatum);

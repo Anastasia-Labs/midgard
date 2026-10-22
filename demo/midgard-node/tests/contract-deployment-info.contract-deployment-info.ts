@@ -26,7 +26,10 @@ import {
   parseDeploymentManifest,
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
-import { computeDeploymentManifestId } from "../src/deployment-manifest.js";
+import {
+  computeDeploymentManifestId,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   midgardContractsFromDeploymentManifest,
@@ -42,15 +45,8 @@ import {
   testReferenceScriptAuthPolicy,
   validatorHashesByPath,
 } from "./contract-deployment-info.validator-hashes-by-path.js";
-import {
-  isRecordedValidationTraceSemantic,
-  VALIDATION_TRACE_SEMANTIC_KEYS,
-} from "./helpers/deployment-member-baseline.js";
+import { unrecordedValidationTraceSlots } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
-import {
-  contractOfRole,
-  publishableRoles,
-} from "./helpers/publishable-reference-roles.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 describe("contract deployment info", () => {
@@ -853,16 +849,7 @@ describe("contract deployment info", () => {
       // The validation-trace members the manifest records no bytes for fail
       // closed on read rather than borrowing a locally built script.
       const vtd = "$.fraudProofContracts.validationTraceDispute";
-      const unrecorded = [
-        ...VALIDATION_TRACE_SEMANTIC_KEYS.flatMap((key, index) =>
-          isRecordedValidationTraceSemantic(key)
-            ? []
-            : [`${vtd}.semanticResolvers.${index.toString()}`],
-        ),
-        `${vtd}.steps`,
-        `${vtd}.prepareResolvers`,
-        `${vtd}.resolvers`,
-      ];
+      const unrecorded = unrecordedValidationTraceSlots(vtd);
       expect([...restored.failClosed].sort()).toEqual([...unrecorded].sort());
 
       // The SDK builder spreads untyped copies of the top-level shared
@@ -934,11 +921,14 @@ describe("contract deployment info", () => {
 
       const targets = nodeRuntimeReferenceScriptTargets(restored);
       expect(targets.map(({ name }) => name).sort()).toEqual(
-        publishableRoles(Object.keys(manifest.referenceScripts)).sort(),
+        Object.keys(manifest.referenceScripts).sort(),
       );
       const divergent = targets.flatMap(({ name, script }) => {
         const recorded = manifest.referenceScripts[name]?.scriptHash;
-        const contract = contractOfRole(name);
+        const contract =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+            name as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+          ];
         const restoredHash = validatorToScriptHash(script);
         return recorded !== undefined &&
           restoredHash === recorded &&

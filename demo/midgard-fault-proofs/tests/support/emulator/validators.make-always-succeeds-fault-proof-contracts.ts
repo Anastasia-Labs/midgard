@@ -199,6 +199,7 @@ export const makeAlwaysSucceedsFaultProofContracts = (
         settle: alwaysValidationTraceDispute,
         compute: alwaysValidationTraceDispute,
         machine: alwaysValidationTraceDispute,
+        caseConstant: alwaysValidationTraceDispute,
         mapConversion: alwaysValidationTraceDispute,
         directScalar: alwaysValidationTraceDispute,
         directStructured: alwaysValidationTraceDispute,

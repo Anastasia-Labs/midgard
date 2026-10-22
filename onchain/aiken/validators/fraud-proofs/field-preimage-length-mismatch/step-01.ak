@@ -43,12 +43,12 @@ validator main(
         }
         let
             _,
-            subject_thread_name,
+            _,
             _,
             input_state,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             _tx_id,
             verified
           <- pass_native_tx_to_next_step_carried(
@@ -61,13 +61,7 @@ validator main(
         )
         expect None = input_state
         expect output_script_hash == accepted_step_02_validator_script_hash
-        let subject = substrate.open_subject_v1(
-          subject_thread_name,
-          substrate.AcceptedSource {
-            header: subject_header,
-            tx_inclusion: verified,
-          },
-        )
+        let subject = substrate.open_accepted_subject_v1(verified)
         let expected: Data = BoundSource { subject, source_cbor }
         expect output_state_data == expected
         True

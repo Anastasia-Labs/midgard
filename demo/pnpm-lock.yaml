@@ -885,6 +885,9 @@ importers:
       '@lucid-evolution/lucid':
         specifier: 0.8.3
         version: 0.8.3(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(fast-check@3.23.2)
+      '@lucid-evolution/uplc':
+        specifier: 0.4.0
+        version: 0.4.0
       '@noble/curves':
         specifier: ^2.2.0
         version: 2.2.0

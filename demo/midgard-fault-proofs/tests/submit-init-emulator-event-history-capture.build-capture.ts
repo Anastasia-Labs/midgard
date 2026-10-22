@@ -1,6 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type BuildTxWithRedeemer,
   Data,
+  type RedeemerContext,
   type Script,
   type UTxO,
   validatorToAddress,
@@ -12,7 +14,6 @@ import {
   type Harness,
   type Proof,
 } from "./submit-init-emulator-event-history-capture.setup-proof.js";
-import { index } from "./support/emulator/history-pair.js";
 
 export const buildCapture = async (
   h: Harness,
@@ -20,7 +21,6 @@ export const buildCapture = async (
   w: SDK.EventHistoryWitness,
   window: SDK.EventHistoryCaptureWindow,
 ) => {
-  const inputs = [p.thread, p.fee];
   const refs = [
     h.hub,
     p.refs[0]!,
@@ -35,17 +35,33 @@ export const buildCapture = async (
           p.kind,
         )
       : undefined;
+  const nextStep = validatorToAddress("Custom", p.scripts[1]!);
   let datum: string;
-  let redeemer: string;
-  const commonArgs = { input_index: index(inputs, p.thread), output_index: 0n };
-  const evidenceIndices = {
-    hub_ref_input_index: index(refs, h.hub),
-    event_ref_input_index: index(refs, w.anchor.utxo),
+  let redeemer: BuildTxWithRedeemer;
+  const commonArgs = (ctx: RedeemerContext) => ({
+    input_index: SDK.requireInputIndex(ctx, p.thread, "capture thread"),
+    output_index: SDK.requireUniqueOutputIndex(
+      ctx.outputs,
+      (output) => output.address === nextStep,
+      "capture step",
+    ),
+  });
+  const hubIndex = (ctx: RedeemerContext) =>
+    SDK.requireReferenceInputIndex(ctx, h.hub, "history hub");
+  const anchorIndex = (ctx: RedeemerContext) =>
+    SDK.requireReferenceInputIndex(ctx, w.anchor.utxo, "history anchor");
+  const evidenceIndices = (ctx: RedeemerContext) => ({
+    hub_ref_input_index: hubIndex(ctx),
+    event_ref_input_index: anchorIndex(ctx),
     external_ref_input_index:
       w.kind === "Present" && w.retainedDataUtxo
-        ? index(refs, w.retainedDataUtxo)
+        ? SDK.requireReferenceInputIndex(
+            ctx,
+            w.retainedDataUtxo,
+            "history publication",
+          )
         : null,
-  };
+  });
   if (p.kind === "Deposit") {
     const state = Data.from(
       p.thread.datum!,
@@ -63,24 +79,25 @@ export const buildCapture = async (
       },
       SDK.FabricatedDepositStep03Datum,
     );
-    redeemer = Data.to(
-      {
-        Continue: [
-          {
-            ...commonArgs,
-            evidence: captured
-              ? { PresentDepositEvent: evidenceIndices }
-              : {
-                  AbsentDepositIdentity: {
-                    hub_ref_input_index: index(refs, h.hub),
-                    history_ref_input_index: index(refs, w.anchor.utxo),
+    redeemer = (ctx) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              ...commonArgs(ctx),
+              evidence: captured
+                ? { PresentDepositEvent: evidenceIndices(ctx) }
+                : {
+                    AbsentDepositIdentity: {
+                      hub_ref_input_index: hubIndex(ctx),
+                      history_ref_input_index: anchorIndex(ctx),
+                    },
                   },
-                },
-          },
-        ],
-      },
-      SDK.FabricatedDepositStep02SpendRedeemer,
-    );
+            },
+          ],
+        },
+        SDK.FabricatedDepositStep02SpendRedeemer,
+      );
   } else {
     const state = Data.from(
       p.thread.datum!,
@@ -98,24 +115,25 @@ export const buildCapture = async (
       },
       SDK.FabricatedWithdrawalStep03Datum,
     );
-    redeemer = Data.to(
-      {
-        Continue: [
-          {
-            ...commonArgs,
-            evidence: captured
-              ? { PresentWithdrawalEvent: evidenceIndices }
-              : {
-                  AbsentWithdrawalIdentity: {
-                    hub_ref_input_index: index(refs, h.hub),
-                    history_ref_input_index: index(refs, w.anchor.utxo),
+    redeemer = (ctx) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              ...commonArgs(ctx),
+              evidence: captured
+                ? { PresentWithdrawalEvent: evidenceIndices(ctx) }
+                : {
+                    AbsentWithdrawalIdentity: {
+                      hub_ref_input_index: hubIndex(ctx),
+                      history_ref_input_index: anchorIndex(ctx),
+                    },
                   },
-                },
-          },
-        ],
-      },
-      SDK.FabricatedWithdrawalStep02SpendRedeemer,
-    );
+            },
+          ],
+        },
+        SDK.FabricatedWithdrawalStep02SpendRedeemer,
+      );
   }
   const tx = await h.lucid
     .newTx()
@@ -124,11 +142,7 @@ export const buildCapture = async (
     .readFrom(refs)
     .validFrom(Number(window.validFrom))
     .validTo(Number(window.validTo))
-    .pay.ToContract(
-      validatorToAddress("Custom", p.scripts[1]!),
-      { kind: "inline", value: datum },
-      p.thread.assets,
-    )
+    .pay.ToContract(nextStep, { kind: "inline", value: datum }, p.thread.assets)
     .complete({ coinSelection: false, localUPLCEval: true });
   return { tx, captured, datum };
 };
@@ -141,8 +155,14 @@ export const continueCaptured = async (
   badOpening = false,
 ) => {
   const funding = await h.funding();
-  const inputs = [...funding, thread];
-  const commonArgs = { input_index: index(inputs, thread), output_index: 0n };
+  const commonArgs = (ctx: RedeemerContext) => ({
+    input_index: SDK.requireInputIndex(ctx, thread, "capture thread"),
+    output_index: SDK.requireUniqueOutputIndex(
+      ctx.outputs,
+      (output) => output.address === h.hubAddress,
+      "capture step",
+    ),
+  });
   // Serialize and reopen preimage bytes without retrieving a historical L1 node.
   // Full process restart/persistence acceptance remains a separate gate.
   const opening = captured
@@ -156,7 +176,7 @@ export const continueCaptured = async (
       }
     : "NoAuthenticContent";
   let datum: string;
-  let redeemer: string;
+  let redeemer: BuildTxWithRedeemer;
   if (p.kind === "Deposit") {
     const state = Data.from(
       thread.datum!,
@@ -180,20 +200,21 @@ export const continueCaptured = async (
       opening,
       SDK.FabricatedDepositAuthenticContentOpening,
     );
-    redeemer = Data.to(
-      {
-        Continue: [
-          {
-            ...commonArgs,
-            authentic_content: Data.from(
-              bytes,
-              SDK.FabricatedDepositAuthenticContentOpening,
-            ),
-          },
-        ],
-      },
-      SDK.FabricatedDepositStep03SpendRedeemer,
-    );
+    redeemer = (ctx) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              ...commonArgs(ctx),
+              authentic_content: Data.from(
+                bytes,
+                SDK.FabricatedDepositAuthenticContentOpening,
+              ),
+            },
+          ],
+        },
+        SDK.FabricatedDepositStep03SpendRedeemer,
+      );
   } else {
     const state = Data.from(
       thread.datum!,
@@ -217,20 +238,21 @@ export const continueCaptured = async (
       opening,
       SDK.FabricatedWithdrawalAuthenticContentOpening,
     );
-    redeemer = Data.to(
-      {
-        Continue: [
-          {
-            ...commonArgs,
-            authentic_content: Data.from(
-              bytes,
-              SDK.FabricatedWithdrawalAuthenticContentOpening,
-            ),
-          },
-        ],
-      },
-      SDK.FabricatedWithdrawalStep03SpendRedeemer,
-    );
+    redeemer = (ctx) =>
+      Data.to(
+        {
+          Continue: [
+            {
+              ...commonArgs(ctx),
+              authentic_content: Data.from(
+                bytes,
+                SDK.FabricatedWithdrawalAuthenticContentOpening,
+              ),
+            },
+          ],
+        },
+        SDK.FabricatedWithdrawalStep03SpendRedeemer,
+      );
   }
   return h.lucid
     .newTx()

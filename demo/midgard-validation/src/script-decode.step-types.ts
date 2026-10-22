@@ -8,6 +8,13 @@ import type {
   MidgardCekDataSummary,
 } from "@al-ft/midgard-core";
 
+import type { ScriptDecodeClass } from "./script-decode.step-exec.js";
+
+export type ScriptDecodePhase2Class =
+  | 0
+  | typeof ScriptDecodeClass.versionUnavailable
+  | typeof ScriptDecodeClass.openTerm;
+
 export type Summary = MidgardCekDataSummary;
 export type SequenceSummary = MidgardCekDataSequenceSummary;
 
@@ -285,7 +292,7 @@ export type ScriptDecodeRecord =
       readonly language: number;
       readonly programVersion: number;
       readonly termRoot: Buffer;
-      readonly phase2Class: number;
+      readonly phase2Class: ScriptDecodePhase2Class;
     }
   | {
       readonly k: "refused";

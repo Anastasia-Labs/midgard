@@ -39,12 +39,12 @@ validator main(
       ct.Continue(Args{source: AcceptedSource { inclusion: carriage }}) -> {
         let
             _own_script_hash,
-            subject_thread_name,
+            _,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
             output_state_data,
-            subject_header,
+            _,
             bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
@@ -62,13 +62,7 @@ validator main(
           grammar_checkpoint_hash: #"",
           grammar_complete: False,
           script_checkpoint_hash: #"",
-          subject: substrate.open_subject_v1(
-            subject_thread_name,
-            substrate.AcceptedSource {
-              header: subject_header,
-              tx_inclusion: bad_tx_view,
-            },
-          ),
+          subject: substrate.open_accepted_subject_v1(bad_tx_view),
           bad_tx_id,
           bad_tx_witness_set_hash: bad_tx_view.tx_compact.witness_set_hash,
           validity_interval_start: bad_tx_view.tx_compact.body.validity_interval_start,
@@ -94,9 +88,10 @@ validator main(
           tx.outputs,
         )
         expect None = prior
-        let subject = substrate.open_subject_v1(
+        let Pair(subject, _) = substrate.open_forced_subject_v1(
           name,
-          substrate.ForcedSource { header, membership },
+          header,
+          membership,
         )
         expect Some(WitnessNativeScriptFalse { script_index }) = subject.rejection_reason
         expect script_index >= 0

@@ -7,42 +7,42 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Advance semantic",
       manifestPosition: 178,
-      publicationPosition: 448,
+      publicationPosition: 449,
       referenceRolePosition: 285,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_advance_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "17"],
         ["semanticResolvers", "10"],
+        ["steps", "17"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsItemSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Item semantic",
       manifestPosition: 179,
-      publicationPosition: 449,
+      publicationPosition: 450,
       referenceRolePosition: 286,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_item_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "18"],
         ["semanticResolvers", "11"],
+        ["steps", "18"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsTokenHeadSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native TokenHead semantic",
       manifestPosition: 180,
-      publicationPosition: 450,
+      publicationPosition: 451,
       referenceRolePosition: 287,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_token_head_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "19"],
         ["semanticResolvers", "12"],
+        ["steps", "19"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsAllOrAnyContainerFramePayloadSemantic:
@@ -51,14 +51,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AllOrAnyContainerFramePayload semantic",
         manifestPosition: 181,
-        publicationPosition: 451,
+        publicationPosition: 452,
         referenceRolePosition: 288,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_container_frame_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "20"],
           ["semanticResolvers", "13"],
+          ["steps", "20"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAllOrAnyEmptyContainerPayloadSemantic:
@@ -67,14 +67,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AllOrAnyEmptyContainerPayload semantic",
         manifestPosition: 182,
-        publicationPosition: 452,
+        publicationPosition: 453,
         referenceRolePosition: 289,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_all_or_any_empty_container_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "21"],
           ["semanticResolvers", "14"],
+          ["steps", "21"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAtLeastContainerFramePayloadSemantic:
@@ -83,14 +83,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AtLeastContainerFramePayload semantic",
         manifestPosition: 183,
-        publicationPosition: 453,
+        publicationPosition: 454,
         referenceRolePosition: 290,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_container_frame_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "22"],
           ["semanticResolvers", "15"],
+          ["steps", "22"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsAtLeastEmptyContainerPayloadSemantic:
@@ -99,14 +99,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native AtLeastEmptyContainerPayload semantic",
         manifestPosition: 184,
-        publicationPosition: 454,
+        publicationPosition: 455,
         referenceRolePosition: 291,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_at_least_empty_container_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "23"],
           ["semanticResolvers", "16"],
+          ["steps", "23"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsTimelockPayloadSemantic: {
@@ -114,14 +114,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native TimelockPayload semantic",
       manifestPosition: 185,
-      publicationPosition: 455,
+      publicationPosition: 456,
       referenceRolePosition: 292,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_timelock_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "24"],
         ["semanticResolvers", "17"],
+        ["steps", "24"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsSignatureMembershipPayloadSemantic:
@@ -130,14 +130,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureMembershipPayload semantic",
         manifestPosition: 186,
-        publicationPosition: 456,
+        publicationPosition: 457,
         referenceRolePosition: 293,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_membership_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "25"],
           ["semanticResolvers", "18"],
+          ["steps", "25"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureEmptyPayloadSemantic: {
@@ -145,14 +145,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native SignatureEmptyPayload semantic",
       manifestPosition: 187,
-      publicationPosition: 457,
+      publicationPosition: 458,
       referenceRolePosition: 294,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_empty_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "26"],
         ["semanticResolvers", "19"],
+        ["steps", "26"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsSignatureBelowFirstPayloadSemantic:
@@ -161,14 +161,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureBelowFirstPayload semantic",
         manifestPosition: 188,
-        publicationPosition: 458,
+        publicationPosition: 459,
         referenceRolePosition: 295,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_below_first_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "27"],
           ["semanticResolvers", "20"],
+          ["steps", "27"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureAboveLastPayloadSemantic:
@@ -177,14 +177,14 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
         referenceRole:
           "V1 validation-trace phase-A native SignatureAboveLastPayload semantic",
         manifestPosition: 189,
-        publicationPosition: 459,
+        publicationPosition: 460,
         referenceRolePosition: 296,
         commands: [],
         validatorTitle:
           "fraud_proofs/validation_trace/phase_a_native_scripts_signature_above_last_payload_semantic_v1.main.spend",
         familyPaths: [
-          ["steps", "28"],
           ["semanticResolvers", "21"],
+          ["steps", "28"],
         ],
       },
     validationTraceDisputePhaseANativeScriptsSignatureBetweenPayloadSemantic: {
@@ -192,28 +192,28 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A native SignatureBetweenPayload semantic",
       manifestPosition: 190,
-      publicationPosition: 460,
+      publicationPosition: 461,
       referenceRolePosition: 297,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_signature_between_payload_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "29"],
         ["semanticResolvers", "22"],
+        ["steps", "29"],
       ],
     },
     validationTraceDisputePhaseANativeScriptsFrameSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A native Frame semantic",
       manifestPosition: 191,
-      publicationPosition: 461,
+      publicationPosition: 462,
       referenceRolePosition: 298,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_native_scripts_frame_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "30"],
         ["semanticResolvers", "23"],
+        ["steps", "30"],
       ],
     },
     validationTraceDisputePhaseAScriptPreconditionsFinalizeSemantic: {
@@ -221,28 +221,28 @@ export const validationTracePhaseASemanticsMembers = defineDeploymentFamily(
       referenceRole:
         "V1 validation-trace phase-A preconditions Finalize semantic",
       manifestPosition: 192,
-      publicationPosition: 462,
+      publicationPosition: 463,
       referenceRolePosition: 299,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "31"],
         ["semanticResolvers", "24"],
+        ["steps", "31"],
       ],
     },
     validationTraceDisputePhaseAScriptPreconditionsItemSemantic: {
       purpose: "spend",
       referenceRole: "V1 validation-trace phase-A preconditions Item semantic",
       manifestPosition: 193,
-      publicationPosition: 463,
+      publicationPosition: 464,
       referenceRolePosition: 300,
       commands: [],
       validatorTitle:
         "fraud_proofs/validation_trace/phase_a_script_preconditions_item_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "32"],
         ["semanticResolvers", "25"],
+        ["steps", "32"],
       ],
     },
   },

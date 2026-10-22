@@ -15,3 +15,5 @@ export const missing = (detail: string) => new Verdict("missing", detail);
 export const unknownEvent = (detail: string) =>
   new Verdict("event_unknown", detail);
 export const invalid = (detail: string) => new Verdict("invalid", detail);
+export const originAfterFrontier = (detail: string) =>
+  new Verdict("origin_after_frontier", detail);

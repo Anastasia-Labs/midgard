@@ -1,13 +1,17 @@
+import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  type Assets,
+  type BuildTxWithRedeemer,
   credentialToAddress,
   Data,
   fromText,
   type LucidEvolution,
+  type RedeemerContext,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -60,21 +64,54 @@ const nonce: UTxO = {
   assets: { lovelace: 100_000_000n },
 };
 const contractView = {} as UserHistoryContracts;
-const outputs: { address: string; datum: string; assets: unknown }[] = [];
-const complete = vi.fn(async () => ({
-  toCBOR: () => "84a3008001800200a0f5f6",
-}));
+const outputs: { address: string; datum: string; assets: Assets }[] = [];
+const spent: UTxO[] = [];
+const read: UTxO[] = [];
+const redeemers: Redeemer[] = [];
+type Redeemer = string | BuildTxWithRedeemer | undefined;
+// Completion hands every callback redeemer the context of the transaction the
+// mock assembled, as the builder does, so a redeemer that cannot resolve its
+// indices fails here rather than passing on a skipped callback.
+const complete = vi.fn(async () => {
+  const sortedInputs = [...spent].sort(compareOutRefs);
+  const ctx = {
+    inputs: sortedInputs,
+    referenceInputs: [...read].sort(compareOutRefs),
+    outputs,
+    inputIndex: (input: { txHash: string; outputIndex: number }) => {
+      const index = sortedInputs.findIndex(
+        (candidate) =>
+          candidate.txHash === input.txHash &&
+          candidate.outputIndex === input.outputIndex,
+      );
+      return index < 0 ? undefined : BigInt(index);
+    },
+  } as unknown as RedeemerContext;
+  for (const redeemer of redeemers)
+    if (typeof redeemer === "function") redeemer(ctx);
+  return { toCBOR: () => "84a3008001800200a0f5f6" };
+});
 const tx = {
-  collectFrom: vi.fn(() => tx),
-  readFrom: vi.fn(() => tx),
-  withdraw: vi.fn(() => tx),
+  collectFrom: vi.fn((utxos: UTxO[], redeemer?: Redeemer) => {
+    spent.push(...utxos);
+    redeemers.push(redeemer);
+    return tx;
+  }),
+  readFrom: vi.fn((utxos: UTxO[]) => {
+    read.push(...utxos);
+    return tx;
+  }),
+  withdraw: vi.fn((_address: string, _amount: bigint, redeemer: Redeemer) => {
+    redeemers.push(redeemer);
+    return tx;
+  }),
   validFrom: vi.fn(() => tx),
   validTo: vi.fn(() => tx),
   mintAssets: vi.fn(() => tx),
   attach: { Script: vi.fn(() => tx) },
   pay: {
     ToContract: vi.fn(
-      (target: string, datum: { value: string }, assets: unknown) => {
+      (target: string, datum: { value: string }, assets: Assets) => {
         outputs.push({ address: target, datum: datum.value, assets });
         return tx;
       },
@@ -163,6 +200,9 @@ const prepareDeposit = (raw: string) =>
 
 beforeEach(() => {
   outputs.length = 0;
+  spent.length = 0;
+  read.length = 0;
+  redeemers.length = 0;
   vi.clearAllMocks();
   mock.context.mockImplementation((_lucid, _contracts, kind) =>
     Effect.succeed({
@@ -214,12 +254,13 @@ describe("raw admission assembly (mocked completion; no ledger acceptance claim)
         kind: "Absent",
         anchor: { key: "ee".repeat(32), node: predecessor, utxo },
       });
-      await buildEventHistoryAdmission(prepared.context, {
+      const built = await buildEventHistoryAdmission(prepared.context, {
         ...prepared.request,
         validFrom: 120_000,
         validTo: 180_000,
       });
       expect(outputs).toHaveLength(2);
+      expect(built.orderOutputIndex).toBe(1);
       expect(plutusConstrFieldCbor(outputs[0]!.datum, [3])).toBe(
         plutusConstrFieldCbor(prior, [3]),
       );

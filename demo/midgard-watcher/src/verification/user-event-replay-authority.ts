@@ -10,7 +10,6 @@ import {
   bindWatcherOriginEventClaim,
   type WatcherCommittedEventClaim,
 } from "./event-claims.js";
-import { watcherPhaseAQueuedTxs } from "./phase-a-verifier.js";
 import {
   assertWatcherUserEventAuthorityCurrent,
   readWatcherUserEventAuthority,
@@ -20,19 +19,17 @@ import {
 
 /** Adapts a follower-read user-event capability to W25's canonical replay
  * input. The caller acquires the capability at the authenticated header cutoff. This
- * helper grants no authority to the claim or material: W25 rereads the private
- * capability and independently binds both to its own DA reconstruction.
+ * helper grants no authority to the claim: W25 rereads the private
+ * capability and independently binds the claim to its own DA reconstruction.
  */
 export const deriveWatcherUserEventReplayAuthority = async (
   input: Readonly<{
     userEvent: WatcherUserEventAuthority;
     committedClaim: WatcherCommittedEventClaim;
-    programMaterial: readonly (readonly [string, string])[];
   }>,
 ): Promise<WatcherBlockReplayEventAuthority> => {
   const userEvent = input.userEvent;
   const claim = structuredClone(input.committedClaim);
-  const programMaterial = structuredClone(input.programMaterial);
   const local = await readWatcherUserEventAuthority(userEvent);
   const bound = bindWatcherOriginEventClaim(local.event, claim);
   let authority: WatcherBlockReplayEventAuthority;
@@ -86,27 +83,11 @@ export const deriveWatcherUserEventReplayAuthority = async (
       claim.canonicalNativeTxCborHex,
       "hex",
     );
-    // Reuse W24's canonical reachable-material projection. If canonical
-    // verification rejects, that existing reshaper retains the block material
-    // so W25 can adjudicate the forced-invalid outcome itself.
-    const queued = watcherPhaseAQueuedTxs({
-      transactions: [
-        {
-          txId: bound.origin.tx.tx_id,
-          txCbor: canonicalNativeTxCbor,
-          sourceKind: "forced",
-        },
-      ],
-      programMaterial,
-    })[0]!;
     authority = {
       userEvent,
       phase: "ForcedTransaction",
       eventKey: { ForcedTransactionEventKey: { tx_order_id: bound.origin.id } },
       canonicalNativeTxCbor,
-      programMaterialSidecarCbor: Buffer.from(
-        queued.programMaterialSidecarCbor!,
-      ),
     };
   }
   assertWatcherUserEventAuthorityCurrent(userEvent);

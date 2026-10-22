@@ -9,12 +9,10 @@ import { Effect } from "effect";
 import { coordinate } from "./availability-challenge-emulator.attest-availability.js";
 import {
   AVAILABILITY_EMULATOR_PARAMETERS,
-  type AvailabilityLayout,
-  index,
   inline,
-  position,
-  refIndex,
-  spendingInputs,
+  inputAt,
+  referenceAt,
+  spendAt,
 } from "./availability-challenge-emulator.measure-availability-transaction.js";
 import {
   type AvailabilityFixture,
@@ -78,26 +76,20 @@ export const buildAvailabilityPublication = (
   const mutated = options.badChunk
     ? { ...publication, chunk_hash: "00".repeat(32) }
     : publication;
-  const ctx: AvailabilityLayout = {
-    inputs: [thread, ...(previousCarrier ? [previousCarrier] : [])],
-    references: [f.reference("availability-challenge spending")],
-    policies: [],
-  };
   let tx = f.lucid
     .newTx()
     .setMinFee(fee)
     .validFrom(Number(validFrom))
     .validTo(Number(validTo))
     .readFrom([f.reference("availability-challenge spending")])
-    .collectFrom(
-      [thread],
+    .collectFrom([thread], (ctx) =>
       Data.to(
         {
           AdvanceTranche: {
             thread_output_index: 0n,
             carrier_output_index: 1n,
             m_previous_carrier_input_index: previousCarrier
-              ? index(ctx, previousCarrier)
+              ? inputAt(ctx, previousCarrier)
               : null,
           },
         },
@@ -115,13 +107,12 @@ export const buildAvailabilityPublication = (
       { lovelace: carrierLovelace },
     );
   if (previousCarrier)
-    tx = tx.collectFrom(
-      [previousCarrier],
+    tx = tx.collectFrom([previousCarrier], (ctx) =>
       Data.to(
         {
           ConsumeCarrier: {
-            thread_input_index: index(ctx, thread),
-            thread_spend_redeemer_index: position(spendingInputs(ctx), thread),
+            thread_input_index: inputAt(ctx, thread),
+            thread_spend_redeemer_index: spendAt(ctx, thread),
           },
         },
         SDK.DaAvailabilitySpendRedeemer,
@@ -160,23 +151,20 @@ export const buildAvailabilitySettlement = (
     parameters: f.parameters,
   });
   const trancheIndex = Number(terminalDatum.next_tranche_index);
-  const ctx: AvailabilityLayout = {
-    inputs: [terminal, thread, ...(carrier ? [carrier] : [])],
-    policies: [open.policy],
-    references: [
-      record,
-      f.reference("availability-challenge spending"),
-      f.reference("availability-challenge minting"),
-      f.reference("availability-challenge settle withdrawal"),
-    ],
-  };
+  const inputs = [terminal, thread, ...(carrier ? [carrier] : [])];
+  const references = [
+    record,
+    f.reference("availability-challenge spending"),
+    f.reference("availability-challenge minting"),
+    f.reference("availability-challenge settle withdrawal"),
+  ];
   let tx = f.lucid
     .newTx()
     .setMinFee(fee)
     .validFrom(Number(lower))
     .validTo(Number(lower + 60_000n))
-    .collectFrom([...ctx.inputs], coordinate(ctx, open.policy))
-    .readFrom([...ctx.references])
+    .collectFrom(inputs, coordinate(open.policy))
+    .readFrom(references)
     .mintAssets(
       {
         [open.policy +
@@ -185,22 +173,23 @@ export const buildAvailabilitySettlement = (
           trancheIndex,
         })]: -1n,
       },
-      Data.to(
-        {
-          SettleTranche: {
-            yield_to_ref_input_index: refIndex(
-              ctx,
-              f.reference("availability-challenge settle withdrawal"),
-            ),
-            record_ref_input_index: refIndex(ctx, record),
-            terminal_accumulator_input_index: index(ctx, terminal),
-            terminal_accumulator_output_index: 0n,
-            tranche_input_index: index(ctx, thread),
-            carrier_input_index: carrier ? index(ctx, carrier) : null,
+      (ctx) =>
+        Data.to(
+          {
+            SettleTranche: {
+              yield_to_ref_input_index: referenceAt(
+                ctx,
+                f.reference("availability-challenge settle withdrawal"),
+              ),
+              record_ref_input_index: referenceAt(ctx, record),
+              terminal_accumulator_input_index: inputAt(ctx, terminal),
+              terminal_accumulator_output_index: 0n,
+              tranche_input_index: inputAt(ctx, thread),
+              carrier_input_index: carrier ? inputAt(ctx, carrier) : null,
+            },
           },
-        },
-        SDK.DaAvailabilityMintRedeemer,
-      ),
+          SDK.DaAvailabilityMintRedeemer,
+        ),
     )
     .pay.ToContract(
       open.address,
@@ -229,17 +218,13 @@ export const buildAvailabilityClose = (
   options: { redirectRefund?: boolean } = {},
 ) => {
   const fee = f.parameters.max_close_fee_lovelace;
-  const ctx: AvailabilityLayout = {
-    inputs: [record, terminal, queue],
-    policies: [open.policy],
-    references: [
-      f.hubOracleRefInput,
-      f.reference("state-queue spending"),
-      f.reference("availability-challenge spending"),
-      f.reference("availability-challenge minting"),
-      f.reference("availability-challenge close withdrawal"),
-    ],
-  };
+  const references = [
+    f.hubOracleRefInput,
+    f.reference("state-queue spending"),
+    f.reference("availability-challenge spending"),
+    f.reference("availability-challenge minting"),
+    f.reference("availability-challenge close withdrawal"),
+  ];
   const queueView = SDK.getLinkedListNodeViewFromUTxO(queue);
   const view = Effect.runSync(queueView);
   const node = Data.castFrom(view.data, SDK.StateQueueNode);
@@ -259,31 +244,32 @@ export const buildAvailabilityClose = (
   let tx = f.lucid
     .newTx()
     .setMinFee(fee)
-    .collectFrom([record, terminal], coordinate(ctx, open.policy))
-    .collectFrom([queue], queueUpdate(ctx, open.policy, queue, 0n))
-    .readFrom([...ctx.references])
+    .collectFrom([record, terminal], coordinate(open.policy))
+    .collectFrom([queue], queueUpdate(open.policy, queue, 0n))
+    .readFrom(references)
     .mintAssets(
       {
         [open.policy + open.plan.challengeAssetName]: -1n,
         [open.terminalUnit]: -1n,
       },
-      Data.to(
-        {
-          CloseChallenge: {
-            yield_to_ref_input_index: refIndex(
-              ctx,
-              f.reference("availability-challenge close withdrawal"),
-            ),
-            hub_oracle_ref_input_index: refIndex(ctx, f.hubOracleRefInput),
-            record_input_index: index(ctx, record),
-            terminal_accumulator_input_index: index(ctx, terminal),
-            state_queue_input_index: index(ctx, queue),
-            state_queue_output_index: 0n,
-            challenger_refund_output_index: 1n,
+      (ctx) =>
+        Data.to(
+          {
+            CloseChallenge: {
+              yield_to_ref_input_index: referenceAt(
+                ctx,
+                f.reference("availability-challenge close withdrawal"),
+              ),
+              hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+              record_input_index: inputAt(ctx, record),
+              terminal_accumulator_input_index: inputAt(ctx, terminal),
+              state_queue_input_index: inputAt(ctx, queue),
+              state_queue_output_index: 0n,
+              challenger_refund_output_index: 1n,
+            },
           },
-        },
-        SDK.DaAvailabilityMintRedeemer,
-      ),
+          SDK.DaAvailabilityMintRedeemer,
+        ),
     )
     .pay.ToContract(queue.address, inline(queueDatum), queue.assets)
     .pay.ToAddress(

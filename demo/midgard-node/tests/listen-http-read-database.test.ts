@@ -5,7 +5,6 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { HttpRouter, HttpServerResponse } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
@@ -126,8 +125,6 @@ describe("public HTTP database capacity", () => {
             {
               txId,
               txCanonicalCbor: Buffer.from("r7-testing-admission"),
-              programMaterialSidecarCbor:
-                encodeMidgardCekProgramMaterialSidecar([]),
               submitSource: "native",
             },
           ]).pipe(

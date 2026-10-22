@@ -94,11 +94,9 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   },
   prepares: {
     canonicalDecode: title("validationTraceDisputeCanonicalDecodePrepare"),
-    compactBinding:
-      "fraud_proofs/validation_trace/compact_binding_v1.main.spend",
-    staticLedgerRules:
-      "fraud_proofs/validation_trace/static_ledger_rules_v1.main.spend",
-    inputSets: "fraud_proofs/validation_trace/input_sets_v1.main.spend",
+    compactBinding: title("validationTraceDisputeCompactBindingPrepare"),
+    staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesPrepare"),
+    inputSets: title("validationTraceDisputeInputSetsPrepare"),
     signatures: "fraud_proofs/validation_trace/signatures_v1.main.spend",
     phaseANativeScripts:
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
@@ -109,7 +107,7 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
     scriptIntegrity:
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
-    cek: "fraud_proofs/validation_trace/cek_v1.main.spend",
+    cek: title("validationTraceDisputeCekPrepare"),
     valueAndMint: "fraud_proofs/validation_trace/value_and_mint_v1.main.spend",
   },
   semantics: {
@@ -119,14 +117,10 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
     canonicalDecodeItem: title(
       "validationTraceDisputeCanonicalDecodeItemSemantic",
     ),
-    compactBinding:
-      "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
-    staticLedgerRules:
-      "fraud_proofs/validation_trace/static_ledger_rules_semantic_v1.main.spend",
-    inputSetsEmpty:
-      "fraud_proofs/validation_trace/input_sets_empty_semantic_v1.main.spend",
-    inputSetsItem:
-      "fraud_proofs/validation_trace/input_sets_item_semantic_v1.main.spend",
+    compactBinding: title("validationTraceDisputeCompactBindingSemantic"),
+    staticLedgerRules: title("validationTraceDisputeStaticLedgerRulesSemantic"),
+    inputSetsEmpty: title("validationTraceDisputeInputSetsEmptySemantic"),
+    inputSetsItem: title("validationTraceDisputeInputSetsItemSemantic"),
     signaturesAdvance:
       "fraud_proofs/validation_trace/signatures_advance_semantic_v1.main.spend",
     signaturesAddressItem:
@@ -299,14 +293,12 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_integrity_witness_set_semantic_v1.main.spend",
     scriptIntegrityFinalize:
       "fraud_proofs/validation_trace/script_integrity_finalize_semantic_v1.main.spend",
-    cekFinish:
-      "fraud_proofs/validation_trace/cek_finish_semantic_v1.main.spend",
-    cekExecutionSelection:
-      "fraud_proofs/validation_trace/cek_execution_selection_semantic_v1.main.spend",
-    cekContextStep:
-      "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main.spend",
-    cekCoreStep:
-      "fraud_proofs/validation_trace/cek_core_step_semantic_v1.main.spend",
+    cekFinish: title("validationTraceDisputeCekFinishSemantic"),
+    cekExecutionSelection: title(
+      "validationTraceDisputeCekExecutionSelectionSemantic",
+    ),
+    cekContextStep: title("validationTraceDisputeCekContextStepSemantic"),
+    cekCoreStep: title("validationTraceDisputeCekCoreStepSemantic"),
     valueAndMintBegin:
       "fraud_proofs/validation_trace/value_and_mint_begin_semantic_v1.main.spend",
     valueAndMintReplayBegin:

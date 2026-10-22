@@ -24,7 +24,7 @@ import "./transaction-boundary.js";
 import "./missing-signature.parse-artifact.js";
 import "./missing-signature.admit-missing-signature-artifact.js";
 import "./missing-signature.create-bound-transaction-port.js";
-import "./missing-signature.create-missing-signature-forced-field-prerequisite.js";
+import "./missing-signature.create-missing-signature-field-prerequisite.js";
 import "./missing-signature.create-manifest-bound-missing-signature-workflow.js";
 export {
   admitMissingSignatureArtifact,
@@ -41,7 +41,7 @@ export {
   runOrResumeManifestBoundMissingSignatureWorkflow,
   unsafeCreateMissingSignatureTransactionPortForTest,
 } from "./missing-signature.create-manifest-bound-missing-signature-workflow.js";
-export { createMissingSignatureForcedFieldPrerequisite } from "./missing-signature.create-missing-signature-forced-field-prerequisite.js";
+export { createMissingSignatureFieldPrerequisite } from "./missing-signature.create-missing-signature-field-prerequisite.js";
 export {
   type AdmittedMissingSignatureArtifact,
   MISSING_SIGNATURE_ARTIFACT,

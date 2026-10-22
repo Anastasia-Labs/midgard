@@ -66,12 +66,16 @@ it("rechecks durable funding authority before building, signing and submitting t
 
 const replacementInputs = async (
   supersededAttemptFundingOutRefs?: readonly (readonly string[])[],
+  tokenFunding?: NonNullable<
+    Parameters<typeof runtimeFunding>[1]
+  >["tokenFunding"],
 ) => {
   const runtime = await runtimeFunding("step-one", {
     collateral: true,
     ...(supersededAttemptFundingOutRefs === undefined
       ? {}
       : { supersededAttemptFundingOutRefs }),
+    ...(tokenFunding === undefined ? {} : { tokenFunding }),
   });
   const lucid = await Lucid(new Emulator([]), "Preprod");
   restrictWorkflowFundingSigner({
@@ -107,4 +111,16 @@ it("spends a superseded attempt's input even when it is too small, topping up fr
   expect(shared).toContain(large);
   // An attempt none of whose inputs is still reserved asks for nothing.
   expect(await replacementInputs([[`${"70".repeat(32)}#0`]])).toEqual([large]);
+});
+
+it("never offers a reserved coin that holds a token to coin selection", async () => {
+  const large = `${"73".repeat(32)}#0`;
+  // A 50 ADA reserved coin that also holds a token: largest-first selection
+  // would reach for it first were tokens no bar.
+  const inputs = await replacementInputs(undefined, {
+    outRef: `${"75".repeat(32)}#0`,
+    lovelace: 50_000_000n,
+    unit: `${"aa".repeat(28)}cafe`,
+  });
+  expect(inputs).toEqual([large]);
 });

@@ -96,7 +96,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
               },
             ],
           },
-          claim: fixture.prepared.claim,
+          claim: fixture.prepared.claimWith(),
         },
       ],
     };
@@ -111,7 +111,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
               },
             ],
           },
-          claim: fixture.prepared.claim,
+          claim: fixture.prepared.claimWith(),
         },
       ],
     };
@@ -168,7 +168,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
           encodeMidgardNativeTxCompact(tooLargeCompact).toString("hex"),
         fieldIndex: 2,
         committedPreimage: tooLarge,
-      }),
+      }).claimWith(),
     ).toThrow(/above the .* inline frontier/u);
   });
 

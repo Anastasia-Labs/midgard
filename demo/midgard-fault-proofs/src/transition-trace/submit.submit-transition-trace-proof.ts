@@ -67,6 +67,7 @@ export const submitTransitionTraceProof = async ({
   witnessReferenceScripts,
   fieldCertificateReferenceScript,
   awaitConfirmation = true,
+  ownOutputs,
 }: SubmitTransitionTraceProofConfig): Promise<SubmitTransitionTraceProofResult> => {
   const proof = readTransitionProof(proofInput);
   const {
@@ -233,6 +234,7 @@ export const submitTransitionTraceProof = async ({
       witnessReferenceScripts,
       fieldCertificateReferenceScript,
       awaitConfirmation,
+      ...(ownOutputs === undefined ? {} : { ownOutputs }),
     });
     return {
       ...result,

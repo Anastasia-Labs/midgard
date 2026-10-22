@@ -1,8 +1,8 @@
 /** One source-opening producer for both verdict directions. It consumes
  * authenticated L1/public-DA evidence and emits source material, never resolved
  * L1 redeemer indices or an unchecked onchain VerifiedTxSourceView. */
-import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/native";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/native";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 

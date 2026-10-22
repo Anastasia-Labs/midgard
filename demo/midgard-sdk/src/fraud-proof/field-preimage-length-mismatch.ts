@@ -1,4 +1,3 @@
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
@@ -13,6 +12,7 @@ import {
   faultProofStepRedeemerSchema,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   terminalVerdictContradiction,

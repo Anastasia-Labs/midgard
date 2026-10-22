@@ -16,6 +16,7 @@ import {
   goldenChecks,
   independentChecks,
   toolingChecks,
+  txFuzzReferenceCheck,
 } from "./registry.tooling-checks.mjs";
 import { readRuntimeWorkflow } from "./runtime-owner.mjs";
 
@@ -48,6 +49,7 @@ export const buildRegistry = (root) => {
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,
+    txFuzzReferenceCheck(packages),
     ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
     scriptBudgetCheck(root, index, ciText),
     demo.test,

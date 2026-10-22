@@ -1,5 +1,15 @@
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import {
+  computeMidgardNativeTxId,
+  encodeMidgardSpendInputItem,
+  encodeMidgardTxOutput,
+} from "@al-ft/midgard-core";
+import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeAddressWitnessPreimage,
+  forcedVerdictSubject,
+  missingSignatureVkeyHash,
+} from "@al-ft/midgard-sdk";
+import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
@@ -84,6 +94,62 @@ export const nodeTransaction = (output: Buffer) =>
     referenceByte: "b1",
     outputCbors: [output],
   });
+
+/**
+ * `outputs` spent from one held ledger input that carries `heldLovelace`,
+ * their total value, and is owned by the key that signs the transaction, so
+ * the node resolves the input and the outputs' own encodings are the only
+ * fault it can find.
+ */
+export const nodeTransactionSpendingHeldInput = (
+  outputs: readonly Buffer[],
+  heldLovelace: bigint,
+) => {
+  const ownerKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 41));
+  try {
+    const ownerVkey = Buffer.from(ownerKey.to_public().to_raw_bytes()).toString(
+      "hex",
+    );
+    const heldInput = encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0x57),
+      outputIndex: 0,
+    });
+    // `{0: enterprise key address of the owner, 1: [heldLovelace, {}]}`.
+    const heldOutput = encodeMidgardTxOutput({
+      address: Buffer.concat([
+        hex("60"),
+        hex(missingSignatureVkeyHash(ownerVkey)),
+      ]),
+      value: { lovelace: heldLovelace, assets: new Map() },
+    });
+    const build = (addrTxWitsPreimageCbor?: Buffer) =>
+      makeNativeTx({
+        spendInputCbors: [heldInput],
+        fee: 0n,
+        outputCbors: [...outputs],
+        addrTxWitsPreimageCbor,
+      });
+    const transactionId = computeMidgardNativeTxId(
+      materializeMidgardForcedTxFromCanonical(build()),
+    );
+    const transaction = build(
+      encodeAddressWitnessPreimage([
+        {
+          verification_key: ownerVkey,
+          signature: Buffer.from(
+            ownerKey.sign(transactionId).to_raw_bytes(),
+          ).toString("hex"),
+        },
+      ]),
+    );
+    const ledger: readonly (readonly [Buffer, Buffer])[] = [
+      [heldInput, heldOutput],
+    ];
+    return { transaction, ledger };
+  } finally {
+    ownerKey.free();
+  }
+};
 
 /** Every planned datum step for `datum`, run whole off chain. */
 export const makeHarness = async () =>

@@ -1,5 +1,5 @@
-import type * as SDK from "@al-ft/midgard-sdk";
 import { outRefLabel } from "@al-ft/midgard-core";
+import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
 import {
@@ -7,11 +7,11 @@ import {
   submitNoReferenceInputStep02,
   submitNoReferenceInputStep03,
 } from "../src/index.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   inputExistenceExecutionContext,
   publishInputExistenceSelectionCarriage,
 } from "./support/input-existence-execution-context.js";
+import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   type NoReferenceInputFixture,

@@ -71,12 +71,10 @@ validator main(
             expect None = tx_inclusion
             // The substrate ties the direction to the leaf's verdict: an
             // accepted leaf yields no reason, a rejected one its exact reason.
-            let subject = substrate.open_subject_v1(
+            let Pair(subject, _) = substrate.open_forced_subject_v1(
               name,
-              substrate.ForcedSource {
-                header: source.header,
-                membership: source.membership,
-              },
+              source.header,
+              source.membership,
             )
             expect
               when subject.rejection_reason is {

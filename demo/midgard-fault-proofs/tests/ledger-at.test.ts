@@ -10,12 +10,16 @@ import {
   GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
 import { undecodableNativeOutputDescriptor } from "../src/evidence/retained-ledger-output.js";
 import {
+  type CheckedLedger,
   checkLedgerAgainstRoot,
   checkLedgerJson,
+  ledgerEntriesRoot,
+  type LedgerEntry,
   ledgerJson,
   LedgerRootMismatchError,
   predecessorLedger,
@@ -160,5 +164,73 @@ describe("ledger root check for an output with an undecodable native script_ref"
         label: "test",
       }),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+  });
+});
+
+describe("ledger root check from a ledger already checked", () => {
+  const keyed = (byte: number) =>
+    encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, byte),
+      outputIndex: 0,
+    });
+  const checked = async (
+    entries: readonly LedgerEntry[],
+    from?: CheckedLedger,
+  ) =>
+    await checkLedgerAgainstRoot({
+      entries,
+      utxosRoot: await ledgerEntriesRoot(entries),
+      label: "test",
+      ...(from === undefined ? {} : { from }),
+    });
+  const before = [
+    { outRef, output },
+    { outRef: keyed(0x56), output: makeOutput(2_000_000n) },
+    { outRef: keyed(0x57), output: makeOutput(3_000_000n) },
+  ];
+
+  it("admits the same ledger as a check from scratch", async () => {
+    const from = await checked(before);
+    const after = [
+      before[0]!,
+      before[2]!,
+      { outRef: keyed(0x58), output: makeOutput(4_000_000n) },
+    ];
+    expect(await checked(after, from)).toStrictEqual(await checked(after));
+  });
+
+  it("refuses an output substituted under an out-ref the earlier ledger holds", async () => {
+    const from = await checked(before);
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [
+          before[0]!,
+          { ...before[1]!, output: makeOutput(2_000_001n) },
+          before[2]!,
+        ],
+        utxosRoot: from.utxosRoot,
+        label: "test",
+        from,
+      }),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+  });
+
+  it("refuses a supplied descriptor that is not the output's own", async () => {
+    const from = await checked(before);
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [
+          {
+            ...before[0]!,
+            descriptor: committedDescriptor(Buffer.from("820041", "hex")),
+          },
+          before[1]!,
+          before[2]!,
+        ],
+        utxosRoot: from.utxosRoot,
+        label: "test",
+        from,
+      }),
+    ).rejects.toThrow("not a canonical ledger entry");
   });
 });

@@ -1,6 +1,5 @@
 import {
   encodeMidgardTxOutputCanonical,
-  type FieldOpening,
   FraudProofTokenDatum,
   isInputNoIdxViolation,
   MIDGARD_FIELD_INDEX,
@@ -47,6 +46,10 @@ import {
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
 import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "./workflow/own-outputs.js";
+import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -68,6 +71,7 @@ export const submitInputNoIdxStep04 = async ({
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -87,6 +91,8 @@ export const submitInputNoIdxStep04 = async ({
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitInputNoIdxStep04Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
     await resolveInputNoIdxDeploymentContracts({
@@ -137,6 +143,7 @@ export const submitInputNoIdxStep04 = async ({
   const carriageUtxos =
     publishedCarriageUtxos ??
     (await publishFaultProofFieldCarriage({
+      ownOutputs,
       lucid,
       signer,
       planned,
@@ -166,12 +173,6 @@ export const submitInputNoIdxStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const outputsOpening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
-    label: "Input-no-idx step 04 outputs",
-  });
   // §5.2: the count the verdict rests on is the door's authenticated one.
   const producingTxOutputCount = planned.itemCount;
   if (
@@ -222,7 +223,13 @@ export const submitInputNoIdxStep04 = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
-        outputsOpening,
+        outputsOpeningFor: (ctx) =>
+          faultProofFieldOpening({
+            planned,
+            referenceInputs: ctx.referenceInputs,
+            certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
+            label: "Input-no-idx step 04 outputs",
+          }),
         onLayout: (layout) => {
           spendLayout = layout;
         },

@@ -118,7 +118,7 @@ describe("RejectionReasonV1 codec", () => {
   );
 
   it.each([
-    ["a constructor past the last arm", "d905299f00ff"],
+    ["a constructor past the last arm", "d9052a9f00ff"],
     ["a constructor between the two tag ranges", "d8809f00ff"],
     ["a missing coordinate", "d905229f00ff"],
     ["an extra coordinate", "d905229f000000ff"],

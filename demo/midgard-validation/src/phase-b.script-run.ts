@@ -1,4 +1,3 @@
-import { type MidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { Effect } from "effect";
 
 import {
@@ -16,6 +15,7 @@ import {
   buildPlutusV3ScriptContext,
   type ScriptContextView,
 } from "./script-context.js";
+import type { ScriptDecodePhase2Class } from "./script-decode.step-types.js";
 import { type LocalScriptEvalResult, type PhaseBConfig } from "./types.js";
 
 /** The canonical script context bytes one non-native execution runs over. */
@@ -33,12 +33,10 @@ export const scriptExecutionContextCbor = (
 /**
  * Runs one script the way Phase B does: through the proof hook when one is
  * set, through the out-of-process verdict hook in verdict mode, and
- * otherwise on the in-process structural executor.
+ * otherwise through the in-process evaluator for the requested mode.
  */
 export const runScriptExecution = (
   run: MidgardCekScriptRun,
-  programMaterialSidecarCbor: Uint8Array | null,
-  material: MidgardCekProgramMaterialSidecar,
   config: Pick<
     PhaseBConfig,
     "evaluateProofScript" | "evaluateCekVerdict" | "cekExecutionMode"
@@ -46,6 +44,7 @@ export const runScriptExecution = (
 ): Effect.Effect<
   {
     readonly result: LocalScriptEvalResult;
+    readonly phase2Class?: ScriptDecodePhase2Class;
     readonly graph: MidgardCekExecutionGraph | null;
     readonly execution: MidgardCekStructuralExecution | null;
   },
@@ -63,11 +62,14 @@ export const runScriptExecution = (
       return { result, graph: null, execution: null };
     }
     if (mode === "verdict" && config.evaluateCekVerdict !== undefined) {
-      const result = yield* config.evaluateCekVerdict({
-        ...run,
-        programMaterialSidecarCbor,
-      });
+      const result = yield* config.evaluateCekVerdict(run);
       return { result, graph: null, execution: null };
     }
-    return evaluateMidgardCekScript(run, material, mode);
+    return yield* Effect.try({
+      try: () => evaluateMidgardCekScript(run, mode),
+      catch: (cause) =>
+        cause instanceof Error
+          ? cause
+          : new Error("Local script evaluation failed", { cause }),
+    });
   });

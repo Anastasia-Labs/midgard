@@ -16,9 +16,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  reuseOrCertifyFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
   requireLinearFaultReferenceScript,
@@ -35,6 +35,10 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -80,6 +84,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   onCarriageReady,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -99,6 +104,8 @@ export const submitSpendInputSignerMissingStep02 = async ({
   readonly onCarriageReady?: () => Promise<void>;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -145,6 +152,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
@@ -154,28 +162,23 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  "spend-input-signer-missing: certified input opening requires certificate reference script",
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificateBoundary,
-          })
-        ).certificateUtxo
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          ownOutputs,
+          lucid,
+          network,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "spend-input-signer-missing: certified input opening requires certificate reference script",
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+          preSubmitBoundary: certificateBoundary,
+        })
       : undefined;
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
@@ -204,12 +207,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
     stepReference,
     ...(resolved === undefined ? [] : membershipCarriage.referenceInputs),
   ];
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "spend-input-signer-missing spend inputs",
-  });
   // The witness-scan route hands the credential to step 03; every direct
   // route writes the terminal verdict step 02 derives on chain
   // (`direct_verdict_v1`) and continues at step 05.
@@ -248,6 +245,12 @@ export const submitSpendInputSignerMissingStep02 = async ({
   });
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "spend-input-signer-missing spend inputs",
+    });
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,

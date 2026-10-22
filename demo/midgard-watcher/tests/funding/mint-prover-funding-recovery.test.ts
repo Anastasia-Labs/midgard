@@ -164,6 +164,8 @@ const setup = async () => {
     readPendingTransition: async () => null,
     readCompletionHandoff: async () => null,
     readConfirmedInput: async () => null,
+    readLandedSupersededAttempt: async () => null,
+    readRecordedSignedTransaction: async () => null,
     reserve: forbidden,
     prepareTransition: forbidden,
     confirmTransition: forbidden,

@@ -1,5 +1,3 @@
-import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 /**
  * Wire and rule twin of the standalone `min-fee` fault-proof family (Q20).
  *
@@ -33,6 +31,8 @@ import {
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import {
   terminalVerdictContradiction,
   type VerdictSubject,

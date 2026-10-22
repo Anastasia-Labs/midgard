@@ -37,6 +37,7 @@ import {
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
+  presentMidgardCekDirectArgument,
 } from "./cek-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
@@ -61,6 +62,10 @@ import {
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
 import {
+  type CaseConstantHost,
+  returnCaseConstant,
+} from "./cek-executor.case-constant.js";
+import {
   advanceMidgardCekMapConversionControl,
   buildMidgardCekMapConversionResult,
   midgardCekMapConversionControl,
@@ -71,6 +76,11 @@ import {
   type MidgardCekSemanticStepMaterial,
   midgardCekSemanticTopMaterial,
 } from "./cek-executor.semantic-builtins.js";
+import {
+  isMidgardCekSemanticStep,
+  presentMidgardCekSemanticArguments,
+  presentMidgardCekSemanticResult,
+} from "./cek-executor.semantic-presentation.js";
 import { MidgardCekSemanticStore } from "./cek-executor.semantic-store.js";
 import {
   type MidgardCekStepRecorder,
@@ -119,6 +129,14 @@ export class StructuralExecutor {
     string,
     MidgardCekContinuationFrame
   >();
+
+  private readonly caseConstantHost: CaseConstantHost = {
+    store: this.store,
+    constant: (root) => this.constants.get(rootHex(root)),
+    addSequence: (node) => this.addSequence(node),
+    addContinuation: (frame) => this.addContinuation(frame),
+    record: (witness, post) => this.record(witness, post),
+  };
 
   constructor(
     root: Bytes,
@@ -1036,8 +1054,8 @@ export class StructuralExecutor {
       {
         kind: "executeBuiltinSemantic",
         tag,
-        arguments: arguments_,
-        result,
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
+        result: presentMidgardCekSemanticResult(tag, result),
         material,
       },
       exactState(pre, {
@@ -1062,7 +1080,7 @@ export class StructuralExecutor {
       {
         kind: "executeBuiltinSemanticFailure",
         tag,
-        arguments: arguments_,
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
         material,
       },
       errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
@@ -1130,25 +1148,13 @@ export class StructuralExecutor {
       );
       return;
     }
-    const directArguments = arguments_.map(
-      (argument, index): MidgardCekDirectValueWitness => {
-        if (argument.kind === "constant") {
-          return { kind: "constant", witness: argument.witness };
-        }
-        if (argument.kind === "semanticConstant") {
-          return {
-            kind: "semanticConstant",
-            witness: argument.witness,
-          };
-        }
-        if (argument.kind === "blsMillerLoop") {
-          return {
-            kind: "blsMillerLoop",
-            expressionRoot: argument.expressionRoot,
-          };
-        }
-        return { kind: "opaque", root: roots[index]! };
-      },
+    const directArguments = arguments_.map((argument, index) =>
+      presentMidgardCekDirectArgument(
+        builtin.tag,
+        index,
+        argument,
+        roots[index]!,
+      ),
     );
     if (
       (builtin.tag === 38n || builtin.tag === 43n) &&
@@ -1182,12 +1188,7 @@ export class StructuralExecutor {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
-    if (
-      builtin.tag >= 29n &&
-      builtin.tag <= 50n &&
-      builtin.tag !== 38n &&
-      builtin.tag !== 43n
-    ) {
+    if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments, roots);
       return;
     }
@@ -1597,6 +1598,10 @@ export class StructuralExecutor {
         return;
       }
       case "case": {
+        if (value.kind === "constant") {
+          returnCaseConstant(this.caseConstantHost, pre, frame);
+          return;
+        }
         if (value.kind !== "constr") {
           this.record(
             {

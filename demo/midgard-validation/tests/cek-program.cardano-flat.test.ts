@@ -9,7 +9,6 @@ import {
   decodeMidgardCekCardanoFlatProgram,
   encodeMidgardCekCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   CARDANO_ACCEPTED,
   CARDANO_REFUSED,
@@ -18,6 +17,7 @@ import {
   flatOfTermBits,
   OUTSIDE_PROFILE,
 } from "./cek-program.cardano-flat.vectors.js";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
@@ -55,11 +55,11 @@ describe("raw Flat programs as the Cardano evaluator reads them", () => {
   );
 
   it.each(CARDANO_ACCEPTED.slice(0, 3))(
-    "%s builds the envelope of the program Cardano read",
+    "%s builds the local root of the program Cardano read",
     (_label, flat, _cardano, twin) => {
-      expect(
-        hex(buildMidgardCanonicalCekProgram(bytes(flat)).envelopeHash),
-      ).toBe(hex(buildMidgardCanonicalCekProgram(bytes(twin)).envelopeHash));
+      expect(hex(buildCekProgramFromRawFlat(bytes(flat)).termRoot)).toBe(
+        hex(buildCekProgramFromRawFlat(bytes(twin)).termRoot),
+      );
     },
   );
 
@@ -74,8 +74,8 @@ describe("raw Flat programs as the Cardano evaluator reads them", () => {
       expect(() => decodeMidgardCekCardanoFlatProgram(bytes(flat))).toThrow(
         `Cardano Flat refusal ${refusal} at bit ${bitOffset}:`,
       );
-      expect(() => buildMidgardCanonicalCekProgram(bytes(flat))).toThrow(
-        CardanoFlatRefusal,
+      expect(() => buildCekProgramFromRawFlat(bytes(flat))).toThrow(
+        `Cardano Flat refusal ${refusal} at bit ${bitOffset}:`,
       );
     },
   );
@@ -90,7 +90,7 @@ describe("raw Flat programs as the Cardano evaluator reads them", () => {
       });
       let thrown: unknown;
       try {
-        buildMidgardCanonicalCekProgram(bytes(flat));
+        buildCekProgramFromRawFlat(bytes(flat));
       } catch (error) {
         thrown = error;
       }

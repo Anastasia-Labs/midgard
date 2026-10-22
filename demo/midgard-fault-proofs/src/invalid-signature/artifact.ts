@@ -1,6 +1,6 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 

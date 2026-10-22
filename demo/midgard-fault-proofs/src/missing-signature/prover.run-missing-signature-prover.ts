@@ -7,6 +7,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 
 import { outRefLabel } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   assertMissingSignatureFindingProvable,
   type MissingSignatureFinding,
@@ -175,6 +176,8 @@ export const runMissingSignatureProver = async (
   let currentOutRef =
     position.step === "none" ? null : outRefLabel(position.threadUtxo);
   const txHashes: string[] = [];
+  // The carriage this run publishes, reused across its batches.
+  const ownOutputs = createOwnOutputJournal();
   let step04Transactions = 0;
   const maximumStep04Transactions =
     Math.floor(
@@ -236,6 +239,7 @@ export const runMissingSignatureProver = async (
         }
         case "step02": {
           const result = await submitMissingSignatureStep02({
+            ownOutputs,
             lucid,
             contracts,
             categoryId: deps.category.categoryId,
@@ -288,6 +292,7 @@ export const runMissingSignatureProver = async (
             );
           }
           const result = await submitMissingSignatureStep04({
+            ownOutputs,
             lucid,
             contracts,
             categoryId: deps.category.categoryId,

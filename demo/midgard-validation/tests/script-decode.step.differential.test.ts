@@ -4,7 +4,6 @@ import {
   type CardanoFlatRefusalClass,
   decodeCardanoFlatProgram,
 } from "../src/cek-program.cardano-flat.js";
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   SCRIPT_DECODE_LANGUAGE_PLUTUS_V3,
   ScriptDecodeClass,
@@ -22,6 +21,7 @@ import {
   OUTSIDE_PROFILE,
 } from "./cek-program.cardano-flat.vectors.js";
 import { scriptDecodeStepScripts } from "./fixtures/script-decode-step-v1.vectors.mjs";
+import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
 
@@ -122,7 +122,7 @@ describe("the script-decode step port against the Flat reader", () => {
     const flat = bytes(raw);
     let built: Uint8Array | undefined;
     try {
-      built = buildMidgardCanonicalCekProgram(flat).envelope.termRoot;
+      built = buildCekProgramFromRawFlat(flat).termRoot;
     } catch {
       built = undefined;
     }
@@ -136,14 +136,22 @@ describe("the script-decode step port against the Flat reader", () => {
     }
   });
 
-  it.each(RAW_ROWS)("%s ends one-shot where it ends walked", (_label, raw) => {
-    const script = wrap(bytes(raw));
-    expect(
-      scriptDecodeRecordOfScript(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script),
-    ).toEqual(
-      planScriptDecodeWalk(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script, 3).record,
-    );
-  });
+  // A 3-tick walk of the 1,024-unit and deep-delay rows takes hundreds of
+  // Walks: about 2 s on a developer machine and over 5 s on a loaded CI
+  // runner.
+  it.each(RAW_ROWS)(
+    "%s ends one-shot where it ends walked",
+    { timeout: 60_000 },
+    (_label, raw) => {
+      const script = wrap(bytes(raw));
+      expect(
+        scriptDecodeRecordOfScript(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script),
+      ).toEqual(
+        planScriptDecodeWalk(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script, 3)
+          .record,
+      );
+    },
+  );
 
   it("refuses bytes that are not one CBOR byte string", () => {
     expect(

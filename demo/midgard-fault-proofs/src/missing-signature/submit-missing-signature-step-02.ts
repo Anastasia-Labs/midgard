@@ -34,6 +34,7 @@ import {
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -42,6 +43,10 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  createOwnOutputJournal,
+  type OwnOutputJournal,
+} from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
@@ -90,6 +95,7 @@ export const submitMissingSignatureStep02 = async ({
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MissingSignatureContracts;
@@ -103,12 +109,17 @@ export const submitMissingSignatureStep02 = async ({
   readonly badRequiredSignerHashIndex: bigint;
   /** Force §8 tier-2 carriage publication (testing knob). */
   readonly publishCarriage?: boolean;
-  /** Pre-minted §8.6 certificate when the planner selects tier 3. */
+  /**
+   * Pre-minted §8.6 certificate when the planner selects tier 3; otherwise
+   * the one `ownOutputs` claims.
+   */
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-02 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Our carriage claims; a fresh in-memory journal by default. */
+  readonly ownOutputs?: OwnOutputJournal;
 }): Promise<SubmitMissingSignatureStep02Result> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid,
@@ -145,14 +156,25 @@ export const submitMissingSignatureStep02 = async ({
   });
   signer.selectWallet(lucid);
   const carriageUtxos = await publishFaultProofFieldCarriage({
+    ownOutputs,
     lucid,
     signer,
     planned,
     publisherAddress: signer.address,
     label: `${STEP_LABEL} required-signers`,
   });
+  // A configured certificate, or the one this workflow's own journal claims.
+  const certificate =
+    certificateUtxo ??
+    (await resolveFaultProofFieldPreimageCertificate({
+      ownOutputs,
+      lucid,
+      network: lucid.config().network!,
+      planned,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    }));
   const fieldReferenceInputs = [
-    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...(certificate === undefined ? [] : [certificate]),
     ...carriageUtxos,
   ];
   const referenceInputs = [
@@ -163,15 +185,6 @@ export const submitMissingSignatureStep02 = async ({
       stepIndex: 1,
     }),
   ];
-  const requiredSignersOpening = faultProofFieldOpening({
-    planned,
-    // §8.7 indices are into the complete reference-input set, including the
-    // step's own reference script; resolving against carriage alone is only
-    // accidentally correct for some out-ref orderings.
-    referenceInputs,
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} required-signers`,
-  });
 
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
@@ -197,6 +210,15 @@ export const submitMissingSignatureStep02 = async ({
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
   const redeemer = ((ctx) => {
+    const requiredSignersOpening = faultProofFieldOpening({
+      planned,
+      // §8.7 indices are into the complete reference-input set, including the
+      // step's own reference script; resolving against carriage alone is only
+      // accidentally correct for some out-ref orderings.
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${STEP_LABEL} required-signers`,
+    });
     requireOwnSpendPurpose(ctx, threadUtxo, STEP_LABEL);
     const layout = {
       inputIndex: requireInputIndex(ctx, threadUtxo, STEP_LABEL),

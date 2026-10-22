@@ -244,7 +244,6 @@ export const createManifestBoundValueConservationWorkflow = async (
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
-    transactionConfirmed: (input) => l1.transactionConfirmed(input),
   });
   const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category: "valueNotPreserved",
@@ -481,6 +480,7 @@ export const createManifestBoundValueConservationWorkflow = async (
               headerHash: config.headerHash,
               action: context.action,
               artifact: context.artifact,
+              entries: context.entries,
             });
             const field =
               fieldIndex === undefined

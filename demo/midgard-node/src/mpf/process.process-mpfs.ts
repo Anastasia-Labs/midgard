@@ -9,6 +9,7 @@ import {
   canonicalCommittedWithdrawalTransitionEffect,
   type PhaseAValidatedTx,
   runPhaseAValidation,
+  transitionEffectToLedgerOps,
 } from "@al-ft/midgard-validation";
 import { type Cause, Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
@@ -20,7 +21,6 @@ import * as MempoolDB from "../database/mempool.js";
 import * as MempoolLedgerDB from "../database/mempoolLedger.js";
 import * as MempoolTxDeltasDB from "../database/mempoolTxDeltas.js";
 import * as PendingBlockFinalizationsDB from "../database/pendingBlockFinalizations.js";
-import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import * as TxRejectionsDB from "../database/txRejections.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
@@ -38,7 +38,6 @@ import {
   causeError,
   confirmTransactionFailure,
   evaluateEvictingUncommittable,
-  heldBuildError,
   heldBuildStage,
   inBlockDescendants,
   makeCommitStageRejectionBreaker,
@@ -53,7 +52,6 @@ import {
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
-import { normalProgramCoverageCheck } from "./commit-rejection.normal-program-coverage-check.js";
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
@@ -69,7 +67,6 @@ import {
   type LedgerDelta,
   ledgerEntryToInsertBatchOp,
   ledgerOutputToInsertBatchOp,
-  transitionEffectToLedgerOps,
 } from "./ledger-delta.js";
 import { encodeTransactionRootValue } from "./ledger-hydration.js";
 import {
@@ -468,10 +465,6 @@ export const processMpfs = (
         classifiedForcedTransactions.map(({ entry }) => ({
           txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
           verdict: ForcedTransactionsDB.operatorVerdictOfEntry(entry),
-          programMaterialSidecarCbor:
-            entry[
-              ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-            ],
         })),
       );
     }
@@ -495,7 +488,6 @@ export const processMpfs = (
       ),
     );
     const proofNormalLedgerOpsByTxId = new Map<string, readonly MpfBatchOp[]>();
-    const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
     const validationTraceBuilder =
       config.validationTraceBuilder ?? buildPlaceholderValidationTraceMembers;
@@ -664,35 +656,6 @@ export const processMpfs = (
     let commitStageRejectionsSettled = false;
     if (processedMempoolTxs.length > 0) {
       const validation = config!.forcedValidation!;
-      const durableProgramMaterial =
-        yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
-          processedMempoolTxs.map((entry) => entry[Tx.Columns.TX_ID]),
-        );
-      for (const material of durableProgramMaterial) {
-        proofNormalProgramMaterialByTxId.set(
-          material.txId.toString("hex"),
-          Buffer.from(material.sidecarCbor),
-        );
-      }
-      // Validation needs one durable canonical CEK material sidecar per
-      // normal transaction. Admission stores it before the transaction
-      // enters the mempool, so a missing one is the store's fault.
-      const withoutMaterial = processedMempoolTxs.find(
-        (entry) =>
-          !proofNormalProgramMaterialByTxId.has(
-            entry[Tx.Columns.TX_ID].toString("hex"),
-          ),
-      );
-      if (withoutMaterial !== undefined) {
-        return yield* Effect.fail(
-          heldBuildError("Program material sidecar", {
-            table: TxAdmissionsDB.payloadTableName,
-            message:
-              "Holding the block build: a selected normal transaction has no durable canonical CEK material sidecar",
-            cause: `tx_id=${withoutMaterial[Tx.Columns.TX_ID].toString("hex")}`,
-          }),
-        );
-      }
       const phaseAInputs = processedMempoolTxs;
       const proofPreState = new Map(
         initialLedgerEntries.map((entry) => [
@@ -713,8 +676,10 @@ export const processMpfs = (
         }
       }
 
-      // Phase A is per transaction, so a transaction it cannot process is
-      // rejected on its own.
+      // Phase A checks every carried Flat program on the canonical transaction.
+      // Phase B below resolves script sources against the evolving pre-state
+      // and evaluates those exact stored bytes, as foreign replay does.
+      // A node capability failure must hold the build, never reject its tx.
       const proofPhaseA: {
         accepted: PhaseAValidatedTx[];
         rejected: { txId: Uint8Array; code: string; detail: string | null }[];
@@ -728,10 +693,6 @@ export const processMpfs = (
                 txCbor: entry[Tx.Columns.TX],
                 arrivalSeq: BigInt(index),
                 createdAt: entry[Tx.Columns.TIMESTAMPTZ],
-                programMaterialSidecarCbor:
-                  proofNormalProgramMaterialByTxId.get(
-                    entry[Tx.Columns.TX_ID].toString("hex"),
-                  )!,
               },
             ],
             {
@@ -798,7 +759,6 @@ export const processMpfs = (
                 bucketConcurrency: validation.bucketConcurrency,
                 consensusProfile,
               }),
-            blockCheck: normalProgramCoverageCheck(proofPreState),
           }),
         rejectionEntries,
         resolveInputPostState: commitPostState,

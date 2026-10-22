@@ -5,10 +5,7 @@ import {
   type CanonicalTransitionEffect,
   deriveCanonicalOriginalDepositTransitionEffect,
 } from "@al-ft/midgard-validation";
-import {
-  makeQueued,
-  outRefFromTxId,
-} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { outRefFromTxId } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type FixtureEventAuthority } from "./block-replay-public-fixture.build-public-replay-fixture.js";
@@ -181,10 +178,6 @@ export const originEventAuthority = (input: {
       ...common,
       phase: input.event.phase,
       canonicalNativeTxCbor: input.forcedNative.txCbor,
-      programMaterialSidecarCbor: makeQueued(
-        input.forcedNative.txId,
-        input.forcedNative.txCbor,
-      ).programMaterialSidecarCbor,
     };
   }
   return {

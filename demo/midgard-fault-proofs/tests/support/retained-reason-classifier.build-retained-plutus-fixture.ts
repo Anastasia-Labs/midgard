@@ -1,8 +1,7 @@
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
+  encodeCbor,
   encodeMidgardFieldPreimage,
   encodeMidgardRedeemerWitnessItem,
   encodeMidgardTxOutput,
@@ -26,7 +25,6 @@ import {
   GENESIS_HEADER_HASH,
   hashBlockHeader,
 } from "@al-ft/midgard-sdk";
-import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -78,12 +76,9 @@ const buildRetainedPlutusFixture = async (
   flatProgramHex: string,
   options: RetainedPlutusFixtureOptions = {},
 ) => {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from(flatProgramHex, "hex"),
-  );
   const script = {
     language: "PlutusV3" as const,
-    scriptBytes: program.envelopeCbor,
+    scriptBytes: encodeCbor(Buffer.from(flatProgramHex, "hex")),
   };
   const spent = options.ledgerInput?.outRef ?? outRefCbor(0x1d, 0n);
   const value = {
@@ -158,7 +153,6 @@ const buildRetainedPlutusFixture = async (
       : { ForcedTransactionEventKey: { tx_order_id: orderKey } };
   const blockEndTimeMs = options.blockEndTimeMs ?? 1_750_000_000_000;
   const blockSlot = options.blockSlot ?? 100n;
-  const material = [...program.material.values()];
   const canonicalTransactionCbor =
     sourceKind === "forced"
       ? forcedTraceBytes(
@@ -178,8 +172,6 @@ const buildRetainedPlutusFixture = async (
         "hex",
       ),
       canonicalTransactionCbor,
-      programMaterialSidecarCbor:
-        encodeMidgardCekProgramMaterialSidecar(material),
       ...(sourceKind === "normal"
         ? { sourceKind: "normal" as const }
         : {
@@ -230,10 +222,6 @@ const buildRetainedPlutusFixture = async (
       sourceKind,
       claim,
     }),
-    programMaterialEntries: material.map((entry) => [
-      Buffer.from(entry.root).toString("hex"),
-      encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-    ]),
     postLedgerEntries:
       (sourceKind === "forced" && claim.verdict === "rejected") ||
       replay.trace.verdict === "rejected"
