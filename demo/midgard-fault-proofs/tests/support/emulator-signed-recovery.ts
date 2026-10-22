@@ -9,7 +9,8 @@
  * - invalidated_at_tip: one of its inputs is no longer unspent;
  * - rebroadcast: none of these, so it can still land and is resubmitted.
  *
- * The tip is the release-final point too: the emulator has no rollbacks.
+ * The emulator has no rollbacks, so the release-final point is the tip, or
+ * `releaseDepth` blocks below it when a test models a release horizon.
  */
 import { CML, type Emulator, utxoToCore } from "@lucid-evolution/lucid";
 
@@ -19,10 +20,18 @@ import { syntheticEmulatorPoint } from "./cross-block-raw-emulator.js";
 
 export const emulatorSignedTransactionRecovery = (
   emulator: Emulator,
+  releaseDepth = 0,
 ): FraudProofSignedTransactionRecovery => ({
   observeSignedTransaction: async (input) => {
     const { body, inputOutRefs } = inspectSignedWorkflowTransaction(input);
     const tip = syntheticEmulatorPoint(emulator.blockHeight, emulator.slot);
+    const releaseFinal =
+      releaseDepth === 0
+        ? tip
+        : syntheticEmulatorPoint(
+            Math.max(0, emulator.blockHeight - releaseDepth),
+            Math.max(0, emulator.slot - releaseDepth * 20),
+          );
     const inputs = inputOutRefs.flatMap((outRef) => {
       const [hash, index] = outRef.split("#");
       const key = `${hash!}${index!}`;
@@ -51,7 +60,7 @@ export const emulatorSignedTransactionRecovery = (
       ...input,
       status,
       canonicalPoint: tip,
-      releaseFinalPoint: tip,
+      releaseFinalPoint: releaseFinal,
       inputs,
       reason,
     });

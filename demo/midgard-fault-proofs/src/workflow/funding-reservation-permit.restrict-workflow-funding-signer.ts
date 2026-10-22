@@ -53,6 +53,10 @@ export const restrictWorkflowFundingSigner = ({
   };
   return Object.freeze({
     ...signer,
+    reservedFunding: () =>
+      state.snapshot.activeInputs
+        .filter(({ role }) => role === "funding")
+        .map(({ outRef }) => outRef),
     selectWallet: (lucid: LucidEvolution): void => {
       // Installing the API is safe before a resumed action has begun; every
       // funding read, transaction signature and submission checks its authority.

@@ -89,6 +89,7 @@ export const canonicalDecodeDrive = ({
   at,
   failingRedeemerData,
   minFeeA,
+  releaseDepth,
 }: {
   readonly from: number;
   readonly kind: CanonicalDecodeKind;
@@ -97,6 +98,9 @@ export const canonicalDecodeDrive = ({
   readonly failingRedeemerData?: Uint8Array;
   /** The ledger's per-byte fee while the resolution plays. */
   readonly minFeeA?: number;
+  /** How many blocks below the tip the runner's release-final point
+   * stands. */
+  readonly releaseDepth?: number;
 }) => {
   const drive = resolutionDrive({
     from,
@@ -105,6 +109,7 @@ export const canonicalDecodeDrive = ({
     installs: {
       canonicalDecode: true,
       ...(failingRedeemerData === undefined ? {} : { failingRedeemerData }),
+      ...(releaseDepth === undefined ? {} : { releaseDepth }),
     },
     ...(minFeeA === undefined ? {} : { minFeeA }),
     /** Our plan of the step, by the successor hash the holder keeps. */

@@ -30,6 +30,7 @@ import {
 } from "../../src/validation-trace-dispute/transactions.js";
 import type { ScenarioSigners } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
+import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { enrollSuccessor } from "./rotated-successor-operator.js";
 import {
   type Defender,
@@ -122,6 +123,7 @@ export const defendTwoThreads = async ({
   failingNativeSpend,
   failingNativeMint,
   wrap,
+  releaseDepth,
 }: {
   readonly withRemoval: boolean;
   readonly successorFrom?: number;
@@ -153,6 +155,9 @@ export const defendTwoThreads = async ({
   readonly failingNativeMint?: boolean;
   /** Rewrites the adapter beneath the record of what it signs. */
   readonly wrap?: (scene: Scene) => AdapterWrap;
+  /** How many blocks below the tip the runner's release-final point stands;
+   * by default it is the tip. */
+  readonly releaseDepth?: number;
 }): Promise<TwoThreadCase> => {
   // Before the scene, so the raw L1 view has the whole history.
   const recorder = withRemoval ? recordCrossBlockRawEmulator() : undefined;
@@ -214,6 +219,14 @@ export const defendTwoThreads = async ({
       capturePrepared(prepared)(
         wrap === undefined ? adapter : wrap(scene)(adapter),
       ),
+    ...(releaseDepth === undefined
+      ? {}
+      : {
+          signedRecovery: emulatorSignedTransactionRecovery(
+            scene.h.emulator,
+            releaseDepth,
+          ),
+        }),
     ...(removal === undefined
       ? {}
       : {

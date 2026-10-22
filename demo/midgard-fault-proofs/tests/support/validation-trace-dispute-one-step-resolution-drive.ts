@@ -89,6 +89,7 @@ export const resolutionDrive = <
     | "failingScript"
     | "failingNativeSpend"
     | "failingNativeMint"
+    | "releaseDepth"
   >;
   /** The ledger's per-byte fee while the resolution plays, when raised so
    * its largest moves are priced over the per-move cap. */

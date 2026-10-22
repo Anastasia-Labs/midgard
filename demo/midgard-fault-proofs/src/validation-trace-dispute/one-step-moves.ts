@@ -75,6 +75,8 @@ import {
 
 type MaterialInput = ValidationTraceMoveInput & {
   readonly material: ValidationTraceClaimMaterial | undefined;
+  /** Our published copy of a field too long to observe inline. */
+  readonly observeCopy?: () => Promise<UTxO | undefined>;
 };
 
 /** A plan, or the reason the runner does not drive the step, as an error. */
@@ -299,6 +301,33 @@ const resolvingPlan = async ({
   );
 };
 
+/** The field the observe move of our thread `utxo` reads from our published
+ * copy, by our trace in `material`; none off that stage or where it fits
+ * inline. */
+export const validationTraceObserveCopyPreimage = async ({
+  deployment,
+  material,
+  utxo,
+}: {
+  readonly deployment: ValidationTraceDisputeDeployment;
+  readonly material: ValidationTraceClaimMaterial | undefined;
+  readonly utxo: UTxO;
+}): Promise<Buffer | undefined> => {
+  const holder = validationTraceOneStepHolderAt(deployment, utxo.address);
+  if (holder?.holder !== "canonicalDecodeItemObserve") return undefined;
+  const plan = await resolvingPlan({
+    deployment,
+    material,
+    utxo,
+    holder: holder.holder,
+    caseThread: undefined,
+    carried: undefined,
+  });
+  return plan.kind === "canonicalDecode"
+    ? plan.canonicalDecode.item?.copied
+    : undefined;
+};
+
 /** A hop of our thread through its one-step resolution, now; along the
  * shared item chain, reading the state it carried into the chain's entry
  * from the thread's history in `history`. */
@@ -367,6 +396,11 @@ export const captureValidationTraceResolve = async (
             carried?.stateCbor,
           ),
         }
+      : {}),
+    ...(plan.kind === "canonicalDecode" &&
+    from.holder === "canonicalDecodeItemObserve" &&
+    plan.canonicalDecode.item?.copied !== undefined
+      ? { copy: await input.observeCopy?.() }
       : {}),
   });
   const to = validationTraceOneStepHolder(deployment, hop.next);

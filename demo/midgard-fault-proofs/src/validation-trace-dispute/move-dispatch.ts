@@ -7,6 +7,7 @@
  * under the one-step-required state for a move of the one-step resolution
  * and the move-unbuilt state for any other. */
 import type * as SDK from "@al-ft/midgard-sdk";
+import type { UTxO } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
@@ -42,6 +43,8 @@ type ThreadMove = Readonly<{
   stage: ValidationTraceStage;
   move: ValidationTraceMoveInput & {
     readonly material: ValidationTraceClaimMaterial | undefined;
+    /** Our published copy of the field an observe move reads. */
+    readonly observeCopy?: () => Promise<UTxO | undefined>;
   };
   /** Our case as it stands now. */
   caseOutRef: string;

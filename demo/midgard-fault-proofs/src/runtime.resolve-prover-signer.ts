@@ -36,6 +36,9 @@ export type ResolvedProverSigner = {
   readonly address: string;
   readonly paymentKeyHash: string;
   readonly selectWallet: (lucid: LucidEvolution) => void;
+  /** The wallet out-refs a funding reservation holds for this signer to
+   * spend, when one restricts it; any of its wallet's otherwise. */
+  readonly reservedFunding?: () => readonly string[];
 };
 
 export type ParsedOutRef = OutRefLike;
