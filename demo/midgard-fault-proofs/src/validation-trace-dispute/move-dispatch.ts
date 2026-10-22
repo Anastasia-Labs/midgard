@@ -11,6 +11,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
 import {
   validationTraceActionId,
   type ValidationTraceStage,
@@ -100,7 +101,7 @@ const ONE_STEP_STAGES: ReadonlySet<ValidationTraceStage> = new Set([
  * deadline the move must land by. The run resumes on the next observation
  * and builds the move again.
  */
-export class ValidationTraceMoveUnbuiltError extends WorkflowActionChangedError {
+export class ValidationTraceMoveUnbuiltError extends WorkflowActionUnbuiltError {
   constructor(
     input: Readonly<{
       stage: ValidationTraceStage;
@@ -120,6 +121,10 @@ export class ValidationTraceMoveUnbuiltError extends WorkflowActionChangedError 
       ? VALIDATION_TRACE_ONE_STEP_REQUIRED
       : VALIDATION_TRACE_MOVE_UNBUILT;
     super(
+      validationTraceActionId({
+        stage: input.stage,
+        consumes: input.threadOutRef,
+      }),
       `${state}: the ${input.stage} move on thread ${input.threadOutRef} of case ${input.caseUnit} does not build, and must land by ${deadline}: ${cause}`,
     );
     this.name = "ValidationTraceMoveUnbuiltError";

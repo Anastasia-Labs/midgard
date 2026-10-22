@@ -261,6 +261,7 @@ export const startWatcherRuntime = async (
         onAllocated: (application) => {
           allocatedFaultProofApplication = application;
         },
+        operationsSink: () => operations.sink,
       });
 
     const fundingRuntime = await openWatcherProverFundingRuntime({
@@ -438,9 +439,8 @@ export const startWatcherRuntime = async (
           });
           refreshFollowerReadiness();
         },
-        // Once per generation, whether the driver heard the rewind or pulled
-        // it from the rollback log (one before it subscribed, or one a stop
-        // left unhandled).
+        // Once per generation, whether the driver heard the rewind or pulled it
+        // from the rollback log (before it subscribed, or left by a stop).
         onRewind: () => {
           operations.sink.setAlert({
             code: "chain_rollback",

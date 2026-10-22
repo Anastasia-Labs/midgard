@@ -10,7 +10,10 @@
  * writes the context's successor (ContextVerified), to the context settle.
  * The shared chain's states carry the pending step only as far as its
  * normalizers, so a chain holder's hop reads the pending step from the
- * thread's own L1 history, where the item bind stage's successor wrote it. */
+ * thread's own L1 history, where the item bind stage's successor wrote it;
+ * and that history says which chain the thread is on, the CEK item step's
+ * or a script-sources redeemer normalization step's, whose entry wrote its
+ * prepared resolution there. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
@@ -64,12 +67,12 @@ export const contextItemReads = (
   });
 
 /**
- * The run holds: the thread's history does not hold exactly one pending item
- * step at the shared item chain's entry, so which step the chain verifies is
- * not decided. Only a spend of our thread its validators check pays the
- * thread there, and no hop of the chain pays it back, so one is the only
- * count a resolution leaves; any other is named for the operator, and the
- * run tries again at its next observation.
+ * The run holds: the thread's history does not hold exactly one payment of
+ * the thread into an entry of the shared item chain, so which step the
+ * chain verifies is not decided. Only a spend of our thread its validators
+ * check pays the thread there, and no hop of the chain pays it back, so one
+ * is the only count a resolution leaves; any other is named for the
+ * operator, and the run tries again at its next observation.
  */
 export class ValidationTraceItemPendingHoldError extends WorkflowActionChangedError {
   constructor(
@@ -77,30 +80,41 @@ export class ValidationTraceItemPendingHoldError extends WorkflowActionChangedEr
     readonly matches: number,
   ) {
     super(
-      `${VALIDATION_TRACE_ITEM_PENDING_HOLD}: the history of thread ${unit} pays it to the CEK context item entry ${matches.toString()} times, not once, so its resolution holds`,
+      `${VALIDATION_TRACE_ITEM_PENDING_HOLD}: the history of thread ${unit} pays it to an entry of the redeemer item chain ${matches.toString()} times, not once, so its resolution holds`,
     );
     this.name = "ValidationTraceItemPendingHoldError";
   }
 }
 
+/** The chain a thread is on, and the state it carried into the chain's
+ * entry: the CEK item step's pending step, or a script-sources redeemer
+ * normalization step's prepared resolution. */
+export type ValidationTraceRedeemerItemCarried = Readonly<{
+  carrier: "cek" | "scriptSources";
+  /** As Data CBOR. */
+  stateCbor: string;
+}>;
+
 /**
- * The pending item step the thread holding `unit` carried into the shared
- * item chain's entry, as its history over `headerHash` holds it: the state
- * of the one output that paid the thread to the entry. Any other count of
- * such outputs holds the run (`ValidationTraceItemPendingHoldError`).
+ * The state the thread holding `unit` carried into an entry of the shared
+ * item chain, the CEK item step's at `entries.cek` or the script-sources
+ * redeemer normalization step's at `entries.scriptSources`, as its history
+ * over `headerHash` holds it: the state of the one output that paid the
+ * thread to either. Any other count of such outputs holds the run
+ * (`ValidationTraceItemPendingHoldError`).
  */
-export const contextItemPending = async ({
+export const redeemerItemCarried = async ({
   history,
   headerHash,
   unit,
-  entryAddress,
+  entries,
 }: {
   readonly history: ValidationTraceCaseHistory;
   readonly headerHash: string;
   readonly unit: string;
-  readonly entryAddress: string;
-}): Promise<string> => {
-  const pending: string[] = [];
+  readonly entries: Readonly<Record<"cek" | "scriptSources", string>>;
+}): Promise<ValidationTraceRedeemerItemCarried> => {
+  const carried: ValidationTraceRedeemerItemCarried[] = [];
   for (const { bodyCbor } of await history.transactions({
     headerHash,
     caseUnit: unit,
@@ -108,17 +122,26 @@ export const contextItemPending = async ({
     const outputs = CML.TransactionBody.from_cbor_hex(bodyCbor).outputs();
     for (let index = 0; index < outputs.len(); index += 1) {
       const output = coreToTxOutput(outputs.get(index));
+      const carrier =
+        output.address === entries.cek
+          ? "cek"
+          : output.address === entries.scriptSources
+            ? "scriptSources"
+            : undefined;
       if (
-        output.address === entryAddress &&
+        carrier !== undefined &&
         output.assets[unit] === 1n &&
         typeof output.datum === "string"
       )
-        pending.push(plutusConstrFieldCbor(output.datum, [1, 0]));
+        carried.push({
+          carrier,
+          stateCbor: plutusConstrFieldCbor(output.datum, [1, 0]),
+        });
     }
   }
-  if (pending.length !== 1)
-    throw new ValidationTraceItemPendingHoldError(unit, pending.length);
-  return pending[0]!;
+  if (carried.length !== 1)
+    throw new ValidationTraceItemPendingHoldError(unit, carried.length);
+  return Object.freeze(carried[0]!);
 };
 
 /** Where each route's hash or finalize sends the thread. */

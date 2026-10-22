@@ -751,6 +751,77 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   `<category>/<headerHash>: <reason>`. It is held by name and runs again on
   the next observation, which clears or renews the hold. The next action
   needs manual submission; report it with the detail.
+- `validation_trace_replay_held`, `validation_trace_replay_stuck`: a script
+  re-execution of a header's L2 transaction ended without a result (the
+  evaluator's own failure, such as running out of memory, or a failed read of
+  the transaction's pre-state), and no earlier finding decides the header.
+  It is not a verdict: the header's classification, or its objective's run,
+  waits and retries that transaction after a backoff of 1 s doubling to
+  60 s; the detail names the header and the held transactions. `_stuck`
+  means the same failure repeated five times in a row, and raises the
+  informational `validation_trace_replay_stuck` alert. A classification hold
+  clears when the header is classified, or 180 s after its last retry; an
+  objective's hold clears at its next run that meets something else. Check
+  the watcher's memory if it lasts; report it with the detail. Once half the
+  header's case open window (`block_time + M/2`) or less is left, or its
+  block time cannot be read, a classification hold is an alarm logged at
+  error level, its detail naming the window's end: the case must open by
+  then. Report it with the detail at once.
+- `validation-trace-claim-build-held`: a validation-trace objective could not
+  build its claim because the claim's re-execution or pre-state read ended
+  without a result; nothing was journaled. It is rebuilt on each
+  observation and clears at the first run that meets something else. Check
+  the watcher's memory if it lasts. Once half the case open window
+  (`block_time + M/2`) or less is left, or the block cannot be read, it is
+  an alarm logged at error level, naming the window's end: the case must
+  open by then. Report it with the detail.
+- `fault_proof_counterparty_deadline_passed`: an objective still awaits its
+  counterparty (a validation-trace case nobody has defended, or a thread
+  whose defender has not moved) more than 10 min past the response deadline
+  its run reported, or its run reported no usable deadline. By then this
+  side was due to move. Logged at error level; it clears at the first run
+  that reports something else. Check the L1 provider and the objective's
+  journal; report it with the detail.
+- `validation-trace-one-step-required`: a thread of ours reached a one-step
+  resolution this release does not yet drive. Its clock runs, and the
+  thread is lost at its deadline unless an operator resolves it. An alarm,
+  logged at error level; report it with the detail at once.
+- `validation-trace-move-unbuilt`: a move of our case or of one of its
+  threads did not build, for a reason other than funding; the detail names
+  the stage or thread and the deadline it must land by. Retried at each
+  observation. An alarm, logged at error level; report it with the detail
+  before the deadline. The run still makes our other moves; when one of
+  them lands, the objective is held under that move's state, its detail
+  lists every move that did not build after `; `, and it is logged at error
+  level all the same.
+- `validation-trace-move-fee-over-cap`: a wallet-paid move's fee would pass
+  the funding permit's per-transaction fee ceiling, so it is never sent. An
+  alarm, logged at error level; report it with the detail.
+- `validation-trace-item-pending-hold`: a thread's history does not decide
+  its pending item step, so the thread cannot move on. An alarm, logged at
+  error level; report it with the detail.
+- `validation-trace-wallet-move-unfunded`: the prover wallet cannot fund a
+  thread move that must land before the deadline in the detail. Retried at
+  each observation. An alarm, logged at error level; top up the prover
+  wallet's plain-ada coins before the deadline.
+- `validation-trace-material-hold`: a thread of ours is on our move, or in
+  its one-step resolution, but commits a trace this watcher does not hold,
+  so it cannot move. Our clock or the case's expiry runs down on it, and the
+  thread is lost at its end. An alarm, logged at error level; report it with
+  the detail at once.
+- `validation-trace-thread-count-hold`: the case's count of open threads
+  differs from what discovery along its spend chain found, so the case is
+  not settled. A thread nobody found may be on our turn with its clock
+  running. An alarm, logged at error level; check the L1 provider and report
+  it with the detail.
+- `validation-trace-case-contested`: our case has no open thread and no valid
+  claim; its close is not installed, so it waits. No clock of ours runs and
+  the outcome is fixed whoever closes it. Held, not an alarm; it clears at
+  the first run that meets something else.
+- `validation-trace-thread-lost`, `validation-trace-defender-won`: a thread
+  of ours went the defender's way, or a defender won a thread of our case,
+  which can no longer convict; no move of ours is left on it. Held, not an
+  alarm; it clears at the first run that meets something else.
 
 Degradations (`l1Degradations`, status and metrics only):
 `l1_tx_inputs_unreadable` and `l1_event_refusals_unreadable` name a failed

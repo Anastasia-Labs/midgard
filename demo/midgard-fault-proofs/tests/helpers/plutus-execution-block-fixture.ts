@@ -1,8 +1,9 @@
 /** One committed block whose single event spends a deposit-derived output.
  * The operator commits the event and applies its ledger effect (none for a
  * transaction stamped `TxIsInvalid`); every root is computed from the actual
- * outputs. The spend runs a PlutusV3 script (failing or passing), or is a key
- * spend with no redeemers. */
+ * outputs. The spend runs a PlutusV3 script (failing or passing), beside an
+ * output a native script holds and a mint under its policy when asked, or
+ * is a key spend with no redeemers. */
 import {
   computeHash28,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -17,10 +18,7 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  deriveCanonicalOriginalDepositTransitionEffect,
-  MidgardRedeemerTag,
-} from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation";
 import {
   hashScriptWitness,
   makeNativeTx,
@@ -41,6 +39,26 @@ import {
   fixtureTransactionFromCanonicalCbor,
   reencodeFixturePayload,
 } from "./canonical-block-evidence-fixture.js";
+import {
+  depositSeed,
+  keyCredential,
+  NATIVE_SPEND_SCRIPT,
+  nativeMintAssets,
+  nativeMintPreimageCbor,
+  nativeSpendSeed,
+  ownerKey,
+  ownerKeyHash,
+  SEED_LOVELACE,
+  type SeedCredential,
+  seedDepositEvent,
+} from "./plutus-execution-seeds.js";
+
+export {
+  depositSeed,
+  nativeSpendSeedDeposit,
+  referenceSeedDeposits,
+  SEED_LOVELACE,
+} from "./plutus-execution-seeds.js";
 
 /** `(program 1.1.0 (lam ctx (error)))` in Flat, wrapped in one CBOR byte string. */
 export const FAILING_SCRIPT = plutusV3ScriptWitness(
@@ -75,11 +93,11 @@ export const LONGEST_PASSING_SCRIPT = plutusV3ScriptWitness(
   ),
 );
 
-/** A script spend's own script and declared execution units, in place of
- * the scenario's script and the default units. */
+/** A script spend's own script, in place of the scenario's, and, when
+ * given, its declared execution units in place of the default units. */
 export type ScriptSpend = Readonly<{
   script: MidgardVersionedScript;
-  exUnits: readonly [bigint, bigint];
+  exUnits?: readonly [bigint, bigint];
 }>;
 
 export type PlutusExecutionScenario =
@@ -92,63 +110,11 @@ export type PlutusExecutionScenario =
   /** The passing spend, also requiring a signer that does not sign. */
   | "unsigned_required_signer";
 
-export const SEED_LOVELACE = 20_000_000n;
-const ownerKey = () => CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x63));
-const ownerKeyHash = (): string => {
-  const key = ownerKey();
-  try {
-    return computeHash28(Buffer.from(key.to_public().to_raw_bytes())).toString(
-      "hex",
-    );
-  } finally {
-    key.free();
-  }
-};
-
-type SeedCredential =
-  | { PublicKeyCredential: [string] }
-  | { ScriptCredential: [string] };
-
-/** The deposit event whose canonical insertion is a scenario's seed. */
-const seedDepositEvent = (byte: number, paymentCredential: SeedCredential) =>
-  ({
-    id: {
-      transactionId: byte.toString(16).padStart(2, "0").repeat(32),
-      outputIndex: 0n,
-    },
-    info: {
-      l2_address: {
-        paymentCredential,
-        stakeCredential: null,
-      },
-      l2_network_id: 0n,
-      l2_datum: null,
-    },
-  }) satisfies SDK.DepositEvent;
-
-/** A deposit's canonical ledger insertion, exactly as block production derives it. */
-export const depositSeed = (
-  byte: number,
-  paymentCredential: SeedCredential,
-): LedgerEntry => {
-  const event = seedDepositEvent(byte, paymentCredential);
-  const effect = deriveCanonicalOriginalDepositTransitionEffect({
-    configuredNetwork: "Custom",
-    eventId: event.id,
-    l2Address: event.info.l2_address,
-    l2NetworkId: event.info.l2_network_id,
-    l2DatumCbor: null,
-    originalAssets: { lovelace: SEED_LOVELACE },
-  });
-  const operation = effect.operations[0];
-  if (operation?.type !== "insert")
-    throw new Error("seed deposit has no canonical insertion");
-  return { outRef: operation.outRefCbor, output: operation.outputCbor };
-};
-
 const DEFAULT_SCRIPT_SEED_BYTE = 0x61;
 const KEY_SEED_BYTE = 0x62;
 
+/** The script `scenario`'s spend runs: `spend`'s when given, else the
+ * passing script for a passing spend and the failing script otherwise. */
 const scenarioScript = (
   scenario: PlutusExecutionScenario,
   spend?: ScriptSpend,
@@ -164,14 +130,12 @@ export const scriptCredential = (
 ): SeedCredential => ({
   ScriptCredential: [hashScriptWitness(scenarioScript(scenario, spend))],
 });
-const keyCredential = (): SeedCredential => ({
-  PublicKeyCredential: [ownerKeyHash()],
-});
 
 /**
  * The deposit that creates the output `scenario`'s transaction spends, as a
  * committed deposit block carries it. A script spend's seed is named by
- * `seedByte`, so one deposit block can seed several scenarios.
+ * `seedByte`, so one deposit block can seed several scenarios; it is held
+ * by `spend`'s script when given, by default the scenario's.
  */
 export const plutusExecutionSeedDeposit = (
   scenario: PlutusExecutionScenario,
@@ -186,40 +150,64 @@ export const plutusExecutionSeedDeposit = (
   honest: true,
 });
 
-/** The deposits of `count` key-owned outputs a transaction can read as
- * reference inputs, and those outputs' out-refs in ascending order. */
-export const referenceSeedDeposits = (count: number) => {
-  const transactionId = "72".repeat(32);
-  const deposits = Array.from({ length: count }, (_, index) => ({
-    event: {
-      ...seedDepositEvent(0x72, keyCredential()),
-      id: { transactionId, outputIndex: BigInt(index) },
-    },
-    originalAssets: { lovelace: SEED_LOVELACE },
-    honest: true,
-  }));
-  const outRefs = deposits.map(({ event }) =>
-    encodeMidgardSpendInputItem({
-      txId: Buffer.from(transactionId, "hex"),
-      outputIndex: Number(event.id.outputIndex),
-    }),
-  );
-  return { deposits, outRefs };
+/** Who signs a script spend beyond its owner: `extraSigners` other keys,
+ * each adding an address witness, and how many times the spend lists the
+ * owner's key among its required signers (`requiredOwner`). */
+export type ScenarioSigners = Readonly<{
+  extraSigners?: number;
+  requiredOwner?: number;
+}>;
+
+/** How `scenarioTransaction` builds the script spend; every field defaults
+ * to the plain scenario. */
+export type ScenarioTransactionOptions = Readonly<{
+  redeemerData?: Uint8Array;
+  referenceInputs?: readonly Buffer[];
+  signers?: ScenarioSigners;
+  spend?: ScriptSpend;
+  nativeSpend?: LedgerEntry;
+  nativeMint?: boolean;
+}>;
+
+/** The `index`th key beyond the owner's. */
+const extraSignerKey = (index: number) => {
+  const bytes = Buffer.alloc(32, 0x73);
+  bytes.writeUInt16BE(index);
+  return CML.PrivateKey.from_normal_bytes(bytes);
 };
 
 /** The transaction the scenario commits, over its seed output; a script
  * spend's redeemer is `redeemerData` (Plutus Data CBOR) when given, it
- * reads `referenceInputs` (out-refs) as reference inputs, and it runs
- * `spend`'s script under its units when given. */
+ * reads `referenceInputs` (out-refs) as reference inputs, `signers` sign it
+ * beside its owner, and it runs `spend`'s script (under `spend`'s units when
+ * they are given) in place of the scenario's. With `nativeSpend`, the
+ * transaction also spends that output, which sorts after the seed and which
+ * the native script, witnessed first, holds; its one output carries both.
+ * With `nativeMint`, it also mints an asset under the native script's
+ * policy, witnessed first, into its one output. */
 export const scenarioTransaction = (
   scenario: PlutusExecutionScenario,
   seed: LedgerEntry,
-  redeemerData?: Uint8Array,
-  referenceInputs: readonly Buffer[] = [],
-  spend?: ScriptSpend,
+  {
+    redeemerData,
+    referenceInputs = [],
+    signers: { extraSigners = 0, requiredOwner = 0 } = {},
+    spend,
+    nativeSpend,
+    nativeMint = false,
+  }: ScenarioTransactionOptions = {},
 ) => {
-  const outputs = [makeOutput(SEED_LOVELACE)];
+  const outputs = [
+    makeOutput(
+      nativeSpend === undefined ? SEED_LOVELACE : 2n * SEED_LOVELACE,
+      undefined,
+      nativeMintAssets(nativeMint),
+    ),
+  ];
   const key = ownerKey();
+  const extraKeys = Array.from({ length: extraSigners }, (_, index) =>
+    extraSignerKey(index),
+  );
   try {
     if (scenario === "no_redeemers")
       return makeNativeTx({
@@ -228,29 +216,46 @@ export const scenarioTransaction = (
         privateKey: key,
       });
     return makeNativeTx({
-      spendInputs: [seed.outRef],
+      spendInputs:
+        nativeSpend === undefined
+          ? [seed.outRef]
+          : [seed.outRef, nativeSpend.outRef],
       referenceInputs,
       outputs,
       privateKey: key,
-      scriptWitnesses: [scenarioScript(scenario, spend)],
+      scriptWitnesses: [
+        ...(nativeSpend === undefined && !nativeMint
+          ? []
+          : [NATIVE_SPEND_SCRIPT]),
+        scenarioScript(scenario, spend),
+      ],
+      ...(nativeMint ? { mintPreimageCbor: nativeMintPreimageCbor() } : {}),
       ...(scenario === "failing_stamped_invalid"
         ? { validity: "TxIsInvalid" as const }
         : {}),
       ...(scenario === "unsigned_required_signer"
         ? { requiredSignerItems: [Buffer.alloc(28, 0x71)] }
-        : {}),
+        : requiredOwner > 0
+          ? {
+              requiredSignerItems: Array.from({ length: requiredOwner }, () =>
+                Buffer.from(ownerKeyHash(), "hex"),
+              ),
+            }
+          : {}),
+      ...(extraKeys.length > 0 ? { extraVkeyWitnessKeys: extraKeys } : {}),
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
           ...(redeemerData === undefined ? {} : { data: redeemerData }),
-          ...(spend === undefined ? {} : { exUnits: spend.exUnits }),
+          ...(spend?.exUnits === undefined ? {} : { exUnits: spend.exUnits }),
         },
       ]),
       scriptLanguages: ["PlutusV3"],
     });
   } finally {
     key.free();
+    for (const extra of extraKeys) extra.free();
   }
 };
 
@@ -280,23 +285,22 @@ export type PlutusExecutionHeaderFields = Partial<
   >
 >;
 
-export type PlutusExecutionBlockOptions = {
+/** How `plutusExecutionBlockFixture` builds the block; the script spend's
+ * own options are `scenarioTransaction`'s. */
+export type PlutusExecutionBlockOptions = Omit<
+  ScenarioTransactionOptions,
+  "nativeSpend"
+> & {
   readonly header?: PlutusExecutionHeaderFields;
   /** The deposit byte of the spent seed (`plutusExecutionSeedDeposit`). */
   readonly seedByte?: number;
-  /**
-   * The predecessor block's ledger, which must hold the spent seed. By
-   * default the scenario's script seed and a key-owned seed.
-   */
+  /** The predecessor block's ledger, which must hold the spent seed; by
+   * default the scenario's script seed and a key-owned seed. */
   readonly predecessorEntries?: readonly LedgerEntry[];
-  /** The script spend's redeemer, as Plutus Data CBOR; by default
-   * `Constr 0 []`. */
-  readonly redeemerData?: Uint8Array;
-  /** The out-refs the spend reads as reference inputs, each held by the
-   * predecessor ledger; by default none. */
-  readonly referenceInputs?: readonly Buffer[];
-  /** The script spend's script and units; by default the scenario's. */
-  readonly spend?: ScriptSpend;
+  /** Whether the script spend also spends the output the native script
+   * holds (`nativeSpendSeedDeposit`), which the predecessor ledger must
+   * hold. */
+  readonly nativeSpend?: boolean;
 };
 
 export const plutusExecutionBlockFixture = async (
@@ -305,24 +309,29 @@ export const plutusExecutionBlockFixture = async (
     header: headerFields = {},
     seedByte = DEFAULT_SCRIPT_SEED_BYTE,
     predecessorEntries: requestedPredecessor,
-    redeemerData,
-    referenceInputs,
-    spend,
+    nativeSpend = false,
+    ...spendOptions
   }: PlutusExecutionBlockOptions = {},
 ) => {
-  const scriptSeed = depositSeed(seedByte, scriptCredential(scenario, spend));
+  const nativeMint = spendOptions.nativeMint ?? false;
+  const scriptSeed = depositSeed(
+    seedByte,
+    scriptCredential(scenario, spendOptions.spend),
+  );
   const keySeed = depositSeed(KEY_SEED_BYTE, keyCredential());
   const predecessorEntries = requestedPredecessor ?? [scriptSeed, keySeed];
   const seed = scenario === "no_redeemers" ? keySeed : scriptSeed;
-  if (!predecessorEntries.some((entry) => entry.outRef.equals(seed.outRef)))
+  const spent = nativeSpend ? [seed, nativeSpendSeed()] : [seed];
+  if (
+    !spent.every(({ outRef }) =>
+      predecessorEntries.some((entry) => entry.outRef.equals(outRef)),
+    )
+  )
     throw new Error("the predecessor ledger does not hold the spent seed");
-  const native = scenarioTransaction(
-    scenario,
-    seed,
-    redeemerData,
-    referenceInputs,
-    spend,
-  );
+  const native = scenarioTransaction(scenario, seed, {
+    ...spendOptions,
+    nativeSpend: nativeSpend ? spent[1] : undefined,
+  });
   const tx = fixtureTransactionFromCanonicalCbor({
     txId: native.txId.toString("hex"),
     canonicalCbor: native.txCbor,
@@ -346,14 +355,18 @@ export const plutusExecutionBlockFixture = async (
   });
   const createdEntry: LedgerEntry = {
     outRef: created,
-    output: makeOutput(SEED_LOVELACE),
+    output: makeOutput(
+      BigInt(spent.length) * SEED_LOVELACE,
+      undefined,
+      nativeMintAssets(nativeMint),
+    ),
   };
   const postEntries =
     scenario === "failing_stamped_invalid"
       ? [...predecessorEntries]
       : [
           ...predecessorEntries.filter(
-            (entry) => !entry.outRef.equals(seed.outRef),
+            (entry) => !spent.some(({ outRef }) => entry.outRef.equals(outRef)),
           ),
           createdEntry,
         ];

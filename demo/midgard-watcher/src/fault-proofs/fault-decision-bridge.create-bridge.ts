@@ -320,6 +320,7 @@ export const createBridge = (input: {
             });
           }
           classifications[index] = decision;
+          misses.classified(header.headerHash);
         } catch (error) {
           const miss = misses.resolve({
             error,
@@ -371,9 +372,8 @@ export const createBridge = (input: {
       if (classification !== null) decisions.push(classification);
     }
     for (const decision of decisions) {
-      if (decision === undefined) {
+      if (decision === undefined)
         throw new Error("bounded production classification omitted a header");
-      }
       if (decision.decision === "fault_detected")
         await input.dependencies.append(decision);
     }
@@ -558,10 +558,10 @@ export const createBridge = (input: {
       await request;
       return input.dependencies.unfinishedObjectiveCount();
     },
-    reconcileAndDispatch: async (candidate) => {
-      return await serializedPrepare(candidate, true);
-    },
+    reconcileAndDispatch: async (candidate) =>
+      await serializedPrepare(candidate, true),
     dispatchPrepared,
+    readiness: misses.readiness,
     invalidateForRollback: () => invalidate("native_chain_rollback"),
     invalidateForShutdown: () => invalidate("watcher_shutdown"),
     status: () =>

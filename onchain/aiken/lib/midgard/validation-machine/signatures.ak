@@ -19,7 +19,7 @@ use midgard/validation_machine/machine_types.{
 }
 use midgard/validation_machine/shared.{
   max_tx_size_derived_collection_item_count, rejected_successor_is_exact,
-  signer_membership_is_valid, signer_non_membership_is_valid,
+  signer_non_membership_is_valid,
 }
 use midgard/validation_machine/witness.{
   encode_phase_a_native_scripts_scan_witness, encode_signatures_scan_witness,
@@ -396,17 +396,17 @@ fn required_signer_membership_is_valid(
   proof: SignerSetProofV1,
 ) -> Bool {
   when proof is {
+    // `signer_membership_is_valid` less what is already proved: the door reads
+    // a 28-byte hash, `signatures_control_is_bound` proves the control's
+    // frontier well-formed, and the proof's peaks equal the control's, so
+    // their commitments are equal.
     SignerMembershipProof { peaks, signer_index, siblings } -> and {
         peaks == control.signer_peaks,
-        signer_membership_is_valid(
-          signer_hash,
+        validation_merkle_v1.verify_membership(
           control.signer_count,
-          validation_merkle_v1.frontier_commitment(
-            control.signer_count,
-            control.signer_peaks,
-          ),
           peaks,
           signer_index,
+          script_proof_v1.signer_leaf_hash(signer_hash),
           siblings,
         ),
       }
@@ -464,11 +464,7 @@ fn verify_required_signer_item(
   }
   let signer_hash = field_door.machine_fixed_field_item_bytes(item)
   let next_required_seen = control.required_seen + 1
-  let next_control = SignaturesControlV1 {
-    ..control,
-    required_count: active_count,
-    required_seen: next_required_seen,
-  }
+  let complete = next_required_seen == active_count
   let present = required_signer_membership_is_valid(
     signer_hash,
     control,
@@ -479,17 +475,17 @@ fn verify_required_signer_item(
     control,
     signer_proof,
   )
+  // Nothing below repeats a check already made: the door refuses an index
+  // outside `[0, item_count)` and reads exactly 28 bytes
+  // (`field_fixed_item_extent`), and caps the field at 32768 bytes of 30-byte
+  // items, far under the collection cap (`fixed_whole_view`). With
+  // `required_seen >= 0` (`signatures_control_is_bound`) and
+  // `item_count == active_count`, the count is positive, which the bound only
+  // admits for a non-empty required-signer field.
   and {
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 1,
-    control.required_count != 0,
-    verified.tx_compact.body.required_signers_hash != native_tx_field_access_v1.empty_field_commitment,
-    control.required_count == -1 || control.required_count == item_count,
-    active_count > 0,
-    active_count <= max_tx_size_derived_collection_item_count,
-    control.required_seen < active_count,
     item_count == active_count,
-    bytearray.length(signer_hash) == 28,
     if absent {
       rejected_successor_is_exact(
         pre,
@@ -497,17 +493,30 @@ fn verify_required_signer_item(
         RequiredSignerUnsigned { signer_index: control.required_seen },
       )
     } else if present {
-      if next_required_seen == active_count {
-        signatures_after_required_successor_is_exact(
+      // `signatures_after_required_successor_is_exact` on the last item,
+      // inlined so the successor control is built once: `stage == 1` above.
+      if complete && control.first_invalid_witness_index >= 0 {
+        rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          next_control,
+          AddressWitnessSignatureInvalid {
+            witness_index: control.first_invalid_witness_index,
+          },
         )
       } else {
         signatures_successor_is_exact(
           pre,
           witness.claimed_successor,
-          next_control,
+          SignaturesControlV1 {
+            ..control,
+            stage: if complete {
+              2
+            } else {
+              1
+            },
+            required_count: active_count,
+            required_seen: next_required_seen,
+          },
         )
       }
     } else {

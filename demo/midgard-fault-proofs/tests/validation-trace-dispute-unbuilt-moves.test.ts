@@ -6,7 +6,9 @@
  * deadline the move must land by: the case's expiry, or for our reveal and
  * entry the end of our clock on the thread if it comes first. An entry our
  * wallet cannot fund raises the wallet's alarm instead. None moves the
- * thread; once the move builds and is funded, the runner makes it. */
+ * thread; once the move builds and is funded, the runner makes it. A move
+ * that does not build gives way, in the same run, to the move ranked after
+ * it, and the run still raises its alarm. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -153,9 +155,24 @@ describe("validation-trace dispute runner: our reveal and entry into the one-ste
   // The operator's defender is silent; the successor's plays.
   let dispute: TwoThreadCase;
   let sides: readonly Side[];
+  // The actions whose builds run under the unbuildable size limit.
+  const stuck = new Set<string>();
 
   beforeAll(async () => {
-    dispute = await defendTwoThreads({ withRemoval: false });
+    dispute = await defendTwoThreads({
+      withRemoval: false,
+      wrap: (scene) => (adapter) => ({
+        ...adapter,
+        preflight: async (context) =>
+          stuck.has(context.action.actionId)
+            ? await withLedgerParameters(
+                scene,
+                { maxTxSize: UNBUILDABLE },
+                async () => await adapter.preflight(context),
+              )
+            : await adapter.preflight(context),
+      }),
+    });
     sides = [{ ...dispute.a, silent: true }, dispute.b];
   }, 1_800_000);
 
@@ -224,6 +241,65 @@ describe("validation-trace dispute runner: our reveal and entry into the one-ste
       dispute.prepared.filter(({ stage }) => stage === "enter_resolution"),
     ).toStrictEqual([]);
   }, 1_800_000);
+
+  it("makes our reveal on the other thread in the same run when our entry, due first, does not build, and still raises the entry's alarm", async () => {
+    const { scene, runner, a, b } = dispute;
+    const entered = await placeOf(dispute, b.unit);
+    expect(threadOf(entered.utxo).turn).toBe("ReadyForOneStep");
+    // The operator's defender reveals: our reveal on its thread is due after
+    // our entry on the successor's, so it is ranked after it.
+    await revealAsDefender(
+      scene,
+      a.defender,
+      await gameThread(scene, a.unit),
+      a.trace,
+    );
+    const revealed = await placeOf(dispute, a.unit);
+    expect(isTurn(threadOf(revealed.utxo), "AwaitingChallenger")).toBe(true);
+    expect(
+      validationTraceChallengerDeadlineMs(threadOf(entered.utxo)),
+    ).toBeLessThan(
+      validationTraceChallengerDeadlineMs(threadOf(revealed.utxo)),
+    );
+    const entry = validationTraceActionId({
+      stage: "enter_resolution",
+      consumes: outRefOf(entered.utxo),
+    });
+    const signed = dispute.prepared.length;
+    stuck.add(entry);
+    const result = await runner.runOnce(scene.failing).finally(() => {
+      stuck.clear();
+    });
+    expect(dispute.prepared.slice(signed)).toStrictEqual([
+      expect.objectContaining({
+        stage: "reveal",
+        consumes: outRefOf(revealed.utxo),
+      }),
+    ]);
+    expect(result).toMatchObject({
+      kind: "pending",
+      alarms: [
+        {
+          actionId: entry,
+          reason: expect.stringContaining(
+            `${VALIDATION_TRACE_ONE_STEP_REQUIRED}: the enter_resolution move on thread ${outRefOf(entered.utxo)} `,
+          ),
+        },
+      ],
+    });
+    const runState = validationTraceRunState(result);
+    expect(runState).toMatchObject({
+      resumeOnObservation: true,
+      namedState: { name: VALIDATION_TRACE_ONE_STEP_REQUIRED, alarm: true },
+    });
+    scene.h.emulator.awaitBlock();
+    expect(outRefOf((await placeOf(dispute, a.unit)).utxo)).not.toBe(
+      outRefOf(revealed.utxo),
+    );
+    expect(outRefOf((await placeOf(dispute, b.unit)).utxo)).toBe(
+      outRefOf(entered.utxo),
+    );
+  }, 600_000);
 
   it("raises the wallet's alarm, not the one-step alarm, when our wallet cannot fund the entry", async () => {
     const { scene, runner, b } = dispute;

@@ -9,6 +9,7 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -30,10 +31,12 @@ import {
   requireCompleteCanonicalReplayDecision,
 } from "../../src/workflow/complete-replay.js";
 import {
+  nativeSpendSeedDeposit,
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,
   plutusExecutionSeedDeposit,
   referenceSeedDeposits,
+  type ScenarioSigners,
   type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
@@ -104,8 +107,12 @@ const publishedReference = (h: FaultProofEmulatorHarness, hash: string) => {
  * Sets up the scene; `beforeBlocks` runs once its contracts exist and before
  * its blocks are committed, so what it does takes none of the time a
  * dispute move has from the failing block's end. The failing transaction's
- * redeemer is `failingRedeemerData` when given, and it reads
- * `failingReferenceInputs` outputs the deposits create as reference inputs.
+ * redeemer is `failingRedeemerData` when given, it reads
+ * `failingReferenceInputs` outputs the deposits create as reference inputs,
+ * `failingSigners` sign it beside its owner, its spend runs
+ * `failingScript`, by default the failing script, and with
+ * `failingNativeSpend` it also spends an output a native script holds;
+ * with `failingNativeMint` it also mints under a native script's policy.
  * The passing transaction spends under `passingSpend` when given.
  */
 export const setUpScene = async (
@@ -113,10 +120,18 @@ export const setUpScene = async (
   {
     failingRedeemerData,
     failingReferenceInputs = 0,
+    failingSigners,
+    failingScript,
+    failingNativeSpend = false,
+    failingNativeMint = false,
     passingSpend,
   }: {
     readonly failingRedeemerData?: Uint8Array;
     readonly failingReferenceInputs?: number;
+    readonly failingSigners?: ScenarioSigners;
+    readonly failingScript?: MidgardVersionedScript;
+    readonly failingNativeSpend?: boolean;
+    readonly failingNativeMint?: boolean;
     readonly passingSpend?: ScriptSpend;
   } = {},
 ): Promise<Scene> => {
@@ -167,6 +182,15 @@ export const setUpScene = async (
     ) - 1,
   );
   const seeds = { failing: 0x61, passing: 0x64, forced_failing: 0x65 } as const;
+  /** The script spend `scenario` runs in place of its own, if any. */
+  const scenarioSpend = (
+    scenario: PlutusExecutionScenario,
+  ): ScriptSpend | undefined =>
+    scenario === "failing" && failingScript !== undefined
+      ? { script: failingScript }
+      : scenario === "passing"
+        ? passingSpend
+        : undefined;
   const references = referenceSeedDeposits(failingReferenceInputs);
   const deposits = await depositEventsRetainedBlock({
     operatorVkey,
@@ -181,10 +205,11 @@ export const setUpScene = async (
         plutusExecutionSeedDeposit(
           scenario as PlutusExecutionScenario,
           byte,
-          scenario === "passing" ? passingSpend : undefined,
+          scenarioSpend(scenario as PlutusExecutionScenario),
         ),
       ),
       ...references.deposits,
+      ...(failingNativeSpend ? [nativeSpendSeedDeposit()] : []),
     ],
   });
   const setup = await submitSetupTx({
@@ -213,17 +238,23 @@ export const setUpScene = async (
   };
   const commit = async (scenario: PlutusExecutionScenario) => {
     const endTime = previous.endTime + 60_000n;
+    const spend = scenarioSpend(scenario);
     const block = await plutusExecutionBlockFixture(scenario, {
       seedByte: seeds[scenario as keyof typeof seeds],
       ...(scenario === "failing" && failingRedeemerData !== undefined
         ? { redeemerData: failingRedeemerData }
         : {}),
       ...(scenario === "failing"
-        ? { referenceInputs: references.outRefs }
+        ? {
+            referenceInputs: references.outRefs,
+            ...(failingSigners === undefined
+              ? {}
+              : { signers: failingSigners }),
+            nativeSpend: failingNativeSpend,
+            nativeMint: failingNativeMint,
+          }
         : {}),
-      ...(scenario === "passing" && passingSpend !== undefined
-        ? { spend: passingSpend }
-        : {}),
+      ...(spend === undefined ? {} : { spend }),
       predecessorEntries: previous.entries,
       header: {
         operatorVkey,

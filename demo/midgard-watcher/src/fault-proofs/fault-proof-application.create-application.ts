@@ -7,7 +7,6 @@ import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
   type CompleteCanonicalReplayContext,
-  createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
   FAMILY_APPLICATION_REGISTRY,
   FraudProofL1CheckpointChangedError,
@@ -19,15 +18,6 @@ import {
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
-import {
-  FabricatedDepositStep02Datum,
-  FabricatedDepositStep03Datum,
-  FabricatedDepositStep04Datum,
-  FabricatedWithdrawalStep02Datum,
-  FabricatedWithdrawalStep03Datum,
-  FabricatedWithdrawalStep04Datum,
-  FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
 import { Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -43,7 +33,6 @@ import { parseWatcherConfig } from "../runtime/config.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
-  watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
 import { verifyCompletedWatcherReplayTranscriptWorkflow } from "../storage/replay-transcript-completion.js";
@@ -65,6 +54,7 @@ import {
   type WatcherFaultProofApplicationWithLoaderForTest,
   watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
+import { createWatcherCatalogueReplayer } from "./fault-proof-application.create-catalogue-replayer.js";
 import {
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
@@ -271,73 +261,19 @@ export function createApplication({
         network: watcherConfig.targetNetwork,
         secret: proverSecret,
       });
-      const [depositBinding, withdrawalBinding] = await Promise.all([
-        bindFraudProofWorkflowDeployment({
-          manifest: JSON.parse(manifestJson!),
-          blueprintJson: blueprintJson!,
-          deploymentInfo: JSON.parse(deploymentInfoJson!),
-          category: "fabricatedDeposit",
-          headerHash,
-          proverCredential: signer.paymentKeyHash,
-          stepDatumSchemas: [
-            FraudProofComputationThreadStepDatum,
-            FabricatedDepositStep02Datum,
-            FabricatedDepositStep03Datum,
-            FabricatedDepositStep04Datum,
-          ],
-        }),
-        bindFraudProofWorkflowDeployment({
-          manifest: JSON.parse(manifestJson!),
-          blueprintJson: blueprintJson!,
-          deploymentInfo: JSON.parse(deploymentInfoJson!),
-          category: "fabricatedWithdrawal",
-          headerHash,
-          proverCredential: signer.paymentKeyHash,
-          stepDatumSchemas: [
-            FraudProofComputationThreadStepDatum,
-            FabricatedWithdrawalStep02Datum,
-            FabricatedWithdrawalStep03Datum,
-            FabricatedWithdrawalStep04Datum,
-          ],
-        }),
-      ]);
-      const depositHistory =
-        depositBinding.resolvedContracts.contracts.fabricatedDeposit?.history;
-      const withdrawalHistory =
-        withdrawalBinding.resolvedContracts.contracts.fabricatedWithdrawal
-          ?.history;
-      if (
-        depositBinding.deploymentFingerprint !==
-          deploymentIdentity.manifestId ||
-        withdrawalBinding.deploymentFingerprint !==
-          deploymentIdentity.manifestId ||
-        depositHistory === undefined ||
-        withdrawalHistory === undefined
-      )
-        throw new Error(
-          "Event replay history differs from the applied deployment",
-        );
-      const replayer = createCatalogueCompleteCanonicalReplay({
+      const replayer = await createWatcherCatalogueReplayer({
+        manifestJson: manifestJson!,
+        blueprintJson: blueprintJson!,
+        deploymentInfoJson: deploymentInfoJson!,
+        headerHash,
+        owner: signer.paymentKeyHash,
         lucid,
         network: watcherConfig.targetNetwork,
-        hubOraclePolicyId:
-          watcherDeploymentProtocolScriptAuthority(deploymentIdentity)
-            .protocolScriptHashes.hubOracleMint,
-        minimumConfirmationDepth: 1,
-        owner: signer.paymentKeyHash,
-        history: { deposit: depositHistory, withdrawal: withdrawalHistory },
+        deploymentIdentity,
+        ...(options.onValidationTraceReplayStuck === undefined
+          ? {}
+          : { onReplayStuck: options.onValidationTraceReplayStuck }),
       });
-      if (
-        replayer.launchScope.length !==
-          WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
-        replayer.launchScope.some(
-          (category, index) =>
-            category !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES[index],
-        )
-      )
-        throw new Error(
-          "Watcher classifier differs from its exact installed workflow catalogue",
-        );
       return await createHeaderClassifier({
         transitionTraceEventAuthority,
         deploymentFingerprint: deploymentIdentity.manifestId,

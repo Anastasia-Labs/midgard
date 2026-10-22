@@ -10,6 +10,8 @@ import {
 } from "../fault-proofs/fault-proof-application.js";
 import type { WatcherReplayedLedger } from "../fault-proofs/replayed-ledger.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
+import { watcherValidationTraceReplayStuckAlertSubject } from "./operations-observability.alert-book.js";
+import { type WatcherOperationsSink } from "./operations-observability.watcher-operations-metrics.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import {
   createWatcherStartupProgress,
@@ -58,6 +60,8 @@ export const prepareWatcherRuntimeWorkflows = async (
       follower: Pick<WatcherFollowerRuntime, "status" | "readiness">;
       l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
+      /** Read when a classifier's script re-execution gets stuck. */
+      operationsSink: () => Pick<WatcherOperationsSink, "setAlert">;
     }>,
 ) => {
   const {
@@ -70,6 +74,7 @@ export const prepareWatcherRuntimeWorkflows = async (
     follower,
     l1,
     onAllocated,
+    operationsSink,
   } = options;
   await untilFollowerReady(follower, startup);
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
@@ -80,6 +85,15 @@ export const prepareWatcherRuntimeWorkflows = async (
       replayTranscriptStore: sqlite.replayTranscripts,
       infrastructure: input.config.faultProofInfrastructure,
       fundingProfileOverlay,
+      onValidationTraceReplayStuck: (hold) =>
+        operationsSink().setAlert({
+          code: "validation_trace_replay_stuck",
+          subjectDigest: watcherValidationTraceReplayStuckAlertSubject(
+            hold.headerHash,
+          ),
+          active: true,
+          observedAtMs: Date.now().toString(),
+        }),
     });
     onAllocated(faultProofApplication);
     assertWatcherFaultProofLaunchScope(

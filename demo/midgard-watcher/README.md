@@ -560,8 +560,9 @@ measurement does not establish a public-network deadline guarantee. See the
   subsequent inclusion-policy passes require their own recorded provenance.
   The other non-interactive families are verified
   locally, in progress on that harness, or still blocked, not live-accepted.
-  The interactive `validationTraceDispute` family and the trace-relative
-  families have no off-chain workflow in this release.
+  The interactive `validationTraceDispute` family is installed and covered by
+  emulator tests, not by a live journey; the trace-relative families have no
+  off-chain workflow in this release.
 - `pnpm run typecheck`, `pnpm run lint`, and `pnpm test` check this package.
   The tests drive a scripted fake node transport; the sidecar itself is tested
   in `demo/l1-node-transport`.

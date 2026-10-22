@@ -78,6 +78,8 @@ export type WatcherFaultDecisionBridge = Readonly<{
     observationDigest: string | null;
     target: WatcherFaultDecisionTarget | null;
   }>;
+  /** Headers whose classification is held, each by its reason. */
+  readiness(): readonly Readonly<{ reason: string; detail: string }>[];
 }>;
 
 export type BridgeApplication = Pick<

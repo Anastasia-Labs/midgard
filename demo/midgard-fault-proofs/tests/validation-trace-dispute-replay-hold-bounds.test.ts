@@ -165,8 +165,11 @@ describe("validation-trace dispute replay: the work held events cost is bounded"
       expect.objectContaining({ txId: block.txs[0]!.txId, attempts: 2 }),
       expect.objectContaining({ txId: block.txs[1]!.txId, attempts: 1 }),
     ]);
-    // The carried event is due at once, on the next pass.
-    expect(second.retryAtMs).toBeLessThanOrEqual(clock.now);
+    // The carried event is due on the next pass, never at a time already
+    // past: a scheduler honouring it does not replay the block back to back.
+    expect(second.holds[1]!.retryAtMs).toBe(clock.now + 1_000);
+    expect(second.retryAtMs).toBeGreaterThan(clock.now);
+    clock.now = second.retryAtMs;
     await heldBy(replayer, block);
     expect([verdictRuns(block, 0), verdictRuns(block, 1)]).toStrictEqual([
       2, 2,
@@ -223,8 +226,9 @@ describe("validation-trace dispute replay: the work held events cost is bounded"
     injected.faults.clear();
     injected.verdictRuns.clear();
 
-    // Event 0 is held with a long backoff; event 1 then fails afresh, later
-    // in the same pass, with a short one.
+    // Event 0 is held with a long backoff, and event 1's later failure waits
+    // on it; event 1 then fails afresh, later in the same pass, with a short
+    // one.
     const block = await plutusExecutionEventsBlockFixture([
       "failing",
       "failing",
@@ -233,7 +237,13 @@ describe("validation-trace dispute replay: the work held events cost is bounded"
     inject(block, 0, indeterminate(block, 0));
     later.clock.now = 10_000;
     for (const retryAtMs of [11_000, 13_000, 17_000]) {
-      await decide(later.replayer, block);
+      const waiting = await heldBy(later.replayer, block);
+      expect(waiting.detections).toStrictEqual([
+        expect.objectContaining({
+          violationId: "validation-trace",
+          detectionId: expect.stringContaining(block.txs[1]!.txId),
+        }),
+      ]);
       later.clock.now = retryAtMs;
     }
     inject(block, 1, indeterminate(block, 1));

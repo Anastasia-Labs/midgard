@@ -208,13 +208,14 @@ const fixture = (category: AssembledFamilyCategory) => {
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    // These five installed families still own their adapters outside this
+    // These six installed families still own their adapters outside this
     // shared assembly; every other installed category must have a definition.
     const separatelyAssembled = new Set([
       "doubleSpend",
       "missingSignature",
       "mintItemNonCanonical",
       "networkId",
+      "validationTraceDispute",
       "valueNotPreserved",
     ]);
     expect([...categories].sort()).toEqual(

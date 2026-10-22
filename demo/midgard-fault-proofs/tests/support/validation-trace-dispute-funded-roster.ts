@@ -109,11 +109,11 @@ export const scriptHashes = (
 };
 
 /**
- * The fixture's signed deployment, its dispute bond, case, game, timeout
- * and award contracts and its one-step holders (and their reference-script
- * entries) the scene's.
+ * The fixture's signed deployment authority, its dispute bond, case, game,
+ * timeout and award contracts and its one-step holders (and their
+ * reference-script entries) the scene's.
  */
-export const signedDeployment = (scene: Scene) => {
+export const signedDeploymentFixture = (scene: Scene) => {
   const { chain } = scene;
   const contractSet = makeWatcherAuthorityContracts();
   const deployed = (name: string, script: Script, scriptHash: string) => {
@@ -159,5 +159,9 @@ export const signedDeployment = (scene: Scene) => {
   );
   for (const [name, script] of oneStepContracts(scene))
     deployed(name, script.spendingScript, script.spendingScriptHash);
-  return makeWatcherDeploymentAuthorityFixture({ contractSet }).result;
+  return makeWatcherDeploymentAuthorityFixture({ contractSet });
 };
+
+/** The signed deployment of `signedDeploymentFixture`. */
+export const signedDeployment = (scene: Scene) =>
+  signedDeploymentFixture(scene).result;

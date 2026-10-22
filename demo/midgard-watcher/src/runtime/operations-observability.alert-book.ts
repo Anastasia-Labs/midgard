@@ -22,19 +22,43 @@ export const watcherDaFetchAlertSubject = (headerHash: string): string =>
     .update(headerHash.toLowerCase())
     .digest("hex");
 
+/**
+ * One `validation_trace_replay_stuck` subject per state-queue header, whatever
+ * event of it is stuck, so the header's outcome can clear it.
+ */
+export const watcherValidationTraceReplayStuckAlertSubject = (
+  headerHash: string,
+): string =>
+  createHash("sha256")
+    .update("midgard-watcher-validation-trace-replay-stuck-alert-v1\u0000")
+    .update(headerHash.toLowerCase())
+    .digest("hex");
+
+/** Codes kept one subject per header, cleared by the header's outcome. */
+const PER_HEADER_CODES = Object.freeze([
+  ["da_fetch_failure", watcherDaFetchAlertSubject],
+  [
+    "validation_trace_replay_stuck",
+    watcherValidationTraceReplayStuckAlertSubject,
+  ],
+] as const);
+
 /** A failed DA fetch stops holding readiness once this old, by default. */
 export const WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS = 180_000;
 
-/** Distinct `da_fetch_failure` subjects kept; the oldest go first. */
-const MAXIMUM_DA_FETCH_ALERTS = MAXIMUM_PAGE_SIZE * 10;
+/** Distinct subjects kept of each per-header code; the oldest go first. */
+const MAXIMUM_PER_HEADER_ALERTS = MAXIMUM_PAGE_SIZE * 10;
 
 /**
  * Codes whose inactive record is read back to suppress repeated diagnostics.
- * Prepared proofs come and go per header and their reporters deduplicate.
+ * Prepared proofs and stuck replays come and go per header, and their
+ * reporters deduplicate.
  */
 const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> = new Set(
   [...WATCHER_INFORMATIONAL_ALERT_CODES].filter(
-    (code) => code !== "prepared_proof_awaiting_submission",
+    (code) =>
+      code !== "prepared_proof_awaiting_submission" &&
+      code !== "validation_trace_replay_stuck",
   ),
 );
 
@@ -79,14 +103,14 @@ export const createWatcherAlertBook = (input: {
     latest.delete(key);
     if (value.active || DEDUPLICATED_CODES.has(value.code))
       latest.set(key, record);
-    if (value.code !== "da_fetch_failure") return;
-    const daFetch = [...latest.keys()].filter((entry) =>
-      entry.startsWith("da_fetch_failure:"),
+    if (!PER_HEADER_CODES.some(([code]) => code === value.code)) return;
+    const subjects = [...latest.keys()].filter((entry) =>
+      entry.startsWith(`${value.code}:`),
     );
     // Insertion order is update order: the first entries are the oldest.
-    for (const stale of daFetch.slice(
+    for (const stale of subjects.slice(
       0,
-      Math.max(0, daFetch.length - MAXIMUM_DA_FETCH_ALERTS),
+      Math.max(0, subjects.length - MAXIMUM_PER_HEADER_ALERTS),
     ))
       latest.delete(stale);
   };
@@ -97,22 +121,21 @@ export const createWatcherAlertBook = (input: {
       code: WatcherAlertCode,
       subjectDigest: string,
     ): boolean | undefined => latest.get(`${code}:${subjectDigest}`)?.active,
-    /** Clears a header's DA fetch failure once the header has an outcome. */
+    /**
+     * Clears a header's DA fetch failure and stuck replay once the header has
+     * an outcome.
+     */
     settleHeader: (
       headerHash: string | undefined,
       outcome: WatcherVerificationDiagnostic["outcome"],
       observedAtMs: string,
     ): void => {
       if (headerHash === undefined || !SETTLED_OUTCOMES.has(outcome)) return;
-      const subjectDigest = watcherDaFetchAlertSubject(headerHash);
-      if (latest.get(`da_fetch_failure:${subjectDigest}`)?.active !== true)
-        return;
-      set({
-        code: "da_fetch_failure",
-        subjectDigest,
-        active: false,
-        observedAtMs,
-      });
+      for (const [code, subjectOf] of PER_HEADER_CODES) {
+        const subjectDigest = subjectOf(headerHash);
+        if (latest.get(`${code}:${subjectDigest}`)?.active === true)
+          set({ code, subjectDigest, active: false, observedAtMs });
+      }
     },
     active: () =>
       Object.freeze(
