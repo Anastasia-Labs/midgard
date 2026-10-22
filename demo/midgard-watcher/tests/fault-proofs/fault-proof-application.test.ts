@@ -618,7 +618,7 @@ describe("watcher production fault-proof application V1", () => {
             "replayContext",
           ),
         );
-      expect(replayContextFamilies).toHaveLength(9);
+      expect(replayContextFamilies).toHaveLength(10);
       for (const category of replayContextFamilies) {
         await expect(applied(category)).rejects.toThrow(
           `${category} application requires replayContext, which the host did not supply`,

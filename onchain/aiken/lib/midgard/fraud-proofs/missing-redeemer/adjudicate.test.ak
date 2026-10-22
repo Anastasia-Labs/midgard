@@ -9,7 +9,7 @@ use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/fraud_proofs/first_fault_v1.{
-  NetworkOrderContextV1, PurposeCoordinateV1,
+  NetworkOrderContextV1, PurposeCoordinateV1, phase_of_reason_v1,
 }
 use midgard/fraud_proofs/missing_redeemer/adjudicate
 use midgard/fraud_proofs/missing_redeemer/claim.{ClaimContextV1, FinalStateV1}
@@ -357,6 +357,19 @@ test undecodable_witness_script_precedes_every_purpose() {
       final(script_item(0), seen(3, 9), claim.NotRequired),
     ),
   }
+}
+
+// A witness script item is decoded with the native witness scripts, so it
+// takes exactly their phase.
+test witness_script_item_shares_the_native_witness_script_phase() {
+  let context = NetworkOrderContextV1 { body_network_mismatch: False }
+  phase_of_reason_v1(
+    reasons.PlutusScriptUndecodable { item_kind: 0, item_index: 0, class: 1 },
+    context,
+  ) == phase_of_reason_v1(
+    reasons.WitnessNativeScriptMalformed { script_index: 0 },
+    context,
+  )
 }
 
 // Either verdict passes the body, so only an abort satisfies these rows.

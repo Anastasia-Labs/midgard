@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DirectSourceSelection } from "../src/fraud-proof/direct-purpose-workers.js";
 import type { DirectScriptBound } from "../src/fraud-proof/direct-script-derivation.js";
+import { rejectionReasonPhase } from "../src/fraud-proof/first-fault.js";
 import {
   MissingRedeemerDecisionState as DecisionState,
   type MissingRedeemerDecisionState,
@@ -21,6 +22,7 @@ import {
   MissingRedeemerClaimPurposeState as PurposeState,
   MissingRedeemerFinalState as FinalState,
 } from "../src/fraud-proof/missing-redeemer-claim.js";
+import type { RejectionReason } from "../src/rejection-reason.js";
 
 const bytes = (tag: number, length: number): string =>
   tag.toString(16).padStart(length * 2, "0");
@@ -232,6 +234,22 @@ describe("missing-redeemer claim wire twin", () => {
     const value = { context: claimedOnlyContext(), claim };
     expect(Data.from(Data.to(value, FinalState), FinalState)).toStrictEqual(
       value,
+    );
+  });
+});
+
+describe("missing-redeemer claim phase order", () => {
+  const context = { body_network_mismatch: false };
+  const outputReferenceScriptItem: RejectionReason = {
+    PlutusScriptUndecodable: { item_kind: 1n, item_index: 0n, class: 1n },
+  };
+
+  it("decodes an output reference script item with the output scripts", () => {
+    expect(rejectionReasonPhase(outputReferenceScriptItem, context)).toBe(
+      rejectionReasonPhase(
+        { OutputReferenceScriptMalformed: { output_index: 0n } },
+        context,
+      ),
     );
   });
 });
