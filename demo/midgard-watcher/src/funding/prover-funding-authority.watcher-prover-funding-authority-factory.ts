@@ -32,6 +32,9 @@ export type WatcherProverFundingAuthorityFactory = Readonly<{
   }): Promise<void>;
   /** Reads the held reservations' L1 facts again; safe beside live dispatch. */
   recheckDecisionHolds(): Promise<void>;
+  /** Sweeps signed reservations no run is bound to, settling those nothing
+   * drives; safe beside live dispatch. */
+  settleUnattended(): Promise<void>;
   /** Reservations held because their recorded decision is missing. */
   decisionHolds(): readonly WatcherDecisionHold[];
   create(input: {

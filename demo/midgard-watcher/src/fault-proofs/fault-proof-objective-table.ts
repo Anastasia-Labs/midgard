@@ -89,6 +89,16 @@ export const canOpenWatcherProofObjective = (
     watcherObjectiveScope(objective.category, objective.headerHash),
   ) !== undefined || database.count(JOURNAL, "open") < MAX_OPEN_OBJECTIVES;
 
+/** Whether the objective has a row: no row means nothing drives it. */
+export const watcherProofObjectiveRecorded = (
+  database: WatcherJournalDatabase,
+  objective: Readonly<{ category: string; headerHash: string }>,
+): boolean =>
+  database.row(
+    JOURNAL,
+    watcherObjectiveScope(objective.category, objective.headerHash),
+  ) !== undefined;
+
 /** The completion marker for this exact completed execution, or null when
  * the completion is not yet beyond rollback recovery. */
 const completionMarker = (

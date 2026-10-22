@@ -76,6 +76,8 @@ export const createSupervisor = (input: {
   readonly reservationDecisionHolds?: () => readonly WatcherDecisionHold[];
   /** What a fresh process does around requeueing work after journal_busy. */
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
+  /** Settles the funding of signed attempts whose objective was forgotten. */
+  readonly settleUnattendedFunding?: () => Promise<void>;
 }): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
@@ -141,6 +143,9 @@ export const createSupervisor = (input: {
       // A returning header starts a fresh execution.
       onObjectiveRemoved: (objective) =>
         void selectedExecutions.delete(objectiveKey(objective)),
+      // A failed sweep leaves the funding to the next start's sweep.
+      onObjectiveUnattended: () =>
+        void input.settleUnattendedFunding?.().catch(() => undefined),
     });
   let progressAuthority = createAuthority();
   let progressSerial = Promise.resolve();

@@ -304,6 +304,7 @@ export const startWatcherRuntime = async (
         releaseUnusedFunding: () => fundingRuntime.factory.releaseUnused(),
         wake: () => decisionDriver?.wake(),
       },
+      settleUnattendedFunding: () => fundingRuntime.factory.settleUnattended(),
     });
     faultProofSupervisor = activeSupervisor;
 

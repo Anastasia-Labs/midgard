@@ -58,6 +58,8 @@ export const createWatcherFaultProofSupervisor = (input: {
   /** The startup funding sweep and a decision-driver pass, around the
    * in-process requeue after journal_busy; the runtime always passes it. */
   readonly journalBusyRequeue?: WatcherJournalBusyRequeue;
+  /** Settles the funding of signed attempts whose objective was forgotten. */
+  readonly settleUnattendedFunding?: () => Promise<void>;
 }): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
@@ -72,6 +74,9 @@ export const createWatcherFaultProofSupervisor = (input: {
     ...(input.journalBusyRequeue === undefined
       ? {}
       : { journalBusyRequeue: input.journalBusyRequeue }),
+    ...(input.settleUnattendedFunding === undefined
+      ? {}
+      : { settleUnattendedFunding: input.settleUnattendedFunding }),
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job, actuationPermit, admission }) => {

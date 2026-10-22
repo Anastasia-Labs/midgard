@@ -62,6 +62,9 @@ export const createWatcherProofObjectiveCleanup = (input: {
   readonly jobInProcess?: (objective: WatcherProofObjective) => boolean;
   /** Told after the objective's workflow rows are deleted. */
   readonly onRemoved?: (objective: WatcherProofObjective) => void;
+  /** Told after the objective is forgotten with its workflow rows kept: its
+   * signed attempt's funding is the settle sweep's. */
+  readonly onUnattended?: (objective: WatcherProofObjective) => void;
 }): WatcherProofObjectiveCleanup => {
   type Entry = {
     readonly objective: WatcherProofObjective;
@@ -102,7 +105,8 @@ export const createWatcherProofObjectiveCleanup = (input: {
       });
       entries.delete(keyOf(objective));
       stale.delete(keyOf(objective));
-      if (!keep) input.onRemoved?.(objective);
+      if (keep) input.onUnattended?.(objective);
+      else input.onRemoved?.(objective);
     } catch (error) {
       entry.failure = Object.freeze({
         category: objective.category,

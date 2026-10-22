@@ -207,6 +207,19 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
           }),
         );
       }),
+    settleUnattended: () =>
+      serialize(async () => {
+        const reservations = await idle();
+        recordHolds(
+          reservations.map(({ reservationId }) => reservationId),
+          await releaseUnusedWatcherProverFundingReservations({
+            ...input,
+            reservations,
+            decisionMissingOnly: true,
+            ...(orphans === undefined ? {} : { orphans }),
+          }),
+        );
+      }),
     decisionHolds: decisionHolds.current,
     create: async (request) => {
       assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
