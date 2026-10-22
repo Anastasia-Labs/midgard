@@ -603,9 +603,10 @@ describe("funding recovery across authenticated observation refresh", () => {
     expect(vi.mocked(test.adapter.reconcile)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(test.adapter.submit)).not.toHaveBeenCalled();
     expect(vi.mocked(test.adapter.prepare)).not.toHaveBeenCalled();
-    expect(test.workflowJournal.readWorkflowIds(10)).toEqual([
+    // The objective's one execution is the initial one.
+    expect(test.workflowJournal.readExecution(test.objective)?.workflowId).toBe(
       test.initial.workflowId,
-    ]);
+    );
     const entries = await test.journal.load(test.initial.workflowId);
     expect(
       entries.filter(({ event }) => event.kind === "confirmed"),

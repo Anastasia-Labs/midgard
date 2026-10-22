@@ -108,7 +108,6 @@ export const currentWorkflowJournal = (
     owns: (store) => journal().owns(store),
     appendWithin: (entries) => journal().appendWithin(entries),
     readExecution: (objective) => journal().readExecution(objective),
-    readWorkflowIds: (limit) => journal().readWorkflowIds(limit),
     forgetObjective: (objective) => journal().forgetObjective(objective),
     forgetWorkflow: (workflowId) => journal().forgetWorkflow(workflowId),
   });

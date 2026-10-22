@@ -74,8 +74,6 @@ export type WatcherWorkflowJournal = Readonly<{
   readExecution: (
     objective: WatcherProofObjective,
   ) => WatcherProofExecution | undefined;
-  /** The workflow ids of every execution with rows, at most `limit`. */
-  readWorkflowIds: (limit: number) => readonly string[];
   /** Deletes the objective's rows. Idempotent. */
   forgetObjective: (objective: WatcherProofObjective) => void;
   /** Deletes one execution's rows; inside the caller's transaction, so they
@@ -107,11 +105,6 @@ export const createWatcherWorkflowJournal = (
     WHERE category = ? AND header_hash = ?
     ORDER BY workflow_id ASC
     LIMIT ${(OBJECTIVE_EXECUTION_BOUND + 1).toString()}
-  `);
-  const selectWorkflowIds = database.prepare(`
-    SELECT DISTINCT workflow_id FROM watcher_workflow_journal_v1
-    ORDER BY workflow_id ASC
-    LIMIT ?
   `);
   const deleteWorkflow = database.prepare(`
     DELETE FROM watcher_workflow_journal_v1 WHERE workflow_id = ?
@@ -265,10 +258,6 @@ export const createWatcherWorkflowJournal = (
     owns: (store) => stores.has(store),
     appendWithin,
     readExecution,
-    readWorkflowIds: (limit) =>
-      (
-        selectWorkflowIds.all(limit) as Readonly<{ workflow_id: unknown }>[]
-      ).map(({ workflow_id }) => String(workflow_id)),
     forgetObjective: (objective) => {
       deleteObjective.run(objective.category, objective.headerHash);
       cache.clear();
