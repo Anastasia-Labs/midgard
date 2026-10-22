@@ -136,7 +136,7 @@ const buildWatcherDeploymentAuthorityFixture = (
     updatedAt: "2026-07-28T00:00:00.000Z",
     referenceScriptDeployAddress: "addr_test1vcanonical",
     hubOracleOneShot,
-    referenceScriptAuthPolicy: {
+    referenceScriptAuthPolicy: options.referenceScriptAuthPolicy ?? {
       policyId: NATIVE_SCRIPT_HASH,
       nativeScript: {
         type: "Native",
