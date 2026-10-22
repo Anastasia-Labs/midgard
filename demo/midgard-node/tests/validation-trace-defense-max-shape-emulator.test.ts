@@ -9,26 +9,37 @@
  *   the event is built the node's main thread stays live: a timer standing
  *   in for the commit tick keeps firing.
  * - Our reveals land within the limits down to the one-step resolution,
- *   with our clock above zero.
+ *   one per round for the deployment's most bisection rounds, each paying
+ *   less than the thread's fee cap, with our clock above zero.
  * - Past the case's duration our thread expires into the pocket, within the
- *   limits.
+ *   limits, and the case closes DefenderWon with the challenger's bond at
+ *   the treasury.
  */
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
   validationTraceDepthForStepCount,
 } from "@al-ft/midgard-core";
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
   ADMITTED_TX_EX_UNITS,
   challengerReveal,
+  defenderWonCaseClose,
   falseClaimMaterial,
   landWith,
   LONGEST_PASSING_SCRIPT,
   measureWithinTransactionLimits,
+  network,
   openFalseClaim,
+  protocolTreasury,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import {
+  CML,
+  credentialToAddress,
+  Data,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { testDatabases } from "./helpers/l1-events-store.js";
@@ -52,6 +63,20 @@ afterAll(async () => {
 
 /** The largest step count a descriptor takes. */
 const MAX_STEP_COUNT = MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount;
+
+/** The deployment's most bisection rounds, and the most a move may take
+ * from its thread for its fee. */
+const MAX_BISECTION_ROUNDS =
+  SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
+const MOVE_FEE_CAP = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace,
+);
+
+/** The fee a landed transaction's body declares. */
+const feeOf = (cbor: Buffer): bigint =>
+  CML.Transaction.from_cbor_bytes(cbor).body().fee();
+
+const caseDatumOf = (utxo: UTxO) => Data.from(utxo.datum!, SDK.Case);
 
 /** The commit tick's stand-in: how often it asks for the main thread. */
 const TIMER_MS = 50;
@@ -149,6 +174,7 @@ describe("the validation-trace defender at the consensus-maximum shape", () => {
 
     // Every reveal of ours, down to the one-step resolution.
     const fits: Fit[] = [];
+    const fees: bigint[] = [];
     for (let move = 0; move < 4 * 32; move += 1) {
       const live = threadOf(s, threadUnit)!;
       const { turn } = live.thread;
@@ -160,11 +186,9 @@ describe("the validation-trace defender at the consensus-maximum shape", () => {
         if (s.pending()) await s.land();
         const moved = threadOf(s, threadUnit)!;
         expect(moved.utxo.txHash).not.toBe(live.utxo.txHash);
-        fits.push(
-          measureWithinTransactionLimits(
-            s.landed(moved.utxo.txHash).cbor.toString("hex"),
-          ),
-        );
+        const { cbor } = s.landed(moved.utxo.txHash);
+        fits.push(measureWithinTransactionLimits(cbor.toString("hex")));
+        fees.push(feeOf(cbor));
       } else {
         await landWith(
           s.scene.h.proverLucid,
@@ -175,13 +199,17 @@ describe("the validation-trace defender at the consensus-maximum shape", () => {
     }
     const resolved = threadOf(s, threadUnit)!;
     expect(resolved.thread.turn).toBe("ReadyForOneStep");
-    expect(fits.length).toBe(validationTraceDepthForStepCount(MAX_STEP_COUNT));
+    expect(MAX_BISECTION_ROUNDS).toBe(
+      validationTraceDepthForStepCount(MAX_STEP_COUNT),
+    );
+    expect(fits.length).toBe(MAX_BISECTION_ROUNDS);
+    for (const fee of fees) expect(fee).toBeLessThan(MOVE_FEE_CAP);
     const clockLeft = resolved.thread.defender_clock_ms;
     expect(clockLeft).toBeGreaterThan(0n);
     const most = (pick: (fit: Fit) => bigint) =>
       fits.reduce((max, fit) => (pick(fit) > max ? pick(fit) : max), 0n);
     console.info(
-      `reveals: ${fits.length.toString()}, at most ${most((fit) => BigInt(fit.completeSignedBytes)).toString()} bytes, ${most((fit) => fit.executionMemory).toString()} mem, ${most((fit) => fit.executionSteps).toString()} steps; our clock left ${clockLeft.toString()} ms`,
+      `reveals: ${fits.length.toString()}, at most ${most((fit) => BigInt(fit.completeSignedBytes)).toString()} bytes, ${most((fit) => fit.executionMemory).toString()} mem, ${most((fit) => fit.executionSteps).toString()} steps, at most ${fees.reduce((max, fee) => (fee > max ? fee : max), 0n).toString()} lovelace fee; our clock left ${clockLeft.toString()} ms`,
     );
 
     // Past the case's duration, our thread expires into the pocket.
@@ -206,6 +234,39 @@ describe("the validation-trace defender at the consensus-maximum shape", () => {
         "expiry",
         measureWithinTransactionLimits(expiry.cbor.toString("hex")),
       ),
+    );
+
+    // The case still counts our thread: it closes DefenderWon, the
+    // challenger's bond going to the treasury.
+    const caseUtxo = s.liveByUnit(claim.caseUnit)!;
+    expect(caseDatumOf(caseUtxo).open_threads).toBe(1n);
+    const [bond] = await s.scene.h.proverLucid.utxosByOutRef([
+      { txHash: claim.caseUtxo.txHash, outputIndex: 1 },
+    ]);
+    const closed = await landWith(
+      s.scene.h.proverLucid,
+      await defenderWonCaseClose({
+        scene: s.scene,
+        lucid: s.scene.h.proverLucid,
+        caseUtxo,
+        bond: bond!,
+      }),
+    );
+    await s.env.follow();
+    expect(s.liveByUnit(claim.caseUnit)).toBeUndefined();
+    const [forfeited, remainder] = await s.scene.h.proverLucid.utxosByOutRef([
+      { txHash: closed.hash, outputIndex: 0 },
+      { txHash: closed.hash, outputIndex: 1 },
+    ]);
+    expect(forfeited!.address).toBe(protocolTreasury());
+    expect(forfeited!.assets).toStrictEqual({
+      lovelace: bond!.assets.lovelace,
+    });
+    expect(remainder!.address).toBe(
+      credentialToAddress(network, {
+        type: "Key",
+        hash: caseDatumOf(caseUtxo).bounty_claimant,
+      }),
     );
   }, 1_800_000);
 });
