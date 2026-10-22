@@ -106,10 +106,11 @@ const outRef = (text: string) => ({
 });
 
 /** Opens our case and has both operators defend it, each on its own thread
- * on its defender's turn; the successor's trace agrees with ours up to
- * `successorFrom`. */
+ * on its defender's turn; the operator's trace agrees with ours up to
+ * `operatorFrom` and the successor's up to `successorFrom`. */
 export const defendTwoThreads = async ({
   withRemoval,
+  operatorFrom = COMPUTE_STEP_FROM,
   successorFrom = MACHINE_STEP_FROM,
   selections = false,
   contexts = false,
@@ -120,13 +121,21 @@ export const defendTwoThreads = async ({
   failingReferenceInputs,
   failingSigners,
   failingScript,
+  failingExUnits,
   failingNativeSpend,
   failingNativeMint,
   wrap,
   releaseDepth,
 }: {
   readonly withRemoval: boolean;
-  readonly successorFrom?: number;
+  /** The operator's last agreed state, or how to pick it from our trace. */
+  readonly operatorFrom?:
+    | number
+    | ((material: ValidationTraceClaimMaterial) => Promise<number>);
+  /** The successor's last agreed state, or how to pick it from our trace. */
+  readonly successorFrom?:
+    | number
+    | ((material: ValidationTraceClaimMaterial) => Promise<number>);
   /** Whether the deployment drives CEK script selections. */
   readonly selections?: boolean;
   /** Whether the deployment drives CEK context steps. */
@@ -147,6 +156,8 @@ export const defendTwoThreads = async ({
   readonly failingSigners?: ScenarioSigners;
   /** The script the failing transaction's spend runs. */
   readonly failingScript?: MidgardVersionedScript;
+  /** The execution units the failing transaction's spend declares. */
+  readonly failingExUnits?: readonly [bigint, bigint];
   /** Whether the failing transaction also spends an output a native script
    * holds. */
   readonly failingNativeSpend?: boolean;
@@ -201,6 +212,7 @@ export const defendTwoThreads = async ({
         : { failingReferenceInputs }),
       ...(failingSigners === undefined ? {} : { failingSigners }),
       ...(failingScript === undefined ? {} : { failingScript }),
+      ...(failingExUnits === undefined ? {} : { failingExUnits }),
       ...(failingNativeSpend === undefined ? {} : { failingNativeSpend }),
       ...(failingNativeMint === undefined ? {} : { failingNativeMint }),
     },
@@ -252,8 +264,12 @@ export const defendTwoThreads = async ({
     nodeUnit: successor.activeNodeUnit,
     lucid: successor.lucid,
   };
-  const traceA = scriptedTrace(material, COMPUTE_STEP_FROM);
-  const traceB = scriptedTrace(material, successorFrom);
+  // A picker reads a material of its own, so whatever it builds from our
+  // trace is not held through the play.
+  const agreedUpTo = async (from: typeof operatorFrom) =>
+    typeof from === "number" ? from : await from(await failingMaterial(scene));
+  const traceA = scriptedTrace(material, await agreedUpTo(operatorFrom));
+  const traceB = scriptedTrace(material, await agreedUpTo(successorFrom));
   const lucid = scene.h.proverLucid;
   const [caseUtxo] = await lucid.utxosByOutRef([
     outRef(verified.outputs[0]!.outRef),

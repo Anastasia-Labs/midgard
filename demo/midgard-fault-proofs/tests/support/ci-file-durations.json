@@ -463,6 +463,8 @@
     "tests/validation-trace-dispute-funded-wallet-move.test.ts": 7.9,
     "tests/validation-trace-dispute-funded.test.ts": 33.5,
     "tests/validation-trace-dispute-lookalikes.test.ts": 5,
+    "tests/validation-trace-dispute-max-shape-copy.test.ts": 1420,
+    "tests/validation-trace-dispute-max-shape-inline.test.ts": 1604,
     "tests/validation-trace-dispute-move-fee.test.ts": 1,
     "tests/validation-trace-dispute-one-step-canonical-decode-0.test.ts": 16.5,
     "tests/validation-trace-dispute-one-step-canonical-decode-1.test.ts": 23.5,
