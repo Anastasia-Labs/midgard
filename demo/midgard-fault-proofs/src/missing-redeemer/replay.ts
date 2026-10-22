@@ -1,20 +1,25 @@
 /** Complete `missingRedeemer` replay of one block: every accepted or
  * forced-valid transaction that can carry a script purpose (a spend, an
- * output, a required observer or a mint), and every forced `RedeemerMissing`
- * rejection, is planned through the prover's verdict. */
+ * output, a required observer or a mint), every forced `RedeemerMissing`
+ * rejection, and every forced rejection whose reason names no purpose and is
+ * not recorded before the purpose phase, is planned through the prover's
+ * verdict. */
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import type * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
-import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
+import {
+  CanonicalReplayPrerequisiteError,
+  collectReplayFindings,
+} from "../workflow/replay-prerequisite.js";
 import { missingRedeemerDetection } from "./prover.js";
 
 export const MISSING_REDEEMER_VIOLATION_ID = "redeemer-missing";
@@ -55,6 +60,34 @@ const redeemerMissingReason = (verdict: SDK.OperatorVerdict) =>
   typeof verdict.ForcedTxInvalid.reason === "object" &&
   "RedeemerMissing" in verdict.ForcedTxInvalid.reason;
 
+/** A rejection whose reason names no purpose coordinate. */
+const purposelessReason = (
+  verdict: SDK.OperatorVerdict | undefined,
+): verdict is Exclude<SDK.OperatorVerdict, "ForcedTxValid"> =>
+  verdict !== undefined &&
+  verdict !== "ForcedTxValid" &&
+  SDK.purposeCoordinateOfReason(verdict.ForcedTxInvalid.reason) === null;
+
+/** Such a reason recorded at or after the purpose phase. The network context
+ * moves only `NetworkIdMismatch`, which the purpose phase admits at either of
+ * its phases; the prover decides admission under the bound context. */
+const purposePhaseReason = (verdict: SDK.OperatorVerdict) =>
+  purposelessReason(verdict) &&
+  SDK.rejectionReasonPhase(verdict.ForcedTxInvalid.reason, {
+    body_network_mismatch: true,
+  }) >= 8;
+
+/** A leaf whose bytes the replay cannot open yields no finding; an unresolved
+ * replay prerequisite still surfaces. */
+const unlessUnopened = async <T>(task: () => Promise<T | null>) => {
+  try {
+    return await task();
+  } catch (error) {
+    if (error instanceof CanonicalReplayPrerequisiteError) throw error;
+    return null;
+  }
+};
+
 /** The event a coordinate names; `null` when the block has no such source. */
 export const missingRedeemerEventKey = (
   current: TransitionTraceReconstruction,
@@ -85,21 +118,32 @@ export const prepareMissingRedeemerReplay = async ({
 }) => {
   const eventKey = missingRedeemerEventKey(current, coordinate);
   if (eventKey === null) return null;
-  const material = await prepareDirectScriptMaterial({
-    current,
-    eventKey,
-    ...(predecessor === undefined ? {} : { predecessor }),
-  });
-  const detection = await missingRedeemerDetection(material);
-  return detection === null
-    ? null
-    : {
-        coordinate,
-        eventKey,
-        material,
-        observed: detection.observed,
-        detectionId: missingRedeemerDetectionId(coordinate, detection.observed),
-      };
+  const prepare = async () => {
+    const material = await prepareDirectScriptMaterial({
+      current,
+      eventKey,
+      ...(predecessor === undefined ? {} : { predecessor }),
+    });
+    const detection = await missingRedeemerDetection(material);
+    return detection === null
+      ? null
+      : {
+          coordinate,
+          eventKey,
+          material,
+          observed: detection.observed,
+          detectionId: missingRedeemerDetectionId(
+            coordinate,
+            detection.observed,
+          ),
+        };
+  };
+  return coordinate.sourceKind === 1 &&
+    purposelessReason(
+      current.forcedTransactions[coordinate.sourceIndex]?.value.verdict,
+    )
+    ? await unlessUnopened(prepare)
+    : await prepare();
 };
 
 export const detectMissingRedeemerReplay = async ({
@@ -118,7 +162,8 @@ export const detectMissingRedeemerReplay = async ({
     if (
       entry.value.verdict === "ForcedTxValid"
         ? hasPurposeField(entry.fullTransactionCbor, true)
-        : redeemerMissingReason(entry.value.verdict)
+        : redeemerMissingReason(entry.value.verdict) ||
+          purposePhaseReason(entry.value.verdict)
     )
       candidates.push({ sourceKind: 1, sourceIndex });
   return collectReplayFindings(

@@ -3,7 +3,9 @@
  *
  * Supported: an accepted leaf convicted through a spend, mint, observer or
  * receive purpose whose redeemer-bearing source has no redeemer; a rejected
- * leaf whose `RedeemerMissing` reason names any purpose coordinate. */
+ * leaf whose reason names no purpose coordinate, through such a purpose when
+ * the purpose phase does not admit its reason first; a rejected leaf whose
+ * `RedeemerMissing` reason names any purpose coordinate. */
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
@@ -28,6 +30,7 @@ import {
   missingRedeemerClaimEntry,
   missingRedeemerClaimRoute,
   missingRedeemerConvicts,
+  missingRedeemerLeafAdmits,
   missingRedeemerObservedRoute,
 } from "./routes.js";
 import {
@@ -118,7 +121,8 @@ export const prepareMissingRedeemerProof = async ({
   readonly material: DirectScriptMaterial;
   readonly contracts: MissingRedeemerContracts;
   readonly prover: string;
-  /** Accepted leaves only: the purpose to scan; the first candidate otherwise. */
+  /** Leaves whose reason names no purpose: the purpose to scan; the first
+   * candidate otherwise. */
   readonly observed?: Coordinate;
 }): Promise<MissingRedeemerProofPlan> => {
   const roles = missingRedeemerContractRoles(contracts);
@@ -139,7 +143,7 @@ export const prepareMissingRedeemerProof = async ({
   const reason = material.bound.subject.rejection_reason;
   let route: readonly MissingRedeemerTransition[];
   let claim: Awaited<ReturnType<typeof missingRedeemerClaimRoute>>;
-  if (reason === null) {
+  if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
     const coordinate =
       observed ??
       (await missingRedeemerObservedCandidates(material, evidence))[0];
@@ -188,18 +192,25 @@ export const requireConvictingMissingRedeemerProof = async (
 const DETECTION_PROVER = "00".repeat(28);
 
 /**
- * Whether the bound leaf convicts, without planning custody: an accepted leaf
- * yields its first convicting purpose; a `RedeemerMissing` rejection yields
- * its claim verdict. Every other leaf, and a claimed spend with no
- * predecessor descriptor to show, is `null`.
+ * Whether the bound leaf convicts, without planning custody: an accepted leaf,
+ * or a rejection whose reason names no purpose and is not admitted before a
+ * purpose's missing redeemer, yields its first convicting purpose; a
+ * `RedeemerMissing` rejection yields its claim verdict. Every other leaf, and
+ * a claimed spend with no predecessor descriptor to show, is `null`.
  */
 export const missingRedeemerDetection = async (
   material: DirectScriptMaterial,
 ): Promise<{ readonly observed: Coordinate | null } | null> => {
   const reason = material.bound.subject.rejection_reason;
-  if (reason === null) {
+  if (reason === null || SDK.purposeCoordinateOfReason(reason) === null) {
     const purposes = missingRedeemerScriptPurposes(material);
-    if (purposes.length === 0) return null;
+    // Such a reason is admitted at every purpose coordinate or at none.
+    if (
+      purposes.length === 0 ||
+      (reason !== null &&
+        missingRedeemerLeafAdmits(material.bound, purposes[0]!.coordinate))
+    )
+      return null;
     const evidence = await buildDirectSourceIndexEvidence(material);
     const [coordinate] = await missingRedeemerObservedCandidates(
       material,
